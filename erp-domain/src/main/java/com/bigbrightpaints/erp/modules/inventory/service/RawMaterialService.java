@@ -7,12 +7,19 @@ import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
 import com.bigbrightpaints.erp.modules.inventory.dto.*;
+import com.bigbrightpaints.erp.modules.production.domain.ProductionBrand;
+import com.bigbrightpaints.erp.modules.production.domain.ProductionBrandRepository;
+import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
+import com.bigbrightpaints.erp.modules.production.domain.ProductionProductRepository;
 import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class RawMaterialService {
@@ -20,13 +27,19 @@ public class RawMaterialService {
     private final RawMaterialRepository rawMaterialRepository;
     private final RawMaterialBatchRepository batchRepository;
     private final CompanyContextService companyContextService;
+    private final ProductionProductRepository productionProductRepository;
+    private final ProductionBrandRepository productionBrandRepository;
 
     public RawMaterialService(RawMaterialRepository rawMaterialRepository,
                               RawMaterialBatchRepository batchRepository,
-                              CompanyContextService companyContextService) {
+                              CompanyContextService companyContextService,
+                              ProductionProductRepository productionProductRepository,
+                              ProductionBrandRepository productionBrandRepository) {
         this.rawMaterialRepository = rawMaterialRepository;
         this.batchRepository = batchRepository;
         this.companyContextService = companyContextService;
+        this.productionProductRepository = productionProductRepository;
+        this.productionBrandRepository = productionBrandRepository;
     }
 
     public List<RawMaterialDto> listRawMaterials() {
@@ -47,7 +60,10 @@ public class RawMaterialService {
         material.setReorderLevel(request.reorderLevel());
         material.setMinStock(request.minStock());
         material.setMaxStock(request.maxStock());
-        return toDto(rawMaterialRepository.save(material));
+        material.setInventoryAccountId(request.inventoryAccountId());
+        RawMaterial saved = rawMaterialRepository.save(material);
+        syncProductFromMaterial(company, saved);
+        return toDto(saved);
     }
 
     @Transactional
@@ -61,7 +77,10 @@ public class RawMaterialService {
         material.setReorderLevel(request.reorderLevel());
         material.setMinStock(request.minStock());
         material.setMaxStock(request.maxStock());
-        return toDto(material);
+        material.setInventoryAccountId(request.inventoryAccountId());
+        RawMaterial saved = rawMaterialRepository.save(material);
+        syncProductFromMaterial(company, saved);
+        return toDto(saved);
     }
 
     @Transactional
@@ -143,7 +162,7 @@ public class RawMaterialService {
     private RawMaterialDto toDto(RawMaterial material) {
         return new RawMaterialDto(material.getId(), material.getPublicId(), material.getName(), material.getSku(),
                 material.getUnitType(), material.getReorderLevel(), material.getCurrentStock(),
-                material.getMinStock(), material.getMaxStock(), stockStatus(material));
+                material.getMinStock(), material.getMaxStock(), stockStatus(material), material.getInventoryAccountId());
     }
 
     private RawMaterialBatchDto toBatchDto(RawMaterialBatch batch) {
@@ -172,5 +191,49 @@ public class RawMaterialService {
 
     private boolean isCriticalStock(RawMaterial material) {
         return material.getCurrentStock().compareTo(material.getMinStock()) <= 0;
+    }
+
+    private void syncProductFromMaterial(Company company, RawMaterial material) {
+        if (!StringUtils.hasText(material.getSku())) {
+            return;
+        }
+        ProductionProduct product = productionProductRepository.findByCompanyAndSkuCode(company, material.getSku())
+                .orElseGet(() -> {
+                    ProductionProduct created = new ProductionProduct();
+                    created.setCompany(company);
+                    created.setBrand(resolveRawMaterialBrand(company));
+                    created.setProductName(material.getName());
+                    created.setCategory("RAW_MATERIAL");
+                    created.setUnitOfMeasure(material.getUnitType());
+                    created.setSkuCode(material.getSku());
+                    created.setBasePrice(BigDecimal.ZERO);
+                    created.setGstRate(BigDecimal.ZERO);
+                    created.setMinDiscountPercent(BigDecimal.ZERO);
+                    created.setMinSellingPrice(BigDecimal.ZERO);
+                    created.setMetadata(new HashMap<>());
+                    return created;
+                });
+        product.setProductName(material.getName());
+        product.setCategory("RAW_MATERIAL");
+        product.setUnitOfMeasure(material.getUnitType());
+        if (product.getBrand() == null) {
+            product.setBrand(resolveRawMaterialBrand(company));
+        }
+        Map<String, Object> metadata = product.getMetadata() == null ? new HashMap<>() : new HashMap<>(product.getMetadata());
+        metadata.put("linkedRawMaterialId", material.getId());
+        metadata.put("linkedRawMaterialSku", material.getSku());
+        product.setMetadata(metadata);
+        productionProductRepository.save(product);
+    }
+
+    private ProductionBrand resolveRawMaterialBrand(Company company) {
+        return productionBrandRepository.findByCompanyAndCodeIgnoreCase(company, "RAW-MATERIALS")
+                .orElseGet(() -> {
+                    ProductionBrand brand = new ProductionBrand();
+                    brand.setCompany(company);
+                    brand.setCode("RAW-MATERIALS");
+                    brand.setName("Raw Materials");
+                    return productionBrandRepository.save(brand);
+                });
     }
 }

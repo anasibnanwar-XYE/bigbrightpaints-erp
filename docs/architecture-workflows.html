@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>BigBright ERP – Architecture & Accounting Workflows</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 32px;
+      background: #f4f6fb;
+      font-family: "Segoe UI", "Inter", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      color: #0f172a;
+    }
+    h1 {
+      margin: 0 0 12px;
+      font-size: 26px;
+      font-weight: 700;
+    }
+    p {
+      margin: 0 0 24px;
+      color: #475569;
+      max-width: 980px;
+    }
+    .diagram-wrapper {
+      background: #fff;
+      border-radius: 30px;
+      padding: 28px;
+      box-shadow: 0 35px 80px rgba(15, 23, 42, 0.12);
+      overflow-x: auto;
+    }
+    svg {
+      width: 1200px;
+      height: 860px;
+    }
+    .cluster {
+      fill: #e0f7ff;
+      stroke: #7dd3fc;
+      stroke-width: 2;
+    }
+    .cluster.secondary {
+      fill: #efeafe;
+      stroke: #c4b5fd;
+    }
+    .cluster-title {
+      font-size: 14px;
+      font-weight: 700;
+      fill: #0369a1;
+    }
+    .cluster.secondary + text.cluster-title {
+      fill: #6d28d9;
+    }
+    .node rect {
+      stroke-width: 1.8px;
+    }
+    .node text {
+      font-size: 12px;
+      text-anchor: middle;
+      font-weight: 600;
+    }
+    .node .subtitle {
+      font-size: 11px;
+      font-weight: 500;
+      fill: #475569;
+    }
+    .client rect { fill: #e0f2fe; stroke: #38bdf8; }
+    .core rect { fill: #f5f3ff; stroke: #a78bfa; }
+    .service rect { fill: #f1f5f9; stroke: #94a3b8; }
+    .store rect { fill: #fff7ed; stroke: #f97316; }
+    .queue rect { fill: #fee2e2; stroke: #f87171; }
+    .highlight rect { fill: #d1fae5; stroke: #34d399; }
+    .api rect {
+      fill: #ffffff;
+      stroke: #94a3b8;
+      stroke-dasharray: 6 4;
+    }
+    line, path {
+      stroke: #1e293b;
+      stroke-width: 1.4px;
+      fill: none;
+      marker-end: url(#arrow);
+    }
+  </style>
+</head>
+<body>
+  <h1>BigBright ERP Backend – Architecture & Accounting Workflows</h1>
+  <p>Runtime stack on top shows the actual Spring Boot app (multi-company security, controllers, orchestrator, outbox, Postgres, RabbitMQ). The lower section zooms into how accounting touches every portal: React admins create journals/reports, dealers fetch invoices, orchestrator jobs (sales/factory/payroll) auto-post ledgers, and everything lands in the GL tables and events stream.</p>
+  <div class="diagram-wrapper">
+    <svg viewBox="0 0 1200 860" role="img" aria-label="Architecture and accounting workflow diagram">
+      <defs>
+        <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+          <path d="M0,0 L8,4 L0,8 z" fill="#1f2937"></path>
+        </marker>
+      </defs>
+
+      <!-- Architecture cluster -->
+      <rect x="40" y="30" width="1120" height="340" rx="32" class="cluster"></rect>
+      <text x="600" y="55" class="cluster-title">Runtime Architecture (erp-domain Spring Boot 3.3)</text>
+
+      <!-- Clients -->
+      <g class="node client">
+        <rect x="70" y="80" width="170" height="70" rx="18"></rect>
+        <text x="155" y="110">React Admin Console</text>
+        <text x="155" y="128" class="subtitle">`FRONTEND OF BACKEND/admin/App.tsx`</text>
+      </g>
+      <g class="node client">
+        <rect x="70" y="170" width="170" height="70" rx="18"></rect>
+        <text x="155" y="200">Dealer / Portal Clients</text>
+        <text x="155" y="218" class="subtitle">dealer portal, partner APIs</text>
+      </g>
+      <g class="node client">
+        <rect x="70" y="260" width="170" height="70" rx="18"></rect>
+        <text x="155" y="290">Automation & Seeders</text>
+        <text x="155" y="308" class="subtitle">scripts, integrations</text>
+      </g>
+
+      <!-- Core layers -->
+      <g class="node core">
+        <rect x="280" y="125" width="170" height="90" rx="20"></rect>
+        <text x="365" y="160">Security + Context Filters</text>
+        <text x="365" y="178" class="subtitle">`SecurityConfig`, `JwtAuthenticationFilter`, `CompanyContextFilter`</text>
+      </g>
+      <g class="node core">
+        <rect x="480" y="125" width="170" height="90" rx="20"></rect>
+        <text x="565" y="160">REST Controllers</text>
+        <text x="565" y="178" class="subtitle">`/api/v1/**` (auth, admin, sales, factory, hr, accounting, reports)</text>
+      </g>
+      <g class="node core">
+        <rect x="680" y="125" width="180" height="90" rx="20"></rect>
+        <text x="770" y="160">Domain Modules</text>
+        <text x="770" y="178" class="subtitle">sales · inventory · hr · factory · accounting</text>
+      </g>
+      <g class="node core">
+        <rect x="900" y="125" width="220" height="90" rx="20"></rect>
+        <text x="1010" y="160">Orchestrator CommandDispatcher</text>
+        <text x="1010" y="178" class="subtitle">auto-approval, dispatch, payroll, traces</text>
+      </g>
+
+      <!-- Supporting services -->
+      <g class="node service">
+        <rect x="280" y="230" width="170" height="90" rx="20"></rect>
+        <text x="365" y="265">TraceService + Audit</text>
+        <text x="365" y="283" class="subtitle">workflow traces, compliance logs</text>
+      </g>
+      <g class="node service">
+        <rect x="480" y="230" width="170" height="90" rx="20"></rect>
+        <text x="565" y="265">Scheduler Jobs</text>
+        <text x="565" y="283" class="subtitle">`SchedulerConfig`, OutboxPublisherJob</text>
+      </g>
+      <g class="node service">
+        <rect x="680" y="230" width="180" height="90" rx="20"></rect>
+        <text x="770" y="265">Outbox + EventPublisherService</text>
+        <text x="770" y="283" class="subtitle">reliable events per transaction</text>
+      </g>
+      <g class="node highlight">
+        <rect x="900" y="230" width="220" height="90" rx="20"></rect>
+        <text x="1010" y="265">Accounting Module</text>
+        <text x="1010" y="283" class="subtitle">JournalEntryService, InvoiceService, ReportService</text>
+      </g>
+
+      <!-- Data + messaging -->
+      <g class="node store">
+        <rect x="700" y="330" width="150" height="75" rx="18"></rect>
+        <text x="775" y="360">RabbitMQ</text>
+        <text x="775" y="378" class="subtitle">`bbp.orchestrator.events`</text>
+      </g>
+      <g class="node store">
+        <rect x="900" y="320" width="240" height="80" rx="18"></rect>
+        <text x="1020" y="350">Postgres 16 (`erp_domain`)</text>
+        <text x="1020" y="368" class="subtitle">GL tables, multi-company data, outbox</text>
+      </g>
+
+      <!-- Architecture connections -->
+      <line x1="240" y1="115" x2="280" y2="170"></line>
+      <line x1="240" y1="205" x2="280" y2="170"></line>
+      <line x1="240" y1="295" x2="280" y2="170"></line>
+
+      <line x1="450" y1="170" x2="480" y2="170"></line>
+      <line x1="650" y1="170" x2="680" y2="170"></line>
+      <line x1="860" y1="170" x2="900" y2="170"></line>
+
+      <line x1="365" y1="215" x2="365" y2="230"></line>
+      <line x1="565" y1="215" x2="565" y2="230"></line>
+      <line x1="770" y1="215" x2="770" y2="230"></line>
+      <line x1="1010" y1="215" x2="1010" y2="230"></line>
+
+      <line x1="770" y1="320" x2="770" y2="330"></line>
+      <line x1="900" y1="275" x2="900" y2="320"></line>
+      <line x1="1050" y1="275" x2="1050" y2="320"></line>
+
+      <!-- Accounting feeds down to workflow cluster -->
+      <path d="M770 320 L770 400" />
+      <path d="M1010 320 L1010 400" />
+
+      <!-- Workflow cluster -->
+      <rect x="40" y="400" width="1120" height="380" rx="32" class="cluster secondary"></rect>
+      <text x="600" y="424" class="cluster-title">Accounting Touchpoints & Data Flow</text>
+
+      <!-- Portals -->
+      <g class="node client">
+        <rect x="70" y="430" width="190" height="80" rx="18"></rect>
+        <text x="165" y="465">React Admin (Finance)</text>
+        <text x="165" y="483" class="subtitle">controllers, CFO, AR/AP</text>
+      </g>
+      <g class="node client">
+        <rect x="70" y="530" width="190" height="80" rx="18"></rect>
+        <text x="165" y="565">Dealer / Sales Portals</text>
+        <text x="165" y="583" class="subtitle">Invoices + statements</text>
+      </g>
+      <g class="node client">
+        <rect x="70" y="630" width="190" height="80" rx="18"></rect>
+        <text x="165" y="665">Automation & Orchestrator</text>
+        <text x="165" y="683" class="subtitle">sales auto-approval, payroll run</text>
+      </g>
+
+      <!-- Controllers -->
+      <g class="node api">
+        <rect x="300" y="430" width="210" height="80" rx="20"></rect>
+        <text x="405" y="465">AccountingController</text>
+        <text x="405" y="483" class="subtitle">`POST /api/v1/accounting/journal-entries`</text>
+      </g>
+      <g class="node api">
+        <rect x="300" y="520" width="210" height="80" rx="20"></rect>
+        <text x="405" y="555">ReportController</text>
+        <text x="405" y="573" class="subtitle">`GET /api/v1/reports/profit-loss` etc.</text>
+      </g>
+      <g class="node api">
+        <rect x="300" y="610" width="210" height="80" rx="20"></rect>
+        <text x="405" y="645">InvoiceController</text>
+        <text x="405" y="663" class="subtitle">`GET /api/v1/invoices/**` dealer views</text>
+      </g>
+      <g class="node api">
+        <rect x="300" y="700" width="210" height="80" rx="20"></rect>
+        <text x="405" y="735">CommandDispatcher / Payroll</text>
+        <text x="405" y="753" class="subtitle">`POST /api/v1/orchestrator/payroll/run`</text>
+      </g>
+
+      <!-- Services / ledger -->
+      <g class="node highlight">
+        <rect x="540" y="430" width="210" height="110" rx="20"></rect>
+        <text x="645" y="470">AccountingService & Ledger Engine</text>
+        <text x="645" y="488" class="subtitle">JournalEntryService, LedgerPostingService</text>
+        <text x="645" y="506" class="subtitle">validates debits = credits, multi-company</text>
+      </g>
+      <g class="node service">
+        <rect x="540" y="560" width="210" height="90" rx="20"></rect>
+        <text x="645" y="595">Billing / Tax Service</text>
+        <text x="645" y="613" class="subtitle">InvoiceService, Dealer AR aging, GST/VAT</text>
+      </g>
+      <g class="node service">
+        <rect x="540" y="660" width="210" height="90" rx="20"></rect>
+        <text x="645" y="695">Payroll & Integration Posting</text>
+        <text x="645" y="713" class="subtitle">CommandDispatcher.postPayrollVouchers</text>
+      </g>
+
+      <!-- Outputs -->
+      <g class="node store">
+        <rect x="800" y="430" width="220" height="110" rx="20"></rect>
+        <text x="910" y="470">GL Tables / Postgres</text>
+        <text x="910" y="488" class="subtitle">journal_entry, ledger_line, tax_entry</text>
+        <text x="910" y="506" class="subtitle">invoice, receipt, payment tables</text>
+      </g>
+      <g class="node service">
+        <rect x="800" y="560" width="220" height="90" rx="20"></rect>
+        <text x="910" y="595">Financial Statements API</text>
+        <text x="910" y="613" class="subtitle">P&L, cash flow, inventory valuation exports</text>
+      </g>
+      <g class="node queue">
+        <rect x="800" y="660" width="220" height="90" rx="20"></rect>
+        <text x="910" y="695">Events & Integrations</text>
+        <text x="910" y="713" class="subtitle">RabbitMQ outbox → downstream systems</text>
+      </g>
+
+      <!-- Inputs from other modules -->
+      <g class="node api">
+        <rect x="1060" y="430" width="90" height="70" rx="16"></rect>
+        <text x="1105" y="460">Sales</text>
+        <text x="1105" y="478" class="subtitle">order revenue</text>
+      </g>
+      <g class="node api">
+        <rect x="1060" y="520" width="90" height="70" rx="16"></rect>
+        <text x="1105" y="550">Inventory</text>
+        <text x="1105" y="568" class="subtitle">COGS, adjustments</text>
+      </g>
+      <g class="node api">
+        <rect x="1060" y="610" width="90" height="70" rx="16"></rect>
+        <text x="1105" y="640">Factory</text>
+        <text x="1105" y="658" class="subtitle">WIP, production</text>
+      </g>
+
+      <!-- Workflow connections -->
+      <line x1="260" y1="470" x2="300" y2="470"></line>
+      <line x1="260" y1="470" x2="300" y2="560"></line>
+
+      <line x1="260" y1="570" x2="300" y2="650"></line>
+      <line x1="260" y1="670" x2="300" y2="740"></line>
+
+      <line x1="510" y1="470" x2="540" y2="470"></line>
+      <line x1="510" y1="560" x2="540" y2="600"></line>
+      <line x1="510" y1="650" x2="540" y2="705"></line>
+      <line x1="750" y1="480" x2="800" y2="480"></line>
+      <line x1="750" y1="600" x2="800" y2="600"></line>
+      <line x1="750" y1="705" x2="800" y2="705"></line>
+
+      <line x1="1020" y1="480" x2="1060" y2="465"></line>
+      <line x1="1020" y1="600" x2="1060" y2="555"></line>
+      <line x1="1020" y1="705" x2="1060" y2="645"></line>
+
+      <path d="M405 510 L540 470" />
+      <path d="M405 600 L540 605" />
+      <path d="M405 690 L540 705" />
+      <path d="M405 560 L540 600" />
+
+      <path d="M770 400 L830 430" />
+      <path d="M1010 400 L950 430" />
+      <path d="M770 400 L830 600" />
+      <path d="M1010 400 L950 705" />
+    </svg>
+  </div>
+</div>
+
+  <section>
+    <h2>Order → Invoice Flow (What Actually Runs)</h2>
+    <p>Dealers hit <code>POST /api/v1/sales/orders</code> in <code>SalesController</code> (<code>erp-domain/.../sales/controller/SalesController.java</code>). The controller hands off to <code>SalesService.createOrder</code>, which assembles the aggregate, assigns an order number, persists it, and publishes <code>SalesOrderCreatedEvent</code>. Once the transaction commits, <code>OrderAutoApprovalListener</code> invokes <code>CommandDispatcher.autoApproveOrder</code>, which calls <code>IntegrationCoordinator.autoApproveOrder</code> directly in the same HTTP thread—no queue, outbox, or retry envelope.</p>
+    <ol>
+      <li><strong>Reserve inventory:</strong> <code>IntegrationCoordinator</code> asks inventory to reserve finished goods. Failures bubble up immediately; nothing retries.</li>
+      <li><strong>Journal booking:</strong> <code>createAccountingEntry</code> posts <code>Dr AR / Cr Revenue</code> via <code>AccountingService.createJournalEntry</code>.</li>
+      <li><strong>Dispatch & COGS:</strong> <code>postCogsEntry</code> runs once slips mark dispatched, again calling <code>AccountingService</code>.</li>
+      <li><strong>Invoice materialisation:</strong> <code>InvoiceService.issueInvoiceForOrder</code> persists <code>Invoice</code> + lines and bumps <code>Dealer.outstandingBalance</code>.</li>
+      <li><strong>Status update:</strong> Order status flips to <code>APPROVED</code> / <code>INVOICED</code> before the HTTP response returns.</li>
+    </ol>
+    <p>The journal helper (<code>postJournal</code>) simply picks the first two accounts it finds (creating “Auto Cash/Auto Revenue” placeholders when needed) and pushes a one-sided debit/credit pair with no dealer linkage or invoice reference beyond <code>SALE-{orderId}</code> / <code>COGS-{orderId}</code>. Because the coordinator ignores the <code>companyId</code> parameter and relies on the servlet filter to keep thread-local context, the postings are only correct when invoked from the web tier.</p>
+  </section>
+
+  <section>
+    <h2>Dealer Ledger Reality</h2>
+    <p><code>InvoiceService</code> updates a denormalised <code>Dealer.outstandingBalance</code> column and that value flows straight through Dealer APIs and reports (<code>DealerService.listDealers</code>, <code>ReportService</code> account statements, aged debtors). GL entries produced by <code>AccountingService</code> never feed back into the dealer portal because the journals do not record a <code>dealerId</code>. Payments cannot offset the balance, so portal totals inevitably diverge from the ledger.</p>
+  </section>
+
+  <section>
+    <h2>Non-existent E-Bill Stage</h2>
+    <p>Despite the “Billing / Tax Service” box in the diagram, there is no runtime e-bill or e-invoice implementation under <code>erp-domain/src/main/java</code>. The auto-approval chain stops at invoice creation; no XML/TXT generation, GST API handshake, or async dispatch jobs exist. “Sales → Invoice → Journal → E-bill → Dealer ledger” therefore halts before the statutory E-bill hop.</p>
+  </section>
+
+  <section>
+    <h2>Assessment & Risks</h2>
+    <ul>
+      <li><strong>State skew:</strong> <code>IntegrationCoordinator.autoApproveOrder</code> is non-transactional. If inventory reservation or journal posting succeeds but invoice persistence fails, you keep orphaned postings without compensations or idempotency guards. Replaying <code>SalesOrderCreatedEvent</code> will duplicate journals even though invoices are deduped.</li>
+      <li><strong>Ledger mismatch:</strong> Dealer balances mutate via the denormalised column only. Reports and portals echo it verbatim, so nothing reconciles with GL data.</li>
+      <li><strong>Company context fragility:</strong> Coordinator methods accept <code>companyId</code> but never update <code>CompanyContextHolder</code>; correctness hinges on the HTTP filter still being on the stack. Any async/offline trigger would post journals under whichever company happens to be in thread-local storage.</li>
+      <li><strong>Accounting placeholders:</strong> <code>postJournal</code> auto-creates “Auto Cash/Auto Revenue” accounts and omits dealer references, so the postings are not auditable or useful for real receivables.</li>
+      <li><strong>E-bill compliance gap:</strong> No e-bill generation or dispatch means regulatory workflows (GST e-invoice/e-waybill) are absent end-to-end.</li>
+    </ul>
+  </section>
+</body>
+</html>

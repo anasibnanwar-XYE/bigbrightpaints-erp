@@ -2,10 +2,12 @@ package com.bigbrightpaints.erp.orchestrator.service;
 
 import com.bigbrightpaints.erp.orchestrator.dto.ApproveOrderRequest;
 import com.bigbrightpaints.erp.orchestrator.dto.DispatchRequest;
+import com.bigbrightpaints.erp.orchestrator.dto.OrderFulfillmentRequest;
 import com.bigbrightpaints.erp.orchestrator.dto.PayrollRunRequest;
 import com.bigbrightpaints.erp.orchestrator.event.DomainEvent;
 import com.bigbrightpaints.erp.orchestrator.policy.PolicyEnforcer;
 import com.bigbrightpaints.erp.orchestrator.workflow.WorkflowService;
+import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.InventoryReservationResult;
 import java.math.BigDecimal;
 import java.util.Map;
 import java.util.UUID;
@@ -35,11 +37,17 @@ public class CommandDispatcher {
     public String approveOrder(ApproveOrderRequest request, String companyId, String userId) {
         policyEnforcer.checkOrderApprovalPermissions(userId, companyId);
         String traceId = workflowService.startWorkflow("order-approval");
-        integrationCoordinator.reserveInventory(request.orderId(), companyId);
-        integrationCoordinator.queueProduction(request.orderId(), companyId);
-        integrationCoordinator.createAccountingEntry(request.orderId(), request.totalAmount(), companyId);
+        InventoryReservationResult reservation = integrationCoordinator.reserveInventory(request.orderId(), companyId);
+        boolean awaitingProduction = reservation != null && !reservation.shortages().isEmpty();
+        if (!awaitingProduction) {
+            integrationCoordinator.queueProduction(request.orderId(), companyId);
+        }
+        String orderStatus = awaitingProduction ? "PENDING_PRODUCTION" : "READY_TO_SHIP";
         DomainEvent event = DomainEvent.of("OrderApprovedEvent", companyId, userId, "Order", request.orderId(),
-            Map.of("orderStatus", "APPROVED", "approvedBy", request.approvedBy(), "totalAmount", request.totalAmount()));
+            Map.of("orderStatus", orderStatus,
+                    "awaitingProduction", awaitingProduction,
+                    "approvedBy", request.approvedBy(),
+                    "totalAmount", request.totalAmount()));
         eventPublisherService.enqueue(event);
         traceService.record(traceId, "ORDER_APPROVED", Map.of("orderId", request.orderId()));
         return traceId;
@@ -48,11 +56,29 @@ public class CommandDispatcher {
     @Transactional
     public String autoApproveOrder(String orderId, BigDecimal totalAmount, String companyId) {
         String traceId = workflowService.startWorkflow("order-auto-approval");
-        integrationCoordinator.autoApproveOrder(orderId, totalAmount, companyId);
+        IntegrationCoordinator.AutoApprovalResult result =
+                integrationCoordinator.autoApproveOrder(orderId, totalAmount, companyId);
         DomainEvent event = DomainEvent.of("OrderAutoApprovedEvent", companyId, "system", "Order", orderId,
-                Map.of("orderStatus", "APPROVED", "totalAmount", totalAmount));
+                Map.of("orderStatus", result.orderStatus(),
+                        "awaitingProduction", result.awaitingProduction(),
+                        "totalAmount", totalAmount));
         eventPublisherService.enqueue(event);
         traceService.record(traceId, "ORDER_AUTO_APPROVED", Map.of("orderId", orderId));
+        return traceId;
+    }
+
+    @Transactional
+    public String updateOrderFulfillment(String orderId, OrderFulfillmentRequest request, String companyId, String userId) {
+        policyEnforcer.checkOrderApprovalPermissions(userId, companyId);
+        String traceId = workflowService.startWorkflow("order-fulfillment");
+        IntegrationCoordinator.AutoApprovalResult result =
+                integrationCoordinator.updateFulfillment(orderId, request.status(), companyId);
+        DomainEvent event = DomainEvent.of("OrderFulfillmentUpdated", companyId, userId, "Order", orderId,
+                Map.of("status", request.status(),
+                        "awaitingProduction", result.awaitingProduction(),
+                        "notes", request.notes()));
+        eventPublisherService.enqueue(event);
+        traceService.record(traceId, "ORDER_FULFILLMENT_UPDATED", Map.of("orderId", orderId, "status", request.status()));
         return traceId;
     }
 

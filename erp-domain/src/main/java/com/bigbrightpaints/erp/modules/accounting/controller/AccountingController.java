@@ -38,4 +38,14 @@ public class AccountingController {
     public ResponseEntity<ApiResponse<JournalEntryDto>> createJournalEntry(@Valid @RequestBody JournalEntryRequest request) {
         return ResponseEntity.ok(ApiResponse.success("Journal entry posted", accountingService.createJournalEntry(request)));
     }
+
+    @PostMapping("/receipts/dealer")
+    public ResponseEntity<ApiResponse<JournalEntryDto>> recordDealerReceipt(@Valid @RequestBody DealerReceiptRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Receipt recorded", accountingService.recordDealerReceipt(request)));
+    }
+
+    @PostMapping("/payroll/payments")
+    public ResponseEntity<ApiResponse<JournalEntryDto>> recordPayrollPayment(@Valid @RequestBody PayrollPaymentRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Payroll payment recorded", accountingService.recordPayrollPayment(request)));
+    }
 }

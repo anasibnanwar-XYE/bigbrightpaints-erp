@@ -62,7 +62,8 @@ public class InvoiceService {
         invoice.setStatus("ISSUED");
         invoice.setNotes("Auto-issued for order " + order.getOrderNumber());
 
-        BigDecimal subtotal = BigDecimal.ZERO;
+        BigDecimal computedSubtotal = BigDecimal.ZERO;
+        BigDecimal computedTax = BigDecimal.ZERO;
         for (SalesOrderItem item : order.getItems()) {
             InvoiceLine line = new InvoiceLine();
             line.setInvoice(invoice);
@@ -70,21 +71,28 @@ public class InvoiceService {
             line.setDescription(item.getDescription());
             line.setQuantity(item.getQuantity());
             line.setUnitPrice(item.getUnitPrice());
-            line.setTaxRate(BigDecimal.ZERO);
-            BigDecimal lineTotal = multiply(item.getQuantity(), item.getUnitPrice());
-            line.setLineTotal(lineTotal);
-            subtotal = subtotal.add(lineTotal);
+            BigDecimal lineSubtotal = item.getLineSubtotal() != null
+                    ? item.getLineSubtotal()
+                    : multiply(item.getQuantity(), item.getUnitPrice());
+            BigDecimal lineTax = item.getGstAmount() != null ? item.getGstAmount() : BigDecimal.ZERO;
+            BigDecimal taxRate = item.getGstRate() != null ? item.getGstRate() : BigDecimal.ZERO;
+            line.setTaxRate(taxRate);
+            line.setLineTotal(lineSubtotal.add(lineTax));
+            computedSubtotal = computedSubtotal.add(lineSubtotal);
+            computedTax = computedTax.add(lineTax);
             invoice.getLines().add(line);
         }
+        BigDecimal subtotal = order.getSubtotalAmount() != null && order.getSubtotalAmount().compareTo(BigDecimal.ZERO) > 0
+                ? order.getSubtotalAmount()
+                : computedSubtotal;
+        BigDecimal taxTotal = order.getGstTotal() != null && order.getGstTotal().compareTo(BigDecimal.ZERO) > 0
+                ? order.getGstTotal()
+                : computedTax;
         invoice.setSubtotal(subtotal);
-        invoice.setTaxTotal(BigDecimal.ZERO);
-        invoice.setTotalAmount(subtotal);
+        invoice.setTaxTotal(taxTotal);
+        invoice.setTotalAmount(subtotal.add(taxTotal));
 
         Invoice saved = invoiceRepository.save(invoice);
-
-        Dealer dealer = saved.getDealer();
-        dealer.setOutstandingBalance(dealer.getOutstandingBalance().add(saved.getTotalAmount()));
-        dealerRepository.save(dealer);
 
         return toDto(saved);
     }

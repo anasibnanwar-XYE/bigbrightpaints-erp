@@ -4,7 +4,9 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
+import com.bigbrightpaints.erp.modules.accounting.service.DealerLedgerService;
 import com.bigbrightpaints.erp.modules.reports.dto.*;
+import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderRepository;
 import org.springframework.stereotype.Service;
@@ -21,17 +23,20 @@ public class ReportService {
     private final RawMaterialRepository rawMaterialRepository;
     private final DealerRepository dealerRepository;
     private final SalesOrderRepository salesOrderRepository;
+    private final DealerLedgerService dealerLedgerService;
 
     public ReportService(CompanyContextService companyContextService,
                          AccountRepository accountRepository,
                          RawMaterialRepository rawMaterialRepository,
                          DealerRepository dealerRepository,
-                         SalesOrderRepository salesOrderRepository) {
+                         SalesOrderRepository salesOrderRepository,
+                         DealerLedgerService dealerLedgerService) {
         this.companyContextService = companyContextService;
         this.accountRepository = accountRepository;
         this.rawMaterialRepository = rawMaterialRepository;
         this.dealerRepository = dealerRepository;
         this.salesOrderRepository = salesOrderRepository;
+        this.dealerLedgerService = dealerLedgerService;
     }
 
     public BalanceSheetDto balanceSheet() {
@@ -71,21 +76,30 @@ public class ReportService {
 
     public List<AccountStatementEntryDto> accountStatement() {
         Company company = companyContextService.requireCurrentCompany();
-        return dealerRepository.findByCompanyOrderByNameAsc(company).stream()
-                .map(dealer -> new AccountStatementEntryDto(dealer.getName(), LocalDate.now(),
-                        "SO-" + dealer.getCode(), dealer.getOutstandingBalance(), BigDecimal.ZERO,
-                        dealer.getOutstandingBalance()))
+        var dealers = dealerRepository.findByCompanyOrderByNameAsc(company);
+        var balances = dealerLedgerService.currentBalances(dealers.stream().map(Dealer::getId).toList());
+        return dealers.stream()
+                .map(dealer -> {
+                    BigDecimal outstanding = balances.getOrDefault(dealer.getId(), BigDecimal.ZERO);
+                    return new AccountStatementEntryDto(dealer.getName(), LocalDate.now(),
+                            "SO-" + dealer.getCode(), outstanding, BigDecimal.ZERO, outstanding);
+                })
                 .toList();
     }
 
     public List<AgedDebtorDto> agedDebtors() {
         Company company = companyContextService.requireCurrentCompany();
-        return dealerRepository.findByCompanyOrderByNameAsc(company).stream()
-                .map(dealer -> new AgedDebtorDto(dealer.getName(),
-                        dealer.getOutstandingBalance().multiply(new BigDecimal("0.6")),
-                        dealer.getOutstandingBalance().multiply(new BigDecimal("0.2")),
-                        dealer.getOutstandingBalance().multiply(new BigDecimal("0.15")),
-                        dealer.getOutstandingBalance().multiply(new BigDecimal("0.05"))))
+        var dealers = dealerRepository.findByCompanyOrderByNameAsc(company);
+        var balances = dealerLedgerService.currentBalances(dealers.stream().map(Dealer::getId).toList());
+        return dealers.stream()
+                .map(dealer -> {
+                    BigDecimal outstanding = balances.getOrDefault(dealer.getId(), BigDecimal.ZERO);
+                    return new AgedDebtorDto(dealer.getName(),
+                            outstanding.multiply(new BigDecimal("0.6")),
+                            outstanding.multiply(new BigDecimal("0.2")),
+                            outstanding.multiply(new BigDecimal("0.15")),
+                            outstanding.multiply(new BigDecimal("0.05")));
+                })
                 .toList();
     }
 

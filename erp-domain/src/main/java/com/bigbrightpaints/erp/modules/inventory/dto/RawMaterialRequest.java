@@ -10,5 +10,6 @@ public record RawMaterialRequest(
         @NotBlank String unitType,
         @NotNull BigDecimal reorderLevel,
         @NotNull BigDecimal minStock,
-        @NotNull BigDecimal maxStock
+        @NotNull BigDecimal maxStock,
+        Long inventoryAccountId
 ) {}

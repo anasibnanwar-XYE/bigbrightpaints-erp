@@ -1,9 +1,9 @@
 -------------------------------------------------------------------------------
 Test set: com.bigbrightpaints.erp.modules.auth.MfaControllerIT
 -------------------------------------------------------------------------------
-Tests run: 1, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 0.523 s <<< FAILURE! -- in com.bigbrightpaints.erp.modules.auth.MfaControllerIT
-com.bigbrightpaints.erp.modules.auth.MfaControllerIT -- Time elapsed: 0.523 s <<< ERROR!
-java.lang.ExceptionInInitializerError
+Tests run: 1, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 0.001 s <<< FAILURE! -- in com.bigbrightpaints.erp.modules.auth.MfaControllerIT
+com.bigbrightpaints.erp.modules.auth.MfaControllerIT -- Time elapsed: 0.001 s <<< ERROR!
+java.lang.NoClassDefFoundError: Could not initialize class com.bigbrightpaints.erp.test.AbstractIntegrationTest
 	at java.base/jdk.internal.misc.Unsafe.ensureClassInitialized0(Native Method)
 	at java.base/jdk.internal.misc.Unsafe.ensureClassInitialized(Unsafe.java:1160)
 	at java.base/java.lang.reflect.Constructor.acquireConstructorAccessor(Constructor.java:549)
@@ -11,7 +11,7 @@ java.lang.ExceptionInInitializerError
 	at java.base/java.lang.reflect.Constructor.newInstance(Constructor.java:486)
 	at java.base/java.util.Optional.orElseGet(Optional.java:364)
 	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
-Caused by: java.lang.IllegalStateException: Could not find a valid Docker environment. Please see logs and check configuration
+Caused by: java.lang.ExceptionInInitializerError: Exception java.lang.IllegalStateException: Could not find a valid Docker environment. Please see logs and check configuration [in thread "main"]
 	at org.testcontainers.dockerclient.DockerClientProviderStrategy.lambda$getFirstValidStrategy$7(DockerClientProviderStrategy.java:277)
 	at java.base/java.util.Optional.orElseThrow(Optional.java:403)
 	at org.testcontainers.dockerclient.DockerClientProviderStrategy.getFirstValidStrategy(DockerClientProviderStrategy.java:268)

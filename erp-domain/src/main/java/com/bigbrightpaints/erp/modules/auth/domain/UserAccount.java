@@ -59,6 +59,21 @@ public class UserAccount {
     @Column(name = "mfa_recovery_codes")
     private String mfaRecoveryCodes;
 
+    @Column(name = "preferred_name")
+    private String preferredName;
+
+    @Column(name = "job_title")
+    private String jobTitle;
+
+    @Column(name = "profile_picture_url")
+    private String profilePictureUrl;
+
+    @Column(name = "phone_secondary")
+    private String phoneSecondary;
+
+    @Column(name = "secondary_email")
+    private String secondaryEmail;
+
     public UserAccount() {
     }
 
@@ -117,6 +132,46 @@ public class UserAccount {
         this.enabled = enabled;
     }
 
+    public String getPreferredName() {
+        return preferredName;
+    }
+
+    public void setPreferredName(String preferredName) {
+        this.preferredName = preferredName;
+    }
+
+    public String getJobTitle() {
+        return jobTitle;
+    }
+
+    public void setJobTitle(String jobTitle) {
+        this.jobTitle = jobTitle;
+    }
+
+    public String getProfilePictureUrl() {
+        return profilePictureUrl;
+    }
+
+    public void setProfilePictureUrl(String profilePictureUrl) {
+        this.profilePictureUrl = profilePictureUrl;
+    }
+
+    public String getPhoneSecondary() {
+        return phoneSecondary;
+    }
+
+    public void setPhoneSecondary(String phoneSecondary) {
+        this.phoneSecondary = phoneSecondary;
+    }
+
+    public String getSecondaryEmail() {
+        return secondaryEmail;
+    }
+
+    public void setSecondaryEmail(String secondaryEmail) {
+        this.secondaryEmail = secondaryEmail;
+    }
+
     public Set<Role> getRoles() {
         return roles;
     }
@@ -171,5 +226,9 @@ public class UserAccount {
         if (hashes.remove(hash)) {
             setMfaRecoveryCodeHashes(hashes);
         }
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
     }
 }

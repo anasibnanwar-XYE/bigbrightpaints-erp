@@ -44,6 +44,9 @@ public class RawMaterial {
     @Column(name = "max_stock", nullable = false)
     private BigDecimal maxStock = BigDecimal.ZERO;
 
+    @Column(name = "inventory_account_id")
+    private Long inventoryAccountId;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -136,5 +139,13 @@ public class RawMaterial {
 
     public void setMaxStock(BigDecimal maxStock) {
         this.maxStock = maxStock;
+    }
+
+    public Long getInventoryAccountId() {
+        return inventoryAccountId;
+    }
+
+    public void setInventoryAccountId(Long inventoryAccountId) {
+        this.inventoryAccountId = inventoryAccountId;
     }
 }

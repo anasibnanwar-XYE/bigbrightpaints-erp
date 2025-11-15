@@ -9,4 +9,5 @@ import java.util.Optional;
 public interface RawMaterialRepository extends JpaRepository<RawMaterial, Long> {
     List<RawMaterial> findByCompanyOrderByNameAsc(Company company);
     Optional<RawMaterial> findByCompanyAndId(Company company, Long id);
+    Optional<RawMaterial> findByCompanyAndSku(Company company, String sku);
 }

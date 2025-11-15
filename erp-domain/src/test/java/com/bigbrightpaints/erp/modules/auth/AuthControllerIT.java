@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.*;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -45,5 +46,10 @@ public class AuthControllerIT extends AbstractIntegrationTest {
         assertThat(data).isNotNull();
         assertThat(data.get("email")).isEqualTo(ADMIN_EMAIL);
         assertThat(data.get("companyId")).isEqualTo(COMPANY_CODE);
+        List<String> roles = (List<String>) data.get("roles");
+        assertThat(roles).isNotNull();
+        assertThat(roles).contains("ROLE_ADMIN");
+        List<String> permissions = (List<String>) data.get("permissions");
+        assertThat(permissions).isNotNull();
     }
 }
