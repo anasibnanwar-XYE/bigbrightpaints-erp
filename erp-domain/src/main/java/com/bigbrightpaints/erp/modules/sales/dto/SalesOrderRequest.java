@@ -11,5 +11,7 @@ public record SalesOrderRequest(
         @NotNull BigDecimal totalAmount,
         String currency,
         String notes,
-        List<@Valid SalesOrderItemRequest> items
+        List<@Valid SalesOrderItemRequest> items,
+        String gstTreatment,
+        BigDecimal gstRate
 ) {}

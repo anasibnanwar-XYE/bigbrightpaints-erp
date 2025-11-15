@@ -46,6 +46,15 @@ public class FinishedGood {
     @Column(name = "cogs_account_id")
     private Long cogsAccountId;
 
+    @Column(name = "revenue_account_id")
+    private Long revenueAccountId;
+
+    @Column(name = "discount_account_id")
+    private Long discountAccountId;
+
+    @Column(name = "tax_account_id")
+    private Long taxAccountId;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -89,4 +98,10 @@ public class FinishedGood {
     public void setValuationAccountId(Long valuationAccountId) { this.valuationAccountId = valuationAccountId; }
     public Long getCogsAccountId() { return cogsAccountId; }
     public void setCogsAccountId(Long cogsAccountId) { this.cogsAccountId = cogsAccountId; }
+    public Long getRevenueAccountId() { return revenueAccountId; }
+    public void setRevenueAccountId(Long revenueAccountId) { this.revenueAccountId = revenueAccountId; }
+    public Long getDiscountAccountId() { return discountAccountId; }
+    public void setDiscountAccountId(Long discountAccountId) { this.discountAccountId = discountAccountId; }
+    public Long getTaxAccountId() { return taxAccountId; }
+    public void setTaxAccountId(Long taxAccountId) { this.taxAccountId = taxAccountId; }
 }

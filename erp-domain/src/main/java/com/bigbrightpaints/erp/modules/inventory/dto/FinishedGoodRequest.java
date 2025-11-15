@@ -8,5 +8,8 @@ public record FinishedGoodRequest(
         String unit,
         String costingMethod,
         Long valuationAccountId,
-        Long cogsAccountId
+        Long cogsAccountId,
+        Long revenueAccountId,
+        Long discountAccountId,
+        Long taxAccountId
 ) {}

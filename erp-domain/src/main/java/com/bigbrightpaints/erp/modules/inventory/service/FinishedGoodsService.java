@@ -60,6 +60,9 @@ public class FinishedGoodsService {
         finishedGood.setCostingMethod(request.costingMethod() == null ? "FIFO" : request.costingMethod());
         finishedGood.setValuationAccountId(request.valuationAccountId());
         finishedGood.setCogsAccountId(request.cogsAccountId());
+        finishedGood.setRevenueAccountId(request.revenueAccountId());
+        finishedGood.setDiscountAccountId(request.discountAccountId());
+        finishedGood.setTaxAccountId(request.taxAccountId());
         return toDto(finishedGoodRepository.save(finishedGood));
     }
 
@@ -94,20 +97,41 @@ public class FinishedGoodsService {
     }
 
     @Transactional
-    public PackagingSlipDto reserveForOrder(SalesOrder order) {
+    public InventoryReservationResult reserveForOrder(SalesOrder order) {
         PackagingSlip slip = packagingSlipRepository.findBySalesOrderId(order.getId())
                 .orElseGet(() -> createSlip(order));
 
         if (!slip.getLines().isEmpty()) {
-            return toSlipDto(slip);
+            return new InventoryReservationResult(toSlipDto(slip), List.of());
         }
 
+        List<InventoryShortage> shortages = new ArrayList<>();
         for (SalesOrderItem item : order.getItems()) {
             FinishedGood finishedGood = finishedGoodRepository.findByCompanyAndProductCode(order.getCompany(), item.getProductCode())
                     .orElseThrow(() -> new IllegalArgumentException("Finished good not found for product code " + item.getProductCode()));
-            allocateItem(order, slip, finishedGood, item);
+            allocateItem(order, slip, finishedGood, item, shortages);
         }
-        return toSlipDto(slip);
+        return new InventoryReservationResult(toSlipDto(slip), List.copyOf(shortages));
+    }
+
+    public Map<String, FinishedGoodAccountingProfile> accountingProfiles(List<String> productCodes) {
+        if (productCodes == null || productCodes.isEmpty()) {
+            return Map.of();
+        }
+        Company company = companyContextService.requireCurrentCompany();
+        List<FinishedGood> goods = finishedGoodRepository.findByCompanyAndProductCodeIn(company, productCodes);
+        Map<String, FinishedGoodAccountingProfile> profiles = new HashMap<>();
+        for (FinishedGood fg : goods) {
+            profiles.put(fg.getProductCode(), new FinishedGoodAccountingProfile(
+                    fg.getProductCode(),
+                    fg.getValuationAccountId(),
+                    fg.getCogsAccountId(),
+                    fg.getRevenueAccountId(),
+                    fg.getDiscountAccountId(),
+                    fg.getTaxAccountId()
+            ));
+        }
+        return profiles;
     }
 
     @Transactional
@@ -162,7 +186,11 @@ public class FinishedGoodsService {
         return packagingSlipRepository.save(slip);
     }
 
-    private void allocateItem(SalesOrder order, PackagingSlip slip, FinishedGood finishedGood, SalesOrderItem item) {
+    private void allocateItem(SalesOrder order,
+                              PackagingSlip slip,
+                              FinishedGood finishedGood,
+                              SalesOrderItem item,
+                              List<InventoryShortage> shortages) {
         BigDecimal remaining = item.getQuantity();
         List<FinishedGoodBatch> batches = finishedGoodBatchRepository.findAllocatableBatches(finishedGood);
         for (FinishedGoodBatch batch : batches) {
@@ -198,7 +226,7 @@ public class FinishedGoodsService {
         }
 
         if (remaining.compareTo(BigDecimal.ZERO) > 0) {
-            throw new IllegalStateException("Insufficient stock for product " + item.getProductCode());
+            shortages.add(new InventoryShortage(finishedGood.getProductCode(), remaining, finishedGood.getName()));
         }
     }
 
@@ -237,7 +265,10 @@ public class FinishedGoodsService {
                 finishedGood.getReservedStock(),
                 finishedGood.getCostingMethod(),
                 finishedGood.getValuationAccountId(),
-                finishedGood.getCogsAccountId()
+                finishedGood.getCogsAccountId(),
+                finishedGood.getRevenueAccountId(),
+                finishedGood.getDiscountAccountId(),
+                finishedGood.getTaxAccountId()
         );
     }
 
@@ -298,4 +329,18 @@ public class FinishedGoodsService {
             return new DispatchPosting(inventoryAccountId, cogsAccountId, cost);
         }
     }
+
+    public record FinishedGoodAccountingProfile(String productCode,
+                                                Long valuationAccountId,
+                                                Long cogsAccountId,
+                                                Long revenueAccountId,
+                                                Long discountAccountId,
+                                                Long taxAccountId) {}
+
+    public record InventoryReservationResult(PackagingSlipDto packagingSlip,
+                                             List<InventoryShortage> shortages) {}
+
+    public record InventoryShortage(String productCode,
+                                    BigDecimal shortageQuantity,
+                                    String productName) {}
 }

@@ -710,9 +710,27 @@ paths:
           content:
             '*/*':
               schema:
-                type: object
-                additionalProperties:
                   type: object
+                  additionalProperties:
+                    type: object
+  /api/v1/auth/password/change:
+    post:
+      tags:
+      - auth-controller
+      operationId: changePassword
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/ApiResponseString'
   /api/v1/multi-company/companies/switch:
     post:
       tags:
@@ -912,6 +930,54 @@ paths:
             '*/*':
               schema:
                 $ref: '#/components/schemas/ApiResponseProductionBatchDto'
+  /api/v1/factory/production/logs:
+    get:
+      tags:
+      - production-log-controller
+      operationId: listProductionLogs
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/ApiResponseListProductionLogDto'
+    post:
+      tags:
+      - production-log-controller
+      operationId: createProductionLog
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductionLogRequest'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/ApiResponseProductionLogDetailDto'
+  /api/v1/factory/production/logs/{id}:
+    get:
+      tags:
+      - production-log-controller
+      operationId: getProductionLog
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/ApiResponseProductionLogDetailDto'
   /api/v1/dealers:
     get:
       tags:
@@ -1170,6 +1236,42 @@ paths:
             '*/*':
               schema:
                 $ref: '#/components/schemas/ApiResponseJournalEntryDto'
+  /api/v1/accounting/receipts/dealer:
+    post:
+      tags:
+      - accounting-controller
+      operationId: recordDealerReceipt
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DealerReceiptRequest'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/ApiResponseJournalEntryDto'
+  /api/v1/accounting/payroll/payments:
+    post:
+      tags:
+      - accounting-controller
+      operationId: recordPayrollPayment
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PayrollPaymentRequest'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/ApiResponseJournalEntryDto'
   /api/v1/accounting/accounts:
     get:
       tags:
@@ -1199,6 +1301,82 @@ paths:
             '*/*':
               schema:
                 $ref: '#/components/schemas/ApiResponseAccountDto'
+  /api/v1/accounting/catalog/import:
+    post:
+      tags:
+      - accounting-catalog-controller
+      operationId: importCatalog
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/ApiResponseCatalogImportResponse'
+  /api/v1/accounting/catalog/products:
+    get:
+      tags:
+      - accounting-catalog-controller
+      operationId: listCatalogProducts
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/ApiResponseListProductionProductDto'
+    post:
+      tags:
+      - accounting-catalog-controller
+      operationId: createCatalogProduct
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductCreateRequest'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/ApiResponseProductionProductDto'
+  /api/v1/accounting/catalog/products/{id}:
+    put:
+      tags:
+      - accounting-catalog-controller
+      operationId: updateCatalogProduct
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductUpdateRequest'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/ApiResponseProductionProductDto'
   /api/v1/sales/orders/{id}/status:
     patch:
       tags:
@@ -1570,6 +1748,37 @@ paths:
             '*/*':
               schema:
                 $ref: '#/components/schemas/ApiResponseFactoryDashboardDto'
+  /api/v1/production/brands:
+    get:
+      tags:
+      - production-catalog-controller
+      operationId: listProductionBrands
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/ApiResponseListProductionBrandDto'
+  /api/v1/production/brands/{brandId}/products:
+    get:
+      tags:
+      - production-catalog-controller
+      operationId: listBrandProducts
+      parameters:
+      - name: brandId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/ApiResponseListProductionProductDto'
   /api/v1/demo/ping:
     get:
       tags:
@@ -1634,6 +1843,19 @@ paths:
                   type: object
 components:
   schemas:
+    ChangePasswordRequest:
+      type: object
+      properties:
+        currentPassword:
+          type: string
+        newPassword:
+          type: string
+        confirmPassword:
+          type: string
+      required:
+      - currentPassword
+      - newPassword
+      - confirmPassword
     SalesTargetRequest:
       required:
       - name
@@ -1768,6 +1990,16 @@ components:
           type: number
         unitPrice:
           type: number
+        lineSubtotal:
+          type: number
+        gstRate:
+          type: number
+        gstAmount:
+          type: number
+        lineTotal:
+          type: number
+        gstRate:
+          type: number
     SalesOrderRequest:
       required:
       - totalAmount
@@ -1786,6 +2018,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/SalesOrderItemRequest'
+        gstTreatment:
+          type: string
+        gstRate:
+          type: number
     ApiResponseSalesOrderDto:
       type: object
       properties:
@@ -1812,6 +2048,16 @@ components:
         status:
           type: string
         totalAmount:
+          type: number
+        subtotalAmount:
+          type: number
+        gstTotal:
+          type: number
+        gstRate:
+          type: number
+        gstTreatment:
+          type: string
+        gstRoundingAdjustment:
           type: number
         currency:
           type: string
@@ -2749,6 +2995,48 @@ components:
           type: number
         credit:
           type: number
+    DealerReceiptRequest:
+      required:
+      - amount
+      - cashAccountId
+      - dealerId
+      type: object
+      properties:
+        dealerId:
+          type: integer
+          format: int64
+        cashAccountId:
+          type: integer
+          format: int64
+        amount:
+          type: number
+        referenceNumber:
+          type: string
+        memo:
+          type: string
+    PayrollPaymentRequest:
+      required:
+      - amount
+      - cashAccountId
+      - expenseAccountId
+      - payrollRunId
+      type: object
+      properties:
+        payrollRunId:
+          type: integer
+          format: int64
+        cashAccountId:
+          type: integer
+          format: int64
+        expenseAccountId:
+          type: integer
+          format: int64
+        amount:
+          type: number
+        referenceNumber:
+          type: string
+        memo:
+          type: string
     AccountRequest:
       required:
       - code
@@ -3300,6 +3588,14 @@ components:
           type: string
         mfaEnabled:
           type: boolean
+        roles:
+          type: array
+          items:
+            type: string
+        permissions:
+          type: array
+          items:
+            type: string
     ApiResponseListUserDto:
       type: object
       properties:
@@ -3418,6 +3714,332 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AccountDto'
+        timestamp:
+          type: string
+          format: date-time
+    ProductionBrandDto:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        publicId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        code:
+          type: string
+        productCount:
+          type: integer
+          format: int64
+    ProductionProductDto:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        publicId:
+          type: string
+          format: uuid
+        brandId:
+          type: integer
+          format: int64
+        brandName:
+          type: string
+        brandCode:
+          type: string
+        productName:
+          type: string
+        category:
+          type: string
+        defaultColour:
+          type: string
+        sizeLabel:
+          type: string
+        unitOfMeasure:
+          type: string
+        skuCode:
+          type: string
+        active:
+          type: boolean
+        basePrice:
+          type: number
+        gstRate:
+          type: number
+        minDiscountPercent:
+          type: number
+        minSellingPrice:
+          type: number
+        metadata:
+          type: object
+          additionalProperties: {}
+    CatalogImportResponse:
+      type: object
+      properties:
+        rowsProcessed:
+          type: integer
+          format: int32
+        brandsCreated:
+          type: integer
+          format: int32
+        productsCreated:
+          type: integer
+          format: int32
+        productsUpdated:
+          type: integer
+          format: int32
+        rawMaterialsSeeded:
+          type: integer
+          format: int32
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/CatalogImportResponseImportError'
+    CatalogImportResponseImportError:
+      type: object
+      properties:
+        rowNumber:
+          type: integer
+          format: int64
+        message:
+          type: string
+    ProductCreateRequest:
+      type: object
+      properties:
+        brandId:
+          type: integer
+          format: int64
+        brandName:
+          type: string
+        brandCode:
+          type: string
+        productName:
+          type: string
+        category:
+          type: string
+        defaultColour:
+          type: string
+        sizeLabel:
+          type: string
+        unitOfMeasure:
+          type: string
+        customSkuCode:
+          type: string
+        basePrice:
+          type: number
+        gstRate:
+          type: number
+        minDiscountPercent:
+          type: number
+        minSellingPrice:
+          type: number
+        metadata:
+          type: object
+          additionalProperties: {}
+      required:
+      - productName
+      - category
+    ProductUpdateRequest:
+      type: object
+      properties:
+        productName:
+          type: string
+        category:
+          type: string
+        defaultColour:
+          type: string
+        sizeLabel:
+          type: string
+        unitOfMeasure:
+          type: string
+        basePrice:
+          type: number
+        gstRate:
+          type: number
+        minDiscountPercent:
+          type: number
+        minSellingPrice:
+          type: number
+        metadata:
+          type: object
+          additionalProperties: {}
+    ApiResponseCatalogImportResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/CatalogImportResponse'
+        timestamp:
+          type: string
+          format: date-time
+    ApiResponseProductionProductDto:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/ProductionProductDto'
+        timestamp:
+          type: string
+          format: date-time
+    ApiResponseListProductionBrandDto:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductionBrandDto'
+        timestamp:
+          type: string
+          format: date-time
+    ApiResponseListProductionProductDto:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductionProductDto'
+        timestamp:
+          type: string
+          format: date-time
+    ProductionLogMaterialDto:
+      type: object
+      properties:
+        rawMaterialId:
+          type: integer
+          format: int64
+        materialName:
+          type: string
+        quantity:
+          type: number
+        unitOfMeasure:
+          type: string
+    ProductionLogDto:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        publicId:
+          type: string
+          format: uuid
+        productionCode:
+          type: string
+        producedAt:
+          type: string
+          format: date-time
+        brandName:
+          type: string
+        productName:
+          type: string
+        skuCode:
+          type: string
+        batchColour:
+          type: string
+        batchSize:
+          type: number
+        unitOfMeasure:
+          type: string
+        producedQuantity:
+          type: number
+        createdBy:
+          type: string
+    ProductionLogDetailDto:
+      allOf:
+      - $ref: '#/components/schemas/ProductionLogDto'
+      - type: object
+        properties:
+          notes:
+            type: string
+          materials:
+            type: array
+            items:
+              $ref: '#/components/schemas/ProductionLogMaterialDto'
+    ProductionLogRequest:
+      type: object
+      properties:
+        brandId:
+          type: integer
+          format: int64
+        productId:
+          type: integer
+          format: int64
+        batchColour:
+          type: string
+        batchSize:
+          type: number
+        unitOfMeasure:
+          type: string
+        producedQuantity:
+          type: number
+        producedAt:
+          type: string
+        notes:
+          type: string
+        createdBy:
+          type: string
+        addToFinishedGoods:
+          type: boolean
+        materials:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductionLogRequestMaterialUsageRequest'
+      required:
+      - brandId
+      - productId
+      - batchSize
+      - producedQuantity
+      - materials
+    ProductionLogRequestMaterialUsageRequest:
+      type: object
+      properties:
+        rawMaterialId:
+          type: integer
+          format: int64
+        quantity:
+          type: number
+        unitOfMeasure:
+          type: string
+      required:
+      - rawMaterialId
+      - quantity
+    ApiResponseListProductionLogDto:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductionLogDto'
+        timestamp:
+          type: string
+          format: date-time
+    ApiResponseProductionLogDetailDto:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/ProductionLogDetailDto'
         timestamp:
           type: string
           format: date-time

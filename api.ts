@@ -679,6 +679,21 @@ export interface JournalLineDto {
     'debit'?: number;
     'credit'?: number;
 }
+export interface DealerReceiptRequest {
+    'dealerId': number;
+    'cashAccountId': number;
+    'amount': number;
+    'referenceNumber'?: string;
+    'memo'?: string;
+}
+export interface PayrollPaymentRequest {
+    'payrollRunId': number;
+    'cashAccountId': number;
+    'expenseAccountId': number;
+    'amount': number;
+    'referenceNumber'?: string;
+    'memo'?: string;
+}
 export interface JournalLineRequest {
     'accountId': number;
     'description'?: string;
@@ -718,11 +733,19 @@ export interface LoginRequest {
      */
     'recoveryCode'?: string;
 }
+
+export interface ChangePasswordRequest {
+    'currentPassword': string;
+    'newPassword': string;
+    'confirmPassword': string;
+}
 export interface MeResponse {
     'email'?: string;
     'displayName'?: string;
     'companyId'?: string;
     'mfaEnabled'?: boolean;
+    'roles'?: Array<string>;
+    'permissions'?: Array<string>;
 }
 export interface MfaActivateRequest {
     /**
@@ -891,6 +914,11 @@ export interface SalesOrderDto {
     'orderNumber'?: string;
     'status'?: string;
     'totalAmount'?: number;
+    'subtotalAmount'?: number;
+    'gstTotal'?: number;
+    'gstRate'?: number;
+    'gstTreatment'?: string;
+    'gstRoundingAdjustment'?: number;
     'currency'?: string;
     'dealerName'?: string;
     'traceId'?: string;
@@ -903,12 +931,17 @@ export interface SalesOrderItemDto {
     'description'?: string;
     'quantity'?: number;
     'unitPrice'?: number;
+    'lineSubtotal'?: number;
+    'gstRate'?: number;
+    'gstAmount'?: number;
+    'lineTotal'?: number;
 }
 export interface SalesOrderItemRequest {
     'productCode': string;
     'description'?: string;
     'quantity': number;
     'unitPrice': number;
+    'gstRate'?: number;
 }
 export interface SalesOrderRequest {
     'dealerId'?: number;
@@ -916,6 +949,8 @@ export interface SalesOrderRequest {
     'currency'?: string;
     'notes'?: string;
     'items'?: Array<SalesOrderItemRequest>;
+    'gstTreatment'?: string;
+    'gstRate'?: number;
 }
 export interface SalesTargetDto {
     'id'?: number;
@@ -1075,6 +1110,60 @@ export const AccountingControllerApiAxiosParamCreator = function (configuration?
          * 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
+         recordDealerReceipt: async (dealerReceiptRequest: DealerReceiptRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            assertParamExists('recordDealerReceipt', 'dealerReceiptRequest', dealerReceiptRequest)
+            const localVarPath = `/api/v1/accounting/receipts/dealer`;
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(dealerReceiptRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        recordPayrollPayment: async (payrollPaymentRequest: PayrollPaymentRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            assertParamExists('recordPayrollPayment', 'payrollPaymentRequest', payrollPaymentRequest)
+            const localVarPath = `/api/v1/accounting/payroll/payments`;
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(payrollPaymentRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
+         * 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
          */
         journalEntries: async (options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
             const localVarPath = `/api/v1/accounting/journal-entries`;
@@ -1146,6 +1235,30 @@ export const AccountingControllerApiFp = function(configuration?: Configuration)
         },
         /**
          * 
+         * @param {DealerReceiptRequest} dealerReceiptRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async recordDealerReceipt(dealerReceiptRequest: DealerReceiptRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseJournalEntryDto>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.recordDealerReceipt(dealerReceiptRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['AccountingControllerApi.recordDealerReceipt']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
+         * @param {PayrollPaymentRequest} payrollPaymentRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async recordPayrollPayment(payrollPaymentRequest: PayrollPaymentRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseJournalEntryDto>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.recordPayrollPayment(payrollPaymentRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['AccountingControllerApi.recordPayrollPayment']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -1192,6 +1305,24 @@ export const AccountingControllerApiFactory = function (configuration?: Configur
         },
         /**
          * 
+         * @param {DealerReceiptRequest} dealerReceiptRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        recordDealerReceipt(dealerReceiptRequest: DealerReceiptRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseJournalEntryDto> {
+            return localVarFp.recordDealerReceipt(dealerReceiptRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
+         * @param {PayrollPaymentRequest} payrollPaymentRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        recordPayrollPayment(payrollPaymentRequest: PayrollPaymentRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseJournalEntryDto> {
+            return localVarFp.recordPayrollPayment(payrollPaymentRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
          */
@@ -1232,6 +1363,26 @@ export class AccountingControllerApi extends BaseAPI {
      */
     public createJournalEntry(journalEntryRequest: JournalEntryRequest, options?: RawAxiosRequestConfig) {
         return AccountingControllerApiFp(this.configuration).createJournalEntry(journalEntryRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @param {DealerReceiptRequest} dealerReceiptRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public recordDealerReceipt(dealerReceiptRequest: DealerReceiptRequest, options?: RawAxiosRequestConfig) {
+        return AccountingControllerApiFp(this.configuration).recordDealerReceipt(dealerReceiptRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
+    /**
+     * 
+     * @param {PayrollPaymentRequest} payrollPaymentRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public recordPayrollPayment(payrollPaymentRequest: PayrollPaymentRequest, options?: RawAxiosRequestConfig) {
+        return AccountingControllerApiFp(this.configuration).recordPayrollPayment(payrollPaymentRequest, options).then((request) => request(this.axios, this.basePath));
     }
 
     /**
@@ -1609,6 +1760,41 @@ export class AdminUserControllerApi extends BaseAPI {
 export const AuthControllerApiAxiosParamCreator = function (configuration?: Configuration) {
     return {
         /**
+         *
+         * @param {ChangePasswordRequest} changePasswordRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        changePassword: async (changePasswordRequest: ChangePasswordRequest, options: RawAxiosRequestConfig = {}): Promise<RequestArgs> => {
+            // verify required parameter 'changePasswordRequest' is not null or undefined
+            assertParamExists('changePassword', 'changePasswordRequest', changePasswordRequest)
+            const localVarPath = `/api/v1/auth/password/change`;
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+
+            const localVarRequestOptions = { method: 'POST', ...baseOptions, ...options};
+            const localVarHeaderParameter = {} as any;
+            const localVarQueryParameter = {} as any;
+
+
+    
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+
+            setSearchParams(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = {...localVarHeaderParameter, ...headersFromBaseOptions, ...options.headers};
+            localVarRequestOptions.data = serializeDataIfNeeded(changePasswordRequest, localVarRequestOptions, configuration)
+
+            return {
+                url: toPathString(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        },
+        /**
          * 
          * @param {LoginRequest} loginRequest 
          * @param {*} [options] Override http request option.
@@ -1752,6 +1938,18 @@ export const AuthControllerApiFp = function(configuration?: Configuration) {
     return {
         /**
          * 
+         * @param {ChangePasswordRequest} changePasswordRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        async changePassword(changePasswordRequest: ChangePasswordRequest, options?: RawAxiosRequestConfig): Promise<(axios?: AxiosInstance, basePath?: string) => AxiosPromise<ApiResponseString>> {
+            const localVarAxiosArgs = await localVarAxiosParamCreator.changePassword(changePasswordRequest, options);
+            const localVarOperationServerIndex = configuration?.serverIndex ?? 0;
+            const localVarOperationServerBasePath = operationServerMap['AuthControllerApi.changePassword']?.[localVarOperationServerIndex]?.url;
+            return (axios, basePath) => createRequestFunction(localVarAxiosArgs, globalAxios, BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+        },
+        /**
+         * 
          * @param {LoginRequest} loginRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -1808,6 +2006,15 @@ export const AuthControllerApiFactory = function (configuration?: Configuration,
     return {
         /**
          * 
+         * @param {ChangePasswordRequest} changePasswordRequest 
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        changePassword(changePasswordRequest: ChangePasswordRequest, options?: RawAxiosRequestConfig): AxiosPromise<ApiResponseString> {
+            return localVarFp.changePassword(changePasswordRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * 
          * @param {LoginRequest} loginRequest 
          * @param {*} [options] Override http request option.
          * @throws {RequiredError}
@@ -1848,6 +2055,16 @@ export const AuthControllerApiFactory = function (configuration?: Configuration,
  * AuthControllerApi - object-oriented interface
  */
 export class AuthControllerApi extends BaseAPI {
+    /**
+     * 
+     * @param {ChangePasswordRequest} changePasswordRequest 
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     */
+    public changePassword(changePasswordRequest: ChangePasswordRequest, options?: RawAxiosRequestConfig) {
+        return AuthControllerApiFp(this.configuration).changePassword(changePasswordRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+
     /**
      * 
      * @param {LoginRequest} loginRequest 

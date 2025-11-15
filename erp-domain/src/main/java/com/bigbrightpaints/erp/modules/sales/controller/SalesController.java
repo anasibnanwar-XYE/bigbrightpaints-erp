@@ -19,28 +19,6 @@ public class SalesController {
         this.salesService = salesService;
     }
 
-    /* Dealers */
-    @GetMapping("/dealers")
-    public ResponseEntity<ApiResponse<List<DealerDto>>> dealers() {
-        return ResponseEntity.ok(ApiResponse.success(salesService.listDealers()));
-    }
-
-    @PostMapping("/dealers")
-    public ResponseEntity<ApiResponse<DealerDto>> createDealer(@Valid @RequestBody DealerRequest request) {
-        return ResponseEntity.ok(ApiResponse.success("Dealer created", salesService.createDealer(request)));
-    }
-
-    @PutMapping("/dealers/{id}")
-    public ResponseEntity<ApiResponse<DealerDto>> updateDealer(@PathVariable Long id, @Valid @RequestBody DealerRequest request) {
-        return ResponseEntity.ok(ApiResponse.success("Dealer updated", salesService.updateDealer(id, request)));
-    }
-
-    @DeleteMapping("/dealers/{id}")
-    public ResponseEntity<Void> deleteDealer(@PathVariable Long id) {
-        salesService.deleteDealer(id);
-        return ResponseEntity.noContent().build();
-    }
-
     /* Sales Orders */
     @GetMapping("/sales/orders")
     public ResponseEntity<ApiResponse<List<SalesOrderDto>>> orders(@RequestParam(required = false) String status) {

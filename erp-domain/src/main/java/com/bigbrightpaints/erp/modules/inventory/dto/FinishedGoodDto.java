@@ -12,4 +12,7 @@ public record FinishedGoodDto(Long id,
                               BigDecimal reservedStock,
                               String costingMethod,
                               Long valuationAccountId,
-                              Long cogsAccountId) {}
+                              Long cogsAccountId,
+                              Long revenueAccountId,
+                              Long discountAccountId,
+                              Long taxAccountId) {}

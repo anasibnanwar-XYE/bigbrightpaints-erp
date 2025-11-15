@@ -2,6 +2,7 @@ package com.bigbrightpaints.erp.orchestrator.controller;
 
 import com.bigbrightpaints.erp.orchestrator.dto.ApproveOrderRequest;
 import com.bigbrightpaints.erp.orchestrator.dto.DispatchRequest;
+import com.bigbrightpaints.erp.orchestrator.dto.OrderFulfillmentRequest;
 import com.bigbrightpaints.erp.orchestrator.dto.PayrollRunRequest;
 import com.bigbrightpaints.erp.orchestrator.service.CommandDispatcher;
 import com.bigbrightpaints.erp.orchestrator.service.TraceService;
@@ -38,6 +39,16 @@ public class OrchestratorController {
                                                              Principal principal) {
         ApproveOrderRequest normalized = new ApproveOrderRequest(orderId, request.approvedBy(), request.totalAmount());
         String traceId = commandDispatcher.approveOrder(normalized, companyId, principal.getName());
+        return ResponseEntity.accepted().body(Map.of("traceId", traceId));
+    }
+
+    @PostMapping("/orders/{orderId}/fulfillment")
+    @PreAuthorize("hasAuthority('ROLE_SALES') and hasAuthority('orders.fulfill')")
+    public ResponseEntity<Map<String, Object>> fulfillOrder(@PathVariable String orderId,
+                                                             @Valid @RequestBody OrderFulfillmentRequest request,
+                                                             @RequestHeader("X-Company-Id") String companyId,
+                                                             Principal principal) {
+        String traceId = commandDispatcher.updateOrderFulfillment(orderId, request, companyId, principal.getName());
         return ResponseEntity.accepted().body(Map.of("traceId", traceId));
     }
 

@@ -4,13 +4,19 @@ import com.bigbrightpaints.erp.modules.accounting.domain.*;
 import com.bigbrightpaints.erp.modules.accounting.dto.*;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.hr.domain.PayrollRun;
+import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 public class AccountingService {
@@ -19,15 +25,21 @@ public class AccountingService {
     private final AccountRepository accountRepository;
     private final JournalEntryRepository journalEntryRepository;
     private final DealerRepository dealerRepository;
+    private final DealerLedgerService dealerLedgerService;
+    private final PayrollRunRepository payrollRunRepository;
 
     public AccountingService(CompanyContextService companyContextService,
                              AccountRepository accountRepository,
                              JournalEntryRepository journalEntryRepository,
-                             DealerRepository dealerRepository) {
+                             DealerRepository dealerRepository,
+                             DealerLedgerService dealerLedgerService,
+                             PayrollRunRepository payrollRunRepository) {
         this.companyContextService = companyContextService;
         this.accountRepository = accountRepository;
         this.journalEntryRepository = journalEntryRepository;
         this.dealerRepository = dealerRepository;
+        this.dealerLedgerService = dealerLedgerService;
+        this.payrollRunRepository = payrollRunRepository;
     }
 
     /* Accounts */
@@ -93,7 +105,80 @@ public class AccountingService {
             entry.getLines().add(line);
         }
         JournalEntry saved = journalEntryRepository.save(entry);
+        if (saved.getDealer() != null) {
+            BigDecimal delta = totalDebit.subtract(totalCredit);
+            BigDecimal dealerDebit = delta.compareTo(BigDecimal.ZERO) > 0 ? delta : BigDecimal.ZERO;
+            BigDecimal dealerCredit = delta.compareTo(BigDecimal.ZERO) < 0 ? delta.abs() : BigDecimal.ZERO;
+            dealerLedgerService.recordLedgerEntry(
+                    saved.getDealer(),
+                    new DealerLedgerService.LocalLedgerContext(
+                            saved.getEntryDate(),
+                            saved.getReferenceNumber(),
+                            saved.getMemo(),
+                            dealerDebit,
+                            dealerCredit,
+                            saved));
+        }
         return toDto(saved);
+    }
+
+    @Transactional
+    public JournalEntryDto recordDealerReceipt(DealerReceiptRequest request) {
+        Company company = companyContextService.requireCurrentCompany();
+        Dealer dealer = requireDealer(company, request.dealerId());
+        Account receivableAccount = dealer.getReceivableAccount();
+        if (receivableAccount == null) {
+            throw new IllegalStateException("Dealer " + dealer.getName() + " is missing a receivable account");
+        }
+        Account cashAccount = requireAccount(company, request.cashAccountId());
+        BigDecimal amount = requirePositive(request.amount(), "amount");
+        String memo = StringUtils.hasText(request.memo())
+                ? request.memo().trim()
+                : "Receipt for dealer " + dealer.getName();
+        String reference = StringUtils.hasText(request.referenceNumber())
+                ? request.referenceNumber().trim()
+                : generateReference("RCPT-" + dealer.getCode());
+        JournalEntryRequest payload = new JournalEntryRequest(
+                reference,
+                currentDate(company),
+                memo,
+                dealer.getId(),
+                List.of(
+                        new JournalEntryRequest.JournalLineRequest(cashAccount.getId(), memo, amount, BigDecimal.ZERO),
+                        new JournalEntryRequest.JournalLineRequest(receivableAccount.getId(), memo, BigDecimal.ZERO, amount)
+                )
+        );
+        return createJournalEntry(payload);
+    }
+
+    @Transactional
+    public JournalEntryDto recordPayrollPayment(PayrollPaymentRequest request) {
+        Company company = companyContextService.requireCurrentCompany();
+        PayrollRun run = payrollRunRepository.findByCompanyAndId(company, request.payrollRunId())
+                .orElseThrow(() -> new IllegalArgumentException("Payroll run not found"));
+        Account cashAccount = requireAccount(company, request.cashAccountId());
+        Account expenseAccount = requireAccount(company, request.expenseAccountId());
+        BigDecimal amount = requirePositive(request.amount(), "amount");
+        String memo = StringUtils.hasText(request.memo())
+                ? request.memo().trim()
+                : "Payroll payment for " + run.getRunDate();
+        String reference = StringUtils.hasText(request.referenceNumber())
+                ? request.referenceNumber().trim()
+                : "PAYROLL-" + run.getRunDate();
+        JournalEntryRequest payload = new JournalEntryRequest(
+                reference,
+                currentDate(company),
+                memo,
+                null,
+                List.of(
+                        new JournalEntryRequest.JournalLineRequest(expenseAccount.getId(), memo, amount, BigDecimal.ZERO),
+                        new JournalEntryRequest.JournalLineRequest(cashAccount.getId(), memo, BigDecimal.ZERO, amount)
+                )
+        );
+        JournalEntryDto entry = createJournalEntry(payload);
+        run.setStatus("PAID");
+        payrollRunRepository.save(run);
+        return entry;
     }
 
     private AccountDto toDto(Account account) {
@@ -119,5 +204,26 @@ public class AccountingService {
     private Dealer requireDealer(Company company, Long dealerId) {
         return dealerRepository.findByCompanyAndId(company, dealerId)
                 .orElseThrow(() -> new IllegalArgumentException("Dealer not found"));
+    }
+
+    private Account requireAccount(Company company, Long accountId) {
+        return accountRepository.findByCompanyAndId(company, accountId)
+                .orElseThrow(() -> new IllegalArgumentException("Account not found"));
+    }
+
+    private BigDecimal requirePositive(BigDecimal value, String field) {
+        if (value == null || value.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Value for " + field + " must be greater than zero");
+        }
+        return value;
+    }
+
+    private LocalDate currentDate(Company company) {
+        String timezone = company.getTimezone() == null ? "UTC" : company.getTimezone();
+        return LocalDate.now(ZoneId.of(timezone));
+    }
+
+    private String generateReference(String prefix) {
+        return prefix + "-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
     }
 }

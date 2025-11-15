@@ -1,7 +1,10 @@
 package com.bigbrightpaints.erp.modules.sales.domain;
 
 import com.bigbrightpaints.erp.modules.company.domain.Company;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
@@ -9,4 +12,8 @@ import java.util.Optional;
 public interface DealerRepository extends JpaRepository<Dealer, Long> {
     List<Dealer> findByCompanyOrderByNameAsc(Company company);
     Optional<Dealer> findByCompanyAndId(Company company, Long id);
+    Optional<Dealer> findByCompanyAndCodeIgnoreCase(Company company, String code);
+
+    @Query("select d from Dealer d where d.company = :company and (lower(d.name) like lower(concat('%', :term, '%')) or lower(d.code) like lower(concat('%', :term, '%'))) order by d.name asc")
+    List<Dealer> search(@Param("company") Company company, @Param("term") String term, Pageable pageable);
 }

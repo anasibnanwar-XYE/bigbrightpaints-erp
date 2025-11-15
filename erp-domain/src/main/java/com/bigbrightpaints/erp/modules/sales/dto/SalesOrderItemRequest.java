@@ -9,5 +9,6 @@ public record SalesOrderItemRequest(
         @NotBlank String productCode,
         String description,
         @NotNull BigDecimal quantity,
-        @NotNull BigDecimal unitPrice
+        @NotNull BigDecimal unitPrice,
+        BigDecimal gstRate
 ) {}

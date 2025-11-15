@@ -1,15 +1,27 @@
 package com.bigbrightpaints.erp.modules.sales.service;
 
+import com.bigbrightpaints.erp.modules.accounting.domain.Account;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
+import com.bigbrightpaints.erp.modules.accounting.service.DealerLedgerService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
+import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository;
+import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
+import com.bigbrightpaints.erp.modules.production.domain.ProductionProductRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.*;
 import com.bigbrightpaints.erp.modules.sales.dto.*;
 import com.bigbrightpaints.erp.modules.sales.event.SalesOrderCreatedEvent;
 import jakarta.transaction.Transactional;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -23,6 +35,10 @@ public class SalesService {
     private final CreditRequestRepository creditRequestRepository;
     private final OrderNumberService orderNumberService;
     private final ApplicationEventPublisher eventPublisher;
+    private final ProductionProductRepository productionProductRepository;
+    private final FinishedGoodRepository finishedGoodRepository;
+    private final DealerLedgerService dealerLedgerService;
+    private final AccountRepository accountRepository;
 
     public SalesService(CompanyContextService companyContextService,
                         DealerRepository dealerRepository,
@@ -31,7 +47,11 @@ public class SalesService {
                         SalesTargetRepository salesTargetRepository,
                         CreditRequestRepository creditRequestRepository,
                         OrderNumberService orderNumberService,
-                        ApplicationEventPublisher eventPublisher) {
+                        ApplicationEventPublisher eventPublisher,
+                        ProductionProductRepository productionProductRepository,
+                        DealerLedgerService dealerLedgerService,
+                        FinishedGoodRepository finishedGoodRepository,
+                        AccountRepository accountRepository) {
         this.companyContextService = companyContextService;
         this.dealerRepository = dealerRepository;
         this.salesOrderRepository = salesOrderRepository;
@@ -40,12 +60,21 @@ public class SalesService {
         this.creditRequestRepository = creditRequestRepository;
         this.orderNumberService = orderNumberService;
         this.eventPublisher = eventPublisher;
+        this.productionProductRepository = productionProductRepository;
+        this.dealerLedgerService = dealerLedgerService;
+        this.finishedGoodRepository = finishedGoodRepository;
+        this.accountRepository = accountRepository;
     }
 
     /* Dealers */
     public List<DealerDto> listDealers() {
         Company company = companyContextService.requireCurrentCompany();
-        return dealerRepository.findByCompanyOrderByNameAsc(company).stream().map(this::toDto).toList();
+        List<Dealer> dealers = dealerRepository.findByCompanyOrderByNameAsc(company);
+        List<Long> dealerIds = dealers.stream().map(Dealer::getId).toList();
+        var balances = dealerLedgerService.currentBalances(dealerIds);
+        return dealers.stream()
+                .map(dealer -> toDto(dealer, balances.getOrDefault(dealer.getId(), BigDecimal.ZERO)))
+                .toList();
     }
 
     @Transactional
@@ -58,6 +87,8 @@ public class SalesService {
         dealer.setEmail(request.email());
         dealer.setPhone(request.phone());
         dealer.setCreditLimit(request.creditLimit());
+        Account receivableAccount = createReceivableAccount(company, dealer);
+        dealer.setReceivableAccount(receivableAccount);
         return toDto(dealerRepository.save(dealer));
     }
 
@@ -78,14 +109,34 @@ public class SalesService {
     }
 
     private DealerDto toDto(Dealer dealer) {
+        BigDecimal balance = dealer.getId() == null ? BigDecimal.ZERO : dealerLedgerService.currentBalance(dealer.getId());
+        return toDto(dealer, balance);
+    }
+
+    private DealerDto toDto(Dealer dealer, BigDecimal outstandingBalance) {
         return new DealerDto(dealer.getId(), dealer.getPublicId(), dealer.getName(), dealer.getCode(), dealer.getEmail(),
-                dealer.getPhone(), dealer.getStatus(), dealer.getCreditLimit(), dealer.getOutstandingBalance());
+                dealer.getPhone(), dealer.getStatus(), dealer.getCreditLimit(), outstandingBalance);
     }
 
     private Dealer requireDealer(Long id) {
         Company company = companyContextService.requireCurrentCompany();
         return dealerRepository.findByCompanyAndId(company, id)
                 .orElseThrow(() -> new IllegalArgumentException("Dealer not found"));
+    }
+
+    private Account createReceivableAccount(Company company, Dealer dealer) {
+        String baseCode = "AR-" + dealer.getCode();
+        String code = baseCode;
+        int attempt = 1;
+        while (accountRepository.findByCompanyAndCodeIgnoreCase(company, code).isPresent()) {
+            code = baseCode + "-" + attempt++;
+        }
+        Account account = new Account();
+        account.setCompany(company);
+        account.setCode(code);
+        account.setName(dealer.getName() + " Receivable");
+        account.setType("ASSET");
+        return accountRepository.save(account);
     }
 
     /* Sales Orders */
@@ -99,7 +150,15 @@ public class SalesService {
 
     @Transactional
     public SalesOrderDto createOrder(SalesOrderRequest request) {
+        GstTreatment gstTreatment = resolveGstTreatment(request.gstTreatment());
+        BigDecimal orderLevelRate = gstTreatment == GstTreatment.ORDER_TOTAL
+                ? normalizePercent(request.gstRate())
+                : BigDecimal.ZERO;
+        if (gstTreatment == GstTreatment.ORDER_TOTAL && orderLevelRate.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("GST rate is required when gstTreatment is ORDER_TOTAL");
+        }
         Company company = companyContextService.requireCurrentCompany();
+        List<PricedOrderLine> items = resolveOrderItems(company, request.items(), gstTreatment, orderLevelRate);
         SalesOrder order = new SalesOrder();
         order.setCompany(company);
         if (request.dealerId() != null) {
@@ -107,10 +166,10 @@ public class SalesService {
         }
         order.setOrderNumber(orderNumberService.nextOrderNumber(company));
         order.setStatus("BOOKED");
-        order.setTotalAmount(request.totalAmount());
         order.setCurrency(request.currency() == null ? "INR" : request.currency());
         order.setNotes(request.notes());
-        mapOrderItems(order, request.items());
+        OrderAmountSummary amounts = mapOrderItems(order, items, gstTreatment, orderLevelRate);
+        validateTotalAmount(request.totalAmount(), amounts.total());
         SalesOrder saved = salesOrderRepository.save(order);
         eventPublisher.publishEvent(new SalesOrderCreatedEvent(saved.getId(), company.getCode(), saved.getTotalAmount()));
         return toDto(saved);
@@ -118,14 +177,22 @@ public class SalesService {
 
     @Transactional
     public SalesOrderDto updateOrder(Long id, SalesOrderRequest request) {
+        GstTreatment gstTreatment = resolveGstTreatment(request.gstTreatment());
+        BigDecimal orderLevelRate = gstTreatment == GstTreatment.ORDER_TOTAL
+                ? normalizePercent(request.gstRate())
+                : BigDecimal.ZERO;
+        if (gstTreatment == GstTreatment.ORDER_TOTAL && orderLevelRate.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("GST rate is required when gstTreatment is ORDER_TOTAL");
+        }
         SalesOrder order = requireOrder(id);
+        List<PricedOrderLine> items = resolveOrderItems(order.getCompany(), request.items(), gstTreatment, orderLevelRate);
         if (request.dealerId() != null) {
             order.setDealer(requireDealer(request.dealerId()));
         }
-        order.setTotalAmount(request.totalAmount());
         order.setCurrency(request.currency());
         order.setNotes(request.notes());
-        mapOrderItems(order, request.items());
+        OrderAmountSummary amounts = mapOrderItems(order, items, gstTreatment, orderLevelRate);
+        validateTotalAmount(request.totalAmount(), amounts.total());
         return toDto(order);
     }
 
@@ -173,34 +240,267 @@ public class SalesService {
                 .orElseThrow(() -> new IllegalArgumentException("Order not found"));
     }
 
+    private GstTreatment resolveGstTreatment(String value) {
+        if (!StringUtils.hasText(value)) {
+            return GstTreatment.NONE;
+        }
+        try {
+            return GstTreatment.valueOf(value.trim().toUpperCase());
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalArgumentException("Unknown GST treatment " + value);
+        }
+    }
+
+    private BigDecimal normalizePercent(BigDecimal rate) {
+        if (rate == null) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal sanitized = rate.max(BigDecimal.ZERO);
+        return sanitized.setScale(4, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal currency(BigDecimal value) {
+        if (value == null) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+        return value.setScale(2, RoundingMode.HALF_UP);
+    }
+
     private SalesOrderDto toDto(SalesOrder order) {
         String dealerName = order.getDealer() != null ? order.getDealer().getName() : null;
         List<SalesOrderItemDto> items = order.getItems().stream()
                 .map(this::toItemDto)
                 .collect(Collectors.toList());
         return new SalesOrderDto(order.getId(), order.getPublicId(), order.getOrderNumber(), order.getStatus(),
-                order.getTotalAmount(), order.getCurrency(), dealerName, order.getTraceId(), order.getCreatedAt(), items);
+                order.getTotalAmount(), order.getSubtotalAmount(), order.getGstTotal(), order.getGstRate(),
+                order.getGstTreatment(), order.getGstRoundingAdjustment(), order.getCurrency(), dealerName,
+                order.getTraceId(), order.getCreatedAt(), items);
     }
 
     private SalesOrderItemDto toItemDto(SalesOrderItem item) {
-        return new SalesOrderItemDto(item.getId(), item.getProductCode(), item.getDescription(),
-                item.getQuantity(), item.getUnitPrice());
+        return new SalesOrderItemDto(
+                item.getId(),
+                item.getProductCode(),
+                item.getDescription(),
+                item.getQuantity(),
+                item.getUnitPrice(),
+                item.getLineSubtotal(),
+                item.getGstRate(),
+                item.getGstAmount(),
+                item.getLineTotal()
+        );
     }
 
-    private void mapOrderItems(SalesOrder order, List<SalesOrderItemRequest> requests) {
+    private OrderAmountSummary mapOrderItems(SalesOrder order,
+                                             List<PricedOrderLine> requests,
+                                             GstTreatment gstTreatment,
+                                             BigDecimal orderLevelRate) {
         order.getItems().clear();
-        if (requests == null) {
-            return;
+        if (requests == null || requests.isEmpty()) {
+            order.setSubtotalAmount(BigDecimal.ZERO);
+            order.setGstTotal(BigDecimal.ZERO);
+            order.setGstRate(BigDecimal.ZERO);
+            order.setGstTreatment(gstTreatment.name());
+            order.setGstRoundingAdjustment(BigDecimal.ZERO);
+            order.setTotalAmount(BigDecimal.ZERO);
+            return new OrderAmountSummary(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
         }
-        for (SalesOrderItemRequest itemRequest : requests) {
+        List<SalesOrderItem> items = new ArrayList<>();
+        BigDecimal subtotal = BigDecimal.ZERO;
+        for (PricedOrderLine pricedLine : requests) {
             SalesOrderItem item = new SalesOrderItem();
             item.setSalesOrder(order);
-            item.setProductCode(itemRequest.productCode());
-            item.setDescription(itemRequest.description());
-            item.setQuantity(itemRequest.quantity());
-            item.setUnitPrice(itemRequest.unitPrice());
-            order.getItems().add(item);
+            item.setProductCode(pricedLine.product().getSkuCode());
+            item.setDescription(pricedLine.description());
+            item.setQuantity(pricedLine.quantity());
+            item.setUnitPrice(pricedLine.unitPrice());
+            BigDecimal lineSubtotal = currency(pricedLine.quantity().multiply(pricedLine.unitPrice()));
+            item.setLineSubtotal(lineSubtotal);
+            item.setLineTotal(lineSubtotal);
+            item.setGstRate(BigDecimal.ZERO);
+            item.setGstAmount(BigDecimal.ZERO);
+            items.add(item);
+            subtotal = subtotal.add(lineSubtotal);
         }
+        order.getItems().addAll(items);
+
+        BigDecimal taxTotal = BigDecimal.ZERO;
+        BigDecimal rounding = BigDecimal.ZERO;
+        if (gstTreatment == GstTreatment.PER_ITEM) {
+            for (int i = 0; i < items.size(); i++) {
+                SalesOrderItem item = items.get(i);
+                BigDecimal rate = normalizePercent(requests.get(i).gstRate());
+                BigDecimal lineTax = currency(item.getLineSubtotal()
+                        .multiply(rate)
+                        .divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP));
+                item.setGstRate(rate);
+                item.setGstAmount(lineTax);
+                item.setLineTotal(currency(item.getLineSubtotal().add(lineTax)));
+                taxTotal = taxTotal.add(lineTax);
+            }
+            orderLevelRate = BigDecimal.ZERO;
+        } else if (gstTreatment == GstTreatment.ORDER_TOTAL) {
+            BigDecimal rate = normalizePercent(orderLevelRate);
+            orderLevelRate = rate;
+            BigDecimal targetTax = currency(subtotal
+                    .multiply(rate)
+                    .divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP));
+            if (subtotal.compareTo(BigDecimal.ZERO) > 0 && targetTax.compareTo(BigDecimal.ZERO) > 0) {
+                BigDecimal distributed = BigDecimal.ZERO;
+                for (int i = 0; i < items.size(); i++) {
+                    SalesOrderItem item = items.get(i);
+                    BigDecimal share = targetTax.multiply(item.getLineSubtotal())
+                            .divide(subtotal, 6, RoundingMode.HALF_UP);
+                    share = currency(share);
+                    if (i == items.size() - 1) {
+                        BigDecimal remainder = targetTax.subtract(distributed.add(share));
+                        share = share.add(remainder);
+                        rounding = rounding.add(remainder);
+                    }
+                    distributed = distributed.add(share);
+                    item.setGstRate(rate);
+                    item.setGstAmount(share);
+                    item.setLineTotal(currency(item.getLineSubtotal().add(share)));
+                }
+            } else {
+                for (SalesOrderItem item : items) {
+                    item.setGstRate(rate);
+                    item.setGstAmount(BigDecimal.ZERO);
+                    item.setLineTotal(item.getLineSubtotal());
+                }
+            }
+            taxTotal = currency(subtotal.multiply(rate)
+                    .divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP));
+        } else {
+            for (SalesOrderItem item : items) {
+                item.setGstRate(BigDecimal.ZERO);
+                item.setGstAmount(BigDecimal.ZERO);
+                item.setLineTotal(item.getLineSubtotal());
+            }
+            orderLevelRate = BigDecimal.ZERO;
+        }
+
+        BigDecimal total = currency(subtotal.add(taxTotal));
+        order.setSubtotalAmount(subtotal);
+        order.setGstTotal(taxTotal);
+        order.setGstTreatment(gstTreatment.name());
+        order.setGstRate(orderLevelRate);
+        order.setGstRoundingAdjustment(currency(rounding));
+        order.setTotalAmount(total);
+        return new OrderAmountSummary(subtotal, taxTotal, total, currency(rounding));
+    }
+
+    private BigDecimal resolveMinAllowedPrice(ProductionProduct product) {
+        BigDecimal basePrice = Optional.ofNullable(product.getBasePrice()).orElse(BigDecimal.ZERO);
+        BigDecimal minDiscountPercent = Optional.ofNullable(product.getMinDiscountPercent()).orElse(BigDecimal.ZERO);
+        BigDecimal explicitFloor = Optional.ofNullable(product.getMinSellingPrice()).orElse(BigDecimal.ZERO);
+
+        BigDecimal discountFloor = basePrice;
+        if (basePrice.compareTo(BigDecimal.ZERO) > 0 && minDiscountPercent.compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal discount = basePrice.multiply(minDiscountPercent)
+                    .divide(new BigDecimal("100"), 4, RoundingMode.HALF_UP);
+            discountFloor = basePrice.subtract(discount);
+        }
+        if (discountFloor.compareTo(BigDecimal.ZERO) < 0) {
+            discountFloor = BigDecimal.ZERO;
+        }
+        if (explicitFloor.compareTo(discountFloor) > 0) {
+            return explicitFloor;
+        }
+        return discountFloor;
+    }
+
+    private List<PricedOrderLine> resolveOrderItems(Company company,
+                                                    List<SalesOrderItemRequest> requests,
+                                                    GstTreatment gstTreatment,
+                                                    BigDecimal orderLevelRate) {
+        if (requests == null || requests.isEmpty()) {
+            throw new IllegalArgumentException("At least one order item is required");
+        }
+        List<PricedOrderLine> resolved = new ArrayList<>();
+        for (SalesOrderItemRequest request : requests) {
+            String sku = request.productCode() != null ? request.productCode().trim() : "";
+            if (!StringUtils.hasText(sku)) {
+                throw new IllegalArgumentException("SKU is required for each order item");
+            }
+            ProductionProduct product = productionProductRepository.findByCompanyAndSkuCode(company, sku)
+                    .orElseThrow(() -> new IllegalArgumentException("Unknown SKU " + sku));
+            if (!product.isActive()) {
+                throw new IllegalStateException("SKU " + sku + " is inactive");
+            }
+            FinishedGood finishedGood = finishedGoodRepository.findByCompanyAndProductCode(company, sku)
+                    .orElseThrow(() -> new IllegalStateException("Finished good not configured for SKU " + sku));
+            requireRevenueAccount(finishedGood);
+            BigDecimal quantity = normalizePositive(request.quantity(), "quantity", sku);
+            BigDecimal unitPrice = request.unitPrice() != null ? request.unitPrice() : product.getBasePrice();
+            BigDecimal minAllowed = resolveMinAllowedPrice(product);
+            if (minAllowed.compareTo(BigDecimal.ZERO) > 0 && unitPrice.compareTo(minAllowed) < 0) {
+                throw new IllegalArgumentException(String.format(
+                        "Unit price %.2f for SKU %s is below the minimum allowed %.2f.",
+                        unitPrice, sku, minAllowed));
+            }
+            String description = StringUtils.hasText(request.description())
+                    ? request.description().trim()
+                    : product.getProductName();
+            BigDecimal gstRate = request.gstRate() != null ? request.gstRate() : product.getGstRate();
+            BigDecimal normalizedRate = normalizePercent(gstRate);
+            if (requiresTaxAccount(gstTreatment, orderLevelRate, normalizedRate)
+                    && finishedGood.getTaxAccountId() == null) {
+                throw new IllegalStateException("Finished good " + sku + " is missing a GST liability account");
+            }
+            resolved.add(new PricedOrderLine(product, description, quantity, unitPrice, normalizedRate));
+        }
+        return resolved;
+    }
+
+    private BigDecimal normalizePositive(BigDecimal value, String field, String sku) {
+        if (value == null || value.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Order item " + field + " must be positive for SKU " + sku);
+        }
+        return value;
+    }
+
+    private void validateTotalAmount(BigDecimal provided, BigDecimal computed) {
+        if (provided == null) {
+            return;
+        }
+        BigDecimal delta = provided.subtract(computed).abs();
+        if (delta.compareTo(new BigDecimal("0.01")) > 0) {
+            throw new IllegalArgumentException(String.format(
+                    "Order total %.2f does not match computed total %.2f", provided, computed));
+        }
+    }
+
+    private record PricedOrderLine(ProductionProduct product,
+                                   String description,
+                                   BigDecimal quantity,
+                                   BigDecimal unitPrice,
+                                   BigDecimal gstRate) {}
+
+    private void requireRevenueAccount(FinishedGood finishedGood) {
+        if (finishedGood.getRevenueAccountId() == null) {
+            throw new IllegalStateException("Finished good " + finishedGood.getProductCode()
+                    + " is missing a revenue account");
+        }
+    }
+
+    private boolean requiresTaxAccount(GstTreatment treatment, BigDecimal orderLevelRate, BigDecimal lineRate) {
+        return switch (treatment) {
+            case NONE -> false;
+            case PER_ITEM -> lineRate != null && lineRate.compareTo(BigDecimal.ZERO) > 0;
+            case ORDER_TOTAL -> orderLevelRate != null && orderLevelRate.compareTo(BigDecimal.ZERO) > 0;
+        };
+    }
+
+    private record OrderAmountSummary(BigDecimal subtotal,
+                                      BigDecimal tax,
+                                      BigDecimal total,
+                                      BigDecimal rounding) {}
+
+    private enum GstTreatment {
+        NONE,
+        PER_ITEM,
+        ORDER_TOTAL
     }
 
     /* Promotions */

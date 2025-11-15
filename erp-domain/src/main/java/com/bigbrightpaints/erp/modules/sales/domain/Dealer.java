@@ -1,5 +1,7 @@
 package com.bigbrightpaints.erp.modules.sales.domain;
 
+import com.bigbrightpaints.erp.modules.accounting.domain.Account;
+import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import jakarta.persistence.*;
 
@@ -30,6 +32,7 @@ public class Dealer {
 
     private String email;
     private String phone;
+    private String address;
 
     @Column(nullable = false)
     private String status = "ACTIVE";
@@ -39,6 +42,14 @@ public class Dealer {
 
     @Column(name = "outstanding_balance", nullable = false)
     private BigDecimal outstandingBalance = BigDecimal.ZERO;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "portal_user_id")
+    private UserAccount portalUser;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "receivable_account_id")
+    private Account receivableAccount;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -65,10 +76,16 @@ public class Dealer {
     public void setEmail(String email) { this.email = email; }
     public String getPhone() { return phone; }
     public void setPhone(String phone) { this.phone = phone; }
+    public String getAddress() { return address; }
+    public void setAddress(String address) { this.address = address; }
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
     public BigDecimal getCreditLimit() { return creditLimit; }
     public void setCreditLimit(BigDecimal creditLimit) { this.creditLimit = creditLimit; }
     public BigDecimal getOutstandingBalance() { return outstandingBalance; }
     public void setOutstandingBalance(BigDecimal outstandingBalance) { this.outstandingBalance = outstandingBalance; }
+    public UserAccount getPortalUser() { return portalUser; }
+    public void setPortalUser(UserAccount portalUser) { this.portalUser = portalUser; }
+    public Account getReceivableAccount() { return receivableAccount; }
+    public void setReceivableAccount(Account receivableAccount) { this.receivableAccount = receivableAccount; }
 }

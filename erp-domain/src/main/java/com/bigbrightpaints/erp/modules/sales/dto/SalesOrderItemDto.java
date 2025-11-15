@@ -6,4 +6,8 @@ public record SalesOrderItemDto(Long id,
                                 String productCode,
                                 String description,
                                 BigDecimal quantity,
-                                BigDecimal unitPrice) {}
+                                BigDecimal unitPrice,
+                                BigDecimal lineSubtotal,
+                                BigDecimal gstRate,
+                                BigDecimal gstAmount,
+                                BigDecimal lineTotal) {}

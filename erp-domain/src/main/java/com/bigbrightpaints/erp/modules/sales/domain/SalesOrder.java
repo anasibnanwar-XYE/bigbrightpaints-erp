@@ -40,6 +40,21 @@ public class SalesOrder {
     @Column(name = "total_amount", nullable = false)
     private BigDecimal totalAmount;
 
+    @Column(name = "subtotal_amount", nullable = false)
+    private BigDecimal subtotalAmount = BigDecimal.ZERO;
+
+    @Column(name = "gst_total", nullable = false)
+    private BigDecimal gstTotal = BigDecimal.ZERO;
+
+    @Column(name = "gst_treatment", nullable = false)
+    private String gstTreatment = "NONE";
+
+    @Column(name = "gst_rate")
+    private BigDecimal gstRate = BigDecimal.ZERO;
+
+    @Column(name = "gst_rounding_adjustment", nullable = false)
+    private BigDecimal gstRoundingAdjustment = BigDecimal.ZERO;
+
     @Column(nullable = false)
     private String currency = "INR";
 
@@ -85,6 +100,16 @@ public class SalesOrder {
     public void setTraceId(String traceId) { this.traceId = traceId; }
     public BigDecimal getTotalAmount() { return totalAmount; }
     public void setTotalAmount(BigDecimal totalAmount) { this.totalAmount = totalAmount; }
+    public BigDecimal getSubtotalAmount() { return subtotalAmount; }
+    public void setSubtotalAmount(BigDecimal subtotalAmount) { this.subtotalAmount = subtotalAmount; }
+    public BigDecimal getGstTotal() { return gstTotal; }
+    public void setGstTotal(BigDecimal gstTotal) { this.gstTotal = gstTotal; }
+    public String getGstTreatment() { return gstTreatment; }
+    public void setGstTreatment(String gstTreatment) { this.gstTreatment = gstTreatment; }
+    public BigDecimal getGstRate() { return gstRate; }
+    public void setGstRate(BigDecimal gstRate) { this.gstRate = gstRate; }
+    public BigDecimal getGstRoundingAdjustment() { return gstRoundingAdjustment; }
+    public void setGstRoundingAdjustment(BigDecimal gstRoundingAdjustment) { this.gstRoundingAdjustment = gstRoundingAdjustment; }
     public String getCurrency() { return currency; }
     public void setCurrency(String currency) { this.currency = currency; }
     public String getNotes() { return notes; }

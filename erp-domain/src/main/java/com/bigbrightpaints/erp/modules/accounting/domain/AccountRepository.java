@@ -9,4 +9,5 @@ import java.util.Optional;
 public interface AccountRepository extends JpaRepository<Account, Long> {
     List<Account> findByCompanyOrderByCodeAsc(Company company);
     Optional<Account> findByCompanyAndId(Company company, Long id);
+    Optional<Account> findByCompanyAndCodeIgnoreCase(Company company, String code);
 }

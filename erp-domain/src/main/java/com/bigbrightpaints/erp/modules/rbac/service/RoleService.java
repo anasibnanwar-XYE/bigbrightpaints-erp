@@ -4,11 +4,15 @@ import com.bigbrightpaints.erp.modules.rbac.domain.Permission;
 import com.bigbrightpaints.erp.modules.rbac.domain.PermissionRepository;
 import com.bigbrightpaints.erp.modules.rbac.domain.Role;
 import com.bigbrightpaints.erp.modules.rbac.domain.RoleRepository;
+import com.bigbrightpaints.erp.modules.rbac.dto.CreateRoleRequest;
 import com.bigbrightpaints.erp.modules.rbac.dto.PermissionDto;
 import com.bigbrightpaints.erp.modules.rbac.dto.RoleDto;
+import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 
 @Service
 public class RoleService {
@@ -23,6 +27,23 @@ public class RoleService {
 
     public List<RoleDto> listRoles() {
         return roleRepository.findAll().stream().map(this::toDto).toList();
+    }
+
+    public List<RoleDto> listRolesByPrefix(String prefix) {
+        return roleRepository.findByNameStartingWithIgnoreCase(prefix)
+                .stream()
+                .map(this::toDto)
+                .toList();
+    }
+
+    @Transactional
+    public RoleDto createRole(CreateRoleRequest request) {
+        return persistRole(request, false);
+    }
+
+    @Transactional
+    public RoleDto createDealerRole(CreateRoleRequest request) {
+        return persistRole(request, true);
     }
 
     public Role ensureRoleExists(String roleName) {
@@ -41,6 +62,31 @@ public class RoleService {
             permission.setDescription(code);
             return permissionRepository.save(permission);
         });
+    }
+
+    private RoleDto persistRole(CreateRoleRequest request, boolean enforceDealerPrefix) {
+        String normalizedName = request.name().trim().toUpperCase(Locale.ROOT);
+        if (enforceDealerPrefix && !normalizedName.startsWith("ROLE_DEALER_")) {
+            throw new IllegalArgumentException("Dealer roles must start with ROLE_DEALER_");
+        }
+
+        Role role = roleRepository.findByName(normalizedName).orElseGet(Role::new);
+        role.setName(normalizedName);
+        role.setDescription(request.description().trim());
+
+        var permissionCodes = request.permissions().stream()
+                .map(code -> code.trim())
+                .toList();
+        var permissions = permissionRepository.findByCodeIn(permissionCodes);
+        if (permissions.size() != permissionCodes.size()) {
+            throw new IllegalArgumentException("One or more permission codes are invalid.");
+        }
+
+        role.getPermissions().clear();
+        role.getPermissions().addAll(new HashSet<>(permissions));
+
+        Role saved = roleRepository.save(role);
+        return toDto(saved);
     }
 
     private RoleDto toDto(Role role) {
