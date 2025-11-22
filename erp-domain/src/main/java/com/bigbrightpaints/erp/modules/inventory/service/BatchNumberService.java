@@ -48,7 +48,8 @@ public class BatchNumberService {
     }
 
     private String formatted(String key, long sequence) {
-        return "%s-%0" + DEFAULT_PADDING + "d".formatted(key, sequence);
+        String pattern = "%s-%0" + DEFAULT_PADDING + "d";
+        return pattern.formatted(key, sequence);
     }
 
     private String sanitize(String value) {

@@ -11,11 +11,15 @@ import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.In
 import java.math.BigDecimal;
 import java.util.Map;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class CommandDispatcher {
+
+    private static final Logger log = LoggerFactory.getLogger(CommandDispatcher.class);
 
     private final WorkflowService workflowService;
     private final IntegrationCoordinator integrationCoordinator;
@@ -55,7 +59,14 @@ public class CommandDispatcher {
 
     @Transactional
     public String autoApproveOrder(String orderId, BigDecimal totalAmount, String companyId) {
-        String traceId = workflowService.startWorkflow("order-auto-approval");
+        String traceId;
+        try {
+            traceId = workflowService.startWorkflow("order-auto-approval");
+        } catch (IllegalArgumentException ex) {
+            // Workflow not configured in some environments; continue without blocking the business flow.
+            traceId = java.util.UUID.randomUUID().toString();
+            log.warn("Workflow order-auto-approval not configured; proceeding without workflow. reason={}", ex.getMessage());
+        }
         IntegrationCoordinator.AutoApprovalResult result =
                 integrationCoordinator.autoApproveOrder(orderId, totalAmount, companyId);
         DomainEvent event = DomainEvent.of("OrderAutoApprovedEvent", companyId, "system", "Order", orderId,

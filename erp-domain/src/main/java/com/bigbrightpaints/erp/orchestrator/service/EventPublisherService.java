@@ -5,6 +5,7 @@ import com.bigbrightpaints.erp.orchestrator.repository.OutboxEvent;
 import com.bigbrightpaints.erp.orchestrator.repository.OutboxEventRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -18,6 +19,9 @@ import org.springframework.transaction.annotation.Transactional;
 public class EventPublisherService {
 
     private static final Logger log = LoggerFactory.getLogger(EventPublisherService.class);
+
+    private static final int MAX_RETRY_ATTEMPTS = 5;
+    private static final long RETRY_BASE_DELAY_SECONDS = 30;
 
     private final OutboxEventRepository outboxEventRepository;
     private final RabbitTemplate rabbitTemplate;
@@ -43,21 +47,30 @@ public class EventPublisherService {
 
     @Transactional
     public void publishPendingEvents() {
-        List<OutboxEvent> pending = outboxEventRepository.findTop10ByStatusOrderByCreatedAtAsc(OutboxEvent.Status.PENDING);
+        List<OutboxEvent> pending = outboxEventRepository
+                .findTop10ByStatusAndDeadLetterFalseAndNextAttemptAtLessThanEqualOrderByCreatedAtAsc(
+                        OutboxEvent.Status.PENDING, Instant.now());
         for (OutboxEvent event : pending) {
             try {
                 rabbitTemplate.convertAndSend("bbp.orchestrator.events", event.getEventType(), event.getPayload());
                 event.markPublished();
             } catch (Exception ex) {
                 log.error("Failed to publish event {}", event.getId(), ex);
-                event.markFailed();
+                long delaySeconds = computeBackoffDelay(event.getRetryCount());
+                event.scheduleRetry(ex.getMessage(), MAX_RETRY_ATTEMPTS, delaySeconds);
             }
         }
+    }
+
+    private long computeBackoffDelay(int retryCount) {
+        int exponent = Math.min(retryCount, 10);
+        return (long) Math.pow(2, exponent) * RETRY_BASE_DELAY_SECONDS;
     }
 
     public Map<String, Object> healthSnapshot() {
         Map<String, Object> health = new HashMap<>();
         health.put("pendingEvents", outboxEventRepository.count());
+        health.put("deadLetters", outboxEventRepository.countByStatusAndDeadLetterTrue(OutboxEvent.Status.FAILED));
         return health;
     }
 }

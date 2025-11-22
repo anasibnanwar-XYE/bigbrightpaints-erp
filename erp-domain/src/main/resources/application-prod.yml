@@ -4,13 +4,53 @@ spring:
     username: ${SPRING_DATASOURCE_USERNAME}
     password: ${SPRING_DATASOURCE_PASSWORD}
     driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: ${SPRING_DATASOURCE_POOL_MAX:30}
+      minimum-idle: ${SPRING_DATASOURCE_POOL_MIN:5}
+      idle-timeout: 300000
+      connection-timeout: 20000
   flyway:
     enabled: true
   jpa:
     properties:
       hibernate:
         default_schema: public
+  mvc:
+    cors:
+      enabled: true
+server:
+  port: ${SERVER_PORT:8081}
+  tomcat:
+    threads:
+      max: ${SERVER_TOMCAT_MAX_THREADS:200}
+logging:
+  level:
+    root: INFO
+    org.springframework.web: WARN
+    org.springframework.security: WARN
+    org.hibernate.SQL: WARN
 jwt:
   secret: ${JWT_SECRET}
   access-token-ttl-seconds: ${JWT_ACCESS_TTL:900}
   refresh-token-ttl-seconds: ${JWT_REFRESH_TTL:2592000}
+erp:
+  cors:
+    allowed-origins: ${ERP_CORS_ALLOWED_ORIGINS:https://app.bigbrightpaints.com}
+  rate-limiting:
+    enabled: true
+    requests-per-minute: ${ERP_RATE_LIMIT_RPM:60}
+management:
+  server:
+    port: ${MANAGEMENT_SERVER_PORT:9090}
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+      cors:
+        allowed-origins: ${MANAGEMENT_CORS_ALLOWED_ORIGINS:https://ops.bigbrightpaints.com}
+        allowed-methods: GET
+  endpoint:
+    health:
+      show-details: when_authorized
+  security:
+    enabled: true

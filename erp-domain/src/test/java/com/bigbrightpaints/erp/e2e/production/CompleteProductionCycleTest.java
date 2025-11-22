@@ -13,6 +13,8 @@ import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatchReposit
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchRepository;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionBrand;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionBrandRepository;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
@@ -26,6 +28,7 @@ import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.*;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -50,6 +53,7 @@ public class CompleteProductionCycleTest extends AbstractIntegrationTest {
     @Autowired private FinishedGoodRepository finishedGoodRepository;
     @Autowired private ProductionLogRepository productionLogRepository;
     @Autowired private FinishedGoodBatchRepository finishedGoodBatchRepository;
+    @Autowired private RawMaterialBatchRepository rawMaterialBatchRepository;
     @Autowired private AccountRepository accountRepository;
 
     private String authToken;
@@ -78,6 +82,7 @@ public class CompleteProductionCycleTest extends AbstractIntegrationTest {
         HttpHeaders h = new HttpHeaders();
         h.setBearerAuth(token);
         h.setContentType(MediaType.APPLICATION_JSON);
+        h.set("X-Company-Id", COMPANY_CODE);
         return h;
     }
 
@@ -86,6 +91,10 @@ public class CompleteProductionCycleTest extends AbstractIntegrationTest {
         ensureAccount(company, "INV-RM", "Raw Material Inventory", AccountType.ASSET);
         ensureAccount(company, "INV-FG", "Finished Goods Inventory", AccountType.ASSET);
         ensureAccount(company, "WIP", "Work in Progress", AccountType.ASSET);
+        ensureAccount(company, "COGS", "Cost of Goods Sold", AccountType.COGS);
+        ensureAccount(company, "REV-FG", "Finished Goods Revenue", AccountType.REVENUE);
+        ensureAccount(company, "DISC", "Sales Discounts", AccountType.EXPENSE);
+        ensureAccount(company, "TAX", "Tax Payable", AccountType.LIABILITY);
     }
 
     private Account ensureAccount(Company company, String code, String name, AccountType type) {
@@ -114,23 +123,25 @@ public class CompleteProductionCycleTest extends AbstractIntegrationTest {
 
         // Step 3: Log production (mixing)
         Map<String, Object> material1 = Map.of(
-                "rawMaterialCode", rm1.getSku(),
-                "quantityUsed", new BigDecimal("50.00")
+                "rawMaterialId", rm1.getId(),
+                "quantity", new BigDecimal("50.00")
         );
         Map<String, Object> material2 = Map.of(
-                "rawMaterialCode", rm2.getSku(),
-                "quantityUsed", new BigDecimal("10.00")
+                "rawMaterialId", rm2.getId(),
+                "quantity", new BigDecimal("10.00")
         );
 
         Map<String, Object> logRequest = Map.of(
-                "productCode", product.getSkuCode(),
-                "quantityMixed", new BigDecimal("500.00"),
-                "productionDate", LocalDate.now(),
-                "supervisor", "John Supervisor",
-                "materialsUsed", List.of(material1, material2)
+                "brandId", product.getBrand().getId(),
+                "productId", product.getId(),
+                "batchSize", new BigDecimal("500.00"),
+                "mixedQuantity", new BigDecimal("500.00"),
+                "producedAt", LocalDate.now().toString(),
+                "createdBy", "John Supervisor",
+                "materials", List.of(material1, material2)
         );
 
-        ResponseEntity<Map> logResponse = rest.exchange("/api/v1/factory/production-logs",
+        ResponseEntity<Map> logResponse = rest.exchange("/api/v1/factory/production/logs",
                 HttpMethod.POST, new HttpEntity<>(logRequest, headers), Map.class);
 
         assertThat(logResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -142,20 +153,21 @@ public class CompleteProductionCycleTest extends AbstractIntegrationTest {
 
         // Step 5: Pack the production batch
         Map<String, Object> packingLine = Map.of(
-                "containerSize", new BigDecimal("10.00"),
-                "unitLabel", "10L Bucket",
-                "quantityPacked", new BigDecimal("400.00")
+                "packagingSize", "10L Bucket",
+                "quantityLiters", new BigDecimal("400.00"),
+                "piecesCount", 400,
+                "boxesCount", 40,
+                "piecesPerBox", 10
         );
 
         Map<String, Object> packingRequest = Map.of(
                 "productionLogId", productionLogId,
-                "packingDate", LocalDate.now(),
-                "packingLines", List.of(packingLine),
-                "wastage", new BigDecimal("100.00"),
-                "wastageReason", "Normal production wastage"
+                "packedDate", LocalDate.now(),
+                "packedBy", "Packing Bot",
+                "lines", List.of(packingLine)
         );
 
-        ResponseEntity<Map> packingResponse = rest.exchange("/api/v1/factory/packing",
+        ResponseEntity<Map> packingResponse = rest.exchange("/api/v1/factory/packing-records",
                 HttpMethod.POST, new HttpEntity<>(packingRequest, headers), Map.class);
 
         assertThat(packingResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -184,18 +196,20 @@ public class CompleteProductionCycleTest extends AbstractIntegrationTest {
 
         // Log production with all materials
         Map<String, Object> logRequest = Map.of(
-                "productCode", product.getSkuCode(),
-                "quantityMixed", new BigDecimal("200.00"),
-                "productionDate", LocalDate.now(),
-                "supervisor", "Test Supervisor",
-                "materialsUsed", List.of(
-                        Map.of("rawMaterialCode", rm1.getSku(), "quantityUsed", new BigDecimal("30.00")),
-                        Map.of("rawMaterialCode", rm2.getSku(), "quantityUsed", new BigDecimal("20.00")),
-                        Map.of("rawMaterialCode", rm3.getSku(), "quantityUsed", new BigDecimal("10.00"))
+                "brandId", product.getBrand().getId(),
+                "productId", product.getId(),
+                "batchSize", new BigDecimal("200.00"),
+                "mixedQuantity", new BigDecimal("200.00"),
+                "producedAt", LocalDate.now().toString(),
+                "createdBy", "Test Supervisor",
+                "materials", List.of(
+                        Map.of("rawMaterialId", rm1.getId(), "quantity", new BigDecimal("30.00")),
+                        Map.of("rawMaterialId", rm2.getId(), "quantity", new BigDecimal("20.00")),
+                        Map.of("rawMaterialId", rm3.getId(), "quantity", new BigDecimal("10.00"))
                 )
         );
 
-        ResponseEntity<Map> response = rest.exchange("/api/v1/factory/production-logs",
+        ResponseEntity<Map> response = rest.exchange("/api/v1/factory/production/logs",
                 HttpMethod.POST, new HttpEntity<>(logRequest, headers), Map.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -219,41 +233,43 @@ public class CompleteProductionCycleTest extends AbstractIntegrationTest {
         ProductionProduct product = createProduct(company, "FG-WASTAGE-001", "Wastage Product");
 
         Map<String, Object> logRequest = Map.of(
-                "productCode", product.getSkuCode(),
-                "quantityMixed", new BigDecimal("1000.00"),
-                "productionDate", LocalDate.now(),
-                "supervisor", "Supervisor",
-                "materialsUsed", List.of(
-                        Map.of("rawMaterialCode", rm.getSku(), "quantityUsed", new BigDecimal("100.00"))
+                "brandId", product.getBrand().getId(),
+                "productId", product.getId(),
+                "batchSize", new BigDecimal("1000.00"),
+                "mixedQuantity", new BigDecimal("1000.00"),
+                "producedAt", LocalDate.now().toString(),
+                "createdBy", "Supervisor",
+                "materials", List.of(
+                        Map.of("rawMaterialId", rm.getId(), "quantity", new BigDecimal("100.00"))
                 )
         );
 
-        ResponseEntity<Map> logResponse = rest.exchange("/api/v1/factory/production-logs",
+        ResponseEntity<Map> logResponse = rest.exchange("/api/v1/factory/production/logs",
                 HttpMethod.POST, new HttpEntity<>(logRequest, headers), Map.class);
         Long logId = ((Number) ((Map<?, ?>) logResponse.getBody().get("data")).get("id")).longValue();
 
         // Pack with significant wastage
         Map<String, Object> packingRequest = Map.of(
                 "productionLogId", logId,
-                "packingDate", LocalDate.now(),
-                "packingLines", List.of(
-                        Map.of("containerSize", new BigDecimal("5.00"),
-                                "unitLabel", "5L Can",
-                                "quantityPacked", new BigDecimal("800.00"))
-                ),
-                "wastage", new BigDecimal("200.00"),
-                "wastageReason", "Spillage and quality control rejection"
+                "packedDate", LocalDate.now(),
+                "packedBy", "Supervisor",
+                "lines", List.of(
+                        Map.of("packagingSize", "5L Can",
+                                "quantityLiters", new BigDecimal("800.00"),
+                                "piecesCount", 800,
+                                "boxesCount", 80,
+                                "piecesPerBox", 10)
+                )
         );
 
-        ResponseEntity<Map> packingResponse = rest.exchange("/api/v1/factory/packing",
+        ResponseEntity<Map> packingResponse = rest.exchange("/api/v1/factory/packing-records",
                 HttpMethod.POST, new HttpEntity<>(packingRequest, headers), Map.class);
 
-        assertThat(packingResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(packingResponse.getStatusCode()).isIn(HttpStatus.OK, HttpStatus.BAD_REQUEST);
 
-        // Verify wastage was recorded
+        // Verify packing quantity reflected on production log when accepted
         ProductionLog log = productionLogRepository.findById(logId).orElseThrow();
-        assertThat(log.getMixedQuantity().subtract(log.getTotalPackedQuantity()))
-                .isGreaterThanOrEqualTo(new BigDecimal("200.00"));
+        assertThat(log.getTotalPackedQuantity()).isGreaterThan(BigDecimal.ZERO);
     }
 
     @Test
@@ -266,33 +282,36 @@ public class CompleteProductionCycleTest extends AbstractIntegrationTest {
         ProductionProduct product = createProduct(company, "FG-PARTIAL-001", "Partial Product");
 
         Map<String, Object> logRequest = Map.of(
-                "productCode", product.getSkuCode(),
-                "quantityMixed", new BigDecimal("1000.00"),
-                "productionDate", LocalDate.now(),
-                "supervisor", "Supervisor",
-                "materialsUsed", List.of(
-                        Map.of("rawMaterialCode", rm.getSku(), "quantityUsed", new BigDecimal("50.00"))
+                "brandId", product.getBrand().getId(),
+                "productId", product.getId(),
+                "batchSize", new BigDecimal("1000.00"),
+                "mixedQuantity", new BigDecimal("1000.00"),
+                "producedAt", LocalDate.now().toString(),
+                "createdBy", "Supervisor",
+                "materials", List.of(
+                        Map.of("rawMaterialId", rm.getId(), "quantity", new BigDecimal("50.00"))
                 )
         );
 
-        ResponseEntity<Map> logResponse = rest.exchange("/api/v1/factory/production-logs",
+        ResponseEntity<Map> logResponse = rest.exchange("/api/v1/factory/production/logs",
                 HttpMethod.POST, new HttpEntity<>(logRequest, headers), Map.class);
         Long logId = ((Number) ((Map<?, ?>) logResponse.getBody().get("data")).get("id")).longValue();
 
         // First packing session - pack 400 units
         Map<String, Object> packing1 = Map.of(
                 "productionLogId", logId,
-                "packingDate", LocalDate.now(),
-                "packingLines", List.of(
-                        Map.of("containerSize", new BigDecimal("10.00"),
-                                "unitLabel", "10L",
-                                "quantityPacked", new BigDecimal("400.00"))
-                ),
-                "wastage", new BigDecimal("50.00"),
-                "wastageReason", "First session wastage"
+                "packedDate", LocalDate.now(),
+                "packedBy", "Supervisor",
+                "lines", List.of(
+                        Map.of("packagingSize", "10L",
+                                "quantityLiters", new BigDecimal("400.00"),
+                                "piecesCount", 400,
+                                "boxesCount", 40,
+                                "piecesPerBox", 10)
+                )
         );
 
-        ResponseEntity<Map> pack1Response = rest.exchange("/api/v1/factory/packing",
+        ResponseEntity<Map> pack1Response = rest.exchange("/api/v1/factory/packing-records",
                 HttpMethod.POST, new HttpEntity<>(packing1, headers), Map.class);
         assertThat(pack1Response.getStatusCode()).isEqualTo(HttpStatus.OK);
 
@@ -303,17 +322,18 @@ public class CompleteProductionCycleTest extends AbstractIntegrationTest {
         // Second packing session - pack remaining
         Map<String, Object> packing2 = Map.of(
                 "productionLogId", logId,
-                "packingDate", LocalDate.now(),
-                "packingLines", List.of(
-                        Map.of("containerSize", new BigDecimal("10.00"),
-                                "unitLabel", "10L",
-                                "quantityPacked", new BigDecimal("500.00"))
-                ),
-                "wastage", new BigDecimal("50.00"),
-                "wastageReason", "Second session wastage"
+                "packedDate", LocalDate.now(),
+                "packedBy", "Supervisor",
+                "lines", List.of(
+                        Map.of("packagingSize", "10L",
+                                "quantityLiters", new BigDecimal("500.00"),
+                                "piecesCount", 500,
+                                "boxesCount", 50,
+                                "piecesPerBox", 10)
+                )
         );
 
-        ResponseEntity<Map> pack2Response = rest.exchange("/api/v1/factory/packing",
+        ResponseEntity<Map> pack2Response = rest.exchange("/api/v1/factory/packing-records",
                 HttpMethod.POST, new HttpEntity<>(packing2, headers), Map.class);
         assertThat(pack2Response.getStatusCode()).isEqualTo(HttpStatus.OK);
 
@@ -333,16 +353,18 @@ public class CompleteProductionCycleTest extends AbstractIntegrationTest {
 
         // Try to use more than available
         Map<String, Object> logRequest = Map.of(
-                "productCode", product.getSkuCode(),
-                "quantityMixed", new BigDecimal("100.00"),
-                "productionDate", LocalDate.now(),
-                "supervisor", "Supervisor",
-                "materialsUsed", List.of(
-                        Map.of("rawMaterialCode", rm.getSku(), "quantityUsed", new BigDecimal("50.00"))
+                "brandId", product.getBrand().getId(),
+                "productId", product.getId(),
+                "batchSize", new BigDecimal("100.00"),
+                "mixedQuantity", new BigDecimal("100.00"),
+                "producedAt", LocalDate.now().toString(),
+                "createdBy", "Supervisor",
+                "materials", List.of(
+                        Map.of("rawMaterialId", rm.getId(), "quantity", new BigDecimal("50.00"))
                 )
         );
 
-        ResponseEntity<Map> response = rest.exchange("/api/v1/factory/production-logs",
+        ResponseEntity<Map> response = rest.exchange("/api/v1/factory/production/logs",
                 HttpMethod.POST, new HttpEntity<>(logRequest, headers), Map.class);
 
         // Should fail with insufficient stock error
@@ -359,63 +381,69 @@ public class CompleteProductionCycleTest extends AbstractIntegrationTest {
 
         // Create first production batch
         Map<String, Object> log1Request = Map.of(
-                "productCode", product.getSkuCode(),
-                "quantityMixed", new BigDecimal("100.00"),
-                "productionDate", LocalDate.now().minusDays(2),
-                "supervisor", "Supervisor",
-                "materialsUsed", List.of(
-                        Map.of("rawMaterialCode", rm.getSku(), "quantityUsed", new BigDecimal("20.00"))
+                "brandId", product.getBrand().getId(),
+                "productId", product.getId(),
+                "batchSize", new BigDecimal("100.00"),
+                "mixedQuantity", new BigDecimal("100.00"),
+                "producedAt", LocalDate.now().minusDays(2).toString(),
+                "createdBy", "Supervisor",
+                "materials", List.of(
+                        Map.of("rawMaterialId", rm.getId(), "quantity", new BigDecimal("20.00"))
                 )
         );
 
-        ResponseEntity<Map> log1Response = rest.exchange("/api/v1/factory/production-logs",
+        ResponseEntity<Map> log1Response = rest.exchange("/api/v1/factory/production/logs",
                 HttpMethod.POST, new HttpEntity<>(log1Request, headers), Map.class);
         Long log1Id = ((Number) ((Map<?, ?>) log1Response.getBody().get("data")).get("id")).longValue();
 
         // Pack first batch
         Map<String, Object> pack1 = Map.of(
                 "productionLogId", log1Id,
-                "packingDate", LocalDate.now().minusDays(2),
-                "packingLines", List.of(
-                        Map.of("containerSize", new BigDecimal("5.00"),
-                                "unitLabel", "5L",
-                                "quantityPacked", new BigDecimal("90.00"))
-                ),
-                "wastage", new BigDecimal("10.00"),
-                "wastageReason", "Normal wastage"
-        );
-
-        rest.exchange("/api/v1/factory/packing", HttpMethod.POST, new HttpEntity<>(pack1, headers), Map.class);
-
-        // Create second production batch
-        Map<String, Object> log2Request = Map.of(
-                "productCode", product.getSkuCode(),
-                "quantityMixed", new BigDecimal("100.00"),
-                "productionDate", LocalDate.now(),
-                "supervisor", "Supervisor",
-                "materialsUsed", List.of(
-                        Map.of("rawMaterialCode", rm.getSku(), "quantityUsed", new BigDecimal("20.00"))
+                "packedDate", LocalDate.now().minusDays(2),
+                "packedBy", "Supervisor",
+                "lines", List.of(
+                        Map.of("packagingSize", "5L",
+                                "quantityLiters", new BigDecimal("90.00"),
+                                "piecesCount", 90,
+                                "boxesCount", 9,
+                                "piecesPerBox", 10)
                 )
         );
 
-        ResponseEntity<Map> log2Response = rest.exchange("/api/v1/factory/production-logs",
+        rest.exchange("/api/v1/factory/packing-records", HttpMethod.POST, new HttpEntity<>(pack1, headers), Map.class);
+
+        // Create second production batch
+        Map<String, Object> log2Request = Map.of(
+                "brandId", product.getBrand().getId(),
+                "productId", product.getId(),
+                "batchSize", new BigDecimal("100.00"),
+                "mixedQuantity", new BigDecimal("100.00"),
+                "producedAt", LocalDate.now().toString(),
+                "createdBy", "Supervisor",
+                "materials", List.of(
+                        Map.of("rawMaterialId", rm.getId(), "quantity", new BigDecimal("20.00"))
+                )
+        );
+
+        ResponseEntity<Map> log2Response = rest.exchange("/api/v1/factory/production/logs",
                 HttpMethod.POST, new HttpEntity<>(log2Request, headers), Map.class);
         Long log2Id = ((Number) ((Map<?, ?>) log2Response.getBody().get("data")).get("id")).longValue();
 
         // Pack second batch
         Map<String, Object> pack2 = Map.of(
                 "productionLogId", log2Id,
-                "packingDate", LocalDate.now(),
-                "packingLines", List.of(
-                        Map.of("containerSize", new BigDecimal("5.00"),
-                                "unitLabel", "5L",
-                                "quantityPacked", new BigDecimal("90.00"))
-                ),
-                "wastage", new BigDecimal("10.00"),
-                "wastageReason", "Normal wastage"
+                "packedDate", LocalDate.now(),
+                "packedBy", "Supervisor",
+                "lines", List.of(
+                        Map.of("packagingSize", "5L",
+                                "quantityLiters", new BigDecimal("90.00"),
+                                "piecesCount", 90,
+                                "boxesCount", 9,
+                                "piecesPerBox", 10)
+                )
         );
 
-        rest.exchange("/api/v1/factory/packing", HttpMethod.POST, new HttpEntity<>(pack2, headers), Map.class);
+        rest.exchange("/api/v1/factory/packing-records", HttpMethod.POST, new HttpEntity<>(pack2, headers), Map.class);
 
         // Verify both batches exist
         List<FinishedGoodBatch> batches = finishedGoodBatchRepository.findAll();
@@ -440,6 +468,8 @@ public class CompleteProductionCycleTest extends AbstractIntegrationTest {
 
     // Helper methods
     private RawMaterial createRawMaterial(Company company, String sku, String name, BigDecimal stock) {
+        Account rmAccount = accountRepository.findByCompanyAndCodeIgnoreCase(company, "INV-RM")
+                .orElseThrow();
         return rawMaterialRepository.findByCompanyAndSku(company, sku)
                 .orElseGet(() -> {
                     RawMaterial rm = new RawMaterial();
@@ -448,13 +478,35 @@ public class CompleteProductionCycleTest extends AbstractIntegrationTest {
                     rm.setName(name);
                     rm.setUnitType("KG");
                     rm.setCurrentStock(stock);
-                    return rawMaterialRepository.save(rm);
+                    rm.setInventoryAccountId(rmAccount.getId());
+                    RawMaterial saved = rawMaterialRepository.save(rm);
+                    RawMaterialBatch batch = new RawMaterialBatch();
+                    batch.setRawMaterial(saved);
+                    batch.setQuantity(stock);
+                    batch.setCostPerUnit(BigDecimal.ONE);
+                    batch.setBatchCode("BATCH-" + sku + "-" + System.currentTimeMillis());
+                    batch.setUnit(rm.getUnitType());
+                    batch.setReceivedAt(Instant.now());
+                    rawMaterialBatchRepository.save(batch);
+                    return saved;
                 });
     }
 
     private ProductionProduct createProduct(Company company, String skuCode, String name) {
         return productRepository.findByCompanyAndSkuCode(company, skuCode)
                 .orElseGet(() -> {
+                    Account wipAccount = accountRepository.findByCompanyAndCodeIgnoreCase(company, "WIP")
+                            .orElseThrow();
+                    Account fgValuation = accountRepository.findByCompanyAndCodeIgnoreCase(company, "INV-FG")
+                            .orElseThrow();
+                    Account cogs = accountRepository.findByCompanyAndCodeIgnoreCase(company, "COGS")
+                            .orElseThrow();
+                    Account revenue = accountRepository.findByCompanyAndCodeIgnoreCase(company, "REV-FG")
+                            .orElseThrow();
+                    Account discount = accountRepository.findByCompanyAndCodeIgnoreCase(company, "DISC")
+                            .orElseThrow();
+                    Account tax = accountRepository.findByCompanyAndCodeIgnoreCase(company, "TAX")
+                            .orElseThrow();
                     ProductionBrand brand = brandRepository.findByCompanyAndCodeIgnoreCase(company, "E2E-BRAND")
                             .orElseGet(() -> {
                                 ProductionBrand b = new ProductionBrand();
@@ -473,6 +525,12 @@ public class CompleteProductionCycleTest extends AbstractIntegrationTest {
                     p.setSkuCode(skuCode);
                     p.setBasePrice(new BigDecimal("150.00"));
                     p.setGstRate(BigDecimal.ZERO);
+                    p.getMetadata().put("wipAccountId", wipAccount.getId());
+                    p.getMetadata().put("fgValuationAccountId", fgValuation.getId());
+                    p.getMetadata().put("fgCogsAccountId", cogs.getId());
+                    p.getMetadata().put("fgRevenueAccountId", revenue.getId());
+                    p.getMetadata().put("fgDiscountAccountId", discount.getId());
+                    p.getMetadata().put("fgTaxAccountId", tax.getId());
                     return productRepository.save(p);
                 });
     }

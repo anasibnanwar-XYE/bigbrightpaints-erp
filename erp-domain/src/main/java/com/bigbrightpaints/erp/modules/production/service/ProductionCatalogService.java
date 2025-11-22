@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.production.service;
 
+import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
@@ -71,15 +72,18 @@ public class ProductionCatalogService {
     private final ProductionBrandRepository brandRepository;
     private final ProductionProductRepository productRepository;
     private final RawMaterialRepository rawMaterialRepository;
+    private final CompanyEntityLookup companyEntityLookup;
 
     public ProductionCatalogService(CompanyContextService companyContextService,
                                     ProductionBrandRepository brandRepository,
                                     ProductionProductRepository productRepository,
-                                    RawMaterialRepository rawMaterialRepository) {
+                                    RawMaterialRepository rawMaterialRepository,
+                                    CompanyEntityLookup companyEntityLookup) {
         this.companyContextService = companyContextService;
         this.brandRepository = brandRepository;
         this.productRepository = productRepository;
         this.rawMaterialRepository = rawMaterialRepository;
+        this.companyEntityLookup = companyEntityLookup;
     }
 
     @Transactional
@@ -209,14 +213,13 @@ public class ProductionCatalogService {
     @Transactional
     public List<ProductionProductDto> listBrandProducts(Long brandId) {
         Company company = companyContextService.requireCurrentCompany();
-        ProductionBrand brand = brandRepository.findById(brandId)
-                .filter(b -> b.getCompany().getId().equals(company.getId()))
-                .orElseThrow(() -> new IllegalArgumentException("Brand not found"));
+        ProductionBrand brand = companyEntityLookup.requireProductionBrand(company, brandId);
         return productRepository.findByBrandOrderByProductNameAsc(brand).stream()
                 .map(this::toProductDto)
                 .toList();
     }
 
+    @Transactional(Transactional.TxType.SUPPORTS)
     public List<ProductionProductDto> listProducts() {
         Company company = companyContextService.requireCurrentCompany();
         return productRepository.findByCompanyOrderByProductNameAsc(company).stream()
@@ -227,8 +230,7 @@ public class ProductionCatalogService {
     @Transactional
     public ProductionProductDto updateProduct(Long productId, ProductUpdateRequest request) {
         Company company = companyContextService.requireCurrentCompany();
-        ProductionProduct product = productRepository.findByCompanyAndId(company, productId)
-                .orElseThrow(() -> new IllegalArgumentException("Product not found"));
+        ProductionProduct product = companyEntityLookup.requireProductionProduct(company, productId);
         if (StringUtils.hasText(request.productName())) {
             product.setProductName(request.productName().trim());
         }

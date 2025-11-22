@@ -44,6 +44,7 @@ public class OrderNumberService {
     }
 
     private String formatOrderNumber(String companyCode, int fiscalYear, long sequenceNumber) {
-        return "%s-%d-%0" + DEFAULT_PADDING + "d".formatted(companyCode, fiscalYear, sequenceNumber);
+        String pattern = "%s-%d-%0" + DEFAULT_PADDING + "d";
+        return pattern.formatted(companyCode, fiscalYear, sequenceNumber);
     }
 }

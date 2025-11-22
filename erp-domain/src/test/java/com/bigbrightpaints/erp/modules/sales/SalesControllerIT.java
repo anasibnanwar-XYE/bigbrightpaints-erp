@@ -40,7 +40,7 @@ public class SalesControllerIT extends AbstractIntegrationTest {
 
     @BeforeEach
     void seed() {
-        dataSeeder.ensureUser(ADMIN_EMAIL, ADMIN_PASSWORD, "Admin", COMPANY_CODE, List.of("ROLE_ADMIN"));
+        dataSeeder.ensureUser(ADMIN_EMAIL, ADMIN_PASSWORD, "Admin", COMPANY_CODE, List.of("ROLE_ADMIN", "ROLE_SALES"));
         ensureProductAndFinishedGood();
     }
 
@@ -104,6 +104,7 @@ public class SalesControllerIT extends AbstractIntegrationTest {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token);
         headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("X-Company-Id", COMPANY_CODE);
 
         Map<String, Object> dealerReq = new HashMap<>();
         dealerReq.put("name", "Prime Dealer");

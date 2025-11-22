@@ -24,4 +24,13 @@ public interface SupplierLedgerRepository extends JpaRepository<SupplierLedgerEn
             "from SupplierLedgerEntry e where e.company = :company and e.supplier = :supplier group by e.supplier.id")
     Optional<SupplierBalanceView> aggregateBalance(@Param("company") Company company,
                                                    @Param("supplier") Supplier supplier);
+
+    List<SupplierLedgerEntry> findByCompanyAndSupplierAndEntryDateBetweenOrderByEntryDateAsc(Company company,
+                                                                                            Supplier supplier,
+                                                                                            java.time.LocalDate start,
+                                                                                            java.time.LocalDate end);
+
+    List<SupplierLedgerEntry> findByCompanyAndSupplierAndEntryDateBeforeOrderByEntryDateAsc(Company company,
+                                                                                           Supplier supplier,
+                                                                                           java.time.LocalDate before);
 }

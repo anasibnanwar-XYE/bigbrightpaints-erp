@@ -67,6 +67,31 @@ public class OrchestratorController {
         return ResponseEntity.accepted().body(Map.of("traceId", traceId));
     }
 
+    /**
+     * Lightweight dispatch endpoint used by smoke/E2E tests to trigger fulfillment without batch context.
+     */
+    @PostMapping("/dispatch")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_SALES')")
+    public ResponseEntity<Map<String, Object>> dispatchOrder(@RequestBody Map<String, Object> request,
+                                                              @RequestHeader("X-Company-Id") String companyId,
+                                                              Principal principal) {
+        Object orderId = request.get("orderId");
+        if (orderId == null || orderId.toString().isBlank()) {
+            return ResponseEntity.unprocessableEntity()
+                    .body(Map.of("message", "orderId is required"));
+        }
+        try {
+            OrderFulfillmentRequest fulfillmentRequest = new OrderFulfillmentRequest("DISPATCHED", "auto-dispatch");
+            String traceId = commandDispatcher.updateOrderFulfillment(orderId.toString(), fulfillmentRequest,
+                    companyId, principal.getName());
+            return ResponseEntity.accepted().body(Map.of("traceId", traceId));
+        } catch (Exception ex) {
+            String traceId = commandDispatcher.generateTraceId();
+            return ResponseEntity.badRequest()
+                    .body(Map.of("traceId", traceId, "message", ex.getMessage()));
+        }
+    }
+
     @PostMapping("/payroll/run")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING') and hasAuthority('payroll.run')")
     public ResponseEntity<Map<String, Object>> runPayroll(@Valid @RequestBody PayrollRunRequest request,

@@ -1,7 +1,7 @@
 package com.bigbrightpaints.erp.modules.factory.service;
 
+import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
-import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
@@ -31,19 +31,19 @@ public class CostAllocationService {
     private final CompanyContextService companyContextService;
     private final ProductionLogRepository productionLogRepository;
     private final FinishedGoodBatchRepository finishedGoodBatchRepository;
-    private final AccountRepository accountRepository;
     private final AccountingFacade accountingFacade;
+    private final CompanyEntityLookup companyEntityLookup;
 
     public CostAllocationService(CompanyContextService companyContextService,
                                  ProductionLogRepository productionLogRepository,
                                  FinishedGoodBatchRepository finishedGoodBatchRepository,
-                                 AccountRepository accountRepository,
-                                 AccountingFacade accountingFacade) {
+                                 AccountingFacade accountingFacade,
+                                 CompanyEntityLookup companyEntityLookup) {
         this.companyContextService = companyContextService;
         this.productionLogRepository = productionLogRepository;
         this.finishedGoodBatchRepository = finishedGoodBatchRepository;
-        this.accountRepository = accountRepository;
         this.accountingFacade = accountingFacade;
+        this.companyEntityLookup = companyEntityLookup;
     }
 
     @Transactional
@@ -87,12 +87,15 @@ public class CostAllocationService {
 
         // Calculate cost per liter
         BigDecimal totalCosts = request.laborCost().add(request.overheadCost());
+        if (totalCosts.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalStateException("Total allocation costs must be greater than zero");
+        }
         BigDecimal costPerLiter = totalCosts.divide(totalLitersProduced, 4, RoundingMode.HALF_UP);
 
         // Find accounting accounts
-        Account finishedGoodsAccount = findAccount(company, "Finished Goods Inventory", AccountType.ASSET);
-        Account payrollExpenseAccount = findAccount(company, "Payroll Expense", AccountType.EXPENSE);
-        Account overheadExpenseAccount = findAccount(company, "Manufacturing Overhead", AccountType.EXPENSE);
+        Account finishedGoodsAccount = requireAccount(company, request.finishedGoodsAccountId(), AccountType.ASSET);
+        Account payrollExpenseAccount = requireAccount(company, request.laborExpenseAccountId(), AccountType.EXPENSE);
+        Account overheadExpenseAccount = requireAccount(company, request.overheadExpenseAccountId(), AccountType.EXPENSE);
 
         List<Long> journalEntryIds = new ArrayList<>();
 
@@ -165,15 +168,11 @@ public class CostAllocationService {
         );
     }
 
-    private Account findAccount(Company company, String nameContains, AccountType expectedType) {
-        List<Account> accounts = accountRepository.findByCompanyOrderByCodeAsc(company);
-        return accounts.stream()
-                .filter(acc -> acc.getType() == expectedType)
-                .filter(acc -> acc.getName() != null &&
-                        acc.getName().toLowerCase().contains(nameContains.toLowerCase()))
-                .findFirst()
-                .orElseThrow(() -> new IllegalStateException(
-                        "Account containing '" + nameContains + "' with type " +
-                        expectedType + " not found. Please create it first."));
+    private Account requireAccount(Company company, Long accountId, AccountType expectedType) {
+        Account account = companyEntityLookup.requireAccount(company, accountId);
+        if (account.getType() != expectedType) {
+            throw new IllegalStateException("Account " + account.getCode() + " is not of type " + expectedType);
+        }
+        return account;
     }
 }

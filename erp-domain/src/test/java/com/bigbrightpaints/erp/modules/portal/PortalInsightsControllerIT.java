@@ -89,7 +89,7 @@ public class PortalInsightsControllerIT extends AbstractIntegrationTest {
         order.setTotalAmount(BigDecimal.valueOf(125000));
         order.setCurrency("INR");
         order.setNotes("Portal smoke order");
-        salesOrderRepository.save(order);
+        order = salesOrderRepository.saveAndFlush(order);
 
         PackagingSlip slip = new PackagingSlip();
         slip.setCompany(company);
@@ -106,7 +106,7 @@ public class PortalInsightsControllerIT extends AbstractIntegrationTest {
         employee.setRole("Production specialists");
         employee.setStatus("ACTIVE");
         employee.setHiredDate(LocalDate.now().minusMonths(6));
-        employeeRepository.save(employee);
+        employee = employeeRepository.saveAndFlush(employee);
 
         RawMaterial material = new RawMaterial();
         material.setCompany(company);
@@ -132,7 +132,7 @@ public class PortalInsightsControllerIT extends AbstractIntegrationTest {
         plan.setQuantity(100);
         plan.setPlannedDate(LocalDate.now());
         plan.setStatus("IN DESIGN");
-        productionPlanRepository.save(plan);
+        plan = productionPlanRepository.saveAndFlush(plan);
 
         ProductionBatch batch = new ProductionBatch();
         batch.setCompany(company);

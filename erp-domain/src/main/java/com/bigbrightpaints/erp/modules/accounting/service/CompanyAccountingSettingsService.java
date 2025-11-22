@@ -1,7 +1,7 @@
 package com.bigbrightpaints.erp.modules.accounting.service;
 
+import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
-import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
@@ -13,14 +13,14 @@ public class CompanyAccountingSettingsService {
 
     private final CompanyContextService companyContextService;
     private final CompanyRepository companyRepository;
-    private final AccountRepository accountRepository;
+    private final CompanyEntityLookup companyEntityLookup;
 
     public CompanyAccountingSettingsService(CompanyContextService companyContextService,
                                             CompanyRepository companyRepository,
-                                            AccountRepository accountRepository) {
+                                            CompanyEntityLookup companyEntityLookup) {
         this.companyContextService = companyContextService;
         this.companyRepository = companyRepository;
-        this.accountRepository = accountRepository;
+        this.companyEntityLookup = companyEntityLookup;
     }
 
     public PayrollAccountDefaults requirePayrollDefaults() {
@@ -37,17 +37,31 @@ public class CompanyAccountingSettingsService {
     public void updatePayrollDefaults(Long expenseAccountId, Long cashAccountId) {
         Company company = companyContextService.requireCurrentCompany();
         if (expenseAccountId != null) {
-            Account expense = accountRepository.findByCompanyAndId(company, expenseAccountId)
-                    .orElseThrow(() -> new IllegalArgumentException("Expense account not found"));
+            Account expense = companyEntityLookup.requireAccount(company, expenseAccountId);
             company.setPayrollExpenseAccount(expense);
         }
         if (cashAccountId != null) {
-            Account cash = accountRepository.findByCompanyAndId(company, cashAccountId)
-                    .orElseThrow(() -> new IllegalArgumentException("Cash account not found"));
+            Account cash = companyEntityLookup.requireAccount(company, cashAccountId);
             company.setPayrollCashAccount(cash);
         }
         companyRepository.save(company);
     }
 
     public record PayrollAccountDefaults(Long expenseAccountId, Long cashAccountId) {}
+
+    public TaxAccountConfiguration requireTaxAccounts() {
+        Company company = companyContextService.requireCurrentCompany();
+        if (company.getGstInputTaxAccountId() == null || company.getGstOutputTaxAccountId() == null) {
+            throw new IllegalStateException("GST tax accounts not configured for company " + company.getCode());
+        }
+        return new TaxAccountConfiguration(
+                company.getGstInputTaxAccountId(),
+                company.getGstOutputTaxAccountId(),
+                company.getGstPayableAccountId()
+        );
+    }
+
+    public record TaxAccountConfiguration(Long inputTaxAccountId,
+                                          Long outputTaxAccountId,
+                                          Long payableAccountId) {}
 }

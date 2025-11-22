@@ -1,5 +1,8 @@
 package com.bigbrightpaints.erp.modules.purchasing.service;
 
+import com.bigbrightpaints.erp.core.util.CompanyClock;
+import com.bigbrightpaints.erp.core.util.MoneyUtils;
+import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
@@ -17,7 +20,6 @@ import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchase;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseLine;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
-import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
 import com.bigbrightpaints.erp.modules.purchasing.dto.RawMaterialPurchaseLineRequest;
 import com.bigbrightpaints.erp.modules.purchasing.dto.RawMaterialPurchaseLineResponse;
 import com.bigbrightpaints.erp.modules.purchasing.dto.RawMaterialPurchaseRequest;
@@ -43,28 +45,31 @@ public class PurchasingService {
     private final CompanyContextService companyContextService;
     private final RawMaterialPurchaseRepository purchaseRepository;
     private final RawMaterialRepository rawMaterialRepository;
-    private final SupplierRepository supplierRepository;
     private final RawMaterialService rawMaterialService;
     private final RawMaterialMovementRepository movementRepository;
     private final AccountingFacade accountingFacade;
     private final JournalEntryRepository journalEntryRepository;
+    private final CompanyEntityLookup companyEntityLookup;
+    private final CompanyClock companyClock;
 
     public PurchasingService(CompanyContextService companyContextService,
                              RawMaterialPurchaseRepository purchaseRepository,
                              RawMaterialRepository rawMaterialRepository,
-                             SupplierRepository supplierRepository,
                              RawMaterialService rawMaterialService,
                              RawMaterialMovementRepository movementRepository,
                              AccountingFacade accountingFacade,
-                             JournalEntryRepository journalEntryRepository) {
+                             JournalEntryRepository journalEntryRepository,
+                             CompanyEntityLookup companyEntityLookup,
+                             CompanyClock companyClock) {
         this.companyContextService = companyContextService;
         this.purchaseRepository = purchaseRepository;
         this.rawMaterialRepository = rawMaterialRepository;
-        this.supplierRepository = supplierRepository;
         this.rawMaterialService = rawMaterialService;
         this.movementRepository = movementRepository;
         this.accountingFacade = accountingFacade;
         this.journalEntryRepository = journalEntryRepository;
+        this.companyEntityLookup = companyEntityLookup;
+        this.companyClock = companyClock;
     }
 
     public List<RawMaterialPurchaseResponse> listPurchases() {
@@ -76,16 +81,14 @@ public class PurchasingService {
 
     public RawMaterialPurchaseResponse getPurchase(Long id) {
         Company company = companyContextService.requireCurrentCompany();
-        RawMaterialPurchase purchase = purchaseRepository.findByCompanyAndId(company, id)
-                .orElseThrow(() -> new IllegalArgumentException("Purchase not found"));
+        RawMaterialPurchase purchase = companyEntityLookup.requireRawMaterialPurchase(company, id);
         return toResponse(purchase);
     }
 
     @Transactional
     public RawMaterialPurchaseResponse createPurchase(RawMaterialPurchaseRequest request) {
         Company company = companyContextService.requireCurrentCompany();
-        Supplier supplier = supplierRepository.findByCompanyAndId(company, request.supplierId())
-                .orElseThrow(() -> new IllegalArgumentException("Supplier not found"));
+        Supplier supplier = companyEntityLookup.requireSupplier(company, request.supplierId());
         if (supplier.getPayableAccount() == null) {
             throw new IllegalStateException("Supplier " + supplier.getName() + " is missing a payable account");
         }
@@ -115,7 +118,7 @@ public class PurchasingService {
             String batchCode = StringUtils.hasText(lineRequest.batchCode())
                     ? lineRequest.batchCode().trim()
                     : null;
-            BigDecimal lineTotal = quantity.multiply(costPerUnit);
+            BigDecimal lineTotal = MoneyUtils.safeMultiply(quantity, costPerUnit);
             totalAmount = totalAmount.add(lineTotal);
             Long inventoryAccountId = rawMaterial.getInventoryAccountId();
             if (inventoryAccountId == null) {
@@ -154,12 +157,12 @@ public class PurchasingService {
         }
 
         purchase.setTotalAmount(totalAmount);
+        purchase.setOutstandingAmount(totalAmount);
         purchase = purchaseRepository.save(purchase);
 
         JournalEntryDto entry = postPurchaseEntry(request, supplier, inventoryDebits, totalAmount);
         if (entry != null) {
-            JournalEntry linked = journalEntryRepository.findByCompanyAndId(company, entry.id())
-                    .orElse(null);
+            JournalEntry linked = companyEntityLookup.requireJournalEntry(company, entry.id());
             purchase.setJournalEntry(linked);
             purchaseRepository.save(purchase);
         }
@@ -179,8 +182,7 @@ public class PurchasingService {
     @Transactional
     public JournalEntryDto recordPurchaseReturn(PurchaseReturnRequest request) {
         Company company = companyContextService.requireCurrentCompany();
-        Supplier supplier = supplierRepository.findByCompanyAndId(company, request.supplierId())
-                .orElseThrow(() -> new IllegalArgumentException("Supplier not found"));
+        Supplier supplier = companyEntityLookup.requireSupplier(company, request.supplierId());
         if (supplier.getPayableAccount() == null) {
             throw new IllegalStateException("Supplier " + supplier.getName() + " is missing a payable account");
         }
@@ -194,10 +196,10 @@ public class PurchasingService {
         if (material.getCurrentStock().compareTo(quantity) < 0) {
             throw new IllegalArgumentException("Cannot return more than on-hand inventory for " + material.getName());
         }
-        BigDecimal totalAmount = quantity.multiply(unitCost);
+        BigDecimal totalAmount = MoneyUtils.safeMultiply(quantity, unitCost);
         String memo = returnMemo(material, supplier, request.reason());
         String reference = resolveReturnReference(supplier, request.referenceNumber());
-        LocalDate returnDate = request.returnDate() != null ? request.returnDate() : LocalDate.now();
+        LocalDate returnDate = request.returnDate() != null ? request.returnDate() : companyClock.today(company);
         JournalEntryDto entry = accountingFacade.postPurchaseReturn(
                 supplier.getId(),
                 reference,
@@ -227,8 +229,9 @@ public class PurchasingService {
         if (inventoryDebits.isEmpty() || totalAmount.compareTo(BigDecimal.ZERO) <= 0) {
             return null;
         }
+        Company company = companyContextService.requireCurrentCompany();
         String memo = purchaseMemo(request.memo(), request.invoiceNumber(), null);
-        LocalDate entryDate = request.invoiceDate() != null ? request.invoiceDate() : LocalDate.now();
+        LocalDate entryDate = request.invoiceDate() != null ? request.invoiceDate() : companyClock.today(company);
 
         // Delegate to AccountingFacade for purchase journal posting
         return accountingFacade.postPurchaseJournal(
@@ -253,6 +256,7 @@ public class PurchasingService {
                 purchase.getInvoiceNumber(),
                 purchase.getInvoiceDate(),
                 purchase.getTotalAmount(),
+                purchase.getOutstandingAmount(),
                 purchase.getStatus(),
                 purchase.getMemo(),
                 supplier != null ? supplier.getId() : null,

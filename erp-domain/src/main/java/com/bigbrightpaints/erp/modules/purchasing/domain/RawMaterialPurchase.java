@@ -45,6 +45,9 @@ public class RawMaterialPurchase extends VersionedEntity {
     @Column(nullable = false)
     private BigDecimal totalAmount = BigDecimal.ZERO;
 
+    @Column(name = "outstanding_amount", nullable = false)
+    private BigDecimal outstandingAmount = BigDecimal.ZERO;
+
     @Column(nullable = false)
     private String status = "POSTED";
 
@@ -69,6 +72,9 @@ public class RawMaterialPurchase extends VersionedEntity {
             createdAt = Instant.now();
         }
         updatedAt = Instant.now();
+        if (outstandingAmount == null || outstandingAmount.compareTo(BigDecimal.ZERO) == 0) {
+            outstandingAmount = totalAmount != null ? totalAmount : BigDecimal.ZERO;
+        }
     }
 
     @PreUpdate
@@ -90,6 +96,8 @@ public class RawMaterialPurchase extends VersionedEntity {
     public void setInvoiceDate(LocalDate invoiceDate) { this.invoiceDate = invoiceDate; }
     public BigDecimal getTotalAmount() { return totalAmount; }
     public void setTotalAmount(BigDecimal totalAmount) { this.totalAmount = totalAmount; }
+    public BigDecimal getOutstandingAmount() { return outstandingAmount; }
+    public void setOutstandingAmount(BigDecimal outstandingAmount) { this.outstandingAmount = outstandingAmount; }
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
     public String getMemo() { return memo; }

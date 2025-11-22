@@ -56,6 +56,9 @@ public class Invoice extends VersionedEntity {
     @Column(name = "total_amount", nullable = false)
     private BigDecimal totalAmount = BigDecimal.ZERO;
 
+    @Column(name = "outstanding_amount", nullable = false)
+    private BigDecimal outstandingAmount = BigDecimal.ZERO;
+
     @Column(nullable = false)
     private String currency = "INR";
 
@@ -86,6 +89,9 @@ public class Invoice extends VersionedEntity {
             createdAt = now;
         }
         updatedAt = now;
+        if (outstandingAmount == null || outstandingAmount.compareTo(BigDecimal.ZERO) == 0) {
+            outstandingAmount = totalAmount != null ? totalAmount : BigDecimal.ZERO;
+        }
     }
 
     @PreUpdate
@@ -113,6 +119,8 @@ public class Invoice extends VersionedEntity {
     public void setTaxTotal(BigDecimal taxTotal) { this.taxTotal = taxTotal; }
     public BigDecimal getTotalAmount() { return totalAmount; }
     public void setTotalAmount(BigDecimal totalAmount) { this.totalAmount = totalAmount; }
+    public BigDecimal getOutstandingAmount() { return outstandingAmount; }
+    public void setOutstandingAmount(BigDecimal outstandingAmount) { this.outstandingAmount = outstandingAmount; }
     public String getCurrency() { return currency; }
     public void setCurrency(String currency) { this.currency = currency; }
     public LocalDate getIssueDate() { return issueDate; }

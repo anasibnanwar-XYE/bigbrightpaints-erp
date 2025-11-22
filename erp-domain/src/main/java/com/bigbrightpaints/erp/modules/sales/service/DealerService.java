@@ -25,6 +25,7 @@ import java.security.SecureRandom;
 import java.text.Normalizer;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -122,6 +123,36 @@ public class DealerService {
                         dealer.getCreditLimit()
                 ))
                 .toList();
+    }
+
+    /**
+     * Returns a human-readable ledger view for a dealer including running balance.
+     */
+    @Transactional
+    public Map<String, Object> ledgerView(Long dealerId) {
+        Company company = companyContextService.requireCurrentCompany();
+        Dealer dealer = dealerRepository.findByCompanyAndId(company, dealerId)
+                .orElseThrow(() -> new IllegalArgumentException("Dealer not found"));
+        var entries = dealerLedgerService.entries(dealer);
+        BigDecimal running = BigDecimal.ZERO;
+        var lines = new java.util.ArrayList<Map<String, Object>>();
+        for (var e : entries) {
+            running = running.add(e.getDebit()).subtract(e.getCredit());
+            lines.add(Map.of(
+                    "date", e.getEntryDate(),
+                    "reference", e.getReferenceNumber(),
+                    "memo", e.getMemo(),
+                    "debit", e.getDebit(),
+                    "credit", e.getCredit(),
+                    "runningBalance", running
+            ));
+        }
+        return Map.of(
+                "dealerId", dealer.getId(),
+                "dealerName", dealer.getName(),
+                "currentBalance", running,
+                "entries", lines
+        );
     }
 
     private Account createReceivableAccount(Company company, Dealer dealer) {

@@ -1,11 +1,18 @@
 package com.bigbrightpaints.erp.modules.sales.service;
 
+import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.service.DealerLedgerService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository;
+import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
+import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipRepository;
+import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
+import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
+import com.bigbrightpaints.erp.modules.invoice.service.InvoiceNumberService;
+import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionBrand;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProductRepository;
@@ -59,6 +66,20 @@ class SalesServiceTest {
     private FinishedGoodRepository finishedGoodRepository;
     @Mock
     private AccountRepository accountRepository;
+    @Mock
+    private CompanyEntityLookup companyEntityLookup;
+    @Mock
+    private PackagingSlipRepository packagingSlipRepository;
+    @Mock
+    private FinishedGoodsService finishedGoodsService;
+    @Mock
+    private AccountingService accountingService;
+    @Mock
+    private AccountingFacade accountingFacade;
+    @Mock
+    private InvoiceNumberService invoiceNumberService;
+    @Mock
+    private InvoiceRepository invoiceRepository;
 
     private SalesService salesService;
     private Company company;
@@ -77,7 +98,14 @@ class SalesServiceTest {
                 productionProductRepository,
                 dealerLedgerService,
                 finishedGoodRepository,
-                accountRepository);
+                accountRepository,
+                companyEntityLookup,
+                packagingSlipRepository,
+                finishedGoodsService,
+                accountingService,
+                accountingFacade,
+                invoiceNumberService,
+                invoiceRepository);
         company = new Company();
         company.setCode("COMP");
         company.setTimezone("UTC");
@@ -99,6 +127,8 @@ class SalesServiceTest {
                 null,
                 List.of(new SalesOrderItemRequest("SKU1", "Desc", BigDecimal.ONE, BigDecimal.valueOf(100), BigDecimal.ZERO)),
                 "NONE",
+                null,
+                null,
                 null);
 
         assertThrows(IllegalStateException.class, () -> salesService.createOrder(request));
@@ -120,6 +150,8 @@ class SalesServiceTest {
                 null,
                 List.of(new SalesOrderItemRequest("SKU2", "Desc", BigDecimal.ONE, BigDecimal.valueOf(100), BigDecimal.TEN)),
                 "PER_ITEM",
+                null,
+                null,
                 null);
 
         assertThrows(IllegalStateException.class, () -> salesService.createOrder(request));
@@ -133,7 +165,8 @@ class SalesServiceTest {
         when(finishedGoodRepository.findByCompanyAndProductCode(company, "SKU3"))
                 .thenReturn(Optional.of(finishedGood));
         Dealer dealer = dealerWithCreditLimit(42L, BigDecimal.valueOf(1000));
-        when(dealerRepository.findByCompanyAndId(company, 42L)).thenReturn(Optional.of(dealer));
+        when(companyEntityLookup.requireDealer(company, 42L)).thenReturn(dealer);
+        when(dealerRepository.lockByCompanyAndId(company, dealer.getId())).thenReturn(Optional.of(dealer));
         when(orderNumberService.nextOrderNumber(company)).thenReturn("SO-42");
         when(dealerLedgerService.currentBalance(42L)).thenReturn(BigDecimal.valueOf(950));
 
@@ -144,6 +177,8 @@ class SalesServiceTest {
                 null,
                 List.of(new SalesOrderItemRequest("SKU3", "Desc", BigDecimal.ONE, BigDecimal.valueOf(200), null)),
                 "NONE",
+                null,
+                null,
                 null);
 
         assertThrows(IllegalStateException.class, () -> salesService.createOrder(request));
@@ -172,6 +207,8 @@ class SalesServiceTest {
                 null,
                 List.of(new SalesOrderItemRequest("SKU4", "Desc", BigDecimal.ONE, BigDecimal.valueOf(100), null)),
                 "ORDER_TOTAL",
+                null,
+                null,
                 null);
 
         salesService.createOrder(request);
@@ -204,6 +241,8 @@ class SalesServiceTest {
                 null,
                 List.of(new SalesOrderItemRequest("SKU5", "Desc", BigDecimal.ONE, BigDecimal.valueOf(50), null)),
                 "PER_ITEM",
+                null,
+                null,
                 null);
 
         salesService.createOrder(request);

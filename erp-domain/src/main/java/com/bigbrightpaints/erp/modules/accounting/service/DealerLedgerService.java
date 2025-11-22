@@ -1,63 +1,41 @@
 package com.bigbrightpaints.erp.modules.accounting.service;
 
+import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.DealerLedgerEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.DealerLedgerRepository;
-import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerBalanceView;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import org.springframework.stereotype.Service;
 
 @Service
-public class DealerLedgerService {
+public class DealerLedgerService extends AbstractPartnerLedgerService<Dealer, DealerLedgerEntry> {
 
     private final DealerLedgerRepository dealerLedgerRepository;
     private final CompanyContextService companyContextService;
     private final DealerRepository dealerRepository;
+    private final CompanyEntityLookup companyEntityLookup;
 
     public DealerLedgerService(DealerLedgerRepository dealerLedgerRepository,
                                CompanyContextService companyContextService,
-                               DealerRepository dealerRepository) {
+                               DealerRepository dealerRepository,
+                               CompanyEntityLookup companyEntityLookup) {
         this.dealerLedgerRepository = dealerLedgerRepository;
         this.companyContextService = companyContextService;
         this.dealerRepository = dealerRepository;
+        this.companyEntityLookup = companyEntityLookup;
     }
 
-    public void recordLedgerEntry(Dealer dealer,
-                                  LocalLedgerContext context) {
-        Objects.requireNonNull(dealer, "Dealer is required for ledger entry");
-        BigDecimal debit = context.debit();
-        BigDecimal credit = context.credit();
-        if ((debit == null || debit.compareTo(BigDecimal.ZERO) == 0)
-                && (credit == null || credit.compareTo(BigDecimal.ZERO) == 0)) {
-            return;
-        }
-        DealerLedgerEntry entry = new DealerLedgerEntry();
-        entry.setCompany(dealer.getCompany());
-        entry.setDealer(dealer);
-        entry.setEntryDate(context.entryDate());
-        entry.setReferenceNumber(context.referenceNumber());
-        entry.setMemo(context.memo());
-        entry.setJournalEntry(context.journalEntry());
-        entry.setDebit(debit == null ? BigDecimal.ZERO : debit);
-        entry.setCredit(credit == null ? BigDecimal.ZERO : credit);
-        dealerLedgerRepository.save(entry);
-        Dealer managedDealer = dealerRepository.findById(dealer.getId()).orElse(dealer);
-        BigDecimal aggregate = dealerLedgerRepository.aggregateBalance(managedDealer.getCompany(), managedDealer)
-                .map(DealerBalanceView::balance)
-                .orElse(BigDecimal.ZERO);
-        managedDealer.setOutstandingBalance(aggregate);
-        dealerRepository.save(managedDealer);
+    public void recordLedgerEntry(Dealer dealer, LedgerContext context) {
+        super.recordLedgerEntry(dealer, context);
     }
 
     public Map<Long, BigDecimal> currentBalances(Collection<Long> dealerIds) {
@@ -78,17 +56,58 @@ public class DealerLedgerService {
             return BigDecimal.ZERO;
         }
         Company company = companyContextService.requireCurrentCompany();
-        Dealer dealer = dealerRepository.findByCompanyAndId(company, dealerId)
-                .orElseThrow(() -> new IllegalArgumentException("Dealer not found"));
+        Dealer dealer = companyEntityLookup.requireDealer(company, dealerId);
         return dealerLedgerRepository.aggregateBalance(company, dealer)
                 .map(DealerBalanceView::balance)
                 .orElse(BigDecimal.ZERO);
     }
 
-    public record LocalLedgerContext(LocalDate entryDate,
-                                     String referenceNumber,
-                                     String memo,
-                                     BigDecimal debit,
-                                     BigDecimal credit,
-                                     JournalEntry journalEntry) {}
+    @Override
+    protected DealerLedgerEntry createEntry() {
+        return new DealerLedgerEntry();
+    }
+
+    @Override
+    protected void persistEntry(DealerLedgerEntry entry) {
+        dealerLedgerRepository.save(entry);
+    }
+
+    @Override
+    protected Dealer reloadPartner(Dealer partner) {
+        return dealerRepository.findById(partner.getId()).orElse(partner);
+    }
+
+    @Override
+    protected BigDecimal aggregateBalance(Dealer partner) {
+        return dealerLedgerRepository.aggregateBalance(partner.getCompany(), partner)
+                .map(DealerBalanceView::balance)
+                .orElse(BigDecimal.ZERO);
+    }
+
+    @Override
+    protected void updateOutstandingBalance(Dealer partner, BigDecimal balance) {
+        partner.setOutstandingBalance(balance);
+        dealerRepository.save(partner);
+    }
+
+    public List<DealerLedgerEntry> entries(Dealer dealer) {
+        Company company = companyContextService.requireCurrentCompany();
+        return dealerLedgerRepository.findByCompanyAndDealerOrderByEntryDateAsc(company, dealer);
+    }
+
+    @Override
+    protected void populateEntry(DealerLedgerEntry entry,
+                                 Dealer partner,
+                                 LedgerContext context,
+                                 BigDecimal debit,
+                                 BigDecimal credit) {
+        entry.setCompany(partner.getCompany());
+        entry.setDealer(partner);
+        entry.setEntryDate(context.entryDate());
+        entry.setReferenceNumber(context.referenceNumber());
+        entry.setMemo(context.memo());
+        entry.setJournalEntry(context.journalEntry());
+        entry.setDebit(debit);
+        entry.setCredit(credit);
+    }
 }

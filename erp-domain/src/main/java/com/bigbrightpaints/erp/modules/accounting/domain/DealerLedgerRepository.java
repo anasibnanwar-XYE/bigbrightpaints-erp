@@ -22,4 +22,13 @@ public interface DealerLedgerRepository extends JpaRepository<DealerLedgerEntry,
     @Query("select new com.bigbrightpaints.erp.modules.accounting.dto.DealerBalanceView(e.dealer.id, coalesce(sum(e.debit - e.credit), 0)) " +
             "from DealerLedgerEntry e where e.company = :company and e.dealer = :dealer group by e.dealer.id")
     Optional<DealerBalanceView> aggregateBalance(@Param("company") Company company, @Param("dealer") Dealer dealer);
+
+    List<DealerLedgerEntry> findByCompanyAndDealerAndEntryDateBetweenOrderByEntryDateAsc(Company company,
+                                                                                         Dealer dealer,
+                                                                                         java.time.LocalDate start,
+                                                                                         java.time.LocalDate end);
+
+    List<DealerLedgerEntry> findByCompanyAndDealerAndEntryDateBeforeOrderByEntryDateAsc(Company company,
+                                                                                        Dealer dealer,
+                                                                                        java.time.LocalDate before);
 }

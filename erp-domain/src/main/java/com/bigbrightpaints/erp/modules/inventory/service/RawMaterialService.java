@@ -1,5 +1,8 @@
 package com.bigbrightpaints.erp.modules.inventory.service;
 
+import com.bigbrightpaints.erp.core.util.CompanyClock;
+import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
+import com.bigbrightpaints.erp.core.util.MoneyUtils;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.ReferenceNumberService;
@@ -18,14 +21,12 @@ import com.bigbrightpaints.erp.modules.production.domain.ProductionBrandReposito
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProductRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
-import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
 import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -41,9 +42,10 @@ public class RawMaterialService {
     private final ProductionProductRepository productionProductRepository;
     private final ProductionBrandRepository productionBrandRepository;
     private final AccountingFacade accountingFacade;
-    private final SupplierRepository supplierRepository;
     private final BatchNumberService batchNumberService;
     private final ReferenceNumberService referenceNumberService;
+    private final CompanyClock companyClock;
+    private final CompanyEntityLookup companyEntityLookup;
 
     public RawMaterialService(RawMaterialRepository rawMaterialRepository,
                               RawMaterialBatchRepository batchRepository,
@@ -52,9 +54,10 @@ public class RawMaterialService {
                               ProductionProductRepository productionProductRepository,
                               ProductionBrandRepository productionBrandRepository,
                               AccountingFacade accountingFacade,
-                              SupplierRepository supplierRepository,
                               BatchNumberService batchNumberService,
-                              ReferenceNumberService referenceNumberService) {
+                              ReferenceNumberService referenceNumberService,
+                              CompanyClock companyClock,
+                              CompanyEntityLookup companyEntityLookup) {
         this.rawMaterialRepository = rawMaterialRepository;
         this.batchRepository = batchRepository;
         this.movementRepository = movementRepository;
@@ -62,9 +65,10 @@ public class RawMaterialService {
         this.productionProductRepository = productionProductRepository;
         this.productionBrandRepository = productionBrandRepository;
         this.accountingFacade = accountingFacade;
-        this.supplierRepository = supplierRepository;
         this.batchNumberService = batchNumberService;
         this.referenceNumberService = referenceNumberService;
+        this.companyClock = companyClock;
+        this.companyEntityLookup = companyEntityLookup;
     }
 
     public List<RawMaterialDto> listRawMaterials() {
@@ -280,36 +284,26 @@ public class RawMaterialService {
         if (inventoryAccountId == null || supplier.getPayableAccount() == null) {
             return null;
         }
-        BigDecimal totalCost = safeMultiply(quantity, costPerUnit);
+        BigDecimal totalCost = MoneyUtils.safeMultiply(quantity, costPerUnit);
         if (totalCost.compareTo(BigDecimal.ZERO) <= 0) {
             return null;
         }
         String memo = context != null && StringUtils.hasText(context.memo())
                 ? context.memo()
                 : "Raw material batch " + batch.getBatchCode();
-        String referenceNumber = resolveReferenceNumber(material, context, batch);
         JournalEntryDto entry = accountingFacade.postPurchaseJournal(
                 supplier.getId(),
                 batch.getBatchCode(),
-                currentDate(material.getCompany()),
+                companyClock.today(material.getCompany()),
                 memo,
                 Map.of(inventoryAccountId, totalCost),
-                totalCost,
-                referenceNumber
+                totalCost
         );
         return entry != null ? entry.id() : null;
     }
 
     private LocalDate currentDate(Company company) {
-        String timezone = company.getTimezone() == null ? "UTC" : company.getTimezone();
-        return LocalDate.now(ZoneId.of(timezone));
-    }
-
-    private BigDecimal safeMultiply(BigDecimal left, BigDecimal right) {
-        if (left == null || right == null) {
-            return BigDecimal.ZERO;
-        }
-        return left.multiply(right);
+        return companyClock.today(company);
     }
 
     private void syncProductFromMaterial(Company company, RawMaterial material) {
@@ -357,8 +351,7 @@ public class RawMaterialService {
     }
 
     private Supplier requireSupplier(Company company, Long supplierId) {
-        return supplierRepository.findByCompanyAndId(company, supplierId)
-                .orElseThrow(() -> new IllegalArgumentException("Supplier not found"));
+        return companyEntityLookup.requireSupplier(company, supplierId);
     }
 
     private void ensurePostingAccounts(RawMaterial material, Supplier supplier) {

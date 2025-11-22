@@ -1,5 +1,7 @@
 package com.bigbrightpaints.erp.modules.factory.service;
 
+import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
+import com.bigbrightpaints.erp.core.util.MoneyUtils;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -20,11 +22,8 @@ import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovement;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionBrand;
-import com.bigbrightpaints.erp.modules.production.domain.ProductionBrandRepository;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
-import com.bigbrightpaints.erp.modules.production.domain.ProductionProductRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
-import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderRepository;
 import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -53,41 +52,33 @@ public class ProductionLogService {
 
     private final CompanyContextService companyContextService;
     private final ProductionLogRepository logRepository;
-    private final ProductionBrandRepository brandRepository;
-    private final ProductionProductRepository productRepository;
     private final RawMaterialRepository rawMaterialRepository;
     private final RawMaterialBatchRepository rawMaterialBatchRepository;
     private final RawMaterialMovementRepository rawMaterialMovementRepository;
     private final AccountingFacade accountingFacade;
-    private final SalesOrderRepository salesOrderRepository;
+    private final CompanyEntityLookup companyEntityLookup;
 
     public ProductionLogService(CompanyContextService companyContextService,
                                 ProductionLogRepository logRepository,
-                                ProductionBrandRepository brandRepository,
-                                ProductionProductRepository productRepository,
                                 RawMaterialRepository rawMaterialRepository,
                                 RawMaterialBatchRepository rawMaterialBatchRepository,
                                 RawMaterialMovementRepository rawMaterialMovementRepository,
                                 AccountingFacade accountingFacade,
-                                SalesOrderRepository salesOrderRepository) {
+                                CompanyEntityLookup companyEntityLookup) {
         this.companyContextService = companyContextService;
         this.logRepository = logRepository;
-        this.brandRepository = brandRepository;
-        this.productRepository = productRepository;
         this.rawMaterialRepository = rawMaterialRepository;
         this.rawMaterialBatchRepository = rawMaterialBatchRepository;
         this.rawMaterialMovementRepository = rawMaterialMovementRepository;
         this.accountingFacade = accountingFacade;
-        this.salesOrderRepository = salesOrderRepository;
+        this.companyEntityLookup = companyEntityLookup;
     }
 
     @Transactional
     public ProductionLogDetailDto createLog(ProductionLogRequest request) {
         Company company = companyContextService.requireCurrentCompany();
-        ProductionBrand brand = brandRepository.findByCompanyAndId(company, request.brandId())
-                .orElseThrow(() -> new IllegalArgumentException("Brand not found"));
-        ProductionProduct product = productRepository.findByCompanyAndId(company, request.productId())
-                .orElseThrow(() -> new IllegalArgumentException("Product not found"));
+        ProductionBrand brand = companyEntityLookup.requireProductionBrand(company, request.brandId());
+        ProductionProduct product = companyEntityLookup.requireProductionProduct(company, request.productId());
         if (!product.getBrand().getId().equals(brand.getId())) {
             throw new IllegalArgumentException("Product does not belong to brand");
         }
@@ -114,8 +105,7 @@ public class ProductionLogService {
         log.setNotes(clean(request.notes()));
         log.setCreatedBy(clean(request.createdBy()));
         if (request.salesOrderId() != null) {
-            SalesOrder order = salesOrderRepository.findByCompanyAndId(company, request.salesOrderId())
-                    .orElseThrow(() -> new IllegalArgumentException("Sales order not found"));
+            SalesOrder order = companyEntityLookup.requireSalesOrder(company, request.salesOrderId());
             log.setSalesOrderId(order.getId());
             log.setSalesOrderNumber(order.getOrderNumber());
         }
@@ -149,8 +139,7 @@ public class ProductionLogService {
 
     public ProductionLogDetailDto getLog(Long id) {
         Company company = companyContextService.requireCurrentCompany();
-        ProductionLog log = logRepository.findByCompanyAndId(company, id)
-                .orElseThrow(() -> new IllegalArgumentException("Production log not found"));
+        ProductionLog log = companyEntityLookup.requireProductionLog(company, id);
         return toDetailDto(log);
     }
 
@@ -199,11 +188,12 @@ public class ProductionLogService {
     }
 
     private BigDecimal issueFromBatches(RawMaterial rawMaterial, BigDecimal requiredQty, String referenceId) {
-        List<RawMaterialBatch> batches = rawMaterialBatchRepository.findByRawMaterial(rawMaterial).stream()
-                .sorted(Comparator.comparing(RawMaterialBatch::getReceivedAt))
-                .toList();
+        // Lock batches in FIFO order to prevent double consumption
+        List<RawMaterialBatch> batches = rawMaterialBatchRepository.findAvailableBatchesFIFO(rawMaterial);
         BigDecimal remaining = requiredQty;
         BigDecimal totalCost = BigDecimal.ZERO;
+        List<RawMaterialMovement> movements = new ArrayList<>();
+
         for (RawMaterialBatch batch : batches) {
             if (remaining.compareTo(BigDecimal.ZERO) <= 0) {
                 break;
@@ -216,8 +206,12 @@ public class ProductionLogService {
             if (take.compareTo(BigDecimal.ZERO) <= 0) {
                 continue;
             }
-            batch.setQuantity(available.subtract(take));
-            rawMaterialBatchRepository.save(batch);
+
+            BigDecimal newQty = available.subtract(take);
+            if (newQty.compareTo(BigDecimal.ZERO) < 0) {
+                throw new IllegalStateException("Batch quantity would go negative for " + batch.getBatchCode());
+            }
+            batch.setQuantity(newQty);
 
             RawMaterialMovement movement = new RawMaterialMovement();
             movement.setRawMaterial(rawMaterial);
@@ -228,14 +222,17 @@ public class ProductionLogService {
             movement.setQuantity(take);
             BigDecimal unitCost = Optional.ofNullable(batch.getCostPerUnit()).orElse(BigDecimal.ZERO);
             movement.setUnitCost(unitCost);
-            rawMaterialMovementRepository.save(movement);
+            BigDecimal movementCost = unitCost.multiply(take);
+            movements.add(movement);
 
-            totalCost = totalCost.add(unitCost.multiply(take));
+            totalCost = totalCost.add(movementCost);
             remaining = remaining.subtract(take);
         }
         if (remaining.compareTo(BigDecimal.ZERO) > 0) {
             throw new IllegalStateException("Insufficient batch availability for " + rawMaterial.getName());
         }
+        rawMaterialBatchRepository.saveAll(batches);
+        rawMaterialMovementRepository.saveAll(movements);
         return totalCost;
     }
 
@@ -310,10 +307,7 @@ public class ProductionLogService {
     }
 
     private BigDecimal calculateUnitCost(BigDecimal total, BigDecimal quantity) {
-        if (total == null || quantity == null || quantity.compareTo(BigDecimal.ZERO) <= 0) {
-            return BigDecimal.ZERO;
-        }
-        return total.divide(quantity, 6, COST_ROUNDING);
+        return MoneyUtils.safeDivide(total, quantity, 6, COST_ROUNDING);
     }
 
     private record MaterialIssueSummary(BigDecimal totalCost, Map<Long, BigDecimal> accountTotals) {}
@@ -348,7 +342,11 @@ public class ProductionLogService {
             try {
                 return Instant.parse(producedAt);
             } catch (Exception inner) {
-                throw new IllegalArgumentException("Invalid producedAt format");
+                try {
+                    return LocalDate.parse(producedAt).atStartOfDay(ZoneOffset.UTC).toInstant();
+                } catch (Exception ignored) {
+                    throw new IllegalArgumentException("Invalid producedAt format");
+                }
             }
         }
     }

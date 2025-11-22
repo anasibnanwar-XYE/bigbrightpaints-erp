@@ -1,6 +1,6 @@
 package com.bigbrightpaints.erp.modules.accounting.service;
 
-import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
+import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.SupplierLedgerEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.SupplierLedgerRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.SupplierBalanceView;
@@ -11,53 +11,32 @@ import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
 @Service
-public class SupplierLedgerService {
+public class SupplierLedgerService extends AbstractPartnerLedgerService<Supplier, SupplierLedgerEntry> {
 
     private final SupplierLedgerRepository supplierLedgerRepository;
     private final SupplierRepository supplierRepository;
     private final CompanyContextService companyContextService;
+    private final CompanyEntityLookup companyEntityLookup;
 
     public SupplierLedgerService(SupplierLedgerRepository supplierLedgerRepository,
                                  SupplierRepository supplierRepository,
-                                 CompanyContextService companyContextService) {
+                                 CompanyContextService companyContextService,
+                                 CompanyEntityLookup companyEntityLookup) {
         this.supplierLedgerRepository = supplierLedgerRepository;
         this.supplierRepository = supplierRepository;
         this.companyContextService = companyContextService;
+        this.companyEntityLookup = companyEntityLookup;
     }
 
-    public void recordLedgerEntry(Supplier supplier, LocalLedgerContext context) {
-        Objects.requireNonNull(supplier, "Supplier is required for ledger entry");
-        BigDecimal debit = context.debit() == null ? BigDecimal.ZERO : context.debit();
-        BigDecimal credit = context.credit() == null ? BigDecimal.ZERO : context.credit();
-        if (debit.compareTo(BigDecimal.ZERO) == 0 && credit.compareTo(BigDecimal.ZERO) == 0) {
-            return;
-        }
-        SupplierLedgerEntry entry = new SupplierLedgerEntry();
-        entry.setCompany(supplier.getCompany());
-        entry.setSupplier(supplier);
-        entry.setEntryDate(context.entryDate());
-        entry.setReferenceNumber(context.referenceNumber());
-        entry.setMemo(context.memo());
-        entry.setJournalEntry(context.journalEntry());
-        entry.setDebit(debit);
-        entry.setCredit(credit);
-        supplierLedgerRepository.save(entry);
-
-        Supplier managed = supplierRepository.findById(supplier.getId()).orElse(supplier);
-        BigDecimal aggregate = supplierLedgerRepository.aggregateBalance(managed.getCompany(), managed)
-                .map(SupplierBalanceView::balance)
-                .orElse(BigDecimal.ZERO);
-        managed.setOutstandingBalance(aggregate);
-        supplierRepository.save(managed);
+    public void recordLedgerEntry(Supplier supplier, LedgerContext context) {
+        super.recordLedgerEntry(supplier, context);
     }
 
     public Map<Long, BigDecimal> currentBalances(Collection<Long> supplierIds) {
@@ -78,17 +57,53 @@ public class SupplierLedgerService {
             return BigDecimal.ZERO;
         }
         Company company = companyContextService.requireCurrentCompany();
-        Supplier supplier = supplierRepository.findByCompanyAndId(company, supplierId)
-                .orElseThrow(() -> new IllegalArgumentException("Supplier not found"));
+        Supplier supplier = companyEntityLookup.requireSupplier(company, supplierId);
         return supplierLedgerRepository.aggregateBalance(company, supplier)
                 .map(SupplierBalanceView::balance)
                 .orElse(BigDecimal.ZERO);
     }
 
-    public record LocalLedgerContext(LocalDate entryDate,
-                                     String referenceNumber,
-                                     String memo,
-                                     BigDecimal debit,
-                                     BigDecimal credit,
-                                     JournalEntry journalEntry) {}
+    @Override
+    protected SupplierLedgerEntry createEntry() {
+        return new SupplierLedgerEntry();
+    }
+
+    @Override
+    protected void persistEntry(SupplierLedgerEntry entry) {
+        supplierLedgerRepository.save(entry);
+    }
+
+    @Override
+    protected Supplier reloadPartner(Supplier partner) {
+        return supplierRepository.findById(partner.getId()).orElse(partner);
+    }
+
+    @Override
+    protected BigDecimal aggregateBalance(Supplier partner) {
+        return supplierLedgerRepository.aggregateBalance(partner.getCompany(), partner)
+                .map(SupplierBalanceView::balance)
+                .orElse(BigDecimal.ZERO);
+    }
+
+    @Override
+    protected void updateOutstandingBalance(Supplier partner, BigDecimal balance) {
+        partner.setOutstandingBalance(balance);
+        supplierRepository.save(partner);
+    }
+
+    @Override
+    protected void populateEntry(SupplierLedgerEntry entry,
+                                 Supplier partner,
+                                 LedgerContext context,
+                                 BigDecimal debit,
+                                 BigDecimal credit) {
+        entry.setCompany(partner.getCompany());
+        entry.setSupplier(partner);
+        entry.setEntryDate(context.entryDate());
+        entry.setReferenceNumber(context.referenceNumber());
+        entry.setMemo(context.memo());
+        entry.setJournalEntry(context.journalEntry());
+        entry.setDebit(debit);
+        entry.setCredit(credit);
+    }
 }

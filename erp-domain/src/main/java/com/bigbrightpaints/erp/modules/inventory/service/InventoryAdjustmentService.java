@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.inventory.service;
 
+import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -23,7 +24,6 @@ import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,17 +37,20 @@ public class InventoryAdjustmentService {
     private final InventoryAdjustmentRepository adjustmentRepository;
     private final InventoryMovementRepository inventoryMovementRepository;
     private final AccountingFacade accountingFacade;
+    private final CompanyClock companyClock;
 
     public InventoryAdjustmentService(CompanyContextService companyContextService,
                                       FinishedGoodRepository finishedGoodRepository,
                                       InventoryAdjustmentRepository adjustmentRepository,
                                       InventoryMovementRepository inventoryMovementRepository,
-                                      AccountingFacade accountingFacade) {
+                                      AccountingFacade accountingFacade,
+                                      CompanyClock companyClock) {
         this.companyContextService = companyContextService;
         this.finishedGoodRepository = finishedGoodRepository;
         this.adjustmentRepository = adjustmentRepository;
         this.inventoryMovementRepository = inventoryMovementRepository;
         this.accountingFacade = accountingFacade;
+        this.companyClock = companyClock;
     }
 
     public List<InventoryAdjustmentDto> listAdjustments() {
@@ -188,8 +191,7 @@ public class InventoryAdjustmentService {
     }
 
     private LocalDate resolveCurrentDate(Company company) {
-        String timezone = company.getTimezone() == null ? "UTC" : company.getTimezone();
-        return LocalDate.now(ZoneId.of(timezone));
+        return companyClock.today(company);
     }
 
     private String resolveCurrentUser() {

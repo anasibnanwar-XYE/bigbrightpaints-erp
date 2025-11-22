@@ -8,6 +8,13 @@ spring:
   mail:
     host: localhost
     port: 25
+jwt:
+  secret: 0123456789abcdef0123456789abcdef
+
+erp:
+  security:
+    encryption:
+      key: test-test-test-test-test-test-test!
 
 management:
   health:
@@ -17,4 +24,3 @@ management:
       enabled: false
     mail:
       enabled: false
-

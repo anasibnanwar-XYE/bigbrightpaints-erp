@@ -6,11 +6,13 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 public interface FinishedGoodBatchRepository extends JpaRepository<FinishedGoodBatch, Long> {
 
     List<FinishedGoodBatch> findByFinishedGoodOrderByManufacturedAtAsc(FinishedGood finishedGood);
+    List<FinishedGoodBatch> findByFinishedGood_ValuationAccountId(Long valuationAccountId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
@@ -22,4 +24,30 @@ public interface FinishedGoodBatchRepository extends JpaRepository<FinishedGoodB
                      b.manufacturedAt asc
             """)
     List<FinishedGoodBatch> findAllocatableBatches(@Param("finishedGood") FinishedGood finishedGood);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select b from FinishedGoodBatch b
+            where b.finishedGood = :finishedGood
+              and b.quantityAvailable > 0
+            order by b.manufacturedAt asc, b.id asc
+            """)
+    List<FinishedGoodBatch> findAllocatableBatchesFIFO(@Param("finishedGood") FinishedGood finishedGood);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select b from FinishedGoodBatch b
+            where b.finishedGood = :finishedGood
+              and b.quantityAvailable > 0
+            order by b.manufacturedAt desc, b.id desc
+            """)
+    List<FinishedGoodBatch> findAllocatableBatchesLIFO(@Param("finishedGood") FinishedGood finishedGood);
+
+    @Query("""
+            select sum(b.quantityAvailable * b.unitCost) / sum(b.quantityAvailable)
+            from FinishedGoodBatch b
+            where b.finishedGood = :finishedGood
+              and b.quantityAvailable > 0
+            """)
+    BigDecimal calculateWeightedAverageCost(@Param("finishedGood") FinishedGood finishedGood);
 }

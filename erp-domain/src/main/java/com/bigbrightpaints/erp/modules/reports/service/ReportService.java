@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.reports.service;
 
+import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
@@ -46,6 +47,7 @@ public class ReportService {
     private final JournalEntryRepository journalEntryRepository;
     private final InvoiceRepository invoiceRepository;
     private final ProductionLogRepository productionLogRepository;
+    private final CompanyEntityLookup companyEntityLookup;
     private static final BigDecimal BALANCE_TOLERANCE = new BigDecimal("0.01");
 
     public ReportService(CompanyContextService companyContextService,
@@ -58,7 +60,8 @@ public class ReportService {
                          DealerLedgerService dealerLedgerService,
                          JournalEntryRepository journalEntryRepository,
                          InvoiceRepository invoiceRepository,
-                         ProductionLogRepository productionLogRepository) {
+                         ProductionLogRepository productionLogRepository,
+                         CompanyEntityLookup companyEntityLookup) {
         this.companyContextService = companyContextService;
         this.accountRepository = accountRepository;
         this.rawMaterialRepository = rawMaterialRepository;
@@ -70,6 +73,7 @@ public class ReportService {
         this.journalEntryRepository = journalEntryRepository;
         this.invoiceRepository = invoiceRepository;
         this.productionLogRepository = productionLogRepository;
+        this.companyEntityLookup = companyEntityLookup;
     }
 
     public BalanceSheetDto balanceSheet() {
@@ -214,8 +218,7 @@ public class ReportService {
 
     public ReconciliationDashboardDto reconciliationDashboard(Long bankAccountId, BigDecimal statementBalance) {
         Company company = companyContextService.requireCurrentCompany();
-        Account bankAccount = accountRepository.findByCompanyAndId(company, bankAccountId)
-                .orElseThrow(() -> new IllegalArgumentException("Bank account not found"));
+        Account bankAccount = companyEntityLookup.requireAccount(company, bankAccountId);
         InventoryTotals totals = computeInventoryTotals(company);
         BigDecimal ledgerInventoryBalance = accountRepository.findByCompanyOrderByCodeAsc(company).stream()
                 .filter(this::isInventoryAccount)
@@ -431,8 +434,7 @@ public class ReportService {
     @Transactional(readOnly = true)
     public CostBreakdownDto costBreakdown(Long productionLogId) {
         Company company = companyContextService.requireCurrentCompany();
-        ProductionLog log = productionLogRepository.findByCompanyAndId(company, productionLogId)
-                .orElseThrow(() -> new IllegalArgumentException("Production log not found"));
+        ProductionLog log = companyEntityLookup.requireProductionLog(company, productionLogId);
 
         BigDecimal totalCost = safe(log.getMaterialCostTotal())
                 .add(safe(log.getLaborCostTotal()))

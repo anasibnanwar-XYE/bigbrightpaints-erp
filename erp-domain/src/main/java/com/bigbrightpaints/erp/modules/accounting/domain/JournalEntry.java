@@ -4,6 +4,7 @@ import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import jakarta.persistence.*;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -87,6 +88,15 @@ public class JournalEntry extends VersionedEntity {
     @Column(name = "last_modified_by")
     private String lastModifiedBy;
 
+    @Column(name = "currency", nullable = false)
+    private String currency = "INR";
+
+    @Column(name = "fx_rate", precision = 19, scale = 6)
+    private BigDecimal fxRate = BigDecimal.ONE;
+
+    @Column(name = "foreign_amount_total")
+    private Double foreignAmountTotal;
+
     @OneToMany(mappedBy = "journalEntry", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<JournalLine> lines = new ArrayList<>();
 
@@ -155,4 +165,15 @@ public class JournalEntry extends VersionedEntity {
     public void setPostedBy(String postedBy) { this.postedBy = postedBy; }
     public String getLastModifiedBy() { return lastModifiedBy; }
     public void setLastModifiedBy(String lastModifiedBy) { this.lastModifiedBy = lastModifiedBy; }
+    public String getCurrency() { return currency; }
+    public void setCurrency(String currency) { this.currency = currency; }
+    public BigDecimal getFxRate() { return fxRate; }
+    public void setFxRate(BigDecimal fxRate) {
+        if (fxRate == null || fxRate.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("FX rate must be positive");
+        }
+        this.fxRate = fxRate;
+    }
+    public Double getForeignAmountTotal() { return foreignAmountTotal; }
+    public void setForeignAmountTotal(Double foreignAmountTotal) { this.foreignAmountTotal = foreignAmountTotal; }
 }

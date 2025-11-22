@@ -3,6 +3,7 @@ package com.bigbrightpaints.erp.modules.purchasing.domain;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.PositiveOrZero;
 import java.math.BigDecimal;
 import java.time.Instant;
 import com.bigbrightpaints.erp.core.domain.VersionedEntity;
@@ -37,9 +38,11 @@ public class Supplier extends VersionedEntity {
     private String address;
 
     @Column(name = "credit_limit", nullable = false)
+    @PositiveOrZero
     private BigDecimal creditLimit = BigDecimal.ZERO;
 
     @Column(name = "outstanding_balance", nullable = false)
+    @PositiveOrZero
     private BigDecimal outstandingBalance = BigDecimal.ZERO;
 
     @ManyToOne(fetch = FetchType.LAZY)

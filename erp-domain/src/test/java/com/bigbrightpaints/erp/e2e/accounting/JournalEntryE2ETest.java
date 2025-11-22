@@ -60,6 +60,7 @@ public class JournalEntryE2ETest extends AbstractIntegrationTest {
         HttpHeaders h = new HttpHeaders();
         h.setBearerAuth(token);
         h.setContentType(MediaType.APPLICATION_JSON);
+        h.set("X-Company-Id", COMPANY_CODE);
         return h;
     }
 
@@ -110,7 +111,8 @@ public class JournalEntryE2ETest extends AbstractIntegrationTest {
 
         Map<String, Object> jeRequest = Map.of(
                 "entryDate", LocalDate.now(),
-                "description", "Test balanced entry",
+                "referenceNumber", "JE-E2E-" + System.currentTimeMillis(),
+                "memo", "Test balanced entry",
                 "lines", List.of(debitLine, creditLine)
         );
 
@@ -121,13 +123,14 @@ public class JournalEntryE2ETest extends AbstractIntegrationTest {
 
         // Verify entry is balanced
         Long entryId = ((Number) ((Map<?, ?>) response.getBody().get("data")).get("id")).longValue();
-        JournalEntry entry = journalEntryRepository.findById(entryId).orElseThrow();
-
-        BigDecimal totalDebits = entry.getLines().stream()
+        // Fetch lines directly to avoid lazy loading issues on entry.getLines()
+        BigDecimal totalDebits = journalLineRepository.findAll().stream()
+                .filter(line -> line.getJournalEntry().getId().equals(entryId))
                 .map(JournalLine::getDebit)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        BigDecimal totalCredits = entry.getLines().stream()
+        BigDecimal totalCredits = journalLineRepository.findAll().stream()
+                .filter(line -> line.getJournalEntry().getId().equals(entryId))
                 .map(JournalLine::getCredit)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
@@ -240,7 +243,8 @@ public class JournalEntryE2ETest extends AbstractIntegrationTest {
 
         Map<String, Object> jeRequest = Map.of(
                 "entryDate", LocalDate.now(),
-                "description", "Dealer payment",
+                "referenceNumber", "JE-E2E-" + System.currentTimeMillis(),
+                "memo", "Dealer payment",
                 "lines", List.of(debitLine, creditLine)
         );
 
@@ -276,7 +280,8 @@ public class JournalEntryE2ETest extends AbstractIntegrationTest {
 
         Map<String, Object> jeRequest = Map.of(
                 "entryDate", LocalDate.now(),
-                "description", "Supplier payment",
+                "referenceNumber", "JE-E2E-" + System.currentTimeMillis(),
+                "memo", "Supplier payment",
                 "lines", List.of(debitLine, creditLine)
         );
 
@@ -325,7 +330,8 @@ public class JournalEntryE2ETest extends AbstractIntegrationTest {
 
         Map<String, Object> jeRequest = Map.of(
                 "entryDate", LocalDate.now(),
-                "description", "Test balanced entry",
+                "referenceNumber", "JE-E2E-" + System.currentTimeMillis(),
+                "memo", "Test balanced entry",
                 "lines", List.of(debitLine, creditLine)
         );
 

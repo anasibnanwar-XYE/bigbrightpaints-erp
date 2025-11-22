@@ -20,6 +20,15 @@ public record CostAllocationRequest(
         @NotNull(message = "Overhead cost is required")
         BigDecimal overheadCost,
 
+        @NotNull(message = "Finished goods account is required")
+        Long finishedGoodsAccountId,
+
+        @NotNull(message = "Labor expense account is required")
+        Long laborExpenseAccountId,
+
+        @NotNull(message = "Overhead expense account is required")
+        Long overheadExpenseAccountId,
+
         String notes
 ) {
     public CostAllocationRequest {

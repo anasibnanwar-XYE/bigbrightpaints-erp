@@ -11,7 +11,9 @@ import java.util.UUID;
 import com.bigbrightpaints.erp.core.domain.VersionedEntity;
 
 @Entity
-@Table(name = "sales_orders", uniqueConstraints = @UniqueConstraint(columnNames = {"company_id", "order_number"}))
+@Table(name = "sales_orders", uniqueConstraints = {
+        @UniqueConstraint(columnNames = {"company_id", "order_number"})
+})
 public class SalesOrder extends VersionedEntity {
 
     @Id
@@ -58,6 +60,9 @@ public class SalesOrder extends VersionedEntity {
 
     @Column(nullable = false)
     private String currency = "INR";
+
+    @Column(name = "idempotency_key", length = 255)
+    private String idempotencyKey;
 
     private String notes;
 
@@ -118,4 +123,6 @@ public class SalesOrder extends VersionedEntity {
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
     public List<SalesOrderItem> getItems() { return items; }
+    public String getIdempotencyKey() { return idempotencyKey; }
+    public void setIdempotencyKey(String idempotencyKey) { this.idempotencyKey = idempotencyKey; }
 }

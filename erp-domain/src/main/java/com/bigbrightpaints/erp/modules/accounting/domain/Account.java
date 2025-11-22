@@ -2,6 +2,8 @@ package com.bigbrightpaints.erp.modules.accounting.domain;
 
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import jakarta.persistence.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
 import com.bigbrightpaints.erp.core.domain.VersionedEntity;
@@ -10,6 +12,8 @@ import java.util.UUID;
 @Entity
 @Table(name = "accounts", uniqueConstraints = @UniqueConstraint(columnNames = {"company_id", "code"}))
 public class Account extends VersionedEntity {
+
+    private static final Logger log = LoggerFactory.getLogger(Account.class);
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -53,5 +57,30 @@ public class Account extends VersionedEntity {
     public AccountType getType() { return type; }
     public void setType(AccountType type) { this.type = type; }
     public BigDecimal getBalance() { return balance; }
-    public void setBalance(BigDecimal balance) { this.balance = balance; }
+    public void setBalance(BigDecimal balance) {
+        validateBalanceUpdate(balance);
+        this.balance = balance;
+    }
+
+    /**
+     * Guard against invalid balances by account type. Assets/expenses/COGS must not go negative.
+     */
+    public void validateBalanceUpdate(BigDecimal newBalance) {
+        if (newBalance == null) {
+            throw new IllegalArgumentException("Account balance cannot be null");
+        }
+        AccountType safeType = type;
+        if (safeType == null) {
+            return;
+        }
+        // Soft guards: warn on unusual signs but do not block (advances, prepayments can flip signs legitimately)
+        if ((safeType == AccountType.ASSET || safeType == AccountType.EXPENSE || safeType == AccountType.COGS)
+                && newBalance.compareTo(BigDecimal.ZERO) < 0) {
+            log.warn("Unusual negative balance {} for {} account {}", newBalance, safeType, code);
+        }
+        if ((safeType == AccountType.LIABILITY || safeType == AccountType.REVENUE || safeType == AccountType.EQUITY)
+                && newBalance.compareTo(BigDecimal.ZERO) > 0) {
+            log.warn("Unusual debit balance {} for {} account {}", newBalance, safeType, code);
+        }
+    }
 }

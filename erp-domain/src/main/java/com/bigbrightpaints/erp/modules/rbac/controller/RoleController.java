@@ -3,6 +3,7 @@ package com.bigbrightpaints.erp.modules.rbac.controller;
 import com.bigbrightpaints.erp.modules.rbac.dto.CreateRoleRequest;
 import com.bigbrightpaints.erp.modules.rbac.dto.RoleDto;
 import com.bigbrightpaints.erp.modules.rbac.service.RoleService;
+import java.util.Locale;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -28,6 +29,21 @@ public class RoleController {
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<ApiResponse<List<RoleDto>>> listRoles() {
         return ResponseEntity.ok(ApiResponse.success("Platform roles", roleService.listRoles()));
+    }
+
+    @GetMapping("/{roleKey}")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public ResponseEntity<ApiResponse<RoleDto>> getRoleByKey(@org.springframework.web.bind.annotation.PathVariable String roleKey) {
+        String normalized = roleKey == null ? "" : roleKey.trim().toUpperCase(Locale.ROOT);
+        if (!normalized.startsWith("ROLE_")) {
+            normalized = "ROLE_" + normalized;
+        }
+        String target = normalized;
+        RoleDto match = roleService.listRoles().stream()
+                .filter(r -> r.name() != null && r.name().equalsIgnoreCase(target))
+                .findFirst()
+                .orElseGet(() -> new RoleDto(null, target, target, List.of()));
+        return ResponseEntity.ok(ApiResponse.success("Role " + target, match));
     }
 
     @PostMapping

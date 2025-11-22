@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.purchasing.service;
 
+import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
@@ -26,17 +27,21 @@ public class SupplierService {
     private final CompanyContextService companyContextService;
     private final AccountRepository accountRepository;
     private final SupplierLedgerService supplierLedgerService;
+    private final CompanyEntityLookup companyEntityLookup;
 
     public SupplierService(SupplierRepository supplierRepository,
                            CompanyContextService companyContextService,
                            AccountRepository accountRepository,
-                           SupplierLedgerService supplierLedgerService) {
+                           SupplierLedgerService supplierLedgerService,
+                           CompanyEntityLookup companyEntityLookup) {
         this.supplierRepository = supplierRepository;
         this.companyContextService = companyContextService;
         this.accountRepository = accountRepository;
         this.supplierLedgerService = supplierLedgerService;
+        this.companyEntityLookup = companyEntityLookup;
     }
 
+    @Transactional(Transactional.TxType.SUPPORTS)
     public List<SupplierResponse> listSuppliers() {
         Company company = companyContextService.requireCurrentCompany();
         List<Supplier> suppliers = supplierRepository.findByCompanyOrderByNameAsc(company);
@@ -88,8 +93,7 @@ public class SupplierService {
     }
 
     private Supplier requireSupplier(Company company, Long id) {
-        return supplierRepository.findByCompanyAndId(company, id)
-                .orElseThrow(() -> new IllegalArgumentException("Supplier not found"));
+        return companyEntityLookup.requireSupplier(company, id);
     }
 
     private Account createPayableAccount(Company company, Supplier supplier) {

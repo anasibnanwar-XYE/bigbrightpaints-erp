@@ -11,10 +11,18 @@ import java.util.List;
 import java.util.Optional;
 
 public interface JournalEntryRepository extends JpaRepository<JournalEntry, Long> {
-    @EntityGraph(attributePaths = {"lines", "lines.account"})
+    @EntityGraph(attributePaths = {"dealer", "supplier", "lines", "lines.account"})
     List<JournalEntry> findByCompanyOrderByEntryDateDesc(Company company);
+
+    @EntityGraph(attributePaths = {"dealer", "supplier", "lines", "lines.account"})
     List<JournalEntry> findByCompanyAndDealerOrderByEntryDateDesc(Company company, Dealer dealer);
     Optional<JournalEntry> findByCompanyAndId(Company company, Long id);
     Optional<JournalEntry> findByCompanyAndReferenceNumber(Company company, String referenceNumber);
     long countByCompanyAndEntryDateBetweenAndStatusIn(Company company, LocalDate start, LocalDate end, Collection<String> statuses);
+
+    @EntityGraph(attributePaths = {"dealer", "supplier", "lines", "lines.account"})
+    List<JournalEntry> findByCompanyAndEntryDateBetweenOrderByEntryDateAsc(Company company, LocalDate start, LocalDate end);
+
+    @EntityGraph(attributePaths = {"lines"})
+    List<JournalEntry> findAll();
 }

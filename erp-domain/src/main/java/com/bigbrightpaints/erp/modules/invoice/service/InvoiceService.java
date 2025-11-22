@@ -1,5 +1,7 @@
 package com.bigbrightpaints.erp.modules.invoice.service;
 
+import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
+import com.bigbrightpaints.erp.core.util.MoneyUtils;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -10,7 +12,6 @@ import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
 import com.bigbrightpaints.erp.modules.invoice.dto.InvoiceDto;
 import com.bigbrightpaints.erp.modules.invoice.dto.InvoiceLineDto;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
-import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderItem;
 import com.bigbrightpaints.erp.modules.sales.service.SalesJournalService;
@@ -28,26 +29,26 @@ public class InvoiceService {
 
     private final CompanyContextService companyContextService;
     private final InvoiceRepository invoiceRepository;
-    private final DealerRepository dealerRepository;
     private final SalesService salesService;
     private final InvoiceNumberService invoiceNumberService;
     private final JournalEntryRepository journalEntryRepository;
     private final SalesJournalService salesJournalService;
+    private final CompanyEntityLookup companyEntityLookup;
 
     public InvoiceService(CompanyContextService companyContextService,
                           InvoiceRepository invoiceRepository,
-                          DealerRepository dealerRepository,
                           SalesService salesService,
                           InvoiceNumberService invoiceNumberService,
                           JournalEntryRepository journalEntryRepository,
-                          SalesJournalService salesJournalService) {
+                          SalesJournalService salesJournalService,
+                          CompanyEntityLookup companyEntityLookup) {
         this.companyContextService = companyContextService;
         this.invoiceRepository = invoiceRepository;
-        this.dealerRepository = dealerRepository;
         this.salesService = salesService;
         this.invoiceNumberService = invoiceNumberService;
         this.journalEntryRepository = journalEntryRepository;
         this.salesJournalService = salesJournalService;
+        this.companyEntityLookup = companyEntityLookup;
     }
 
     @Transactional
@@ -82,7 +83,7 @@ public class InvoiceService {
             line.setUnitPrice(item.getUnitPrice());
             BigDecimal lineSubtotal = item.getLineSubtotal() != null
                     ? item.getLineSubtotal()
-                    : multiply(item.getQuantity(), item.getUnitPrice());
+                    : MoneyUtils.safeMultiply(item.getQuantity(), item.getUnitPrice());
             BigDecimal lineTax = item.getGstAmount() != null ? item.getGstAmount() : BigDecimal.ZERO;
             BigDecimal taxRate = item.getGstRate() != null ? item.getGstRate() : BigDecimal.ZERO;
             line.setTaxRate(taxRate);
@@ -100,6 +101,7 @@ public class InvoiceService {
         invoice.setSubtotal(subtotal);
         invoice.setTaxTotal(taxTotal);
         invoice.setTotalAmount(subtotal.add(taxTotal));
+        invoice.setOutstandingAmount(subtotal.add(taxTotal));
         JournalEntry journalEntry = resolveInvoiceJournal(order, invoice);
         if (journalEntry != null) {
             invoice.setJournalEntry(journalEntry);
@@ -118,8 +120,7 @@ public class InvoiceService {
 
     public List<InvoiceDto> listDealerInvoices(Long dealerId) {
         Company company = companyContextService.requireCurrentCompany();
-        Dealer dealer = dealerRepository.findByCompanyAndId(company, dealerId)
-                .orElseThrow(() -> new IllegalArgumentException("Dealer not found"));
+        Dealer dealer = companyEntityLookup.requireDealer(company, dealerId);
         return invoiceRepository.findByCompanyAndDealerOrderByIssueDateDesc(company, dealer).stream()
                 .map(this::toDto)
                 .toList();
@@ -127,8 +128,7 @@ public class InvoiceService {
 
     public InvoiceDto getInvoice(Long id) {
         Company company = companyContextService.requireCurrentCompany();
-        Invoice invoice = invoiceRepository.findByCompanyAndId(company, id)
-                .orElseThrow(() -> new IllegalArgumentException("Invoice not found"));
+        Invoice invoice = companyEntityLookup.requireInvoice(company, id);
         return toDto(invoice);
     }
 
@@ -149,20 +149,12 @@ public class InvoiceService {
         if (entryId == null) {
             return null;
         }
-        return journalEntryRepository.findByCompanyAndId(order.getCompany(), entryId)
-                .orElseThrow(() -> new IllegalStateException("Sales journal entry not found for invoice reference " + reference));
+        return companyEntityLookup.requireJournalEntry(order.getCompany(), entryId);
     }
 
     private LocalDate currentDate(Company company) {
         ZoneId zone = ZoneId.of(company.getTimezone());
         return LocalDate.now(zone);
-    }
-
-    private BigDecimal multiply(BigDecimal a, BigDecimal b) {
-        if (a == null || b == null) {
-            return BigDecimal.ZERO;
-        }
-        return a.multiply(b);
     }
 
     private InvoiceDto toDto(Invoice invoice) {
@@ -185,6 +177,7 @@ public class InvoiceService {
                 invoice.getSubtotal(),
                 invoice.getTaxTotal(),
                 invoice.getTotalAmount(),
+                invoice.getOutstandingAmount(),
                 invoice.getCurrency(),
                 invoice.getIssueDate(),
                 invoice.getDueDate(),

@@ -46,6 +46,7 @@ import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -161,7 +162,7 @@ public class IntegrationCoordinator {
         }
     }
 
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public AutoApprovalResult autoApproveOrder(String orderId, BigDecimal amount, String companyId) {
         String normalizedCompanyId = normalizeCompanyId(companyId);
         if (normalizedCompanyId == null) {
@@ -540,6 +541,7 @@ public class IntegrationCoordinator {
         );
     }
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     private AutoApprovalResult finalizeShipment(String orderId, String companyId) {
         return withCompanyContext(companyId, () -> {
             Long numericId = parseNumericId(orderId);

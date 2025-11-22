@@ -18,7 +18,9 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 public class FinishedGoodsService {
@@ -116,6 +118,7 @@ public class FinishedGoodsService {
             FinishedGood finishedGood = lockFinishedGood(order.getCompany(), item.getProductCode());
             allocateItem(order, slip, finishedGood, item, shortages);
         }
+        // Soft reservation only: do not throw on shortages; caller can choose to dispatch partial/backorder
         return new InventoryReservationResult(toSlipDto(slip), List.copyOf(shortages));
     }
 
@@ -144,41 +147,76 @@ public class FinishedGoodsService {
 
     @Transactional
     public List<DispatchPosting> markSlipDispatched(Long salesOrderId) {
-        PackagingSlip slip = packagingSlipRepository.findBySalesOrderId(salesOrderId)
+        PackagingSlip slip = packagingSlipRepository.findAndLockBySalesOrderId(salesOrderId)
                 .orElseThrow(() -> new IllegalArgumentException("Packaging slip not found for order " + salesOrderId));
         if ("DISPATCHED".equalsIgnoreCase(slip.getStatus())) {
             return List.of();
         }
-        slip.setStatus("DISPATCHED");
-        slip.setDispatchedAt(Instant.now());
-
         List<InventoryReservation> reservations = inventoryReservationRepository
                 .findByReferenceTypeAndReferenceId(InventoryReference.SALES_ORDER, salesOrderId.toString());
-        Map<Long, DispatchPostingBuilder> postingBuilders = new HashMap<>();
-        for (InventoryReservation reservation : reservations) {
-            BigDecimal qty = reservation.getReservedQuantity() != null ? reservation.getReservedQuantity() : reservation.getQuantity();
-            reservation.setFulfilledQuantity(qty);
-            reservation.setStatus("FULFILLED");
-            inventoryReservationRepository.save(reservation);
-
-            FinishedGood fg = reservation.getFinishedGood();
-            FinishedGoodBatch batch = reservation.getFinishedGoodBatch();
-            if (fg != null && qty != null) {
-                if (fg.getValuationAccountId() == null || fg.getCogsAccountId() == null) {
-                    throw new IllegalStateException("Finished good " + fg.getProductCode() + " missing accounting configuration");
-                }
-                FinishedGood lockedFg = lockFinishedGood(slip.getCompany(), fg.getId());
-                lockedFg.setReservedStock(lockedFg.getReservedStock().subtract(qty));
-                finishedGoodRepository.save(lockedFg);
-                BigDecimal unitCost = batch != null ? batch.getUnitCost() : BigDecimal.ZERO;
-                recordMovement(lockedFg, batch, InventoryReference.SALES_ORDER, salesOrderId.toString(), "DISPATCH", qty, unitCost);
-
-                postingBuilders
-                        .computeIfAbsent(lockedFg.getValuationAccountId(),
-                                id -> new DispatchPostingBuilder(lockedFg.getValuationAccountId(), lockedFg.getCogsAccountId()))
-                        .addCost(unitCost.multiply(qty));
-            }
+        if (reservations.isEmpty()) {
+            throw new IllegalStateException("No reservations found for order " + salesOrderId);
         }
+
+        Map<Long, FinishedGood> lockedGoods = lockFinishedGoodsInOrder(
+                slip.getCompany(),
+                reservations.stream()
+                        .map(r -> r.getFinishedGood().getId())
+                        .collect(Collectors.toSet()));
+
+        Map<Long, DispatchPostingBuilder> postingBuilders = new HashMap<>();
+        List<FinishedGoodBatch> batchesToSave = new ArrayList<>();
+        for (InventoryReservation reservation : reservations) {
+            BigDecimal requested = reservation.getReservedQuantity() != null ? reservation.getReservedQuantity() : reservation.getQuantity();
+            if (requested == null) {
+                requested = BigDecimal.ZERO;
+            }
+            FinishedGood fg = lockedGoods.get(reservation.getFinishedGood().getId());
+            FinishedGoodBatch batch = reservation.getFinishedGoodBatch();
+            BigDecimal onHand = fg.getCurrentStock() == null ? BigDecimal.ZERO : fg.getCurrentStock();
+            BigDecimal shipQty = requested.min(onHand);
+            // If nothing to ship, skip but keep reservation for future dispatch
+            if (shipQty.compareTo(BigDecimal.ZERO) <= 0) {
+                reservation.setStatus("BACKORDER");
+                continue;
+            }
+            reservation.setFulfilledQuantity(shipQty);
+            reservation.setStatus(shipQty.compareTo(requested) >= 0 ? "FULFILLED" : "PARTIAL");
+
+            if (fg.getValuationAccountId() == null || fg.getCogsAccountId() == null) {
+                throw new IllegalStateException("Finished good " + fg.getProductCode() + " missing accounting configuration");
+            }
+            BigDecimal reserved = fg.getReservedStock() == null ? BigDecimal.ZERO : fg.getReservedStock();
+            BigDecimal newReserved = reserved.subtract(shipQty).max(BigDecimal.ZERO);
+            fg.setReservedStock(newReserved);
+            fg.adjustStock(shipQty.negate(), "DISPATCH");
+            if (batch != null) {
+                BigDecimal qtyTotal = batch.getQuantityTotal() == null ? BigDecimal.ZERO : batch.getQuantityTotal();
+                BigDecimal qtyAvailable = batch.getQuantityAvailable() == null ? BigDecimal.ZERO : batch.getQuantityAvailable();
+                BigDecimal updatedTotal = qtyTotal.subtract(shipQty).max(BigDecimal.ZERO);
+                batch.setQuantityTotal(updatedTotal);
+                BigDecimal updatedAvailable = qtyAvailable.subtract(shipQty.min(qtyAvailable)).max(BigDecimal.ZERO);
+                batch.setQuantityAvailable(updatedAvailable);
+                batchesToSave.add(batch);
+            }
+            BigDecimal unitCost = batch != null ? batch.getUnitCost() : BigDecimal.ZERO;
+            recordMovement(fg, batch, InventoryReference.SALES_ORDER, salesOrderId.toString(), "DISPATCH", shipQty, unitCost);
+
+            postingBuilders
+                    .computeIfAbsent(fg.getValuationAccountId(),
+                            id -> new DispatchPostingBuilder(fg.getValuationAccountId(), fg.getCogsAccountId()))
+                    .addCost(unitCost.multiply(shipQty));
+        }
+        finishedGoodRepository.saveAll(lockedGoods.values());
+        if (!batchesToSave.isEmpty()) {
+            finishedGoodBatchRepository.saveAll(batchesToSave);
+        }
+        inventoryReservationRepository.saveAll(reservations);
+
+        slip.setStatus("DISPATCHED");
+        slip.setDispatchedAt(Instant.now());
+        packagingSlipRepository.save(slip);
+
         return postingBuilders.values().stream()
                 .map(DispatchPostingBuilder::build)
                 .toList();
@@ -198,7 +236,7 @@ public class FinishedGoodsService {
                               SalesOrderItem item,
                               List<InventoryShortage> shortages) {
         BigDecimal remaining = item.getQuantity();
-        List<FinishedGoodBatch> batches = finishedGoodBatchRepository.findAllocatableBatches(finishedGood);
+        List<FinishedGoodBatch> batches = selectBatchesByCostingMethod(finishedGood);
         for (FinishedGoodBatch batch : batches) {
             if (remaining.compareTo(BigDecimal.ZERO) <= 0) break;
             BigDecimal available = batch.getQuantityAvailable();
@@ -234,6 +272,14 @@ public class FinishedGoodsService {
         if (remaining.compareTo(BigDecimal.ZERO) > 0) {
             shortages.add(new InventoryShortage(finishedGood.getProductCode(), remaining, finishedGood.getName()));
         }
+    }
+
+    private List<FinishedGoodBatch> selectBatchesByCostingMethod(FinishedGood finishedGood) {
+        String method = finishedGood.getCostingMethod() == null ? "FIFO" : finishedGood.getCostingMethod().trim().toUpperCase();
+        return switch (method) {
+            case "LIFO" -> finishedGoodBatchRepository.findAllocatableBatchesLIFO(finishedGood);
+            default -> finishedGoodBatchRepository.findAllocatableBatchesFIFO(finishedGood);
+        };
     }
 
     private FinishedGood lockFinishedGood(Long id) {
@@ -331,6 +377,18 @@ public class FinishedGoodsService {
                 slip.getDispatchedAt(),
                 lines
         );
+    }
+
+    private Map<Long, FinishedGood> lockFinishedGoodsInOrder(Company company, Set<Long> ids) {
+        List<Long> sortedIds = new ArrayList<>(ids);
+        sortedIds.sort(Long::compareTo);
+        Map<Long, FinishedGood> locked = new HashMap<>();
+        for (Long id : sortedIds) {
+            FinishedGood fg = finishedGoodRepository.lockByCompanyAndId(company, id)
+                    .orElseThrow(() -> new IllegalArgumentException("Finished good not found: " + id));
+            locked.put(id, fg);
+        }
+        return locked;
     }
 
     private String generateSlipNumber(Company company) {

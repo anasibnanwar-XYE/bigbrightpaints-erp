@@ -18,4 +18,9 @@ public interface SalesOrderRepository extends JpaRepository<SalesOrder, Long> {
 
     @EntityGraph(attributePaths = "items")
     Optional<SalesOrder> findWithItemsById(Long id);
+
+    @EntityGraph(attributePaths = {"company", "dealer"})
+    List<SalesOrder> findAll();
+
+    Optional<SalesOrder> findByCompanyAndIdempotencyKey(Company company, String idempotencyKey);
 }

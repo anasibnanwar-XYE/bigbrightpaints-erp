@@ -1,0 +1,79 @@
+package com.bigbrightpaints.erp.modules.auth;
+
+import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
+import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
+import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+
+import java.time.Instant;
+import java.util.Map;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+@DisplayName("Auth Hardening: lockout after failed attempts")
+public class AuthHardeningIT extends AbstractIntegrationTest {
+
+    private static final String COMPANY = "AUTHLOCK";
+    private static final String USER_EMAIL = "lockout@bbp.com";
+    private static final String PASSWORD = "Passw0rd!";
+
+    @Autowired
+    private TestRestTemplate rest;
+
+    @Autowired
+    private UserAccountRepository userAccountRepository;
+
+    @BeforeEach
+    void setup() {
+        dataSeeder.ensureUser(USER_EMAIL, PASSWORD, "Lock Tester", COMPANY,
+                java.util.List.of("ROLE_ADMIN", "ROLE_ACCOUNTING"));
+    }
+
+    @Test
+    void lockout_after_five_failures() {
+        Map<String, Object> badReq = Map.of(
+                "email", USER_EMAIL,
+                "password", "wrong",
+                "companyCode", COMPANY
+        );
+        for (int i = 0; i < 5; i++) {
+            ResponseEntity<Map> resp = rest.postForEntity("/api/v1/auth/login", badReq, Map.class);
+            assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        }
+        UserAccount user = userAccountRepository.findByEmailIgnoreCase(USER_EMAIL).orElseThrow();
+        assertThat(user.getFailedLoginAttempts()).isGreaterThanOrEqualTo(5);
+        assertThat(user.getLockedUntil()).isNotNull();
+        Instant lockedUntil = user.getLockedUntil();
+
+        // Even with a correct password, lockout should persist until window expires
+        Map<String, Object> goodReq = Map.of(
+                "email", USER_EMAIL,
+                "password", PASSWORD,
+                "companyCode", COMPANY
+        );
+        ResponseEntity<Map> lockedResp = rest.postForEntity("/api/v1/auth/login", goodReq, Map.class);
+        assertThat(lockedResp.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        user = userAccountRepository.findByEmailIgnoreCase(USER_EMAIL).orElseThrow();
+        assertThat(user.getLockedUntil()).isEqualTo(lockedUntil);
+
+        // Manually clear lock for verification
+        user.setLockedUntil(Instant.now().minusSeconds(60));
+        user.setFailedLoginAttempts(0);
+        userAccountRepository.save(user);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        ResponseEntity<Map> success = rest.postForEntity("/api/v1/auth/login",
+                new HttpEntity<>(goodReq, headers), Map.class);
+        assertThat(success.getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+}

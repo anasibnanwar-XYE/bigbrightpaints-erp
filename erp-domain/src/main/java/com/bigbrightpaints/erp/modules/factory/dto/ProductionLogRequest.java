@@ -3,6 +3,7 @@ package com.bigbrightpaints.erp.modules.factory.dto;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -33,6 +34,7 @@ public record ProductionLogRequest(
             @NotNull(message = "Raw material is required")
             Long rawMaterialId,
             @NotNull(message = "Quantity is required")
+            @Positive(message = "Quantity must be positive")
             BigDecimal quantity,
             String unitOfMeasure
     ) {}

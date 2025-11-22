@@ -1,5 +1,8 @@
 package com.bigbrightpaints.erp.modules.factory.service;
 
+import com.bigbrightpaints.erp.core.util.CompanyClock;
+import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
+import com.bigbrightpaints.erp.core.util.MoneyUtils;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -46,8 +49,10 @@ public class PackingService {
     private final FinishedGoodBatchRepository finishedGoodBatchRepository;
     private final InventoryMovementRepository inventoryMovementRepository;
     private final AccountingFacade accountingFacade;
+    private final CompanyClock companyClock;
     private final ProductionLogService productionLogService;
     private final BatchNumberService batchNumberService;
+    private final CompanyEntityLookup companyEntityLookup;
 
     public PackingService(CompanyContextService companyContextService,
                           ProductionLogRepository productionLogRepository,
@@ -57,7 +62,9 @@ public class PackingService {
                           InventoryMovementRepository inventoryMovementRepository,
                           AccountingFacade accountingFacade,
                           ProductionLogService productionLogService,
-                          BatchNumberService batchNumberService) {
+                          BatchNumberService batchNumberService,
+                          CompanyClock companyClock,
+                          CompanyEntityLookup companyEntityLookup) {
         this.companyContextService = companyContextService;
         this.productionLogRepository = productionLogRepository;
         this.packingRecordRepository = packingRecordRepository;
@@ -67,13 +74,14 @@ public class PackingService {
         this.accountingFacade = accountingFacade;
         this.productionLogService = productionLogService;
         this.batchNumberService = batchNumberService;
+        this.companyClock = companyClock;
+        this.companyEntityLookup = companyEntityLookup;
     }
 
     @Transactional
     public ProductionLogDetailDto recordPacking(PackingRequest request) {
         Company company = companyContextService.requireCurrentCompany();
-        ProductionLog log = productionLogRepository.findByCompanyAndId(company, request.productionLogId())
-                .orElseThrow(() -> new IllegalArgumentException("Production log not found"));
+        ProductionLog log = companyEntityLookup.requireProductionLog(company, request.productionLogId());
         if (log.getStatus() == ProductionLogStatus.FULLY_PACKED) {
             throw new IllegalStateException("Production log " + log.getProductionCode() + " is already fully packed");
         }
@@ -147,8 +155,7 @@ public class PackingService {
 
     public List<PackingRecordDto> packingHistory(Long productionLogId) {
         Company company = companyContextService.requireCurrentCompany();
-        ProductionLog log = productionLogRepository.findByCompanyAndId(company, productionLogId)
-                .orElseThrow(() -> new IllegalArgumentException("Production log not found"));
+        ProductionLog log = companyEntityLookup.requireProductionLog(company, productionLogId);
         return packingRecordRepository.findByCompanyAndProductionLogOrderByPackedDateAscIdAsc(company, log).stream()
                 .sorted(Comparator.comparing(PackingRecord::getPackedDate).thenComparing(PackingRecord::getId))
                 .map(record -> new PackingRecordDto(
@@ -167,8 +174,7 @@ public class PackingService {
     @Transactional
     public ProductionLogDetailDto completePacking(Long productionLogId) {
         Company company = companyContextService.requireCurrentCompany();
-        ProductionLog log = productionLogRepository.findByCompanyAndId(company, productionLogId)
-                .orElseThrow(() -> new IllegalArgumentException("Production log not found"));
+        ProductionLog log = companyEntityLookup.requireProductionLog(company, productionLogId);
         BigDecimal mixedQty = log.getMixedQuantity();
         BigDecimal packedQty = log.getTotalPackedQuantity();
         BigDecimal wastageQty = mixedQty.subtract(packedQty);
@@ -249,7 +255,7 @@ public class PackingService {
             if (fgAccountId == null) {
                 throw new IllegalStateException("Finished good " + finishedGood.getProductCode() + " missing valuation account");
             }
-            BigDecimal packedValue = materialUnitCost.multiply(packedQty).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal packedValue = MoneyUtils.safeMultiply(materialUnitCost, packedQty).setScale(2, RoundingMode.HALF_UP);
             JournalEntryDto entry = accountingFacade.postSimpleJournal(
                     log.getProductionCode() + "-PACK",
                     entryDate,
@@ -262,7 +268,7 @@ public class PackingService {
             linkInventoryMovementsToJournal(log.getProductionCode(), entry.id());
         }
         if (wastageQty.compareTo(BigDecimal.ZERO) > 0) {
-            BigDecimal wastageValue = materialUnitCost.multiply(wastageQty).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal wastageValue = MoneyUtils.safeMultiply(materialUnitCost, wastageQty).setScale(2, RoundingMode.HALF_UP);
             Long wastageAccountId = metadataLong(log.getProduct(), "wastageAccountId");
             if (wastageAccountId == null) {
                 throw new IllegalStateException("Product " + log.getProduct().getProductName() + " missing wastageAccountId metadata");
@@ -328,7 +334,7 @@ public class PackingService {
             throw new IllegalArgumentException("Pieces or boxes must be provided for line " + lineNumber);
         }
         BigDecimal packSize = resolvePackageSize(line.packagingSize(), lineNumber);
-        return packSize.multiply(pieces);
+        return MoneyUtils.safeMultiply(packSize, pieces);
     }
 
     private BigDecimal resolvePieces(PackingLineRequest line) {
@@ -358,11 +364,7 @@ public class PackingService {
     }
 
     private LocalDate resolveCurrentDate(Company company) {
-        ZoneId zoneId = Optional.ofNullable(company.getTimezone())
-                .filter(StringUtils::hasText)
-                .map(ZoneId::of)
-                .orElse(ZoneOffset.UTC);
-        return LocalDate.now(zoneId);
+        return companyClock.today(company);
     }
 
     private LocalDate resolveJournalDate(Company company, ProductionLog log) {

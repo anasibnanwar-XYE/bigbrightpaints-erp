@@ -22,5 +22,17 @@ public interface JournalLineRepository extends JpaRepository<JournalLine, Long> 
                                                  @Param("accountId") Long accountId,
                                                  @Param("start") LocalDate start,
                                                  @Param("end") LocalDate end);
-}
 
+    @Query("""
+            select line.account.type, sum(line.debit), sum(line.credit)
+            from JournalLine line
+            join line.journalEntry entry
+            where entry.company = :company
+              and entry.status = 'POSTED'
+              and entry.entryDate between :start and :end
+            group by line.account.type
+            """)
+    List<Object[]> summarizeByAccountType(@Param("company") Company company,
+                                          @Param("start") LocalDate start,
+                                          @Param("end") LocalDate end);
+}

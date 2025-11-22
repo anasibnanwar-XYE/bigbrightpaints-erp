@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.hr.service;
 
+import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.hr.domain.*;
@@ -17,15 +18,18 @@ public class HrService {
     private final EmployeeRepository employeeRepository;
     private final LeaveRequestRepository leaveRequestRepository;
     private final PayrollRunRepository payrollRunRepository;
+    private final CompanyEntityLookup companyEntityLookup;
 
     public HrService(CompanyContextService companyContextService,
                      EmployeeRepository employeeRepository,
                      LeaveRequestRepository leaveRequestRepository,
-                     PayrollRunRepository payrollRunRepository) {
+                     PayrollRunRepository payrollRunRepository,
+                     CompanyEntityLookup companyEntityLookup) {
         this.companyContextService = companyContextService;
         this.employeeRepository = employeeRepository;
         this.leaveRequestRepository = leaveRequestRepository;
         this.payrollRunRepository = payrollRunRepository;
+        this.companyEntityLookup = companyEntityLookup;
     }
 
     /* Employees */
@@ -64,8 +68,7 @@ public class HrService {
 
     private Employee requireEmployee(Long id) {
         Company company = companyContextService.requireCurrentCompany();
-        return employeeRepository.findByCompanyAndId(company, id)
-                .orElseThrow(() -> new IllegalArgumentException("Employee not found"));
+        return companyEntityLookup.requireEmployee(company, id);
     }
 
     private EmployeeDto toDto(Employee employee) {
@@ -108,8 +111,7 @@ public class HrService {
 
     private LeaveRequest requireLeaveRequest(Long id) {
         Company company = companyContextService.requireCurrentCompany();
-        return leaveRequestRepository.findByCompanyAndId(company, id)
-                .orElseThrow(() -> new IllegalArgumentException("Leave request not found"));
+        return companyEntityLookup.requireLeaveRequest(company, id);
     }
 
     private LeaveRequestDto toDto(LeaveRequest leaveRequest) {

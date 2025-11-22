@@ -2,6 +2,8 @@ package com.bigbrightpaints.erp.modules.accounting.service;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
+import com.bigbrightpaints.erp.core.util.CompanyClock;
+import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
@@ -10,8 +12,10 @@ import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.PayrollPaymentRequest;
 import com.bigbrightpaints.erp.modules.accounting.event.AccountCacheInvalidatedEvent;
+import com.bigbrightpaints.erp.modules.accounting.service.CompanyAccountingSettingsService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.accounting.service.CompanyAccountingSettingsService.TaxAccountConfiguration;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
 import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
@@ -29,7 +33,6 @@ import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -64,6 +67,9 @@ public class AccountingFacade {
     private final ReferenceNumberService referenceNumberService;
     private final DealerRepository dealerRepository;
     private final SupplierRepository supplierRepository;
+    private final CompanyClock companyClock;
+    private final CompanyEntityLookup companyEntityLookup;
+    private final CompanyAccountingSettingsService companyAccountingSettingsService;
 
     // Thread-safe account cache to reduce DB queries
     private final Map<String, Account> accountCache = new ConcurrentHashMap<>();
@@ -74,7 +80,10 @@ public class AccountingFacade {
                             JournalEntryRepository journalEntryRepository,
                             ReferenceNumberService referenceNumberService,
                             DealerRepository dealerRepository,
-                            SupplierRepository supplierRepository) {
+                            SupplierRepository supplierRepository,
+                            CompanyClock companyClock,
+                            CompanyEntityLookup companyEntityLookup,
+                            CompanyAccountingSettingsService companyAccountingSettingsService) {
         this.companyContextService = companyContextService;
         this.accountRepository = accountRepository;
         this.accountingService = accountingService;
@@ -82,6 +91,9 @@ public class AccountingFacade {
         this.referenceNumberService = referenceNumberService;
         this.dealerRepository = dealerRepository;
         this.supplierRepository = supplierRepository;
+        this.companyClock = companyClock;
+        this.companyEntityLookup = companyEntityLookup;
+        this.companyAccountingSettingsService = companyAccountingSettingsService;
     }
 
     /**
@@ -112,7 +124,7 @@ public class AccountingFacade {
         Objects.requireNonNull(totalAmount, "Total amount is required");
 
         Company company = companyContextService.requireCurrentCompany();
-        Dealer dealer = requireDealer(company, dealerId);
+        Dealer dealer = companyEntityLookup.requireDealer(company, dealerId);
 
         // Validate dealer has receivable account
         if (dealer.getReceivableAccount() == null) {
@@ -181,7 +193,7 @@ public class AccountingFacade {
                     .withDetail("totalCredits", totalCredits);
         }
 
-        LocalDate postingDate = entryDate != null ? entryDate : currentDate(company);
+        LocalDate postingDate = entryDate != null ? entryDate : companyClock.today(company);
 
         JournalEntryRequest request = new JournalEntryRequest(
                 reference,
@@ -217,7 +229,7 @@ public class AccountingFacade {
                                                String memo,
                                                Map<Long, BigDecimal> inventoryLines,
                                                BigDecimal totalAmount) {
-        return postPurchaseJournal(supplierId, invoiceNumber, invoiceDate, memo, inventoryLines, totalAmount, null);
+        return postPurchaseJournal(supplierId, invoiceNumber, invoiceDate, memo, inventoryLines, null, totalAmount, null);
     }
 
     @Transactional(isolation = Isolation.REPEATABLE_READ)
@@ -227,6 +239,7 @@ public class AccountingFacade {
                                                LocalDate invoiceDate,
                                                String memo,
                                                Map<Long, BigDecimal> inventoryLines,
+                                               Map<Long, BigDecimal> taxLines,
                                                BigDecimal totalAmount,
                                                String referenceNumber) {
         Objects.requireNonNull(supplierId, "Supplier ID is required");
@@ -268,17 +281,43 @@ public class AccountingFacade {
         List<JournalEntryRequest.JournalLineRequest> lines = new ArrayList<>();
         String resolvedMemo = memo != null ? memo : "Purchase invoice " + invoiceNumber;
 
-        // Dr: Inventory accounts
+        BigDecimal inventoryTotal = BigDecimal.ZERO;
         if (inventoryLines != null) {
-            inventoryLines.forEach((accountId, amount) -> {
-                if (amount.compareTo(BigDecimal.ZERO) > 0) {
+            for (Map.Entry<Long, BigDecimal> entry : inventoryLines.entrySet()) {
+                BigDecimal amount = entry.getValue();
+                if (amount != null && amount.compareTo(BigDecimal.ZERO) > 0) {
                     lines.add(new JournalEntryRequest.JournalLineRequest(
-                            accountId,
+                            entry.getKey(),
                             resolvedMemo,
                             amount.abs(),
                             BigDecimal.ZERO));
+                    inventoryTotal = inventoryTotal.add(amount.abs());
                 }
-            });
+            }
+        }
+
+        BigDecimal taxTotal = BigDecimal.ZERO;
+        if (taxLines != null && !taxLines.isEmpty()) {
+            TaxAccountConfiguration taxConfig = companyAccountingSettingsService.requireTaxAccounts();
+            for (Map.Entry<Long, BigDecimal> entry : taxLines.entrySet()) {
+                BigDecimal amount = entry.getValue();
+                if (amount != null && amount.compareTo(BigDecimal.ZERO) > 0) {
+                    lines.add(new JournalEntryRequest.JournalLineRequest(
+                            taxConfig.inputTaxAccountId(),
+                            "Input tax for " + resolvedMemo,
+                            amount.abs(),
+                            BigDecimal.ZERO));
+                    taxTotal = taxTotal.add(amount.abs());
+                }
+            }
+        }
+
+        if (inventoryTotal.add(taxTotal).compareTo(totalAmount.abs()) != 0) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Purchase totals do not balance inventory+tax to payable total")
+                    .withDetail("inventoryTotal", inventoryTotal)
+                    .withDetail("taxTotal", taxTotal)
+                    .withDetail("totalAmount", totalAmount);
         }
 
         // Cr: Accounts Payable
@@ -288,7 +327,7 @@ public class AccountingFacade {
                 BigDecimal.ZERO,
                 totalAmount.abs()));
 
-        LocalDate postingDate = invoiceDate != null ? invoiceDate : currentDate(company);
+        LocalDate postingDate = invoiceDate != null ? invoiceDate : companyClock.today(company);
 
         JournalEntryRequest request = new JournalEntryRequest(
                 reference,
@@ -330,7 +369,7 @@ public class AccountingFacade {
 
         String reference = StringUtils.hasText(referenceNumber)
                 ? referenceNumber.trim()
-                : "PRN-" + supplier.getCode() + "-" + currentDate(company);
+                : "PRN-" + supplier.getCode() + "-" + companyClock.today(company);
 
         Optional<JournalEntry> existing = journalEntryRepository.findByCompanyAndReferenceNumber(company, reference);
         if (existing.isPresent()) {
@@ -338,7 +377,7 @@ public class AccountingFacade {
             return existing.map(this::toSimpleDto).orElseThrow();
         }
 
-        LocalDate postingDate = returnDate != null ? returnDate : currentDate(company);
+        LocalDate postingDate = returnDate != null ? returnDate : companyClock.today(company);
         String resolvedMemo = memo != null ? memo : "Purchase return for " + supplier.getName();
         List<JournalEntryRequest.JournalLineRequest> lines = new ArrayList<>();
 
@@ -450,7 +489,7 @@ public class AccountingFacade {
             });
         }
 
-        LocalDate postingDate = entryDate != null ? entryDate : currentDate(company);
+        LocalDate postingDate = entryDate != null ? entryDate : companyClock.today(company);
 
         JournalEntryRequest request = new JournalEntryRequest(
                 reference,
@@ -548,7 +587,7 @@ public class AccountingFacade {
 
         JournalEntryRequest request = new JournalEntryRequest(
                 reference,
-                currentDate(company),
+                companyClock.today(company),
                 memo,
                 null,
                 null,
@@ -625,7 +664,7 @@ public class AccountingFacade {
 
         JournalEntryRequest request = new JournalEntryRequest(
                 reference,
-                currentDate(company),
+                companyClock.today(company),
                 resolvedMemo,
                 null,
                 null,
@@ -659,7 +698,7 @@ public class AccountingFacade {
         Objects.requireNonNull(totalAmount, "Total amount is required");
 
         Company company = companyContextService.requireCurrentCompany();
-        Dealer dealer = requireDealer(company, dealerId);
+        Dealer dealer = companyEntityLookup.requireDealer(company, dealerId);
 
         if (dealer.getReceivableAccount() == null) {
             throw new ApplicationException(ErrorCode.BUSINESS_CONSTRAINT_VIOLATION,
@@ -705,7 +744,7 @@ public class AccountingFacade {
 
         JournalEntryRequest request = new JournalEntryRequest(
                 reference,
-                currentDate(company),
+                companyClock.today(company),
                 memo,
                 dealer.getId(),
                 null,
@@ -842,7 +881,7 @@ public class AccountingFacade {
 
         JournalEntryRequest request = new JournalEntryRequest(
                 reference,
-                currentDate(company),
+                companyClock.today(company),
                 resolvedMemo,
                 null,
                 null,
@@ -892,7 +931,7 @@ public class AccountingFacade {
             return existing.map(this::toSimpleDto).orElseThrow();
         }
 
-        LocalDate postingDate = entryDate != null ? entryDate : currentDate(company);
+        LocalDate postingDate = entryDate != null ? entryDate : companyClock.today(company);
         String resolvedMemo = memo != null ? memo : "Manual journal for " + resolvedReference;
         BigDecimal postingAmount = amount.abs();
 
@@ -947,27 +986,28 @@ public class AccountingFacade {
 
     // ===== Helper Methods =====
 
-    private Dealer requireDealer(Company company, Long dealerId) {
-        return dealerRepository.findByCompanyAndId(company, dealerId)
-                .orElseThrow(() -> new ApplicationException(ErrorCode.BUSINESS_ENTITY_NOT_FOUND,
-                        "Dealer not found")
-                        .withDetail("dealerId", dealerId));
-    }
-
     private Supplier requireSupplier(Company company, Long supplierId) {
-        return supplierRepository.findByCompanyAndId(company, supplierId)
-                .orElseThrow(() -> new ApplicationException(ErrorCode.BUSINESS_ENTITY_NOT_FOUND,
-                        "Supplier not found")
-                        .withDetail("supplierId", supplierId));
+        try {
+            return companyEntityLookup.requireSupplier(company, supplierId);
+        } catch (IllegalArgumentException ex) {
+            throw new ApplicationException(ErrorCode.BUSINESS_ENTITY_NOT_FOUND,
+                    "Supplier not found").withDetail("supplierId", supplierId);
+        }
     }
 
     private Account requireAccountById(Company company, Long accountId, String accountType) {
         String cacheKey = company.getId() + ":" + accountId;
         return accountCache.computeIfAbsent(cacheKey, k ->
-                accountRepository.findByCompanyAndId(company, accountId)
-                        .orElseThrow(() -> new ApplicationException(ErrorCode.BUSINESS_ENTITY_NOT_FOUND,
-                                accountType + " not found")
-                                .withDetail("accountId", accountId)));
+                fetchAccount(company, accountId, accountType));
+    }
+
+    private Account fetchAccount(Company company, Long accountId, String accountType) {
+        try {
+            return companyEntityLookup.requireAccount(company, accountId);
+        } catch (IllegalArgumentException ex) {
+            throw new ApplicationException(ErrorCode.BUSINESS_ENTITY_NOT_FOUND,
+                    accountType + " not found").withDetail("accountId", accountId);
+        }
     }
 
     private BigDecimal calculateTotalCredits(List<JournalEntryRequest.JournalLineRequest> lines) {
@@ -979,11 +1019,6 @@ public class AccountingFacade {
 
     private BigDecimal normalizeAmount(BigDecimal value) {
         return value == null ? BigDecimal.ZERO : value.abs();
-    }
-
-    private LocalDate currentDate(Company company) {
-        String timezone = company.getTimezone() == null ? "UTC" : company.getTimezone();
-        return LocalDate.now(ZoneId.of(timezone));
     }
 
     private String sanitize(String value) {

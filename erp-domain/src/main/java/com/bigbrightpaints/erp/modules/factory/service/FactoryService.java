@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.factory.service;
 
+import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.factory.domain.*;
@@ -16,15 +17,18 @@ public class FactoryService {
     private final ProductionPlanRepository planRepository;
     private final ProductionBatchRepository batchRepository;
     private final FactoryTaskRepository taskRepository;
+    private final CompanyEntityLookup companyEntityLookup;
 
     public FactoryService(CompanyContextService companyContextService,
                           ProductionPlanRepository planRepository,
                           ProductionBatchRepository batchRepository,
-                          FactoryTaskRepository taskRepository) {
+                          FactoryTaskRepository taskRepository,
+                          CompanyEntityLookup companyEntityLookup) {
         this.companyContextService = companyContextService;
         this.planRepository = planRepository;
         this.batchRepository = batchRepository;
         this.taskRepository = taskRepository;
+        this.companyEntityLookup = companyEntityLookup;
     }
 
     public List<ProductionPlanDto> listPlans() {
@@ -68,8 +72,7 @@ public class FactoryService {
 
     private ProductionPlan requirePlan(Long id) {
         Company company = companyContextService.requireCurrentCompany();
-        return planRepository.findByCompanyAndId(company, id)
-                .orElseThrow(() -> new IllegalArgumentException("Plan not found"));
+        return companyEntityLookup.requireProductionPlan(company, id);
     }
 
     private ProductionPlanDto toDto(ProductionPlan plan) {
@@ -145,8 +148,7 @@ public class FactoryService {
 
     private FactoryTask requireTask(Long id) {
         Company company = companyContextService.requireCurrentCompany();
-        return taskRepository.findByCompanyAndId(company, id)
-                .orElseThrow(() -> new IllegalArgumentException("Task not found"));
+        return companyEntityLookup.requireFactoryTask(company, id);
     }
 
     /* Dashboard */

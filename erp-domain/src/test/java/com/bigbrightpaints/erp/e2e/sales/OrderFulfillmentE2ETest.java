@@ -30,6 +30,7 @@ import org.springframework.http.*;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -80,6 +81,7 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
         HttpHeaders h = new HttpHeaders();
         h.setBearerAuth(token);
         h.setContentType(MediaType.APPLICATION_JSON);
+        h.set("X-Company-Id", COMPANY_CODE);
         return h;
     }
 
@@ -311,7 +313,8 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
         // Verify ledger entries (may be created on approval/dispatch)
         // This test verifies orders can be created successfully
         List<SalesOrder> orders = salesOrderRepository.findAll().stream()
-                .filter(o -> o.getCompany().equals(company) && o.getDealer().equals(dealer))
+                .filter(o -> Objects.equals(o.getCompany().getId(), company.getId())
+                        && Objects.equals(o.getDealer().getId(), dealer.getId()))
                 .toList();
         assertThat(orders.size()).isGreaterThanOrEqualTo(3);
     }

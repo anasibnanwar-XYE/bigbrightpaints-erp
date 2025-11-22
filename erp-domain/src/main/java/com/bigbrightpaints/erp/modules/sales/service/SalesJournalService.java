@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.sales.service;
 
+import com.bigbrightpaints.erp.core.util.MoneyUtils;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
@@ -19,6 +20,8 @@ import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
+import org.springframework.util.StringUtils;
 
 /**
  * Service for posting sales journal entries.
@@ -28,6 +31,7 @@ import org.springframework.stereotype.Service;
 public class SalesJournalService {
 
     private static final Logger log = LoggerFactory.getLogger(SalesJournalService.class);
+    private static final BigDecimal ROUNDING_TOLERANCE = new BigDecimal("0.05");
 
     private final FinishedGoodsService finishedGoodsService;
     private final AccountingFacade accountingFacade;
@@ -106,7 +110,7 @@ public class SalesJournalService {
 
             BigDecimal lineSubtotal = item.getLineSubtotal() != null
                     ? item.getLineSubtotal()
-                    : safeMultiply(item.getQuantity(), item.getUnitPrice());
+                    : MoneyUtils.safeMultiply(item.getQuantity(), item.getUnitPrice());
 
             if (lineSubtotal != null && lineSubtotal.compareTo(BigDecimal.ZERO) > 0) {
                 revenueLines.merge(accounts.revenueAccountId(), lineSubtotal, BigDecimal::add);
@@ -131,11 +135,17 @@ public class SalesJournalService {
         BigDecimal delta = journalAmount.abs().subtract(totalCredits);
 
         if (delta.compareTo(BigDecimal.ZERO) != 0) {
+            if (delta.abs().compareTo(ROUNDING_TOLERANCE) > 0) {
+                throw new IllegalStateException(String.format(
+                        "Sales journal delta %.2f exceeds tolerance for order %s",
+                        delta, order.getOrderNumber()));
+            }
             Long firstAccount = revenueLines.keySet().iterator().next();
             revenueLines.merge(firstAccount, delta, BigDecimal::add);
         }
 
         String resolvedMemo = memo != null ? memo : "Sales order " + order.getOrderNumber();
+        String resolvedReference = resolveReferenceNumber(referenceNumber, order);
 
         // Delegate to AccountingFacade
         JournalEntryDto result = accountingFacade.postSalesJournal(
@@ -146,17 +156,10 @@ public class SalesJournalService {
                 revenueLines,
                 taxLines,
                 journalAmount,
-                referenceNumber
+                resolvedReference
         );
 
         return result != null ? result.id() : null;
-    }
-
-    private BigDecimal safeMultiply(BigDecimal left, BigDecimal right) {
-        if (left == null || right == null) {
-            return BigDecimal.ZERO;
-        }
-        return left.multiply(right);
     }
 
     private ProductAccounts resolveAccounts(Company company,
@@ -200,4 +203,20 @@ public class SalesJournalService {
     }
 
     private record ProductAccounts(Long revenueAccountId, Long taxAccountId) {}
+
+    private String resolveReferenceNumber(String providedReference, SalesOrder order) {
+        if (StringUtils.hasText(providedReference)) {
+            return providedReference.trim();
+        }
+        String orderNumber = order.getOrderNumber();
+        String sanitized = StringUtils.hasText(orderNumber)
+                ? orderNumber.replaceAll("[^A-Za-z0-9]", "").toUpperCase()
+                : String.valueOf(order.getId());
+        if (!StringUtils.hasText(sanitized)) {
+            sanitized = "SO-" + order.getId();
+        } else {
+            sanitized = "SO-" + sanitized;
+        }
+        return sanitized;
+    }
 }

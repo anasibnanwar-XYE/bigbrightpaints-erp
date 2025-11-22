@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.orchestrator.repository;
 
+import com.bigbrightpaints.erp.core.domain.VersionedEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -9,9 +10,9 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
+
 import java.time.Instant;
 import java.util.UUID;
-import com.bigbrightpaints.erp.core.domain.VersionedEntity;
 
 @Entity
 @Table(name = "orchestrator_outbox")
@@ -47,6 +48,18 @@ public class OutboxEvent extends VersionedEntity {
     @Column(nullable = false)
     private Instant createdAt;
 
+    @Column(nullable = false)
+    private Instant nextAttemptAt;
+
+    @Column(nullable = false)
+    private int retryCount;
+
+    @Column
+    private String lastError;
+
+    @Column(nullable = false)
+    private boolean deadLetter;
+
     protected OutboxEvent() {
     }
 
@@ -57,6 +70,9 @@ public class OutboxEvent extends VersionedEntity {
         this.payload = payload;
         this.status = Status.PENDING;
         this.createdAt = Instant.now();
+        this.nextAttemptAt = this.createdAt;
+        this.retryCount = 0;
+        this.deadLetter = false;
     }
 
     public UUID getId() {
@@ -87,11 +103,35 @@ public class OutboxEvent extends VersionedEntity {
         return createdAt;
     }
 
-    public void markPublished() {
-        this.status = Status.PUBLISHED;
+    public Instant getNextAttemptAt() {
+        return nextAttemptAt;
     }
 
-    public void markFailed() {
-        this.status = Status.FAILED;
+    public int getRetryCount() {
+        return retryCount;
+    }
+
+    public String getLastError() {
+        return lastError;
+    }
+
+    public boolean isDeadLetter() {
+        return deadLetter;
+    }
+
+    public void markPublished() {
+        this.status = Status.PUBLISHED;
+        this.deadLetter = false;
+    }
+
+    public void scheduleRetry(String errorMessage, int maxAttempts, long delaySeconds) {
+        this.retryCount += 1;
+        this.lastError = errorMessage;
+        if (this.retryCount >= maxAttempts) {
+            this.deadLetter = true;
+            this.status = Status.FAILED;
+        } else {
+            this.nextAttemptAt = Instant.now().plusSeconds(delaySeconds);
+        }
     }
 }

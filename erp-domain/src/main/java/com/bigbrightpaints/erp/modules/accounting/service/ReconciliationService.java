@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.accounting.service;
 
+import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
@@ -53,6 +54,7 @@ public class ReconciliationService {
     private final FinishedGoodRepository finishedGoodRepository;
     private final RawMaterialMovementRepository rawMaterialMovementRepository;
     private final InventoryMovementRepository inventoryMovementRepository;
+    private final CompanyEntityLookup companyEntityLookup;
 
     public ReconciliationService(CompanyContextService companyContextService,
                                  AccountRepository accountRepository,
@@ -62,7 +64,8 @@ public class ReconciliationService {
                                  RawMaterialRepository rawMaterialRepository,
                                  FinishedGoodRepository finishedGoodRepository,
                                  RawMaterialMovementRepository rawMaterialMovementRepository,
-                                 InventoryMovementRepository inventoryMovementRepository) {
+                                 InventoryMovementRepository inventoryMovementRepository,
+                                 CompanyEntityLookup companyEntityLookup) {
         this.companyContextService = companyContextService;
         this.accountRepository = accountRepository;
         this.journalLineRepository = journalLineRepository;
@@ -72,13 +75,13 @@ public class ReconciliationService {
         this.finishedGoodRepository = finishedGoodRepository;
         this.rawMaterialMovementRepository = rawMaterialMovementRepository;
         this.inventoryMovementRepository = inventoryMovementRepository;
+        this.companyEntityLookup = companyEntityLookup;
     }
 
     @Transactional
     public BankReconciliationSummaryDto reconcileBank(BankReconciliationRequest request) {
         Company company = companyContextService.requireCurrentCompany();
-        Account account = accountRepository.findByCompanyAndId(company, request.bankAccountId())
-                .orElseThrow(() -> new IllegalArgumentException("Bank account not found"));
+        Account account = companyEntityLookup.requireAccount(company, request.bankAccountId());
         LocalDate statementDate = request.statementDate();
         LocalDate startDate = request.startDate() != null ? request.startDate() : statementDate.minusMonths(1);
         LocalDate endDate = request.endDate() != null ? request.endDate() : statementDate;

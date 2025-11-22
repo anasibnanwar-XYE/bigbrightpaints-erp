@@ -277,6 +277,33 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     /**
+     * Handles illegal state exceptions (e.g., credit limit exceeded, missing configuration).
+     */
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<ApiResponse<Map<String, Object>>> handleIllegalState(
+            IllegalStateException ex, HttpServletRequest request) {
+
+        String traceId = UUID.randomUUID().toString();
+
+        logger.warn("Illegal state [{}] - Path: {}, Message: {}",
+                traceId, request.getRequestURI(), ex.getMessage());
+
+        Map<String, Object> errorResponse = new HashMap<>();
+        errorResponse.put("code", ErrorCode.BUSINESS_INVALID_STATE.getCode());
+        errorResponse.put("message", isProductionMode()
+                ? ErrorCode.BUSINESS_INVALID_STATE.getDefaultMessage()
+                : ex.getMessage());
+        errorResponse.put("traceId", traceId);
+
+        String clientMessage = isProductionMode()
+                ? "Invalid state"
+                : ex.getMessage();
+
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.failure(clientMessage, errorResponse));
+    }
+
+    /**
      * Handles all other runtime exceptions.
      */
     @ExceptionHandler(RuntimeException.class)

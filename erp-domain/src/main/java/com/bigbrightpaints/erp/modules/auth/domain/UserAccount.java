@@ -75,6 +75,12 @@ public class UserAccount extends VersionedEntity {
     @Column(name = "secondary_email")
     private String secondaryEmail;
 
+    @Column(name = "failed_login_attempts", nullable = false)
+    private int failedLoginAttempts = 0;
+
+    @Column(name = "locked_until")
+    private Instant lockedUntil;
+
     public UserAccount() {
     }
 
@@ -171,6 +177,22 @@ public class UserAccount extends VersionedEntity {
 
     public void setSecondaryEmail(String secondaryEmail) {
         this.secondaryEmail = secondaryEmail;
+    }
+
+    public int getFailedLoginAttempts() {
+        return failedLoginAttempts;
+    }
+
+    public void setFailedLoginAttempts(int failedLoginAttempts) {
+        this.failedLoginAttempts = failedLoginAttempts;
+    }
+
+    public Instant getLockedUntil() {
+        return lockedUntil;
+    }
+
+    public void setLockedUntil(Instant lockedUntil) {
+        this.lockedUntil = lockedUntil;
     }
 
     public Set<Role> getRoles() {

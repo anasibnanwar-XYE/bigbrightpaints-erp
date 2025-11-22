@@ -69,6 +69,27 @@ public class AccountingPeriod extends VersionedEntity {
     @Column(name = "closed_by")
     private String closedBy;
 
+    @Column(name = "locked_at")
+    private Instant lockedAt;
+
+    @Column(name = "locked_by")
+    private String lockedBy;
+
+    @Column(name = "lock_reason")
+    private String lockReason;
+
+    @Column(name = "reopened_at")
+    private Instant reopenedAt;
+
+    @Column(name = "reopened_by")
+    private String reopenedBy;
+
+    @Column(name = "reopen_reason")
+    private String reopenReason;
+
+    @Column(name = "closing_journal_entry_id")
+    private Long closingJournalEntryId;
+
     @PrePersist
     public void prePersist() {
         if (publicId == null) {
@@ -208,6 +229,34 @@ public class AccountingPeriod extends VersionedEntity {
     public void setClosedBy(String closedBy) {
         this.closedBy = closedBy;
     }
+
+    public Instant getLockedAt() { return lockedAt; }
+
+    public void setLockedAt(Instant lockedAt) { this.lockedAt = lockedAt; }
+
+    public String getLockedBy() { return lockedBy; }
+
+    public void setLockedBy(String lockedBy) { this.lockedBy = lockedBy; }
+
+    public String getLockReason() { return lockReason; }
+
+    public void setLockReason(String lockReason) { this.lockReason = lockReason; }
+
+    public Instant getReopenedAt() { return reopenedAt; }
+
+    public void setReopenedAt(Instant reopenedAt) { this.reopenedAt = reopenedAt; }
+
+    public String getReopenedBy() { return reopenedBy; }
+
+    public void setReopenedBy(String reopenedBy) { this.reopenedBy = reopenedBy; }
+
+    public String getReopenReason() { return reopenReason; }
+
+    public void setReopenReason(String reopenReason) { this.reopenReason = reopenReason; }
+
+    public Long getClosingJournalEntryId() { return closingJournalEntryId; }
+
+    public void setClosingJournalEntryId(Long closingJournalEntryId) { this.closingJournalEntryId = closingJournalEntryId; }
 
     public String getLabel() {
         YearMonth yearMonth = YearMonth.of(year, month);

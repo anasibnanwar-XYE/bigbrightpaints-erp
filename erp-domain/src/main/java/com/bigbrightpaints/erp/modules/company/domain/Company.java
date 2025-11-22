@@ -3,10 +3,13 @@ package com.bigbrightpaints.erp.modules.company.domain;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import jakarta.persistence.*;
 
+import com.bigbrightpaints.erp.core.domain.VersionedEntity;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.Objects;
 import java.util.UUID;
-import com.bigbrightpaints.erp.core.domain.VersionedEntity;
+import org.hibernate.Hibernate;
+import org.hibernate.proxy.HibernateProxy;
 
 @Entity
 @Table(name = "companies")
@@ -39,8 +42,20 @@ public class Company extends VersionedEntity {
     @JoinColumn(name = "payroll_cash_account_id")
     private Account payrollCashAccount;
 
+    @Column(name = "gst_input_tax_account_id")
+    private Long gstInputTaxAccountId;
+
+    @Column(name = "gst_output_tax_account_id")
+    private Long gstOutputTaxAccountId;
+
+    @Column(name = "gst_payable_account_id")
+    private Long gstPayableAccountId;
+
     @Column(name = "default_gst_rate", nullable = false)
     private BigDecimal defaultGstRate = BigDecimal.valueOf(18);
+
+    @Column(name = "base_currency", nullable = false)
+    private String baseCurrency = "INR";
 
     @PrePersist
     public void prePersist() {
@@ -103,6 +118,30 @@ public class Company extends VersionedEntity {
         this.payrollCashAccount = payrollCashAccount;
     }
 
+    public Long getGstInputTaxAccountId() {
+        return gstInputTaxAccountId;
+    }
+
+    public void setGstInputTaxAccountId(Long gstInputTaxAccountId) {
+        this.gstInputTaxAccountId = gstInputTaxAccountId;
+    }
+
+    public Long getGstOutputTaxAccountId() {
+        return gstOutputTaxAccountId;
+    }
+
+    public void setGstOutputTaxAccountId(Long gstOutputTaxAccountId) {
+        this.gstOutputTaxAccountId = gstOutputTaxAccountId;
+    }
+
+    public Long getGstPayableAccountId() {
+        return gstPayableAccountId;
+    }
+
+    public void setGstPayableAccountId(Long gstPayableAccountId) {
+        this.gstPayableAccountId = gstPayableAccountId;
+    }
+
     public BigDecimal getDefaultGstRate() {
         return defaultGstRate;
     }
@@ -120,5 +159,39 @@ public class Company extends VersionedEntity {
             sanitized = BigDecimal.valueOf(100);
         }
         this.defaultGstRate = sanitized;
+    }
+
+    public String getBaseCurrency() {
+        return baseCurrency;
+    }
+
+    public void setBaseCurrency(String baseCurrency) {
+        if (baseCurrency == null || baseCurrency.isBlank()) {
+            this.baseCurrency = "INR";
+        } else {
+            this.baseCurrency = baseCurrency.trim().toUpperCase();
+        }
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null) return false;
+        if (!Hibernate.getClass(this).equals(Hibernate.getClass(o))) return false;
+        Company company = (Company) o;
+
+        Long thisId = this instanceof HibernateProxy proxy
+                ? (Long) proxy.getHibernateLazyInitializer().getIdentifier()
+                : getId();
+        Long otherId = company instanceof HibernateProxy proxy
+                ? (Long) proxy.getHibernateLazyInitializer().getIdentifier()
+                : company.getId();
+
+        return thisId != null && Objects.equals(thisId, otherId);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hashCode(getId());
     }
 }

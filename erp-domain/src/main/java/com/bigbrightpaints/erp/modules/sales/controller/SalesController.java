@@ -5,6 +5,7 @@ import com.bigbrightpaints.erp.modules.sales.service.SalesService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -26,28 +27,33 @@ public class SalesController {
     }
 
     @PostMapping("/sales/orders")
+    @PreAuthorize("hasAuthority('ROLE_SALES')")
     public ResponseEntity<ApiResponse<SalesOrderDto>> createOrder(@Valid @RequestBody SalesOrderRequest request) {
         return ResponseEntity.ok(ApiResponse.success("Order created", salesService.createOrder(request)));
     }
 
     @PutMapping("/sales/orders/{id}")
+    @PreAuthorize("hasAuthority('ROLE_SALES')")
     public ResponseEntity<ApiResponse<SalesOrderDto>> updateOrder(@PathVariable Long id,
                                                                    @Valid @RequestBody SalesOrderRequest request) {
         return ResponseEntity.ok(ApiResponse.success("Order updated", salesService.updateOrder(id, request)));
     }
 
     @DeleteMapping("/sales/orders/{id}")
+    @PreAuthorize("hasAuthority('ROLE_SALES')")
     public ResponseEntity<Void> deleteOrder(@PathVariable Long id) {
         salesService.deleteOrder(id);
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/sales/orders/{id}/confirm")
+    @PreAuthorize("hasAuthority('ROLE_SALES')")
     public ResponseEntity<ApiResponse<SalesOrderDto>> confirmOrder(@PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.success("Order confirmed", salesService.confirmOrder(id)));
     }
 
     @PostMapping("/sales/orders/{id}/cancel")
+    @PreAuthorize("hasAuthority('ROLE_SALES')")
     public ResponseEntity<ApiResponse<SalesOrderDto>> cancelOrder(@PathVariable Long id,
                                                                    @RequestBody(required = false) CancelRequest request) {
         String reason = request == null ? null : request.reason();
@@ -55,6 +61,7 @@ public class SalesController {
     }
 
     @PatchMapping("/sales/orders/{id}/status")
+    @PreAuthorize("hasAuthority('ROLE_SALES')")
     public ResponseEntity<ApiResponse<SalesOrderDto>> updateStatus(@PathVariable Long id,
                                                                     @RequestBody StatusRequest request) {
         return ResponseEntity.ok(ApiResponse.success("Status updated", salesService.updateStatus(id, request.status())));
@@ -70,17 +77,20 @@ public class SalesController {
     }
 
     @PostMapping("/sales/promotions")
+    @PreAuthorize("hasAuthority('ROLE_SALES')")
     public ResponseEntity<ApiResponse<PromotionDto>> createPromotion(@Valid @RequestBody PromotionRequest request) {
         return ResponseEntity.ok(ApiResponse.success("Promotion created", salesService.createPromotion(request)));
     }
 
     @PutMapping("/sales/promotions/{id}")
+    @PreAuthorize("hasAuthority('ROLE_SALES')")
     public ResponseEntity<ApiResponse<PromotionDto>> updatePromotion(@PathVariable Long id,
                                                                       @Valid @RequestBody PromotionRequest request) {
         return ResponseEntity.ok(ApiResponse.success("Promotion updated", salesService.updatePromotion(id, request)));
     }
 
     @DeleteMapping("/sales/promotions/{id}")
+    @PreAuthorize("hasAuthority('ROLE_SALES')")
     public ResponseEntity<Void> deletePromotion(@PathVariable Long id) {
         salesService.deletePromotion(id);
         return ResponseEntity.noContent().build();
@@ -93,17 +103,20 @@ public class SalesController {
     }
 
     @PostMapping("/sales/targets")
+    @PreAuthorize("hasAuthority('ROLE_SALES')")
     public ResponseEntity<ApiResponse<SalesTargetDto>> createTarget(@Valid @RequestBody SalesTargetRequest request) {
         return ResponseEntity.ok(ApiResponse.success("Sales target created", salesService.createTarget(request)));
     }
 
     @PutMapping("/sales/targets/{id}")
+    @PreAuthorize("hasAuthority('ROLE_SALES')")
     public ResponseEntity<ApiResponse<SalesTargetDto>> updateTarget(@PathVariable Long id,
                                                                     @Valid @RequestBody SalesTargetRequest request) {
         return ResponseEntity.ok(ApiResponse.success("Sales target updated", salesService.updateTarget(id, request)));
     }
 
     @DeleteMapping("/sales/targets/{id}")
+    @PreAuthorize("hasAuthority('ROLE_SALES')")
     public ResponseEntity<Void> deleteTarget(@PathVariable Long id) {
         salesService.deleteTarget(id);
         return ResponseEntity.noContent().build();
@@ -116,13 +129,22 @@ public class SalesController {
     }
 
     @PostMapping("/sales/credit-requests")
+    @PreAuthorize("hasAuthority('ROLE_SALES')")
     public ResponseEntity<ApiResponse<CreditRequestDto>> createCreditRequest(@Valid @RequestBody CreditRequestRequest request) {
         return ResponseEntity.ok(ApiResponse.success("Credit request created", salesService.createCreditRequest(request)));
     }
 
     @PutMapping("/sales/credit-requests/{id}")
+    @PreAuthorize("hasAuthority('ROLE_SALES')")
     public ResponseEntity<ApiResponse<CreditRequestDto>> updateCreditRequest(@PathVariable Long id,
                                                                               @Valid @RequestBody CreditRequestRequest request) {
         return ResponseEntity.ok(ApiResponse.success("Credit request updated", salesService.updateCreditRequest(id, request)));
+    }
+
+    /* Dispatch confirmation (final invoice + AR at shipment) */
+    @PostMapping("/sales/dispatch/confirm")
+    @PreAuthorize("hasAnyAuthority('ROLE_SALES','ROLE_ACCOUNTING','ROLE_ADMIN')")
+    public ResponseEntity<ApiResponse<DispatchConfirmResponse>> confirmDispatch(@Valid @RequestBody DispatchConfirmRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Dispatch confirmed", salesService.confirmDispatch(request)));
     }
 }

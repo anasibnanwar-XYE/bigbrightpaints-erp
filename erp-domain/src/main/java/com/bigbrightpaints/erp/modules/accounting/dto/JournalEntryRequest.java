@@ -15,10 +15,30 @@ public record JournalEntryRequest(
         Long dealerId,
         Long supplierId,
         Boolean adminOverride,
-        @NotEmpty List<@Valid JournalLineRequest> lines
+        @NotEmpty List<@Valid JournalLineRequest> lines,
+        String currency,
+        BigDecimal fxRate
 ) {
+    public JournalEntryRequest(String referenceNumber,
+                               @NotNull LocalDate entryDate,
+                               String memo,
+                               Long dealerId,
+                               Long supplierId,
+                               Boolean adminOverride,
+                               @NotEmpty List<@Valid JournalLineRequest> lines) {
+        this(referenceNumber, entryDate, memo, dealerId, supplierId, adminOverride, lines, null, null);
+    }
+
     public record JournalLineRequest(@NotNull Long accountId,
                                      String description,
                                      @NotNull BigDecimal debit,
-                                     @NotNull BigDecimal credit) {}
+                                     @NotNull BigDecimal credit,
+                                     BigDecimal foreignCurrencyAmount) {
+        public JournalLineRequest(@NotNull Long accountId,
+                                  String description,
+                                  @NotNull BigDecimal debit,
+                                  @NotNull BigDecimal credit) {
+            this(accountId, description, debit, credit, null);
+        }
+    }
 }

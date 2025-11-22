@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.purchasing.dto;
 
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -8,9 +9,8 @@ import java.time.LocalDate;
 public record PurchaseReturnRequest(
         @NotNull Long supplierId,
         @NotNull Long rawMaterialId,
-        @NotNull BigDecimal quantity,
-        @NotNull BigDecimal unitCost,
+        @NotNull @Positive BigDecimal quantity,
+        @NotNull @Positive BigDecimal unitCost,
         String referenceNumber,
         LocalDate returnDate,
         String reason) {}
-

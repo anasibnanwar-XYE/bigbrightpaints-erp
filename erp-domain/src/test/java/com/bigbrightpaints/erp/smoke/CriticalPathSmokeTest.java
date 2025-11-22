@@ -8,6 +8,8 @@ import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionBrand;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionBrandRepository;
@@ -23,6 +25,7 @@ import org.springframework.http.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -45,6 +48,7 @@ public class CriticalPathSmokeTest extends AbstractIntegrationTest {
     @Autowired private ProductionProductRepository productRepository;
     @Autowired private RawMaterialRepository rawMaterialRepository;
     @Autowired private FinishedGoodRepository finishedGoodRepository;
+    @Autowired private RawMaterialBatchRepository rawMaterialBatchRepository;
     @Autowired private AccountRepository accountRepository;
 
     private String authToken;
@@ -73,6 +77,7 @@ public class CriticalPathSmokeTest extends AbstractIntegrationTest {
         HttpHeaders h = new HttpHeaders();
         h.setBearerAuth(token);
         h.setContentType(MediaType.APPLICATION_JSON);
+        h.set("X-Company-Id", COMPANY_CODE);
         return h;
     }
 
@@ -85,6 +90,7 @@ public class CriticalPathSmokeTest extends AbstractIntegrationTest {
         ensureAccount(company, "EXP-COGS", "Cost of Goods Sold", AccountType.EXPENSE);
         ensureAccount(company, "LIAB-GST", "GST Liability", AccountType.LIABILITY);
         ensureAccount(company, "DISC-SALES", "Sales Discounts", AccountType.EXPENSE);
+        ensureAccount(company, "WIP-PROD", "Work In Progress", AccountType.ASSET);
     }
 
     private Account ensureAccount(Company company, String code, String name, AccountType type) {
@@ -111,6 +117,13 @@ public class CriticalPathSmokeTest extends AbstractIntegrationTest {
         brand.setName("Critical Path Brand");
         brand = brandRepository.save(brand);
 
+        // Provide required finished-good accounting metadata
+        Long valuationId = accountRepository.findByCompanyAndCodeIgnoreCase(company, "ASSET-INV").orElseThrow().getId();
+        Long cogsId = accountRepository.findByCompanyAndCodeIgnoreCase(company, "EXP-COGS").orElseThrow().getId();
+        Long revenueId = accountRepository.findByCompanyAndCodeIgnoreCase(company, "REV-SALES").orElseThrow().getId();
+        Long discountId = accountRepository.findByCompanyAndCodeIgnoreCase(company, "DISC-SALES").orElseThrow().getId();
+        Long taxId = accountRepository.findByCompanyAndCodeIgnoreCase(company, "LIAB-GST").orElseThrow().getId();
+
         // Create product
         Map<String, Object> productReq = Map.of(
                 "customSkuCode", "CP-SKU-001",
@@ -119,7 +132,14 @@ public class CriticalPathSmokeTest extends AbstractIntegrationTest {
                 "category", "FINISHED_GOOD",
                 "unitOfMeasure", "UNIT",
                 "basePrice", new BigDecimal("150.00"),
-                "gstRate", new BigDecimal("18.00")
+                "gstRate", new BigDecimal("18.00"),
+                "metadata", Map.of(
+                        "fgValuationAccountId", valuationId,
+                        "fgCogsAccountId", cogsId,
+                        "fgRevenueAccountId", revenueId,
+                        "fgDiscountAccountId", discountId,
+                        "fgTaxAccountId", taxId
+                )
         );
 
         // FIX: Correct endpoint path is /api/v1/accounting/catalog/products
@@ -240,12 +260,13 @@ public class CriticalPathSmokeTest extends AbstractIntegrationTest {
     @DisplayName("11. Dispatch Order - Success (Check Endpoint)")
     void dispatchOrderEndpointAvailable() {
         // Test that the orchestrator dispatch endpoint is available
-        // Actual dispatch requires complex setup
-        ResponseEntity<Map> response = rest.exchange("/api/v1/orchestrator/dispatch",
-                HttpMethod.POST, new HttpEntity<>(Map.of(), headers), Map.class);
+        // Actual dispatch requires existing batch/account configuration
+        Map<String, Object> dispatchReq = Map.of("requestedBy", "smoke-test");
+        ResponseEntity<Map> response = rest.exchange("/api/v1/orchestrator/factory/dispatch/{batchId}",
+                HttpMethod.POST, new HttpEntity<>(dispatchReq, headers), Map.class, "TEST-BATCH-1");
 
-        // Should fail validation but endpoint should exist
-        assertThat(response.getStatusCode()).isIn(HttpStatus.BAD_REQUEST, HttpStatus.UNPROCESSABLE_ENTITY);
+        // Should fail validation or batch lookup, but endpoint should exist
+        assertThat(response.getStatusCode()).isIn(HttpStatus.BAD_REQUEST, HttpStatus.UNPROCESSABLE_ENTITY, HttpStatus.NOT_FOUND);
     }
 
     @Test
@@ -319,7 +340,22 @@ public class CriticalPathSmokeTest extends AbstractIntegrationTest {
 
     // Helper methods
     private RawMaterial createTestRawMaterial(Company company, String sku, BigDecimal stock) {
-        return rawMaterialRepository.findByCompanyAndSku(company, sku)
+        Long inventoryAccountId = accountRepository.findByCompanyAndCodeIgnoreCase(company, "ASSET-INV")
+                .map(Account::getId)
+                .orElse(null);
+        RawMaterial rawMaterial = rawMaterialRepository.findByCompanyAndSku(company, sku)
+                .map(existing -> {
+                    boolean dirty = false;
+                    if (existing.getInventoryAccountId() == null && inventoryAccountId != null) {
+                        existing.setInventoryAccountId(inventoryAccountId);
+                        dirty = true;
+                    }
+                    if (existing.getCurrentStock() == null || existing.getCurrentStock().compareTo(stock) < 0) {
+                        existing.setCurrentStock(stock);
+                        dirty = true;
+                    }
+                    return dirty ? rawMaterialRepository.save(existing) : existing;
+                })
                 .orElseGet(() -> {
                     RawMaterial rm = new RawMaterial();
                     rm.setCompany(company);
@@ -327,12 +363,52 @@ public class CriticalPathSmokeTest extends AbstractIntegrationTest {
                     rm.setName("Test RM " + sku);
                     rm.setUnitType("KG");
                     rm.setCurrentStock(stock);
+                    rm.setInventoryAccountId(inventoryAccountId);
                     return rawMaterialRepository.save(rm);
                 });
+        ensureBootstrapBatch(rawMaterial, stock);
+        return rawMaterial;
+    }
+
+    private void ensureBootstrapBatch(RawMaterial rawMaterial, BigDecimal targetStock) {
+        if (rawMaterial == null || targetStock == null || targetStock.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+        BigDecimal existingQty = rawMaterialBatchRepository.findByRawMaterial(rawMaterial).stream()
+                .map(batch -> batch.getQuantity() == null ? BigDecimal.ZERO : batch.getQuantity())
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal needed = targetStock.subtract(existingQty);
+        if (needed.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+        RawMaterialBatch batch = new RawMaterialBatch();
+        batch.setRawMaterial(rawMaterial);
+        batch.setBatchCode("TEST-" + rawMaterial.getSku() + "-" + System.currentTimeMillis());
+        batch.setUnit(rawMaterial.getUnitType() != null ? rawMaterial.getUnitType() : "UNIT");
+        batch.setQuantity(needed);
+        batch.setCostPerUnit(BigDecimal.ONE);
+        rawMaterialBatchRepository.save(batch);
     }
 
     private ProductionProduct createTestProduct(Company company, String skuCode) {
+        Long wipAccountId = accountRepository.findByCompanyAndCodeIgnoreCase(company, "WIP-PROD")
+                .map(Account::getId)
+                .orElse(null);
         return productRepository.findByCompanyAndSkuCode(company, skuCode)
+                .map(existing -> {
+                    boolean dirty = false;
+                    if (wipAccountId != null) {
+                        Map<String, Object> metadata = existing.getMetadata() != null
+                                ? new HashMap<>(existing.getMetadata())
+                                : new HashMap<>();
+                        if (!metadata.containsKey("wipAccountId") || metadata.get("wipAccountId") == null) {
+                            metadata.put("wipAccountId", wipAccountId);
+                            existing.setMetadata(metadata);
+                            dirty = true;
+                        }
+                    }
+                    return dirty ? productRepository.save(existing) : existing;
+                })
                 .orElseGet(() -> {
                     ProductionBrand brand = brandRepository.findByCompanyAndCodeIgnoreCase(company, "TEST-BRAND")
                             .orElseGet(() -> {
@@ -352,6 +428,11 @@ public class CriticalPathSmokeTest extends AbstractIntegrationTest {
                     p.setSkuCode(skuCode);
                     p.setBasePrice(new BigDecimal("100.00"));
                     p.setGstRate(BigDecimal.ZERO);
+                    if (wipAccountId != null) {
+                        Map<String, Object> metadata = new HashMap<>();
+                        metadata.put("wipAccountId", wipAccountId);
+                        p.setMetadata(metadata);
+                    }
                     return productRepository.save(p);
                 });
     }

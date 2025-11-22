@@ -123,7 +123,12 @@ public class RawMaterial extends VersionedEntity {
     }
 
     public void setCurrentStock(BigDecimal currentStock) {
-        this.currentStock = currentStock;
+        // Enforce non-negative inventory at the entity boundary
+        if (currentStock == null) {
+            this.currentStock = BigDecimal.ZERO;
+        } else {
+            this.currentStock = currentStock.max(BigDecimal.ZERO);
+        }
     }
 
     public BigDecimal getMinStock() {

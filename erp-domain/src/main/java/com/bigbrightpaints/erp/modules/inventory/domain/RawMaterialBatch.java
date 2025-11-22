@@ -81,12 +81,16 @@ public class RawMaterialBatch extends VersionedEntity {
         this.batchCode = batchCode;
     }
 
-    public BigDecimal getQuantity() {
-        return quantity;
-    }
+    public BigDecimal getQuantity() { return quantity; }
 
     public void setQuantity(BigDecimal quantity) {
-        this.quantity = quantity;
+        if (quantity == null) {
+            this.quantity = BigDecimal.ZERO;
+        } else if (quantity.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("Batch " + batchCode + " quantity cannot be negative");
+        } else {
+            this.quantity = quantity;
+        }
     }
 
     public String getUnit() {

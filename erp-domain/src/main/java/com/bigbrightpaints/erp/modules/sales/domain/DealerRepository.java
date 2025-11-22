@@ -1,8 +1,10 @@
 package com.bigbrightpaints.erp.modules.sales.domain;
 
 import com.bigbrightpaints.erp.modules.company.domain.Company;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -16,4 +18,8 @@ public interface DealerRepository extends JpaRepository<Dealer, Long> {
 
     @Query("select d from Dealer d where d.company = :company and (lower(d.name) like lower(concat('%', :term, '%')) or lower(d.code) like lower(concat('%', :term, '%'))) order by d.name asc")
     List<Dealer> search(@Param("company") Company company, @Param("term") String term, Pageable pageable);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select d from Dealer d where d.company = :company and d.id = :id")
+    Optional<Dealer> lockByCompanyAndId(@Param("company") Company company, @Param("id") Long id);
 }

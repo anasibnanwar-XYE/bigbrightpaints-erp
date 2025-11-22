@@ -12,15 +12,21 @@ import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.authentication.LockedException;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 
 @Service
 public class AuthService {
+
+    private static final int MAX_FAILED_ATTEMPTS = 5;
+    private static final Duration LOCKOUT_DURATION = Duration.ofMinutes(15);
 
     private final AuthenticationManager authenticationManager;
     private final JwtTokenService tokenService;
@@ -47,18 +53,27 @@ public class AuthService {
     }
 
     public AuthResponse login(LoginRequest request) {
-        Authentication authentication = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.email(), request.password()));
-        UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
-        Company company = resolveCompanyForUser(principal.getUser(), request.companyCode());
-        mfaService.verifyDuringLogin(principal.getUser(), request.mfaCode(), request.recoveryCode());
-        Map<String, Object> claims = new HashMap<>();
-        claims.put("name", principal.getUser().getDisplayName());
-        String accessToken = tokenService.generateAccessToken(principal.getUsername(), company.getCode(), claims);
-        String refreshToken = refreshTokenService.issue(principal.getUsername(),
-                Instant.now().plusSeconds(properties.getRefreshTokenTtlSeconds()));
-        return new AuthResponse("Bearer", accessToken, refreshToken, properties.getAccessTokenTtlSeconds(),
-                company.getCode(), principal.getUser().getDisplayName());
+        UserAccount user = userAccountRepository.findByEmailIgnoreCase(request.email())
+                .orElseThrow(() -> new IllegalArgumentException("Invalid credentials"));
+        enforceLock(user);
+        try {
+            Authentication authentication = authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(request.email(), request.password()));
+            UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+            resetLock(user);
+            Company company = resolveCompanyForUser(principal.getUser(), request.companyCode());
+            mfaService.verifyDuringLogin(principal.getUser(), request.mfaCode(), request.recoveryCode());
+            Map<String, Object> claims = new HashMap<>();
+            claims.put("name", principal.getUser().getDisplayName());
+            String accessToken = tokenService.generateAccessToken(principal.getUsername(), company.getCode(), claims);
+            String refreshToken = refreshTokenService.issue(principal.getUsername(),
+                    Instant.now().plusSeconds(properties.getRefreshTokenTtlSeconds()));
+            return new AuthResponse("Bearer", accessToken, refreshToken, properties.getAccessTokenTtlSeconds(),
+                    company.getCode(), principal.getUser().getDisplayName());
+        } catch (AuthenticationException ex) {
+            registerFailure(user);
+            throw ex;
+        }
     }
 
     public AuthResponse refresh(RefreshTokenRequest request) {
@@ -90,5 +105,26 @@ public class AuthService {
         if (refreshToken != null) {
             refreshTokenService.revoke(refreshToken);
         }
+    }
+
+    private void enforceLock(UserAccount user) {
+        if (user.getLockedUntil() != null && user.getLockedUntil().isAfter(Instant.now())) {
+            throw new LockedException("Account locked until " + user.getLockedUntil());
+        }
+    }
+
+    private void resetLock(UserAccount user) {
+        user.setFailedLoginAttempts(0);
+        user.setLockedUntil(null);
+        userAccountRepository.save(user);
+    }
+
+    private void registerFailure(UserAccount user) {
+        int attempts = user.getFailedLoginAttempts() + 1;
+        user.setFailedLoginAttempts(attempts);
+        if (attempts >= MAX_FAILED_ATTEMPTS) {
+            user.setLockedUntil(Instant.now().plus(LOCKOUT_DURATION));
+        }
+        userAccountRepository.save(user);
     }
 }

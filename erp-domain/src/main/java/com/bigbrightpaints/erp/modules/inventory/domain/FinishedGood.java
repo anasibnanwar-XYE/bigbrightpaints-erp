@@ -90,9 +90,25 @@ public class FinishedGood extends VersionedEntity {
     public String getUnit() { return unit; }
     public void setUnit(String unit) { this.unit = unit; }
     public BigDecimal getCurrentStock() { return currentStock; }
-    public void setCurrentStock(BigDecimal currentStock) { this.currentStock = currentStock; }
+    public void setCurrentStock(BigDecimal currentStock) {
+        if (currentStock == null) {
+            this.currentStock = BigDecimal.ZERO;
+        } else if (currentStock.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("Stock cannot be negative for product " + productCode);
+        } else {
+            this.currentStock = currentStock;
+        }
+    }
     public BigDecimal getReservedStock() { return reservedStock; }
-    public void setReservedStock(BigDecimal reservedStock) { this.reservedStock = reservedStock; }
+    public void setReservedStock(BigDecimal reservedStock) {
+        if (reservedStock == null) {
+            this.reservedStock = BigDecimal.ZERO;
+        } else if (reservedStock.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("Reserved stock cannot be negative for product " + productCode);
+        } else {
+            this.reservedStock = reservedStock;
+        }
+    }
     public String getCostingMethod() { return costingMethod; }
     public void setCostingMethod(String costingMethod) { this.costingMethod = costingMethod; }
     public Long getValuationAccountId() { return valuationAccountId; }
@@ -105,4 +121,15 @@ public class FinishedGood extends VersionedEntity {
     public void setDiscountAccountId(Long discountAccountId) { this.discountAccountId = discountAccountId; }
     public Long getTaxAccountId() { return taxAccountId; }
     public void setTaxAccountId(Long taxAccountId) { this.taxAccountId = taxAccountId; }
+
+    @Transient
+    public void adjustStock(BigDecimal quantityDelta, String operation) {
+        BigDecimal newStock = (currentStock == null ? BigDecimal.ZERO : currentStock).add(quantityDelta);
+        if (newStock.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalStateException(String.format(
+                    "Insufficient stock for %s. Available: %s, Delta: %s, Operation: %s",
+                    productCode, currentStock, quantityDelta, operation));
+        }
+        setCurrentStock(newStock);
+    }
 }

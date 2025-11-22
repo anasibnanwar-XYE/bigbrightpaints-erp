@@ -64,13 +64,40 @@ public class FinishedGoodBatch extends VersionedEntity {
     public String getBatchCode() { return batchCode; }
     public void setBatchCode(String batchCode) { this.batchCode = batchCode; }
     public BigDecimal getQuantityTotal() { return quantityTotal; }
-    public void setQuantityTotal(BigDecimal quantityTotal) { this.quantityTotal = quantityTotal; }
+    public void setQuantityTotal(BigDecimal quantityTotal) {
+        if (quantityTotal == null) {
+            this.quantityTotal = BigDecimal.ZERO;
+        } else if (quantityTotal.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("Batch " + batchCode + " total quantity cannot be negative");
+        } else {
+            this.quantityTotal = quantityTotal;
+        }
+    }
     public BigDecimal getQuantityAvailable() { return quantityAvailable; }
-    public void setQuantityAvailable(BigDecimal quantityAvailable) { this.quantityAvailable = quantityAvailable; }
+    public void setQuantityAvailable(BigDecimal quantityAvailable) {
+        if (quantityAvailable == null) {
+            this.quantityAvailable = BigDecimal.ZERO;
+        } else if (quantityAvailable.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("Batch " + batchCode + " available quantity cannot be negative");
+        } else {
+            this.quantityAvailable = quantityAvailable;
+        }
+    }
     public BigDecimal getUnitCost() { return unitCost; }
     public void setUnitCost(BigDecimal unitCost) { this.unitCost = unitCost; }
     public Instant getManufacturedAt() { return manufacturedAt; }
     public void setManufacturedAt(Instant manufacturedAt) { this.manufacturedAt = manufacturedAt; }
     public LocalDate getExpiryDate() { return expiryDate; }
     public void setExpiryDate(LocalDate expiryDate) { this.expiryDate = expiryDate; }
+
+    /**
+     * Allocate quantity from this batch in a single step, preventing negatives.
+     */
+    @Transient
+    public BigDecimal allocate(BigDecimal requested) {
+        BigDecimal safeAvailable = quantityAvailable == null ? BigDecimal.ZERO : quantityAvailable;
+        BigDecimal toAllocate = requested == null ? BigDecimal.ZERO : requested.min(safeAvailable);
+        setQuantityAvailable(safeAvailable.subtract(toAllocate));
+        return toAllocate;
+    }
 }

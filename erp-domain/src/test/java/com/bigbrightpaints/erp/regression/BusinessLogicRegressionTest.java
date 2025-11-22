@@ -71,6 +71,7 @@ public class BusinessLogicRegressionTest extends AbstractIntegrationTest {
         HttpHeaders h = new HttpHeaders();
         h.setBearerAuth(token);
         h.setContentType(MediaType.APPLICATION_JSON);
+        h.set("X-Company-Id", COMPANY_CODE);
         return h;
     }
 
@@ -220,7 +221,8 @@ public class BusinessLogicRegressionTest extends AbstractIntegrationTest {
 
         Map<String, Object> jeRequest = Map.of(
                 "entryDate", LocalDate.now(),
-                "description", "Test sale",
+                "referenceNumber", "JE-REG-" + System.currentTimeMillis(),
+                "memo", "Test sale",
                 "lines", List.of(debitLine, creditLine)
         );
 
@@ -257,7 +259,8 @@ public class BusinessLogicRegressionTest extends AbstractIntegrationTest {
 
         Map<String, Object> jeRequest = Map.of(
                 "entryDate", LocalDate.now(),
-                "description", "Inventory purchase",
+                "referenceNumber", "JE-REG-" + System.currentTimeMillis(),
+                "memo", "Inventory purchase",
                 "lines", List.of(debitLine, creditLine)
         );
 
@@ -288,7 +291,8 @@ public class BusinessLogicRegressionTest extends AbstractIntegrationTest {
 
         Map<String, Object> jeRequest = Map.of(
                 "entryDate", LocalDate.now(),
-                "description", "Test entry",
+                "referenceNumber", "JE-REG-" + System.currentTimeMillis(),
+                "memo", "Test entry",
                 "lines", List.of(debitLine, creditLine)
         );
 

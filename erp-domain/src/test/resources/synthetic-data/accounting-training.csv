@@ -1,0 +1,10 @@
+type,reference,date,sku,qty,price,cost,tax_rate,party,notes
+SALE,SO-1001,2024-01-10,FG-GST,60,20,,0.18,GST-DEALER,"GST customer, taxable line"
+SALE,SO-1002,2024-01-11,FG-EXEMPT,10,15,,0.00,NON-GST-RETAIL,"Exempt basket"
+SALE_RETURN,CN-1001,2024-01-12,FG-GST,-10,20,,0.18,GST-DEALER,"Reverse portion of SO-1001"
+PURCHASE,PO-2001,2024-01-05,RM-BASE,100,,10,0.05,SUP-RAW,"Raw material with input GST"
+COGS,COGS-SO-1001,2024-01-10,FG-GST,-60,,11.00,,SYSTEM,"COGS from dispatch (Dr COGS / Cr Inventory)"
+WRITE_OFF,WO-9001,2024-01-13,FG-GST,-5,,10,,SYSTEM,"Shrinkage to variance account"
+INVENTORY_COUNT,COUNT-01,2024-01-31,FG-GST,90,,,,SYSTEM,"Physical count at month end"
+PAYMENT,RCPT-5001,2024-01-15,,,,,,GST-DEALER,"Cash receipt against SO-1001"
+PERIOD_LOCK,LOCK-2024-01,2024-02-01,,,,,,SYSTEM,"Close January books (lock period)"
