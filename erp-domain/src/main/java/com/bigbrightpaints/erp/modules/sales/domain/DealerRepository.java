@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.sales.domain;
 
+import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Pageable;
@@ -15,6 +16,7 @@ public interface DealerRepository extends JpaRepository<Dealer, Long> {
     List<Dealer> findByCompanyOrderByNameAsc(Company company);
     Optional<Dealer> findByCompanyAndId(Company company, Long id);
     Optional<Dealer> findByCompanyAndCodeIgnoreCase(Company company, String code);
+    Optional<Dealer> findByCompanyAndReceivableAccount(Company company, Account receivableAccount);
 
     @Query("select d from Dealer d where d.company = :company and (lower(d.name) like lower(concat('%', :term, '%')) or lower(d.code) like lower(concat('%', :term, '%'))) order by d.name asc")
     List<Dealer> search(@Param("company") Company company, @Param("term") String term, Pageable pageable);

@@ -8,6 +8,7 @@ import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
 import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
+import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -35,6 +36,7 @@ public class SupplierLedgerService extends AbstractPartnerLedgerService<Supplier
         this.companyEntityLookup = companyEntityLookup;
     }
 
+    @Transactional
     public void recordLedgerEntry(Supplier supplier, LedgerContext context) {
         super.recordLedgerEntry(supplier, context);
     }
@@ -75,7 +77,8 @@ public class SupplierLedgerService extends AbstractPartnerLedgerService<Supplier
 
     @Override
     protected Supplier reloadPartner(Supplier partner) {
-        return supplierRepository.findById(partner.getId()).orElse(partner);
+        return supplierRepository.lockByCompanyAndId(partner.getCompany(), partner.getId())
+                .orElse(partner);
     }
 
     @Override

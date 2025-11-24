@@ -15,7 +15,9 @@ import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunRepository;
 import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchase;
+import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
+import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchRepository;
@@ -65,6 +67,8 @@ public class AccountingService {
     private final RawMaterialMovementRepository rawMaterialMovementRepository;
     private final RawMaterialBatchRepository rawMaterialBatchRepository;
     private final FinishedGoodBatchRepository finishedGoodBatchRepository;
+    private final DealerRepository dealerRepository;
+    private final SupplierRepository supplierRepository;
 
     public AccountingService(CompanyContextService companyContextService,
                              AccountRepository accountRepository,
@@ -82,7 +86,9 @@ public class AccountingService {
                              InvoiceRepository invoiceRepository,
                              RawMaterialMovementRepository rawMaterialMovementRepository,
                              RawMaterialBatchRepository rawMaterialBatchRepository,
-                             FinishedGoodBatchRepository finishedGoodBatchRepository) {
+                             FinishedGoodBatchRepository finishedGoodBatchRepository,
+                             DealerRepository dealerRepository,
+                             SupplierRepository supplierRepository) {
         this.companyContextService = companyContextService;
         this.accountRepository = accountRepository;
         this.journalEntryRepository = journalEntryRepository;
@@ -100,6 +106,8 @@ public class AccountingService {
         this.rawMaterialMovementRepository = rawMaterialMovementRepository;
         this.rawMaterialBatchRepository = rawMaterialBatchRepository;
         this.finishedGoodBatchRepository = finishedGoodBatchRepository;
+        this.dealerRepository = dealerRepository;
+        this.supplierRepository = supplierRepository;
     }
 
     /* Accounts */
@@ -199,6 +207,22 @@ public class AccountingService {
             Account account = accountRepository.lockByCompanyAndId(company, accountId)
                     .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Account not found"));
             lockedAccounts.put(accountId, account);
+        }
+        Dealer dealerContext = dealer;
+        Supplier supplierContext = supplier;
+        for (Account account : lockedAccounts.values()) {
+            dealerRepository.findByCompanyAndReceivableAccount(company, account).ifPresent(owner -> {
+                if (dealerContext == null || !owner.getId().equals(dealerContext.getId())) {
+                    throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                            "Dealer receivable account " + account.getCode() + " requires matching dealer context");
+                }
+            });
+            supplierRepository.findByCompanyAndPayableAccount(company, account).ifPresent(owner -> {
+                if (supplierContext == null || !owner.getId().equals(supplierContext.getId())) {
+                    throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                            "Supplier payable account " + account.getCode() + " requires matching supplier context");
+                }
+            });
         }
         BigDecimal totalBaseDebit = BigDecimal.ZERO;
         BigDecimal totalBaseCredit = BigDecimal.ZERO;
@@ -404,7 +428,8 @@ public class AccountingService {
         Dealer dealer = requireDealer(company, request.dealerId());
         Account receivableAccount = dealer.getReceivableAccount();
         if (receivableAccount == null) {
-            throw new IllegalStateException("Dealer " + dealer.getName() + " is missing a receivable account");
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                    "Dealer " + dealer.getName() + " is missing a receivable account");
         }
         Account cashAccount = requireAccount(company, request.cashAccountId());
         BigDecimal amount = requirePositive(request.amount(), "amount");
@@ -476,7 +501,8 @@ public class AccountingService {
         Supplier supplier = requireSupplier(company, request.supplierId());
         Account payableAccount = supplier.getPayableAccount();
         if (payableAccount == null) {
-            throw new IllegalStateException("Supplier " + supplier.getName() + " is missing a payable account");
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                    "Supplier " + supplier.getName() + " is missing a payable account");
         }
         Account cashAccount = requireAccount(company, request.cashAccountId());
         BigDecimal amount = requirePositive(request.amount(), "amount");
@@ -510,7 +536,8 @@ public class AccountingService {
         Dealer dealer = requireDealer(company, request.dealerId());
         Account receivableAccount = dealer.getReceivableAccount();
         if (receivableAccount == null) {
-            throw new IllegalStateException("Dealer " + dealer.getName() + " is missing a receivable account");
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                    "Dealer " + dealer.getName() + " is missing a receivable account");
         }
         Account cashAccount = requireAccount(company, request.cashAccountId());
         List<SettlementAllocationRequest> allocations = request.allocations();
@@ -759,7 +786,8 @@ public class AccountingService {
         Supplier supplier = requireSupplier(company, request.supplierId());
         Account payableAccount = supplier.getPayableAccount();
         if (payableAccount == null) {
-            throw new IllegalStateException("Supplier " + supplier.getName() + " is missing a payable account");
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                    "Supplier " + supplier.getName() + " is missing a payable account");
         }
         Account cashAccount = requireAccount(company, request.cashAccountId());
         List<SettlementAllocationRequest> allocations = request.allocations();

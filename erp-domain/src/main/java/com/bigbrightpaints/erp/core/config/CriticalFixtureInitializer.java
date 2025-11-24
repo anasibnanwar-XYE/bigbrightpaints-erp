@@ -8,7 +8,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 
 @Configuration
-@Profile({"test", "mock"})
+@Profile({"test", "mock", "dev"})
 public class CriticalFixtureInitializer {
 
     @Bean

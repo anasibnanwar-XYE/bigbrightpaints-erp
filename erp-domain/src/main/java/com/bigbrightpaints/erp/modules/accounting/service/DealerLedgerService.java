@@ -8,6 +8,7 @@ import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
+import jakarta.transaction.Transactional;
 import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.Collections;
@@ -34,6 +35,7 @@ public class DealerLedgerService extends AbstractPartnerLedgerService<Dealer, De
         this.companyEntityLookup = companyEntityLookup;
     }
 
+    @Transactional
     public void recordLedgerEntry(Dealer dealer, LedgerContext context) {
         super.recordLedgerEntry(dealer, context);
     }
@@ -74,7 +76,8 @@ public class DealerLedgerService extends AbstractPartnerLedgerService<Dealer, De
 
     @Override
     protected Dealer reloadPartner(Dealer partner) {
-        return dealerRepository.findById(partner.getId()).orElse(partner);
+        return dealerRepository.lockByCompanyAndId(partner.getCompany(), partner.getId())
+                .orElse(partner);
     }
 
     @Override
