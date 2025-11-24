@@ -190,7 +190,9 @@ public class AccountingPeriodService {
     public AccountingPeriod requireOpenPeriod(Company company, LocalDate referenceDate, boolean overrideAuthorized) {
         AccountingPeriod period = ensurePeriod(company, referenceDate);
         if (period.getStatus() != AccountingPeriodStatus.OPEN && !overrideAuthorized) {
-            throw new IllegalArgumentException("Accounting period " + period.getLabel() + " is locked/closed");
+            throw new com.bigbrightpaints.erp.core.exception.ApplicationException(
+                    com.bigbrightpaints.erp.core.exception.ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Accounting period " + period.getLabel() + " is locked/closed");
         }
         return period;
     }

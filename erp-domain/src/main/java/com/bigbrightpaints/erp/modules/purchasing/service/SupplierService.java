@@ -33,7 +33,7 @@ public class SupplierService {
                            CompanyContextService companyContextService,
                            AccountRepository accountRepository,
                            SupplierLedgerService supplierLedgerService,
-                           CompanyEntityLookup companyEntityLookup) {
+                            CompanyEntityLookup companyEntityLookup) {
         this.supplierRepository = supplierRepository;
         this.companyContextService = companyContextService;
         this.accountRepository = accountRepository;
@@ -41,7 +41,6 @@ public class SupplierService {
         this.companyEntityLookup = companyEntityLookup;
     }
 
-    @Transactional(Transactional.TxType.SUPPORTS)
     public List<SupplierResponse> listSuppliers() {
         Company company = companyContextService.requireCurrentCompany();
         List<Supplier> suppliers = supplierRepository.findByCompanyOrderByNameAsc(company);

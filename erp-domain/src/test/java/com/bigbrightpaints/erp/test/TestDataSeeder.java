@@ -6,8 +6,10 @@ import com.bigbrightpaints.erp.modules.rbac.domain.Role;
 import com.bigbrightpaints.erp.modules.rbac.domain.RoleRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
+import com.bigbrightpaints.erp.core.service.CriticalFixtureService;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderRepository;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,17 +26,20 @@ public class TestDataSeeder {
     private final UserAccountRepository userRepository;
     private final SalesOrderRepository salesOrderRepository;
     private final PasswordEncoder passwordEncoder;
+    private final ObjectProvider<CriticalFixtureService> criticalFixtureService;
 
     public TestDataSeeder(CompanyRepository companyRepository,
                           RoleRepository roleRepository,
                           UserAccountRepository userRepository,
                           SalesOrderRepository salesOrderRepository,
-                          PasswordEncoder passwordEncoder) {
+                          PasswordEncoder passwordEncoder,
+                          ObjectProvider<CriticalFixtureService> criticalFixtureService) {
         this.companyRepository = companyRepository;
         this.roleRepository = roleRepository;
         this.userRepository = userRepository;
         this.salesOrderRepository = salesOrderRepository;
         this.passwordEncoder = passwordEncoder;
+        this.criticalFixtureService = criticalFixtureService;
     }
 
     public Company ensureCompany(String code, String name) {
@@ -43,6 +48,7 @@ public class TestDataSeeder {
                     if (existing.getName() == null) {
                         existing.setName(name);
                     }
+                    criticalFixtureService.ifAvailable(service -> service.seedCompanyFixtures(existing));
                     return existing;
                 })
                 .orElseGet(() -> {
@@ -50,7 +56,9 @@ public class TestDataSeeder {
                     company.setCode(code);
                     company.setName(name);
                     company.setTimezone("UTC");
-                    return companyRepository.save(company);
+                    Company saved = companyRepository.save(company);
+                    criticalFixtureService.ifAvailable(service -> service.seedCompanyFixtures(saved));
+                    return saved;
                 });
     }
 

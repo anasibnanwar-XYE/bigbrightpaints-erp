@@ -76,20 +76,15 @@ public class OrchestratorController {
                                                               @RequestHeader("X-Company-Id") String companyId,
                                                               Principal principal) {
         Object orderId = request.get("orderId");
-        if (orderId == null || orderId.toString().isBlank()) {
-            return ResponseEntity.unprocessableEntity()
-                    .body(Map.of("message", "orderId is required"));
-        }
-        try {
-            OrderFulfillmentRequest fulfillmentRequest = new OrderFulfillmentRequest("DISPATCHED", "auto-dispatch");
-            String traceId = commandDispatcher.updateOrderFulfillment(orderId.toString(), fulfillmentRequest,
-                    companyId, principal.getName());
-            return ResponseEntity.accepted().body(Map.of("traceId", traceId));
-        } catch (Exception ex) {
-            String traceId = commandDispatcher.generateTraceId();
-            return ResponseEntity.badRequest()
-                    .body(Map.of("traceId", traceId, "message", ex.getMessage()));
-        }
+        return handleDispatchOrder(orderId != null ? orderId.toString() : null, companyId, principal);
+    }
+
+    @PostMapping("/dispatch/{orderId}")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_SALES')")
+    public ResponseEntity<Map<String, Object>> dispatchOrderAlias(@PathVariable String orderId,
+                                                                  @RequestHeader("X-Company-Id") String companyId,
+                                                                  Principal principal) {
+        return handleDispatchOrder(orderId, companyId, principal);
     }
 
     @PostMapping("/payroll/run")
@@ -114,5 +109,24 @@ public class OrchestratorController {
     @GetMapping("/health/events")
     public ResponseEntity<Map<String, Object>> eventHealth() {
         return ResponseEntity.ok(commandDispatcher.eventHealth());
+    }
+
+    private ResponseEntity<Map<String, Object>> handleDispatchOrder(String orderId,
+                                                                     String companyId,
+                                                                     Principal principal) {
+        if (orderId == null || orderId.isBlank()) {
+            return ResponseEntity.unprocessableEntity()
+                    .body(Map.of("message", "orderId is required"));
+        }
+        try {
+            OrderFulfillmentRequest fulfillmentRequest = new OrderFulfillmentRequest("DISPATCHED", "auto-dispatch");
+            String traceId = commandDispatcher.updateOrderFulfillment(orderId, fulfillmentRequest,
+                    companyId, principal.getName());
+            return ResponseEntity.accepted().body(Map.of("traceId", traceId));
+        } catch (Exception ex) {
+            String traceId = commandDispatcher.generateTraceId();
+            return ResponseEntity.badRequest()
+                    .body(Map.of("traceId", traceId, "message", ex.getMessage()));
+        }
     }
 }

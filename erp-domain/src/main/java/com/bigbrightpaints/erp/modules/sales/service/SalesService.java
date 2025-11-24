@@ -1,10 +1,13 @@
 package com.bigbrightpaints.erp.modules.sales.service;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.util.MoneyUtils;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.DealerLedgerService;
@@ -758,16 +761,17 @@ public class SalesService {
         Company company = companyContextService.requireCurrentCompany();
         if (request.packingSlipId() != null) {
             slip = packagingSlipRepository.findByIdAndCompany(request.packingSlipId(), company)
-                    .orElseThrow(() -> new IllegalArgumentException("Packing slip not found"));
+                    .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Packing slip not found"));
         } else if (request.orderId() != null) {
             slip = packagingSlipRepository.findBySalesOrderId(request.orderId())
-                    .orElseThrow(() -> new IllegalArgumentException("Packing slip not found for order " + request.orderId()));
+                    .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                            "Packing slip not found for order " + request.orderId()));
         } else {
-            throw new IllegalArgumentException("packingSlipId or orderId is required");
+            throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD, "packingSlipId or orderId is required");
         }
         Long salesOrderId = slip.getSalesOrder() != null ? slip.getSalesOrder().getId() : request.orderId();
         if (salesOrderId == null) {
-            throw new IllegalStateException("Sales order is required on packing slip");
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Sales order is required on packing slip");
         }
         Optional<Invoice> existingInvoiceOpt = invoiceRepository.findBySalesOrderId(salesOrderId);
         if ("DISPATCHED".equalsIgnoreCase(slip.getStatus())) {
@@ -791,7 +795,8 @@ public class SalesService {
         SalesOrder order = requireOrder(salesOrderId);
         Dealer dealer = order.getDealer();
         if (dealer == null || dealer.getReceivableAccount() == null) {
-            throw new IllegalStateException("Dealer with receivable account is required for dispatch");
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                    "Dealer with receivable account is required for dispatch");
         }
 
         // Build shipped financial lines from slip lines + overrides
@@ -817,7 +822,8 @@ public class SalesService {
             BigDecimal onHand = fg.getCurrentStock() == null ? BigDecimal.ZERO : fg.getCurrentStock();
             BigDecimal shipQty = requestedShip.min(onHand);
             if (shipQty.compareTo(BigDecimal.ZERO) <= 0) {
-                continue;
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Insufficient stock to dispatch " + fg.getProductCode());
             }
             BigDecimal price = override != null && override.priceOverride() != null ? override.priceOverride() : item.getUnitPrice();
             BigDecimal discount = override != null && override.discount() != null ? override.discount() : BigDecimal.ZERO;
@@ -858,13 +864,18 @@ public class SalesService {
         }
 
         BigDecimal totalAmount = subtotal.add(taxTotal);
+        if (totalAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "No shippable quantity available for dispatch");
+        }
 
         // Credit limit check
         if (dealer.getCreditLimit() != null && dealer.getCreditLimit().compareTo(BigDecimal.ZERO) > 0) {
             BigDecimal outstanding = dealerLedgerService.currentBalance(dealer.getId());
             if (outstanding.add(totalAmount).compareTo(dealer.getCreditLimit()) > 0
                     && !Boolean.TRUE.equals(request.adminOverrideCreditLimit())) {
-                throw new IllegalStateException("Credit limit exceeded for dealer " + dealer.getName());
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Credit limit exceeded for dealer " + dealer.getName());
             }
         }
 
@@ -876,6 +887,12 @@ public class SalesService {
 
         // Post AR/Revenue/Tax journal
         // Post COGS/Inventory for dispatched quantities
+        final PackagingSlip slipRef = slip;
+        final String slipNumber = slipRef.getSlipNumber();
+        final LocalDate dispatchedDate = slipRef.getDispatchedAt() != null
+                ? LocalDate.ofInstant(slipRef.getDispatchedAt(), ZoneId.of(company.getTimezone()))
+                : currentDate(company);
+
         Long cogsJournalId = null;
         if (postings != null && !postings.isEmpty()) {
             Map<String, BigDecimal> costByPair = new HashMap<>();
@@ -903,58 +920,59 @@ public class SalesService {
                         acc[1], "Inventory relief for dispatch " + slip.getSlipNumber(), BigDecimal.ZERO, cost));
             }
             if (!cogsLines.isEmpty()) {
-                String cogsRef = "COGS-DISP-" + slip.getId();
-                cogsJournalId = companyEntityLookup.findJournalEntryByReference(company, cogsRef)
-                        .map(j -> j.getId())
-                        .orElseGet(() -> {
-                            var req = new com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest(
-                                    cogsRef,
-                                    slip.getDispatchedAt() != null ? LocalDate.ofInstant(slip.getDispatchedAt(), ZoneId.of(company.getTimezone())) : currentDate(company),
-                                    "COGS for dispatch " + slip.getSlipNumber(),
-                                    dealer.getId(),
-                                    null,
-                                    request.adminOverrideCreditLimit(),
-                                    cogsLines
-                            );
-                            return accountingService.createJournalEntry(req).id();
-                        });
+                String cogsRef = "COGS-DISP-" + slipRef.getId();
+                Optional<JournalEntry> existingCogs = companyEntityLookup.findJournalEntryByReference(company, cogsRef);
+                if (existingCogs.isPresent()) {
+                    cogsJournalId = existingCogs.get().getId();
+                } else {
+                    var req = new com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest(
+                            cogsRef,
+                            dispatchedDate,
+                            "COGS for dispatch " + slipNumber,
+                            dealer.getId(),
+                            null,
+                            request.adminOverrideCreditLimit(),
+                            cogsLines
+                    );
+                    cogsJournalId = accountingService.createJournalEntry(req).id();
+                }
             }
         }
 
         Long arJournalEntryId = null;
         if (totalAmount.compareTo(BigDecimal.ZERO) > 0) {
             if (revenueByAccount.isEmpty()) {
-                throw new IllegalStateException("No revenue account configured for dispatched items");
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "No revenue or tax account configured for dispatched items");
             }
-            String reference = "DISP-" + slip.getId();
-            LocalDate dispatchDate = slip.getDispatchedAt() != null
-                    ? LocalDate.ofInstant(slip.getDispatchedAt(), ZoneId.of(company.getTimezone()))
-                    : currentDate(company);
-            arJournalEntryId = companyEntityLookup.findJournalEntryByReference(company, reference)
-                    .map(j -> j.getId())
-                    .orElseGet(() -> {
-                        List<com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest.JournalLineRequest> jeLines = new ArrayList<>();
-                        jeLines.add(new com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest.JournalLineRequest(
-                                dealer.getReceivableAccount().getId(), "AR for dispatch " + slip.getSlipNumber(), totalAmount, BigDecimal.ZERO));
-                        for (var entry : revenueByAccount.entrySet()) {
-                            jeLines.add(new com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest.JournalLineRequest(
-                                    entry.getKey(), "Revenue for dispatch " + slip.getSlipNumber(), BigDecimal.ZERO, entry.getValue()));
-                        }
-                        for (var entry : taxByAccount.entrySet()) {
-                            jeLines.add(new com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest.JournalLineRequest(
-                                    entry.getKey(), "Tax for dispatch " + slip.getSlipNumber(), BigDecimal.ZERO, entry.getValue()));
-                        }
-                        var jeRequest = new com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest(
-                                reference,
-                                dispatchDate,
-                                "Dispatch " + slip.getSlipNumber(),
-                                dealer.getId(),
-                                null,
-                                request.adminOverrideCreditLimit(),
-                                jeLines
-                        );
-                        return accountingService.createJournalEntry(jeRequest).id();
-                    });
+            String reference = "DISP-" + slipRef.getId();
+            LocalDate dispatchDate = dispatchedDate;
+            Optional<JournalEntry> existingAr = companyEntityLookup.findJournalEntryByReference(company, reference);
+            if (existingAr.isPresent()) {
+                arJournalEntryId = existingAr.get().getId();
+            } else {
+                List<com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest.JournalLineRequest> jeLines = new ArrayList<>();
+                jeLines.add(new com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest.JournalLineRequest(
+                        dealer.getReceivableAccount().getId(), "AR for dispatch " + slipNumber, totalAmount, BigDecimal.ZERO));
+                for (var entry : revenueByAccount.entrySet()) {
+                    jeLines.add(new com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest.JournalLineRequest(
+                            entry.getKey(), "Revenue for dispatch " + slipNumber, BigDecimal.ZERO, entry.getValue()));
+                }
+                for (var entry : taxByAccount.entrySet()) {
+                    jeLines.add(new com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest.JournalLineRequest(
+                            entry.getKey(), "Tax for dispatch " + slipNumber, BigDecimal.ZERO, entry.getValue()));
+                }
+                var jeRequest = new com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest(
+                        reference,
+                        dispatchDate,
+                        "Dispatch " + slipNumber,
+                        dealer.getId(),
+                        null,
+                        request.adminOverrideCreditLimit(),
+                        jeLines
+                );
+                arJournalEntryId = accountingService.createJournalEntry(jeRequest).id();
+            }
         }
 
         // Create final invoice for shipped qty

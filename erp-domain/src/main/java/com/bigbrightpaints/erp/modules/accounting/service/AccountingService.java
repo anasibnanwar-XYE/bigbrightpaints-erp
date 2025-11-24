@@ -1,5 +1,7 @@
 package com.bigbrightpaints.erp.modules.accounting.service;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.util.MoneyUtils;
@@ -137,6 +139,9 @@ public class AccountingService {
     public JournalEntryDto createJournalEntry(JournalEntryRequest request) {
         Company company = companyContextService.requireCurrentCompany();
         List<JournalEntryRequest.JournalLineRequest> lines = request.lines();
+        if (lines == null || lines.isEmpty()) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "At least one journal line is required");
+        }
         String currency = resolveCurrency(request.currency(), company);
         BigDecimal fxRate = resolveFxRate(currency, company, request.fxRate());
         JournalEntry entry = new JournalEntry();
@@ -161,7 +166,8 @@ public class AccountingService {
         if (request.dealerId() != null) {
             dealer = requireDealer(company, request.dealerId());
             if (dealer.getReceivableAccount() == null) {
-                throw new IllegalStateException("Dealer " + dealer.getName() + " is missing a receivable account");
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                        "Dealer " + dealer.getName() + " is missing a receivable account");
             }
             entry.setDealer(dealer);
             dealerReceivableAccount = dealer.getReceivableAccount();
@@ -169,7 +175,8 @@ public class AccountingService {
         if (request.supplierId() != null) {
             supplier = requireSupplier(company, request.supplierId());
             if (supplier.getPayableAccount() == null) {
-                throw new IllegalStateException("Supplier " + supplier.getName() + " is missing a payable account");
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                        "Supplier " + supplier.getName() + " is missing a payable account");
             }
             entry.setSupplier(supplier);
             supplierPayableAccount = supplier.getPayableAccount();
@@ -190,7 +197,7 @@ public class AccountingService {
         Map<Long, Account> lockedAccounts = new HashMap<>();
         for (Long accountId : sortedAccountIds) {
             Account account = accountRepository.lockByCompanyAndId(company, accountId)
-                    .orElseThrow(() -> new IllegalArgumentException("Account not found"));
+                    .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Account not found"));
             lockedAccounts.put(accountId, account);
         }
         BigDecimal totalBaseDebit = BigDecimal.ZERO;
@@ -711,10 +718,10 @@ public class AccountingService {
         for (PartnerSettlementAllocation allocation : settlementRows) {
             allocation.setJournalEntry(journalEntry);
         }
-        settlementAllocationRepository.saveAll(settlementRows);
         if (!touchedPurchases.isEmpty()) {
             rawMaterialPurchaseRepository.saveAll(touchedPurchases);
         }
+        settlementAllocationRepository.saveAll(settlementRows);
         if (!touchedInvoices.isEmpty()) {
             invoiceRepository.saveAll(touchedInvoices);
         }
@@ -805,6 +812,7 @@ public class AccountingService {
         BigDecimal totalFxGain = BigDecimal.ZERO;
         BigDecimal totalFxLoss = BigDecimal.ZERO;
         List<PartnerSettlementAllocation> settlementRows = new ArrayList<>();
+        List<RawMaterialPurchase> touchedPurchases = new ArrayList<>();
 
         for (SettlementAllocationRequest allocation : allocations) {
             BigDecimal applied = requirePositive(allocation.appliedAmount(), "appliedAmount");
@@ -1122,7 +1130,8 @@ public class AccountingService {
             return BigDecimal.ONE;
         }
         if (requestedRate == null || requestedRate.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException("fxRate required when currency differs from base currency");
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "fxRate is required when currency differs from base currency");
         }
         return requestedRate;
     }

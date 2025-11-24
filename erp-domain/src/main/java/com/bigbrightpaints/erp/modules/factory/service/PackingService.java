@@ -1,5 +1,7 @@
 package com.bigbrightpaints.erp.modules.factory.service;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.util.MoneyUtils;
@@ -83,7 +85,8 @@ public class PackingService {
         Company company = companyContextService.requireCurrentCompany();
         ProductionLog log = companyEntityLookup.requireProductionLog(company, request.productionLogId());
         if (log.getStatus() == ProductionLogStatus.FULLY_PACKED) {
-            throw new IllegalStateException("Production log " + log.getProductionCode() + " is already fully packed");
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Production log " + log.getProductionCode() + " is already fully packed");
         }
         if (request.lines() == null || request.lines().isEmpty()) {
             throw new IllegalArgumentException("Packing lines are required");
@@ -144,9 +147,11 @@ public class PackingService {
                         log.getProductionCode(),
                         log.getProduct().getProductName(),
                         log.getBatchColour(),
-                        log.getMixedQuantity(),
-                        log.getTotalPackedQuantity(),
-                        log.getMixedQuantity().subtract(log.getTotalPackedQuantity()).max(BigDecimal.ZERO),
+                        Optional.ofNullable(log.getMixedQuantity()).orElse(BigDecimal.ZERO),
+                        Optional.ofNullable(log.getTotalPackedQuantity()).orElse(BigDecimal.ZERO),
+                        Optional.ofNullable(log.getMixedQuantity()).orElse(BigDecimal.ZERO)
+                                .subtract(Optional.ofNullable(log.getTotalPackedQuantity()).orElse(BigDecimal.ZERO))
+                                .max(BigDecimal.ZERO),
                         log.getStatus().name(),
                         log.getProducedAt()
                 ))
@@ -175,8 +180,8 @@ public class PackingService {
     public ProductionLogDetailDto completePacking(Long productionLogId) {
         Company company = companyContextService.requireCurrentCompany();
         ProductionLog log = companyEntityLookup.requireProductionLog(company, productionLogId);
-        BigDecimal mixedQty = log.getMixedQuantity();
-        BigDecimal packedQty = log.getTotalPackedQuantity();
+        BigDecimal mixedQty = Optional.ofNullable(log.getMixedQuantity()).orElse(BigDecimal.ZERO);
+        BigDecimal packedQty = Optional.ofNullable(log.getTotalPackedQuantity()).orElse(BigDecimal.ZERO);
         BigDecimal wastageQty = mixedQty.subtract(packedQty);
         if (wastageQty.compareTo(BigDecimal.ZERO) < 0) {
             wastageQty = BigDecimal.ZERO;
@@ -253,7 +258,8 @@ public class PackingService {
         if (packedQty.compareTo(BigDecimal.ZERO) > 0) {
             Long fgAccountId = finishedGood.getValuationAccountId();
             if (fgAccountId == null) {
-                throw new IllegalStateException("Finished good " + finishedGood.getProductCode() + " missing valuation account");
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                        "Finished good " + finishedGood.getProductCode() + " missing valuation account");
             }
             BigDecimal packedValue = MoneyUtils.safeMultiply(materialUnitCost, packedQty).setScale(2, RoundingMode.HALF_UP);
             JournalEntryDto entry = accountingFacade.postSimpleJournal(
@@ -271,7 +277,8 @@ public class PackingService {
             BigDecimal wastageValue = MoneyUtils.safeMultiply(materialUnitCost, wastageQty).setScale(2, RoundingMode.HALF_UP);
             Long wastageAccountId = metadataLong(log.getProduct(), "wastageAccountId");
             if (wastageAccountId == null) {
-                throw new IllegalStateException("Product " + log.getProduct().getProductName() + " missing wastageAccountId metadata");
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                        "Product " + log.getProduct().getProductName() + " missing wastageAccountId metadata");
             }
             accountingFacade.postSimpleJournal(
                     log.getProductionCode() + "-WASTE",
@@ -306,8 +313,8 @@ public class PackingService {
         Long taxAccountId = metadataLong(product, "fgTaxAccountId");
         if (valuationAccountId == null || cogsAccountId == null || revenueAccountId == null
                 || discountAccountId == null || taxAccountId == null) {
-            throw new IllegalStateException("Product " + product.getProductName()
-                    + " missing finished good account metadata");
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                    "Product " + product.getProductName() + " missing finished good account metadata");
         }
         FinishedGood created = new FinishedGood();
         created.setCompany(company);
@@ -378,7 +385,8 @@ public class PackingService {
     private Long requireWipAccountId(ProductionProduct product) {
         Long accountId = metadataLong(product, "wipAccountId");
         if (accountId == null) {
-            throw new IllegalStateException("Product " + product.getProductName() + " missing wipAccountId metadata");
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                    "Product " + product.getProductName() + " missing wipAccountId metadata");
         }
         return accountId;
     }

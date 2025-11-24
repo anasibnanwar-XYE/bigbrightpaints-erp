@@ -1,5 +1,7 @@
 package com.bigbrightpaints.erp.modules.factory.service;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.util.MoneyUtils;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
@@ -162,12 +164,14 @@ public class ProductionLogService {
                                                 ProductionLogRequest.MaterialUsageRequest usage) {
         BigDecimal qty = positive(usage.quantity(), "materials.quantity");
         RawMaterial rawMaterial = rawMaterialRepository.lockByCompanyAndId(company, usage.rawMaterialId())
-                .orElseThrow(() -> new IllegalArgumentException("Raw material not found"));
+                .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Raw material not found"));
         if (rawMaterial.getCurrentStock().compareTo(qty) < 0) {
-            throw new IllegalArgumentException("Insufficient stock for " + rawMaterial.getName());
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Insufficient stock for " + rawMaterial.getName());
         }
         if (rawMaterial.getInventoryAccountId() == null) {
-            throw new IllegalStateException("Raw material " + rawMaterial.getName() + " missing inventory account");
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                    "Raw material " + rawMaterial.getName() + " missing inventory account");
         }
 
         BigDecimal totalCost = issueFromBatches(rawMaterial, qty, log.getProductionCode());
@@ -209,7 +213,8 @@ public class ProductionLogService {
 
             BigDecimal newQty = available.subtract(take);
             if (newQty.compareTo(BigDecimal.ZERO) < 0) {
-                throw new IllegalStateException("Batch quantity would go negative for " + batch.getBatchCode());
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Batch quantity would go negative for " + batch.getBatchCode());
             }
             batch.setQuantity(newQty);
 
@@ -229,7 +234,8 @@ public class ProductionLogService {
             remaining = remaining.subtract(take);
         }
         if (remaining.compareTo(BigDecimal.ZERO) > 0) {
-            throw new IllegalStateException("Insufficient batch availability for " + rawMaterial.getName());
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Insufficient batch availability for " + rawMaterial.getName());
         }
         rawMaterialBatchRepository.saveAll(batches);
         rawMaterialMovementRepository.saveAll(movements);
@@ -283,7 +289,8 @@ public class ProductionLogService {
     private Long requireWipAccountId(ProductionProduct product) {
         Long accountId = metadataLong(product, "wipAccountId");
         if (accountId == null) {
-            throw new IllegalStateException("Product " + product.getProductName() + " missing wipAccountId metadata");
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                    "Product " + product.getProductName() + " missing wipAccountId metadata");
         }
         return accountId;
     }

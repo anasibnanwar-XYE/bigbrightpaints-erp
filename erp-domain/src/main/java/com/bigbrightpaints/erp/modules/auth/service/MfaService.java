@@ -1,5 +1,7 @@
 package com.bigbrightpaints.erp.modules.auth.service;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.security.CryptoService;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
@@ -86,7 +88,7 @@ public class MfaService {
     @Transactional
     public void activate(UserAccount user, String code) {
         // Decrypt the MFA secret for validation
-        String decryptedSecret = cryptoService.decrypt(user.getMfaSecret());
+        String decryptedSecret = requireActiveSecret(user);
         if (!isValidTotp(decryptedSecret, code)) {
             throw new IllegalArgumentException("Invalid MFA code");
         }
@@ -101,7 +103,7 @@ public class MfaService {
         }
         boolean cleared = false;
         // Decrypt the MFA secret for validation
-        String decryptedSecret = cryptoService.decrypt(user.getMfaSecret());
+        String decryptedSecret = requireActiveSecret(user);
         if (isValidTotp(decryptedSecret, totpCode)) {
             cleared = true;
         } else if (consumeRecoveryCode(user, normalizeCode(recoveryCode))) {
@@ -122,7 +124,7 @@ public class MfaService {
         String normalizedTotp = normalizeCode(totpCode);
         String normalizedRecovery = normalizeCode(recoveryCode);
         // Decrypt the MFA secret for validation
-        String decryptedSecret = cryptoService.decrypt(user.getMfaSecret());
+        String decryptedSecret = requireActiveSecret(user);
         if (StringUtils.hasText(normalizedTotp) && isValidTotp(decryptedSecret, normalizedTotp)) {
             return;
         }
@@ -134,6 +136,13 @@ public class MfaService {
             throw new MfaRequiredException("Multi-factor authentication required");
         }
         throw new InvalidMfaException("Invalid MFA verifier");
+    }
+
+    private String requireActiveSecret(UserAccount user) {
+        if (!StringUtils.hasText(user.getMfaSecret())) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "MFA enrollment is inactive for this user");
+        }
+        return cryptoService.decrypt(user.getMfaSecret());
     }
 
     private String normalizeCode(String code) {

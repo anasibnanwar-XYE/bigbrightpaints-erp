@@ -62,6 +62,22 @@ public class CostAllocationService {
         List<ProductionLog> batches = productionLogRepository.findFullyPackedBatchesByMonth(
                 company, startInstant, endInstant);
 
+        BigDecimal laborCost = request.laborCost() == null ? BigDecimal.ZERO : request.laborCost();
+        BigDecimal overheadCost = request.overheadCost() == null ? BigDecimal.ZERO : request.overheadCost();
+        if (laborCost.compareTo(BigDecimal.ZERO) <= 0 && overheadCost.compareTo(BigDecimal.ZERO) <= 0) {
+            return new CostAllocationResponse(
+                    request.year(),
+                    request.month(),
+                    batches.size(),
+                    BigDecimal.ZERO,
+                    laborCost,
+                    overheadCost,
+                    BigDecimal.ZERO,
+                    List.of(),
+                    "Labor and overhead costs must be greater than zero to allocate"
+            );
+        }
+
         if (batches.isEmpty()) {
             return new CostAllocationResponse(
                     request.year(),
@@ -82,13 +98,33 @@ public class CostAllocationService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         if (totalLitersProduced.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalStateException("Total liters produced is zero or negative");
+            return new CostAllocationResponse(
+                    request.year(),
+                    request.month(),
+                    batches.size(),
+                    BigDecimal.ZERO,
+                    laborCost,
+                    overheadCost,
+                    BigDecimal.ZERO,
+                    List.of(),
+                    "Total liters produced is zero or negative"
+            );
         }
 
         // Calculate cost per liter
-        BigDecimal totalCosts = request.laborCost().add(request.overheadCost());
+        BigDecimal totalCosts = laborCost.add(overheadCost);
         if (totalCosts.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalStateException("Total allocation costs must be greater than zero");
+            return new CostAllocationResponse(
+                    request.year(),
+                    request.month(),
+                    batches.size(),
+                    totalLitersProduced,
+                    laborCost,
+                    overheadCost,
+                    BigDecimal.ZERO,
+                    List.of(),
+                    "Total allocation costs must be greater than zero"
+            );
         }
         BigDecimal costPerLiter = totalCosts.divide(totalLitersProduced, 4, RoundingMode.HALF_UP);
 
@@ -103,10 +139,10 @@ public class CostAllocationService {
         for (ProductionLog batch : batches) {
             BigDecimal batchLiters = batch.getMixedQuantity();
             BigDecimal batchLaborCost = costPerLiter.multiply(batchLiters)
-                    .multiply(request.laborCost())
+                    .multiply(laborCost)
                     .divide(totalCosts, 4, RoundingMode.HALF_UP);
             BigDecimal batchOverheadCost = costPerLiter.multiply(batchLiters)
-                    .multiply(request.overheadCost())
+                    .multiply(overheadCost)
                     .divide(totalCosts, 4, RoundingMode.HALF_UP);
 
             // Update production log

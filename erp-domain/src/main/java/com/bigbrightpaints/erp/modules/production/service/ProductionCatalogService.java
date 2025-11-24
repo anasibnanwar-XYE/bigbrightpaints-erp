@@ -219,7 +219,6 @@ public class ProductionCatalogService {
                 .toList();
     }
 
-    @Transactional(Transactional.TxType.SUPPORTS)
     public List<ProductionProductDto> listProducts() {
         Company company = companyContextService.requireCurrentCompany();
         return productRepository.findByCompanyOrderByProductNameAsc(company).stream()
