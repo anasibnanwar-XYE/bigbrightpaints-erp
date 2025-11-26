@@ -11,3 +11,9 @@ spring:
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
+erp:
+  dispatch:
+    debit-account-id: ${ERP_DISPATCH_DEBIT_ACCOUNT_ID:0}
+    credit-account-id: ${ERP_DISPATCH_CREDIT_ACCOUNT_ID:0}
+  auto-approval:
+    enabled: false

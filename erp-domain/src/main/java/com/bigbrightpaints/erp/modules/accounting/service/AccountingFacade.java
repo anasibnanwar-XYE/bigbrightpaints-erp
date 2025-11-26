@@ -58,7 +58,8 @@ import java.util.concurrent.ConcurrentHashMap;
 public class AccountingFacade {
 
     private static final Logger log = LoggerFactory.getLogger(AccountingFacade.class);
-    private static final BigDecimal BALANCE_TOLERANCE = new BigDecimal("0.01");
+    private static final BigDecimal BALANCE_TOLERANCE = BigDecimal.ZERO;
+    private static final long CACHE_TTL_MILLIS = 5 * 60 * 1000; // 5 minutes
 
     private final CompanyContextService companyContextService;
     private final AccountRepository accountRepository;
@@ -71,8 +72,14 @@ public class AccountingFacade {
     private final CompanyEntityLookup companyEntityLookup;
     private final CompanyAccountingSettingsService companyAccountingSettingsService;
 
-    // Thread-safe account cache to reduce DB queries
-    private final Map<String, Account> accountCache = new ConcurrentHashMap<>();
+    // Thread-safe account cache with TTL to reduce DB queries
+    private final Map<String, CachedAccount> accountCache = new ConcurrentHashMap<>();
+
+    private record CachedAccount(Account account, long cachedAt) {
+        boolean isExpired() {
+            return System.currentTimeMillis() - cachedAt > CACHE_TTL_MILLIS;
+        }
+    }
 
     public AccountingFacade(CompanyContextService companyContextService,
                             AccountRepository accountRepository,
@@ -303,7 +310,7 @@ public class AccountingFacade {
                 BigDecimal amount = entry.getValue();
                 if (amount != null && amount.compareTo(BigDecimal.ZERO) > 0) {
                     lines.add(new JournalEntryRequest.JournalLineRequest(
-                            taxConfig.inputTaxAccountId(),
+                            entry.getKey() != null ? entry.getKey() : taxConfig.inputTaxAccountId(),
                             "Input tax for " + resolvedMemo,
                             amount.abs(),
                             BigDecimal.ZERO));
@@ -997,8 +1004,13 @@ public class AccountingFacade {
 
     private Account requireAccountById(Company company, Long accountId, String accountType) {
         String cacheKey = company.getId() + ":" + accountId;
-        return accountCache.computeIfAbsent(cacheKey, k ->
-                fetchAccount(company, accountId, accountType));
+        CachedAccount cached = accountCache.get(cacheKey);
+        if (cached != null && !cached.isExpired()) {
+            return cached.account();
+        }
+        Account account = fetchAccount(company, accountId, accountType);
+        accountCache.put(cacheKey, new CachedAccount(account, System.currentTimeMillis()));
+        return account;
     }
 
     private Account fetchAccount(Company company, Long accountId, String accountType) {

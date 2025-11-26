@@ -9,7 +9,7 @@ externalDocs:
   description: ERP Documentation
   url: https://docs.bigbrightpaints.com
 servers:
-- url: http://localhost:50965
+- url: http://localhost:59412
   description: Generated server url
 paths:
   /api/v1/suppliers/{id}:
@@ -924,6 +924,31 @@ paths:
                 type: object
                 additionalProperties:
                   type: object
+  /api/v1/orchestrator/dispatch/{orderId}:
+    post:
+      tags:
+      - orchestrator-controller
+      operationId: dispatchOrderAlias
+      parameters:
+      - name: orderId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: X-Company-Id
+        in: header
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+                additionalProperties:
+                  type: object
   /api/v1/multi-company/companies/switch:
     post:
       tags:
@@ -1236,6 +1261,24 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ApiResponseCostAllocationResponse"
+  /api/v1/dispatch/confirm:
+    post:
+      tags:
+      - dispatch-controller
+      operationId: confirmDispatch_1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DispatchConfirmationRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseDispatchConfirmationResponse"
   /api/v1/dealers:
     get:
       tags:
@@ -1745,6 +1788,24 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ApiResponseJournalEntryDto"
+  /api/v1/accounting/payroll/payments/batch:
+    post:
+      tags:
+      - payroll-controller
+      operationId: processBatchPayment
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PayrollBatchPaymentRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponsePayrollBatchPaymentResponse"
   /api/v1/accounting/month-end/checklist/{periodId}:
     post:
       tags:
@@ -2148,6 +2209,30 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ApiResponseProductionPlanDto"
+  /api/v1/dispatch/slip/{slipId}/status:
+    patch:
+      tags:
+      - dispatch-controller
+      operationId: updateSlipStatus
+      parameters:
+      - name: slipId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - name: status
+        in: query
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponsePackagingSlipDto"
   /api/v1/admin/users/{id}/unsuspend:
     patch:
       tags:
@@ -2615,6 +2700,26 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ApiResponseInvoiceDto"
+  /api/v1/invoices/{id}/pdf:
+    get:
+      tags:
+      - invoice-controller
+      operationId: downloadInvoicePdf
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: string
+                format: byte
   /api/v1/invoices/dealers/{dealerId}:
     get:
       tags:
@@ -2696,6 +2801,75 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ApiResponseFactoryDashboardDto"
+  /api/v1/dispatch/slip/{slipId}:
+    get:
+      tags:
+      - dispatch-controller
+      operationId: getPackagingSlip
+      parameters:
+      - name: slipId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponsePackagingSlipDto"
+  /api/v1/dispatch/preview/{slipId}:
+    get:
+      tags:
+      - dispatch-controller
+      operationId: getDispatchPreview
+      parameters:
+      - name: slipId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseDispatchPreviewDto"
+  /api/v1/dispatch/pending:
+    get:
+      tags:
+      - dispatch-controller
+      operationId: getPendingSlips
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseListPackagingSlipDto"
+  /api/v1/dispatch/order/{orderId}:
+    get:
+      tags:
+      - dispatch-controller
+      operationId: getPackagingSlipByOrder
+      parameters:
+      - name: orderId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponsePackagingSlipDto"
   /api/v1/demo/ping:
     get:
       tags:
@@ -2758,6 +2932,24 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ApiResponseMeResponse"
+  /api/v1/admin/roles/{roleKey}:
+    get:
+      tags:
+      - role-controller
+      operationId: getRoleByKey
+      parameters:
+      - name: roleKey
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseRoleDto"
   /api/v1/accounting/statements/suppliers/{supplierId}:
     get:
       tags:
@@ -4379,6 +4571,7 @@ components:
     DispatchRequest:
       required:
       - batchId
+      - postingAmount
       - requestedBy
       type: object
       properties:
@@ -4386,13 +4579,9 @@ components:
           type: string
         requestedBy:
           type: string
-        debitAccountId:
-          type: integer
-          format: int64
-        creditAccountId:
-          type: integer
-          format: int64
         postingAmount:
+          minimum: 0.01
+          exclusiveMinimum: false
           type: number
     SwitchCompanyRequest:
       required:
@@ -4893,6 +5082,104 @@ components:
             type: integer
             format: int64
         summary:
+          type: string
+    DispatchConfirmationRequest:
+      required:
+      - lines
+      - packagingSlipId
+      type: object
+      properties:
+        packagingSlipId:
+          type: integer
+          format: int64
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/LineConfirmation"
+        notes:
+          type: string
+        confirmedBy:
+          type: string
+    LineConfirmation:
+      required:
+      - lineId
+      - shippedQuantity
+      type: object
+      properties:
+        lineId:
+          type: integer
+          format: int64
+        shippedQuantity:
+          type: number
+        notes:
+          type: string
+    ApiResponseDispatchConfirmationResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          $ref: "#/components/schemas/DispatchConfirmationResponse"
+        timestamp:
+          type: string
+          format: date-time
+    DispatchConfirmationResponse:
+      type: object
+      properties:
+        packagingSlipId:
+          type: integer
+          format: int64
+        slipNumber:
+          type: string
+        status:
+          type: string
+        confirmedAt:
+          type: string
+          format: date-time
+        confirmedBy:
+          type: string
+        totalOrderedAmount:
+          type: number
+        totalShippedAmount:
+          type: number
+        totalBackorderAmount:
+          type: number
+        journalEntryId:
+          type: integer
+          format: int64
+        cogsJournalEntryId:
+          type: integer
+          format: int64
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/LineResult"
+        backorderSlipId:
+          type: integer
+          format: int64
+    LineResult:
+      type: object
+      properties:
+        lineId:
+          type: integer
+          format: int64
+        productCode:
+          type: string
+        productName:
+          type: string
+        orderedQuantity:
+          type: number
+        shippedQuantity:
+          type: number
+        backorderQuantity:
+          type: number
+        unitCost:
+          type: number
+        lineTotal:
+          type: number
+        notes:
           type: string
     CreateDealerRequest:
       required:
@@ -5529,6 +5816,99 @@ components:
           type: string
         memo:
           type: string
+    PayrollBatchPaymentRequest:
+      required:
+      - cashAccountId
+      - expenseAccountId
+      - lines
+      - runDate
+      type: object
+      properties:
+        runDate:
+          type: string
+          format: date
+        cashAccountId:
+          type: integer
+          format: int64
+        expenseAccountId:
+          type: integer
+          format: int64
+        referenceNumber:
+          type: string
+        memo:
+          type: string
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/PayrollLine"
+    PayrollLine:
+      required:
+      - dailyWage
+      - days
+      - name
+      type: object
+      properties:
+        name:
+          type: string
+        days:
+          type: integer
+          format: int32
+        dailyWage:
+          minimum: 0.00
+          exclusiveMinimum: false
+          type: number
+        advances:
+          minimum: 0.00
+          exclusiveMinimum: false
+          type: number
+        notes:
+          type: string
+    ApiResponsePayrollBatchPaymentResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          $ref: "#/components/schemas/PayrollBatchPaymentResponse"
+        timestamp:
+          type: string
+          format: date-time
+    LineTotal:
+      type: object
+      properties:
+        name:
+          type: string
+        days:
+          type: integer
+          format: int32
+        dailyWage:
+          type: number
+        advances:
+          type: number
+        lineTotal:
+          type: number
+        notes:
+          type: string
+    PayrollBatchPaymentResponse:
+      type: object
+      properties:
+        payrollRunId:
+          type: integer
+          format: int64
+        runDate:
+          type: string
+          format: date
+        totalAmount:
+          type: number
+        journalEntryId:
+          type: integer
+          format: int64
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/LineTotal"
     MonthEndChecklistUpdateRequest:
       type: object
       properties:
@@ -6134,6 +6514,88 @@ components:
       type: object
       properties:
         status:
+          type: string
+    ApiResponsePackagingSlipDto:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          $ref: "#/components/schemas/PackagingSlipDto"
+        timestamp:
+          type: string
+          format: date-time
+    PackagingSlipDto:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        publicId:
+          type: string
+          format: uuid
+        salesOrderId:
+          type: integer
+          format: int64
+        orderNumber:
+          type: string
+        dealerName:
+          type: string
+        slipNumber:
+          type: string
+        status:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        confirmedAt:
+          type: string
+          format: date-time
+        confirmedBy:
+          type: string
+        dispatchedAt:
+          type: string
+          format: date-time
+        dispatchNotes:
+          type: string
+        journalEntryId:
+          type: integer
+          format: int64
+        cogsJournalEntryId:
+          type: integer
+          format: int64
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/PackagingSlipLineDto"
+    PackagingSlipLineDto:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        batchPublicId:
+          type: string
+          format: uuid
+        batchCode:
+          type: string
+        productCode:
+          type: string
+        productName:
+          type: string
+        orderedQuantity:
+          type: number
+        shippedQuantity:
+          type: number
+        backorderQuantity:
+          type: number
+        quantity:
+          type: number
+        unitCost:
+          type: number
+        notes:
           type: string
     ApiResponseListSupplierResponse:
       type: object
@@ -7218,6 +7680,89 @@ components:
           type: array
           items:
             type: string
+    ApiResponseDispatchPreviewDto:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          $ref: "#/components/schemas/DispatchPreviewDto"
+        timestamp:
+          type: string
+          format: date-time
+    DispatchPreviewDto:
+      type: object
+      properties:
+        packagingSlipId:
+          type: integer
+          format: int64
+        slipNumber:
+          type: string
+        status:
+          type: string
+        salesOrderId:
+          type: integer
+          format: int64
+        salesOrderNumber:
+          type: string
+        dealerName:
+          type: string
+        dealerCode:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        totalOrderedAmount:
+          type: number
+        totalAvailableAmount:
+          type: number
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/LinePreview"
+    LinePreview:
+      type: object
+      properties:
+        lineId:
+          type: integer
+          format: int64
+        finishedGoodId:
+          type: integer
+          format: int64
+        productCode:
+          type: string
+        productName:
+          type: string
+        batchCode:
+          type: string
+        orderedQuantity:
+          type: number
+        availableQuantity:
+          type: number
+        suggestedShipQuantity:
+          type: number
+        unitCost:
+          type: number
+        lineTotal:
+          type: number
+        hasShortage:
+          type: boolean
+    ApiResponseListPackagingSlipDto:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/PackagingSlipDto"
+        timestamp:
+          type: string
+          format: date-time
     ApiResponseListDealerResponse:
       type: object
       properties:

@@ -14,7 +14,7 @@ public class InventoryReservation extends VersionedEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.LAZY, optional = true)
     @JoinColumn(name = "raw_material_id")
     private RawMaterial rawMaterial;
 

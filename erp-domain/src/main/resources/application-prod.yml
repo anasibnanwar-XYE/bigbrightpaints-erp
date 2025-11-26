@@ -39,6 +39,9 @@ erp:
   rate-limiting:
     enabled: true
     requests-per-minute: ${ERP_RATE_LIMIT_RPM:60}
+  dispatch:
+    debit-account-id: ${ERP_DISPATCH_DEBIT_ACCOUNT_ID}
+    credit-account-id: ${ERP_DISPATCH_CREDIT_ACCOUNT_ID}
 management:
   server:
     port: ${MANAGEMENT_SERVER_PORT:9090}

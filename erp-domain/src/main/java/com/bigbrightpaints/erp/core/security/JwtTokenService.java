@@ -5,6 +5,7 @@ import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import java.nio.charset.StandardCharsets;
 import java.security.Key;
@@ -20,20 +21,18 @@ public class JwtTokenService {
 
     public JwtTokenService(JwtProperties properties) {
         this.properties = properties;
-        this.signingKey = Keys.hmacShaKeyFor(padSecret(properties.getSecret()));
+        this.signingKey = Keys.hmacShaKeyFor(requireStrongSecret(properties.getSecret()));
     }
 
-    private byte[] padSecret(String secret) {
+    private byte[] requireStrongSecret(String secret) {
+        if (!StringUtils.hasText(secret)) {
+            throw new IllegalStateException("JWT secret is required and must be at least 32 bytes");
+        }
         byte[] bytes = secret.getBytes(StandardCharsets.UTF_8);
-        if (bytes.length >= 32) {
-            return bytes;
+        if (bytes.length < 32) {
+            throw new IllegalStateException("JWT secret must be at least 256 bits; provided secret is too short");
         }
-        byte[] padded = new byte[32];
-        System.arraycopy(bytes, 0, padded, 0, bytes.length);
-        for (int i = bytes.length; i < 32; i++) {
-            padded[i] = '0';
-        }
-        return padded;
+        return bytes;
     }
 
     public String generateAccessToken(String subject, String companyId, Map<String, Object> claims) {

@@ -86,9 +86,10 @@ public class RawMaterialService {
         material.setName(request.name());
         material.setSku(request.sku());
         material.setUnitType(request.unitType());
-        material.setReorderLevel(request.reorderLevel());
-        material.setMinStock(request.minStock());
-        material.setMaxStock(request.maxStock());
+        material.setCurrentStock(BigDecimal.ZERO);
+        material.setReorderLevel(request.reorderLevel() != null ? request.reorderLevel() : BigDecimal.ZERO);
+        material.setMinStock(request.minStock() != null ? request.minStock() : BigDecimal.ZERO);
+        material.setMaxStock(request.maxStock() != null ? request.maxStock() : BigDecimal.ZERO);
         material.setInventoryAccountId(request.inventoryAccountId());
         RawMaterial saved = rawMaterialRepository.save(material);
         syncProductFromMaterial(company, saved);
@@ -165,25 +166,28 @@ public class RawMaterialService {
                                        RawMaterialBatchRequest request,
                                        ReceiptContext context) {
         RawMaterial material = requireMaterial(rawMaterialId);
+        BigDecimal quantity = requirePositive(request.quantity(), "quantity");
+        BigDecimal costPerUnit = requirePositive(request.costPerUnit(), "costPerUnit");
         Supplier supplier = requireSupplier(material.getCompany(), request.supplierId());
         ensurePostingAccounts(material, supplier);
         RawMaterialBatch batch = new RawMaterialBatch();
         batch.setRawMaterial(material);
         String batchCode = resolveBatchCode(material, request.batchCode());
         batch.setBatchCode(batchCode);
-        batch.setQuantity(request.quantity());
+        batch.setQuantity(quantity);
         batch.setUnit(request.unit());
-        batch.setCostPerUnit(request.costPerUnit());
+        batch.setCostPerUnit(costPerUnit);
         batch.setSupplierName(supplier.getName());
         batch.setSupplier(supplier);
         batch.setNotes(request.notes());
-        material.setCurrentStock(material.getCurrentStock().add(request.quantity()));
+        BigDecimal currentStock = material.getCurrentStock() == null ? BigDecimal.ZERO : material.getCurrentStock();
+        material.setCurrentStock(currentStock.add(quantity));
         rawMaterialRepository.save(material);
         RawMaterialBatch savedBatch = batchRepository.save(batch);
         ReceiptContext effectiveContext = context != null ? context : ReceiptContext.forBatch(batch.getBatchCode());
-        RawMaterialMovement receiptMovement = recordReceiptMovement(material, savedBatch, request.quantity(), request.costPerUnit(), effectiveContext);
+        RawMaterialMovement receiptMovement = recordReceiptMovement(material, savedBatch, quantity, costPerUnit, effectiveContext);
         Long journalEntryId = effectiveContext.postJournal()
-                ? postInventoryReceipt(material, supplier, savedBatch, request.quantity(), request.costPerUnit(), effectiveContext)
+                ? postInventoryReceipt(material, supplier, savedBatch, quantity, costPerUnit, effectiveContext)
                 : null;
         if (journalEntryId != null && receiptMovement != null) {
             receiptMovement.setJournalEntryId(journalEntryId);
@@ -202,6 +206,13 @@ public class RawMaterialService {
                 request.supplierId(),
                 request.notes()
         ));
+    }
+
+    private BigDecimal requirePositive(BigDecimal value, String fieldName) {
+        if (value == null || value.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException(fieldName + " must be positive");
+        }
+        return value;
     }
 
     private RawMaterial requireMaterial(Long rawMaterialId) {

@@ -114,19 +114,24 @@ erp:
       max-tokens: 8192
       temperature: 0.7
     service-url: ${AI_SERVICE_URL:http://localhost:8000}
+  auto-approval:
+    enabled: ${ERP_AUTO_APPROVAL_ENABLED:true}
   mail:
     enabled: ${ERP_MAIL_ENABLED:false}
     from-address: ${ERP_MAIL_FROM:noreply@bigbrightpaints.com}
     base-url: ${ERP_MAIL_BASE_URL:http://localhost:3004}
     send-credentials: ${ERP_MAIL_SEND_CREDENTIALS:true}
     send-password-reset: ${ERP_MAIL_SEND_PASSWORD_RESET:true}
+  dispatch:
+    debit-account-id: ${ERP_DISPATCH_DEBIT_ACCOUNT_ID:0}
+    credit-account-id: ${ERP_DISPATCH_CREDIT_ACCOUNT_ID:0}
 
 logging:
   level:
-    com.bigbrightpaints.erp: DEBUG
-    org.springframework.security: DEBUG
-    org.hibernate.SQL: DEBUG
-    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+    com.bigbrightpaints.erp: INFO
+    org.springframework.security: WARN
+    org.hibernate.SQL: WARN
+    org.hibernate.type.descriptor.sql.BasicBinder: WARN
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
     file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"

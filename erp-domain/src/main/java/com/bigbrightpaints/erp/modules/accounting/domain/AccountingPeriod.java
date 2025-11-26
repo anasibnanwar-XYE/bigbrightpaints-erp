@@ -95,6 +95,10 @@ public class AccountingPeriod extends VersionedEntity {
         if (publicId == null) {
             publicId = UUID.randomUUID();
         }
+        if ((year == 0 || month == 0) && startDate != null) {
+            this.year = startDate.getYear();
+            this.month = startDate.getMonthValue();
+        }
         if (startDate == null || endDate == null) {
             YearMonth yearMonth = YearMonth.of(year, month);
             this.startDate = yearMonth.atDay(1);

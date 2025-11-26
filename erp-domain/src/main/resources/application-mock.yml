@@ -1,2 +1,6 @@
 jwt:
   secret: "mock-super-secret-key-0123456789-abcdefghijklmnopqrstuvwxyz"
+erp:
+  dispatch:
+    debit-account-id: 0
+    credit-account-id: 0

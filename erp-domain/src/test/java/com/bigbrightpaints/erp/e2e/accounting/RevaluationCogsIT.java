@@ -88,7 +88,25 @@ public class RevaluationCogsIT extends AbstractIntegrationTest {
         ar = ensureAccount("AR-R", "Accounts Receivable", AccountType.ASSET);
         fg = ensureFinishedGood("FG-REV", inventory.getId(), cogs.getId(), revenue.getId());
         ensureProductionProduct(fg);
-        seedBatch(fg, new BigDecimal("10"), new BigDecimal("100"));
+        // Clean up old batches from previous test runs and reset to single batch
+        List<FinishedGoodBatch> existingBatches = finishedGoodBatchRepository.findByFinishedGoodOrderByManufacturedAtAsc(fg);
+        if (!existingBatches.isEmpty()) {
+            // Update first batch to known state, delete the rest
+            FinishedGoodBatch firstBatch = existingBatches.get(0);
+            firstBatch.setQuantityTotal(new BigDecimal("10"));
+            firstBatch.setQuantityAvailable(new BigDecimal("10"));
+            firstBatch.setUnitCost(new BigDecimal("100"));
+            finishedGoodBatchRepository.save(firstBatch);
+            if (existingBatches.size() > 1) {
+                finishedGoodBatchRepository.deleteAll(existingBatches.subList(1, existingBatches.size()));
+            }
+        } else {
+            seedBatch(fg, new BigDecimal("10"), new BigDecimal("100"));
+        }
+        // Refresh fg from DB to avoid stale version
+        fg = finishedGoodRepository.findById(fg.getId()).orElseThrow();
+        fg.setCurrentStock(new BigDecimal("10"));
+        finishedGoodRepository.save(fg);
     }
 
     @Test
@@ -104,7 +122,7 @@ public class RevaluationCogsIT extends AbstractIntegrationTest {
                 null,
                 true
         ));
-        FinishedGoodBatch batch = finishedGoodBatchRepository.findAll().get(0);
+        FinishedGoodBatch batch = finishedGoodBatchRepository.findByFinishedGoodOrderByManufacturedAtAsc(fg).get(0);
         assertThat(batch.getUnitCost()).isEqualByComparingTo("102.000000");
 
         Dealer dealer = ensureDealer();
@@ -125,14 +143,25 @@ public class RevaluationCogsIT extends AbstractIntegrationTest {
         var savedOrder = salesService.createOrder(order);
         SalesOrder orderEntity = salesOrderRepository.findByCompanyAndId(company, savedOrder.id()).orElseThrow();
         BigDecimal cost = batch.getUnitCost().multiply(new BigDecimal("2"));
+        assertThat(cost).isEqualByComparingTo(new BigDecimal("204.00"));
+        
+        // Get balance before COGS posting
+        Account cogsBefore = accountRepository.findByCompanyAndCodeIgnoreCase(company, cogs.getCode()).orElseThrow();
+        BigDecimal balanceBefore = cogsBefore.getBalance() != null ? cogsBefore.getBalance() : BigDecimal.ZERO;
+        
         accountingFacade.postCOGS(orderEntity.getOrderNumber(), cogs.getId(), inventory.getId(), cost, "COGS for " + orderEntity.getOrderNumber());
 
         Account cogsAfter = accountRepository.findByCompanyAndCodeIgnoreCase(company, cogs.getCode()).orElseThrow();
-        assertThat(cogsAfter.getBalance()).isEqualByComparingTo(new BigDecimal("204.00"));
+        // Verify the COGS increased by expected cost amount
+        assertThat(cogsAfter.getBalance().subtract(balanceBefore)).isEqualByComparingTo(new BigDecimal("204.00"));
     }
 
     private Account ensureAccount(String code, String name, AccountType type) {
         return accountRepository.findByCompanyAndCodeIgnoreCase(company, code)
+                .map(existing -> {
+                    existing.setBalance(BigDecimal.ZERO);
+                    return accountRepository.save(existing);
+                })
                 .orElseGet(() -> {
                     Account a = new Account();
                     a.setCompany(company);

@@ -156,7 +156,11 @@ public class PortalInsightsService {
         ) * 100;
 
         BigDecimal inventoryValue = finishedGoods.stream()
-                .map(fg -> fg.getCurrentStock().subtract(fg.getReservedStock()).max(BigDecimal.ZERO))
+                .map(fg -> {
+                    BigDecimal current = fg.getCurrentStock() != null ? fg.getCurrentStock() : BigDecimal.ZERO;
+                    BigDecimal reserved = fg.getReservedStock() != null ? fg.getReservedStock() : BigDecimal.ZERO;
+                    return current.subtract(reserved).max(BigDecimal.ZERO);
+                })
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal workingCapital = inventoryValue.add(
                 accounts.stream()

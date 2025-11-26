@@ -67,15 +67,47 @@ public class SupplierService {
     public SupplierResponse updateSupplier(Long id, SupplierRequest request) {
         Company company = companyContextService.requireCurrentCompany();
         Supplier supplier = requireSupplier(company, id);
-        supplier.setName(request.name().trim());
+        String oldCode = supplier.getCode();
+        String oldName = supplier.getName();
+        String newName = request.name().trim();
+        supplier.setName(newName);
+        String newCode = oldCode;
         if (StringUtils.hasText(request.code())) {
-            supplier.setCode(resolveSupplierCode(request.code(), request.name(), company, supplier.getId()));
+            newCode = resolveSupplierCode(request.code(), request.name(), company, supplier.getId());
+            supplier.setCode(newCode);
         }
+        syncPayableAccount(supplier, oldCode, newCode, oldName, newName);
         supplier.setEmail(normalize(request.contactEmail()));
         supplier.setPhone(normalize(request.contactPhone()));
         supplier.setAddress(normalize(request.address()));
         supplier.setCreditLimit(request.creditLimit() != null ? request.creditLimit() : BigDecimal.ZERO);
         return toResponse(supplier);
+    }
+
+    private void syncPayableAccount(Supplier supplier, String oldCode, String newCode, String oldName, String newName) {
+        Account payableAccount = supplier.getPayableAccount();
+        if (payableAccount == null) {
+            return;
+        }
+        boolean changed = false;
+        if (oldCode != null && !oldCode.equals(newCode)) {
+            String oldAccountCode = payableAccount.getCode();
+            if (oldAccountCode != null && oldAccountCode.startsWith("AP-" + oldCode)) {
+                String suffix = oldAccountCode.substring(("AP-" + oldCode).length());
+                String newAccountCode = "AP-" + newCode + suffix;
+                if (accountRepository.findByCompanyAndCodeIgnoreCase(supplier.getCompany(), newAccountCode).isEmpty()) {
+                    payableAccount.setCode(newAccountCode);
+                    changed = true;
+                }
+            }
+        }
+        if (oldName != null && !oldName.equals(newName)) {
+            payableAccount.setName(newName + " Payable");
+            changed = true;
+        }
+        if (changed) {
+            accountRepository.save(payableAccount);
+        }
     }
 
     private Supplier requireSupplier(Company company, Long id) {

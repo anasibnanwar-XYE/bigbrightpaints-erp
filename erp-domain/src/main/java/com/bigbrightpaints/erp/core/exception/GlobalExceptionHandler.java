@@ -73,7 +73,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         }
 
         HttpStatus status = determineHttpStatus(ex.getErrorCode());
-        return ResponseEntity.status(status).body(ApiResponse.failure("Request failed", errorResponse));
+        return ResponseEntity.status(status).body(ApiResponse.failure(ex.getUserMessage(), errorResponse));
     }
 
     /**

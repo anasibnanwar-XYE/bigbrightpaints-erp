@@ -60,8 +60,6 @@ public class OrchestratorController {
                                                          Principal principal) {
         DispatchRequest normalized = new DispatchRequest(batchId,
                 request.requestedBy(),
-                request.debitAccountId(),
-                request.creditAccountId(),
                 request.postingAmount());
         String traceId = commandDispatcher.dispatchBatch(normalized, companyId, principal.getName());
         return ResponseEntity.accepted().body(Map.of("traceId", traceId));

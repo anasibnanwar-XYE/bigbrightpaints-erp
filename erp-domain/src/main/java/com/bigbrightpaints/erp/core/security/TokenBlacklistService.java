@@ -1,39 +1,38 @@
 package com.bigbrightpaints.erp.core.security;
 
+import com.bigbrightpaints.erp.modules.auth.domain.BlacklistedToken;
+import com.bigbrightpaints.erp.modules.auth.domain.BlacklistedTokenRepository;
+import com.bigbrightpaints.erp.modules.auth.domain.UserTokenRevocation;
+import com.bigbrightpaints.erp.modules.auth.domain.UserTokenRevocationRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Optional;
 
 /**
  * Service for managing JWT token blacklist to support token revocation.
  * Tokens are blacklisted when users logout or when tokens need to be invalidated.
- *
- * TODO: For production, this should be replaced with Redis or a database-backed solution
- * to support distributed deployments and persistence across restarts.
+ * 
+ * This implementation uses database persistence for distributed deployments
+ * and survives server restarts.
  */
 @Service
 public class TokenBlacklistService {
 
     private static final Logger logger = LoggerFactory.getLogger(TokenBlacklistService.class);
 
-    /**
-     * Store for blacklisted tokens with their expiration time.
-     * Key: JWT token ID (jti claim)
-     * Value: Token expiration time
-     */
-    private final Map<String, Instant> blacklistedTokens = new ConcurrentHashMap<>();
+    private final BlacklistedTokenRepository blacklistedTokenRepository;
+    private final UserTokenRevocationRepository userTokenRevocationRepository;
 
-    /**
-     * Store for revoked user sessions.
-     * Key: User ID
-     * Value: Timestamp when all tokens were revoked for this user
-     */
-    private final Map<String, Instant> revokedUserSessions = new ConcurrentHashMap<>();
+    public TokenBlacklistService(BlacklistedTokenRepository blacklistedTokenRepository,
+                                  UserTokenRevocationRepository userTokenRevocationRepository) {
+        this.blacklistedTokenRepository = blacklistedTokenRepository;
+        this.userTokenRevocationRepository = userTokenRevocationRepository;
+    }
 
     /**
      * Adds a token to the blacklist.
@@ -41,15 +40,23 @@ public class TokenBlacklistService {
      * @param tokenId The JWT token ID (jti claim)
      * @param expirationTime The token's expiration time
      */
+    @Transactional
     public void blacklistToken(String tokenId, Instant expirationTime) {
+        blacklistToken(tokenId, expirationTime, null, "logout");
+    }
+
+    @Transactional
+    public void blacklistToken(String tokenId, Instant expirationTime, String userId, String reason) {
         if (tokenId == null || expirationTime == null) {
             return;
         }
 
-        // Only blacklist if the token hasn't expired yet
         if (expirationTime.isAfter(Instant.now())) {
-            blacklistedTokens.put(tokenId, expirationTime);
-            logger.info("Token blacklisted: {} (expires: {})", tokenId, expirationTime);
+            if (!blacklistedTokenRepository.existsByTokenId(tokenId)) {
+                BlacklistedToken token = new BlacklistedToken(tokenId, expirationTime, userId, reason);
+                blacklistedTokenRepository.save(token);
+                logger.info("Token blacklisted: {} (expires: {})", tokenId, expirationTime);
+            }
         }
     }
 
@@ -59,12 +66,19 @@ public class TokenBlacklistService {
      *
      * @param userId The user ID
      */
+    @Transactional
     public void revokeAllUserTokens(String userId) {
         if (userId == null) {
             return;
         }
 
-        revokedUserSessions.put(userId, Instant.now());
+        Optional<UserTokenRevocation> existing = userTokenRevocationRepository.findByUserId(userId);
+        if (existing.isPresent()) {
+            existing.get().setRevokedAt(Instant.now());
+            userTokenRevocationRepository.save(existing.get());
+        } else {
+            userTokenRevocationRepository.save(new UserTokenRevocation(userId, "all tokens revoked"));
+        }
         logger.info("All tokens revoked for user: {}", userId);
     }
 
@@ -74,23 +88,18 @@ public class TokenBlacklistService {
      * @param tokenId The JWT token ID (jti claim)
      * @return true if the token is blacklisted, false otherwise
      */
+    @Transactional(readOnly = true)
     public boolean isTokenBlacklisted(String tokenId) {
         if (tokenId == null) {
             return false;
         }
 
-        Instant expirationTime = blacklistedTokens.get(tokenId);
-        if (expirationTime == null) {
+        Optional<BlacklistedToken> token = blacklistedTokenRepository.findByTokenId(tokenId);
+        if (token.isEmpty()) {
             return false;
         }
 
-        // Remove expired tokens from blacklist
-        if (expirationTime.isBefore(Instant.now())) {
-            blacklistedTokens.remove(tokenId);
-            return false;
-        }
-
-        return true;
+        return !token.get().isExpired();
     }
 
     /**
@@ -100,18 +109,18 @@ public class TokenBlacklistService {
      * @param tokenIssuedAt When the token was issued
      * @return true if the token should be considered revoked, false otherwise
      */
+    @Transactional(readOnly = true)
     public boolean isUserTokenRevoked(String userId, Instant tokenIssuedAt) {
         if (userId == null || tokenIssuedAt == null) {
             return false;
         }
 
-        Instant revocationTime = revokedUserSessions.get(userId);
-        if (revocationTime == null) {
+        Optional<UserTokenRevocation> revocation = userTokenRevocationRepository.findByUserId(userId);
+        if (revocation.isEmpty()) {
             return false;
         }
 
-        // Token is revoked if it was issued before the revocation time
-        return tokenIssuedAt.isBefore(revocationTime);
+        return tokenIssuedAt.isBefore(revocation.get().getRevokedAt());
     }
 
     /**
@@ -120,9 +129,11 @@ public class TokenBlacklistService {
      *
      * @param tokenId The JWT token ID (jti claim)
      */
+    @Transactional
     public void removeFromBlacklist(String tokenId) {
         if (tokenId != null) {
-            blacklistedTokens.remove(tokenId);
+            blacklistedTokenRepository.findByTokenId(tokenId)
+                    .ifPresent(blacklistedTokenRepository::delete);
             logger.info("Token removed from blacklist: {}", tokenId);
         }
     }
@@ -132,9 +143,11 @@ public class TokenBlacklistService {
      *
      * @param userId The user ID
      */
+    @Transactional
     public void clearUserRevocation(String userId) {
         if (userId != null) {
-            revokedUserSessions.remove(userId);
+            userTokenRevocationRepository.findByUserId(userId)
+                    .ifPresent(userTokenRevocationRepository::delete);
             logger.info("Revocation cleared for user: {}", userId);
         }
     }
@@ -144,8 +157,8 @@ public class TokenBlacklistService {
      *
      * @return The count of blacklisted tokens
      */
-    public int getBlacklistedTokenCount() {
-        return blacklistedTokens.size();
+    public long getBlacklistedTokenCount() {
+        return blacklistedTokenRepository.count();
     }
 
     /**
@@ -153,44 +166,27 @@ public class TokenBlacklistService {
      *
      * @return The count of users with revoked sessions
      */
-    public int getRevokedUserCount() {
-        return revokedUserSessions.size();
+    public long getRevokedUserCount() {
+        return userTokenRevocationRepository.count();
     }
 
     /**
      * Scheduled task to clean up expired tokens from the blacklist.
-     * Runs every hour to prevent memory leaks.
+     * Runs every hour to prevent database bloat.
      */
     @Scheduled(fixedDelay = 3600000) // 1 hour
+    @Transactional
     public void cleanupExpiredTokens() {
         Instant now = Instant.now();
-        int removedCount = 0;
 
-        // Remove expired tokens
-        var iterator = blacklistedTokens.entrySet().iterator();
-        while (iterator.hasNext()) {
-            var entry = iterator.next();
-            if (entry.getValue().isBefore(now)) {
-                iterator.remove();
-                removedCount++;
-            }
-        }
+        int removedTokens = blacklistedTokenRepository.deleteExpiredTokens(now);
 
-        // Clean up old user revocations (older than 24 hours)
         Instant cutoff = now.minusSeconds(86400); // 24 hours
-        var userIterator = revokedUserSessions.entrySet().iterator();
-        int removedUsers = 0;
-        while (userIterator.hasNext()) {
-            var entry = userIterator.next();
-            if (entry.getValue().isBefore(cutoff)) {
-                userIterator.remove();
-                removedUsers++;
-            }
-        }
+        int removedRevocations = userTokenRevocationRepository.deleteOldRevocations(cutoff);
 
-        if (removedCount > 0 || removedUsers > 0) {
+        if (removedTokens > 0 || removedRevocations > 0) {
             logger.info("Cleanup completed - Removed {} expired tokens and {} old user revocations",
-                       removedCount, removedUsers);
+                       removedTokens, removedRevocations);
         }
     }
 
@@ -198,9 +194,10 @@ public class TokenBlacklistService {
      * Clears all blacklisted tokens and revoked sessions.
      * This should only be used in testing or emergency scenarios.
      */
+    @Transactional
     public void clearAll() {
-        blacklistedTokens.clear();
-        revokedUserSessions.clear();
+        blacklistedTokenRepository.deleteAll();
+        userTokenRevocationRepository.deleteAll();
         logger.warn("All blacklisted tokens and revoked sessions cleared");
     }
 }

@@ -39,6 +39,9 @@ public class Account extends VersionedEntity {
     @Column(nullable = false)
     private BigDecimal balance = BigDecimal.ZERO;
 
+    @Column(nullable = false)
+    private boolean active = true;
+
     @PrePersist
     public void prePersist() {
         if (publicId == null) {
@@ -56,6 +59,8 @@ public class Account extends VersionedEntity {
     public void setName(String name) { this.name = name; }
     public AccountType getType() { return type; }
     public void setType(AccountType type) { this.type = type; }
+    public boolean isActive() { return active; }
+    public void setActive(boolean active) { this.active = active; }
     public BigDecimal getBalance() { return balance; }
     public void setBalance(BigDecimal balance) {
         validateBalanceUpdate(balance);

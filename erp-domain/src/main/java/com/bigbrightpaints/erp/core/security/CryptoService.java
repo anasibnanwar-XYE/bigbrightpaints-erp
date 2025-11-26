@@ -78,14 +78,25 @@ public class CryptoService {
      *
      * @param encryptedData Base64 encoded encrypted data
      * @return The decrypted plaintext
+     * @throws IllegalArgumentException if the encrypted data is invalid or too short
      */
     public String decrypt(String encryptedData) {
         if (encryptedData == null) {
             return null;
         }
 
+        if (encryptedData.isEmpty()) {
+            throw new IllegalArgumentException("Encrypted data cannot be empty");
+        }
+
         try {
             byte[] combined = Base64.getDecoder().decode(encryptedData);
+
+            int minLength = SALT_LENGTH + GCM_IV_LENGTH + 1;
+            if (combined.length < minLength) {
+                throw new IllegalArgumentException(
+                        "Invalid encrypted data: payload too short (expected at least " + minLength + " bytes, got " + combined.length + ")");
+            }
 
             // Extract salt, IV, and ciphertext
             byte[] salt = new byte[SALT_LENGTH];
@@ -107,6 +118,8 @@ public class CryptoService {
             // Decrypt
             byte[] plaintext = cipher.doFinal(ciphertext);
             return new String(plaintext, "UTF-8");
+        } catch (IllegalArgumentException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to decrypt data", e);
         }

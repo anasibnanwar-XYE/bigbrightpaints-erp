@@ -1,0 +1,36 @@
+package com.bigbrightpaints.erp.modules.inventory.dto;
+
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.List;
+
+/**
+ * DTO for the dispatch confirmation modal - shows what was ordered vs what's available to ship.
+ */
+public record DispatchPreviewDto(
+        Long packagingSlipId,
+        String slipNumber,
+        String status,
+        Long salesOrderId,
+        String salesOrderNumber,
+        String dealerName,
+        String dealerCode,
+        Instant createdAt,
+        BigDecimal totalOrderedAmount,
+        BigDecimal totalAvailableAmount,
+        List<LinePreview> lines
+) {
+    public record LinePreview(
+            Long lineId,
+            Long finishedGoodId,
+            String productCode,
+            String productName,
+            String batchCode,
+            BigDecimal orderedQuantity,
+            BigDecimal availableQuantity,
+            BigDecimal suggestedShipQuantity,
+            BigDecimal unitCost,
+            BigDecimal lineTotal,
+            boolean hasShortage
+    ) {}
+}

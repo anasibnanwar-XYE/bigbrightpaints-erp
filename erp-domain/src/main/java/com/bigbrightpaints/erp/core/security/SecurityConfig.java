@@ -31,6 +31,14 @@ public class SecurityConfig {
         this.userDetailsService = userDetailsService;
     }
 
+    /**
+     * Configures the security filter chain.
+     * <p>
+     * CSRF Protection: Disabled because this is a stateless REST API using JWT Bearer tokens.
+     * CSRF attacks exploit automatic cookie transmission by browsers, but JWT tokens must be
+     * explicitly included in the Authorization header, making CSRF protection unnecessary.
+     * All authentication is purely token-based with no session cookies involved.
+     */
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
@@ -39,7 +47,8 @@ public class SecurityConfig {
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(registry -> registry
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                .requestMatchers("/api/v1/auth/login", "/api/v1/auth/refresh-token", "/swagger-ui/**", "/v3/api-docs/**", "/actuator/**", "/api/integration/health").permitAll()
+                .requestMatchers("/api/v1/auth/login", "/api/v1/auth/refresh-token", "/swagger-ui/**", "/v3/api-docs/**", "/api/integration/health").permitAll()
+                .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                 .anyRequest().authenticated())
             .userDetailsService(userDetailsService)
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)

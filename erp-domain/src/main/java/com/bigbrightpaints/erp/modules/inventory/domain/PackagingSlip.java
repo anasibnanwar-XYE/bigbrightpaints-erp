@@ -41,6 +41,21 @@ public class PackagingSlip extends VersionedEntity {
     @Column(name = "dispatched_at")
     private Instant dispatchedAt;
 
+    @Column(name = "confirmed_at")
+    private Instant confirmedAt;
+
+    @Column(name = "confirmed_by")
+    private String confirmedBy;
+
+    @Column(name = "dispatch_notes", length = 1000)
+    private String dispatchNotes;
+
+    @Column(name = "journal_entry_id")
+    private Long journalEntryId;
+
+    @Column(name = "cogs_journal_entry_id")
+    private Long cogsJournalEntryId;
+
     @OneToMany(mappedBy = "packagingSlip", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<PackagingSlipLine> lines = new ArrayList<>();
 
@@ -67,5 +82,15 @@ public class PackagingSlip extends VersionedEntity {
     public Instant getCreatedAt() { return createdAt; }
     public Instant getDispatchedAt() { return dispatchedAt; }
     public void setDispatchedAt(Instant dispatchedAt) { this.dispatchedAt = dispatchedAt; }
+    public Instant getConfirmedAt() { return confirmedAt; }
+    public void setConfirmedAt(Instant confirmedAt) { this.confirmedAt = confirmedAt; }
+    public String getConfirmedBy() { return confirmedBy; }
+    public void setConfirmedBy(String confirmedBy) { this.confirmedBy = confirmedBy; }
+    public String getDispatchNotes() { return dispatchNotes; }
+    public void setDispatchNotes(String dispatchNotes) { this.dispatchNotes = dispatchNotes; }
+    public Long getJournalEntryId() { return journalEntryId; }
+    public void setJournalEntryId(Long journalEntryId) { this.journalEntryId = journalEntryId; }
+    public Long getCogsJournalEntryId() { return cogsJournalEntryId; }
+    public void setCogsJournalEntryId(Long cogsJournalEntryId) { this.cogsJournalEntryId = cogsJournalEntryId; }
     public List<PackagingSlipLine> getLines() { return lines; }
 }

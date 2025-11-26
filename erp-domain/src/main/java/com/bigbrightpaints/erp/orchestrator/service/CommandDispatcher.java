@@ -96,14 +96,15 @@ public class CommandDispatcher {
     @Transactional
     public String dispatchBatch(DispatchRequest request, String companyId, String userId) {
         policyEnforcer.checkDispatchPermissions(userId, companyId);
+        if (request.postingAmount() == null || request.postingAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Posting amount must be greater than zero for dispatch");
+        }
         String traceId = workflowService.startWorkflow("dispatch");
         integrationCoordinator.updateProductionStatus(request.batchId(), companyId);
         integrationCoordinator.releaseInventory(request.batchId(), companyId);
         integrationCoordinator.postDispatchJournal(
                 request.batchId(),
                 companyId,
-                request.debitAccountId(),
-                request.creditAccountId(),
                 request.postingAmount());
         DomainEvent event = DomainEvent.of("ProductionBatchDispatchedEvent", companyId, userId, "Batch",
             request.batchId(), Map.of("dispatchedBy", request.requestedBy()));

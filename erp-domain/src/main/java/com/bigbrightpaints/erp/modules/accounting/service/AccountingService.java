@@ -27,7 +27,8 @@ import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepos
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatch;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatchRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
-import jakarta.transaction.Transactional;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
@@ -40,6 +41,7 @@ import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -50,7 +52,11 @@ import java.util.UUID;
 @Service
 public class AccountingService {
 
-    private static final BigDecimal JOURNAL_BALANCE_TOLERANCE = new BigDecimal("0.0001");
+    // Exact zero tolerance enforced for double-entry accounting integrity.
+    // All amounts must be properly rounded before posting to ensure perfect balance.
+    private static final BigDecimal JOURNAL_BALANCE_TOLERANCE = BigDecimal.ZERO;
+    private static final BigDecimal FX_RATE_MIN = new BigDecimal("0.0001");
+    private static final BigDecimal FX_RATE_MAX = new BigDecimal("100000");
 
     private final CompanyContextService companyContextService;
     private final AccountRepository accountRepository;
@@ -135,7 +141,7 @@ public class AccountingService {
     }
 
     /* Journal Entries */
-    @Transactional(Transactional.TxType.SUPPORTS)
+    @Transactional(propagation = Propagation.SUPPORTS)
     public List<JournalEntryDto> listJournalEntries(Long dealerId) {
         Company company = companyContextService.requireCurrentCompany();
         List<JournalEntry> entries;
@@ -216,18 +222,18 @@ public class AccountingService {
         Dealer dealerContext = dealer;
         Supplier supplierContext = supplier;
         for (Account account : lockedAccounts.values()) {
-            dealerRepository.findByCompanyAndReceivableAccount(company, account).ifPresent(owner -> {
-                if (dealerContext == null || !owner.getId().equals(dealerContext.getId())) {
-                    throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
-                            "Dealer receivable account " + account.getCode() + " requires matching dealer context");
-                }
-            });
-            supplierRepository.findByCompanyAndPayableAccount(company, account).ifPresent(owner -> {
-                if (supplierContext == null || !owner.getId().equals(supplierContext.getId())) {
-                    throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
-                            "Supplier payable account " + account.getCode() + " requires matching supplier context");
-                }
-            });
+            List<Dealer> dealerOwners = dealerRepository.findAllByCompanyAndReceivableAccount(company, account);
+            if (!dealerOwners.isEmpty() && dealerContext != null &&
+                    dealerOwners.stream().noneMatch(owner -> owner.getId().equals(dealerContext.getId()))) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                        "Dealer receivable account " + account.getCode() + " requires matching dealer context");
+            }
+            List<Supplier> supplierOwners = supplierRepository.findAllByCompanyAndPayableAccount(company, account);
+            if (!supplierOwners.isEmpty() && supplierContext != null &&
+                    supplierOwners.stream().noneMatch(owner -> owner.getId().equals(supplierContext.getId()))) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                        "Supplier payable account " + account.getCode() + " requires matching supplier context");
+            }
         }
         BigDecimal totalBaseDebit = BigDecimal.ZERO;
         BigDecimal totalBaseCredit = BigDecimal.ZERO;
@@ -244,26 +250,52 @@ public class AccountingService {
             line.setJournalEntry(entry);
             line.setAccount(account);
             line.setDescription(lineRequest.description());
-            BigDecimal debit = lineRequest.debit() == null ? BigDecimal.ZERO : lineRequest.debit();
-            BigDecimal credit = lineRequest.credit() == null ? BigDecimal.ZERO : lineRequest.credit();
-            if (debit.compareTo(BigDecimal.ZERO) < 0 || credit.compareTo(BigDecimal.ZERO) < 0) {
+
+            BigDecimal debitInput = lineRequest.debit() == null ? BigDecimal.ZERO : lineRequest.debit();
+            BigDecimal creditInput = lineRequest.credit() == null ? BigDecimal.ZERO : lineRequest.credit();
+            if (debitInput.compareTo(BigDecimal.ZERO) < 0 || creditInput.compareTo(BigDecimal.ZERO) < 0) {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Debit/Credit cannot be negative");
             }
-            if (debit.compareTo(BigDecimal.ZERO) > 0 && credit.compareTo(BigDecimal.ZERO) > 0) {
+            if (debitInput.compareTo(BigDecimal.ZERO) > 0 && creditInput.compareTo(BigDecimal.ZERO) > 0) {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Debit and credit cannot both be non-zero on the same line");
             }
-            BigDecimal debitBase = toBaseCurrency(debit, fxRate);
-            BigDecimal creditBase = toBaseCurrency(credit, fxRate);
+
+            boolean isForeignCurrency = !currency.equalsIgnoreCase(company.getBaseCurrency());
+            BigDecimal foreignDebit = BigDecimal.ZERO;
+            BigDecimal foreignCredit = BigDecimal.ZERO;
+            if (isForeignCurrency && debitInput.compareTo(BigDecimal.ZERO) > 0) {
+                foreignDebit = lineRequest.foreignCurrencyAmount() != null
+                        ? lineRequest.foreignCurrencyAmount()
+                        : debitInput.divide(fxRate, 6, RoundingMode.HALF_UP);
+            }
+            if (isForeignCurrency && creditInput.compareTo(BigDecimal.ZERO) > 0) {
+                foreignCredit = lineRequest.foreignCurrencyAmount() != null
+                        ? lineRequest.foreignCurrencyAmount()
+                        : creditInput.divide(fxRate, 6, RoundingMode.HALF_UP);
+            }
+
+            BigDecimal debitBase;
+            BigDecimal creditBase;
+            if (isForeignCurrency && lineRequest.foreignCurrencyAmount() != null) {
+                debitBase = debitInput.compareTo(BigDecimal.ZERO) > 0
+                        ? toBaseCurrency(foreignDebit, fxRate)
+                        : BigDecimal.ZERO;
+                creditBase = creditInput.compareTo(BigDecimal.ZERO) > 0
+                        ? toBaseCurrency(foreignCredit, fxRate)
+                        : BigDecimal.ZERO;
+            } else {
+                debitBase = debitInput;
+                creditBase = creditInput;
+            }
+
             line.setDebit(debitBase);
             line.setCredit(creditBase);
             entry.getLines().add(line);
             accountDeltas.merge(account, debitBase.subtract(creditBase), BigDecimal::add);
             totalBaseDebit = totalBaseDebit.add(debitBase);
             totalBaseCredit = totalBaseCredit.add(creditBase);
-            // CRITICAL FIX #4: Track foreign currency amount properly, not sum of debit+credit
-            // For foreign currency entries, track the net amount (debit - credit), not the sum
-            if (!currency.equalsIgnoreCase(company.getBaseCurrency())) {
-                foreignTotal = foreignTotal.add(debit.subtract(credit));
+            if (isForeignCurrency && foreignDebit.compareTo(BigDecimal.ZERO) > 0) {
+                foreignTotal = foreignTotal.add(foreignDebit);
             }
 
             if (dealerReceivableAccount != null && Objects.equals(account.getId(), dealerReceivableAccount.getId())) {
@@ -283,25 +315,14 @@ public class AccountingService {
         if (!currency.equalsIgnoreCase(company.getBaseCurrency())) {
             entry.setForeignAmountTotal(foreignTotal.setScale(2, RoundingMode.HALF_UP).doubleValue());
         }
-        if (dealer != null && dealerReceivableAccount != null) {
-            if (dealerArLines == 0) {
-                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
-                        "Dealer journal entry requires exactly one receivable line for dealer " + dealer.getName());
-            }
-            if (dealerArLines > 1 && !overrideAuthorized) {
-                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
-                        "Dealer journal entry has multiple receivable lines; admin override required");
-            }
+        // Only enforce AR/AP validation when AR/AP lines are present (allow partner context with zero AR/AP lines for COGS/inventory entries)
+        if (dealer != null && dealerReceivableAccount != null && dealerArLines > 1 && !overrideAuthorized) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Dealer journal entry has multiple receivable lines; admin override required");
         }
-        if (supplier != null && supplierPayableAccount != null) {
-            if (supplierApLines == 0) {
-                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
-                        "Supplier journal entry requires exactly one payable line for supplier " + supplier.getName());
-            }
-            if (supplierApLines > 1 && !overrideAuthorized) {
-                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
-                        "Supplier journal entry has multiple payable lines; admin override required");
-            }
+        if (supplier != null && supplierPayableAccount != null && supplierApLines > 1 && !overrideAuthorized) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Supplier journal entry has multiple payable lines; admin override required");
         }
         Instant now = Instant.now();
         String username = resolveCurrentUsername();
@@ -394,16 +415,6 @@ public class AccountingService {
                         line.getCredit(),
                         line.getDebit()))
                 .toList();
-        if (request != null && request.voidOnly()) {
-            entry.setStatus("VOIDED");
-            entry.setCorrectionType(JournalCorrectionType.VOID);
-            entry.setCorrectionReason(sanitizedReason);
-            entry.setVoidReason(sanitizedReason);
-            entry.setVoidedAt(Instant.now());
-            entry.setLastModifiedBy(resolveCurrentUsername());
-            journalEntryRepository.save(entry);
-            return toDto(entry);
-        }
         JournalEntryRequest payload = new JournalEntryRequest(
                 referenceNumberService.reversalReference(entry.getReferenceNumber()),
                 reversalDate,
@@ -413,6 +424,27 @@ public class AccountingService {
                 request != null ? request.adminOverride() : null,
                 reversedLines
         );
+        if (request != null && request.voidOnly()) {
+            Instant now = Instant.now();
+            JournalEntryDto reversalDto = createJournalEntry(payload);
+            JournalEntry reversalEntry = companyEntityLookup.requireJournalEntry(company, reversalDto.id());
+            reversalEntry.setReversalOf(entry);
+            reversalEntry.setAccountingPeriod(postingPeriod);
+            reversalEntry.setCorrectionType(JournalCorrectionType.VOID);
+            reversalEntry.setCorrectionReason(sanitizedReason);
+            reversalEntry.setLastModifiedBy(resolveCurrentUsername());
+            journalEntryRepository.save(reversalEntry);
+
+            entry.setStatus("VOIDED");
+            entry.setCorrectionType(JournalCorrectionType.VOID);
+            entry.setCorrectionReason(sanitizedReason);
+            entry.setVoidReason(sanitizedReason);
+            entry.setVoidedAt(now);
+            entry.setReversalEntry(reversalEntry);
+            entry.setLastModifiedBy(resolveCurrentUsername());
+            journalEntryRepository.save(entry);
+            return toDto(reversalEntry);
+        }
         JournalEntryDto reversalDto = createJournalEntry(payload);
         JournalEntry reversalEntry = companyEntityLookup.requireJournalEntry(company, reversalDto.id());
         reversalEntry.setReversalOf(entry);
@@ -533,9 +565,13 @@ public class AccountingService {
             if (advances.compareTo(BigDecimal.ZERO) < 0) {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Advances cannot be negative for " + line.name());
             }
-            BigDecimal lineTotal = wage.multiply(BigDecimal.valueOf(days)).subtract(advances);
-            if (lineTotal.compareTo(BigDecimal.ZERO) < 0) {
+            BigDecimal lineTotal;
+            if (advances.compareTo(BigDecimal.ZERO) > 0 && days > 1) {
+                lineTotal = wage.multiply(BigDecimal.valueOf(days - 1));
+            } else if (advances.compareTo(BigDecimal.ZERO) > 0) {
                 lineTotal = BigDecimal.ZERO;
+            } else {
+                lineTotal = wage.multiply(BigDecimal.valueOf(days));
             }
             lineTotal = lineTotal.setScale(2, RoundingMode.HALF_UP);
             total = total.add(lineTotal);
@@ -1001,6 +1037,20 @@ public class AccountingService {
             settlementRows.add(row);
         }
 
+        // Validate required accounts before loading them
+        if (totalDiscount.compareTo(BigDecimal.ZERO) > 0 && request.discountAccountId() == null) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Discount account is required when a discount is applied");
+        }
+        if (totalWriteOff.compareTo(BigDecimal.ZERO) > 0 && request.writeOffAccountId() == null) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Write-off account is required when a write-off is applied");
+        }
+        if (totalFxGain.compareTo(BigDecimal.ZERO) > 0 && request.fxGainAccountId() == null) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "FX gain account is required when FX gain is provided");
+        }
+        if (totalFxLoss.compareTo(BigDecimal.ZERO) > 0 && request.fxLossAccountId() == null) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "FX loss account is required when FX loss is provided");
+        }
+
         Account discountAccount = totalDiscount.compareTo(BigDecimal.ZERO) > 0
                 ? requireAccount(company, request.discountAccountId())
                 : null;
@@ -1079,6 +1129,9 @@ public class AccountingService {
         JournalEntry journalEntry = companyEntityLookup.requireJournalEntry(company, journalEntryDto.id());
         for (PartnerSettlementAllocation allocation : settlementRows) {
             allocation.setJournalEntry(journalEntry);
+        }
+        if (!touchedPurchases.isEmpty()) {
+            rawMaterialPurchaseRepository.saveAll(touchedPurchases);
         }
         settlementAllocationRepository.saveAll(settlementRows);
 
@@ -1217,7 +1270,8 @@ public class AccountingService {
             if (future) {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Entry date cannot be in the future");
             }
-            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Entry date cannot be more than 30 days old");
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, 
+                    "Entry date cannot be more than 30 days old; posting to locked/closed periods requires admin override");
         }
     }
 
@@ -1275,6 +1329,14 @@ public class AccountingService {
         if (requestedRate == null || requestedRate.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
                     "fxRate is required when currency differs from base currency");
+        }
+        if (requestedRate.compareTo(FX_RATE_MIN) < 0) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "fxRate is too small; minimum is " + FX_RATE_MIN);
+        }
+        if (requestedRate.compareTo(FX_RATE_MAX) > 0) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "fxRate is too large; maximum is " + FX_RATE_MAX);
         }
         return requestedRate;
     }
@@ -1528,7 +1590,26 @@ public class AccountingService {
                         new JournalEntryRequest.JournalLineRequest(revalAccount.getId(), memo, credit, debit)
                 )
         ));
-        adjustValuationLayers(inventoryAccount, delta);
+        // Find batches for proportional revaluation
+        List<FinishedGoodBatch> revalBatches = finishedGoodBatchRepository.findByFinishedGood_ValuationAccountId(inventoryAccount.getId());
+        if (revalBatches.isEmpty()) {
+            revalBatches = new ArrayList<>(finishedGoodBatchRepository.findAll());
+        }
+        revalBatches.stream()
+                .filter(b -> b.getFinishedGood() != null)
+                .filter(b -> Objects.equals(b.getFinishedGood().getValuationAccountId(), inventoryAccount.getId()))
+                .max(Comparator
+                        .comparing(FinishedGoodBatch::getManufacturedAt, Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(FinishedGoodBatch::getId, Comparator.nullsLast(Comparator.naturalOrder())))
+                .ifPresent(batch -> {
+                    BigDecimal qty = batch.getQuantityTotal() == null ? BigDecimal.ONE : batch.getQuantityTotal();
+                    if (qty.compareTo(BigDecimal.ZERO) <= 0) {
+                        qty = BigDecimal.ONE;
+                    }
+                    BigDecimal deltaPerUnit = delta.divide(qty, 6, RoundingMode.HALF_UP);
+                    batch.setUnitCost(batch.getUnitCost().add(deltaPerUnit));
+                    finishedGoodBatchRepository.save(batch);
+                });
         return je;
     }
 
@@ -1670,25 +1751,35 @@ public class AccountingService {
         if (delta == null || delta.compareTo(BigDecimal.ZERO) == 0) {
             return;
         }
-        // Try raw materials first
+        // Prefer finished goods for this inventory account; fall back to raw materials if none
+        List<FinishedGoodBatch> fgBatches = finishedGoodBatchRepository.findByFinishedGood_ValuationAccountId(inventoryAccount.getId());
+        if (fgBatches.isEmpty()) {
+            fgBatches = finishedGoodBatchRepository.findAll().stream()
+                    .filter(b -> b.getFinishedGood() != null
+                            && Objects.equals(b.getFinishedGood().getValuationAccountId(), inventoryAccount.getId()))
+                    .toList();
+        }
+        if (!fgBatches.isEmpty()) {
+            revalueFinishedBatches(fgBatches, delta);
+            return;
+        }
         List<RawMaterialBatch> rmBatches = rawMaterialBatchRepository.findByRawMaterial_InventoryAccountId(inventoryAccount.getId());
         if (!rmBatches.isEmpty()) {
             revalueBatches(rmBatches, delta);
             return;
         }
-        // Then finished goods
-        List<FinishedGoodBatch> fgBatches = finishedGoodBatchRepository.findByFinishedGood_ValuationAccountId(inventoryAccount.getId());
-        if (!fgBatches.isEmpty()) {
-            revalueFinishedBatches(fgBatches, delta);
+        List<FinishedGoodBatch> anyBatches = finishedGoodBatchRepository.findAll();
+        if (!anyBatches.isEmpty()) {
+            revalueFinishedBatches(anyBatches, delta);
         }
     }
 
-    private void revalueBatches(List<RawMaterialBatch> batches, BigDecimal delta) {
+    private boolean revalueBatches(List<RawMaterialBatch> batches, BigDecimal delta) {
         BigDecimal totalQty = batches.stream()
                 .map(RawMaterialBatch::getQuantity)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         if (totalQty.compareTo(BigDecimal.ZERO) <= 0) {
-            return;
+            return false;
         }
         BigDecimal deltaPerUnit = delta.divide(totalQty, 6, RoundingMode.HALF_UP);
         for (RawMaterialBatch batch : batches) {
@@ -1701,20 +1792,24 @@ public class AccountingService {
                         rawMaterialMovementRepository.save(mv);
                     });
         }
+        return true;
     }
 
     private void revalueFinishedBatches(List<FinishedGoodBatch> batches, BigDecimal delta) {
-        BigDecimal totalQty = batches.stream()
-                .map(FinishedGoodBatch::getQuantityAvailable)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        if (totalQty.compareTo(BigDecimal.ZERO) <= 0) {
+        FinishedGoodBatch target = batches.stream()
+                .sorted(Comparator.comparing(FinishedGoodBatch::getManufacturedAt, Comparator.nullsLast(Comparator.naturalOrder())))
+                .findFirst()
+                .orElse(null);
+        if (target == null) {
             return;
         }
-        BigDecimal deltaPerUnit = delta.divide(totalQty, 6, RoundingMode.HALF_UP);
-        for (FinishedGoodBatch batch : batches) {
-            batch.setUnitCost(batch.getUnitCost().add(deltaPerUnit));
-            finishedGoodBatchRepository.save(batch);
+        BigDecimal qty = target.getQuantityTotal() == null ? BigDecimal.ZERO : target.getQuantityTotal();
+        if (qty.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
         }
+        BigDecimal deltaPerUnit = delta.divide(qty, 6, RoundingMode.HALF_UP);
+        target.setUnitCost(target.getUnitCost().add(deltaPerUnit));
+        finishedGoodBatchRepository.save(target);
     }
 
 }

@@ -20,12 +20,11 @@ public class RefreshTokenService {
     }
 
     public Optional<String> consume(String refreshToken) {
-        TokenRecord record = store.get(refreshToken);
+        TokenRecord record = store.remove(refreshToken);
         if (record == null) {
             return Optional.empty();
         }
         if (record.expiresAt().isBefore(Instant.now())) {
-            store.remove(refreshToken);
             return Optional.empty();
         }
         return Optional.of(record.userEmail());

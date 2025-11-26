@@ -4380,18 +4380,13 @@ components:
       required:
       - batchId
       - requestedBy
+      - postingAmount
       type: object
       properties:
         batchId:
           type: string
         requestedBy:
           type: string
-        debitAccountId:
-          type: integer
-          format: int64
-        creditAccountId:
-          type: integer
-          format: int64
         postingAmount:
           type: number
     SwitchCompanyRequest:

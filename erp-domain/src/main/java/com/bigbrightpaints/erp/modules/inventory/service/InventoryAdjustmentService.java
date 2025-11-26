@@ -16,7 +16,10 @@ import com.bigbrightpaints.erp.modules.inventory.domain.InventoryMovementReposit
 import com.bigbrightpaints.erp.modules.inventory.dto.InventoryAdjustmentDto;
 import com.bigbrightpaints.erp.modules.inventory.dto.InventoryAdjustmentLineDto;
 import com.bigbrightpaints.erp.modules.inventory.dto.InventoryAdjustmentRequest;
-import jakarta.transaction.Transactional;
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Retryable;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -24,6 +27,7 @@ import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -61,10 +65,14 @@ public class InventoryAdjustmentService {
     }
 
     @Transactional
+    @Retryable(value = OptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 100))
     public InventoryAdjustmentDto createAdjustment(InventoryAdjustmentRequest request) {
         if (request == null || request.lines() == null || request.lines().isEmpty()) {
             throw new IllegalArgumentException("Adjustment lines are required");
         }
+        List<InventoryAdjustmentRequest.LineRequest> sortedLines = request.lines().stream()
+                .sorted(Comparator.comparing(InventoryAdjustmentRequest.LineRequest::finishedGoodId))
+                .toList();
         Company company = companyContextService.requireCurrentCompany();
         InventoryAdjustmentType type = request.type() == null ? InventoryAdjustmentType.DAMAGED : request.type();
         InventoryAdjustment adjustment = new InventoryAdjustment();
@@ -76,7 +84,7 @@ public class InventoryAdjustmentService {
         adjustment.setCreatedBy(resolveCurrentUser());
         Map<Long, BigDecimal> inventoryCredits = new HashMap<>();
         BigDecimal totalAmount = BigDecimal.ZERO;
-        for (InventoryAdjustmentRequest.LineRequest lineRequest : request.lines()) {
+        for (InventoryAdjustmentRequest.LineRequest lineRequest : sortedLines) {
             InventoryAdjustmentLine line = buildLine(company, adjustment, lineRequest);
             Long valuationAccountId = line.getFinishedGood().getValuationAccountId();
             if (valuationAccountId == null) {
@@ -90,6 +98,7 @@ public class InventoryAdjustmentService {
         }
         adjustment.setTotalAmount(totalAmount);
         InventoryAdjustment savedDraft = adjustmentRepository.save(adjustment);
+        List<InventoryMovement> movements = applyMovements(savedDraft, null);
         boolean adminOverride = Boolean.TRUE.equals(request.adminOverride());
         String memo = memoFor(savedDraft, request.reason());
         JournalEntryDto journalEntry = accountingFacade.postInventoryAdjustment(
@@ -105,8 +114,9 @@ public class InventoryAdjustmentService {
         }
         savedDraft.setJournalEntryId(journalEntry.id());
         savedDraft.setStatus("POSTED");
+        movements.forEach(movement -> movement.setJournalEntryId(journalEntry.id()));
+        inventoryMovementRepository.saveAll(movements);
         InventoryAdjustment posted = adjustmentRepository.save(savedDraft);
-        applyMovements(posted);
         return toDto(posted);
     }
 
@@ -132,12 +142,13 @@ public class InventoryAdjustmentService {
         return line;
     }
 
-    private void applyMovements(InventoryAdjustment adjustment) {
-        for (InventoryAdjustmentLine line : adjustment.getLines()) {
+    private List<InventoryMovement> applyMovements(InventoryAdjustment adjustment, Long journalEntryId) {
+        List<InventoryMovement> movements = adjustment.getLines().stream().map(line -> {
             FinishedGood finishedGood = line.getFinishedGood();
             BigDecimal currentStock = finishedGood.getCurrentStock() == null ? BigDecimal.ZERO : finishedGood.getCurrentStock();
             finishedGood.setCurrentStock(currentStock.subtract(line.getQuantity()));
             finishedGoodRepository.save(finishedGood);
+
             InventoryMovement movement = new InventoryMovement();
             movement.setFinishedGood(finishedGood);
             movement.setReferenceType("ADJUSTMENT");
@@ -145,9 +156,10 @@ public class InventoryAdjustmentService {
             movement.setMovementType("ADJUSTMENT_OUT");
             movement.setQuantity(line.getQuantity());
             movement.setUnitCost(line.getUnitCost());
-            movement.setJournalEntryId(adjustment.getJournalEntryId());
-            inventoryMovementRepository.save(movement);
-        }
+            movement.setJournalEntryId(journalEntryId);
+            return movement;
+        }).toList();
+        return movements;
     }
 
     private InventoryAdjustmentDto toDto(InventoryAdjustment adjustment) {

@@ -158,7 +158,8 @@ public class SalesReturnService {
 
     private void restockFinishedGood(FinishedGood finishedGood, BigDecimal quantity, String invoiceNumber, BigDecimal unitCost) {
         FinishedGood fg = lockFinishedGood(finishedGood.getCompany(), finishedGood.getId());
-        fg.setCurrentStock(fg.getCurrentStock().add(quantity));
+        BigDecimal currentStock = fg.getCurrentStock() != null ? fg.getCurrentStock() : BigDecimal.ZERO;
+        fg.setCurrentStock(currentStock.add(quantity));
         finishedGoodRepository.save(fg);
 
         FinishedGoodBatch returnBatch = new FinishedGoodBatch();

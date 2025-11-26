@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.e2e.accounting;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
@@ -278,7 +279,8 @@ class CriticalAccountingAxesIT extends AbstractIntegrationTest {
                 ));
 
         assertThatThrownBy(() -> accountingService.createJournalEntry(request))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("locked/closed");
         accountingPeriodRepository.delete(period);
     }
 

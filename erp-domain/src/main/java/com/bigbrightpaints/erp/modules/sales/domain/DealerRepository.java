@@ -17,6 +17,7 @@ public interface DealerRepository extends JpaRepository<Dealer, Long> {
     Optional<Dealer> findByCompanyAndId(Company company, Long id);
     Optional<Dealer> findByCompanyAndCodeIgnoreCase(Company company, String code);
     Optional<Dealer> findByCompanyAndReceivableAccount(Company company, Account receivableAccount);
+    List<Dealer> findAllByCompanyAndReceivableAccount(Company company, Account receivableAccount);
 
     @Query("select d from Dealer d where d.company = :company and (lower(d.name) like lower(concat('%', :term, '%')) or lower(d.code) like lower(concat('%', :term, '%'))) order by d.name asc")
     List<Dealer> search(@Param("company") Company company, @Param("term") String term, Pageable pageable);

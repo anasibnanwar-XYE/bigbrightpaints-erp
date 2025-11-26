@@ -60,9 +60,9 @@ public class AuthService {
             Authentication authentication = authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(request.email(), request.password()));
             UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
-            resetLock(user);
             Company company = resolveCompanyForUser(principal.getUser(), request.companyCode());
             mfaService.verifyDuringLogin(principal.getUser(), request.mfaCode(), request.recoveryCode());
+            resetLock(user);
             Map<String, Object> claims = new HashMap<>();
             claims.put("name", principal.getUser().getDisplayName());
             String accessToken = tokenService.generateAccessToken(principal.getUsername(), company.getCode(), claims);

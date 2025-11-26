@@ -45,6 +45,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -64,6 +66,8 @@ public class IntegrationCoordinator {
     private final ReportService reportService;
     private final OrderAutoApprovalStateRepository orderAutoApprovalStateRepository;
     private final AccountingFacade accountingFacade;
+    private final Long dispatchDebitAccountId;
+    private final Long dispatchCreditAccountId;
 
     public IntegrationCoordinator(SalesService salesService,
                                   FactoryService factoryService,
@@ -74,7 +78,9 @@ public class IntegrationCoordinator {
                                   HrService hrService,
                                   ReportService reportService,
                                   OrderAutoApprovalStateRepository orderAutoApprovalStateRepository,
-                                  AccountingFacade accountingFacade) {
+                                  AccountingFacade accountingFacade,
+                                  @Value("${erp.dispatch.debit-account-id:0}") Long dispatchDebitAccountId,
+                                  @Value("${erp.dispatch.credit-account-id:0}") Long dispatchCreditAccountId) {
         this.salesService = salesService;
         this.factoryService = factoryService;
         this.finishedGoodsService = finishedGoodsService;
@@ -85,6 +91,8 @@ public class IntegrationCoordinator {
         this.reportService = reportService;
         this.orderAutoApprovalStateRepository = orderAutoApprovalStateRepository;
         this.accountingFacade = accountingFacade;
+        this.dispatchDebitAccountId = normalizeAccount(dispatchDebitAccountId);
+        this.dispatchCreditAccountId = normalizeAccount(dispatchCreditAccountId);
     }
 
     @Transactional
@@ -277,11 +285,14 @@ public class IntegrationCoordinator {
     @Transactional
     public void postDispatchJournal(String batchId,
                                     String companyId,
-                                    Long debitAccountId,
-                                    Long creditAccountId,
                                     BigDecimal amount) {
-        runWithCompanyContext(companyId, () ->
-                postJournal("DISPATCH-" + batchId, amount, "Dispatch journal for batch " + batchId, debitAccountId, creditAccountId));
+        runWithCompanyContext(companyId, () -> {
+            if (dispatchDebitAccountId == null || dispatchCreditAccountId == null) {
+                log.warn("Skipping dispatch journal for batch {} - dispatch accounts not configured", batchId);
+                return;
+            }
+            postJournal("DISPATCH-" + batchId, amount, "Dispatch journal for batch " + batchId, dispatchDebitAccountId, dispatchCreditAccountId);
+        });
     }
 
     @Transactional(readOnly = true)
@@ -439,7 +450,11 @@ public class IntegrationCoordinator {
     private OrderAutoApprovalState lockAutoApprovalState(String companyId, Long orderId) {
         return orderAutoApprovalStateRepository.findByCompanyCodeAndOrderId(companyId, orderId)
                 .orElseGet(() -> {
-                    orderAutoApprovalStateRepository.save(new OrderAutoApprovalState(companyId, orderId));
+                    try {
+                        orderAutoApprovalStateRepository.save(new OrderAutoApprovalState(companyId, orderId));
+                    } catch (DataIntegrityViolationException ex) {
+                        log.warn("Auto-approval state already exists for order {} in company {}; retrying fetch", orderId, companyId);
+                    }
                     return orderAutoApprovalStateRepository.findByCompanyCodeAndOrderId(companyId, orderId)
                             .orElseThrow(() -> new IllegalStateException("Unable to initialize auto-approval state"));
                 });
@@ -581,4 +596,8 @@ public class IntegrationCoordinator {
     }
 
     public record AutoApprovalResult(String orderStatus, boolean awaitingProduction) {}
+
+    private Long normalizeAccount(Long accountId) {
+        return accountId != null && accountId > 0 ? accountId : null;
+    }
 }

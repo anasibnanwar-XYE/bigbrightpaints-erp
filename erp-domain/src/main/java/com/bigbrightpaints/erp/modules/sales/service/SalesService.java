@@ -132,16 +132,52 @@ public class SalesService {
     @Transactional
     public DealerDto updateDealer(Long id, DealerRequest request) {
         Dealer dealer = requireDealer(id);
+        String oldCode = dealer.getCode();
+        String oldName = dealer.getName();
         dealer.setName(request.name());
         dealer.setCode(request.code());
         dealer.setEmail(request.email());
         dealer.setPhone(request.phone());
         dealer.setCreditLimit(request.creditLimit());
+        syncReceivableAccount(dealer, oldCode, request.code(), oldName, request.name());
         return toDto(dealer);
     }
 
+    private void syncReceivableAccount(Dealer dealer, String oldCode, String newCode, String oldName, String newName) {
+        Account receivableAccount = dealer.getReceivableAccount();
+        if (receivableAccount == null) {
+            return;
+        }
+        boolean changed = false;
+        if (oldCode != null && !oldCode.equals(newCode)) {
+            String oldAccountCode = receivableAccount.getCode();
+            if (oldAccountCode != null && oldAccountCode.startsWith("AR-" + oldCode)) {
+                String suffix = oldAccountCode.substring(("AR-" + oldCode).length());
+                String newAccountCode = "AR-" + newCode + suffix;
+                Company company = dealer.getCompany();
+                if (accountRepository.findByCompanyAndCodeIgnoreCase(company, newAccountCode).isEmpty()) {
+                    receivableAccount.setCode(newAccountCode);
+                    changed = true;
+                }
+            }
+        }
+        if (oldName != null && !oldName.equals(newName)) {
+            receivableAccount.setName(newName + " Receivable");
+            changed = true;
+        }
+        if (changed) {
+            accountRepository.save(receivableAccount);
+        }
+    }
+
+    @Transactional
     public void deleteDealer(Long id) {
         Dealer dealer = requireDealer(id);
+        Account receivableAccount = dealer.getReceivableAccount();
+        if (receivableAccount != null) {
+            receivableAccount.setActive(false);
+            accountRepository.save(receivableAccount);
+        }
         dealerRepository.delete(dealer);
     }
 
@@ -290,8 +326,15 @@ public class SalesService {
         if (!StringUtils.hasText(value)) {
             return GstTreatment.NONE;
         }
+        String normalized = value.trim().toUpperCase();
+        if ("EXCLUSIVE".equals(normalized)) {
+            return GstTreatment.NONE;
+        }
+        if ("INCLUSIVE".equals(normalized)) {
+            return GstTreatment.ORDER_TOTAL;
+        }
         try {
-            return GstTreatment.valueOf(value.trim().toUpperCase());
+            return GstTreatment.valueOf(normalized);
         } catch (IllegalArgumentException ex) {
             throw new IllegalArgumentException("Unknown GST treatment " + value);
         }

@@ -14,6 +14,8 @@ public interface JournalEntryRepository extends JpaRepository<JournalEntry, Long
     @EntityGraph(attributePaths = {"lines", "lines.account"})
     List<JournalEntry> findByCompanyOrderByEntryDateDesc(Company company);
     List<JournalEntry> findByCompanyAndDealerOrderByEntryDateDesc(Company company, Dealer dealer);
+    @EntityGraph(attributePaths = {"lines", "lines.account"})
+    Optional<JournalEntry> findById(Long id);
     Optional<JournalEntry> findByCompanyAndId(Company company, Long id);
     Optional<JournalEntry> findByCompanyAndReferenceNumber(Company company, String referenceNumber);
     long countByCompanyAndEntryDateBetweenAndStatusIn(Company company, LocalDate start, LocalDate end, Collection<String> statuses);

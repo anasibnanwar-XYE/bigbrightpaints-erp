@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Big Bright Paints - Invoice</title>
+    <style>
+        /* Offline-friendly minimal styles (no external CSS/fonts) */
+        :root {
+            --bg-light: #f3f4f6;
+            --border-dark: #1f2937;
+            --primary: #002f6c;
+            --accent: #f59e0b;
+            --text: #1f2937;
+            --muted: #6b7280;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            padding: 32px;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg-light);
+            font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+            color: var(--text);
+        }
+        .printable-area {
+            background: #fff;
+            padding: 32px;
+            border-radius: 12px;
+            box-shadow: 0 10px 24px rgba(0,0,0,0.08);
+            width: 100%;
+            max-width: 960px;
+        }
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            border-bottom: 2px solid var(--border-dark);
+            padding-bottom: 16px;
+            gap: 16px;
+        }
+        h1 { margin: 0; font-size: 32px; font-weight: 700; }
+        h2 { margin: 0; font-size: 22px; font-weight: 700; text-transform: uppercase; color: #4b5563; }
+        h3 { margin: 0 0 6px 0; font-size: 14px; font-weight: 700; color: #374151; }
+        p { margin: 2px 0; font-size: 13px; color: #4b5563; }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px 16px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 12px;
+        }
+        thead {
+            background: #f9fafb;
+            border-top: 1px solid #d1d5db;
+            border-bottom: 1px solid #d1d5db;
+        }
+        th, td {
+            padding: 10px 12px;
+            font-size: 13px;
+        }
+        th { text-align: left; font-weight: 700; color: #4b5563; text-transform: uppercase; }
+        td { color: #1f2937; }
+        tbody tr { border-bottom: 1px solid #e5e7eb; }
+        .totals {
+            margin-top: 16px;
+            display: flex;
+            justify-content: flex-end;
+        }
+        .totals-box {
+            width: 100%;
+            max-width: 320px;
+        }
+        .row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 6px 0;
+            font-size: 14px;
+        }
+        .row.total {
+            border-top: 2px solid var(--border-dark);
+            padding-top: 10px;
+            margin-top: 10px;
+            font-weight: 700;
+            font-size: 18px;
+            color: var(--primary);
+        }
+        footer {
+            margin-top: 32px;
+            text-align: center;
+            font-size: 12px;
+            color: #6b7280;
+            border-top: 1px solid #e5e7eb;
+            padding-top: 12px;
+        }
+        .text-primary { color: var(--primary); }
+        .text-accent { color: var(--accent); }
+        .text-muted { color: var(--muted); }
+        .fw-bold { font-weight: 700; }
+        .text-right { text-align: right; }
+        .text-center { text-align: center; }
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 6px;
+            background: #eef2ff;
+            color: var(--primary);
+            font-weight: 600;
+        }
+        .no-print { display: none; }
+        @media print {
+            body { -webkit-print-color-adjust: exact; background: #fff; padding: 0; }
+            .printable-area { box-shadow: none; border-radius: 0; max-width: none; padding: 20px; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Invoice Container -->
+    <div class="printable-area">
+
+        <!-- Header -->
+        <header>
+            <div>
+                <h1>
+                    <span class="text-primary" th:text="${invoice.companyName}">BIG BRIGHT</span>
+                    <span class="text-accent fw-bold" th:text="${invoice.companyCode}">Paints</span>
+                </h1>
+                <p class="text-muted" th:text="${invoice.companyAddress}">123 Industrial Area, Mumbai, MH 400001</p>
+                <p class="text-muted" th:text="'GSTIN: ' + ${invoice.companyGstin}">GSTIN: 27ABCDE1234F1Z5</p>
+            </div>
+            <div class="text-right">
+                <h2>Tax Invoice</h2>
+                <p class="text-muted" th:text="${invoice.companyPhone}">+91 00000 00000</p>
+            </div>
+        </header>
+
+        <!-- Billing Info -->
+        <section class="grid" style="margin: 18px 0;">
+            <div>
+                <h3>Bill To:</h3>
+                <p class="fw-bold" th:text="${invoice.billToName}">Customer Name</p>
+                <p class="text-muted" th:text="${invoice.billToAddress}">Address</p>
+                <p class="text-muted" th:text="${invoice.billToPhone}">Phone</p>
+            </div>
+            <div class="text-right">
+                <div class="grid" style="grid-template-columns: 110px auto;">
+                    <span class="fw-bold">Invoice #:</span><span th:text="${invoice.invoiceNumber}">INV-2023-1001</span>
+                    <span class="fw-bold">Order #:</span><span th:text="${invoice.orderNumber}">ORD-2023-5589</span>
+                    <span class="fw-bold">Date:</span><span th:text="${#temporals.format(invoice.issueDate, 'dd MMM yyyy')}">26 Oct 2023</span>
+                    <span class="fw-bold">Due Date:</span><span th:text="${invoice.dueDate != null ? #temporals.format(invoice.dueDate, 'dd MMM yyyy') : '-'}">25 Nov 2023</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Line Items -->
+        <section>
+            <table class="min-w-full">
+                <thead>
+                    <tr>
+                        <th>Product</th>
+                        <th class="text-center">Quantity</th>
+                        <th class="text-right">Unit Price</th>
+                        <th class="text-right">Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr th:each="line : ${invoice.lines}">
+                        <td th:text="${line.description}">Product</td>
+                        <td class="text-center" th:text="${#numbers.formatDecimal(line.quantity, 1, 'COMMA', 2, 'POINT')}">1</td>
+                        <td class="text-right" th:text="${invoice.currencySymbol + #numbers.formatDecimal(line.unitPrice, 1, 'COMMA', 2, 'POINT')}">₹0.00</td>
+                        <td class="text-right" th:text="${invoice.currencySymbol + #numbers.formatDecimal(line.lineTotal, 1, 'COMMA', 2, 'POINT')}">₹0.00</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <!-- Totals -->
+        <section class="totals">
+            <div class="totals-box">
+                <div class="row">
+                    <span class="text-muted">Subtotal:</span>
+                    <span class="fw-bold" th:text="${invoice.currencySymbol + #numbers.formatDecimal(invoice.subtotal, 1, 'COMMA', 2, 'POINT')}">₹0.00</span>
+                </div>
+                <div class="row" th:if="${invoice.discount != null && invoice.discount > 0}">
+                    <span>Discount:</span>
+                    <span class="fw-bold" th:text="'- ' + ${invoice.currencySymbol + #numbers.formatDecimal(invoice.discount, 1, 'COMMA', 2, 'POINT')}">- ₹0.00</span>
+                </div>
+                <div class="row">
+                    <span class="text-muted">Tax:</span>
+                    <span class="fw-bold" th:text="${invoice.currencySymbol + #numbers.formatDecimal(invoice.tax, 1, 'COMMA', 2, 'POINT')}">₹0.00</span>
+                </div>
+                <div class="row total">
+                    <span class="text-primary">Grand Total:</span>
+                    <span class="text-primary" th:text="${invoice.currencySymbol + #numbers.formatDecimal(invoice.total, 1, 'COMMA', 2, 'POINT')}">₹0.00</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer>
+            <p>Thank you for your business!</p>
+            <p>Add a Splash of Colour to Your Life.</p>
+        </footer>
+
+    </div>
+</body>
+</html>

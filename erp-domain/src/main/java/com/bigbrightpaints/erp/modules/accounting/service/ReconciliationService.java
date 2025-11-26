@@ -94,6 +94,9 @@ public class ReconciliationService {
         BigDecimal outstandingChecks = BigDecimal.ZERO;
         for (JournalLine line : lines) {
             JournalEntry entry = line.getJournalEntry();
+            if (entry == null) {
+                continue;
+            }
             BigDecimal debit = safe(line.getDebit());
             BigDecimal credit = safe(line.getCredit());
             BigDecimal net = debit.subtract(credit);
