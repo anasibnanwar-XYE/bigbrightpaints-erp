@@ -59,6 +59,10 @@ public enum ErrorCode {
     // Concurrency Errors (7000-7999)
     CONCURRENCY_CONFLICT("CONC_001", "Resource was modified by another user"),
     CONCURRENCY_LOCK_TIMEOUT("CONC_002", "Could not acquire resource lock"),
+    INTERNAL_CONCURRENCY_FAILURE("CONC_003", "Internal concurrency failure"),
+
+    // Data Integrity Errors (8000-8999)
+    DUPLICATE_ENTITY("DATA_001", "Duplicate entity found"),
 
     // Unknown Error (9999)
     UNKNOWN_ERROR("ERR_999", "An unexpected error occurred");

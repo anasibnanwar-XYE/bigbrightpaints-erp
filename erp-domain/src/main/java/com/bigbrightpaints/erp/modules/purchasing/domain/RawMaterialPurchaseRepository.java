@@ -1,7 +1,11 @@
 package com.bigbrightpaints.erp.modules.purchasing.domain;
 
 import com.bigbrightpaints.erp.modules.company.domain.Company;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
@@ -10,4 +14,12 @@ public interface RawMaterialPurchaseRepository extends JpaRepository<RawMaterial
     List<RawMaterialPurchase> findByCompanyOrderByInvoiceDateDesc(Company company);
     Optional<RawMaterialPurchase> findByCompanyAndId(Company company, Long id);
     Optional<RawMaterialPurchase> findByCompanyAndInvoiceNumberIgnoreCase(Company company, String invoiceNumber);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT p FROM RawMaterialPurchase p WHERE p.company = :company AND p.id = :id")
+    Optional<RawMaterialPurchase> lockByCompanyAndId(@Param("company") Company company, @Param("id") Long id);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT p FROM RawMaterialPurchase p WHERE p.company = :company AND LOWER(p.invoiceNumber) = LOWER(:invoiceNumber)")
+    Optional<RawMaterialPurchase> lockByCompanyAndInvoiceNumberIgnoreCase(@Param("company") Company company, @Param("invoiceNumber") String invoiceNumber);
 }

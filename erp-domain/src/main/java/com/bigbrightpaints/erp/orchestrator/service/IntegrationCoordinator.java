@@ -50,6 +50,11 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class IntegrationCoordinator {
@@ -68,6 +73,7 @@ public class IntegrationCoordinator {
     private final AccountingFacade accountingFacade;
     private final Long dispatchDebitAccountId;
     private final Long dispatchCreditAccountId;
+    private final TransactionTemplate txTemplate;
 
     public IntegrationCoordinator(SalesService salesService,
                                   FactoryService factoryService,
@@ -79,6 +85,7 @@ public class IntegrationCoordinator {
                                   ReportService reportService,
                                   OrderAutoApprovalStateRepository orderAutoApprovalStateRepository,
                                   AccountingFacade accountingFacade,
+                                  PlatformTransactionManager txManager,
                                   @Value("${erp.dispatch.debit-account-id:0}") Long dispatchDebitAccountId,
                                   @Value("${erp.dispatch.credit-account-id:0}") Long dispatchCreditAccountId) {
         this.salesService = salesService;
@@ -93,6 +100,9 @@ public class IntegrationCoordinator {
         this.accountingFacade = accountingFacade;
         this.dispatchDebitAccountId = normalizeAccount(dispatchDebitAccountId);
         this.dispatchCreditAccountId = normalizeAccount(dispatchCreditAccountId);
+        TransactionTemplate template = new TransactionTemplate(txManager);
+        template.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        this.txTemplate = template;
     }
 
     @Transactional
@@ -311,7 +321,8 @@ public class IntegrationCoordinator {
             PayrollRunDto run = hrService.createPayrollRun(new PayrollRunRequest(
                     payrollDate,
                     totalAmount,
-                    "Auto payroll run"));
+                    "Auto payroll run",
+                    "AUTO-" + payrollDate));
             log.info("Triggered payroll run {} for {}", run.id(), payrollDate);
             return run;
         });
@@ -448,7 +459,7 @@ public class IntegrationCoordinator {
     }
 
     private OrderAutoApprovalState lockAutoApprovalState(String companyId, Long orderId) {
-        return orderAutoApprovalStateRepository.findByCompanyCodeAndOrderId(companyId, orderId)
+        return txTemplate.execute(status -> orderAutoApprovalStateRepository.findByCompanyCodeAndOrderId(companyId, orderId)
                 .orElseGet(() -> {
                     try {
                         orderAutoApprovalStateRepository.save(new OrderAutoApprovalState(companyId, orderId));
@@ -457,7 +468,7 @@ public class IntegrationCoordinator {
                     }
                     return orderAutoApprovalStateRepository.findByCompanyCodeAndOrderId(companyId, orderId)
                             .orElseThrow(() -> new IllegalStateException("Unable to initialize auto-approval state"));
-                });
+                }));
     }
 
     private void runWithCompanyContext(String companyId, Runnable action) {

@@ -1,8 +1,12 @@
 package com.bigbrightpaints.erp.modules.sales.service;
 
-import com.bigbrightpaints.erp.modules.accounting.dto.AgingSummaryResponse;
 import com.bigbrightpaints.erp.modules.accounting.dto.AgingBucketDto;
+import com.bigbrightpaints.erp.modules.accounting.dto.AgingSummaryResponse;
 import com.bigbrightpaints.erp.modules.accounting.service.StatementService;
+import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
+import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
+import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 import org.slf4j.Logger;
@@ -19,17 +23,24 @@ public class DunningService {
 
     private static final Logger log = LoggerFactory.getLogger(DunningService.class);
 
+    private final CompanyContextService companyContextService;
+    private final CompanyRepository companyRepository;
     private final DealerRepository dealerRepository;
     private final StatementService statementService;
 
-    public DunningService(DealerRepository dealerRepository,
+    public DunningService(CompanyContextService companyContextService,
+                          CompanyRepository companyRepository,
+                          DealerRepository dealerRepository,
                           StatementService statementService) {
+        this.companyContextService = companyContextService;
+        this.companyRepository = companyRepository;
         this.dealerRepository = dealerRepository;
         this.statementService = statementService;
     }
 
     public boolean evaluateDealerHold(Long dealerId, int overdueDaysThreshold, BigDecimal overdueAmountThreshold) {
-        Dealer dealer = dealerRepository.findById(dealerId)
+        Company company = companyContextService.requireCurrentCompany();
+        Dealer dealer = dealerRepository.findByCompanyAndId(company, dealerId)
                 .orElseThrow(() -> new IllegalArgumentException("Dealer not found"));
         AgingSummaryResponse aging = statementService.dealerAging(dealerId, LocalDate.now(), null);
         BigDecimal overdue = aging.buckets().stream()
@@ -50,22 +61,31 @@ public class DunningService {
      */
     @Scheduled(cron = "0 15 3 * * *")
     public void dailyDunningSweep() {
-        List<Dealer> dealers = dealerRepository.findAll();
-        for (Dealer dealer : dealers) {
+        companyRepository.findAll().forEach(company -> {
             try {
-                AgingSummaryResponse aging = statementService.dealerAging(dealer.getId(), LocalDate.now(), null);
-                BigDecimal overdue = aging.buckets().stream()
-                        .filter(b -> b.fromDays() >= 45)
-                        .map(AgingBucketDto::amount)
-                        .reduce(BigDecimal.ZERO, BigDecimal::add);
-                if (overdue.compareTo(BigDecimal.ZERO) > 0 && !"ON_HOLD".equalsIgnoreCase(dealer.getStatus())) {
-                    dealer.setStatus("ON_HOLD");
-                    dealerRepository.save(dealer);
-                    log.info("Dealer {} placed ON_HOLD by dunning sweep; overdue {}", dealer.getCode(), overdue);
+                CompanyContextHolder.setCompanyId(company.getCode());
+                List<Dealer> dealers = dealerRepository.findByCompanyOrderByNameAsc(company);
+                for (Dealer dealer : dealers) {
+                    try {
+                        AgingSummaryResponse aging = statementService.dealerAging(dealer.getId(), LocalDate.now(), null);
+                        BigDecimal overdue = aging.buckets().stream()
+                                .filter(b -> b.fromDays() >= 45)
+                                .map(AgingBucketDto::amount)
+                                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                        if (overdue.compareTo(BigDecimal.ZERO) > 0 && !"ON_HOLD".equalsIgnoreCase(dealer.getStatus())) {
+                            dealer.setStatus("ON_HOLD");
+                            dealerRepository.save(dealer);
+                            log.info("Dealer {} placed ON_HOLD by dunning sweep; overdue {}", dealer.getCode(), overdue);
+                        }
+                    } catch (Exception e) {
+                        log.warn("Failed dunning evaluation for dealer {}", dealer.getCode(), e);
+                    }
                 }
             } catch (Exception e) {
-                log.warn("Failed dunning evaluation for dealer {}", dealer.getCode(), e);
+                log.warn("Failed dunning sweep for company {}", company.getCode(), e);
+            } finally {
+                CompanyContextHolder.clear();
             }
-        }
+        });
     }
 }

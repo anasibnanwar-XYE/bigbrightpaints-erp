@@ -25,4 +25,10 @@ public interface DealerRepository extends JpaRepository<Dealer, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select d from Dealer d where d.company = :company and d.id = :id")
     Optional<Dealer> lockByCompanyAndId(@Param("company") Company company, @Param("id") Long id);
+
+    @Query("select d from Dealer d where d.portalUser.id = :userId")
+    Optional<Dealer> findByPortalUserId(@Param("userId") Long userId);
+
+    @Query("select d from Dealer d where d.portalUser.email = :email")
+    Optional<Dealer> findByPortalUserEmail(@Param("email") String email);
 }

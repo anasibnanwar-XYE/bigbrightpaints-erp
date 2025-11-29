@@ -33,6 +33,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -93,23 +94,60 @@ public class PurchasingService {
             throw new IllegalStateException("Supplier " + supplier.getName() + " is missing a payable account");
         }
         String invoiceNumber = request.invoiceNumber().trim();
-        purchaseRepository.findByCompanyAndInvoiceNumberIgnoreCase(company, invoiceNumber)
+
+        // Use pessimistic lock to prevent duplicate invoice race condition
+        purchaseRepository.lockByCompanyAndInvoiceNumberIgnoreCase(company, invoiceNumber)
                 .ifPresent(existing -> {
                     throw new IllegalArgumentException("Invoice number already used for this company");
                 });
+
+        // Sort lines by rawMaterialId to maintain consistent lock ordering and avoid deadlocks
+        List<RawMaterialPurchaseLineRequest> sortedLines = request.lines().stream()
+                .sorted(Comparator.comparing(RawMaterialPurchaseLineRequest::rawMaterialId))
+                .toList();
+
+        // Pre-validate and lock all materials in consistent order before any mutations
+        Map<Long, RawMaterial> lockedMaterials = new HashMap<>();
+        BigDecimal totalAmount = BigDecimal.ZERO;
+        Map<Long, BigDecimal> inventoryDebits = new HashMap<>();
+
+        for (RawMaterialPurchaseLineRequest lineRequest : sortedLines) {
+            RawMaterial rawMaterial = requireMaterial(company, lineRequest.rawMaterialId());
+            lockedMaterials.put(rawMaterial.getId(), rawMaterial);
+            BigDecimal quantity = positive(lineRequest.quantity(), "quantity");
+            BigDecimal costPerUnit = positive(lineRequest.costPerUnit(), "costPerUnit");
+            BigDecimal lineTotal = MoneyUtils.safeMultiply(quantity, costPerUnit);
+            totalAmount = totalAmount.add(lineTotal);
+            Long inventoryAccountId = rawMaterial.getInventoryAccountId();
+            if (inventoryAccountId == null) {
+                throw new IllegalStateException("Raw material " + rawMaterial.getName() + " is missing an inventory account");
+            }
+            inventoryDebits.merge(inventoryAccountId, lineTotal, BigDecimal::add);
+        }
+
+        // Post journal FIRST to avoid orphan purchases if journal fails
+        JournalEntryDto entry = postPurchaseEntry(request, supplier, inventoryDebits, totalAmount);
+        JournalEntry linkedJournal = null;
+        if (entry != null) {
+            linkedJournal = companyEntityLookup.requireJournalEntry(company, entry.id());
+        }
+
+        // Now create purchase with journal already linked
         RawMaterialPurchase purchase = new RawMaterialPurchase();
         purchase.setCompany(company);
         purchase.setSupplier(supplier);
         purchase.setInvoiceNumber(invoiceNumber);
         purchase.setInvoiceDate(request.invoiceDate());
         purchase.setMemo(clean(request.memo()));
+        purchase.setTotalAmount(totalAmount);
+        purchase.setOutstandingAmount(totalAmount);
+        purchase.setJournalEntry(linkedJournal);
 
+        // Process lines using already-locked materials
         List<RawMaterialService.ReceiptResult> receipts = new ArrayList<>();
-        BigDecimal totalAmount = BigDecimal.ZERO;
-        Map<Long, BigDecimal> inventoryDebits = new HashMap<>();
         int lineIndex = 1;
         for (RawMaterialPurchaseLineRequest lineRequest : request.lines()) {
-            RawMaterial rawMaterial = requireMaterial(company, lineRequest.rawMaterialId());
+            RawMaterial rawMaterial = lockedMaterials.get(lineRequest.rawMaterialId());
             BigDecimal quantity = positive(lineRequest.quantity(), "quantity");
             BigDecimal costPerUnit = positive(lineRequest.costPerUnit(), "costPerUnit");
             String unit = StringUtils.hasText(lineRequest.unit())
@@ -119,12 +157,6 @@ public class PurchasingService {
                     ? lineRequest.batchCode().trim()
                     : null;
             BigDecimal lineTotal = MoneyUtils.safeMultiply(quantity, costPerUnit);
-            totalAmount = totalAmount.add(lineTotal);
-            Long inventoryAccountId = rawMaterial.getInventoryAccountId();
-            if (inventoryAccountId == null) {
-                throw new IllegalStateException("Raw material " + rawMaterial.getName() + " is missing an inventory account");
-            }
-            inventoryDebits.merge(inventoryAccountId, lineTotal, BigDecimal::add);
 
             RawMaterialBatchRequest batchRequest = new RawMaterialBatchRequest(
                     batchCode,
@@ -156,21 +188,14 @@ public class PurchasingService {
             purchase.getLines().add(line);
         }
 
-        purchase.setTotalAmount(totalAmount);
-        purchase.setOutstandingAmount(totalAmount);
         purchase = purchaseRepository.save(purchase);
 
-        JournalEntryDto entry = postPurchaseEntry(request, supplier, inventoryDebits, totalAmount);
-        if (entry != null) {
-            JournalEntry linked = companyEntityLookup.requireJournalEntry(company, entry.id());
-            purchase.setJournalEntry(linked);
-            purchaseRepository.save(purchase);
-        }
+        // Link journal entry to movements
         if (entry != null) {
             Long entryId = entry.id();
             receipts.stream()
                     .map(RawMaterialService.ReceiptResult::movement)
-                    .filter(movement -> movement != null && entryId != null)
+                    .filter(movement -> movement != null)
                     .forEach(movement -> {
                         movement.setJournalEntryId(entryId);
                         movementRepository.save(movement);
@@ -193,13 +218,12 @@ public class PurchasingService {
         }
         BigDecimal quantity = positive(request.quantity(), "quantity");
         BigDecimal unitCost = positive(request.unitCost(), "unitCost");
-        if (material.getCurrentStock().compareTo(quantity) < 0) {
-            throw new IllegalArgumentException("Cannot return more than on-hand inventory for " + material.getName());
-        }
         BigDecimal totalAmount = MoneyUtils.safeMultiply(quantity, unitCost);
         String memo = returnMemo(material, supplier, request.reason());
         String reference = resolveReturnReference(supplier, request.referenceNumber());
         LocalDate returnDate = request.returnDate() != null ? request.returnDate() : companyClock.today(company);
+
+        // Post journal FIRST before deducting stock
         JournalEntryDto entry = accountingFacade.postPurchaseReturn(
                 supplier.getId(),
                 reference,
@@ -208,8 +232,13 @@ public class PurchasingService {
                 Map.of(material.getInventoryAccountId(), totalAmount),
                 totalAmount
         );
-        material.setCurrentStock(material.getCurrentStock().subtract(quantity));
-        rawMaterialRepository.save(material);
+
+        // Use atomic UPDATE to prevent negative stock under concurrent access
+        int updated = rawMaterialRepository.deductStockIfSufficient(material.getId(), quantity);
+        if (updated == 0) {
+            throw new IllegalArgumentException("Cannot return more than on-hand inventory for " + material.getName());
+        }
+
         RawMaterialMovement movement = new RawMaterialMovement();
         movement.setRawMaterial(material);
         movement.setReferenceType(InventoryReference.PURCHASE_RETURN);

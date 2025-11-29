@@ -13,6 +13,11 @@ import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.invoice.service.InvoiceNumberService;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
+import com.bigbrightpaints.erp.modules.factory.domain.FactoryTaskRepository;
+import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderDto;
+import com.bigbrightpaints.erp.modules.inventory.dto.PackagingSlipDto;
+import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.InventoryReservationResult;
+import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.InventoryShortage;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionBrand;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProductRepository;
@@ -27,19 +32,22 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.ArgumentMatchers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import org.springframework.context.ApplicationEventPublisher;
 
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class SalesServiceTest {
 
     @Mock
@@ -80,6 +88,8 @@ class SalesServiceTest {
     private InvoiceNumberService invoiceNumberService;
     @Mock
     private InvoiceRepository invoiceRepository;
+    @Mock
+    private FactoryTaskRepository factoryTaskRepository;
 
     private SalesService salesService;
     private Company company;
@@ -105,7 +115,11 @@ class SalesServiceTest {
                 accountingService,
                 accountingFacade,
                 invoiceNumberService,
-                invoiceRepository);
+                invoiceRepository,
+                factoryTaskRepository);
+
+        when(finishedGoodsService.reserveForOrder(any()))
+                .thenReturn(new InventoryReservationResult(null, List.of()));
         company = new Company();
         company.setCode("COMP");
         company.setTimezone("UTC");
@@ -214,8 +228,9 @@ class SalesServiceTest {
         salesService.createOrder(request);
 
         ArgumentCaptor<SalesOrder> orderCaptor = ArgumentCaptor.forClass(SalesOrder.class);
-        verify(salesOrderRepository).save(orderCaptor.capture());
-        assertEquals(new BigDecimal("15.0000"), orderCaptor.getValue().getGstRate());
+        verify(salesOrderRepository, times(2)).save(orderCaptor.capture());
+        SalesOrder finalSaved = orderCaptor.getAllValues().get(orderCaptor.getAllValues().size() - 1);
+        assertEquals(new BigDecimal("15.0000"), finalSaved.getGstRate());
     }
 
     @Test
@@ -248,8 +263,9 @@ class SalesServiceTest {
         salesService.createOrder(request);
 
         ArgumentCaptor<SalesOrder> orderCaptor = ArgumentCaptor.forClass(SalesOrder.class);
-        verify(salesOrderRepository).save(orderCaptor.capture());
-        assertEquals(new BigDecimal("12.0000"), orderCaptor.getValue().getItems().get(0).getGstRate());
+        verify(salesOrderRepository, times(2)).save(orderCaptor.capture());
+        SalesOrder finalSaved = orderCaptor.getAllValues().get(orderCaptor.getAllValues().size() - 1);
+        assertEquals(new BigDecimal("12.0000"), finalSaved.getItems().get(0).getGstRate());
     }
 
     @Test
@@ -292,8 +308,8 @@ class SalesServiceTest {
         salesService.createOrder(request);
 
         ArgumentCaptor<SalesOrder> orderCaptor = ArgumentCaptor.forClass(SalesOrder.class);
-        verify(salesOrderRepository).save(orderCaptor.capture());
-        SalesOrder saved = orderCaptor.getValue();
+        verify(salesOrderRepository, times(2)).save(orderCaptor.capture());
+        SalesOrder saved = orderCaptor.getAllValues().get(orderCaptor.getAllValues().size() - 1);
         assertEquals(new BigDecimal("250.00"), saved.getSubtotalAmount());
         assertEquals(new BigDecimal("38.50"), saved.getGstTotal());
         assertEquals(new BigDecimal("288.50"), saved.getTotalAmount());
@@ -342,13 +358,84 @@ class SalesServiceTest {
         salesService.createOrder(request);
 
         ArgumentCaptor<SalesOrder> orderCaptor = ArgumentCaptor.forClass(SalesOrder.class);
-        verify(salesOrderRepository).save(orderCaptor.capture());
-        SalesOrder saved = orderCaptor.getValue();
+        verify(salesOrderRepository, times(2)).save(orderCaptor.capture());
+        SalesOrder saved = orderCaptor.getAllValues().get(orderCaptor.getAllValues().size() - 1);
         assertEquals(new BigDecimal("150.00"), saved.getSubtotalAmount());
         assertEquals(new BigDecimal("12.00"), saved.getGstTotal());
         assertEquals(new BigDecimal("162.00"), saved.getTotalAmount());
         assertEquals(new BigDecimal("12.00"), saved.getItems().get(0).getGstAmount());
         assertEquals(BigDecimal.ZERO.setScale(2), saved.getItems().get(1).getGstAmount());
+    }
+
+    @Test
+    void createOrderSetsPendingProductionWhenShortage() {
+        company.setDefaultGstRate(BigDecimal.valueOf(12));
+        setupProduct("SKU10", BigDecimal.valueOf(50), BigDecimal.ZERO);
+        setupProduct("SKU11", BigDecimal.valueOf(75), BigDecimal.ZERO);
+        FinishedGood fg1 = buildFinishedGood("SKU10");
+        fg1.setRevenueAccountId(20L);
+        fg1.setTaxAccountId(21L);
+        FinishedGood fg2 = buildFinishedGood("SKU11");
+        fg2.setRevenueAccountId(22L);
+        fg2.setTaxAccountId(23L);
+        when(finishedGoodRepository.findByCompanyAndProductCode(company, "SKU10")).thenReturn(Optional.of(fg1));
+        when(finishedGoodRepository.findByCompanyAndProductCode(company, "SKU11")).thenReturn(Optional.of(fg2));
+        when(orderNumberService.nextOrderNumber(company)).thenReturn("SO-400");
+        when(salesOrderRepository.save(any(SalesOrder.class))).thenAnswer(invocation -> {
+            SalesOrder entity = invocation.getArgument(0);
+            setField(entity, "id", 901L);
+            return entity;
+        });
+
+        InventoryShortage shortage = new InventoryShortage("SKU10", BigDecimal.ONE, "Prod 10");
+        when(finishedGoodsService.reserveForOrder(any())).thenReturn(new InventoryReservationResult(null, List.of(shortage)));
+
+        SalesOrderRequest request = new SalesOrderRequest(
+                null,
+                new BigDecimal("125.00"),
+                "INR",
+                null,
+                List.of(
+                        new SalesOrderItemRequest("SKU10", "Q1", BigDecimal.ONE, BigDecimal.valueOf(50), null),
+                        new SalesOrderItemRequest("SKU11", "Q2", BigDecimal.ONE, BigDecimal.valueOf(75), null)
+                ),
+                "NONE",
+                null,
+                false,
+                "IDEMP-SHORTAGE");
+
+        SalesOrderDto dto = salesService.createOrder(request);
+
+        assertEquals("PENDING_PRODUCTION", dto.status());
+        verify(finishedGoodsService).reserveForOrder(any());
+    }
+
+    @Test
+    void cancelOrderReleasesReservations() {
+        SalesOrder order = new SalesOrder();
+        order.setCompany(company);
+        order.setStatus("RESERVED");
+        setField(order, "id", 42L);
+        when(companyEntityLookup.requireSalesOrder(company, 42L)).thenReturn(order);
+
+        SalesOrderDto dto = salesService.cancelOrder(42L, "Customer cancelled");
+
+        assertEquals("CANCELLED", dto.status());
+        verify(finishedGoodsService).releaseReservationsForOrder(42L);
+    }
+
+    @Test
+    void cancelOrderSkipsReleaseWhenAlreadyDispatched() {
+        SalesOrder order = new SalesOrder();
+        order.setCompany(company);
+        order.setStatus("DISPATCHED");
+        setField(order, "id", 43L);
+        when(companyEntityLookup.requireSalesOrder(company, 43L)).thenReturn(order);
+
+        SalesOrderDto dto = salesService.cancelOrder(43L, "Too late");
+
+        assertEquals("CANCELLED", dto.status());
+        verify(finishedGoodsService, never()).releaseReservationsForOrder(anyLong());
     }
 
     private void setupProduct(String sku, BigDecimal price, BigDecimal gstRate) {

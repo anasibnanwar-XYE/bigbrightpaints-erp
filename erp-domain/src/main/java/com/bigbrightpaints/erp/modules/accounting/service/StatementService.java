@@ -43,7 +43,7 @@ public class StatementService {
 
     public PartnerStatementResponse dealerStatement(Long dealerId, LocalDate from, LocalDate to) {
         Company company = companyContextService.requireCurrentCompany();
-        Dealer dealer = dealerRepository.findById(dealerId)
+        Dealer dealer = dealerRepository.findByCompanyAndId(company, dealerId)
                 .orElseThrow(() -> new IllegalArgumentException("Dealer not found"));
         LocalDate start = from == null ? LocalDate.now().minusMonths(6) : from;
         LocalDate end = to == null ? LocalDate.now() : to;
@@ -83,7 +83,7 @@ public class StatementService {
 
     public PartnerStatementResponse supplierStatement(Long supplierId, LocalDate from, LocalDate to) {
         Company company = companyContextService.requireCurrentCompany();
-        Supplier supplier = supplierRepository.findById(supplierId)
+        Supplier supplier = supplierRepository.findByCompanyAndId(company, supplierId)
                 .orElseThrow(() -> new IllegalArgumentException("Supplier not found"));
         LocalDate start = from == null ? LocalDate.now().minusMonths(6) : from;
         LocalDate end = to == null ? LocalDate.now() : to;
@@ -123,7 +123,7 @@ public class StatementService {
 
     public AgingSummaryResponse dealerAging(Long dealerId, LocalDate asOf, String bucketParam) {
         Company company = companyContextService.requireCurrentCompany();
-        Dealer dealer = dealerRepository.findById(dealerId)
+        Dealer dealer = dealerRepository.findByCompanyAndId(company, dealerId)
                 .orElseThrow(() -> new IllegalArgumentException("Dealer not found"));
         LocalDate ref = asOf == null ? LocalDate.now() : asOf;
         List<int[]> buckets = parseBuckets(bucketParam);
@@ -162,7 +162,7 @@ public class StatementService {
 
     public AgingSummaryResponse supplierAging(Long supplierId, LocalDate asOf, String bucketParam) {
         Company company = companyContextService.requireCurrentCompany();
-        Supplier supplier = supplierRepository.findById(supplierId)
+        Supplier supplier = supplierRepository.findByCompanyAndId(company, supplierId)
                 .orElseThrow(() -> new IllegalArgumentException("Supplier not found"));
         LocalDate ref = asOf == null ? LocalDate.now() : asOf;
         List<int[]> buckets = parseBuckets(bucketParam);

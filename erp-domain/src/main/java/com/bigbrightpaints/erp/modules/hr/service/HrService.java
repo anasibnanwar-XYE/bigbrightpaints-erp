@@ -1,5 +1,7 @@
 package com.bigbrightpaints.erp.modules.hr.service;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
@@ -10,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class HrService {
@@ -53,13 +56,15 @@ public class HrService {
 
     @Transactional
     public EmployeeDto updateEmployee(Long id, EmployeeRequest request) {
-        Employee employee = requireEmployee(id);
+        Company company = companyContextService.requireCurrentCompany();
+        Employee employee = employeeRepository.lockByCompanyAndId(company, id)
+                .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Employee not found"));
         employee.setFirstName(request.firstName());
         employee.setLastName(request.lastName());
         employee.setEmail(request.email());
         employee.setRole(request.role());
         employee.setHiredDate(request.hiredDate());
-        return toDto(employee);
+        return toDto(employeeRepository.save(employee));
     }
 
     public void deleteEmployee(Long id) {
@@ -87,6 +92,13 @@ public class HrService {
     @Transactional
     public LeaveRequestDto createLeaveRequest(LeaveRequestRequest request) {
         Company company = companyContextService.requireCurrentCompany();
+        if (request.employeeId() != null) {
+            Employee employee = employeeRepository.lockByCompanyAndId(company, request.employeeId())
+                    .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Employee not found"));
+            if (leaveRequestRepository.existsOverlappingByEmployeeIdAndDates(request.employeeId(), request.startDate(), request.endDate())) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Overlapping leave request exists for employee");
+            }
+        }
         LeaveRequest leaveRequest = new LeaveRequest();
         leaveRequest.setCompany(company);
         if (request.employeeId() != null) {
@@ -133,6 +145,13 @@ public class HrService {
     @Transactional
     public PayrollRunDto createPayrollRun(PayrollRunRequest request) {
         Company company = companyContextService.requireCurrentCompany();
+        String idempotencyKey = request.idempotencyKey();
+        if (idempotencyKey != null) {
+            Optional<PayrollRun> existing = payrollRunRepository.findByCompanyAndIdempotencyKey(company, idempotencyKey);
+            if (existing.isPresent()) {
+                return toDto(existing.get());
+            }
+        }
         PayrollRun run = new PayrollRun();
         run.setCompany(company);
         run.setRunDate(request.runDate());
@@ -140,8 +159,10 @@ public class HrService {
         if (request.totalAmount() != null) {
             run.setTotalAmount(request.totalAmount());
         }
-        run.setStatus("COMPLETED");
-        return toDto(payrollRunRepository.save(run));
+        run.setStatus("DRAFT");
+        run.setIdempotencyKey(idempotencyKey);
+        PayrollRun savedRun = payrollRunRepository.save(run);
+        return toDto(savedRun);
     }
 
     private PayrollRunDto toDto(PayrollRun run) {
@@ -154,6 +175,7 @@ public class HrService {
                 run.getProcessedBy(),
                 run.getNotes(),
                 run.getTotalAmount(),
-                journalEntryId);
+                journalEntryId,
+                run.getIdempotencyKey());
     }
 }

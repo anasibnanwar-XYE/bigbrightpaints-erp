@@ -21,12 +21,15 @@ import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceLine;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
 import com.bigbrightpaints.erp.modules.invoice.service.InvoiceNumberService;
+import com.bigbrightpaints.erp.modules.factory.domain.FactoryTask;
+import com.bigbrightpaints.erp.modules.factory.domain.FactoryTaskRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.*;
 import com.bigbrightpaints.erp.modules.sales.dto.*;
 import com.bigbrightpaints.erp.modules.sales.event.SalesOrderCreatedEvent;
 import jakarta.transaction.Transactional;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
@@ -36,12 +39,14 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.stream.Collectors;
 
 @Service
 public class SalesService {
+    private static final BigDecimal MAX_GST_RATE = new BigDecimal("28.00");
 
     private final CompanyContextService companyContextService;
     private final DealerRepository dealerRepository;
@@ -62,6 +67,7 @@ public class SalesService {
     private final AccountingFacade accountingFacade;
     private final InvoiceNumberService invoiceNumberService;
     private final InvoiceRepository invoiceRepository;
+    private final FactoryTaskRepository factoryTaskRepository;
 
     public SalesService(CompanyContextService companyContextService,
                         DealerRepository dealerRepository,
@@ -81,7 +87,8 @@ public class SalesService {
                         AccountingService accountingService,
                         AccountingFacade accountingFacade,
                         InvoiceNumberService invoiceNumberService,
-                        InvoiceRepository invoiceRepository) {
+                        InvoiceRepository invoiceRepository,
+                        FactoryTaskRepository factoryTaskRepository) {
         this.companyContextService = companyContextService;
         this.dealerRepository = dealerRepository;
         this.salesOrderRepository = salesOrderRepository;
@@ -101,6 +108,7 @@ public class SalesService {
         this.accountingFacade = accountingFacade;
         this.invoiceNumberService = invoiceNumberService;
         this.invoiceRepository = invoiceRepository;
+        this.factoryTaskRepository = factoryTaskRepository;
     }
 
     /* Dealers */
@@ -220,7 +228,7 @@ public class SalesService {
         return orders.stream().map(this::toDto).toList();
     }
 
-    @Transactional
+    @org.springframework.transaction.annotation.Transactional(isolation = Isolation.REPEATABLE_READ)
     public SalesOrderDto createOrder(SalesOrderRequest request) {
         Company company = companyContextService.requireCurrentCompany();
         String idempotencyKey = request.resolveIdempotencyKey();
@@ -233,7 +241,9 @@ public class SalesService {
         boolean gstInclusive = Boolean.TRUE.equals(request.gstInclusive());
         Dealer dealer = null;
         if (request.dealerId() != null) {
-            dealer = requireDealer(request.dealerId());
+            // Lock dealer early to prevent concurrent credit limit races
+            dealer = dealerRepository.lockByCompanyAndId(company, request.dealerId())
+                    .orElseThrow(() -> new IllegalArgumentException("Dealer not found"));
             if ("ON_HOLD".equalsIgnoreCase(dealer.getStatus())) {
                 throw new IllegalStateException("Dealer " + dealer.getName() + " is on hold");
             }
@@ -251,6 +261,21 @@ public class SalesService {
         validateTotalAmount(request.totalAmount(), amounts.total());
         enforceCreditLimit(order.getDealer(), amounts.total());
         SalesOrder saved = salesOrderRepository.save(order);
+
+        // Reserve available stock - shortages will be handled as production tasks
+        FinishedGoodsService.InventoryReservationResult reservationResult = finishedGoodsService.reserveForOrder(saved);
+
+        // Determine order status based on reservation result
+        if (reservationResult.shortages().isEmpty()) {
+            // Full stock available - order is ready to dispatch
+            saved.setStatus("RESERVED");
+        } else {
+            // Partial or no stock - create production tasks for shortages
+            saved.setStatus("PENDING_PRODUCTION");
+            createShortageTasksForOrder(company, saved, reservationResult.shortages());
+        }
+        salesOrderRepository.save(saved);
+
         eventPublisher.publishEvent(new SalesOrderCreatedEvent(saved.getId(), company.getCode(), saved.getTotalAmount()));
         return toDto(saved);
     }
@@ -294,6 +319,15 @@ public class SalesService {
     @Transactional
     public SalesOrderDto cancelOrder(Long id, String reason) {
         SalesOrder order = requireOrder(id);
+        String currentStatus = order.getStatus();
+
+        // Release any reserved inventory before cancelling
+        if ("RESERVED".equalsIgnoreCase(currentStatus) ||
+            "BOOKED".equalsIgnoreCase(currentStatus) ||
+            "CONFIRMED".equalsIgnoreCase(currentStatus)) {
+            finishedGoodsService.releaseReservationsForOrder(order.getId());
+        }
+
         order.setStatus("CANCELLED");
         order.setNotes(reason);
         return toDto(order);
@@ -344,7 +378,10 @@ public class SalesService {
         if (rate == null) {
             return BigDecimal.ZERO;
         }
-        BigDecimal sanitized = rate.max(BigDecimal.ZERO);
+        BigDecimal sanitized = rate.max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+        if (sanitized.compareTo(MAX_GST_RATE) > 0) {
+            throw new IllegalArgumentException("Unsupported GST rate " + sanitized + "%. Max allowed is " + MAX_GST_RATE);
+        }
         return sanitized.setScale(4, RoundingMode.HALF_UP);
     }
 
@@ -616,6 +653,46 @@ public class SalesService {
         }
     }
 
+    /**
+     * Create production tasks for stock shortages.
+     * Tasks are prioritized based on shortage quantity - no pricing info shared with factory.
+     */
+    private void createShortageTasksForOrder(Company company,
+                                             SalesOrder order,
+                                             List<FinishedGoodsService.InventoryShortage> shortages) {
+        for (FinishedGoodsService.InventoryShortage shortage : shortages) {
+            BigDecimal shortageQty = shortage.shortageQuantity();
+
+            // Determine urgency based on shortage quantity
+            String urgencyPrefix;
+            LocalDate dueDate;
+            if (shortageQty.compareTo(new BigDecimal("100")) >= 0) {
+                urgencyPrefix = "[URGENT] ";
+                dueDate = LocalDate.now().plusDays(1); // Large shortage - due tomorrow
+            } else if (shortageQty.compareTo(new BigDecimal("50")) >= 0) {
+                urgencyPrefix = "[HIGH] ";
+                dueDate = LocalDate.now().plusDays(3); // Medium shortage - 3 days
+            } else {
+                urgencyPrefix = "";
+                dueDate = LocalDate.now().plusDays(7); // Small shortage - 1 week
+            }
+
+            FactoryTask task = new FactoryTask();
+            task.setCompany(company);
+            task.setTitle(urgencyPrefix + "Production required: " + shortage.productCode());
+            task.setDescription(String.format(
+                    "Order #%s requires production of %s (%s).\nQuantity needed: %s units",
+                    order.getOrderNumber(),
+                    shortage.productCode(),
+                    shortage.productName(),
+                    shortageQty
+            ));
+            task.setStatus("PENDING");
+            task.setDueDate(dueDate);
+            factoryTaskRepository.save(task);
+        }
+    }
+
     private record PricedOrderLine(ProductionProduct product,
                                    String description,
                                    BigDecimal quantity,
@@ -844,6 +921,9 @@ public class SalesService {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
                     "Dealer with receivable account is required for dispatch");
         }
+        // Lock dealer to prevent concurrent credit limit races during dispatch
+        dealer = dealerRepository.lockByCompanyAndId(company, dealer.getId())
+                .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Dealer not found"));
 
         // Build shipped financial lines from slip lines + overrides
         Map<String, SalesOrderItem> orderItemsByProduct = order.getItems().stream()

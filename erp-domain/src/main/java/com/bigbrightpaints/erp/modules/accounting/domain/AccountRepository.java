@@ -2,8 +2,10 @@ package com.bigbrightpaints.erp.modules.accounting.domain;
 
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import jakarta.persistence.LockModeType;
+import java.math.BigDecimal;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -18,4 +20,8 @@ public interface AccountRepository extends JpaRepository<Account, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select a from Account a where a.company = :company and a.id = :id")
     Optional<Account> lockByCompanyAndId(@Param("company") Company company, @Param("id") Long id);
+
+    @Modifying
+    @Query("UPDATE Account a SET a.balance = a.balance + :delta WHERE a.company = :company AND a.id = :id")
+    int updateBalanceAtomic(@Param("company") Company company, @Param("id") Long id, @Param("delta") BigDecimal delta);
 }

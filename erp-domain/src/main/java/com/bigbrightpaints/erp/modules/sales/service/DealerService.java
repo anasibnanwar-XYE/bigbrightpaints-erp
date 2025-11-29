@@ -125,6 +125,36 @@ public class DealerService {
                 .toList();
     }
 
+    @Transactional
+    public DealerResponse updateDealer(Long dealerId, CreateDealerRequest request) {
+        Company company = companyContextService.requireCurrentCompany();
+        Dealer dealer = dealerRepository.findByCompanyAndId(company, dealerId)
+                .orElseThrow(() -> new IllegalArgumentException("Dealer not found"));
+        
+        if (request.name() != null && !request.name().isBlank()) {
+            dealer.setName(request.name().trim());
+        }
+        if (request.contactEmail() != null && !request.contactEmail().isBlank()) {
+            dealer.setEmail(request.contactEmail().trim());
+        }
+        if (request.contactPhone() != null && !request.contactPhone().isBlank()) {
+            dealer.setPhone(request.contactPhone().trim());
+        }
+        if (request.address() != null) {
+            dealer.setAddress(request.address());
+        }
+        if (request.creditLimit() != null) {
+            dealer.setCreditLimit(request.creditLimit());
+        }
+        
+        dealer = dealerRepository.save(dealer);
+        BigDecimal balance = dealerLedgerService.currentBalance(dealer.getId());
+        return toResponse(dealer, 
+                dealer.getPortalUser() != null ? dealer.getPortalUser().getEmail() : null, 
+                null, 
+                balance);
+    }
+
     /**
      * Returns a human-readable ledger view for a dealer including running balance.
      */

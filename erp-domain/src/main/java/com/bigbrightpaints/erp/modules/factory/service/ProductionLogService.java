@@ -192,7 +192,7 @@ public class ProductionLogService {
     }
 
     private BigDecimal issueFromBatches(RawMaterial rawMaterial, BigDecimal requiredQty, String referenceId) {
-        // Lock batches in FIFO order to prevent double consumption
+        // Lock batches in FIFO order (pessimistic lock) to prevent double consumption
         List<RawMaterialBatch> batches = rawMaterialBatchRepository.findAvailableBatchesFIFO(rawMaterial);
         BigDecimal remaining = requiredQty;
         BigDecimal totalCost = BigDecimal.ZERO;
@@ -211,12 +211,16 @@ public class ProductionLogService {
                 continue;
             }
 
-            BigDecimal newQty = available.subtract(take);
-            if (newQty.compareTo(BigDecimal.ZERO) < 0) {
+            // Capture cost snapshot BEFORE deduction while holding pessimistic lock
+            BigDecimal unitCost = Optional.ofNullable(batch.getCostPerUnit()).orElse(BigDecimal.ZERO);
+            BigDecimal movementCost = unitCost.multiply(take);
+
+            // Use atomic update to prevent race conditions and negative quantities
+            int updated = rawMaterialBatchRepository.deductQuantityIfSufficient(batch.getId(), take);
+            if (updated == 0) {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
-                        "Batch quantity would go negative for " + batch.getBatchCode());
+                        "Concurrent modification detected or insufficient quantity for batch " + batch.getBatchCode());
             }
-            batch.setQuantity(newQty);
 
             RawMaterialMovement movement = new RawMaterialMovement();
             movement.setRawMaterial(rawMaterial);
@@ -225,9 +229,7 @@ public class ProductionLogService {
             movement.setReferenceId(referenceId);
             movement.setMovementType(MOVEMENT_TYPE_ISSUE);
             movement.setQuantity(take);
-            BigDecimal unitCost = Optional.ofNullable(batch.getCostPerUnit()).orElse(BigDecimal.ZERO);
             movement.setUnitCost(unitCost);
-            BigDecimal movementCost = unitCost.multiply(take);
             movements.add(movement);
 
             totalCost = totalCost.add(movementCost);
@@ -237,7 +239,6 @@ public class ProductionLogService {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
                     "Insufficient batch availability for " + rawMaterial.getName());
         }
-        rawMaterialBatchRepository.saveAll(batches);
         rawMaterialMovementRepository.saveAll(movements);
         return totalCost;
     }
@@ -334,8 +335,8 @@ public class ProductionLogService {
             String[] parts = existing.split("-");
             int seq = Integer.parseInt(parts[parts.length - 1]);
             return prefix + "-" + String.format("%03d", seq + 1);
-        } catch (Exception ignored) {
-            return prefix + "-001";
+        } catch (Exception ex) {
+            throw new IllegalArgumentException("Invalid production code format: " + existing, ex);
         }
     }
 
@@ -345,16 +346,18 @@ public class ProductionLogService {
         }
         try {
             return OffsetDateTime.parse(producedAt).toInstant();
+        } catch (Exception ignored) {
+            // fall through
+        }
+        try {
+            return Instant.parse(producedAt);
+        } catch (Exception ignored) {
+            // fall through to final attempt
+        }
+        try {
+            return LocalDate.parse(producedAt).atStartOfDay(ZoneOffset.UTC).toInstant();
         } catch (Exception ex) {
-            try {
-                return Instant.parse(producedAt);
-            } catch (Exception inner) {
-                try {
-                    return LocalDate.parse(producedAt).atStartOfDay(ZoneOffset.UTC).toInstant();
-                } catch (Exception ignored) {
-                    throw new IllegalArgumentException("Invalid producedAt format");
-                }
-            }
+            throw new IllegalArgumentException("Invalid producedAt format: " + producedAt, ex);
         }
     }
 

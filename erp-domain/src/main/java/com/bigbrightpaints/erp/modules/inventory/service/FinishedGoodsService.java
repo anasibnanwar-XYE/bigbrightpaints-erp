@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 @Service
@@ -34,6 +35,8 @@ public class FinishedGoodsService {
     private final InventoryReservationRepository inventoryReservationRepository;
     private final BatchNumberService batchNumberService;
     private final SalesOrderRepository salesOrderRepository;
+    private final Map<Long, CachedWac> wacCache = new ConcurrentHashMap<>();
+    private static final long WAC_CACHE_MILLIS = 5 * 60 * 1000; // 5 minutes TTL
 
     public FinishedGoodsService(CompanyContextService companyContextService,
                                 FinishedGoodRepository finishedGoodRepository,
@@ -57,6 +60,86 @@ public class FinishedGoodsService {
         Company company = companyContextService.requireCurrentCompany();
         return finishedGoodRepository.findByCompanyOrderByProductCodeAsc(company)
                 .stream()
+                .map(this::toDto)
+                .toList();
+    }
+
+    public FinishedGoodDto getFinishedGood(Long id) {
+        Company company = companyContextService.requireCurrentCompany();
+        FinishedGood fg = finishedGoodRepository.findByCompanyAndId(company, id)
+                .orElseThrow(() -> new IllegalArgumentException("Finished good not found"));
+        return toDto(fg);
+    }
+
+    @Transactional
+    public FinishedGoodDto updateFinishedGood(Long id, FinishedGoodRequest request) {
+        Company company = companyContextService.requireCurrentCompany();
+        FinishedGood fg = finishedGoodRepository.lockByCompanyAndId(company, id)
+                .orElseThrow(() -> new IllegalArgumentException("Finished good not found"));
+        if (request.name() != null) {
+            fg.setName(request.name());
+        }
+        if (request.unit() != null) {
+            fg.setUnit(request.unit());
+        }
+        if (request.costingMethod() != null) {
+            fg.setCostingMethod(request.costingMethod());
+        }
+        if (request.valuationAccountId() != null) {
+            fg.setValuationAccountId(request.valuationAccountId());
+        }
+        if (request.cogsAccountId() != null) {
+            fg.setCogsAccountId(request.cogsAccountId());
+        }
+        if (request.revenueAccountId() != null) {
+            fg.setRevenueAccountId(request.revenueAccountId());
+        }
+        if (request.discountAccountId() != null) {
+            fg.setDiscountAccountId(request.discountAccountId());
+        }
+        if (request.taxAccountId() != null) {
+            fg.setTaxAccountId(request.taxAccountId());
+        }
+        return toDto(finishedGoodRepository.save(fg));
+    }
+
+    public List<FinishedGoodBatchDto> listBatchesForFinishedGood(Long finishedGoodId) {
+        Company company = companyContextService.requireCurrentCompany();
+        FinishedGood fg = finishedGoodRepository.findByCompanyAndId(company, finishedGoodId)
+                .orElseThrow(() -> new IllegalArgumentException("Finished good not found"));
+        return finishedGoodBatchRepository.findByFinishedGoodOrderByManufacturedAtAsc(fg)
+                .stream()
+                .map(this::toBatchDto)
+                .toList();
+    }
+
+    public List<StockSummaryDto> getStockSummary() {
+        Company company = companyContextService.requireCurrentCompany();
+        return finishedGoodRepository.findByCompanyOrderByProductCodeAsc(company)
+                .stream()
+                .map(fg -> new StockSummaryDto(
+                        fg.getId(),
+                        fg.getPublicId(),
+                        fg.getProductCode(),
+                        fg.getName(),
+                        fg.getCurrentStock(),
+                        fg.getReservedStock(),
+                        fg.getCurrentStock().subtract(fg.getReservedStock()),
+                        weightedAverageCost(fg),
+                        null,
+                        null,
+                        null,
+                        null
+                ))
+                .toList();
+    }
+
+    public List<FinishedGoodDto> getLowStockItems(int threshold) {
+        Company company = companyContextService.requireCurrentCompany();
+        BigDecimal thresholdQty = BigDecimal.valueOf(threshold);
+        return finishedGoodRepository.findByCompanyOrderByProductCodeAsc(company)
+                .stream()
+                .filter(fg -> fg.getCurrentStock().subtract(fg.getReservedStock()).compareTo(thresholdQty) < 0)
                 .map(this::toDto)
                 .toList();
     }
@@ -95,6 +178,7 @@ public class FinishedGoodsService {
 
         finishedGood.setCurrentStock(finishedGood.getCurrentStock().add(request.quantity()));
         finishedGoodRepository.save(finishedGood);
+        wacCache.remove(finishedGood.getId());
 
         recordMovement(finishedGood, savedBatch, InventoryReference.MANUFACTURING_ORDER, savedBatch.getPublicId().toString(),
                 "RECEIPT", request.quantity(), request.unitCost());
@@ -130,6 +214,90 @@ public class FinishedGoodsService {
         return new InventoryReservationResult(toSlipDto(slip), List.copyOf(shortages));
     }
 
+    /**
+     * Release all reservations for an order (e.g., when order is cancelled).
+     * Returns reserved stock back to available and cancels reservation records.
+     */
+    @Transactional
+    public void releaseReservationsForOrder(Long orderId) {
+        Company company = companyContextService.requireCurrentCompany();
+        List<InventoryReservation> reservations = inventoryReservationRepository
+                .findByFinishedGoodCompanyAndReferenceTypeAndReferenceId(
+                        company,
+                        InventoryReference.SALES_ORDER,
+                        orderId.toString());
+
+        if (reservations.isEmpty()) {
+            return;
+        }
+
+        // Lock finished goods in consistent order to avoid deadlocks
+        Map<Long, FinishedGood> lockedGoods = lockFinishedGoodsInOrder(
+                company,
+                reservations.stream()
+                        .map(r -> r.getFinishedGood().getId())
+                        .collect(Collectors.toSet()));
+
+        List<FinishedGoodBatch> batchesToSave = new ArrayList<>();
+
+        for (InventoryReservation reservation : reservations) {
+            if ("CANCELLED".equalsIgnoreCase(reservation.getStatus()) ||
+                "FULFILLED".equalsIgnoreCase(reservation.getStatus())) {
+                continue; // Skip already processed reservations
+            }
+
+            BigDecimal reservedQty = reservation.getReservedQuantity();
+            if (reservedQty == null || reservedQty.compareTo(BigDecimal.ZERO) <= 0) {
+                reservedQty = reservation.getQuantity();
+            }
+            if (reservedQty == null || reservedQty.compareTo(BigDecimal.ZERO) <= 0) {
+                reservation.setStatus("CANCELLED");
+                continue;
+            }
+
+            FinishedGood fg = lockedGoods.get(reservation.getFinishedGood().getId());
+            FinishedGoodBatch batch = reservation.getFinishedGoodBatch();
+
+            // Release reserved stock back to finished good
+            BigDecimal currentReserved = fg.getReservedStock() != null ? fg.getReservedStock() : BigDecimal.ZERO;
+            fg.setReservedStock(currentReserved.subtract(reservedQty).max(BigDecimal.ZERO));
+
+            // Release batch quantity back to available
+            if (batch != null) {
+                BigDecimal batchAvailable = batch.getQuantityAvailable() != null ? batch.getQuantityAvailable() : BigDecimal.ZERO;
+                batch.setQuantityAvailable(batchAvailable.add(reservedQty));
+                batchesToSave.add(batch);
+            }
+
+            // Record release movement
+            recordMovement(fg, batch, InventoryReference.SALES_ORDER, orderId.toString(),
+                    "RELEASE", reservedQty, batch != null ? batch.getUnitCost() : BigDecimal.ZERO);
+
+            reservation.setStatus("CANCELLED");
+            reservation.setReservedQuantity(BigDecimal.ZERO);
+        }
+
+        finishedGoodRepository.saveAll(lockedGoods.values());
+        lockedGoods.keySet().forEach(wacCache::remove);
+
+        if (!batchesToSave.isEmpty()) {
+            finishedGoodBatchRepository.saveAll(batchesToSave);
+        }
+
+        inventoryReservationRepository.saveAll(reservations);
+
+        // Cancel any pending packaging slips for this order
+        List<PackagingSlip> slips = packagingSlipRepository.findAllBySalesOrderId(orderId);
+        for (PackagingSlip slip : slips) {
+            if (!"DISPATCHED".equalsIgnoreCase(slip.getStatus()) &&
+                !"CANCELLED".equalsIgnoreCase(slip.getStatus())) {
+                slip.setStatus("CANCELLED");
+                slip.setDispatchNotes("Order cancelled");
+                packagingSlipRepository.save(slip);
+            }
+        }
+    }
+
     public Map<String, FinishedGoodAccountingProfile> accountingProfiles(List<String> productCodes) {
         if (productCodes == null || productCodes.isEmpty()) {
             return Map.of();
@@ -155,7 +323,8 @@ public class FinishedGoodsService {
 
     @Transactional
     public List<DispatchPosting> markSlipDispatched(Long salesOrderId) {
-        PackagingSlip slip = packagingSlipRepository.findAndLockBySalesOrderId(salesOrderId)
+        Company company = companyContextService.requireCurrentCompany();
+        PackagingSlip slip = packagingSlipRepository.findAndLockBySalesOrderId(salesOrderId, company)
                 .orElseThrow(() -> new IllegalArgumentException("Packaging slip not found for order " + salesOrderId));
         if ("DISPATCHED".equalsIgnoreCase(slip.getStatus())) {
             return List.of();
@@ -230,6 +399,7 @@ public class FinishedGoodsService {
                     .addCost(unitCost.multiply(shipQty));
         }
         finishedGoodRepository.saveAll(lockedGoods.values());
+        lockedGoods.keySet().forEach(wacCache::remove);
         if (!batchesToSave.isEmpty()) {
             finishedGoodBatchRepository.saveAll(batchesToSave);
         }
@@ -322,11 +492,8 @@ public class FinishedGoodsService {
     @Transactional
     public DispatchConfirmationResponse confirmDispatch(DispatchConfirmationRequest request, String username) {
         Company company = companyContextService.requireCurrentCompany();
-        PackagingSlip slip = packagingSlipRepository.findAndLockBySalesOrderId(
-                packagingSlipRepository.findByIdAndCompany(request.packagingSlipId(), company)
-                        .orElseThrow(() -> new IllegalArgumentException("Packaging slip not found"))
-                        .getSalesOrder().getId()
-        ).orElseThrow(() -> new IllegalArgumentException("Packaging slip not found"));
+        PackagingSlip slip = packagingSlipRepository.findAndLockByIdAndCompany(request.packagingSlipId(), company)
+                .orElseThrow(() -> new IllegalArgumentException("Packaging slip not found"));
 
         if ("DISPATCHED".equalsIgnoreCase(slip.getStatus())) {
             throw new IllegalStateException("Slip already dispatched");
@@ -341,6 +508,7 @@ public class FinishedGoodsService {
         BigDecimal totalShipped = BigDecimal.ZERO;
         BigDecimal totalBackorder = BigDecimal.ZERO;
         BigDecimal totalCogsCost = BigDecimal.ZERO;
+        boolean hasBackorder = false;
 
         Map<Long, FinishedGood> lockedGoods = new HashMap<>();
         List<FinishedGoodBatch> batchesToSave = new ArrayList<>();
@@ -363,6 +531,9 @@ public class FinishedGoodsService {
             BigDecimal ordered = line.getOrderedQuantity() != null ? line.getOrderedQuantity() : line.getQuantity();
             BigDecimal shipped = conf.shippedQuantity();
             BigDecimal backorder = ordered.subtract(shipped).max(BigDecimal.ZERO);
+            if (backorder.compareTo(BigDecimal.ZERO) > 0) {
+                hasBackorder = true;
+            }
 
             // Validate shipped quantity
             if (shipped.compareTo(BigDecimal.ZERO) < 0) {
@@ -380,10 +551,14 @@ public class FinishedGoodsService {
             // Update inventory if actually shipping
             if (shipped.compareTo(BigDecimal.ZERO) > 0) {
                 BigDecimal currentStock = fg.getCurrentStock() != null ? fg.getCurrentStock() : BigDecimal.ZERO;
+                if (currentStock.compareTo(shipped) < 0) {
+                    throw new IllegalStateException("Insufficient current stock for FG " + fg.getProductCode() + ": available=" + currentStock + ", requested=" + shipped);
+                }
                 BigDecimal reservedStock = fg.getReservedStock() != null ? fg.getReservedStock() : BigDecimal.ZERO;
-                
-                fg.setCurrentStock(currentStock.subtract(shipped).max(BigDecimal.ZERO));
+
+                fg.setCurrentStock(currentStock.subtract(shipped));
                 fg.setReservedStock(reservedStock.subtract(shipped).max(BigDecimal.ZERO));
+                wacCache.remove(fg.getId());
 
                 BigDecimal batchQty = batch.getQuantityTotal() != null ? batch.getQuantityTotal() : BigDecimal.ZERO;
                 batch.setQuantityTotal(batchQty.subtract(shipped).max(BigDecimal.ZERO));
@@ -418,7 +593,8 @@ public class FinishedGoodsService {
             finishedGoodBatchRepository.saveAll(batchesToSave);
         }
 
-        // Update slip status
+        hasBackorder = totalBackorder.compareTo(BigDecimal.ZERO) > 0;
+        // Update slip status (always dispatched; backorders are tracked on a new slip)
         slip.setStatus("DISPATCHED");
         slip.setDispatchedAt(Instant.now());
         slip.setConfirmedAt(Instant.now());
@@ -426,9 +602,29 @@ public class FinishedGoodsService {
         slip.setDispatchNotes(request.notes());
         packagingSlipRepository.save(slip);
 
+        // If this dispatch clears all backorders, mark any related slips as dispatched too.
+        if (!hasBackorder) {
+            List<PackagingSlip> related = packagingSlipRepository.findAllBySalesOrderId(order.getId());
+            for (PackagingSlip relatedSlip : related) {
+                if (!"DISPATCHED".equalsIgnoreCase(relatedSlip.getStatus())) {
+                    relatedSlip.setStatus("DISPATCHED");
+                    if (relatedSlip.getDispatchedAt() == null) {
+                        relatedSlip.setDispatchedAt(slip.getDispatchedAt());
+                    }
+                    if (relatedSlip.getConfirmedAt() == null) {
+                        relatedSlip.setConfirmedAt(slip.getConfirmedAt());
+                    }
+                    if (relatedSlip.getConfirmedBy() == null) {
+                        relatedSlip.setConfirmedBy(username);
+                    }
+                    packagingSlipRepository.save(relatedSlip);
+                }
+            }
+        }
+
         // Handle backorders - create new slip if needed
         Long backorderSlipId = null;
-        if (totalBackorder.compareTo(BigDecimal.ZERO) > 0) {
+        if (hasBackorder) {
             backorderSlipId = createBackorderSlip(slip, lineResults);
         }
 
@@ -466,7 +662,6 @@ public class FinishedGoodsService {
         backorderSlip.setSlipNumber(generateSlipNumber(originalSlip.getCompany()) + "-BO");
         backorderSlip.setStatus("BACKORDER");
         backorderSlip.setDispatchNotes("Backorder from " + originalSlip.getSlipNumber());
-        packagingSlipRepository.save(backorderSlip);
 
         // Create lines for backorder quantities
         for (PackagingSlipLine originalLine : originalSlip.getLines()) {
@@ -483,7 +678,8 @@ public class FinishedGoodsService {
             }
         }
 
-        return backorderSlip.getId();
+        PackagingSlip saved = packagingSlipRepository.saveAndFlush(backorderSlip);
+        return saved.getId();
     }
 
     /**
@@ -521,6 +717,51 @@ public class FinishedGoodsService {
         slip.setStatus(newStatus.toUpperCase());
         packagingSlipRepository.save(slip);
         return toSlipDto(slip);
+    }
+
+    /**
+     * Cancel a backorder slip without consuming inventory. Releases reserved stock and quantityAvailable.
+     */
+    @Transactional
+    public PackagingSlipDto cancelBackorderSlip(Long slipId, String username, String reason) {
+        Company company = companyContextService.requireCurrentCompany();
+        PackagingSlip slip = packagingSlipRepository.findByIdAndCompany(slipId, company)
+                .orElseThrow(() -> new IllegalArgumentException("Packaging slip not found"));
+        if (!"BACKORDER".equalsIgnoreCase(slip.getStatus())) {
+            throw new IllegalStateException("Only BACKORDER slips can be canceled");
+        }
+
+        Map<Long, FinishedGood> lockedGoods = new HashMap<>();
+        List<FinishedGoodBatch> batchesToSave = new ArrayList<>();
+        for (PackagingSlipLine line : slip.getLines()) {
+            FinishedGoodBatch batch = line.getFinishedGoodBatch();
+            FinishedGood fg = batch.getFinishedGood();
+            lockedGoods.computeIfAbsent(fg.getId(), id -> lockFinishedGood(company, id));
+
+            BigDecimal qty = line.getOrderedQuantity() != null ? line.getOrderedQuantity() : line.getQuantity();
+            if (qty == null) {
+                qty = BigDecimal.ZERO;
+            }
+            // Release reserved stock and batch availability for the unshipped backorder quantity
+            BigDecimal reserved = fg.getReservedStock() != null ? fg.getReservedStock() : BigDecimal.ZERO;
+            fg.setReservedStock(reserved.subtract(qty).max(BigDecimal.ZERO));
+
+            BigDecimal available = batch.getQuantityAvailable() != null ? batch.getQuantityAvailable() : BigDecimal.ZERO;
+            batch.setQuantityAvailable(available.add(qty));
+            batchesToSave.add(batch);
+        }
+        if (!lockedGoods.isEmpty()) {
+            finishedGoodRepository.saveAll(lockedGoods.values());
+        }
+        if (!batchesToSave.isEmpty()) {
+            finishedGoodBatchRepository.saveAll(batchesToSave);
+        }
+
+        slip.setStatus("CANCELLED");
+        slip.setDispatchNotes(reason != null ? reason : "Backorder canceled by " + (username != null ? username : "system"));
+        slip.setConfirmedAt(Instant.now());
+        slip.setConfirmedBy(username != null ? username : "system");
+        return toSlipDto(packagingSlipRepository.save(slip));
     }
 
     private PackagingSlip createSlip(SalesOrder order) {
@@ -714,8 +955,24 @@ public class FinishedGoodsService {
     }
 
     private String generateSlipNumber(Company company) {
-        return company.getCode() + "-PS-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        return company.getCode() + "-PS-" + batchNumberService.nextPackagingSlipNumber(company);
     }
+
+    private BigDecimal weightedAverageCost(FinishedGood fg) {
+        CachedWac cached = wacCache.get(fg.getId());
+        long now = System.currentTimeMillis();
+        if (cached != null && (now - cached.cachedAtMillis()) < WAC_CACHE_MILLIS) {
+            return cached.cost();
+        }
+        BigDecimal cost = finishedGoodBatchRepository.calculateWeightedAverageCost(fg);
+        if (cost == null) {
+            cost = BigDecimal.ZERO;
+        }
+        wacCache.put(fg.getId(), new CachedWac(cost, now));
+        return cost;
+    }
+
+    private record CachedWac(BigDecimal cost, long cachedAtMillis) {}
 
     private static class DispatchPostingBuilder {
         private final Long inventoryAccountId;

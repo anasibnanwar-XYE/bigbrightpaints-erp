@@ -59,6 +59,16 @@ public class PackingRecord extends VersionedEntity {
     @Column(name = "packed_by")
     private String packedBy;
 
+    @Column(name = "packaging_cost")
+    private BigDecimal packagingCost = BigDecimal.ZERO;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "packaging_material_id")
+    private com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial packagingMaterial;
+
+    @Column(name = "packaging_quantity")
+    private BigDecimal packagingQuantity;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -187,5 +197,29 @@ public class PackingRecord extends VersionedEntity {
 
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    public BigDecimal getPackagingCost() {
+        return packagingCost;
+    }
+
+    public void setPackagingCost(BigDecimal packagingCost) {
+        this.packagingCost = packagingCost;
+    }
+
+    public com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial getPackagingMaterial() {
+        return packagingMaterial;
+    }
+
+    public void setPackagingMaterial(com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial packagingMaterial) {
+        this.packagingMaterial = packagingMaterial;
+    }
+
+    public BigDecimal getPackagingQuantity() {
+        return packagingQuantity;
+    }
+
+    public void setPackagingQuantity(BigDecimal packagingQuantity) {
+        this.packagingQuantity = packagingQuantity;
     }
 }

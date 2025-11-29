@@ -56,6 +56,10 @@ public class FinishedGood extends VersionedEntity {
     @Column(name = "tax_account_id")
     private Long taxAccountId;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "inventory_type", nullable = false)
+    private InventoryType inventoryType = InventoryType.STANDARD;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -121,6 +125,8 @@ public class FinishedGood extends VersionedEntity {
     public void setDiscountAccountId(Long discountAccountId) { this.discountAccountId = discountAccountId; }
     public Long getTaxAccountId() { return taxAccountId; }
     public void setTaxAccountId(Long taxAccountId) { this.taxAccountId = taxAccountId; }
+    public InventoryType getInventoryType() { return inventoryType; }
+    public void setInventoryType(InventoryType inventoryType) { this.inventoryType = inventoryType; }
 
     @Transient
     public void adjustStock(BigDecimal quantityDelta, String operation) {

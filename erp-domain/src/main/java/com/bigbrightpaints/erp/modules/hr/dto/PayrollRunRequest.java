@@ -8,5 +8,6 @@ import java.time.LocalDate;
 public record PayrollRunRequest(
         @NotNull LocalDate runDate,
         @DecimalMin(value = "0.00") BigDecimal totalAmount,
-        String notes
+        String notes,
+        String idempotencyKey
 ) {}

@@ -55,6 +55,7 @@ public class PackingService {
     private final ProductionLogService productionLogService;
     private final BatchNumberService batchNumberService;
     private final CompanyEntityLookup companyEntityLookup;
+    private final PackagingMaterialService packagingMaterialService;
 
     public PackingService(CompanyContextService companyContextService,
                           ProductionLogRepository productionLogRepository,
@@ -66,7 +67,8 @@ public class PackingService {
                           ProductionLogService productionLogService,
                           BatchNumberService batchNumberService,
                           CompanyClock companyClock,
-                          CompanyEntityLookup companyEntityLookup) {
+                          CompanyEntityLookup companyEntityLookup,
+                          PackagingMaterialService packagingMaterialService) {
         this.companyContextService = companyContextService;
         this.productionLogRepository = productionLogRepository;
         this.packingRecordRepository = packingRecordRepository;
@@ -78,12 +80,14 @@ public class PackingService {
         this.batchNumberService = batchNumberService;
         this.companyClock = companyClock;
         this.companyEntityLookup = companyEntityLookup;
+        this.packagingMaterialService = packagingMaterialService;
     }
 
     @Transactional
     public ProductionLogDetailDto recordPacking(PackingRequest request) {
         Company company = companyContextService.requireCurrentCompany();
-        ProductionLog log = companyEntityLookup.requireProductionLog(company, request.productionLogId());
+        // Use pessimistic lock to prevent concurrent packing of the same production log
+        ProductionLog log = companyEntityLookup.lockProductionLog(company, request.productionLogId());
         if (log.getStatus() == ProductionLogStatus.FULLY_PACKED) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
                     "Production log " + log.getProductionCode() + " is already fully packed");
@@ -95,6 +99,7 @@ public class PackingService {
         LocalDate packedDate = request.packedDate() != null ? request.packedDate() : resolveCurrentDate(company);
 
         BigDecimal sessionQuantity = BigDecimal.ZERO;
+        BigDecimal sessionPackagingCost = BigDecimal.ZERO;
         int lineIndex = 0;
         for (PackingLineRequest line : request.lines()) {
             lineIndex++;
@@ -102,6 +107,17 @@ public class PackingService {
             if (lineQuantity.compareTo(BigDecimal.ZERO) <= 0) {
                 throw new IllegalArgumentException("Line " + lineIndex + " has zero quantity");
             }
+            
+            // Resolve pieces count for packaging material consumption
+            int piecesCount = resolvePiecesCountForLine(line, lineIndex);
+            
+            // Consume packaging materials (buckets) - auto-deducts from RM stock
+            PackagingConsumptionResult packagingResult = packagingMaterialService.consumePackagingMaterial(
+                    line.packagingSize(),
+                    piecesCount,
+                    log.getProductionCode() + "-PACK-" + lineIndex
+            );
+            
             PackingRecord record = new PackingRecord();
             record.setCompany(company);
             record.setProductionLog(log);
@@ -113,9 +129,17 @@ public class PackingService {
             record.setPiecesPerBox(nullSafe(line.piecesPerBox()));
             record.setPackedDate(packedDate);
             record.setPackedBy(clean(request.packedBy()));
+            
+            // Track packaging cost and material
+            if (packagingResult.isConsumed()) {
+                record.setPackagingCost(packagingResult.totalCost());
+                record.setPackagingQuantity(packagingResult.quantity());
+                sessionPackagingCost = sessionPackagingCost.add(packagingResult.totalCost());
+            }
+            
             PackingRecord savedRecord = packingRecordRepository.save(record);
 
-            FinishedGoodBatch batch = registerFinishedGoodBatch(log, finishedGood, savedRecord, lineQuantity, packedDate);
+            FinishedGoodBatch batch = registerFinishedGoodBatch(log, finishedGood, savedRecord, lineQuantity, packedDate, packagingResult);
             savedRecord.setFinishedGoodBatch(batch);
             packingRecordRepository.save(savedRecord);
             log.getPackingRecords().add(savedRecord);
@@ -127,14 +151,17 @@ public class PackingService {
             throw new IllegalArgumentException("Packed quantity must be greater than zero");
         }
 
-        BigDecimal updated = log.getTotalPackedQuantity().add(sessionQuantity);
-        if (updated.compareTo(log.getMixedQuantity()) > 0) {
-            throw new IllegalArgumentException("Packed quantity exceeds mixed quantity for " + log.getProductionCode());
+        // Use atomic update to prevent lost updates under concurrent packing
+        int updated = productionLogRepository.incrementPackedQuantityAtomic(log.getId(), sessionQuantity);
+        if (updated == 0) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Packed quantity would exceed mixed quantity for " + log.getProductionCode());
         }
-        log.setTotalPackedQuantity(updated);
-        log.setWastageQuantity(calculateWastage(log));
-        updateStatus(log, updated);
-        productionLogRepository.save(log);
+
+        // Refresh entity to get updated values and update status
+        ProductionLog refreshedLog = companyEntityLookup.requireProductionLog(company, log.getId());
+        updateStatus(refreshedLog, refreshedLog.getTotalPackedQuantity());
+        productionLogRepository.save(refreshedLog);
         return productionLogService.getLog(log.getId());
     }
 
@@ -179,7 +206,12 @@ public class PackingService {
     @Transactional
     public ProductionLogDetailDto completePacking(Long productionLogId) {
         Company company = companyContextService.requireCurrentCompany();
-        ProductionLog log = companyEntityLookup.requireProductionLog(company, productionLogId);
+        // Use pessimistic lock to prevent concurrent completion attempts
+        ProductionLog log = companyEntityLookup.lockProductionLog(company, productionLogId);
+        if (log.getStatus() == ProductionLogStatus.FULLY_PACKED) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Production log " + log.getProductionCode() + " is already completed");
+        }
         BigDecimal mixedQty = Optional.ofNullable(log.getMixedQuantity()).orElse(BigDecimal.ZERO);
         BigDecimal packedQty = Optional.ofNullable(log.getTotalPackedQuantity()).orElse(BigDecimal.ZERO);
         BigDecimal wastageQty = mixedQty.subtract(packedQty);
@@ -221,13 +253,26 @@ public class PackingService {
                                                         FinishedGood finishedGood,
                                                         PackingRecord record,
                                                         BigDecimal quantity,
-                                                        LocalDate packedDate) {
+                                                        LocalDate packedDate,
+                                                        PackagingConsumptionResult packagingResult) {
+        // Capture cost snapshot before any mutations
+        BigDecimal baseUnitCost = Optional.ofNullable(log.getUnitCost()).orElse(BigDecimal.ZERO);
+        BigDecimal materialUnitCost = calculateUnitCost(log.getMaterialCostTotal(), log.getMixedQuantity());
+        
+        // Add packaging cost per unit (bucket cost / liters in this line)
+        BigDecimal packagingCostPerUnit = BigDecimal.ZERO;
+        if (packagingResult.isConsumed() && quantity.compareTo(BigDecimal.ZERO) > 0) {
+            packagingCostPerUnit = packagingResult.totalCost()
+                    .divide(quantity, 4, RoundingMode.HALF_UP);
+        }
+        BigDecimal totalUnitCost = baseUnitCost.add(packagingCostPerUnit);
+
         FinishedGoodBatch batch = new FinishedGoodBatch();
         batch.setFinishedGood(finishedGood);
         batch.setBatchCode(batchNumberService.nextFinishedGoodBatchCode(finishedGood, packedDate));
         batch.setQuantityTotal(quantity);
         batch.setQuantityAvailable(quantity);
-        batch.setUnitCost(Optional.ofNullable(log.getUnitCost()).orElse(BigDecimal.ZERO));
+        batch.setUnitCost(totalUnitCost);
         batch.setManufacturedAt(log.getProducedAt());
         FinishedGoodBatch savedBatch = finishedGoodBatchRepository.save(batch);
 
@@ -242,9 +287,58 @@ public class PackingService {
         movement.setReferenceId(log.getProductionCode());
         movement.setMovementType(MOVEMENT_TYPE_RECEIPT);
         movement.setQuantity(quantity);
-        movement.setUnitCost(Optional.ofNullable(log.getUnitCost()).orElse(BigDecimal.ZERO));
-        inventoryMovementRepository.save(movement);
+        movement.setUnitCost(totalUnitCost);
+        InventoryMovement savedMovement = inventoryMovementRepository.save(movement);
+
+        // Post WIP->FG journal immediately to prevent desync on crash
+        // Include packaging cost in the journal value
+        BigDecimal journalUnitCost = materialUnitCost.add(packagingCostPerUnit);
+        postPackingSessionJournal(log, finishedGood, quantity, journalUnitCost, packedDate, savedMovement);
+
         return savedBatch;
+    }
+    
+    private int resolvePiecesCountForLine(PackingLineRequest line, int lineNumber) {
+        if (line.piecesCount() != null && line.piecesCount() > 0) {
+            return line.piecesCount();
+        }
+        if (line.boxesCount() != null && line.boxesCount() > 0
+                && line.piecesPerBox() != null && line.piecesPerBox() > 0) {
+            return line.boxesCount() * line.piecesPerBox();
+        }
+        throw new IllegalArgumentException("Pieces count or boxes × pieces per box required for line " + lineNumber);
+    }
+
+    private void postPackingSessionJournal(ProductionLog log,
+                                           FinishedGood finishedGood,
+                                           BigDecimal quantity,
+                                           BigDecimal materialUnitCost,
+                                           LocalDate packedDate,
+                                           InventoryMovement movement) {
+        if (quantity.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+        Long wipAccountId = requireWipAccountId(log.getProduct());
+        Long fgAccountId = finishedGood.getValuationAccountId();
+        if (fgAccountId == null) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                    "Finished good " + finishedGood.getProductCode() + " missing valuation account");
+        }
+        BigDecimal packedValue = MoneyUtils.safeMultiply(materialUnitCost, quantity).setScale(2, RoundingMode.HALF_UP);
+        String reference = log.getProductionCode() + "-PACK-" + movement.getId();
+        JournalEntryDto entry = accountingFacade.postSimpleJournal(
+                reference,
+                packedDate,
+                "FG receipt for " + log.getProductionCode() + " (qty: " + quantity + ")",
+                fgAccountId,
+                wipAccountId,
+                packedValue,
+                false
+        );
+        if (entry != null) {
+            movement.setJournalEntryId(entry.id());
+            inventoryMovementRepository.save(movement);
+        }
     }
 
     private void postCompletionEntries(Company company,
@@ -252,28 +346,12 @@ public class PackingService {
                                        FinishedGood finishedGood,
                                        BigDecimal packedQty,
                                        BigDecimal wastageQty) {
-        BigDecimal materialUnitCost = calculateUnitCost(log.getMaterialCostTotal(), log.getMixedQuantity());
-        Long wipAccountId = requireWipAccountId(log.getProduct());
-        LocalDate entryDate = resolveJournalDate(company, log);
-        if (packedQty.compareTo(BigDecimal.ZERO) > 0) {
-            Long fgAccountId = finishedGood.getValuationAccountId();
-            if (fgAccountId == null) {
-                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
-                        "Finished good " + finishedGood.getProductCode() + " missing valuation account");
-            }
-            BigDecimal packedValue = MoneyUtils.safeMultiply(materialUnitCost, packedQty).setScale(2, RoundingMode.HALF_UP);
-            JournalEntryDto entry = accountingFacade.postSimpleJournal(
-                    log.getProductionCode() + "-PACK",
-                    entryDate,
-                    "Finished goods receipt for " + log.getProductionCode(),
-                    fgAccountId,
-                    wipAccountId,
-                    packedValue,
-                    false
-            );
-            linkInventoryMovementsToJournal(log.getProductionCode(), entry.id());
-        }
+        // FG receipt journals are now posted per packing session in postPackingSessionJournal
+        // Only wastage journal is posted during completion
         if (wastageQty.compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal materialUnitCost = calculateUnitCost(log.getMaterialCostTotal(), log.getMixedQuantity());
+            Long wipAccountId = requireWipAccountId(log.getProduct());
+            LocalDate entryDate = resolveJournalDate(company, log);
             BigDecimal wastageValue = MoneyUtils.safeMultiply(materialUnitCost, wastageQty).setScale(2, RoundingMode.HALF_UP);
             Long wastageAccountId = metadataLong(log.getProduct(), "wastageAccountId");
             if (wastageAccountId == null) {
@@ -290,19 +368,6 @@ public class PackingService {
                     false
             );
         }
-    }
-
-    private void linkInventoryMovementsToJournal(String referenceId, Long journalEntryId) {
-        if (journalEntryId == null) {
-            return;
-        }
-        List<InventoryMovement> movements = inventoryMovementRepository
-                .findByReferenceTypeAndReferenceIdOrderByCreatedAtAsc(InventoryReference.PRODUCTION_LOG, referenceId);
-        if (movements.isEmpty()) {
-            return;
-        }
-        movements.forEach(movement -> movement.setJournalEntryId(journalEntryId));
-        inventoryMovementRepository.saveAll(movements);
     }
 
     private FinishedGood initializeFinishedGood(Company company, ProductionProduct product) {

@@ -49,6 +49,20 @@ public class DispatchController {
     }
 
     /**
+     * Cancel a backorder slip; releases reserved stock and quantity without shipping.
+     */
+    @PostMapping("/backorder/{slipId}/cancel")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_FACTORY')")
+    public ResponseEntity<ApiResponse<PackagingSlipDto>> cancelBackorder(
+            @PathVariable Long slipId,
+            @RequestParam(required = false) String reason,
+            Principal principal) {
+        String username = principal != null ? principal.getName() : "system";
+        PackagingSlipDto slip = finishedGoodsService.cancelBackorderSlip(slipId, username, reason);
+        return ResponseEntity.ok(ApiResponse.success("Backorder canceled", slip));
+    }
+
+    /**
      * Get packaging slip details.
      */
     @GetMapping("/slip/{slipId}")

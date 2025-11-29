@@ -6,12 +6,16 @@ import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
 import com.bigbrightpaints.erp.modules.accounting.service.ReconciliationService;
 import com.bigbrightpaints.erp.modules.accounting.service.TaxService;
 import com.bigbrightpaints.erp.modules.accounting.service.StatementService;
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.modules.sales.service.SalesReturnService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.ResponseStatus;
 
 import java.util.List;
 import java.time.YearMonth;
@@ -41,7 +45,16 @@ public class AccountingController {
         this.taxService = taxService;
     }
 
-    @GetMapping("/accounts")
+    /**
+     * Translate business exceptions to 400 for API clients (prevents 500 on validation/state errors).
+     */
+    @ExceptionHandler(ApplicationException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ApiResponse<Void> handleApplicationException(ApplicationException ex) {
+        return ApiResponse.failure(ex.getUserMessage(), null);
+    }
+
+    @GetMapping("/accounts")\n@PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
     public ResponseEntity<ApiResponse<List<AccountDto>>> accounts() {
         return ResponseEntity.ok(ApiResponse.success(accountingService.listAccounts()));
     }
@@ -52,9 +65,11 @@ public class AccountingController {
         return ResponseEntity.ok(ApiResponse.success("Account created", accountingService.createAccount(request)));
     }
 
-    @GetMapping("/journal-entries")
-    public ResponseEntity<ApiResponse<List<JournalEntryDto>>> journalEntries(@RequestParam(required = false) Long dealerId) {
-        return ResponseEntity.ok(ApiResponse.success(accountingService.listJournalEntries(dealerId)));
+    @GetMapping("/journal-entries")\n@PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<List<JournalEntryDto>>> journalEntries(@RequestParam(required = false) Long dealerId,
+                                                                             @RequestParam(defaultValue = "0") int page,
+                                                                             @RequestParam(defaultValue = "100") int size) {
+        return ResponseEntity.ok(ApiResponse.success(accountingService.listJournalEntries(dealerId, page, size)));
     }
 
     @PostMapping("/journal-entries")

@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.accounting.dto;
 
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotNull;
 
@@ -14,4 +15,9 @@ public record SettlementAllocationRequest(
         BigDecimal fxAdjustment,
         String memo
 ) {
+
+    @AssertTrue(message = "Either invoiceId or purchaseId must be provided")
+    public boolean hasReference() {
+        return invoiceId != null || purchaseId != null;
+    }
 }

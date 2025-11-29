@@ -39,6 +39,11 @@ public class BatchNumberService {
         return formatted(key, numberSequenceService.nextValue(company, key));
     }
 
+    public String nextPackagingSlipNumber(Company company) {
+        String key = "%s-PS".formatted(company.getCode());
+        return formatted(key, numberSequenceService.nextValue(company, key));
+    }
+
     private ZoneId resolveZone(Company company) {
         return ZoneId.of(company.getTimezone() == null ? "UTC" : company.getTimezone());
     }

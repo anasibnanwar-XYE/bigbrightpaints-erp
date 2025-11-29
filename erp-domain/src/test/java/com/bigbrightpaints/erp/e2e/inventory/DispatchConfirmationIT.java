@@ -132,6 +132,82 @@ class DispatchConfirmationIT extends AbstractIntegrationTest {
         response.lines().forEach(l -> assertThat(l.shippedQuantity()).isEqualByComparingTo(l.orderedQuantity()));
     }
 
+    @Test
+    @Transactional
+    void confirmBackorderSlip_usesProvidedSlipId_andShipsRemaining() {
+        String sku = "FG-BO-" + UUID.randomUUID().toString().substring(0, 6);
+        FinishedGood fg = createFinishedGood(sku);
+        ensureCatalogProduct(fg);
+        finishedGoodsService.registerBatch(new FinishedGoodBatchRequest(
+                fg.getId(), "BATCH-BO", new BigDecimal("10"), new BigDecimal("5.00"), Instant.now(), null));
+
+        SalesOrderRequest orderReq = new SalesOrderRequest(
+                dealer.getId(),
+                new BigDecimal("100.00"),
+                "INR",
+                null,
+                List.of(new SalesOrderItemRequest(fg.getProductCode(), "Backorder Item", new BigDecimal("10"), new BigDecimal("10.00"), BigDecimal.ZERO)),
+                "EXCLUSIVE",
+                null,
+                null,
+                null
+        );
+        var orderDto = salesService.createOrder(orderReq);
+        SalesOrder order = salesOrderRepository.findById(orderDto.id()).orElseThrow();
+
+        finishedGoodsService.reserveForOrder(order);
+        PackagingSlip slip = packagingSlipRepository.findBySalesOrderId(order.getId()).orElseThrow();
+
+        PackagingSlipLine firstLine = slip.getLines().getFirst();
+        BigDecimal orderedQty = firstLine.getOrderedQuantity();
+        assertThat(orderedQty).isGreaterThan(new BigDecimal("4"));
+        BigDecimal firstShipmentQty = orderedQty.subtract(new BigDecimal("4"));
+
+        // Ship only part of the ordered qty to force a backorder slip
+        DispatchConfirmationRequest firstConfirm = new DispatchConfirmationRequest(
+                slip.getId(),
+                slip.getLines().stream()
+                        .map(line -> new DispatchConfirmationRequest.LineConfirmation(
+                                line.getId(),
+                                firstShipmentQty,
+                                "partial ship"))
+                        .toList(),
+                "Partial dispatch",
+                "dispatch-user"
+        );
+        var firstResponse = finishedGoodsService.confirmDispatch(firstConfirm, "dispatch-user");
+        assertThat(firstResponse.backorderSlipId()).isNotNull();
+
+        PackagingSlip backorderSlip = packagingSlipRepository.findById(firstResponse.backorderSlipId()).orElseThrow();
+        assertThat(backorderSlip.getStatus()).isEqualTo("BACKORDER");
+
+        // Now ship the remaining backorder slip explicitly by its ID
+        DispatchConfirmationRequest secondConfirm = new DispatchConfirmationRequest(
+                backorderSlip.getId(),
+                backorderSlip.getLines().stream()
+                        .map(line -> new DispatchConfirmationRequest.LineConfirmation(
+                                line.getId(),
+                                line.getOrderedQuantity(),
+                                "ship remainder"))
+                        .toList(),
+                "Backorder cleared",
+                "dispatch-user"
+        );
+        var secondResponse = finishedGoodsService.confirmDispatch(secondConfirm, "dispatch-user");
+
+        assertThat(secondResponse.status()).isEqualTo("DISPATCHED");
+        assertThat(secondResponse.totalBackorderAmount()).isZero();
+
+        PackagingSlip refreshedOriginal = packagingSlipRepository.findById(slip.getId()).orElseThrow();
+        PackagingSlip refreshedBackorder = packagingSlipRepository.findById(backorderSlip.getId()).orElseThrow();
+        assertThat(refreshedOriginal.getStatus()).isEqualTo("DISPATCHED");
+        assertThat(refreshedBackorder.getStatus()).isEqualTo("DISPATCHED");
+
+        FinishedGood refreshed = finishedGoodRepository.findById(fg.getId()).orElseThrow();
+        assertThat(refreshed.getCurrentStock()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(refreshed.getReservedStock()).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
     // Helpers
     private Map<String, Account> ensureAccounts(Company company) {
         return Map.of(

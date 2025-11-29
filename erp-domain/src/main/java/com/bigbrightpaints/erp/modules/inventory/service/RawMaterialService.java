@@ -131,7 +131,19 @@ public class RawMaterialService {
                 .map(rawMaterial -> batchRepository.findByRawMaterial(rawMaterial).size())
                 .mapToLong(Integer::longValue)
                 .sum();
-        return new StockSummaryDto(total, lowStock, criticalStock, batches);
+        return new StockSummaryDto(
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                total,
+                lowStock,
+                criticalStock,
+                batches);
     }
 
     public List<InventoryStockSnapshot> listInventory() {

@@ -44,17 +44,21 @@ public class SupplierService {
     public List<SupplierResponse> listSuppliers() {
         Company company = companyContextService.requireCurrentCompany();
         List<Supplier> suppliers = supplierRepository.findByCompanyOrderByNameAsc(company);
+        // Always use ledger as source of truth - never fall back to stale denormalized field
         Map<Long, BigDecimal> balances = supplierLedgerService.currentBalances(
                 suppliers.stream().map(Supplier::getId).toList());
         return suppliers.stream()
                 .map(supplier -> toResponse(supplier,
-                        balances.getOrDefault(supplier.getId(), supplier.getOutstandingBalance())))
+                        balances.getOrDefault(supplier.getId(), BigDecimal.ZERO)))
                 .toList();
     }
 
     public SupplierResponse getSupplier(Long id) {
         Company company = companyContextService.requireCurrentCompany();
-        return toResponse(requireSupplier(company, id));
+        Supplier supplier = requireSupplier(company, id);
+        // Use ledger balance as source of truth instead of denormalized field
+        BigDecimal ledgerBalance = supplierLedgerService.currentBalance(id);
+        return toResponse(supplier, ledgerBalance);
     }
 
     @Transactional

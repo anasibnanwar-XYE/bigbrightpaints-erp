@@ -3,6 +3,7 @@ package com.bigbrightpaints.erp.modules.accounting.service;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
+import java.util.Optional;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.util.MoneyUtils;
 import com.bigbrightpaints.erp.modules.accounting.domain.*;
@@ -16,6 +17,7 @@ import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunLineRepository;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunRepository;
 import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
+import com.bigbrightpaints.erp.modules.invoice.service.InvoiceSettlementPolicy;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchase;
 import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
@@ -33,6 +35,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -78,6 +81,7 @@ public class AccountingService {
     private final FinishedGoodBatchRepository finishedGoodBatchRepository;
     private final DealerRepository dealerRepository;
     private final SupplierRepository supplierRepository;
+    private final InvoiceSettlementPolicy invoiceSettlementPolicy;
 
     public AccountingService(CompanyContextService companyContextService,
                              AccountRepository accountRepository,
@@ -98,7 +102,8 @@ public class AccountingService {
                              RawMaterialBatchRepository rawMaterialBatchRepository,
                              FinishedGoodBatchRepository finishedGoodBatchRepository,
                              DealerRepository dealerRepository,
-                             SupplierRepository supplierRepository) {
+                             SupplierRepository supplierRepository,
+                             InvoiceSettlementPolicy invoiceSettlementPolicy) {
         this.companyContextService = companyContextService;
         this.accountRepository = accountRepository;
         this.journalEntryRepository = journalEntryRepository;
@@ -119,6 +124,7 @@ public class AccountingService {
         this.finishedGoodBatchRepository = finishedGoodBatchRepository;
         this.dealerRepository = dealerRepository;
         this.supplierRepository = supplierRepository;
+        this.invoiceSettlementPolicy = invoiceSettlementPolicy;
     }
 
     /* Accounts */
@@ -142,16 +148,22 @@ public class AccountingService {
 
     /* Journal Entries */
     @Transactional(propagation = Propagation.SUPPORTS)
-    public List<JournalEntryDto> listJournalEntries(Long dealerId) {
+    public List<JournalEntryDto> listJournalEntries(Long dealerId, int page, int size) {
         Company company = companyContextService.requireCurrentCompany();
+        int safeSize = Math.max(1, Math.min(size, 200));
+        PageRequest pageable = PageRequest.of(Math.max(page, 0), safeSize);
         List<JournalEntry> entries;
         if (dealerId != null) {
             Dealer dealer = requireDealer(company, dealerId);
-            entries = journalEntryRepository.findByCompanyAndDealerOrderByEntryDateDesc(company, dealer);
+            entries = journalEntryRepository.findByCompanyAndDealerOrderByEntryDateDesc(company, dealer, pageable).getContent();
         } else {
-            entries = journalEntryRepository.findByCompanyOrderByEntryDateDesc(company);
+            entries = journalEntryRepository.findByCompanyOrderByEntryDateDesc(company, pageable).getContent();
         }
         return entries.stream().map(this::toDto).toList();
+    }
+
+    public List<JournalEntryDto> listJournalEntries(Long dealerId) {
+        return listJournalEntries(dealerId, 0, 100);
     }
 
     @Transactional
@@ -168,6 +180,13 @@ public class AccountingService {
         entry.setCurrency(currency);
         entry.setFxRate(fxRate);
         entry.setReferenceNumber(resolveJournalReference(company, request.referenceNumber()));
+
+        Optional<JournalEntry> duplicate = journalEntryRepository.findByCompanyAndReferenceNumber(company, entry.getReferenceNumber());
+        if (duplicate.isPresent()) {
+            throw new ApplicationException(ErrorCode.DUPLICATE_ENTITY,
+                "Journal entry with reference '" + entry.getReferenceNumber() + "' already exists for this company.");
+        }
+
         LocalDate entryDate = request.entryDate();
         boolean overrideRequested = Boolean.TRUE.equals(request.adminOverride());
         boolean overrideAuthorized = overrideRequested && hasEntryDateOverrideAuthority();
@@ -184,21 +203,13 @@ public class AccountingService {
         Account supplierPayableAccount = null;
         if (request.dealerId() != null) {
             dealer = requireDealer(company, request.dealerId());
-            if (dealer.getReceivableAccount() == null) {
-                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
-                        "Dealer " + dealer.getName() + " is missing a receivable account");
-            }
+            dealerReceivableAccount = requireDealerReceivable(dealer);
             entry.setDealer(dealer);
-            dealerReceivableAccount = dealer.getReceivableAccount();
         }
         if (request.supplierId() != null) {
             supplier = requireSupplier(company, request.supplierId());
-            if (supplier.getPayableAccount() == null) {
-                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
-                        "Supplier " + supplier.getName() + " is missing a payable account");
-            }
+            supplierPayableAccount = requireSupplierPayable(supplier);
             entry.setSupplier(supplier);
-            supplierPayableAccount = supplier.getPayableAccount();
         }
         Map<Account, BigDecimal> accountDeltas = new HashMap<>();
         BigDecimal dealerLedgerDebitTotal = BigDecimal.ZERO;
@@ -334,18 +345,18 @@ public class AccountingService {
         entry.setPostedBy(username);
         JournalEntry saved = journalEntryRepository.save(entry);
         if (!accountDeltas.isEmpty()) {
-            Map<Account, BigDecimal> newBalances = new HashMap<>();
             for (Map.Entry<Account, BigDecimal> delta : accountDeltas.entrySet()) {
                 Account account = delta.getKey();
                 BigDecimal current = account.getBalance() == null ? BigDecimal.ZERO : account.getBalance();
                 BigDecimal updated = current.add(delta.getValue());
                 account.validateBalanceUpdate(updated);
-                newBalances.put(account, updated);
+                // Keep the managed entity in sync with the atomic DB update to avoid stale first-level cache reads
+                account.setBalance(updated);
+                int rows = accountRepository.updateBalanceAtomic(company, account.getId(), delta.getValue());
+                if (rows != 1) {
+                    throw new ApplicationException(ErrorCode.INTERNAL_CONCURRENCY_FAILURE, "Account balance update failed for " + account.getCode());
+                }
             }
-            for (Map.Entry<Account, BigDecimal> updated : newBalances.entrySet()) {
-                updated.getKey().setBalance(updated.getValue());
-            }
-            accountRepository.saveAll(newBalances.keySet());
             publishAccountCacheInvalidated(company.getId());
         }
         if (saved.getDealer() != null && dealerReceivableAccount != null) {
@@ -467,12 +478,9 @@ public class AccountingService {
     @Transactional
     public JournalEntryDto recordDealerReceipt(DealerReceiptRequest request) {
         Company company = companyContextService.requireCurrentCompany();
-        Dealer dealer = requireDealer(company, request.dealerId());
-        Account receivableAccount = dealer.getReceivableAccount();
-        if (receivableAccount == null) {
-            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
-                    "Dealer " + dealer.getName() + " is missing a receivable account");
-        }
+        Dealer dealer = dealerRepository.lockByCompanyAndId(company, request.dealerId())
+                .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Dealer not found"));
+        Account receivableAccount = requireDealerReceivable(dealer);
         Account cashAccount = requireAccount(company, request.cashAccountId());
         BigDecimal amount = requirePositive(request.amount(), "amount");
         String memo = StringUtils.hasText(request.memo())
@@ -529,9 +537,13 @@ public class AccountingService {
                         new JournalEntryRequest.JournalLineRequest(cashAccount.getId(), memo, BigDecimal.ZERO, amount)
                 )
         );
+        // Set PROCESSING before journal to guard against orphans
+        run.setStatus("PROCESSING");
+        payrollRunRepository.save(run);
+
         JournalEntryDto entry = createJournalEntry(payload);
-        run.setStatus("PAID");
         JournalEntry payrollEntry = companyEntityLookup.requireJournalEntry(company, entry.id());
+        run.setStatus("PAID");
         run.setJournalEntry(payrollEntry);
         payrollRunRepository.save(run);
         return entry;
@@ -593,7 +605,7 @@ public class AccountingService {
         run.setRunDate(request.runDate());
         run.setNotes(request.memo());
         run.setTotalAmount(total);
-        run.setStatus("PAID");
+        run.setStatus("DRAFT");
         run.setProcessedBy(resolveCurrentUsername());
         PayrollRun savedRun = payrollRunRepository.save(run);
 
@@ -618,6 +630,7 @@ public class AccountingService {
                 ? request.referenceNumber().trim()
                 : referenceNumberService.payrollPaymentReference(company);
 
+        // Create journal entry (idempotent via reference check)
         JournalEntryDto je = createJournalEntry(new JournalEntryRequest(
                 reference,
                 request.runDate(),
@@ -631,6 +644,7 @@ public class AccountingService {
                 )
         ));
         JournalEntry payrollEntry = companyEntityLookup.requireJournalEntry(company, je.id());
+        savedRun.setStatus("PAID");
         savedRun.setJournalEntry(payrollEntry);
         payrollRunRepository.save(savedRun);
 
@@ -646,12 +660,9 @@ public class AccountingService {
     @Transactional
     public JournalEntryDto recordSupplierPayment(SupplierPaymentRequest request) {
         Company company = companyContextService.requireCurrentCompany();
-        Supplier supplier = requireSupplier(company, request.supplierId());
-        Account payableAccount = supplier.getPayableAccount();
-        if (payableAccount == null) {
-            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
-                    "Supplier " + supplier.getName() + " is missing a payable account");
-        }
+        Supplier supplier = supplierRepository.lockByCompanyAndId(company, request.supplierId())
+                .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Supplier not found"));
+        Account payableAccount = requireSupplierPayable(supplier);
         Account cashAccount = requireAccount(company, request.cashAccountId());
         BigDecimal amount = requirePositive(request.amount(), "amount");
         String memo = StringUtils.hasText(request.memo())
@@ -681,12 +692,9 @@ public class AccountingService {
         String trimmedIdempotencyKey = StringUtils.hasText(request.idempotencyKey())
                 ? request.idempotencyKey().trim()
                 : (StringUtils.hasText(request.referenceNumber()) ? request.referenceNumber().trim() : UUID.randomUUID().toString());
-        Dealer dealer = requireDealer(company, request.dealerId());
-        Account receivableAccount = dealer.getReceivableAccount();
-        if (receivableAccount == null) {
-            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
-                    "Dealer " + dealer.getName() + " is missing a receivable account");
-        }
+        Dealer dealer = dealerRepository.lockByCompanyAndId(company, request.dealerId())
+                .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Dealer not found"));
+        Account receivableAccount = requireDealerReceivable(dealer);
         Account cashAccount = requireAccount(company, request.cashAccountId());
         List<SettlementAllocationRequest> allocations = request.allocations();
         if (allocations == null || allocations.isEmpty()) {
@@ -758,7 +766,8 @@ public class AccountingService {
 
             Invoice invoice = null;
             if (allocation.invoiceId() != null) {
-                invoice = companyEntityLookup.requireInvoice(company, allocation.invoiceId());
+                invoice = invoiceRepository.lockByCompanyAndId(company, allocation.invoiceId())
+                        .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Invoice not found"));
                 if (invoice.getDealer() == null || !invoice.getDealer().getId().equals(dealer.getId())) {
                     throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Invoice does not belong to the dealer");
                 }
@@ -774,12 +783,9 @@ public class AccountingService {
                 if (cleared.compareTo(BigDecimal.ZERO) < 0) {
                     cleared = BigDecimal.ZERO;
                 }
-                BigDecimal currentOutstanding = MoneyUtils.zeroIfNull(invoice.getOutstandingAmount());
-                BigDecimal updatedOutstanding = currentOutstanding.subtract(cleared);
-                if (updatedOutstanding.compareTo(BigDecimal.ZERO) < 0) {
-                    updatedOutstanding = BigDecimal.ZERO;
-                }
-                invoice.setOutstandingAmount(updatedOutstanding);
+                // Use centralized policy for settlement - handles status transitions
+                String settlementRef = trimmedIdempotencyKey + "-INV-" + invoice.getId();
+                invoiceSettlementPolicy.applySettlement(invoice, cleared, settlementRef);
                 touchedInvoices.add(invoice);
             }
 
@@ -932,12 +938,9 @@ public class AccountingService {
         String trimmedIdempotencyKey = StringUtils.hasText(request.idempotencyKey())
                 ? request.idempotencyKey().trim()
                 : (StringUtils.hasText(request.referenceNumber()) ? request.referenceNumber().trim() : UUID.randomUUID().toString());
-        Supplier supplier = requireSupplier(company, request.supplierId());
-        Account payableAccount = supplier.getPayableAccount();
-        if (payableAccount == null) {
-            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
-                    "Supplier " + supplier.getName() + " is missing a payable account");
-        }
+        Supplier supplier = supplierRepository.lockByCompanyAndId(company, request.supplierId())
+                .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Supplier not found"));
+        Account payableAccount = requireSupplierPayable(supplier);
         Account cashAccount = requireAccount(company, request.cashAccountId());
         List<SettlementAllocationRequest> allocations = request.allocations();
         if (allocations == null || allocations.isEmpty()) {
@@ -1008,7 +1011,8 @@ public class AccountingService {
 
             RawMaterialPurchase purchase = null;
             if (allocation.purchaseId() != null) {
-                purchase = companyEntityLookup.requireRawMaterialPurchase(company, allocation.purchaseId());
+                purchase = rawMaterialPurchaseRepository.lockByCompanyAndId(company, allocation.purchaseId())
+                        .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Raw material purchase not found"));
                 if (purchase.getSupplier() == null || !purchase.getSupplier().getId().equals(supplier.getId())) {
                     throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Purchase does not belong to the supplier");
                 }
@@ -1307,6 +1311,22 @@ public class AccountingService {
         eventPublisher.publishEvent(new AccountCacheInvalidatedEvent(companyId));
     }
 
+    private Account requireDealerReceivable(Dealer dealer) {
+        if (dealer == null || dealer.getReceivableAccount() == null) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                    "Dealer " + (dealer != null ? dealer.getName() : "unknown") + " is missing a receivable account");
+        }
+        return dealer.getReceivableAccount();
+    }
+
+    private Account requireSupplierPayable(Supplier supplier) {
+        if (supplier == null || supplier.getPayableAccount() == null) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                    "Supplier " + (supplier != null ? supplier.getName() : "unknown") + " is missing a payable account");
+        }
+        return supplier.getPayableAccount();
+    }
+
     private String resolveJournalReference(Company company, String provided) {
         if (StringUtils.hasText(provided)) {
             return provided.trim();
@@ -1497,9 +1517,7 @@ public class AccountingService {
         Company company = companyContextService.requireCurrentCompany();
         Invoice invoice = companyEntityLookup.requireInvoice(company, request.invoiceId());
         Dealer dealer = invoice.getDealer();
-        if (dealer == null || dealer.getReceivableAccount() == null) {
-            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Invoice dealer missing receivable account");
-        }
+        Account ar = requireDealerReceivable(dealer);
         String reference = resolveJournalReference(company,
                 StringUtils.hasText(request.idempotencyKey()) ? request.idempotencyKey() : request.referenceNumber());
         Optional<JournalEntry> existing = journalEntryRepository.findByCompanyAndReferenceNumber(company, reference);
@@ -1507,7 +1525,6 @@ public class AccountingService {
             return toDto(existing.get());
         }
         Account expense = requireAccount(company, request.expenseAccountId());
-        Account ar = dealer.getReceivableAccount();
         LocalDate entryDate = request.entryDate() != null ? request.entryDate() : currentDate(company);
         String memo = StringUtils.hasText(request.memo()) ? request.memo().trim() : "Bad debt write-off for invoice " + invoice.getInvoiceNumber();
         BigDecimal amount = request.amount();

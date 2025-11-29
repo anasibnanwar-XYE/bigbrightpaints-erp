@@ -4,9 +4,11 @@ import com.bigbrightpaints.erp.modules.company.domain.Company;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
@@ -18,4 +20,9 @@ public interface RawMaterialRepository extends JpaRepository<RawMaterial, Long> 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select rm from RawMaterial rm where rm.company = :company and rm.id = :id")
     Optional<RawMaterial> lockByCompanyAndId(@Param("company") Company company, @Param("id") Long id);
+
+    @Modifying
+    @Query("UPDATE RawMaterial rm SET rm.currentStock = rm.currentStock - :quantity, rm.updatedAt = CURRENT_TIMESTAMP " +
+           "WHERE rm.id = :id AND rm.currentStock >= :quantity")
+    int deductStockIfSufficient(@Param("id") Long id, @Param("quantity") BigDecimal quantity);
 }

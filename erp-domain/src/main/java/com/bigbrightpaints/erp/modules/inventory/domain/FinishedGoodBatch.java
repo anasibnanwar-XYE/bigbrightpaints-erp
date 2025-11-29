@@ -44,6 +44,10 @@ public class FinishedGoodBatch extends VersionedEntity {
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "inventory_type", nullable = false)
+    private InventoryType inventoryType = InventoryType.STANDARD;
+
     @PrePersist
     public void prePersist() {
         if (publicId == null) {
@@ -89,6 +93,8 @@ public class FinishedGoodBatch extends VersionedEntity {
     public void setManufacturedAt(Instant manufacturedAt) { this.manufacturedAt = manufacturedAt; }
     public LocalDate getExpiryDate() { return expiryDate; }
     public void setExpiryDate(LocalDate expiryDate) { this.expiryDate = expiryDate; }
+    public InventoryType getInventoryType() { return inventoryType; }
+    public void setInventoryType(InventoryType inventoryType) { this.inventoryType = inventoryType; }
 
     /**
      * Allocate quantity from this batch in a single step, preventing negatives.

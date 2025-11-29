@@ -1,21 +1,32 @@
 package com.bigbrightpaints.erp.modules.inventory.domain;
 
 import com.bigbrightpaints.erp.modules.company.domain.Company;
+import org.springframework.data.jpa.repository.EntityGraph;
+import jakarta.persistence.LockModeType;
+import jakarta.persistence.QueryHint;
+import org.springframework.data.jpa.repository.QueryHints;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-
-import jakarta.persistence.LockModeType;
 import java.util.List;
 import java.util.Optional;
 
 public interface PackagingSlipRepository extends JpaRepository<PackagingSlip, Long> {
+    @EntityGraph(attributePaths = {"salesOrder", "salesOrder.dealer", "lines", "lines.finishedGoodBatch"})
     List<PackagingSlip> findByCompanyOrderByCreatedAtDesc(Company company);
+    @EntityGraph(attributePaths = {"salesOrder", "salesOrder.dealer", "lines", "lines.finishedGoodBatch"})
     Optional<PackagingSlip> findByIdAndCompany(Long id, Company company);
+    @EntityGraph(attributePaths = {"salesOrder", "salesOrder.dealer", "lines", "lines.finishedGoodBatch"})
     Optional<PackagingSlip> findBySalesOrderId(Long orderId);
+    List<PackagingSlip> findAllBySalesOrderId(Long orderId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select p from PackagingSlip p where p.salesOrder.id = :orderId")
-    Optional<PackagingSlip> findAndLockBySalesOrderId(@Param("orderId") Long orderId);
+    @QueryHints({@QueryHint(name = "javax.persistence.lock.timeout", value = "5000")})
+    @Query("select p from PackagingSlip p left join fetch p.salesOrder where p.salesOrder.id = :orderId and p.company = :company")
+    Optional<PackagingSlip> findAndLockBySalesOrderId(@Param("orderId") Long orderId, @Param("company") Company company);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select p from PackagingSlip p where p.id = :id and p.company = :company")
+    Optional<PackagingSlip> findAndLockByIdAndCompany(@Param("id") Long id, @Param("company") Company company);
 }

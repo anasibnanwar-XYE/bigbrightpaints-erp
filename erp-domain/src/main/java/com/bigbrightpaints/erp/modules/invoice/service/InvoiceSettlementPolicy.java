@@ -7,6 +7,11 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Objects;
 
+/**
+ * Centralized policy for invoice status transitions and payment handling.
+ * All invoice payment/settlement operations should go through this policy
+ * to ensure consistent status management.
+ */
 @Component
 public class InvoiceSettlementPolicy {
 
@@ -26,6 +31,15 @@ public class InvoiceSettlementPolicy {
         invoice.setStatus(InvoiceStatus.ISSUED.name());
     }
 
+    /**
+     * Apply a payment/settlement to an invoice.
+     * Updates outstanding amount and transitions status appropriately.
+     * Idempotent - duplicate references are silently ignored.
+     *
+     * @param invoice The invoice to apply payment to (must be locked by caller)
+     * @param amount The payment amount (must be positive)
+     * @param reference Unique payment reference for idempotency
+     */
     public void applyPayment(Invoice invoice, BigDecimal amount, String reference) {
         validatePositive(amount, "payment amount");
         validateReference(reference);
@@ -35,17 +49,59 @@ public class InvoiceSettlementPolicy {
         if (invoice.getPaymentReferences().contains(reference)) {
             return; // idempotent reprocessing
         }
-        if (amount.compareTo(invoice.getOutstandingAmount()) > 0) {
+        BigDecimal currentOutstanding = invoice.getOutstandingAmount() != null 
+                ? invoice.getOutstandingAmount() : BigDecimal.ZERO;
+        if (amount.compareTo(currentOutstanding) > 0) {
             throw new IllegalArgumentException("Payment exceeds outstanding amount");
         }
         invoice.getPaymentReferences().add(reference);
-        BigDecimal newOutstanding = invoice.getOutstandingAmount().subtract(amount);
+        BigDecimal newOutstanding = currentOutstanding.subtract(amount);
         invoice.setOutstandingAmount(newOutstanding);
-        if (newOutstanding.compareTo(BigDecimal.ZERO) == 0) {
+        updateStatusFromOutstanding(invoice, newOutstanding);
+    }
+
+    /**
+     * Apply a settlement clearing (payment + discount + write-off + fx adjustment).
+     * Used by AccountingService for dealer/supplier settlements.
+     *
+     * @param invoice The invoice to settle (must be locked by caller)
+     * @param clearedAmount Total cleared amount (applied + discount + write-off + fx)
+     * @param reference Settlement reference for tracking
+     */
+    public void applySettlement(Invoice invoice, BigDecimal clearedAmount, String reference) {
+        if (clearedAmount == null || clearedAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+        if (isVoid(invoice)) {
+            throw new IllegalStateException("Cannot settle a void invoice");
+        }
+        BigDecimal currentOutstanding = invoice.getOutstandingAmount() != null 
+                ? invoice.getOutstandingAmount() : BigDecimal.ZERO;
+        BigDecimal newOutstanding = currentOutstanding.subtract(clearedAmount);
+        if (newOutstanding.compareTo(BigDecimal.ZERO) < 0) {
+            newOutstanding = BigDecimal.ZERO;
+        }
+        invoice.setOutstandingAmount(newOutstanding);
+        if (reference != null && !reference.isBlank()) {
+            invoice.getPaymentReferences().add(reference);
+        }
+        updateStatusFromOutstanding(invoice, newOutstanding);
+    }
+
+    /**
+     * Update invoice status based on outstanding amount.
+     * Call this after any modification to outstanding amount.
+     */
+    public void updateStatusFromOutstanding(Invoice invoice, BigDecimal outstanding) {
+        if (isVoid(invoice)) {
+            return; // Don't change void status
+        }
+        if (outstanding == null || outstanding.compareTo(BigDecimal.ZERO) <= 0) {
             invoice.setStatus(InvoiceStatus.PAID.name());
-        } else {
+        } else if (outstanding.compareTo(invoice.getTotalAmount()) < 0) {
             invoice.setStatus(InvoiceStatus.PARTIAL.name());
         }
+        // Keep ISSUED status if no payment applied yet
     }
 
     public void applyCredit(Invoice invoice, BigDecimal amount, String reference) {

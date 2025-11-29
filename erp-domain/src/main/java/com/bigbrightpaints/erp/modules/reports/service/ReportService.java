@@ -76,6 +76,7 @@ public class ReportService {
         this.companyEntityLookup = companyEntityLookup;
     }
 
+    @Transactional(readOnly = true)
     public BalanceSheetDto balanceSheet() {
         Company company = companyContextService.requireCurrentCompany();
         BigDecimal assets = aggregateAccountType(company, AccountType.ASSET);
@@ -84,6 +85,7 @@ public class ReportService {
         return new BalanceSheetDto(assets, liabilities, equity);
     }
 
+    @Transactional(readOnly = true)
     public ProfitLossDto profitLoss() {
         Company company = companyContextService.requireCurrentCompany();
         BigDecimal revenue = aggregateAccountType(company, AccountType.REVENUE);
@@ -187,6 +189,7 @@ public class ReportService {
         return new ReconciliationSummaryDto(totals.totalValue(), ledgerBalance, variance);
     }
 
+    @Transactional(readOnly = true)
     public List<BalanceWarningDto> balanceWarnings() {
         Company company = companyContextService.requireCurrentCompany();
         List<Account> accounts = accountRepository.findByCompanyOrderByCodeAsc(company);
@@ -216,6 +219,7 @@ public class ReportService {
         return warnings;
     }
 
+    @Transactional(readOnly = true)
     public ReconciliationDashboardDto reconciliationDashboard(Long bankAccountId, BigDecimal statementBalance) {
         Company company = companyContextService.requireCurrentCompany();
         Account bankAccount = companyEntityLookup.requireAccount(company, bankAccountId);

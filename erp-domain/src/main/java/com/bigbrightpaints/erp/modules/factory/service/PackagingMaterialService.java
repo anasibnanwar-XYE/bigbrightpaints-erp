@@ -1,0 +1,258 @@
+package com.bigbrightpaints.erp.modules.factory.service;
+
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
+import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.factory.domain.PackagingSizeMapping;
+import com.bigbrightpaints.erp.modules.factory.domain.PackagingSizeMappingRepository;
+import com.bigbrightpaints.erp.modules.factory.dto.PackagingConsumptionResult;
+import com.bigbrightpaints.erp.modules.factory.dto.PackagingSizeMappingDto;
+import com.bigbrightpaints.erp.modules.factory.dto.PackagingSizeMappingRequest;
+import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReference;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovement;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.List;
+import java.util.Optional;
+
+@Service
+public class PackagingMaterialService {
+
+    private final CompanyContextService companyContextService;
+    private final PackagingSizeMappingRepository mappingRepository;
+    private final RawMaterialRepository rawMaterialRepository;
+    private final RawMaterialBatchRepository rawMaterialBatchRepository;
+    private final RawMaterialMovementRepository rawMaterialMovementRepository;
+
+    public PackagingMaterialService(CompanyContextService companyContextService,
+                                    PackagingSizeMappingRepository mappingRepository,
+                                    RawMaterialRepository rawMaterialRepository,
+                                    RawMaterialBatchRepository rawMaterialBatchRepository,
+                                    RawMaterialMovementRepository rawMaterialMovementRepository) {
+        this.companyContextService = companyContextService;
+        this.mappingRepository = mappingRepository;
+        this.rawMaterialRepository = rawMaterialRepository;
+        this.rawMaterialBatchRepository = rawMaterialBatchRepository;
+        this.rawMaterialMovementRepository = rawMaterialMovementRepository;
+    }
+
+    public List<PackagingSizeMappingDto> listMappings() {
+        Company company = companyContextService.requireCurrentCompany();
+        return mappingRepository.findByCompanyOrderByPackagingSizeAsc(company).stream()
+                .map(this::toDto)
+                .toList();
+    }
+
+    public List<PackagingSizeMappingDto> listActiveMappings() {
+        Company company = companyContextService.requireCurrentCompany();
+        return mappingRepository.findByCompanyAndActiveOrderByPackagingSizeAsc(company, true).stream()
+                .map(this::toDto)
+                .toList();
+    }
+
+    @Transactional
+    public PackagingSizeMappingDto createMapping(PackagingSizeMappingRequest request) {
+        Company company = companyContextService.requireCurrentCompany();
+        String normalizedSize = normalizePackagingSize(request.packagingSize());
+        
+        if (mappingRepository.existsByCompanyAndPackagingSizeIgnoreCase(company, normalizedSize)) {
+            throw new ApplicationException(ErrorCode.DUPLICATE_ENTITY,
+                    "Packaging size mapping already exists for: " + normalizedSize);
+        }
+
+        RawMaterial rawMaterial = rawMaterialRepository.findById(request.rawMaterialId())
+                .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                        "Raw material not found"));
+        
+        if (!rawMaterial.getCompany().getId().equals(company.getId())) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                    "Raw material does not belong to this company");
+        }
+
+        PackagingSizeMapping mapping = new PackagingSizeMapping();
+        mapping.setCompany(company);
+        mapping.setPackagingSize(normalizedSize);
+        mapping.setRawMaterial(rawMaterial);
+        mapping.setUnitsPerPack(request.unitsPerPack() != null ? request.unitsPerPack() : 1);
+        mapping.setCartonSize(request.cartonSize());
+        mapping.setLitersPerUnit(request.litersPerUnit());
+        mapping.setActive(true);
+
+        return toDto(mappingRepository.save(mapping));
+    }
+
+    @Transactional
+    public PackagingSizeMappingDto updateMapping(Long id, PackagingSizeMappingRequest request) {
+        Company company = companyContextService.requireCurrentCompany();
+        PackagingSizeMapping mapping = mappingRepository.findByCompanyAndId(company, id)
+                .orElseThrow(() -> new ApplicationException(ErrorCode.BUSINESS_ENTITY_NOT_FOUND, "Mapping not found"));
+
+        if (request.rawMaterialId() != null) {
+            RawMaterial rawMaterial = rawMaterialRepository.findById(request.rawMaterialId())
+                    .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                            "Raw material not found"));
+            if (!rawMaterial.getCompany().getId().equals(company.getId())) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                        "Raw material does not belong to this company");
+            }
+            mapping.setRawMaterial(rawMaterial);
+        }
+
+        if (request.unitsPerPack() != null) {
+            mapping.setUnitsPerPack(request.unitsPerPack());
+        }
+        if (request.cartonSize() != null) {
+            mapping.setCartonSize(request.cartonSize());
+        }
+        if (request.litersPerUnit() != null) {
+            mapping.setLitersPerUnit(request.litersPerUnit());
+        }
+
+        return toDto(mappingRepository.save(mapping));
+    }
+
+    @Transactional
+    public void deactivateMapping(Long id) {
+        Company company = companyContextService.requireCurrentCompany();
+        PackagingSizeMapping mapping = mappingRepository.findByCompanyAndId(company, id)
+                .orElseThrow(() -> new ApplicationException(ErrorCode.BUSINESS_ENTITY_NOT_FOUND, "Mapping not found"));
+        mapping.setActive(false);
+        mappingRepository.save(mapping);
+    }
+
+    /**
+     * Consume packaging material (buckets) for a packing operation.
+     * 
+     * @param packagingSize The packaging size (e.g., "1L", "5L", "10L")
+     * @param piecesCount Number of pieces/buckets to consume
+     * @param referenceId Reference ID for the movement (e.g., production code)
+     * @return Consumption result with cost and material details
+     */
+    @Transactional
+    public PackagingConsumptionResult consumePackagingMaterial(
+            String packagingSize, 
+            int piecesCount, 
+            String referenceId) {
+        
+        Company company = companyContextService.requireCurrentCompany();
+        String normalizedSize = normalizePackagingSize(packagingSize);
+        
+        Optional<PackagingSizeMapping> mappingOpt = mappingRepository
+                .findByCompanyAndPackagingSizeIgnoreCase(company, normalizedSize);
+        
+        if (mappingOpt.isEmpty()) {
+            // No mapping configured - return zero cost (packaging not tracked)
+            return new PackagingConsumptionResult(
+                    null, null, BigDecimal.ZERO, BigDecimal.ZERO, null,
+                    "No packaging material mapping configured for size: " + normalizedSize);
+        }
+
+        PackagingSizeMapping mapping = mappingOpt.get();
+        RawMaterial bucket = rawMaterialRepository.lockByCompanyAndId(company, mapping.getRawMaterial().getId())
+                .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                        "Packaging material not found: " + mapping.getRawMaterial().getSku()));
+
+        BigDecimal requiredQty = BigDecimal.valueOf(piecesCount)
+                .multiply(BigDecimal.valueOf(mapping.getUnitsPerPack()));
+        
+        if (bucket.getCurrentStock().compareTo(requiredQty) < 0) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    String.format("Insufficient %s buckets. Need: %s, Available: %s",
+                            normalizedSize, requiredQty, bucket.getCurrentStock()));
+        }
+
+        // Issue from batches (FIFO) and calculate cost
+        BigDecimal totalCost = issueFromBatches(bucket, requiredQty, referenceId);
+        
+        // Deduct from bucket stock
+        bucket.setCurrentStock(bucket.getCurrentStock().subtract(requiredQty));
+        rawMaterialRepository.save(bucket);
+
+        return new PackagingConsumptionResult(
+                bucket.getId(),
+                bucket.getInventoryAccountId(),
+                requiredQty,
+                totalCost,
+                bucket.getSku(),
+                null);
+    }
+
+    private BigDecimal issueFromBatches(RawMaterial rawMaterial, BigDecimal requiredQty, String referenceId) {
+        List<RawMaterialBatch> batches = rawMaterialBatchRepository.findAvailableBatchesFIFO(rawMaterial);
+        BigDecimal remaining = requiredQty;
+        BigDecimal totalCost = BigDecimal.ZERO;
+
+        for (RawMaterialBatch batch : batches) {
+            if (remaining.compareTo(BigDecimal.ZERO) <= 0) {
+                break;
+            }
+            BigDecimal available = Optional.ofNullable(batch.getQuantity()).orElse(BigDecimal.ZERO);
+            if (available.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+            BigDecimal take = available.min(remaining);
+            BigDecimal unitCost = Optional.ofNullable(batch.getCostPerUnit()).orElse(BigDecimal.ZERO);
+            BigDecimal movementCost = unitCost.multiply(take);
+
+            // Atomic deduction
+            int updated = rawMaterialBatchRepository.deductQuantityIfSufficient(batch.getId(), take);
+            if (updated == 0) {
+                throw new ApplicationException(ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
+                        "Concurrent modification detected for packaging batch " + batch.getBatchCode());
+            }
+
+            // Record movement
+            RawMaterialMovement movement = new RawMaterialMovement();
+            movement.setRawMaterial(rawMaterial);
+            movement.setRawMaterialBatch(batch);
+            movement.setReferenceType(InventoryReference.PACKING_RECORD);
+            movement.setReferenceId(referenceId);
+            movement.setMovementType("ISSUE");
+            movement.setQuantity(take);
+            movement.setUnitCost(unitCost);
+            rawMaterialMovementRepository.save(movement);
+
+            totalCost = totalCost.add(movementCost);
+            remaining = remaining.subtract(take);
+        }
+
+        if (remaining.compareTo(BigDecimal.ZERO) > 0) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Insufficient batch availability for packaging material " + rawMaterial.getSku());
+        }
+
+        return totalCost.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private String normalizePackagingSize(String size) {
+        if (size == null || size.isBlank()) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Packaging size is required");
+        }
+        return size.trim().toUpperCase();
+    }
+
+    private PackagingSizeMappingDto toDto(PackagingSizeMapping mapping) {
+        RawMaterial rm = mapping.getRawMaterial();
+        return new PackagingSizeMappingDto(
+                mapping.getId(),
+                mapping.getPublicId(),
+                mapping.getPackagingSize(),
+                rm.getId(),
+                rm.getSku(),
+                rm.getName(),
+                mapping.getUnitsPerPack(),
+                mapping.getCartonSize(),
+                mapping.getLitersPerUnit(),
+                mapping.isActive()
+        );
+    }
+}

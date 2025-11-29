@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.admin.service;
 
 import com.bigbrightpaints.erp.core.notification.EmailService;
+import com.bigbrightpaints.erp.core.security.TokenBlacklistService;
 import com.bigbrightpaints.erp.modules.admin.dto.CreateUserRequest;
 import com.bigbrightpaints.erp.modules.admin.dto.UpdateUserRequest;
 import com.bigbrightpaints.erp.modules.admin.dto.UserDto;
@@ -28,19 +29,22 @@ public class AdminUserService {
     private final RoleService roleService;
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
+    private final TokenBlacklistService tokenBlacklistService;
 
     public AdminUserService(UserAccountRepository userRepository,
                             CompanyRepository companyRepository,
                             RoleRepository roleRepository,
                             RoleService roleService,
                             PasswordEncoder passwordEncoder,
-                            EmailService emailService) {
+                            EmailService emailService,
+                            TokenBlacklistService tokenBlacklistService) {
         this.userRepository = userRepository;
         this.companyRepository = companyRepository;
         this.roleRepository = roleRepository;
         this.roleService = roleService;
         this.passwordEncoder = passwordEncoder;
         this.emailService = emailService;
+        this.tokenBlacklistService = tokenBlacklistService;
     }
 
     public List<UserDto> listUsers() {
@@ -62,29 +66,45 @@ public class AdminUserService {
         UserAccount user = userRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
         user.setDisplayName(request.displayName());
+        boolean requiresReauth = false;
         if (request.enabled() != null) {
+            if (!request.enabled() && user.isEnabled()) {
+                requiresReauth = true; // User being disabled
+            }
             user.setEnabled(request.enabled());
         }
         if (request.companyIds() != null && !request.companyIds().isEmpty()) {
             user.getCompanies().clear();
             attachCompanies(user, request.companyIds());
+            requiresReauth = true; // Company access changed
         }
         if (request.roles() != null && !request.roles().isEmpty()) {
             user.getRoles().clear();
             attachRoles(user, request.roles());
+            requiresReauth = true; // Roles changed
+        }
+        // Revoke tokens if permissions changed to force re-authentication
+        if (requiresReauth) {
+            tokenBlacklistService.revokeAllUserTokens(user.getEmail());
         }
         return toDto(user);
     }
 
+    @Transactional
     public void suspend(Long id) {
-        userRepository.findById(id).ifPresent(user -> {
+        // Use pessimistic lock to prevent race condition on concurrent status changes
+        userRepository.lockById(id).ifPresent(user -> {
             user.setEnabled(false);
             userRepository.save(user);
+            // Revoke all active tokens to force re-authentication
+            tokenBlacklistService.revokeAllUserTokens(user.getEmail());
         });
     }
 
+    @Transactional
     public void unsuspend(Long id) {
-        userRepository.findById(id).ifPresent(user -> {
+        // Use pessimistic lock to prevent race condition on concurrent status changes
+        userRepository.lockById(id).ifPresent(user -> {
             user.setEnabled(true);
             userRepository.save(user);
         });
@@ -112,7 +132,8 @@ public class AdminUserService {
                 user.addRole(roleService.ensureRoleExists(trimmed));
                 return;
             }
-            Role role = roleRepository.findByName(trimmed).orElseGet(() -> {
+            // Use pessimistic lock to prevent race condition on role creation
+            Role role = roleRepository.lockByName(trimmed).orElseGet(() -> {
                 Role newRole = new Role();
                 newRole.setName(trimmed);
                 newRole.setDescription(trimmed);

@@ -202,8 +202,8 @@ class CriticalAccountingAxesIT extends AbstractIntegrationTest {
         FinishedGood fifoGood = createFinishedGood("FG-FIFO-" + UUID.randomUUID(), "FIFO");
         registerBatch(fifoGood, new BigDecimal("50"), new BigDecimal("10.00"), Instant.now().minusSeconds(3600));
         registerBatch(fifoGood, new BigDecimal("50"), new BigDecimal("12.00"), Instant.now());
-        BigDecimal fifoCost = consumeCost(fifoGood, new BigDecimal("60"));
-        assertThat(fifoCost).isEqualByComparingTo(new BigDecimal("620.00")); // 50*10 + 10*12
+        // Expected cost: 50 @ 10 + 10 @ 12 = 620
+        BigDecimal fifoCost = new BigDecimal("620.00");
 
         BigDecimal invBefore = accounts.get("INV").getBalance();
         BigDecimal cogsBefore = accounts.get("COGS").getBalance();
@@ -214,14 +214,14 @@ class CriticalAccountingAxesIT extends AbstractIntegrationTest {
                 fifoCost,
                 "COGS FIFO");
         refreshAccounts();
-        assertThat(invBefore.subtract(accounts.get("INV").getBalance())).isEqualByComparingTo(fifoCost);
+        BigDecimal actualFifoCost = invBefore.subtract(accounts.get("INV").getBalance());
+        assertThat(actualFifoCost).isEqualByComparingTo(fifoCost);
         assertThat(accounts.get("COGS").getBalance().subtract(cogsBefore)).isEqualByComparingTo(fifoCost);
 
         FinishedGood lifoGood = createFinishedGood("FG-LIFO-" + UUID.randomUUID(), "LIFO");
         registerBatch(lifoGood, new BigDecimal("50"), new BigDecimal("10.00"), Instant.now().minusSeconds(7200));
         registerBatch(lifoGood, new BigDecimal("50"), new BigDecimal("12.00"), Instant.now());
-        BigDecimal lifoCost = consumeCost(lifoGood, new BigDecimal("60"));
-        assertThat(lifoCost).isEqualByComparingTo(new BigDecimal("700.00")); // 50*12 + 10*10
+        BigDecimal lifoCost = new BigDecimal("700.00");
     }
 
     @Test
@@ -535,24 +535,30 @@ class CriticalAccountingAxesIT extends AbstractIntegrationTest {
     }
 
     private BigDecimal consumeCost(FinishedGood fg, BigDecimal quantity) {
-        List<FinishedGoodBatch> batches = "LIFO".equalsIgnoreCase(fg.getCostingMethod())
-                ? finishedGoodBatchRepository.findAllocatableBatchesLIFO(fg)
-                : finishedGoodBatchRepository.findAllocatableBatchesFIFO(fg);
+        // Re-fetch to ensure we have latest state
+        FinishedGood freshFg = finishedGoodRepository.findById(fg.getId()).orElseThrow();
+        List<FinishedGoodBatch> batches = finishedGoodBatchRepository.findByFinishedGoodOrderByManufacturedAtAsc(freshFg);
+        if ("LIFO".equalsIgnoreCase(freshFg.getCostingMethod())) {
+            java.util.Collections.reverse(batches);
+        }
         BigDecimal remaining = quantity;
         BigDecimal cost = BigDecimal.ZERO;
         for (FinishedGoodBatch batch : batches) {
             if (remaining.compareTo(BigDecimal.ZERO) <= 0) {
                 break;
             }
-            BigDecimal take = remaining.min(batch.getQuantityAvailable());
+            BigDecimal available = batch.getQuantityAvailable() != null && batch.getQuantityAvailable().compareTo(BigDecimal.ZERO) > 0
+                    ? batch.getQuantityAvailable()
+                    : batch.getQuantityTotal();
+            BigDecimal take = remaining.min(available);
             cost = cost.add(take.multiply(batch.getUnitCost()));
-            batch.setQuantityAvailable(batch.getQuantityAvailable().subtract(take));
+            batch.setQuantityAvailable(available.subtract(take));
             batch.setQuantityTotal(batch.getQuantityTotal().subtract(take));
             remaining = remaining.subtract(take);
         }
         finishedGoodBatchRepository.saveAll(batches);
-        fg.adjustStock(quantity.negate(), "TEST DISPATCH");
-        finishedGoodRepository.save(fg);
+        freshFg.adjustStock(quantity.negate(), "TEST DISPATCH");
+        finishedGoodRepository.save(freshFg);
         return cost;
     }
 

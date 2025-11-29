@@ -11,4 +11,5 @@ public record PayrollRunDto(Long id,
                             String processedBy,
                             String notes,
                             BigDecimal totalAmount,
-                            Long journalEntryId) {}
+                            Long journalEntryId,
+                            String idempotencyKey) {}

@@ -47,6 +47,10 @@ public class RawMaterialBatch extends VersionedEntity {
 
     private String notes;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "inventory_type", nullable = false)
+    private InventoryType inventoryType = InventoryType.STANDARD;
+
     @PrePersist
     public void prePersist() {
         if (publicId == null) {
@@ -134,5 +138,13 @@ public class RawMaterialBatch extends VersionedEntity {
 
     public void setNotes(String notes) {
         this.notes = notes;
+    }
+
+    public InventoryType getInventoryType() {
+        return inventoryType;
+    }
+
+    public void setInventoryType(InventoryType inventoryType) {
+        this.inventoryType = inventoryType;
     }
 }

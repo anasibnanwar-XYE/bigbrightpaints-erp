@@ -52,18 +52,18 @@ public class InvoicePdfService {
         }
 
         InvoiceView view = new InvoiceView(
-                company.getName(),
-                company.getCode(),
+                sanitizeForPdf(company.getName()),
+                sanitizeForPdf(company.getCode()),
                 "N/A",
                 "N/A",
                 "",
-                invoice.getInvoiceNumber(),
-                order != null ? order.getOrderNumber() : "-",
+                sanitizeForPdf(invoice.getInvoiceNumber()),
+                sanitizeForPdf(order != null ? order.getOrderNumber() : "-"),
                 invoice.getIssueDate(),
                 invoice.getDueDate(),
-                dealer != null ? dealer.getName() : "N/A",
-                dealer != null && dealer.getAddress() != null ? dealer.getAddress() : "N/A",
-                dealer != null && dealer.getPhone() != null ? dealer.getPhone() : "",
+                sanitizeForPdf(dealer != null ? dealer.getName() : "N/A"),
+                sanitizeForPdf(dealer != null && dealer.getAddress() != null ? dealer.getAddress() : "N/A"),
+                sanitizeForPdf(dealer != null && dealer.getPhone() != null ? dealer.getPhone() : ""),
                 lines,
                 subtotal,
                 discount,
@@ -88,7 +88,7 @@ public class InvoicePdfService {
             description = line.getProductCode() != null ? line.getProductCode() : "Item";
         }
         return new InvoiceLineView(
-                description,
+                sanitizeForPdf(description),
                 nonNull(line.getQuantity()),
                 nonNull(line.getUnitPrice()),
                 nonNull(line.getLineTotal()),
@@ -98,6 +98,19 @@ public class InvoicePdfService {
 
     private BigDecimal nonNull(BigDecimal value) {
         return value != null ? value : BigDecimal.ZERO;
+    }
+
+    private String sanitizeForPdf(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        // Basic HTML entity escaping for PDF safety
+        return value
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&#39;");
     }
 
     private byte[] renderPdf(String html) {

@@ -1,0 +1,25 @@
+package com.bigbrightpaints.erp.modules.factory.domain;
+
+import com.bigbrightpaints.erp.modules.company.domain.Company;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+import java.util.List;
+import java.util.Optional;
+
+public interface PackagingSizeMappingRepository extends JpaRepository<PackagingSizeMapping, Long> {
+
+    @Query("SELECT m FROM PackagingSizeMapping m WHERE m.company = :company AND UPPER(m.packagingSize) = UPPER(:size) AND m.active = true")
+    Optional<PackagingSizeMapping> findByCompanyAndPackagingSizeIgnoreCase(
+            @Param("company") Company company,
+            @Param("size") String packagingSize);
+
+    List<PackagingSizeMapping> findByCompanyAndActiveOrderByPackagingSizeAsc(Company company, boolean active);
+
+    List<PackagingSizeMapping> findByCompanyOrderByPackagingSizeAsc(Company company);
+
+    Optional<PackagingSizeMapping> findByCompanyAndId(Company company, Long id);
+
+    boolean existsByCompanyAndPackagingSizeIgnoreCase(Company company, String packagingSize);
+}

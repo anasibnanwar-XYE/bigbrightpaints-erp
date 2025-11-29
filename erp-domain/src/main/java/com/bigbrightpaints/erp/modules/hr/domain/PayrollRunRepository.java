@@ -12,4 +12,6 @@ public interface PayrollRunRepository extends JpaRepository<PayrollRun, Long> {
     Optional<PayrollRun> findByCompanyAndId(Company company, Long id);
     @EntityGraph(attributePaths = {"journalEntry", "journalEntry.lines", "journalEntry.lines.account"})
     Optional<PayrollRun> findById(Long id);
+
+    Optional<PayrollRun> findByCompanyAndIdempotencyKey(Company company, String idempotencyKey);
 }

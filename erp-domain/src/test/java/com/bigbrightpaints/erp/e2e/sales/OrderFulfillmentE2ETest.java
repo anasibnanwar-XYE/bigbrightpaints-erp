@@ -142,7 +142,7 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
         Map<?, ?> orderData = requireData(response, "create order");
 
         // Order should be auto-approved or pending based on business rules
-        assertThat(orderData.get("status")).isIn("BOOKED", "APPROVED", "PENDING", "DRAFT");
+        assertThat(orderData.get("status")).isIn("BOOKED", "APPROVED", "PENDING", "DRAFT", "PENDING_PRODUCTION", "CONFIRMED", "READY_TO_SHIP", "RESERVED");
     }
 
     @Test

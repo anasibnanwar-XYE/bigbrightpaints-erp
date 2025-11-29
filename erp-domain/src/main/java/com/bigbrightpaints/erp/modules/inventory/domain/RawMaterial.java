@@ -48,6 +48,16 @@ public class RawMaterial extends VersionedEntity {
     @Column(name = "inventory_account_id")
     private Long inventoryAccountId;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "inventory_type", nullable = false)
+    private InventoryType inventoryType = InventoryType.STANDARD;
+
+    @Column(name = "gst_rate")
+    private BigDecimal gstRate = BigDecimal.ZERO;
+
+    @Column(name = "private_stock", nullable = false)
+    private BigDecimal privateStock = BigDecimal.ZERO;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -153,5 +163,37 @@ public class RawMaterial extends VersionedEntity {
 
     public void setInventoryAccountId(Long inventoryAccountId) {
         this.inventoryAccountId = inventoryAccountId;
+    }
+
+    public InventoryType getInventoryType() {
+        return inventoryType;
+    }
+
+    public void setInventoryType(InventoryType inventoryType) {
+        this.inventoryType = inventoryType;
+    }
+
+    public BigDecimal getGstRate() {
+        return gstRate;
+    }
+
+    public void setGstRate(BigDecimal gstRate) {
+        this.gstRate = gstRate;
+    }
+
+    public BigDecimal getPrivateStock() {
+        return privateStock;
+    }
+
+    public void setPrivateStock(BigDecimal privateStock) {
+        if (privateStock == null) {
+            this.privateStock = BigDecimal.ZERO;
+        } else {
+            this.privateStock = privateStock.max(BigDecimal.ZERO);
+        }
+    }
+
+    public boolean isGstApplicable() {
+        return inventoryType == InventoryType.STANDARD;
     }
 }

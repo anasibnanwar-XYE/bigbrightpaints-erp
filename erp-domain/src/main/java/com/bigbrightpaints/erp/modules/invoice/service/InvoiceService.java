@@ -53,7 +53,8 @@ public class InvoiceService {
 
     @Transactional
     public InvoiceDto issueInvoiceForOrder(Long salesOrderId) {
-        Invoice existing = invoiceRepository.findBySalesOrderId(salesOrderId).orElse(null);
+        // Use pessimistic lock to prevent duplicate invoice creation race condition
+        Invoice existing = invoiceRepository.lockBySalesOrderId(salesOrderId).orElse(null);
         if (existing != null) {
             return toDto(existing);
         }
@@ -128,7 +129,8 @@ public class InvoiceService {
 
     public InvoiceDto getInvoice(Long id) {
         Company company = companyContextService.requireCurrentCompany();
-        Invoice invoice = companyEntityLookup.requireInvoice(company, id);
+        Invoice invoice = invoiceRepository.findByCompanyAndId(company, id)
+                .orElseGet(() -> companyEntityLookup.requireInvoice(company, id));
         return toDto(invoice);
     }
 

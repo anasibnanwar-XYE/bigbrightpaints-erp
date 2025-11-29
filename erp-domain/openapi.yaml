@@ -9,7 +9,7 @@ externalDocs:
   description: ERP Documentation
   url: https://docs.bigbrightpaints.com
 servers:
-- url: http://localhost:59412
+- url: http://localhost:49774
   description: Generated server url
 paths:
   /api/v1/suppliers/{id}:
@@ -236,6 +236,49 @@ paths:
       responses:
         "200":
           description: OK
+  /api/v1/finished-goods/{id}:
+    get:
+      tags:
+      - finished-good-controller
+      operationId: getFinishedGood
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseFinishedGoodDto"
+    put:
+      tags:
+      - finished-good-controller
+      operationId: updateFinishedGood
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FinishedGoodRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseFinishedGoodDto"
   /api/v1/factory/tasks/{id}:
     put:
       tags:
@@ -300,6 +343,74 @@ paths:
       responses:
         "200":
           description: OK
+  /api/v1/factory/packaging-mappings/{id}:
+    put:
+      tags:
+      - packaging-mapping-controller
+      operationId: updateMapping
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PackagingSizeMappingRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponsePackagingSizeMappingDto"
+    delete:
+      tags:
+      - packaging-mapping-controller
+      operationId: deactivateMapping
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseVoid"
+  /api/v1/dealers/{dealerId}:
+    put:
+      tags:
+      - dealer-controller
+      operationId: updateDealer
+      parameters:
+      - name: dealerId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDealerRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseDealerResponse"
   /api/v1/companies/{id}:
     put:
       tags:
@@ -1083,6 +1194,78 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ApiResponseEmployeeDto"
+  /api/v1/finished-goods:
+    get:
+      tags:
+      - finished-good-controller
+      operationId: listFinishedGoods
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseListFinishedGoodDto"
+    post:
+      tags:
+      - finished-good-controller
+      operationId: createFinishedGood
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FinishedGoodRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseFinishedGoodDto"
+  /api/v1/finished-goods/{id}/batches:
+    get:
+      tags:
+      - finished-good-controller
+      operationId: listBatches
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseListFinishedGoodBatchDto"
+    post:
+      tags:
+      - finished-good-controller
+      operationId: registerBatch
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FinishedGoodBatchRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseFinishedGoodBatchDto"
   /api/v1/factory/tasks:
     get:
       tags:
@@ -1243,6 +1426,35 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ApiResponseProductionLogDetailDto"
+  /api/v1/factory/packaging-mappings:
+    get:
+      tags:
+      - packaging-mapping-controller
+      operationId: listMappings
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseListPackagingSizeMappingDto"
+    post:
+      tags:
+      - packaging-mapping-controller
+      operationId: createMapping
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PackagingSizeMappingRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponsePackagingSizeMappingDto"
   /api/v1/factory/cost-allocation:
     post:
       tags:
@@ -1279,6 +1491,30 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ApiResponseDispatchConfirmationResponse"
+  /api/v1/dispatch/backorder/{slipId}/cancel:
+    post:
+      tags:
+      - dispatch-controller
+      operationId: cancelBackorder
+      parameters:
+      - name: slipId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - name: reason
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponsePackagingSlipDto"
   /api/v1/dealers:
     get:
       tags:
@@ -1843,6 +2079,20 @@ paths:
         schema:
           type: integer
           format: int64
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+      - name: size
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 100
       responses:
         "200":
           description: OK
@@ -2739,6 +2989,38 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ApiResponseListInvoiceDto"
+  /api/v1/finished-goods/stock-summary:
+    get:
+      tags:
+      - finished-good-controller
+      operationId: getStockSummary
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseListStockSummaryDto"
+  /api/v1/finished-goods/low-stock:
+    get:
+      tags:
+      - finished-good-controller
+      operationId: getLowStockItems
+      parameters:
+      - name: threshold
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 100
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseListFinishedGoodDto"
   /api/v1/factory/unpacked-batches:
     get:
       tags:
@@ -2789,6 +3071,18 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ApiResponseListPackingRecordDto"
+  /api/v1/factory/packaging-mappings/active:
+    get:
+      tags:
+      - packaging-mapping-controller
+      operationId: listActiveMappings
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseListPackagingSizeMappingDto"
   /api/v1/factory/dashboard:
     get:
       tags:
@@ -2901,6 +3195,44 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ApiResponseMapStringObject"
+  /api/v1/dealers/{dealerId}/invoices:
+    get:
+      tags:
+      - dealer-controller
+      operationId: dealerInvoices_1
+      parameters:
+      - name: dealerId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseMapStringObject"
+  /api/v1/dealers/{dealerId}/aging:
+    get:
+      tags:
+      - dealer-controller
+      operationId: dealerAging
+      parameters:
+      - name: dealerId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseMapStringObject"
   /api/v1/dealers/search:
     get:
       tags:
@@ -2920,6 +3252,54 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ApiResponseListDealerLookupResponse"
+  /api/v1/dealer-portal/ledger:
+    get:
+      tags:
+      - dealer-portal-controller
+      operationId: getMyLedger
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseMapStringObject"
+  /api/v1/dealer-portal/invoices:
+    get:
+      tags:
+      - dealer-portal-controller
+      operationId: getMyInvoices
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseMapStringObject"
+  /api/v1/dealer-portal/dashboard:
+    get:
+      tags:
+      - dealer-portal-controller
+      operationId: getDashboard
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseMapStringObject"
+  /api/v1/dealer-portal/aging:
+    get:
+      tags:
+      - dealer-portal-controller
+      operationId: getMyAging
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseMapStringObject"
   /api/v1/auth/me:
     get:
       tags:
@@ -3238,7 +3618,7 @@ paths:
     get:
       tags:
       - accounting-controller
-      operationId: dealerAging
+      operationId: dealerAging_1
       parameters:
       - name: dealerId
         in: path
@@ -3697,6 +4077,83 @@ components:
         hiredDate:
           type: string
           format: date
+    FinishedGoodRequest:
+      required:
+      - name
+      - productCode
+      type: object
+      properties:
+        productCode:
+          type: string
+        name:
+          type: string
+        unit:
+          type: string
+        costingMethod:
+          type: string
+        valuationAccountId:
+          type: integer
+          format: int64
+        cogsAccountId:
+          type: integer
+          format: int64
+        revenueAccountId:
+          type: integer
+          format: int64
+        discountAccountId:
+          type: integer
+          format: int64
+        taxAccountId:
+          type: integer
+          format: int64
+    ApiResponseFinishedGoodDto:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          $ref: "#/components/schemas/FinishedGoodDto"
+        timestamp:
+          type: string
+          format: date-time
+    FinishedGoodDto:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        publicId:
+          type: string
+          format: uuid
+        productCode:
+          type: string
+        name:
+          type: string
+        unit:
+          type: string
+        currentStock:
+          type: number
+        reservedStock:
+          type: number
+        costingMethod:
+          type: string
+        valuationAccountId:
+          type: integer
+          format: int64
+        cogsAccountId:
+          type: integer
+          format: int64
+        revenueAccountId:
+          type: integer
+          format: int64
+        discountAccountId:
+          type: integer
+          format: int64
+        taxAccountId:
+          type: integer
+          format: int64
     FactoryTaskRequest:
       required:
       - title
@@ -3799,6 +4256,121 @@ components:
         status:
           type: string
         notes:
+          type: string
+    PackagingSizeMappingRequest:
+      type: object
+      properties:
+        packagingSize:
+          type: string
+        rawMaterialId:
+          type: integer
+          format: int64
+        unitsPerPack:
+          type: integer
+          format: int32
+        cartonSize:
+          type: integer
+          format: int32
+        litersPerUnit:
+          type: number
+    ApiResponsePackagingSizeMappingDto:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          $ref: "#/components/schemas/PackagingSizeMappingDto"
+        timestamp:
+          type: string
+          format: date-time
+    PackagingSizeMappingDto:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        publicId:
+          type: string
+          format: uuid
+        packagingSize:
+          type: string
+        rawMaterialId:
+          type: integer
+          format: int64
+        rawMaterialSku:
+          type: string
+        rawMaterialName:
+          type: string
+        unitsPerPack:
+          type: integer
+          format: int32
+        cartonSize:
+          type: integer
+          format: int32
+        litersPerUnit:
+          type: number
+        active:
+          type: boolean
+    CreateDealerRequest:
+      required:
+      - companyName
+      - contactEmail
+      - contactPhone
+      - name
+      type: object
+      properties:
+        name:
+          type: string
+        companyName:
+          type: string
+        contactEmail:
+          type: string
+        contactPhone:
+          type: string
+        address:
+          type: string
+        creditLimit:
+          type: number
+    ApiResponseDealerResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          $ref: "#/components/schemas/DealerResponse"
+        timestamp:
+          type: string
+          format: date-time
+    DealerResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        publicId:
+          type: string
+          format: uuid
+        code:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        address:
+          type: string
+        creditLimit:
+          type: number
+        outstandingBalance:
+          type: number
+        portalEmail:
+          type: string
+        generatedPassword:
           type: string
     CompanyRequest:
       required:
@@ -4725,6 +5297,8 @@ components:
         journalEntryId:
           type: integer
           format: int64
+        idempotencyKey:
+          type: string
     LeaveRequestRequest:
       required:
       - endDate
@@ -4788,6 +5362,63 @@ components:
         createdAt:
           type: string
           format: date-time
+    FinishedGoodBatchRequest:
+      required:
+      - finishedGoodId
+      - quantity
+      - unitCost
+      type: object
+      properties:
+        finishedGoodId:
+          type: integer
+          format: int64
+        batchCode:
+          type: string
+        quantity:
+          type: number
+        unitCost:
+          type: number
+        manufacturedAt:
+          type: string
+          format: date-time
+        expiryDate:
+          type: string
+          format: date
+    ApiResponseFinishedGoodBatchDto:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          $ref: "#/components/schemas/FinishedGoodBatchDto"
+        timestamp:
+          type: string
+          format: date-time
+    FinishedGoodBatchDto:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        publicId:
+          type: string
+          format: uuid
+        batchCode:
+          type: string
+        quantityTotal:
+          type: number
+        quantityAvailable:
+          type: number
+        unitCost:
+          type: number
+        manufacturedAt:
+          type: string
+          format: date-time
+        expiryDate:
+          type: string
+          format: date
     MaterialUsageRequest:
       required:
       - quantity
@@ -5181,27 +5812,7 @@ components:
           type: number
         notes:
           type: string
-    CreateDealerRequest:
-      required:
-      - companyName
-      - contactEmail
-      - contactPhone
-      - name
-      type: object
-      properties:
-        name:
-          type: string
-        companyName:
-          type: string
-        contactEmail:
-          type: string
-        contactPhone:
-          type: string
-        address:
-          type: string
-        creditLimit:
-          type: number
-    ApiResponseDealerResponse:
+    ApiResponsePackagingSlipDto:
       type: object
       properties:
         success:
@@ -5209,11 +5820,11 @@ components:
         message:
           type: string
         data:
-          $ref: "#/components/schemas/DealerResponse"
+          $ref: "#/components/schemas/PackagingSlipDto"
         timestamp:
           type: string
           format: date-time
-    DealerResponse:
+    PackagingSlipDto:
       type: object
       properties:
         id:
@@ -5222,23 +5833,66 @@ components:
         publicId:
           type: string
           format: uuid
-        code:
+        salesOrderId:
+          type: integer
+          format: int64
+        orderNumber:
           type: string
-        name:
+        dealerName:
           type: string
-        email:
+        slipNumber:
           type: string
-        phone:
+        status:
           type: string
-        address:
+        createdAt:
           type: string
-        creditLimit:
+          format: date-time
+        confirmedAt:
+          type: string
+          format: date-time
+        confirmedBy:
+          type: string
+        dispatchedAt:
+          type: string
+          format: date-time
+        dispatchNotes:
+          type: string
+        journalEntryId:
+          type: integer
+          format: int64
+        cogsJournalEntryId:
+          type: integer
+          format: int64
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/PackagingSlipLineDto"
+    PackagingSlipLineDto:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        batchPublicId:
+          type: string
+          format: uuid
+        batchCode:
+          type: string
+        productCode:
+          type: string
+        productName:
+          type: string
+        orderedQuantity:
           type: number
-        outstandingBalance:
+        shippedQuantity:
           type: number
-        portalEmail:
-          type: string
-        generatedPassword:
+        backorderQuantity:
+          type: number
+        quantity:
+          type: number
+        unitCost:
+          type: number
+        notes:
           type: string
     ApiResponseMapStringObject:
       type: object
@@ -6515,88 +7169,6 @@ components:
       properties:
         status:
           type: string
-    ApiResponsePackagingSlipDto:
-      type: object
-      properties:
-        success:
-          type: boolean
-        message:
-          type: string
-        data:
-          $ref: "#/components/schemas/PackagingSlipDto"
-        timestamp:
-          type: string
-          format: date-time
-    PackagingSlipDto:
-      type: object
-      properties:
-        id:
-          type: integer
-          format: int64
-        publicId:
-          type: string
-          format: uuid
-        salesOrderId:
-          type: integer
-          format: int64
-        orderNumber:
-          type: string
-        dealerName:
-          type: string
-        slipNumber:
-          type: string
-        status:
-          type: string
-        createdAt:
-          type: string
-          format: date-time
-        confirmedAt:
-          type: string
-          format: date-time
-        confirmedBy:
-          type: string
-        dispatchedAt:
-          type: string
-          format: date-time
-        dispatchNotes:
-          type: string
-        journalEntryId:
-          type: integer
-          format: int64
-        cogsJournalEntryId:
-          type: integer
-          format: int64
-        lines:
-          type: array
-          items:
-            $ref: "#/components/schemas/PackagingSlipLineDto"
-    PackagingSlipLineDto:
-      type: object
-      properties:
-        id:
-          type: integer
-          format: int64
-        batchPublicId:
-          type: string
-          format: uuid
-        batchCode:
-          type: string
-        productCode:
-          type: string
-        productName:
-          type: string
-        orderedQuantity:
-          type: number
-        shippedQuantity:
-          type: number
-        backorderQuantity:
-          type: number
-        quantity:
-          type: number
-        unitCost:
-          type: number
-        notes:
-          type: string
     ApiResponseListSupplierResponse:
       type: object
       properties:
@@ -7053,6 +7625,24 @@ components:
     StockSummaryDto:
       type: object
       properties:
+        id:
+          type: integer
+          format: int64
+        publicId:
+          type: string
+          format: uuid
+        code:
+          type: string
+        name:
+          type: string
+        currentStock:
+          type: number
+        reservedStock:
+          type: number
+        availableStock:
+          type: number
+        weightedAverageCost:
+          type: number
         totalMaterials:
           type: integer
           format: int64
@@ -7472,6 +8062,48 @@ components:
         timestamp:
           type: string
           format: date-time
+    ApiResponseListFinishedGoodDto:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/FinishedGoodDto"
+        timestamp:
+          type: string
+          format: date-time
+    ApiResponseListFinishedGoodBatchDto:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/FinishedGoodBatchDto"
+        timestamp:
+          type: string
+          format: date-time
+    ApiResponseListStockSummaryDto:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/StockSummaryDto"
+        timestamp:
+          type: string
+          format: date-time
     ApiResponseListUnpackedBatchDto:
       type: object
       properties:
@@ -7649,6 +8281,20 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ProductionBatchDto"
+        timestamp:
+          type: string
+          format: date-time
+    ApiResponseListPackagingSizeMappingDto:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/PackagingSizeMappingDto"
         timestamp:
           type: string
           format: date-time
@@ -8127,6 +8773,18 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AccountDto"
+        timestamp:
+          type: string
+          format: date-time
+    ApiResponseVoid:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          type: object
         timestamp:
           type: string
           format: date-time

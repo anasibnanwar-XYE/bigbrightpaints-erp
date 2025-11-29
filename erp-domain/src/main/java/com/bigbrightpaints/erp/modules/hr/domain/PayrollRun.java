@@ -37,6 +37,9 @@ public class PayrollRun extends VersionedEntity {
     @Column(name = "total_amount", nullable = false)
     private BigDecimal totalAmount = BigDecimal.ZERO;
 
+    @Column
+    private String idempotencyKey;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "journal_entry_id")
     private JournalEntry journalEntry;
@@ -57,6 +60,27 @@ public class PayrollRun extends VersionedEntity {
         }
     }
 
+    @PreUpdate
+    public void preUpdate() {
+        if (!"PAID".equals(status) || journalEntry == null) {
+            return;
+        }
+
+        BigDecimal debitTotal = journalEntry.getLines().stream()
+                .map(line -> line.getDebit() == null ? BigDecimal.ZERO : line.getDebit())
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal creditTotal = journalEntry.getLines().stream()
+                .map(line -> line.getCredit() == null ? BigDecimal.ZERO : line.getCredit())
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        if (debitTotal.compareTo(creditTotal) != 0) {
+            throw new IllegalStateException("Payroll journal not balanced");
+        }
+        if (totalAmount.compareTo(debitTotal) != 0) {
+            throw new IllegalStateException("Payroll total does not match journal sum");
+        }
+    }
+
     public Long getId() { return id; }
     public UUID getPublicId() { return publicId; }
     public Company getCompany() { return company; }
@@ -71,6 +95,9 @@ public class PayrollRun extends VersionedEntity {
     public void setNotes(String notes) { this.notes = notes; }
     public BigDecimal getTotalAmount() { return totalAmount; }
     public void setTotalAmount(BigDecimal totalAmount) { this.totalAmount = totalAmount; }
+
+    public String getIdempotencyKey() { return idempotencyKey; }
+    public void setIdempotencyKey(String idempotencyKey) { this.idempotencyKey = idempotencyKey; }
     public JournalEntry getJournalEntry() { return journalEntry; }
     public void setJournalEntry(JournalEntry journalEntry) { this.journalEntry = journalEntry; }
     public java.util.List<com.bigbrightpaints.erp.modules.hr.domain.PayrollRunLine> getLines() { return lines; }

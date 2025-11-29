@@ -645,30 +645,21 @@ public class AccountingFacade {
 
         // Check for duplicate
         if (journalEntryRepository.findByCompanyAndReferenceNumber(company, reference).isPresent()) {
-            log.info("COGS journal already exists for reference: {}", reference);
-            return journalEntryRepository.findByCompanyAndReferenceNumber(company, reference)
-                    .map(this::toSimpleDto)
-                    .orElseThrow();
-        }
-
         // Build journal lines
         List<JournalEntryRequest.JournalLineRequest> lines = new ArrayList<>();
         String resolvedMemo = memo != null ? memo : "COGS for " + referenceId;
-
         // Dr: COGS
         lines.add(new JournalEntryRequest.JournalLineRequest(
                 cogsAccountId,
                 resolvedMemo,
                 cost,
                 BigDecimal.ZERO));
-
         // Cr: Inventory
         lines.add(new JournalEntryRequest.JournalLineRequest(
                 inventoryAcctId,
                 resolvedMemo,
                 BigDecimal.ZERO,
                 cost));
-
         JournalEntryRequest request = new JournalEntryRequest(
                 reference,
                 companyClock.today(company),
@@ -677,12 +668,7 @@ public class AccountingFacade {
                 null,
                 Boolean.FALSE,
                 lines);
-
         log.info("Posting COGS journal: reference={}, cost={}", reference, cost);
-
-        return accountingService.createJournalEntry(request);
-    }
-
     /**
      * Post sales return journal entry (Dr Revenue+Tax / Cr AR).
      *
@@ -703,43 +689,29 @@ public class AccountingFacade {
         Objects.requireNonNull(dealerId, "Dealer ID is required");
         Objects.requireNonNull(invoiceNumber, "Invoice number is required");
         Objects.requireNonNull(totalAmount, "Total amount is required");
-
         Company company = companyContextService.requireCurrentCompany();
         Dealer dealer = companyEntityLookup.requireDealer(company, dealerId);
-
         if (dealer.getReceivableAccount() == null) {
             throw new ApplicationException(ErrorCode.BUSINESS_CONSTRAINT_VIOLATION,
                     "Dealer missing receivable account")
                     .withDetail("dealerId", dealerId);
-        }
-
         // Generate reference number
         String reference = "CRN-" + invoiceNumber;
-
         // Check for duplicate
         if (journalEntryRepository.findByCompanyAndReferenceNumber(company, reference).isPresent()) {
             log.info("Sales return journal already exists for reference: {}", reference);
-            return journalEntryRepository.findByCompanyAndReferenceNumber(company, reference)
-                    .map(this::toSimpleDto)
-                    .orElseThrow();
-        }
-
         // Build journal lines
         List<JournalEntryRequest.JournalLineRequest> lines = new ArrayList<>();
         String reasonSuffix = StringUtils.hasText(reason) ? reason.trim() : "Return";
         String memo = reasonSuffix + " - " + invoiceNumber;
-
         // Dr: Revenue/Tax accounts (reverse the original entries)
         if (returnLines != null) {
-            returnLines.forEach((accountId, amount) -> {
                 if (amount.compareTo(BigDecimal.ZERO) > 0) {
                     lines.add(new JournalEntryRequest.JournalLineRequest(
                             accountId,
                             memo,
                             amount.abs(),
                             BigDecimal.ZERO));
-                }
-            });
         }
 
         // Cr: Accounts Receivable

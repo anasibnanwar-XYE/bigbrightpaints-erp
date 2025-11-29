@@ -114,67 +114,72 @@ public class CompanyEntityLookup {
 
     public Dealer requireDealer(Company company, Long dealerId) {
         return dealerRepository.findByCompanyAndId(company, dealerId)
-                .orElseThrow(() -> new IllegalArgumentException("Dealer not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Dealer not found: id=" + dealerId));
     }
 
     public Supplier requireSupplier(Company company, Long supplierId) {
         return supplierRepository.findByCompanyAndId(company, supplierId)
-                .orElseThrow(() -> new IllegalArgumentException("Supplier not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Supplier not found: id=" + supplierId));
     }
 
     public RawMaterial requireRawMaterial(Company company, Long rawMaterialId) {
         return rawMaterialRepository.findByCompanyAndId(company, rawMaterialId)
-                .orElseThrow(() -> new IllegalArgumentException("Raw material not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Raw material not found: id=" + rawMaterialId));
     }
 
     public SalesOrder requireSalesOrder(Company company, Long orderId) {
         return salesOrderRepository.findByCompanyAndId(company, orderId)
-                .orElseThrow(() -> new IllegalArgumentException("Sales order not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Sales order not found: id=" + orderId));
     }
 
     public Invoice requireInvoice(Company company, Long invoiceId) {
         return invoiceRepository.findByCompanyAndId(company, invoiceId)
-                .orElseThrow(() -> new IllegalArgumentException("Invoice not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Invoice not found: id=" + invoiceId));
     }
 
     public ProductionBrand requireProductionBrand(Company company, Long brandId) {
         return productionBrandRepository.findByCompanyAndId(company, brandId)
-                .orElseThrow(() -> new IllegalArgumentException("Production brand not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Production brand not found: id=" + brandId));
     }
 
     public ProductionProduct requireProductionProduct(Company company, Long productId) {
         return productionProductRepository.findByCompanyAndId(company, productId)
-                .orElseThrow(() -> new IllegalArgumentException("Production product not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Production product not found: id=" + productId));
     }
 
     public ProductionLog requireProductionLog(Company company, Long logId) {
         return productionLogRepository.findByCompanyAndId(company, logId)
-                .orElseThrow(() -> new IllegalArgumentException("Production log not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Production log not found: id=" + logId));
+    }
+
+    public ProductionLog lockProductionLog(Company company, Long logId) {
+        return productionLogRepository.lockByCompanyAndId(company, logId)
+                .orElseThrow(() -> new IllegalArgumentException("Production log not found: id=" + logId));
     }
 
     public Promotion requirePromotion(Company company, Long promotionId) {
         return promotionRepository.findByCompanyAndId(company, promotionId)
-                .orElseThrow(() -> new IllegalArgumentException("Promotion not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Promotion not found: id=" + promotionId));
     }
 
     public SalesTarget requireSalesTarget(Company company, Long targetId) {
         return salesTargetRepository.findByCompanyAndId(company, targetId)
-                .orElseThrow(() -> new IllegalArgumentException("Sales target not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Sales target not found: id=" + targetId));
     }
 
     public CreditRequest requireCreditRequest(Company company, Long creditRequestId) {
         return creditRequestRepository.findByCompanyAndId(company, creditRequestId)
-                .orElseThrow(() -> new IllegalArgumentException("Credit request not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Credit request not found: id=" + creditRequestId));
     }
 
     public Account requireAccount(Company company, Long accountId) {
         return accountRepository.findByCompanyAndId(company, accountId)
-                .orElseThrow(() -> new IllegalArgumentException("Account not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Account not found: id=" + accountId));
     }
 
     public JournalEntry requireJournalEntry(Company company, Long journalEntryId) {
         return journalEntryRepository.findByCompanyAndId(company, journalEntryId)
-                .orElseThrow(() -> new IllegalArgumentException("Journal entry not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Journal entry not found: id=" + journalEntryId));
     }
 
     public Optional<JournalEntry> findJournalEntryByReference(Company company, String referenceNumber) {
@@ -183,17 +188,17 @@ public class CompanyEntityLookup {
 
     public AccountingPeriod requireAccountingPeriod(Company company, Long accountingPeriodId) {
         return accountingPeriodRepository.findByCompanyAndId(company, accountingPeriodId)
-                .orElseThrow(() -> new IllegalArgumentException("Accounting period not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Accounting period not found: id=" + accountingPeriodId));
     }
 
     public PayrollRun requirePayrollRun(Company company, Long payrollRunId) {
         return payrollRunRepository.findByCompanyAndId(company, payrollRunId)
-                .orElseThrow(() -> new IllegalArgumentException("Payroll run not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Payroll run not found: id=" + payrollRunId));
     }
 
     public RawMaterialPurchase requireRawMaterialPurchase(Company company, Long purchaseId) {
         return rawMaterialPurchaseRepository.findByCompanyAndId(company, purchaseId)
-                .orElseThrow(() -> new IllegalArgumentException("Raw material purchase not found"));
+                .orElseThrow(() -> new IllegalArgumentException("Raw material purchase not found: id=" + purchaseId));
     }
 
     public ProductionPlan requireProductionPlan(Company company, Long planId) {
