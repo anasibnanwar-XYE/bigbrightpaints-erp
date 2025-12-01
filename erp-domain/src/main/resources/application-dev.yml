@@ -2,19 +2,22 @@ server:
   port: 8081
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5432/erp_domain
-    username: erp
-    password: erp
+    url: jdbc:postgresql://localhost:5432/bigbright_erp
+    username: postgres
+    password: Anas@2627
     driver-class-name: org.postgresql.Driver
   flyway:
     enabled: true
     locations: classpath:db/migration
 jwt:
-  # Default dev secret; override with JWT_SECRET env for real deployments. Must be >=32 bytes.
-  secret: ${JWT_SECRET:this-is-a-very-long-32-byte-secret-key-1234}
+  # 256-bit (32 bytes) secret for HS256. Override with JWT_SECRET env for production.
+  secret: ${JWT_SECRET:X9kPm2Tz7vQwYp4Rn6Jc8Df1Gh3Lw5Bv0sA}
   access-token-ttl-seconds: 3600
   refresh-token-ttl-seconds: 604800
 erp:
+  security:
+    encryption.key: ${ERP_ENCRYPTION_KEY:Qw3rTy9Xz8Uv2Kp6Jn4Hg7Df0Ls5Ma1B}
+    mfa.enabled: true
   dispatch:
     # Configure with realistic account IDs in your dev DB to enable dispatch journals
     debit-account-id: ${ERP_DISPATCH_DEBIT_ACCOUNT_ID:0}

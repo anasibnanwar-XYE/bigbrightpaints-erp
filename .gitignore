@@ -1,8 +1,10 @@
 # Local build and temp assets
 temp-maven/
+**/target/
 
 # Logs and runtime artifacts
 erp-domain/logs/
+*.log
 boot.log
 boot.err
 
@@ -11,6 +13,7 @@ boot.err
 
 # Misc
 backup-$
+headfile.txt
 
 # Nested repo (ignored)
 THE-ORCHESTRATOR-FOR-BBP/
@@ -19,6 +22,7 @@ THE-ORCHESTRATOR-FOR-BBP/
 .claude/
 .history/
 .vscode/
+.factory/
 
 # Downloaded JDKs
 .jdk-temurin/
@@ -27,6 +31,27 @@ temurin*.zip
 temurin*.tar.gz
 
 # Build outputs
-erp-domain/target/
 node_modules/
+
+# Environment and secrets
 .env
+.env.local
+.env.*.local
+application-dev.yml
+application-local.yml
+
+# Test files and data
+test-*.js
+*.json.bak
+journal.json
+login.json
+
+# Old/duplicate source (real code is in erp-domain/)
+/src/
+
+# Internal docs (not for repo)
+CRITICAL_BUGS_REPORT.md
+plan.md
+
+# Large generated files
+openapi.json

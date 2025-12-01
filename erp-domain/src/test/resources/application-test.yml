@@ -5,5 +5,28 @@ spring:
   quartz:
     enabled: false
 
+management:
+  health:
+    mail:
+      enabled: false
+    rabbit:
+      enabled: false
+    kafka:
+      enabled: false
+    diskspace:
+      enabled: false
+
 testcontainers:
   reuse: true
+
+jwt:
+  secret: "test-secret-should-be-at-least-32-bytes-long-1234"
+
+erp:
+  auto-approval:
+    enabled: false
+  security:
+    encryption:
+      key: "test-encryption-key-must-be-at-least-32-chars-long"
+    mfa:
+      enabled: false

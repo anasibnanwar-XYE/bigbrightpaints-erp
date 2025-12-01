@@ -49,8 +49,8 @@ spring:
   mail:
     host: ${SPRING_MAIL_HOST:smtp-relay.brevo.com}
     port: ${SPRING_MAIL_PORT:587}
-    username: ${SPRING_MAIL_USERNAME:}
-    password: ${SPRING_MAIL_PASSWORD:}
+    username: ${SPRING_MAIL_USERNAME:9baaf7001@smtp-brevo.com}
+    password: ${SPRING_MAIL_PASSWORD:njqUYK2FytD5ZVhA}
     properties:
       mail:
         smtp:
@@ -117,14 +117,16 @@ erp:
   auto-approval:
     enabled: ${ERP_AUTO_APPROVAL_ENABLED:true}
   mail:
-    enabled: ${ERP_MAIL_ENABLED:false}
-    from-address: ${ERP_MAIL_FROM:noreply@bigbrightpaints.com}
+    enabled: true
+    from-address: bigbrightpaints@gmail.com
     base-url: ${ERP_MAIL_BASE_URL:http://localhost:3004}
     send-credentials: ${ERP_MAIL_SEND_CREDENTIALS:true}
     send-password-reset: ${ERP_MAIL_SEND_PASSWORD_RESET:true}
   dispatch:
     debit-account-id: ${ERP_DISPATCH_DEBIT_ACCOUNT_ID:0}
     credit-account-id: ${ERP_DISPATCH_CREDIT_ACCOUNT_ID:0}
+  payroll:
+    notification-email: ${ERP_PAYROLL_NOTIFICATION_EMAIL:mdanas7869292@gmail.com}
 
 logging:
   level:
