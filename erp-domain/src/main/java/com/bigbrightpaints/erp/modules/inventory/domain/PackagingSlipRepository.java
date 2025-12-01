@@ -18,8 +18,8 @@ public interface PackagingSlipRepository extends JpaRepository<PackagingSlip, Lo
     @EntityGraph(attributePaths = {"salesOrder", "salesOrder.dealer", "lines", "lines.finishedGoodBatch"})
     Optional<PackagingSlip> findByIdAndCompany(Long id, Company company);
     @EntityGraph(attributePaths = {"salesOrder", "salesOrder.dealer", "lines", "lines.finishedGoodBatch"})
-    Optional<PackagingSlip> findBySalesOrderId(Long orderId);
-    List<PackagingSlip> findAllBySalesOrderId(Long orderId);
+    Optional<PackagingSlip> findByCompanyAndSalesOrderId(Company company, Long orderId);
+    List<PackagingSlip> findAllByCompanyAndSalesOrderId(Company company, Long orderId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @QueryHints({@QueryHint(name = "javax.persistence.lock.timeout", value = "5000")})

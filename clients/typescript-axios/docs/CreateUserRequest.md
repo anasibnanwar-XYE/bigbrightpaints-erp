@@ -6,7 +6,7 @@
 Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------
 **email** | **string** |  | [default to undefined]
-**password** | **string** |  | [default to undefined]
+**password** | **string** |  | [optional] [default to undefined]
 **displayName** | **string** |  | [default to undefined]
 **companyIds** | **Array&lt;number&gt;** |  | [default to undefined]
 **roles** | **Array&lt;string&gt;** |  | [default to undefined]
@@ -14,7 +14,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { CreateUserRequest } from 'bbp-erp-api-client';
+import { CreateUserRequest } from '@bigbright/erp-api-client';
 
 const instance: CreateUserRequest = {
     email,

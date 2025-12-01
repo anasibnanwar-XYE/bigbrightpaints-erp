@@ -14,7 +14,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { JournalLineDto } from 'bbp-erp-api-client';
+import { JournalLineDto } from '@bigbright/erp-api-client';
 
 const instance: JournalLineDto = {
     accountId,

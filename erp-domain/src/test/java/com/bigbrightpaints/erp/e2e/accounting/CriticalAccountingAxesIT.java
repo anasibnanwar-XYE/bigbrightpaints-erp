@@ -287,6 +287,12 @@ class CriticalAccountingAxesIT extends AbstractIntegrationTest {
     @Test
     @DisplayName("Concurrent postings remain balanced and isolated")
     void concurrencyReservationSafety() {
+        // Capture starting balances before concurrent posts
+        Account startCash = accountRepository.findByCompanyAndCodeIgnoreCase(company, "CASH").orElseThrow();
+        Account startRev = accountRepository.findByCompanyAndCodeIgnoreCase(company, "REV").orElseThrow();
+        BigDecimal startCashBalance = startCash.getBalance() != null ? startCash.getBalance() : BigDecimal.ZERO;
+        BigDecimal startRevBalance = startRev.getBalance() != null ? startRev.getBalance() : BigDecimal.ZERO;
+        
         BigDecimal journalAmount = new BigDecimal("50.00");
         ExecutorService pool = Executors.newFixedThreadPool(5);
         List<CompletableFuture<Void>> futures = IntStream.range(0, 10)
@@ -311,9 +317,32 @@ class CriticalAccountingAxesIT extends AbstractIntegrationTest {
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
         pool.shutdownNow();
 
+        // Verify total debits = credits (basic double-entry check)
         BigDecimal totalDebits = sumDebitForCompany();
         BigDecimal totalCredits = sumCreditForCompany();
         assertThat(totalDebits).isEqualByComparingTo(totalCredits);
+        
+        // CRITICAL: Verify actual account balances to detect lost updates
+        // 10 concurrent posts x $50 = $500 net change expected
+        BigDecimal expectedNetChange = journalAmount.multiply(new BigDecimal("10"));
+        
+        // Re-fetch accounts fresh from DB to verify atomic updates worked
+        Account freshCash = accountRepository.findByCompanyAndCodeIgnoreCase(company, "CASH").orElseThrow();
+        Account freshRev = accountRepository.findByCompanyAndCodeIgnoreCase(company, "REV").orElseThrow();
+        BigDecimal endCashBalance = freshCash.getBalance() != null ? freshCash.getBalance() : BigDecimal.ZERO;
+        BigDecimal endRevBalance = freshRev.getBalance() != null ? freshRev.getBalance() : BigDecimal.ZERO;
+        
+        // Cash (ASSET) increases by debit: starting balance + 500
+        BigDecimal actualCashChange = endCashBalance.subtract(startCashBalance);
+        assertThat(actualCashChange).as("Cash balance change after concurrent posts")
+                .isEqualByComparingTo(expectedNetChange);
+        
+        // Revenue (REVENUE) increases by credit - in this system, credits are stored as negative
+        // So $500 credits = -500 balance change (credit-normal accounts show negative for increases)
+        BigDecimal actualRevChange = endRevBalance.subtract(startRevBalance);
+        BigDecimal expectedRevChange = expectedNetChange.negate(); // Credits stored as negative
+        assertThat(actualRevChange).as("Revenue balance change after concurrent posts (credits are negative)")
+                .isEqualByComparingTo(expectedRevChange);
     }
 
     @Test
@@ -496,8 +525,7 @@ class CriticalAccountingAxesIT extends AbstractIntegrationTest {
                 null
         );
         var dto = salesService.createOrder(request);
-        SalesOrder order = salesOrderRepository.findWithItemsById(dto.id()).orElseThrow();
-        order.setCompany(company);
+        SalesOrder order = salesOrderRepository.findWithItemsByCompanyAndId(company, dto.id()).orElseThrow();
         return order;
     }
 
@@ -517,8 +545,7 @@ class CriticalAccountingAxesIT extends AbstractIntegrationTest {
                 null
         );
         var dto = salesService.createOrder(request);
-        SalesOrder order = salesOrderRepository.findWithItemsById(dto.id()).orElseThrow();
-        order.setCompany(company);
+        SalesOrder order = salesOrderRepository.findWithItemsByCompanyAndId(company, dto.id()).orElseThrow();
         return order;
     }
 

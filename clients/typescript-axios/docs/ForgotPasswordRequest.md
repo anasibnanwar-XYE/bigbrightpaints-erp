@@ -10,7 +10,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { ForgotPasswordRequest } from 'bbp-erp-api-client';
+import { ForgotPasswordRequest } from '@bigbright/erp-api-client';
 
 const instance: ForgotPasswordRequest = {
     email,

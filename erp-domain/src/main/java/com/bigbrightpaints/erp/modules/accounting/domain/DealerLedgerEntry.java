@@ -56,6 +56,22 @@ public class DealerLedgerEntry extends VersionedEntity {
     @Column(nullable = false)
     private BigDecimal credit = BigDecimal.ZERO;
 
+    // Aging and payment tracking fields
+    @Column(name = "due_date")
+    private LocalDate dueDate;
+
+    @Column(name = "paid_date")
+    private LocalDate paidDate;
+
+    @Column(name = "invoice_number")
+    private String invoiceNumber;
+
+    @Column(name = "payment_status")
+    private String paymentStatus = "UNPAID"; // UNPAID, PARTIAL, PAID
+
+    @Column(name = "amount_paid")
+    private BigDecimal amountPaid = BigDecimal.ZERO;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -139,5 +155,63 @@ public class DealerLedgerEntry extends VersionedEntity {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public LocalDate getDueDate() {
+        return dueDate;
+    }
+
+    public void setDueDate(LocalDate dueDate) {
+        this.dueDate = dueDate;
+    }
+
+    public LocalDate getPaidDate() {
+        return paidDate;
+    }
+
+    public void setPaidDate(LocalDate paidDate) {
+        this.paidDate = paidDate;
+    }
+
+    public String getInvoiceNumber() {
+        return invoiceNumber;
+    }
+
+    public void setInvoiceNumber(String invoiceNumber) {
+        this.invoiceNumber = invoiceNumber;
+    }
+
+    public String getPaymentStatus() {
+        return paymentStatus;
+    }
+
+    public void setPaymentStatus(String paymentStatus) {
+        this.paymentStatus = paymentStatus;
+    }
+
+    public BigDecimal getAmountPaid() {
+        return amountPaid;
+    }
+
+    public void setAmountPaid(BigDecimal amountPaid) {
+        this.amountPaid = amountPaid;
+    }
+
+    public BigDecimal getOutstandingAmount() {
+        BigDecimal total = debit.subtract(credit);
+        return total.subtract(amountPaid != null ? amountPaid : BigDecimal.ZERO);
+    }
+
+    public boolean isOverdue() {
+        return dueDate != null && 
+               LocalDate.now().isAfter(dueDate) && 
+               !"PAID".equals(paymentStatus);
+    }
+
+    public long getDaysOverdue() {
+        if (dueDate == null || !isOverdue()) {
+            return 0;
+        }
+        return java.time.temporal.ChronoUnit.DAYS.between(dueDate, LocalDate.now());
     }
 }

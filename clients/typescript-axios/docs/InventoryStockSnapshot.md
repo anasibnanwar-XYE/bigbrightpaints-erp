@@ -14,7 +14,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { InventoryStockSnapshot } from 'bbp-erp-api-client';
+import { InventoryStockSnapshot } from '@bigbright/erp-api-client';
 
 const instance: InventoryStockSnapshot = {
     name,

@@ -15,7 +15,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { DealerLookupResponse } from 'bbp-erp-api-client';
+import { DealerLookupResponse } from '@bigbright/erp-api-client';
 
 const instance: DealerLookupResponse = {
     id,

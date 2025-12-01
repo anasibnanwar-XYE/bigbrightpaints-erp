@@ -1,6 +1,6 @@
 # HrControllerApi
 
-All URIs are relative to *http://localhost:50965*
+All URIs are relative to *http://localhost:8081*
 
 |Method | HTTP request | Description|
 |------------- | ------------- | -------------|
@@ -25,7 +25,7 @@ import {
     HrControllerApi,
     Configuration,
     EmployeeRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new HrControllerApi(configuration);
@@ -76,7 +76,7 @@ import {
     HrControllerApi,
     Configuration,
     LeaveRequestRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new HrControllerApi(configuration);
@@ -127,7 +127,7 @@ import {
     HrControllerApi,
     Configuration,
     PayrollRunRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new HrControllerApi(configuration);
@@ -177,7 +177,7 @@ No authorization required
 import {
     HrControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new HrControllerApi(configuration);
@@ -227,7 +227,7 @@ No authorization required
 import {
     HrControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new HrControllerApi(configuration);
@@ -270,7 +270,7 @@ No authorization required
 import {
     HrControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new HrControllerApi(configuration);
@@ -313,7 +313,7 @@ No authorization required
 import {
     HrControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new HrControllerApi(configuration);
@@ -357,7 +357,7 @@ import {
     HrControllerApi,
     Configuration,
     EmployeeRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new HrControllerApi(configuration);
@@ -411,7 +411,7 @@ import {
     HrControllerApi,
     Configuration,
     StatusRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new HrControllerApi(configuration);

@@ -23,6 +23,11 @@ public interface JournalEntryRepository extends JpaRepository<JournalEntry, Long
     Optional<JournalEntry> findById(Long id);
     Optional<JournalEntry> findByCompanyAndId(Company company, Long id);
     Optional<JournalEntry> findByCompanyAndReferenceNumber(Company company, String referenceNumber);
+    Optional<JournalEntry> findFirstByCompanyAndReferenceNumberStartingWith(Company company, String referencePrefix);
+    
+    // Find all related entries for cascade reversal (e.g., INV-001 finds INV-001-COGS, INV-001-TAX)
+    List<JournalEntry> findByCompanyAndReferenceNumberStartingWith(Company company, String referencePrefix);
+    
     long countByCompanyAndEntryDateBetweenAndStatusIn(Company company, LocalDate start, LocalDate end, Collection<String> statuses);
     @EntityGraph(attributePaths = {"lines", "lines.account"})
     List<JournalEntry> findByCompanyAndEntryDateBetweenOrderByEntryDateAsc(Company company, LocalDate start, LocalDate end);

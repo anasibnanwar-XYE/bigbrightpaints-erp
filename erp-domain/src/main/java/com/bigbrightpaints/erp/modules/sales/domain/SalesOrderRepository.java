@@ -17,7 +17,7 @@ public interface SalesOrderRepository extends JpaRepository<SalesOrder, Long> {
     Optional<SalesOrder> findByCompanyAndId(Company company, Long id);
 
     @EntityGraph(attributePaths = "items")
-    Optional<SalesOrder> findWithItemsById(Long id);
+    Optional<SalesOrder> findWithItemsByCompanyAndId(Company company, Long id);
 
     @EntityGraph(attributePaths = {"company", "dealer"})
     List<SalesOrder> findAll();

@@ -11,7 +11,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { PipelineStage } from 'bbp-erp-api-client';
+import { PipelineStage } from '@bigbright/erp-api-client';
 
 const instance: PipelineStage = {
     label,

@@ -9,6 +9,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriod;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
+import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
@@ -37,6 +38,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -89,22 +91,16 @@ class AccountingServiceTest {
     private AccountingPeriodRepository accountingPeriodRepository;
     @Mock
     private JournalLineRepository journalLineRepository;
+    @Mock
+    private AccountingPeriodService accountingPeriodService;
+    @Mock
+    private jakarta.persistence.EntityManager entityManager;
 
     private AccountingService accountingService;
-    private AccountingPeriodService accountingPeriodService;
     private Company company;
 
     @BeforeEach
     void setup() {
-        accountingPeriodService = new AccountingPeriodService(
-                accountingPeriodRepository,
-                companyContextService,
-                journalEntryRepository,
-                companyEntityLookup,
-                journalLineRepository,
-                accountRepository,
-                companyClock
-        );
         accountingService = new AccountingService(
                 companyContextService,
                 accountRepository,
@@ -126,7 +122,8 @@ class AccountingServiceTest {
                 finishedGoodBatchRepository,
                 dealerRepository,
                 supplierRepository,
-                invoiceSettlementPolicy
+                invoiceSettlementPolicy,
+                entityManager
         );
         company = new Company();
         company.setBaseCurrency("INR");
@@ -201,10 +198,18 @@ class AccountingServiceTest {
     }
 
     @Test
-    void createJournalEntry_rejectsDuplicateReference() {
+    void createJournalEntry_returnsExistingOnDuplicateReference() {
+        // Test idempotent behavior: return existing entry instead of throwing exception
         LocalDate today = LocalDate.of(2024, 3, 20);
+        var existingEntry = new com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry();
+        existingEntry.setCompany(company);
+        existingEntry.setReferenceNumber("DUP-REF");
+        existingEntry.setEntryDate(today);
+        existingEntry.setStatus("POSTED");
+        org.springframework.test.util.ReflectionTestUtils.setField(existingEntry, "id", 999L);
+        
         when(journalEntryRepository.findByCompanyAndReferenceNumber(eq(company), eq("DUP-REF")))
-                .thenReturn(Optional.of(new com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry()));
+                .thenReturn(Optional.of(existingEntry));
 
         JournalEntryRequest request = new JournalEntryRequest(
                 "DUP-REF",
@@ -216,9 +221,11 @@ class AccountingServiceTest {
                 List.of(new JournalEntryRequest.JournalLineRequest(1L, "Line", new BigDecimal("10.00"), BigDecimal.ZERO))
         );
 
-        assertThatThrownBy(() -> accountingService.createJournalEntry(request))
-                .isInstanceOf(ApplicationException.class)
-                .hasMessageContaining("already exists for this company");
+        // Should return existing entry (idempotent) instead of throwing
+        JournalEntryDto result = accountingService.createJournalEntry(request);
+        assertThat(result).isNotNull();
+        assertThat(result.id()).isEqualTo(999L);
+        assertThat(result.referenceNumber()).isEqualTo("DUP-REF");
     }
 
     @Test

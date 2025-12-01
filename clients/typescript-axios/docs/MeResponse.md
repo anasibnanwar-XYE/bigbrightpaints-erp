@@ -15,7 +15,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { MeResponse } from 'bbp-erp-api-client';
+import { MeResponse } from '@bigbright/erp-api-client';
 
 const instance: MeResponse = {
     email,

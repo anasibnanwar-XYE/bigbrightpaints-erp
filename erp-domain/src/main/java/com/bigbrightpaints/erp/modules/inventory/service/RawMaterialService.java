@@ -104,9 +104,9 @@ public class RawMaterialService {
         material.setName(request.name());
         material.setSku(request.sku());
         material.setUnitType(request.unitType());
-        material.setReorderLevel(request.reorderLevel());
-        material.setMinStock(request.minStock());
-        material.setMaxStock(request.maxStock());
+        material.setReorderLevel(request.reorderLevel() != null ? request.reorderLevel() : BigDecimal.ZERO);
+        material.setMinStock(request.minStock() != null ? request.minStock() : BigDecimal.ZERO);
+        material.setMaxStock(request.maxStock() != null ? request.maxStock() : BigDecimal.ZERO);
         material.setInventoryAccountId(request.inventoryAccountId());
         RawMaterial saved = rawMaterialRepository.save(material);
         syncProductFromMaterial(company, saved);

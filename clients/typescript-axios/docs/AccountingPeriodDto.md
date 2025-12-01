@@ -33,7 +33,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { AccountingPeriodDto } from 'bbp-erp-api-client';
+import { AccountingPeriodDto } from '@bigbright/erp-api-client';
 
 const instance: AccountingPeriodDto = {
     id,

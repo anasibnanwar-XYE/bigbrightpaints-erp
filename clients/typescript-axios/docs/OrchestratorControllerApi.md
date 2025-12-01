@@ -1,12 +1,13 @@
 # OrchestratorControllerApi
 
-All URIs are relative to *http://localhost:50965*
+All URIs are relative to *http://localhost:8081*
 
 |Method | HTTP request | Description|
 |------------- | ------------- | -------------|
 |[**approveOrder**](#approveorder) | **POST** /api/v1/orchestrator/orders/{orderId}/approve | |
 |[**dispatch**](#dispatch) | **POST** /api/v1/orchestrator/factory/dispatch/{batchId} | |
 |[**dispatchOrder**](#dispatchorder) | **POST** /api/v1/orchestrator/dispatch | |
+|[**dispatchOrderAlias**](#dispatchorderalias) | **POST** /api/v1/orchestrator/dispatch/{orderId} | |
 |[**eventHealth**](#eventhealth) | **GET** /api/v1/orchestrator/health/events | |
 |[**fulfillOrder**](#fulfillorder) | **POST** /api/v1/orchestrator/orders/{orderId}/fulfillment | |
 |[**integrationsHealth**](#integrationshealth) | **GET** /api/v1/orchestrator/health/integrations | |
@@ -24,7 +25,7 @@ import {
     OrchestratorControllerApi,
     Configuration,
     ApproveOrderRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new OrchestratorControllerApi(configuration);
@@ -81,7 +82,7 @@ import {
     OrchestratorControllerApi,
     Configuration,
     DispatchRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new OrchestratorControllerApi(configuration);
@@ -137,7 +138,7 @@ No authorization required
 import {
     OrchestratorControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new OrchestratorControllerApi(configuration);
@@ -180,6 +181,59 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
+# **dispatchOrderAlias**
+> { [key: string]: object; } dispatchOrderAlias()
+
+
+### Example
+
+```typescript
+import {
+    OrchestratorControllerApi,
+    Configuration
+} from '@bigbright/erp-api-client';
+
+const configuration = new Configuration();
+const apiInstance = new OrchestratorControllerApi(configuration);
+
+let orderId: string; // (default to undefined)
+let xCompanyId: string; // (default to undefined)
+
+const { status, data } = await apiInstance.dispatchOrderAlias(
+    orderId,
+    xCompanyId
+);
+```
+
+### Parameters
+
+|Name | Type | Description  | Notes|
+|------------- | ------------- | ------------- | -------------|
+| **orderId** | [**string**] |  | defaults to undefined|
+| **xCompanyId** | [**string**] |  | defaults to undefined|
+
+
+### Return type
+
+**{ [key: string]: object; }**
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: */*
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+|**200** | OK |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
 # **eventHealth**
 > { [key: string]: object; } eventHealth()
 
@@ -190,7 +244,7 @@ No authorization required
 import {
     OrchestratorControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new OrchestratorControllerApi(configuration);
@@ -234,7 +288,7 @@ import {
     OrchestratorControllerApi,
     Configuration,
     OrderFulfillmentRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new OrchestratorControllerApi(configuration);
@@ -290,7 +344,7 @@ No authorization required
 import {
     OrchestratorControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new OrchestratorControllerApi(configuration);
@@ -334,7 +388,7 @@ import {
     OrchestratorControllerApi,
     Configuration,
     PayrollRunRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new OrchestratorControllerApi(configuration);
@@ -387,7 +441,7 @@ No authorization required
 import {
     OrchestratorControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new OrchestratorControllerApi(configuration);

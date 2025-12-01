@@ -15,7 +15,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { CreditNoteRequest } from 'bbp-erp-api-client';
+import { CreditNoteRequest } from '@bigbright/erp-api-client';
 
 const instance: CreditNoteRequest = {
     invoiceId,

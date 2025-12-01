@@ -12,7 +12,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { ResetPasswordRequest } from 'bbp-erp-api-client';
+import { ResetPasswordRequest } from '@bigbright/erp-api-client';
 
 const instance: ResetPasswordRequest = {
     token,

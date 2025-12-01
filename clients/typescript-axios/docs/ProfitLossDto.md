@@ -14,7 +14,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { ProfitLossDto } from 'bbp-erp-api-client';
+import { ProfitLossDto } from '@bigbright/erp-api-client';
 
 const instance: ProfitLossDto = {
     revenue,

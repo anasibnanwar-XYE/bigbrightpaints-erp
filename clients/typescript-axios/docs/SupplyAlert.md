@@ -12,7 +12,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { SupplyAlert } from 'bbp-erp-api-client';
+import { SupplyAlert } from '@bigbright/erp-api-client';
 
 const instance: SupplyAlert = {
     material,

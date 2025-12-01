@@ -138,12 +138,12 @@ public class CostAllocationService {
         // Allocate costs to each batch
         for (ProductionLog batch : batches) {
             BigDecimal batchLiters = batch.getMixedQuantity();
-            BigDecimal batchLaborCost = costPerLiter.multiply(batchLiters)
+            BigDecimal batchLaborCost = batchLiters
                     .multiply(laborCost)
-                    .divide(totalCosts, 4, RoundingMode.HALF_UP);
-            BigDecimal batchOverheadCost = costPerLiter.multiply(batchLiters)
+                    .divide(totalLitersProduced, 4, RoundingMode.HALF_UP);
+            BigDecimal batchOverheadCost = batchLiters
                     .multiply(overheadCost)
-                    .divide(totalCosts, 4, RoundingMode.HALF_UP);
+                    .divide(totalLitersProduced, 4, RoundingMode.HALF_UP);
 
             // Update production log
             batch.setLaborCostTotal(batchLaborCost);

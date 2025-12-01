@@ -13,7 +13,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { ProductionBatchRequest } from 'bbp-erp-api-client';
+import { ProductionBatchRequest } from '@bigbright/erp-api-client';
 
 const instance: ProductionBatchRequest = {
     batchNumber,

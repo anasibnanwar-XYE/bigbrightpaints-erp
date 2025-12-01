@@ -10,7 +10,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { CancelRequest } from 'bbp-erp-api-client';
+import { CancelRequest } from '@bigbright/erp-api-client';
 
 const instance: CancelRequest = {
     reason,

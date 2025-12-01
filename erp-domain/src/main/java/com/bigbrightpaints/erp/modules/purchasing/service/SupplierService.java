@@ -41,6 +41,7 @@ public class SupplierService {
         this.companyEntityLookup = companyEntityLookup;
     }
 
+    @Transactional
     public List<SupplierResponse> listSuppliers() {
         Company company = companyContextService.requireCurrentCompany();
         List<Supplier> suppliers = supplierRepository.findByCompanyOrderByNameAsc(company);
@@ -53,6 +54,7 @@ public class SupplierService {
                 .toList();
     }
 
+    @Transactional
     public SupplierResponse getSupplier(Long id) {
         Company company = companyContextService.requireCurrentCompany();
         Supplier supplier = requireSupplier(company, id);

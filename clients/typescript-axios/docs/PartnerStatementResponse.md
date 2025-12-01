@@ -16,7 +16,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { PartnerStatementResponse } from 'bbp-erp-api-client';
+import { PartnerStatementResponse } from '@bigbright/erp-api-client';
 
 const instance: PartnerStatementResponse = {
     partnerId,

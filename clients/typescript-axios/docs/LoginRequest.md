@@ -14,7 +14,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { LoginRequest } from 'bbp-erp-api-client';
+import { LoginRequest } from '@bigbright/erp-api-client';
 
 const instance: LoginRequest = {
     email,

@@ -11,7 +11,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { OrderFulfillmentRequest } from 'bbp-erp-api-client';
+import { OrderFulfillmentRequest } from '@bigbright/erp-api-client';
 
 const instance: OrderFulfillmentRequest = {
     status,

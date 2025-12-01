@@ -15,7 +15,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { LeaveRequestRequest } from 'bbp-erp-api-client';
+import { LeaveRequestRequest } from '@bigbright/erp-api-client';
 
 const instance: LeaveRequestRequest = {
     employeeId,

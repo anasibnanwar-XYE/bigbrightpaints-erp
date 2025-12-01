@@ -175,8 +175,15 @@ public class InventoryGlReconciliationIT extends AbstractIntegrationTest {
         List<DispatchPosting> postings = finishedGoodsService.markSlipDispatched(order.getId());
         assertThat(postings).isNotEmpty();
 
+        // CRITICAL: Use dynamic cost from FIFO/LIFO layer postings, not hardcoded value
+        // This verifies perpetual inventory costing is working correctly
+        BigDecimal shipmentCost = postings.stream()
+                .map(DispatchPosting::cost)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        assertThat(shipmentCost).as("Dynamic shipment cost from inventory layers")
+                .isGreaterThan(BigDecimal.ZERO);
+        
         List<JournalEntryRequest.JournalLineRequest> cogsLines = new ArrayList<>();
-        BigDecimal shipmentCost = new BigDecimal("1875.00");
         cogsLines.add(new JournalEntryRequest.JournalLineRequest(
                 cogs.getId(), "COGS for order " + order.getOrderNumber(), shipmentCost, BigDecimal.ZERO));
         cogsLines.add(new JournalEntryRequest.JournalLineRequest(

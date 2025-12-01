@@ -15,7 +15,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { InventoryAdjustmentRequest } from 'bbp-erp-api-client';
+import { InventoryAdjustmentRequest } from '@bigbright/erp-api-client';
 
 const instance: InventoryAdjustmentRequest = {
     adjustmentDate,

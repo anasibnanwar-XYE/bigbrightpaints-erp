@@ -18,7 +18,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { BankReconciliationRequest } from 'bbp-erp-api-client';
+import { BankReconciliationRequest } from '@bigbright/erp-api-client';
 
 const instance: BankReconciliationRequest = {
     bankAccountId,

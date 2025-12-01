@@ -18,7 +18,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { LandedCostRequest } from 'bbp-erp-api-client';
+import { LandedCostRequest } from '@bigbright/erp-api-client';
 
 const instance: LandedCostRequest = {
     rawMaterialPurchaseId,

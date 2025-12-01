@@ -16,7 +16,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { SettlementAllocationRequest } from 'bbp-erp-api-client';
+import { SettlementAllocationRequest } from '@bigbright/erp-api-client';
 
 const instance: SettlementAllocationRequest = {
     invoiceId,

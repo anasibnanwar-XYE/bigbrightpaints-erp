@@ -17,7 +17,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { BadDebtWriteOffRequest } from 'bbp-erp-api-client';
+import { BadDebtWriteOffRequest } from '@bigbright/erp-api-client';
 
 const instance: BadDebtWriteOffRequest = {
     invoiceId,

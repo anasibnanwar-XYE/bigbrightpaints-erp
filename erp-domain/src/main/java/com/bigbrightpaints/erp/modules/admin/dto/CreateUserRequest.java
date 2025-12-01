@@ -8,7 +8,7 @@ import java.util.List;
 
 public record CreateUserRequest(
         @Email @NotBlank String email,
-        @NotBlank String password,
+        String password,  // Optional: auto-generate if null/empty
         @NotBlank String displayName,
         @NotEmpty List<Long> companyIds,
         @NotEmpty List<String> roles

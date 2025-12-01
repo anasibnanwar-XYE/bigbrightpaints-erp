@@ -12,7 +12,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { MfaSetupResponse } from 'bbp-erp-api-client';
+import { MfaSetupResponse } from '@bigbright/erp-api-client';
 
 const instance: MfaSetupResponse = {
     secret,

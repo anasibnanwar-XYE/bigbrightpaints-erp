@@ -15,7 +15,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { ProductionLogMaterialDto } from 'bbp-erp-api-client';
+import { ProductionLogMaterialDto } from '@bigbright/erp-api-client';
 
 const instance: ProductionLogMaterialDto = {
     rawMaterialId,

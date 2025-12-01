@@ -2,6 +2,7 @@ package com.bigbrightpaints.erp.modules.sales.service;
 
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.service.DealerLedgerService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
@@ -9,8 +10,9 @@ import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
 import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipRepository;
-import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
+import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.modules.invoice.service.InvoiceNumberService;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
 import com.bigbrightpaints.erp.modules.factory.domain.FactoryTaskRepository;
@@ -24,7 +26,9 @@ import com.bigbrightpaints.erp.modules.production.domain.ProductionProductReposi
 import com.bigbrightpaints.erp.modules.sales.domain.*;
 import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderItemRequest;
 import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderRequest;
+import com.bigbrightpaints.erp.modules.sales.dto.DispatchConfirmRequest;
 import com.bigbrightpaints.erp.modules.sales.event.SalesOrderCreatedEvent;
+import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlip;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -169,6 +173,26 @@ class SalesServiceTest {
                 null);
 
         assertThrows(IllegalStateException.class, () -> salesService.createOrder(request));
+    }
+
+    @Test
+    void confirmDispatchBlocksCancelledOrder() {
+        SalesOrder cancelled = new SalesOrder();
+        cancelled.setStatus("CANCELLED");
+        setField(cancelled, "id", 10L);
+
+        PackagingSlip slip = new PackagingSlip();
+        slip.setCompany(company);
+        slip.setSalesOrder(cancelled);
+        slip.setStatus("PENDING");
+
+        when(packagingSlipRepository.findByCompanyAndSalesOrderId(company, 10L)).thenReturn(Optional.of(slip));
+        when(invoiceRepository.findByCompanyAndSalesOrderId(company, 10L)).thenReturn(Optional.empty());
+        when(companyEntityLookup.requireSalesOrder(company, 10L)).thenReturn(cancelled);
+
+        DispatchConfirmRequest request = new DispatchConfirmRequest(null, 10L, List.of(), false);
+
+        assertThrows(ApplicationException.class, () -> salesService.confirmDispatch(request));
     }
 
     @Test
@@ -436,6 +460,35 @@ class SalesServiceTest {
 
         assertEquals("CANCELLED", dto.status());
         verify(finishedGoodsService, never()).releaseReservationsForOrder(anyLong());
+    }
+
+    @Test
+    void createOrderThrowsWhenCreditLimitExceeded() {
+        setupProduct("SKU-CL", BigDecimal.valueOf(100), BigDecimal.ZERO);
+        FinishedGood fg = buildFinishedGood("SKU-CL");
+        fg.setRevenueAccountId(5L);
+        fg.setTaxAccountId(6L);
+        when(finishedGoodRepository.findByCompanyAndProductCode(company, "SKU-CL"))
+                .thenReturn(Optional.of(fg));
+
+        Dealer dealer = dealerWithCreditLimit(99L, BigDecimal.valueOf(100));
+        dealer.setReceivableAccount(new Account());
+        when(dealerRepository.lockByCompanyAndId(company, 99L)).thenReturn(Optional.of(dealer));
+        when(dealerLedgerService.currentBalance(99L)).thenReturn(BigDecimal.valueOf(90));
+        when(orderNumberService.nextOrderNumber(company)).thenReturn("SO-CL-1");
+
+        SalesOrderRequest request = new SalesOrderRequest(
+                99L,
+                BigDecimal.valueOf(100),
+                "INR",
+                null,
+                List.of(new SalesOrderItemRequest("SKU-CL", "Item", BigDecimal.ONE, BigDecimal.valueOf(100), BigDecimal.ZERO)),
+                "NONE",
+                null,
+                null,
+                null);
+
+        assertThrows(IllegalStateException.class, () -> salesService.createOrder(request));
     }
 
     private void setupProduct(String sku, BigDecimal price, BigDecimal gstRate) {

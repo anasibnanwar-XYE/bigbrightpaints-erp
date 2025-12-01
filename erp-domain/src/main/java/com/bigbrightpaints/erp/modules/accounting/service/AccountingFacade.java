@@ -643,23 +643,31 @@ public class AccountingFacade {
         // Generate reference number
         String reference = "COGS-" + sanitize(referenceId);
 
-        // Check for duplicate
-        if (journalEntryRepository.findByCompanyAndReferenceNumber(company, reference).isPresent()) {
+        // Check for duplicate (allow variants with same logical reference)
+        Optional<JournalEntry> existing = journalEntryRepository.findFirstByCompanyAndReferenceNumberStartingWith(company, reference);
+        if (existing.isPresent()) {
+            log.info("COGS journal already exists for reference: {}", reference);
+            return toSimpleDto(existing.get());
+        }
+
         // Build journal lines
         List<JournalEntryRequest.JournalLineRequest> lines = new ArrayList<>();
         String resolvedMemo = memo != null ? memo : "COGS for " + referenceId;
+
         // Dr: COGS
         lines.add(new JournalEntryRequest.JournalLineRequest(
                 cogsAccountId,
                 resolvedMemo,
                 cost,
                 BigDecimal.ZERO));
+
         // Cr: Inventory
         lines.add(new JournalEntryRequest.JournalLineRequest(
                 inventoryAcctId,
                 resolvedMemo,
                 BigDecimal.ZERO,
                 cost));
+
         JournalEntryRequest request = new JournalEntryRequest(
                 reference,
                 companyClock.today(company),
@@ -668,7 +676,17 @@ public class AccountingFacade {
                 null,
                 Boolean.FALSE,
                 lines);
+
         log.info("Posting COGS journal: reference={}, cost={}", reference, cost);
+        return accountingService.createJournalEntry(request);
+    }
+
+    public boolean hasCogsJournalFor(String referenceId) {
+        Company company = companyContextService.requireCurrentCompany();
+        String reference = "COGS-" + sanitize(referenceId);
+        return journalEntryRepository.findFirstByCompanyAndReferenceNumberStartingWith(company, reference).isPresent();
+    }
+
     /**
      * Post sales return journal entry (Dr Revenue+Tax / Cr AR).
      *
@@ -689,29 +707,44 @@ public class AccountingFacade {
         Objects.requireNonNull(dealerId, "Dealer ID is required");
         Objects.requireNonNull(invoiceNumber, "Invoice number is required");
         Objects.requireNonNull(totalAmount, "Total amount is required");
+
         Company company = companyContextService.requireCurrentCompany();
         Dealer dealer = companyEntityLookup.requireDealer(company, dealerId);
+
         if (dealer.getReceivableAccount() == null) {
             throw new ApplicationException(ErrorCode.BUSINESS_CONSTRAINT_VIOLATION,
                     "Dealer missing receivable account")
                     .withDetail("dealerId", dealerId);
+        }
+
         // Generate reference number
         String reference = "CRN-" + invoiceNumber;
+
         // Check for duplicate
-        if (journalEntryRepository.findByCompanyAndReferenceNumber(company, reference).isPresent()) {
+        Optional<JournalEntry> existing = journalEntryRepository.findByCompanyAndReferenceNumber(company, reference);
+        if (existing.isPresent()) {
             log.info("Sales return journal already exists for reference: {}", reference);
+            return toSimpleDto(existing.get());
+        }
+
         // Build journal lines
         List<JournalEntryRequest.JournalLineRequest> lines = new ArrayList<>();
         String reasonSuffix = StringUtils.hasText(reason) ? reason.trim() : "Return";
         String memo = reasonSuffix + " - " + invoiceNumber;
+
         // Dr: Revenue/Tax accounts (reverse the original entries)
         if (returnLines != null) {
-                if (amount.compareTo(BigDecimal.ZERO) > 0) {
+            returnLines.forEach((accountId, amount) -> {
+                if (amount != null && amount.compareTo(BigDecimal.ZERO) != 0) {
+                    BigDecimal debit = amount.compareTo(BigDecimal.ZERO) > 0 ? amount.abs() : BigDecimal.ZERO;
+                    BigDecimal credit = amount.compareTo(BigDecimal.ZERO) < 0 ? amount.abs() : BigDecimal.ZERO;
                     lines.add(new JournalEntryRequest.JournalLineRequest(
                             accountId,
                             memo,
-                            amount.abs(),
-                            BigDecimal.ZERO));
+                            debit,
+                            credit));
+                }
+            });
         }
 
         // Cr: Accounts Receivable

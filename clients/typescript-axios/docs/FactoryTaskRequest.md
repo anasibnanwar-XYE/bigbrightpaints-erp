@@ -14,7 +14,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { FactoryTaskRequest } from 'bbp-erp-api-client';
+import { FactoryTaskRequest } from '@bigbright/erp-api-client';
 
 const instance: FactoryTaskRequest = {
     title,

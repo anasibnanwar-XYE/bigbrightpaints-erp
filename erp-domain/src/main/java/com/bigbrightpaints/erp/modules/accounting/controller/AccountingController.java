@@ -6,6 +6,10 @@ import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
 import com.bigbrightpaints.erp.modules.accounting.service.ReconciliationService;
 import com.bigbrightpaints.erp.modules.accounting.service.TaxService;
 import com.bigbrightpaints.erp.modules.accounting.service.StatementService;
+import com.bigbrightpaints.erp.modules.accounting.service.TemporalBalanceService;
+import com.bigbrightpaints.erp.modules.accounting.service.AccountHierarchyService;
+import com.bigbrightpaints.erp.modules.accounting.service.AgingReportService;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.modules.sales.service.SalesReturnService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
@@ -30,19 +34,28 @@ public class AccountingController {
     private final ReconciliationService reconciliationService;
     private final StatementService statementService;
     private final TaxService taxService;
+    private final TemporalBalanceService temporalBalanceService;
+    private final AccountHierarchyService accountHierarchyService;
+    private final AgingReportService agingReportService;
 
     public AccountingController(AccountingService accountingService,
                                 SalesReturnService salesReturnService,
                                 AccountingPeriodService accountingPeriodService,
                                 ReconciliationService reconciliationService,
                                 StatementService statementService,
-                                TaxService taxService) {
+                                TaxService taxService,
+                                TemporalBalanceService temporalBalanceService,
+                                AccountHierarchyService accountHierarchyService,
+                                AgingReportService agingReportService) {
         this.accountingService = accountingService;
         this.salesReturnService = salesReturnService;
         this.accountingPeriodService = accountingPeriodService;
         this.reconciliationService = reconciliationService;
         this.statementService = statementService;
         this.taxService = taxService;
+        this.temporalBalanceService = temporalBalanceService;
+        this.accountHierarchyService = accountHierarchyService;
+        this.agingReportService = agingReportService;
     }
 
     /**
@@ -54,7 +67,8 @@ public class AccountingController {
         return ApiResponse.failure(ex.getUserMessage(), null);
     }
 
-    @GetMapping("/accounts")\n@PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    @GetMapping("/accounts")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
     public ResponseEntity<ApiResponse<List<AccountDto>>> accounts() {
         return ResponseEntity.ok(ApiResponse.success(accountingService.listAccounts()));
     }
@@ -65,7 +79,8 @@ public class AccountingController {
         return ResponseEntity.ok(ApiResponse.success("Account created", accountingService.createAccount(request)));
     }
 
-    @GetMapping("/journal-entries")\n@PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    @GetMapping("/journal-entries")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
     public ResponseEntity<ApiResponse<List<JournalEntryDto>>> journalEntries(@RequestParam(required = false) Long dealerId,
                                                                              @RequestParam(defaultValue = "0") int page,
                                                                              @RequestParam(defaultValue = "100") int size) {
@@ -83,6 +98,16 @@ public class AccountingController {
     public ResponseEntity<ApiResponse<JournalEntryDto>> reverseJournalEntry(@PathVariable Long entryId,
                                                                             @RequestBody(required = false) JournalEntryReversalRequest request) {
         return ResponseEntity.ok(ApiResponse.success("Journal entry corrected", accountingService.reverseJournalEntry(entryId, request)));
+    }
+    
+    @PostMapping("/journal-entries/{entryId}/cascade-reverse")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<java.util.List<JournalEntryDto>>> cascadeReverseJournalEntry(
+            @PathVariable Long entryId,
+            @RequestBody JournalEntryReversalRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(
+                "Journal entries reversed with related entries", 
+                accountingService.cascadeReverseRelatedEntries(entryId, request)));
     }
 
     @PostMapping("/receipts/dealer")
@@ -339,5 +364,135 @@ public class AccountingController {
                 from != null ? java.time.LocalDate.parse(from) : null,
                 to != null ? java.time.LocalDate.parse(to) : null);
         return ResponseEntity.ok(csv);
+    }
+
+    // ==================== TEMPORAL QUERIES (Event Sourcing) ====================
+
+    @GetMapping("/accounts/{accountId}/balance/as-of")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<java.math.BigDecimal>> getBalanceAsOf(
+            @PathVariable Long accountId,
+            @RequestParam String date) {
+        java.time.LocalDate asOfDate = java.time.LocalDate.parse(date);
+        return ResponseEntity.ok(ApiResponse.success(
+                "Balance as of " + date,
+                temporalBalanceService.getBalanceAsOfDate(accountId, asOfDate)));
+    }
+
+    @GetMapping("/trial-balance/as-of")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<TemporalBalanceService.TrialBalanceSnapshot>> getTrialBalanceAsOf(
+            @RequestParam String date) {
+        java.time.LocalDate asOfDate = java.time.LocalDate.parse(date);
+        return ResponseEntity.ok(ApiResponse.success(
+                "Trial balance as of " + date,
+                temporalBalanceService.getTrialBalanceAsOf(asOfDate)));
+    }
+
+    @GetMapping("/accounts/{accountId}/activity")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<TemporalBalanceService.AccountActivityReport>> getAccountActivity(
+            @PathVariable Long accountId,
+            @RequestParam String startDate,
+            @RequestParam String endDate) {
+        return ResponseEntity.ok(ApiResponse.success(
+                "Account activity report",
+                temporalBalanceService.getAccountActivity(
+                        accountId,
+                        java.time.LocalDate.parse(startDate),
+                        java.time.LocalDate.parse(endDate))));
+    }
+
+    @GetMapping("/accounts/{accountId}/balance/compare")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<TemporalBalanceService.BalanceComparison>> compareBalances(
+            @PathVariable Long accountId,
+            @RequestParam String date1,
+            @RequestParam String date2) {
+        return ResponseEntity.ok(ApiResponse.success(
+                "Balance comparison",
+                temporalBalanceService.compareBalances(
+                        accountId,
+                        java.time.LocalDate.parse(date1),
+                        java.time.LocalDate.parse(date2))));
+    }
+
+    // ==================== ACCOUNT HIERARCHY ====================
+
+    @GetMapping("/accounts/tree")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<java.util.List<AccountHierarchyService.AccountNode>>> getChartOfAccountsTree() {
+        return ResponseEntity.ok(ApiResponse.success(
+                "Chart of accounts hierarchy",
+                accountHierarchyService.getChartOfAccountsTree()));
+    }
+
+    @GetMapping("/accounts/tree/{type}")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<java.util.List<AccountHierarchyService.AccountNode>>> getAccountTreeByType(
+            @PathVariable String type) {
+        AccountType accountType = AccountType.valueOf(type.toUpperCase());
+        return ResponseEntity.ok(ApiResponse.success(
+                "Account hierarchy for " + type,
+                accountHierarchyService.getTreeByType(accountType)));
+    }
+
+    @GetMapping("/reports/balance-sheet/hierarchy")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<AccountHierarchyService.BalanceSheetHierarchy>> getBalanceSheetHierarchy() {
+        return ResponseEntity.ok(ApiResponse.success(
+                "Hierarchical balance sheet",
+                accountHierarchyService.getBalanceSheetHierarchy()));
+    }
+
+    @GetMapping("/reports/income-statement/hierarchy")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<AccountHierarchyService.IncomeStatementHierarchy>> getIncomeStatementHierarchy() {
+        return ResponseEntity.ok(ApiResponse.success(
+                "Hierarchical income statement",
+                accountHierarchyService.getIncomeStatementHierarchy()));
+    }
+
+    // ==================== AGING REPORTS (Sub-Ledger) ====================
+
+    @GetMapping("/reports/aging/receivables")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<AgingReportService.AgedReceivablesReport>> getAgedReceivables(
+            @RequestParam(required = false) String asOfDate) {
+        if (asOfDate != null) {
+            return ResponseEntity.ok(ApiResponse.success(
+                    "Aged receivables report",
+                    agingReportService.getAgedReceivablesReport(java.time.LocalDate.parse(asOfDate))));
+        }
+        return ResponseEntity.ok(ApiResponse.success(
+                "Aged receivables report",
+                agingReportService.getAgedReceivablesReport()));
+    }
+
+    @GetMapping("/reports/aging/dealer/{dealerId}")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<AgingReportService.DealerAgingDetail>> getDealerAging(
+            @PathVariable Long dealerId) {
+        return ResponseEntity.ok(ApiResponse.success(
+                "Dealer aging summary",
+                agingReportService.getDealerAging(dealerId)));
+    }
+
+    @GetMapping("/reports/aging/dealer/{dealerId}/detailed")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<AgingReportService.DealerAgingDetailedReport>> getDealerAgingDetailed(
+            @PathVariable Long dealerId) {
+        return ResponseEntity.ok(ApiResponse.success(
+                "Dealer aging detail with invoices",
+                agingReportService.getDealerAgingDetailed(dealerId)));
+    }
+
+    @GetMapping("/reports/dso/dealer/{dealerId}")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<AgingReportService.DSOReport>> getDealerDSO(
+            @PathVariable Long dealerId) {
+        return ResponseEntity.ok(ApiResponse.success(
+                "Days Sales Outstanding report",
+                agingReportService.getDealerDSO(dealerId)));
     }
 }

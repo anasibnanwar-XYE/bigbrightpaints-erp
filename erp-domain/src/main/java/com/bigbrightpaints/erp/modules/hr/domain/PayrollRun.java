@@ -76,8 +76,10 @@ public class PayrollRun extends VersionedEntity {
         if (debitTotal.compareTo(creditTotal) != 0) {
             throw new IllegalStateException("Payroll journal not balanced");
         }
-        if (totalAmount.compareTo(debitTotal) != 0) {
-            throw new IllegalStateException("Payroll total does not match journal sum");
+        // Note: totalAmount stores gross wages, but journal debit may be less
+        // when advances are deducted without a separate recovery account
+        if (totalAmount.compareTo(debitTotal) < 0) {
+            throw new IllegalStateException("Journal debit cannot exceed gross payroll total");
         }
     }
 

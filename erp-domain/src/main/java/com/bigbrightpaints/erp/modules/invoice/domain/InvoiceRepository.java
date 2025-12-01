@@ -20,11 +20,11 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     @EntityGraph(attributePaths = "lines")
     List<Invoice> findByCompanyAndDealerOrderByIssueDateDesc(Company company, Dealer dealer);
 
-    Optional<Invoice> findBySalesOrderId(Long salesOrderId);
+    Optional<Invoice> findByCompanyAndSalesOrderId(Company company, Long salesOrderId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select i from Invoice i where i.salesOrder.id = :salesOrderId")
-    Optional<Invoice> lockBySalesOrderId(@Param("salesOrderId") Long salesOrderId);
+    @Query("select i from Invoice i where i.company = :company and i.salesOrder.id = :salesOrderId")
+    Optional<Invoice> lockByCompanyAndSalesOrderId(@Param("company") Company company, @Param("salesOrderId") Long salesOrderId);
 
     @EntityGraph(attributePaths = "lines")
     Optional<Invoice> findByCompanyAndId(Company company, Long id);

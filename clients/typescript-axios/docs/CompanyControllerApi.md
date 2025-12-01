@@ -1,6 +1,6 @@
 # CompanyControllerApi
 
-All URIs are relative to *http://localhost:50965*
+All URIs are relative to *http://localhost:8081*
 
 |Method | HTTP request | Description|
 |------------- | ------------- | -------------|
@@ -19,7 +19,7 @@ All URIs are relative to *http://localhost:50965*
 import {
     CompanyControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new CompanyControllerApi(configuration);
@@ -70,7 +70,7 @@ import {
     CompanyControllerApi,
     Configuration,
     CompanyRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new CompanyControllerApi(configuration);
@@ -120,7 +120,7 @@ No authorization required
 import {
     CompanyControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new CompanyControllerApi(configuration);
@@ -164,7 +164,7 @@ import {
     CompanyControllerApi,
     Configuration,
     CompanyRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new CompanyControllerApi(configuration);

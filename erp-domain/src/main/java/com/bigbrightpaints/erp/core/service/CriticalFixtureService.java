@@ -31,7 +31,7 @@ import java.util.Map;
 import java.util.Optional;
 
 @Component
-@Profile({"test", "mock"})
+@Profile({"test", "mock", "dev"})
 public class CriticalFixtureService {
 
     private final AccountingPeriodService accountingPeriodService;

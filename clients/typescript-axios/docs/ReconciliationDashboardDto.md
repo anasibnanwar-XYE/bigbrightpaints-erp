@@ -18,7 +18,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { ReconciliationDashboardDto } from 'bbp-erp-api-client';
+import { ReconciliationDashboardDto } from '@bigbright/erp-api-client';
 
 const instance: ReconciliationDashboardDto = {
     ledgerInventoryBalance,

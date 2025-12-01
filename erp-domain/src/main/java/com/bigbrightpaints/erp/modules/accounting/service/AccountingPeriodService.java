@@ -205,10 +205,35 @@ public class AccountingPeriodService {
         return period;
     }
 
+    /**
+     * Computes net income for a period using double-entry accounting principles.
+     * 
+     * Net Income = (Revenue + Other Income) - COGS - Operating Expenses - Other Expenses
+     * 
+     * For each account type:
+     * - REVENUE: Normal credit balance. Net = Credits - Debits (positive = income)
+     *   Contra accounts (returns, discounts) have debit balances, reducing revenue.
+     * - OTHER_INCOME: Normal credit balance (interest income, gains on sales)
+     * - EXPENSE: Normal debit balance. Net = Debits - Credits (positive = expense)
+     * - OTHER_EXPENSE: Normal debit balance (interest expense, losses)
+     * - COGS: Normal debit balance. Net = Debits - Credits (positive = cost)
+     * 
+     * The query includes all journal entries within the period date range,
+     * regardless of posting date (accrual basis).
+     * 
+     * Prior period adjustments should be posted to EQUITY (Retained Earnings)
+     * and will not affect current period net income.
+     */
     private BigDecimal computeNetIncome(Company company, AccountingPeriod period) {
         List<Object[]> aggregates = journalLineRepository.summarizeByAccountType(
                 company, period.getStartDate(), period.getEndDate());
-        BigDecimal net = BigDecimal.ZERO;
+        
+        BigDecimal grossRevenue = BigDecimal.ZERO;
+        BigDecimal otherIncome = BigDecimal.ZERO;
+        BigDecimal totalCogs = BigDecimal.ZERO;
+        BigDecimal totalExpenses = BigDecimal.ZERO;
+        BigDecimal otherExpenses = BigDecimal.ZERO;
+        
         for (Object[] row : aggregates) {
             if (row == null || row.length < 3) {
                 continue;
@@ -216,14 +241,40 @@ public class AccountingPeriodService {
             AccountType type = (AccountType) row[0];
             BigDecimal debit = row[1] == null ? BigDecimal.ZERO : (BigDecimal) row[1];
             BigDecimal credit = row[2] == null ? BigDecimal.ZERO : (BigDecimal) row[2];
+            
             switch (type) {
-                case REVENUE -> net = net.add(credit.subtract(debit));
-                case EXPENSE, COGS -> net = net.subtract(debit.subtract(credit));
+                case REVENUE -> {
+                    // Revenue has credit balance; contra-revenue (returns) reduces it
+                    grossRevenue = grossRevenue.add(credit.subtract(debit));
+                }
+                case OTHER_INCOME -> {
+                    // Other income has credit balance (interest, gains)
+                    otherIncome = otherIncome.add(credit.subtract(debit));
+                }
+                case COGS -> {
+                    // COGS has debit balance
+                    totalCogs = totalCogs.add(debit.subtract(credit));
+                }
+                case EXPENSE -> {
+                    // Operating expenses have debit balance
+                    totalExpenses = totalExpenses.add(debit.subtract(credit));
+                }
+                case OTHER_EXPENSE -> {
+                    // Other expenses have debit balance (interest expense, losses)
+                    otherExpenses = otherExpenses.add(debit.subtract(credit));
+                }
                 default -> {
+                    // ASSET, LIABILITY, EQUITY don't affect net income
+                    // Prior period adjustments go to EQUITY (Retained Earnings)
                 }
             }
         }
-        return net.setScale(2, RoundingMode.HALF_UP);
+        
+        // Net Income = (Gross Revenue + Other Income) - COGS - Operating Expenses - Other Expenses
+        BigDecimal totalIncome = grossRevenue.add(otherIncome);
+        BigDecimal totalCosts = totalCogs.add(totalExpenses).add(otherExpenses);
+        BigDecimal netIncome = totalIncome.subtract(totalCosts);
+        return netIncome.setScale(2, RoundingMode.HALF_UP);
     }
 
     private JournalEntry postClosingJournal(Company company,

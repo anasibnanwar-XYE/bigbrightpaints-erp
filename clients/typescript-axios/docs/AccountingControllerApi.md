@@ -1,6 +1,6 @@
 # AccountingControllerApi
 
-All URIs are relative to *http://localhost:50965*
+All URIs are relative to *http://localhost:8081*
 
 |Method | HTTP request | Description|
 |------------- | ------------- | -------------|
@@ -8,15 +8,28 @@ All URIs are relative to *http://localhost:50965*
 |[**adjustWip**](#adjustwip) | **POST** /api/v1/accounting/inventory/wip-adjustment | |
 |[**auditDigest**](#auditdigest) | **GET** /api/v1/accounting/audit/digest | |
 |[**auditDigestCsv**](#auditdigestcsv) | **GET** /api/v1/accounting/audit/digest.csv | |
+|[**cascadeReverseJournalEntry**](#cascadereversejournalentry) | **POST** /api/v1/accounting/journal-entries/{entryId}/cascade-reverse | |
 |[**checklist**](#checklist) | **GET** /api/v1/accounting/month-end/checklist | |
 |[**closePeriod**](#closeperiod) | **POST** /api/v1/accounting/periods/{periodId}/close | |
+|[**compareBalances**](#comparebalances) | **GET** /api/v1/accounting/accounts/{accountId}/balance/compare | |
 |[**createAccount**](#createaccount) | **POST** /api/v1/accounting/accounts | |
 |[**createJournalEntry**](#createjournalentry) | **POST** /api/v1/accounting/journal-entries | |
-|[**dealerAging**](#dealeraging) | **GET** /api/v1/accounting/aging/dealers/{dealerId} | |
+|[**dealerAging1**](#dealeraging1) | **GET** /api/v1/accounting/aging/dealers/{dealerId} | |
 |[**dealerAgingPdf**](#dealeragingpdf) | **GET** /api/v1/accounting/aging/dealers/{dealerId}/pdf | |
 |[**dealerStatement**](#dealerstatement) | **GET** /api/v1/accounting/statements/dealers/{dealerId} | |
 |[**dealerStatementPdf**](#dealerstatementpdf) | **GET** /api/v1/accounting/statements/dealers/{dealerId}/pdf | |
 |[**generateGstReturn**](#generategstreturn) | **GET** /api/v1/accounting/gst/return | |
+|[**getAccountActivity**](#getaccountactivity) | **GET** /api/v1/accounting/accounts/{accountId}/activity | |
+|[**getAccountTreeByType**](#getaccounttreebytype) | **GET** /api/v1/accounting/accounts/tree/{type} | |
+|[**getAgedReceivables**](#getagedreceivables) | **GET** /api/v1/accounting/reports/aging/receivables | |
+|[**getBalanceAsOf**](#getbalanceasof) | **GET** /api/v1/accounting/accounts/{accountId}/balance/as-of | |
+|[**getBalanceSheetHierarchy**](#getbalancesheethierarchy) | **GET** /api/v1/accounting/reports/balance-sheet/hierarchy | |
+|[**getChartOfAccountsTree**](#getchartofaccountstree) | **GET** /api/v1/accounting/accounts/tree | |
+|[**getDealerAging**](#getdealeraging) | **GET** /api/v1/accounting/reports/aging/dealer/{dealerId} | |
+|[**getDealerAgingDetailed**](#getdealeragingdetailed) | **GET** /api/v1/accounting/reports/aging/dealer/{dealerId}/detailed | |
+|[**getDealerDSO**](#getdealerdso) | **GET** /api/v1/accounting/reports/dso/dealer/{dealerId} | |
+|[**getIncomeStatementHierarchy**](#getincomestatementhierarchy) | **GET** /api/v1/accounting/reports/income-statement/hierarchy | |
+|[**getTrialBalanceAsOf**](#gettrialbalanceasof) | **GET** /api/v1/accounting/trial-balance/as-of | |
 |[**journalEntries**](#journalentries) | **GET** /api/v1/accounting/journal-entries | |
 |[**listPeriods**](#listperiods) | **GET** /api/v1/accounting/periods | |
 |[**lockPeriod**](#lockperiod) | **POST** /api/v1/accounting/periods/{periodId}/lock | |
@@ -52,7 +65,7 @@ All URIs are relative to *http://localhost:50965*
 import {
     AccountingControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AccountingControllerApi(configuration);
@@ -81,6 +94,7 @@ No authorization required
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
 |**200** | OK |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
@@ -96,7 +110,7 @@ import {
     AccountingControllerApi,
     Configuration,
     WipAdjustmentRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AccountingControllerApi(configuration);
@@ -132,6 +146,7 @@ No authorization required
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
 |**200** | OK |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
@@ -146,7 +161,7 @@ No authorization required
 import {
     AccountingControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AccountingControllerApi(configuration);
@@ -185,6 +200,7 @@ No authorization required
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
 |**200** | OK |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
@@ -199,7 +215,7 @@ No authorization required
 import {
     AccountingControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AccountingControllerApi(configuration);
@@ -232,12 +248,68 @@ No authorization required
 ### HTTP request headers
 
  - **Content-Type**: Not defined
- - **Accept**: text/csv
+ - **Accept**: */*, text/csv
 
 
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
+|**200** | OK |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **cascadeReverseJournalEntry**
+> ApiResponseListJournalEntryDto cascadeReverseJournalEntry(journalEntryReversalRequest)
+
+
+### Example
+
+```typescript
+import {
+    AccountingControllerApi,
+    Configuration,
+    JournalEntryReversalRequest
+} from '@bigbright/erp-api-client';
+
+const configuration = new Configuration();
+const apiInstance = new AccountingControllerApi(configuration);
+
+let entryId: number; // (default to undefined)
+let journalEntryReversalRequest: JournalEntryReversalRequest; //
+
+const { status, data } = await apiInstance.cascadeReverseJournalEntry(
+    entryId,
+    journalEntryReversalRequest
+);
+```
+
+### Parameters
+
+|Name | Type | Description  | Notes|
+|------------- | ------------- | ------------- | -------------|
+| **journalEntryReversalRequest** | **JournalEntryReversalRequest**|  | |
+| **entryId** | [**number**] |  | defaults to undefined|
+
+
+### Return type
+
+**ApiResponseListJournalEntryDto**
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
+ - **Accept**: */*
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
 |**200** | OK |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
@@ -252,7 +324,7 @@ No authorization required
 import {
     AccountingControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AccountingControllerApi(configuration);
@@ -288,6 +360,7 @@ No authorization required
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
 |**200** | OK |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
@@ -303,7 +376,7 @@ import {
     AccountingControllerApi,
     Configuration,
     AccountingPeriodCloseRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AccountingControllerApi(configuration);
@@ -342,6 +415,64 @@ No authorization required
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
+|**200** | OK |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **compareBalances**
+> ApiResponseBalanceComparison compareBalances()
+
+
+### Example
+
+```typescript
+import {
+    AccountingControllerApi,
+    Configuration
+} from '@bigbright/erp-api-client';
+
+const configuration = new Configuration();
+const apiInstance = new AccountingControllerApi(configuration);
+
+let accountId: number; // (default to undefined)
+let date1: string; // (default to undefined)
+let date2: string; // (default to undefined)
+
+const { status, data } = await apiInstance.compareBalances(
+    accountId,
+    date1,
+    date2
+);
+```
+
+### Parameters
+
+|Name | Type | Description  | Notes|
+|------------- | ------------- | ------------- | -------------|
+| **accountId** | [**number**] |  | defaults to undefined|
+| **date1** | [**string**] |  | defaults to undefined|
+| **date2** | [**string**] |  | defaults to undefined|
+
+
+### Return type
+
+**ApiResponseBalanceComparison**
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: */*
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
 |**200** | OK |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
@@ -357,7 +488,7 @@ import {
     AccountingControllerApi,
     Configuration,
     AccountRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AccountingControllerApi(configuration);
@@ -393,6 +524,7 @@ No authorization required
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
 |**200** | OK |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
@@ -408,7 +540,7 @@ import {
     AccountingControllerApi,
     Configuration,
     JournalEntryRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AccountingControllerApi(configuration);
@@ -444,12 +576,13 @@ No authorization required
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
 |**200** | OK |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
-# **dealerAging**
-> ApiResponseAgingSummaryResponse dealerAging()
+# **dealerAging1**
+> ApiResponseAgingSummaryResponse dealerAging1()
 
 
 ### Example
@@ -458,7 +591,7 @@ No authorization required
 import {
     AccountingControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AccountingControllerApi(configuration);
@@ -467,7 +600,7 @@ let dealerId: number; // (default to undefined)
 let asOf: string; // (optional) (default to undefined)
 let buckets: string; // (optional) (default to undefined)
 
-const { status, data } = await apiInstance.dealerAging(
+const { status, data } = await apiInstance.dealerAging1(
     dealerId,
     asOf,
     buckets
@@ -500,6 +633,7 @@ No authorization required
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
 |**200** | OK |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
@@ -514,7 +648,7 @@ No authorization required
 import {
     AccountingControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AccountingControllerApi(configuration);
@@ -550,12 +684,13 @@ No authorization required
 ### HTTP request headers
 
  - **Content-Type**: Not defined
- - **Accept**: application/pdf
+ - **Accept**: */*, application/pdf
 
 
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
 |**200** | OK |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
@@ -570,7 +705,7 @@ No authorization required
 import {
     AccountingControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AccountingControllerApi(configuration);
@@ -612,6 +747,7 @@ No authorization required
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
 |**200** | OK |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
@@ -626,7 +762,7 @@ No authorization required
 import {
     AccountingControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AccountingControllerApi(configuration);
@@ -662,12 +798,13 @@ No authorization required
 ### HTTP request headers
 
  - **Content-Type**: Not defined
- - **Accept**: application/pdf
+ - **Accept**: */*, application/pdf
 
 
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
 |**200** | OK |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
@@ -682,7 +819,7 @@ No authorization required
 import {
     AccountingControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AccountingControllerApi(configuration);
@@ -718,6 +855,556 @@ No authorization required
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
+|**200** | OK |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **getAccountActivity**
+> ApiResponseAccountActivityReport getAccountActivity()
+
+
+### Example
+
+```typescript
+import {
+    AccountingControllerApi,
+    Configuration
+} from '@bigbright/erp-api-client';
+
+const configuration = new Configuration();
+const apiInstance = new AccountingControllerApi(configuration);
+
+let accountId: number; // (default to undefined)
+let startDate: string; // (default to undefined)
+let endDate: string; // (default to undefined)
+
+const { status, data } = await apiInstance.getAccountActivity(
+    accountId,
+    startDate,
+    endDate
+);
+```
+
+### Parameters
+
+|Name | Type | Description  | Notes|
+|------------- | ------------- | ------------- | -------------|
+| **accountId** | [**number**] |  | defaults to undefined|
+| **startDate** | [**string**] |  | defaults to undefined|
+| **endDate** | [**string**] |  | defaults to undefined|
+
+
+### Return type
+
+**ApiResponseAccountActivityReport**
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: */*
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
+|**200** | OK |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **getAccountTreeByType**
+> ApiResponseListAccountNode getAccountTreeByType()
+
+
+### Example
+
+```typescript
+import {
+    AccountingControllerApi,
+    Configuration
+} from '@bigbright/erp-api-client';
+
+const configuration = new Configuration();
+const apiInstance = new AccountingControllerApi(configuration);
+
+let type: string; // (default to undefined)
+
+const { status, data } = await apiInstance.getAccountTreeByType(
+    type
+);
+```
+
+### Parameters
+
+|Name | Type | Description  | Notes|
+|------------- | ------------- | ------------- | -------------|
+| **type** | [**string**] |  | defaults to undefined|
+
+
+### Return type
+
+**ApiResponseListAccountNode**
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: */*
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
+|**200** | OK |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **getAgedReceivables**
+> ApiResponseAgedReceivablesReport getAgedReceivables()
+
+
+### Example
+
+```typescript
+import {
+    AccountingControllerApi,
+    Configuration
+} from '@bigbright/erp-api-client';
+
+const configuration = new Configuration();
+const apiInstance = new AccountingControllerApi(configuration);
+
+let asOfDate: string; // (optional) (default to undefined)
+
+const { status, data } = await apiInstance.getAgedReceivables(
+    asOfDate
+);
+```
+
+### Parameters
+
+|Name | Type | Description  | Notes|
+|------------- | ------------- | ------------- | -------------|
+| **asOfDate** | [**string**] |  | (optional) defaults to undefined|
+
+
+### Return type
+
+**ApiResponseAgedReceivablesReport**
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: */*
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
+|**200** | OK |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **getBalanceAsOf**
+> ApiResponseBigDecimal getBalanceAsOf()
+
+
+### Example
+
+```typescript
+import {
+    AccountingControllerApi,
+    Configuration
+} from '@bigbright/erp-api-client';
+
+const configuration = new Configuration();
+const apiInstance = new AccountingControllerApi(configuration);
+
+let accountId: number; // (default to undefined)
+let date: string; // (default to undefined)
+
+const { status, data } = await apiInstance.getBalanceAsOf(
+    accountId,
+    date
+);
+```
+
+### Parameters
+
+|Name | Type | Description  | Notes|
+|------------- | ------------- | ------------- | -------------|
+| **accountId** | [**number**] |  | defaults to undefined|
+| **date** | [**string**] |  | defaults to undefined|
+
+
+### Return type
+
+**ApiResponseBigDecimal**
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: */*
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
+|**200** | OK |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **getBalanceSheetHierarchy**
+> ApiResponseBalanceSheetHierarchy getBalanceSheetHierarchy()
+
+
+### Example
+
+```typescript
+import {
+    AccountingControllerApi,
+    Configuration
+} from '@bigbright/erp-api-client';
+
+const configuration = new Configuration();
+const apiInstance = new AccountingControllerApi(configuration);
+
+const { status, data } = await apiInstance.getBalanceSheetHierarchy();
+```
+
+### Parameters
+This endpoint does not have any parameters.
+
+
+### Return type
+
+**ApiResponseBalanceSheetHierarchy**
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: */*
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
+|**200** | OK |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **getChartOfAccountsTree**
+> ApiResponseListAccountNode getChartOfAccountsTree()
+
+
+### Example
+
+```typescript
+import {
+    AccountingControllerApi,
+    Configuration
+} from '@bigbright/erp-api-client';
+
+const configuration = new Configuration();
+const apiInstance = new AccountingControllerApi(configuration);
+
+const { status, data } = await apiInstance.getChartOfAccountsTree();
+```
+
+### Parameters
+This endpoint does not have any parameters.
+
+
+### Return type
+
+**ApiResponseListAccountNode**
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: */*
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
+|**200** | OK |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **getDealerAging**
+> ApiResponseDealerAgingDetail getDealerAging()
+
+
+### Example
+
+```typescript
+import {
+    AccountingControllerApi,
+    Configuration
+} from '@bigbright/erp-api-client';
+
+const configuration = new Configuration();
+const apiInstance = new AccountingControllerApi(configuration);
+
+let dealerId: number; // (default to undefined)
+
+const { status, data } = await apiInstance.getDealerAging(
+    dealerId
+);
+```
+
+### Parameters
+
+|Name | Type | Description  | Notes|
+|------------- | ------------- | ------------- | -------------|
+| **dealerId** | [**number**] |  | defaults to undefined|
+
+
+### Return type
+
+**ApiResponseDealerAgingDetail**
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: */*
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
+|**200** | OK |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **getDealerAgingDetailed**
+> ApiResponseDealerAgingDetailedReport getDealerAgingDetailed()
+
+
+### Example
+
+```typescript
+import {
+    AccountingControllerApi,
+    Configuration
+} from '@bigbright/erp-api-client';
+
+const configuration = new Configuration();
+const apiInstance = new AccountingControllerApi(configuration);
+
+let dealerId: number; // (default to undefined)
+
+const { status, data } = await apiInstance.getDealerAgingDetailed(
+    dealerId
+);
+```
+
+### Parameters
+
+|Name | Type | Description  | Notes|
+|------------- | ------------- | ------------- | -------------|
+| **dealerId** | [**number**] |  | defaults to undefined|
+
+
+### Return type
+
+**ApiResponseDealerAgingDetailedReport**
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: */*
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
+|**200** | OK |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **getDealerDSO**
+> ApiResponseDSOReport getDealerDSO()
+
+
+### Example
+
+```typescript
+import {
+    AccountingControllerApi,
+    Configuration
+} from '@bigbright/erp-api-client';
+
+const configuration = new Configuration();
+const apiInstance = new AccountingControllerApi(configuration);
+
+let dealerId: number; // (default to undefined)
+
+const { status, data } = await apiInstance.getDealerDSO(
+    dealerId
+);
+```
+
+### Parameters
+
+|Name | Type | Description  | Notes|
+|------------- | ------------- | ------------- | -------------|
+| **dealerId** | [**number**] |  | defaults to undefined|
+
+
+### Return type
+
+**ApiResponseDSOReport**
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: */*
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
+|**200** | OK |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **getIncomeStatementHierarchy**
+> ApiResponseIncomeStatementHierarchy getIncomeStatementHierarchy()
+
+
+### Example
+
+```typescript
+import {
+    AccountingControllerApi,
+    Configuration
+} from '@bigbright/erp-api-client';
+
+const configuration = new Configuration();
+const apiInstance = new AccountingControllerApi(configuration);
+
+const { status, data } = await apiInstance.getIncomeStatementHierarchy();
+```
+
+### Parameters
+This endpoint does not have any parameters.
+
+
+### Return type
+
+**ApiResponseIncomeStatementHierarchy**
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: */*
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
+|**200** | OK |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **getTrialBalanceAsOf**
+> ApiResponseTrialBalanceSnapshot getTrialBalanceAsOf()
+
+
+### Example
+
+```typescript
+import {
+    AccountingControllerApi,
+    Configuration
+} from '@bigbright/erp-api-client';
+
+const configuration = new Configuration();
+const apiInstance = new AccountingControllerApi(configuration);
+
+let date: string; // (default to undefined)
+
+const { status, data } = await apiInstance.getTrialBalanceAsOf(
+    date
+);
+```
+
+### Parameters
+
+|Name | Type | Description  | Notes|
+|------------- | ------------- | ------------- | -------------|
+| **date** | [**string**] |  | defaults to undefined|
+
+
+### Return type
+
+**ApiResponseTrialBalanceSnapshot**
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: */*
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
 |**200** | OK |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
@@ -732,15 +1419,19 @@ No authorization required
 import {
     AccountingControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AccountingControllerApi(configuration);
 
 let dealerId: number; // (optional) (default to undefined)
+let page: number; // (optional) (default to 0)
+let size: number; // (optional) (default to 100)
 
 const { status, data } = await apiInstance.journalEntries(
-    dealerId
+    dealerId,
+    page,
+    size
 );
 ```
 
@@ -749,6 +1440,8 @@ const { status, data } = await apiInstance.journalEntries(
 |Name | Type | Description  | Notes|
 |------------- | ------------- | ------------- | -------------|
 | **dealerId** | [**number**] |  | (optional) defaults to undefined|
+| **page** | [**number**] |  | (optional) defaults to 0|
+| **size** | [**number**] |  | (optional) defaults to 100|
 
 
 ### Return type
@@ -768,6 +1461,7 @@ No authorization required
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
 |**200** | OK |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
@@ -782,7 +1476,7 @@ No authorization required
 import {
     AccountingControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AccountingControllerApi(configuration);
@@ -811,6 +1505,7 @@ No authorization required
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
 |**200** | OK |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
@@ -826,7 +1521,7 @@ import {
     AccountingControllerApi,
     Configuration,
     AccountingPeriodLockRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AccountingControllerApi(configuration);
@@ -865,6 +1560,7 @@ No authorization required
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
 |**200** | OK |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
@@ -880,7 +1576,7 @@ import {
     AccountingControllerApi,
     Configuration,
     AccrualRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AccountingControllerApi(configuration);
@@ -916,6 +1612,7 @@ No authorization required
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
 |**200** | OK |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
@@ -931,7 +1628,7 @@ import {
     AccountingControllerApi,
     Configuration,
     CreditNoteRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AccountingControllerApi(configuration);
@@ -967,6 +1664,7 @@ No authorization required
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
 |**200** | OK |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
@@ -982,7 +1680,7 @@ import {
     AccountingControllerApi,
     Configuration,
     DebitNoteRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AccountingControllerApi(configuration);
@@ -1018,6 +1716,7 @@ No authorization required
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
 |**200** | OK |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
@@ -1033,7 +1732,7 @@ import {
     AccountingControllerApi,
     Configuration,
     BankReconciliationRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AccountingControllerApi(configuration);
@@ -1069,6 +1768,7 @@ No authorization required
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
 |**200** | OK |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
@@ -1084,7 +1784,7 @@ import {
     AccountingControllerApi,
     Configuration,
     DealerReceiptRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AccountingControllerApi(configuration);
@@ -1120,6 +1820,7 @@ No authorization required
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
 |**200** | OK |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
@@ -1135,7 +1836,7 @@ import {
     AccountingControllerApi,
     Configuration,
     InventoryCountRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AccountingControllerApi(configuration);
@@ -1171,6 +1872,7 @@ No authorization required
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
 |**200** | OK |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
@@ -1186,7 +1888,7 @@ import {
     AccountingControllerApi,
     Configuration,
     LandedCostRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AccountingControllerApi(configuration);
@@ -1222,6 +1924,7 @@ No authorization required
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
 |**200** | OK |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
@@ -1237,7 +1940,7 @@ import {
     AccountingControllerApi,
     Configuration,
     PayrollPaymentRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AccountingControllerApi(configuration);
@@ -1273,6 +1976,7 @@ No authorization required
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
 |**200** | OK |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
@@ -1288,7 +1992,7 @@ import {
     AccountingControllerApi,
     Configuration,
     SalesReturnRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AccountingControllerApi(configuration);
@@ -1324,6 +2028,7 @@ No authorization required
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
 |**200** | OK |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
@@ -1339,7 +2044,7 @@ import {
     AccountingControllerApi,
     Configuration,
     SupplierPaymentRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AccountingControllerApi(configuration);
@@ -1375,6 +2080,7 @@ No authorization required
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
 |**200** | OK |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
@@ -1390,7 +2096,7 @@ import {
     AccountingControllerApi,
     Configuration,
     AccountingPeriodReopenRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AccountingControllerApi(configuration);
@@ -1429,6 +2135,7 @@ No authorization required
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
 |**200** | OK |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
@@ -1444,7 +2151,7 @@ import {
     AccountingControllerApi,
     Configuration,
     InventoryRevaluationRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AccountingControllerApi(configuration);
@@ -1480,6 +2187,7 @@ No authorization required
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
 |**200** | OK |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
@@ -1495,7 +2203,7 @@ import {
     AccountingControllerApi,
     Configuration,
     JournalEntryReversalRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AccountingControllerApi(configuration);
@@ -1534,6 +2242,7 @@ No authorization required
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
 |**200** | OK |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
@@ -1549,7 +2258,7 @@ import {
     AccountingControllerApi,
     Configuration,
     DealerSettlementRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AccountingControllerApi(configuration);
@@ -1585,6 +2294,7 @@ No authorization required
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
 |**200** | OK |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
@@ -1600,7 +2310,7 @@ import {
     AccountingControllerApi,
     Configuration,
     SupplierSettlementRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AccountingControllerApi(configuration);
@@ -1636,6 +2346,7 @@ No authorization required
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
 |**200** | OK |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
@@ -1650,7 +2361,7 @@ No authorization required
 import {
     AccountingControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AccountingControllerApi(configuration);
@@ -1692,6 +2403,7 @@ No authorization required
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
 |**200** | OK |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
@@ -1706,7 +2418,7 @@ No authorization required
 import {
     AccountingControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AccountingControllerApi(configuration);
@@ -1742,12 +2454,13 @@ No authorization required
 ### HTTP request headers
 
  - **Content-Type**: Not defined
- - **Accept**: application/pdf
+ - **Accept**: */*, application/pdf
 
 
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
 |**200** | OK |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
@@ -1762,7 +2475,7 @@ No authorization required
 import {
     AccountingControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AccountingControllerApi(configuration);
@@ -1804,6 +2517,7 @@ No authorization required
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
 |**200** | OK |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
@@ -1818,7 +2532,7 @@ No authorization required
 import {
     AccountingControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AccountingControllerApi(configuration);
@@ -1854,12 +2568,13 @@ No authorization required
 ### HTTP request headers
 
  - **Content-Type**: Not defined
- - **Accept**: application/pdf
+ - **Accept**: */*, application/pdf
 
 
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
 |**200** | OK |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
@@ -1875,7 +2590,7 @@ import {
     AccountingControllerApi,
     Configuration,
     MonthEndChecklistUpdateRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AccountingControllerApi(configuration);
@@ -1914,6 +2629,7 @@ No authorization required
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
 |**200** | OK |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
@@ -1929,7 +2645,7 @@ import {
     AccountingControllerApi,
     Configuration,
     BadDebtWriteOffRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AccountingControllerApi(configuration);
@@ -1965,6 +2681,7 @@ No authorization required
 ### HTTP response details
 | Status code | Description | Response headers |
 |-------------|-------------|------------------|
+|**400** | Bad Request |  -  |
 |**200** | OK |  -  |
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)

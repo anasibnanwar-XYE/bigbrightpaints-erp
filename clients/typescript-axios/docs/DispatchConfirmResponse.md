@@ -15,7 +15,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { DispatchConfirmResponse } from 'bbp-erp-api-client';
+import { DispatchConfirmResponse } from '@bigbright/erp-api-client';
 
 const instance: DispatchConfirmResponse = {
     packingSlipId,

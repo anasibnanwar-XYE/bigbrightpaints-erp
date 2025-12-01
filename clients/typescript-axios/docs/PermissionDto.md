@@ -12,7 +12,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { PermissionDto } from 'bbp-erp-api-client';
+import { PermissionDto } from '@bigbright/erp-api-client';
 
 const instance: PermissionDto = {
     id,

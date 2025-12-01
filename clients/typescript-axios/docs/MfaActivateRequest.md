@@ -10,7 +10,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { MfaActivateRequest } from 'bbp-erp-api-client';
+import { MfaActivateRequest } from '@bigbright/erp-api-client';
 
 const instance: MfaActivateRequest = {
     code,

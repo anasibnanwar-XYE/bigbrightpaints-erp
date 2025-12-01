@@ -16,7 +16,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { Allocation } from 'bbp-erp-api-client';
+import { Allocation } from '@bigbright/erp-api-client';
 
 const instance: Allocation = {
     invoiceId,

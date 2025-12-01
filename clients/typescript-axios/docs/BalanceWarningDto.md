@@ -15,7 +15,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { BalanceWarningDto } from 'bbp-erp-api-client';
+import { BalanceWarningDto } from '@bigbright/erp-api-client';
 
 const instance: BalanceWarningDto = {
     accountId,

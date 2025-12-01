@@ -12,4 +12,10 @@ public interface InventoryReservationRepository extends JpaRepository<InventoryR
             String referenceType,
             String referenceId);
     Optional<InventoryReservation> findFirstByFinishedGoodOrderByCreatedAtAsc(FinishedGood finishedGood);
+    
+    // For orphan detection: find RESERVED reservations that might need cleanup
+    List<InventoryReservation> findByFinishedGoodCompanyAndStatus(Company company, String status);
+    
+    // Find reservations by order reference
+    List<InventoryReservation> findByReferenceTypeAndReferenceId(String referenceType, String referenceId);
 }

@@ -12,7 +12,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { BalanceSheetDto } from 'bbp-erp-api-client';
+import { BalanceSheetDto } from '@bigbright/erp-api-client';
 
 const instance: BalanceSheetDto = {
     totalAssets,

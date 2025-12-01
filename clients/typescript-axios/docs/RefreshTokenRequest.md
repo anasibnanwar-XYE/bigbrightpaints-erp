@@ -11,7 +11,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { RefreshTokenRequest } from 'bbp-erp-api-client';
+import { RefreshTokenRequest } from '@bigbright/erp-api-client';
 
 const instance: RefreshTokenRequest = {
     refreshToken,

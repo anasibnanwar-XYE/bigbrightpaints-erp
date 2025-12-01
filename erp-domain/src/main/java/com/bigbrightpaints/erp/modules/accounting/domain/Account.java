@@ -42,6 +42,14 @@ public class Account extends VersionedEntity {
     @Column(nullable = false)
     private boolean active = true;
 
+    // Parent-child hierarchy for consolidated reports
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "parent_id")
+    private Account parent;
+
+    @Column(name = "hierarchy_level")
+    private Integer hierarchyLevel = 1; // 1=Category, 2=Subcategory, 3=Detail, etc.
+
     @PrePersist
     public void prePersist() {
         if (publicId == null) {
@@ -66,6 +74,14 @@ public class Account extends VersionedEntity {
         validateBalanceUpdate(balance);
         this.balance = balance;
     }
+    public Account getParent() { return parent; }
+    public void setParent(Account parent) { 
+        this.parent = parent;
+        this.hierarchyLevel = parent != null ? parent.getHierarchyLevel() + 1 : 1;
+    }
+    public Integer getHierarchyLevel() { return hierarchyLevel != null ? hierarchyLevel : 1; }
+    public void setHierarchyLevel(Integer hierarchyLevel) { this.hierarchyLevel = hierarchyLevel; }
+    public boolean isLeafAccount() { return hierarchyLevel == null || hierarchyLevel >= 3; }
 
     /**
      * Guard against invalid balances by account type. Assets/expenses/COGS must not go negative.

@@ -53,8 +53,9 @@ public class InvoiceService {
 
     @Transactional
     public InvoiceDto issueInvoiceForOrder(Long salesOrderId) {
+        Company company = companyContextService.requireCurrentCompany();
         // Use pessimistic lock to prevent duplicate invoice creation race condition
-        Invoice existing = invoiceRepository.lockBySalesOrderId(salesOrderId).orElse(null);
+        Invoice existing = invoiceRepository.lockByCompanyAndSalesOrderId(company, salesOrderId).orElse(null);
         if (existing != null) {
             return toDto(existing);
         }
@@ -157,6 +158,17 @@ public class InvoiceService {
     private LocalDate currentDate(Company company) {
         ZoneId zone = ZoneId.of(company.getTimezone());
         return LocalDate.now(zone);
+    }
+
+    public record InvoiceWithEmail(InvoiceDto invoice, String dealerEmail, String companyName) {}
+
+    public InvoiceWithEmail getInvoiceWithDealerEmail(Long id) {
+        Company company = companyContextService.requireCurrentCompany();
+        Invoice invoice = invoiceRepository.findByCompanyAndId(company, id)
+                .orElseGet(() -> companyEntityLookup.requireInvoice(company, id));
+        String dealerEmail = invoice.getDealer() != null ? invoice.getDealer().getEmail() : null;
+        String companyName = invoice.getCompany() != null ? invoice.getCompany().getName() : null;
+        return new InvoiceWithEmail(toDto(invoice), dealerEmail, companyName);
     }
 
     private InvoiceDto toDto(Invoice invoice) {

@@ -1,6 +1,6 @@
 # AdminUserControllerApi
 
-All URIs are relative to *http://localhost:50965*
+All URIs are relative to *http://localhost:8081*
 
 |Method | HTTP request | Description|
 |------------- | ------------- | -------------|
@@ -21,7 +21,7 @@ import {
     AdminUserControllerApi,
     Configuration,
     CreateUserRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AdminUserControllerApi(configuration);
@@ -71,7 +71,7 @@ No authorization required
 import {
     AdminUserControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AdminUserControllerApi(configuration);
@@ -114,7 +114,7 @@ No authorization required
 import {
     AdminUserControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AdminUserControllerApi(configuration);
@@ -164,7 +164,7 @@ No authorization required
 import {
     AdminUserControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AdminUserControllerApi(configuration);
@@ -215,7 +215,7 @@ import {
     AdminUserControllerApi,
     Configuration,
     UpdateUserRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AdminUserControllerApi(configuration);

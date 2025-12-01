@@ -10,7 +10,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { SwitchCompanyRequest } from 'bbp-erp-api-client';
+import { SwitchCompanyRequest } from '@bigbright/erp-api-client';
 
 const instance: SwitchCompanyRequest = {
     companyCode,

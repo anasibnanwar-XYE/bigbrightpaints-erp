@@ -18,7 +18,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { RawMaterialPurchaseLineResponse } from 'bbp-erp-api-client';
+import { RawMaterialPurchaseLineResponse } from '@bigbright/erp-api-client';
 
 const instance: RawMaterialPurchaseLineResponse = {
     rawMaterialId,

@@ -11,7 +11,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { InventoryValuationDto } from 'bbp-erp-api-client';
+import { InventoryValuationDto } from '@bigbright/erp-api-client';
 
 const instance: InventoryValuationDto = {
     totalValue,

@@ -13,7 +13,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { DispatchConfirmRequest } from 'bbp-erp-api-client';
+import { DispatchConfirmRequest } from '@bigbright/erp-api-client';
 
 const instance: DispatchConfirmRequest = {
     packingSlipId,

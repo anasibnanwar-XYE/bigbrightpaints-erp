@@ -13,7 +13,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { MonthEndChecklistItemDto } from 'bbp-erp-api-client';
+import { MonthEndChecklistItemDto } from '@bigbright/erp-api-client';
 
 const instance: MonthEndChecklistItemDto = {
     key,

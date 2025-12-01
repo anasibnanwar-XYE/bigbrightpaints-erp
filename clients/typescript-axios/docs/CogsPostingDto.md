@@ -12,7 +12,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { CogsPostingDto } from 'bbp-erp-api-client';
+import { CogsPostingDto } from '@bigbright/erp-api-client';
 
 const instance: CogsPostingDto = {
     inventoryAccountId,

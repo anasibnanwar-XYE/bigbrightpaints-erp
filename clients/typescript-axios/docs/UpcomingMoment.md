@@ -12,7 +12,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { UpcomingMoment } from 'bbp-erp-api-client';
+import { UpcomingMoment } from '@bigbright/erp-api-client';
 
 const instance: UpcomingMoment = {
     title,

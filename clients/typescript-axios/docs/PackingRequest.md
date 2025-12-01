@@ -13,7 +13,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { PackingRequest } from 'bbp-erp-api-client';
+import { PackingRequest } from '@bigbright/erp-api-client';
 
 const instance: PackingRequest = {
     productionLogId,

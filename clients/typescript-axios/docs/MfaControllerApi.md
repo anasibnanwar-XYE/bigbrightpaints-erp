@@ -1,6 +1,6 @@
 # MfaControllerApi
 
-All URIs are relative to *http://localhost:50965*
+All URIs are relative to *http://localhost:8081*
 
 |Method | HTTP request | Description|
 |------------- | ------------- | -------------|
@@ -19,7 +19,7 @@ import {
     MfaControllerApi,
     Configuration,
     MfaActivateRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new MfaControllerApi(configuration);
@@ -70,7 +70,7 @@ import {
     MfaControllerApi,
     Configuration,
     MfaDisableRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new MfaControllerApi(configuration);
@@ -120,7 +120,7 @@ No authorization required
 import {
     MfaControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new MfaControllerApi(configuration);

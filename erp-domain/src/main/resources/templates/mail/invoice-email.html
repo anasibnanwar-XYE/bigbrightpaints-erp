@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body th:replace="~{mail/layout :: layout(~{::content})}">
+<div th:fragment="content">
+  <p class="muted" style="margin:0 0 14px 0;">Invoice Ready</p>
+  <h2 style="margin:0 0 10px 0; font-size:24px;">Hello, <span th:text="${recipientName}">Customer</span></h2>
+  <p style="margin:0 0 16px 0; line-height:1.6;">
+    Your invoice is ready. A PDF copy is attached for your records.
+  </p>
+  <div style="padding:16px; border:1px solid #e6e8eb; border-radius:10px; margin-bottom:18px; background:#fafbff;">
+    <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-weight:600;">
+      <span>Invoice No.</span><span th:text="${invoiceNumber}">INV-000</span>
+    </div>
+    <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+      <span>Invoice Date</span><span th:text="${invoiceDate}">2025-12-01</span>
+    </div>
+    <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+      <span>Due Date</span><span th:text="${dueDate}">2025-12-15</span>
+    </div>
+    <div style="display:flex; justify-content:space-between; font-weight:700; font-size:16px; color:#1d358b;">
+      <span>Total Amount</span><span th:text="${totalAmount}">₹0.00</span>
+    </div>
+  </div>
+  <p class="muted" style="margin:0 0 16px 0; line-height:1.6;">Need help? Reply to this email or contact your account manager.</p>
+  <a class="btn" th:href="${portalUrl}">View in Portal</a>
+</div>
+</body>
+</html>

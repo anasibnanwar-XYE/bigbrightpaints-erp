@@ -69,6 +69,9 @@ public class RawMaterial extends VersionedEntity {
         if (publicId == null) {
             publicId = UUID.randomUUID();
         }
+        if (sku == null || sku.isBlank()) {
+            sku = "RM-" + System.currentTimeMillis() % 100000000;
+        }
         if (createdAt == null) {
             createdAt = Instant.now();
         }

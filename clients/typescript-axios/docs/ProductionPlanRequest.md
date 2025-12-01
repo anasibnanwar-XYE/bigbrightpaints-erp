@@ -14,7 +14,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { ProductionPlanRequest } from 'bbp-erp-api-client';
+import { ProductionPlanRequest } from '@bigbright/erp-api-client';
 
 const instance: ProductionPlanRequest = {
     planNumber,

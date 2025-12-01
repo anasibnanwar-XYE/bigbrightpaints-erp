@@ -16,7 +16,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { StatementTransactionDto } from 'bbp-erp-api-client';
+import { StatementTransactionDto } from '@bigbright/erp-api-client';
 
 const instance: StatementTransactionDto = {
     entryDate,

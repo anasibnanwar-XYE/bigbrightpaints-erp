@@ -16,7 +16,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { PromotionRequest } from 'bbp-erp-api-client';
+import { PromotionRequest } from '@bigbright/erp-api-client';
 
 const instance: PromotionRequest = {
     name,

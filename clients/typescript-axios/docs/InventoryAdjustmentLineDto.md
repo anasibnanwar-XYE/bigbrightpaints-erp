@@ -15,7 +15,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { InventoryAdjustmentLineDto } from 'bbp-erp-api-client';
+import { InventoryAdjustmentLineDto } from '@bigbright/erp-api-client';
 
 const instance: InventoryAdjustmentLineDto = {
     finishedGoodId,

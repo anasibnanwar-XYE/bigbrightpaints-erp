@@ -16,7 +16,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { FactoryTaskDto } from 'bbp-erp-api-client';
+import { FactoryTaskDto } from '@bigbright/erp-api-client';
 
 const instance: FactoryTaskDto = {
     id,

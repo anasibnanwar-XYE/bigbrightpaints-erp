@@ -1,10 +1,11 @@
 # RoleControllerApi
 
-All URIs are relative to *http://localhost:50965*
+All URIs are relative to *http://localhost:8081*
 
 |Method | HTTP request | Description|
 |------------- | ------------- | -------------|
 |[**createRole**](#createrole) | **POST** /api/v1/admin/roles | |
+|[**getRoleByKey**](#getrolebykey) | **GET** /api/v1/admin/roles/{roleKey} | |
 |[**listRoles**](#listroles) | **GET** /api/v1/admin/roles | |
 
 # **createRole**
@@ -18,7 +19,7 @@ import {
     RoleControllerApi,
     Configuration,
     CreateRoleRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new RoleControllerApi(configuration);
@@ -58,6 +59,56 @@ No authorization required
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
+# **getRoleByKey**
+> ApiResponseRoleDto getRoleByKey()
+
+
+### Example
+
+```typescript
+import {
+    RoleControllerApi,
+    Configuration
+} from '@bigbright/erp-api-client';
+
+const configuration = new Configuration();
+const apiInstance = new RoleControllerApi(configuration);
+
+let roleKey: string; // (default to undefined)
+
+const { status, data } = await apiInstance.getRoleByKey(
+    roleKey
+);
+```
+
+### Parameters
+
+|Name | Type | Description  | Notes|
+|------------- | ------------- | ------------- | -------------|
+| **roleKey** | [**string**] |  | defaults to undefined|
+
+
+### Return type
+
+**ApiResponseRoleDto**
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: */*
+
+
+### HTTP response details
+| Status code | Description | Response headers |
+|-------------|-------------|------------------|
+|**200** | OK |  -  |
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
 # **listRoles**
 > ApiResponseListRoleDto listRoles()
 
@@ -68,7 +119,7 @@ No authorization required
 import {
     RoleControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new RoleControllerApi(configuration);

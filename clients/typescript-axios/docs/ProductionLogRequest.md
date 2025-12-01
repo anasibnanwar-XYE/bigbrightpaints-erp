@@ -23,7 +23,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { ProductionLogRequest } from 'bbp-erp-api-client';
+import { ProductionLogRequest } from '@bigbright/erp-api-client';
 
 const instance: ProductionLogRequest = {
     brandId,

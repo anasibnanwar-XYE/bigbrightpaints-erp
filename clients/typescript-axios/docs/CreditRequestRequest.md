@@ -13,7 +13,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { CreditRequestRequest } from 'bbp-erp-api-client';
+import { CreditRequestRequest } from '@bigbright/erp-api-client';
 
 const instance: CreditRequestRequest = {
     dealerId,

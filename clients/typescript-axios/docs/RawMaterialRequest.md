@@ -6,7 +6,7 @@
 Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------
 **name** | **string** |  | [default to undefined]
-**sku** | **string** |  | [default to undefined]
+**sku** | **string** |  | [optional] [default to undefined]
 **unitType** | **string** |  | [default to undefined]
 **reorderLevel** | **number** |  | [default to undefined]
 **minStock** | **number** |  | [default to undefined]
@@ -16,7 +16,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { RawMaterialRequest } from 'bbp-erp-api-client';
+import { RawMaterialRequest } from '@bigbright/erp-api-client';
 
 const instance: RawMaterialRequest = {
     name,

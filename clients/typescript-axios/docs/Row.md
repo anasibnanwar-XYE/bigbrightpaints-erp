@@ -15,7 +15,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { Row } from 'bbp-erp-api-client';
+import { Row } from '@bigbright/erp-api-client';
 
 const instance: Row = {
     accountId,

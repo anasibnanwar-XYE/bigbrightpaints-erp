@@ -14,7 +14,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { ProductionBrandDto } from 'bbp-erp-api-client';
+import { ProductionBrandDto } from '@bigbright/erp-api-client';
 
 const instance: ProductionBrandDto = {
     id,

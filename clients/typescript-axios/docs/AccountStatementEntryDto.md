@@ -15,7 +15,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { AccountStatementEntryDto } from 'bbp-erp-api-client';
+import { AccountStatementEntryDto } from '@bigbright/erp-api-client';
 
 const instance: AccountStatementEntryDto = {
     dealerName,

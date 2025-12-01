@@ -12,7 +12,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { HighlightMetric } from 'bbp-erp-api-client';
+import { HighlightMetric } from '@bigbright/erp-api-client';
 
 const instance: HighlightMetric = {
     label,

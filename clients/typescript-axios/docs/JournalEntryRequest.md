@@ -18,7 +18,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { JournalEntryRequest } from 'bbp-erp-api-client';
+import { JournalEntryRequest } from '@bigbright/erp-api-client';
 
 const instance: JournalEntryRequest = {
     referenceNumber,

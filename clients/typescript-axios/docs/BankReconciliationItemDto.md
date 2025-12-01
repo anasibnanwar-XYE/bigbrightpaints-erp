@@ -16,7 +16,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { BankReconciliationItemDto } from 'bbp-erp-api-client';
+import { BankReconciliationItemDto } from '@bigbright/erp-api-client';
 
 const instance: BankReconciliationItemDto = {
     journalEntryId,

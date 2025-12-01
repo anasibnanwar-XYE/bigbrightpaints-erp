@@ -1,6 +1,6 @@
 # FactoryControllerApi
 
-All URIs are relative to *http://localhost:50965*
+All URIs are relative to *http://localhost:8081*
 
 |Method | HTTP request | Description|
 |------------- | ------------- | -------------|
@@ -28,7 +28,7 @@ import {
     FactoryControllerApi,
     Configuration,
     CostAllocationRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new FactoryControllerApi(configuration);
@@ -78,7 +78,7 @@ No authorization required
 import {
     FactoryControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new FactoryControllerApi(configuration);
@@ -122,7 +122,7 @@ import {
     FactoryControllerApi,
     Configuration,
     ProductionPlanRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new FactoryControllerApi(configuration);
@@ -173,7 +173,7 @@ import {
     FactoryControllerApi,
     Configuration,
     FactoryTaskRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new FactoryControllerApi(configuration);
@@ -223,7 +223,7 @@ No authorization required
 import {
     FactoryControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new FactoryControllerApi(configuration);
@@ -266,7 +266,7 @@ No authorization required
 import {
     FactoryControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new FactoryControllerApi(configuration);
@@ -317,7 +317,7 @@ import {
     FactoryControllerApi,
     Configuration,
     ProductionBatchRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new FactoryControllerApi(configuration);
@@ -370,7 +370,7 @@ No authorization required
 import {
     FactoryControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new FactoryControllerApi(configuration);
@@ -413,7 +413,7 @@ No authorization required
 import {
     FactoryControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new FactoryControllerApi(configuration);
@@ -457,7 +457,7 @@ import {
     FactoryControllerApi,
     Configuration,
     ProductionPlanRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new FactoryControllerApi(configuration);
@@ -511,7 +511,7 @@ import {
     FactoryControllerApi,
     Configuration,
     StatusRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new FactoryControllerApi(configuration);
@@ -565,7 +565,7 @@ import {
     FactoryControllerApi,
     Configuration,
     FactoryTaskRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new FactoryControllerApi(configuration);

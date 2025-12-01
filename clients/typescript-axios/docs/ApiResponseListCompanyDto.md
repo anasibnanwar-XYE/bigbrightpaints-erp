@@ -13,7 +13,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { ApiResponseListCompanyDto } from 'bbp-erp-api-client';
+import { ApiResponseListCompanyDto } from '@bigbright/erp-api-client';
 
 const instance: ApiResponseListCompanyDto = {
     success,

@@ -12,7 +12,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { PerformanceLeader } from 'bbp-erp-api-client';
+import { PerformanceLeader } from '@bigbright/erp-api-client';
 
 const instance: PerformanceLeader = {
     name,

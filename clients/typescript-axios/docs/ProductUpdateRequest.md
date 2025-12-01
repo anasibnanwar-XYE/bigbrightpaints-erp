@@ -19,7 +19,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { ProductUpdateRequest } from 'bbp-erp-api-client';
+import { ProductUpdateRequest } from '@bigbright/erp-api-client';
 
 const instance: ProductUpdateRequest = {
     productName,

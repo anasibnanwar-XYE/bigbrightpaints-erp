@@ -59,27 +59,38 @@ public class PayrollBatchPaymentIT extends AbstractIntegrationTest {
                 LocalDate.now(),
                 cash.getId(),
                 expense.getId(),
+                null, // taxPayableAccountId
+                null, // pfPayableAccountId
+                null, // employerTaxExpenseAccountId
+                null, // employerPfExpenseAccountId
+                null, // defaultTaxRate
+                null, // defaultPfRate
+                null, // employerTaxRate
+                null, // employerPfRate
                 "PAY-" + System.currentTimeMillis(),
                 "Weekly payroll batch",
                 List.of(
-                        new PayrollBatchPaymentRequest.PayrollLine("Labour A", 5, new BigDecimal("1200"), new BigDecimal("500"), "Advances deducted"),
-                        new PayrollBatchPaymentRequest.PayrollLine("Labour B", 6, new BigDecimal("950"), BigDecimal.ZERO, "Overtime included"),
-                        new PayrollBatchPaymentRequest.PayrollLine("Accountant Claude", 1, new BigDecimal("10000"), BigDecimal.ZERO, "Monthly stub")
+                        new PayrollBatchPaymentRequest.PayrollLine("Labour A", 5, new BigDecimal("1200"), new BigDecimal("500"), null, null, "Advances deducted"),
+                        new PayrollBatchPaymentRequest.PayrollLine("Labour B", 6, new BigDecimal("950"), BigDecimal.ZERO, null, null, "Overtime included"),
+                        new PayrollBatchPaymentRequest.PayrollLine("Accountant Claude", 1, new BigDecimal("10000"), BigDecimal.ZERO, null, null, "Monthly stub")
                 )
         );
 
         PayrollBatchPaymentResponse response = accountingService.processPayrollBatchPayment(request);
 
-        assertThat(response.totalAmount()).isEqualByComparingTo(new BigDecimal("20500.00"));
+        // Gross = (5*1200) + (6*950) + (1*10000) = 6000 + 5700 + 10000 = 21700
+        // Net = Gross - Advances = 21700 - 500 = 21200
+        assertThat(response.grossAmount()).isEqualByComparingTo(new BigDecimal("21700.00"));
+        assertThat(response.netPayAmount()).isEqualByComparingTo(new BigDecimal("21200.00"));
         assertThat(response.lines()).hasSize(3);
 
         PayrollRun run = payrollRunRepository.findById(response.payrollRunId()).orElseThrow();
         assertThat(run.getJournalEntry()).isNotNull();
-        assertThat(run.getTotalAmount()).isEqualByComparingTo(new BigDecimal("20500.00"));
+        assertThat(run.getTotalAmount()).isEqualByComparingTo(new BigDecimal("21700.00")); // Gross is stored
 
         List<PayrollRunLine> lines = payrollRunLineRepository.findAll();
         assertThat(lines).hasSize(3);
         assertThat(lines.stream().map(PayrollRunLine::getLineTotal).reduce(BigDecimal.ZERO, BigDecimal::add))
-                .isEqualByComparingTo(new BigDecimal("20500.00"));
+                .isEqualByComparingTo(new BigDecimal("21200.00")); // Net pay stored in line totals
     }
 }

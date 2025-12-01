@@ -12,7 +12,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { CreateRoleRequest } from 'bbp-erp-api-client';
+import { CreateRoleRequest } from '@bigbright/erp-api-client';
 
 const instance: CreateRoleRequest = {
     name,

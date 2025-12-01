@@ -11,7 +11,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { ImportError } from 'bbp-erp-api-client';
+import { ImportError } from '@bigbright/erp-api-client';
 
 const instance: ImportError = {
     rowNumber,

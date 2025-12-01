@@ -15,7 +15,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { UpdateProfileRequest } from 'bbp-erp-api-client';
+import { UpdateProfileRequest } from '@bigbright/erp-api-client';
 
 const instance: UpdateProfileRequest = {
     displayName,

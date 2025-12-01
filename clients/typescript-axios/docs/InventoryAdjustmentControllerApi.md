@@ -1,6 +1,6 @@
 # InventoryAdjustmentControllerApi
 
-All URIs are relative to *http://localhost:50965*
+All URIs are relative to *http://localhost:8081*
 
 |Method | HTTP request | Description|
 |------------- | ------------- | -------------|
@@ -18,7 +18,7 @@ import {
     InventoryAdjustmentControllerApi,
     Configuration,
     InventoryAdjustmentRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new InventoryAdjustmentControllerApi(configuration);
@@ -68,7 +68,7 @@ No authorization required
 import {
     InventoryAdjustmentControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new InventoryAdjustmentControllerApi(configuration);

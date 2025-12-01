@@ -20,7 +20,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { ProfileResponse } from 'bbp-erp-api-client';
+import { ProfileResponse } from '@bigbright/erp-api-client';
 
 const instance: ProfileResponse = {
     email,

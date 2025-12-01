@@ -12,7 +12,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { ReconciliationSummaryDto } from 'bbp-erp-api-client';
+import { ReconciliationSummaryDto } from '@bigbright/erp-api-client';
 
 const instance: ReconciliationSummaryDto = {
     physicalInventoryValue,

@@ -13,7 +13,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { ApiResponseRawMaterialBatchDto } from 'bbp-erp-api-client';
+import { ApiResponseRawMaterialBatchDto } from '@bigbright/erp-api-client';
 
 const instance: ApiResponseRawMaterialBatchDto = {
     success,

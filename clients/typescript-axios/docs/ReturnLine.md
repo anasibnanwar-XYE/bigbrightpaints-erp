@@ -11,7 +11,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { ReturnLine } from 'bbp-erp-api-client';
+import { ReturnLine } from '@bigbright/erp-api-client';
 
 const instance: ReturnLine = {
     invoiceLineId,

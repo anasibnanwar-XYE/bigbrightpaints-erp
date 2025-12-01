@@ -20,7 +20,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { CostBreakdownDto } from 'bbp-erp-api-client';
+import { CostBreakdownDto } from '@bigbright/erp-api-client';
 
 const instance: CostBreakdownDto = {
     productionLogId,

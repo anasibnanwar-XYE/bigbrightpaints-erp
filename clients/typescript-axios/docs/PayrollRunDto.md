@@ -13,11 +13,12 @@ Name | Type | Description | Notes
 **notes** | **string** |  | [optional] [default to undefined]
 **totalAmount** | **number** |  | [optional] [default to undefined]
 **journalEntryId** | **number** |  | [optional] [default to undefined]
+**idempotencyKey** | **string** |  | [optional] [default to undefined]
 
 ## Example
 
 ```typescript
-import { PayrollRunDto } from 'bbp-erp-api-client';
+import { PayrollRunDto } from '@bigbright/erp-api-client';
 
 const instance: PayrollRunDto = {
     id,
@@ -28,6 +29,7 @@ const instance: PayrollRunDto = {
     notes,
     totalAmount,
     journalEntryId,
+    idempotencyKey,
 };
 ```
 

@@ -15,7 +15,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { RawMaterialBatchRequest } from 'bbp-erp-api-client';
+import { RawMaterialBatchRequest } from '@bigbright/erp-api-client';
 
 const instance: RawMaterialBatchRequest = {
     batchCode,

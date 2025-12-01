@@ -23,7 +23,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { ProductCreateRequest } from 'bbp-erp-api-client';
+import { ProductCreateRequest } from '@bigbright/erp-api-client';
 
 const instance: ProductCreateRequest = {
     brandId,

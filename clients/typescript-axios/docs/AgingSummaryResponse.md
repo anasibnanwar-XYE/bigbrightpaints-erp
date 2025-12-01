@@ -13,7 +13,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { AgingSummaryResponse } from 'bbp-erp-api-client';
+import { AgingSummaryResponse } from '@bigbright/erp-api-client';
 
 const instance: AgingSummaryResponse = {
     partnerId,

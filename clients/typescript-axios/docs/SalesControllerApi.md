@@ -1,6 +1,6 @@
 # SalesControllerApi
 
-All URIs are relative to *http://localhost:50965*
+All URIs are relative to *http://localhost:8081*
 
 |Method | HTTP request | Description|
 |------------- | ------------- | -------------|
@@ -35,7 +35,7 @@ import {
     SalesControllerApi,
     Configuration,
     CancelRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new SalesControllerApi(configuration);
@@ -89,7 +89,7 @@ import {
     SalesControllerApi,
     Configuration,
     DispatchConfirmRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new SalesControllerApi(configuration);
@@ -139,7 +139,7 @@ No authorization required
 import {
     SalesControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new SalesControllerApi(configuration);
@@ -190,7 +190,7 @@ import {
     SalesControllerApi,
     Configuration,
     CreditRequestRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new SalesControllerApi(configuration);
@@ -241,7 +241,7 @@ import {
     SalesControllerApi,
     Configuration,
     SalesOrderRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new SalesControllerApi(configuration);
@@ -292,7 +292,7 @@ import {
     SalesControllerApi,
     Configuration,
     PromotionRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new SalesControllerApi(configuration);
@@ -343,7 +343,7 @@ import {
     SalesControllerApi,
     Configuration,
     SalesTargetRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new SalesControllerApi(configuration);
@@ -393,7 +393,7 @@ No authorization required
 import {
     SalesControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new SalesControllerApi(configuration);
@@ -436,7 +436,7 @@ No authorization required
 import {
     SalesControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new SalesControllerApi(configuration);
@@ -486,7 +486,7 @@ No authorization required
 import {
     SalesControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new SalesControllerApi(configuration);
@@ -536,7 +536,7 @@ No authorization required
 import {
     SalesControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new SalesControllerApi(configuration);
@@ -586,7 +586,7 @@ No authorization required
 import {
     SalesControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new SalesControllerApi(configuration);
@@ -636,7 +636,7 @@ No authorization required
 import {
     SalesControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new SalesControllerApi(configuration);
@@ -679,7 +679,7 @@ No authorization required
 import {
     SalesControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new SalesControllerApi(configuration);
@@ -723,7 +723,7 @@ import {
     SalesControllerApi,
     Configuration,
     CreditRequestRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new SalesControllerApi(configuration);
@@ -777,7 +777,7 @@ import {
     SalesControllerApi,
     Configuration,
     SalesOrderRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new SalesControllerApi(configuration);
@@ -831,7 +831,7 @@ import {
     SalesControllerApi,
     Configuration,
     PromotionRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new SalesControllerApi(configuration);
@@ -885,7 +885,7 @@ import {
     SalesControllerApi,
     Configuration,
     StatusRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new SalesControllerApi(configuration);
@@ -939,7 +939,7 @@ import {
     SalesControllerApi,
     Configuration,
     SalesTargetRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new SalesControllerApi(configuration);

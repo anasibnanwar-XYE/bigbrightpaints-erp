@@ -352,7 +352,8 @@ public class SalesService {
     }
 
     public SalesOrder getOrderWithItems(Long id) {
-        return salesOrderRepository.findWithItemsById(id)
+        Company company = companyContextService.requireCurrentCompany();
+        return salesOrderRepository.findWithItemsByCompanyAndId(company, id)
                 .orElseThrow(() -> new IllegalArgumentException("Order not found"));
     }
 
@@ -500,6 +501,9 @@ public class SalesService {
                 BigDecimal distributed = BigDecimal.ZERO;
                 for (int i = 0; i < items.size(); i++) {
                     SalesOrderItem item = items.get(i);
+                    if (subtotal.compareTo(BigDecimal.ZERO) == 0) {
+                        continue;
+                    }
                     BigDecimal share = targetTax.multiply(item.getLineSubtotal())
                             .divide(subtotal, 6, RoundingMode.HALF_UP);
                     share = currency(share);
@@ -878,7 +882,7 @@ public class SalesService {
     }
 
     /* Dispatch confirmation: inventory issue + COGS posting (AR/Invoice to be wired) */
-    @Transactional
+    @org.springframework.transaction.annotation.Transactional(isolation = Isolation.SERIALIZABLE)
     public DispatchConfirmResponse confirmDispatch(DispatchConfirmRequest request) {
         PackagingSlip slip = null;
         Company company = companyContextService.requireCurrentCompany();
@@ -886,7 +890,7 @@ public class SalesService {
             slip = packagingSlipRepository.findByIdAndCompany(request.packingSlipId(), company)
                     .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Packing slip not found"));
         } else if (request.orderId() != null) {
-            slip = packagingSlipRepository.findBySalesOrderId(request.orderId())
+            slip = packagingSlipRepository.findByCompanyAndSalesOrderId(company, request.orderId())
                     .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
                             "Packing slip not found for order " + request.orderId()));
         } else {
@@ -896,7 +900,7 @@ public class SalesService {
         if (salesOrderId == null) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Sales order is required on packing slip");
         }
-        Optional<Invoice> existingInvoiceOpt = invoiceRepository.findBySalesOrderId(salesOrderId);
+        Optional<Invoice> existingInvoiceOpt = invoiceRepository.findByCompanyAndSalesOrderId(company, salesOrderId);
         if ("DISPATCHED".equalsIgnoreCase(slip.getStatus())) {
             Long existingInvoiceId = existingInvoiceOpt.map(Invoice::getId).orElse(null);
             Long existingJeId = existingInvoiceOpt.flatMap(inv -> Optional.ofNullable(inv.getJournalEntry()))
@@ -916,6 +920,15 @@ public class SalesService {
         }
 
         SalesOrder order = requireOrder(salesOrderId);
+        
+        // Validate order status - block dispatch for cancelled/on-hold orders
+        String orderStatus = order.getStatus();
+        if ("CANCELLED".equalsIgnoreCase(orderStatus) || "ON_HOLD".equalsIgnoreCase(orderStatus) ||
+            "REJECTED".equalsIgnoreCase(orderStatus) || "CLOSED".equalsIgnoreCase(orderStatus)) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Cannot dispatch order with status: " + orderStatus);
+        }
+        
         Dealer dealer = order.getDealer();
         if (dealer == null || dealer.getReceivableAccount() == null) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
@@ -960,9 +973,13 @@ public class SalesService {
             BigDecimal lineTax;
             if (Boolean.TRUE.equals(override != null ? override.taxInclusive() : Boolean.FALSE)) {
                 BigDecimal divisor = BigDecimal.ONE.add(taxRate.divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP));
-                BigDecimal preTax = lineNet.divide(divisor, 6, RoundingMode.HALF_UP);
-                lineTax = lineNet.subtract(preTax);
-                lineNet = preTax;
+                if (divisor.signum() == 0) {
+                    lineTax = BigDecimal.ZERO;
+                } else {
+                    BigDecimal preTax = lineNet.divide(divisor, 6, RoundingMode.HALF_UP);
+                    lineTax = lineNet.subtract(preTax);
+                    lineNet = preTax;
+                }
             } else {
                 lineTax = lineNet.multiply(taxRate).divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP);
             }
@@ -989,6 +1006,9 @@ public class SalesService {
             slipLine.setQuantity(shipQty);
         }
 
+        // Save slip with updated line quantities before inventory posting
+        packagingSlipRepository.save(slip);
+
         BigDecimal totalAmount = subtotal.add(taxTotal);
         if (totalAmount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
@@ -998,6 +1018,9 @@ public class SalesService {
         // Credit limit check
         if (dealer.getCreditLimit() != null && dealer.getCreditLimit().compareTo(BigDecimal.ZERO) > 0) {
             BigDecimal outstanding = dealerLedgerService.currentBalance(dealer.getId());
+            if (outstanding == null) {
+                outstanding = BigDecimal.ZERO;
+            }
             if (outstanding.add(totalAmount).compareTo(dealer.getCreditLimit()) > 0
                     && !Boolean.TRUE.equals(request.adminOverrideCreditLimit())) {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
@@ -1005,8 +1028,8 @@ public class SalesService {
             }
         }
 
-        // Post inventory/COGS
-        List<FinishedGoodsService.DispatchPosting> postings = finishedGoodsService.markSlipDispatched(salesOrderId);
+        // Post inventory/COGS using slip line quantities (not reservation quantities)
+        List<FinishedGoodsService.DispatchPosting> postings = finishedGoodsService.markSlipDispatched(salesOrderId, slip);
         List<DispatchConfirmResponse.CogsPostingDto> cogsDtos = postings.stream()
                 .map(p -> new DispatchConfirmResponse.CogsPostingDto(p.inventoryAccountId(), p.cogsAccountId(), p.cost()))
                 .toList();

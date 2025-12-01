@@ -18,7 +18,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { SalesOrderRequest } from 'bbp-erp-api-client';
+import { SalesOrderRequest } from '@bigbright/erp-api-client';
 
 const instance: SalesOrderRequest = {
     dealerId,

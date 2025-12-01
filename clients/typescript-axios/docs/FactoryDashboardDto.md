@@ -13,7 +13,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { FactoryDashboardDto } from 'bbp-erp-api-client';
+import { FactoryDashboardDto } from '@bigbright/erp-api-client';
 
 const instance: FactoryDashboardDto = {
     productionEfficiency,

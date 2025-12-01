@@ -10,11 +10,19 @@ Name | Type | Description | Notes
 **reason** | **string** |  | [optional] [default to undefined]
 **memo** | **string** |  | [optional] [default to undefined]
 **adminOverride** | **boolean** |  | [optional] [default to undefined]
+**reversalPercentage** | **number** |  | [optional] [default to undefined]
+**cascadeRelatedEntries** | **boolean** |  | [optional] [default to undefined]
+**relatedEntryIds** | **Array&lt;number&gt;** |  | [optional] [default to undefined]
+**reasonCode** | **string** |  | [optional] [default to undefined]
+**approvedBy** | **string** |  | [optional] [default to undefined]
+**supportingDocumentRef** | **string** |  | [optional] [default to undefined]
+**partialReversal** | **boolean** |  | [optional] [default to undefined]
+**effectivePercentage** | **number** |  | [optional] [default to undefined]
 
 ## Example
 
 ```typescript
-import { JournalEntryReversalRequest } from 'bbp-erp-api-client';
+import { JournalEntryReversalRequest } from '@bigbright/erp-api-client';
 
 const instance: JournalEntryReversalRequest = {
     reversalDate,
@@ -22,6 +30,14 @@ const instance: JournalEntryReversalRequest = {
     reason,
     memo,
     adminOverride,
+    reversalPercentage,
+    cascadeRelatedEntries,
+    relatedEntryIds,
+    reasonCode,
+    approvedBy,
+    supportingDocumentRef,
+    partialReversal,
+    effectivePercentage,
 };
 ```
 

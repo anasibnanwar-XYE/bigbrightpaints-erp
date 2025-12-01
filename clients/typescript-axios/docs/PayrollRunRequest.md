@@ -14,7 +14,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { PayrollRunRequest } from 'bbp-erp-api-client';
+import { PayrollRunRequest } from '@bigbright/erp-api-client';
 
 const instance: PayrollRunRequest = {
     payrollDate,

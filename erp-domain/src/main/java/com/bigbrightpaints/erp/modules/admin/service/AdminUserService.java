@@ -2,6 +2,7 @@ package com.bigbrightpaints.erp.modules.admin.service;
 
 import com.bigbrightpaints.erp.core.notification.EmailService;
 import com.bigbrightpaints.erp.core.security.TokenBlacklistService;
+import com.bigbrightpaints.erp.core.util.PasswordUtils;
 import com.bigbrightpaints.erp.modules.admin.dto.CreateUserRequest;
 import com.bigbrightpaints.erp.modules.admin.dto.UpdateUserRequest;
 import com.bigbrightpaints.erp.modules.admin.dto.UserDto;
@@ -53,11 +54,12 @@ public class AdminUserService {
 
     @Transactional
     public UserDto createUser(CreateUserRequest request) {
-        UserAccount user = new UserAccount(request.email(), passwordEncoder.encode(request.password()), request.displayName());
+        String tempPassword = (StringUtils.hasText(request.password()) ? request.password() : PasswordUtils.generateTemporaryPassword(12));
+    UserAccount user = new UserAccount(request.email(), passwordEncoder.encode(tempPassword), request.displayName());
         attachCompanies(user, request.companyIds());
         attachRoles(user, request.roles());
         UserAccount saved = userRepository.save(user);
-        emailService.sendUserCredentialsEmail(saved.getEmail(), saved.getDisplayName(), request.password());
+        emailService.sendUserCredentialsEmail(saved.getEmail(), saved.getDisplayName(), tempPassword);
         return toDto(saved);
     }
 

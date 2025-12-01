@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title>Payroll Payment Sheet</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 15mm;
+        }
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 11pt;
+            color: #333;
+            line-height: 1.4;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 10px;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 18pt;
+            color: #1a5f7a;
+        }
+        .header h2 {
+            margin: 5px 0;
+            font-size: 14pt;
+            font-weight: normal;
+        }
+        .meta-info {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 15px;
+            font-size: 10pt;
+        }
+        .meta-box {
+            background: #f5f5f5;
+            padding: 8px 12px;
+            border-radius: 4px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        th {
+            background-color: #1a5f7a;
+            color: white;
+            padding: 10px 8px;
+            text-align: left;
+            font-size: 10pt;
+        }
+        th.right, td.right {
+            text-align: right;
+        }
+        th.center, td.center {
+            text-align: center;
+        }
+        td {
+            padding: 8px;
+            border-bottom: 1px solid #ddd;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .amount {
+            font-family: 'Courier New', monospace;
+            text-align: right;
+        }
+        .total-row {
+            background-color: #e8f4f8 !important;
+            font-weight: bold;
+        }
+        .total-row td {
+            border-top: 2px solid #1a5f7a;
+            padding: 12px 8px;
+        }
+        .grand-total {
+            font-size: 14pt;
+            color: #1a5f7a;
+        }
+        .signature-section {
+            margin-top: 40px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .signature-box {
+            width: 200px;
+            text-align: center;
+        }
+        .signature-line {
+            border-top: 1px solid #333;
+            margin-top: 50px;
+            padding-top: 5px;
+            font-size: 10pt;
+        }
+        .footer {
+            margin-top: 30px;
+            text-align: center;
+            font-size: 9pt;
+            color: #666;
+            border-top: 1px solid #ddd;
+            padding-top: 10px;
+        }
+        .cash-note {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            padding: 10px;
+            margin-top: 15px;
+            border-radius: 4px;
+            font-size: 10pt;
+        }
+        .serial-no {
+            width: 30px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1 th:text="${companyName}">Big Bright Paints</h1>
+        <h2 th:text="${payrollType + ' Payment Sheet'}">Weekly Payment Sheet</h2>
+    </div>
+
+    <div class="meta-info">
+        <div class="meta-box">
+            <strong>Reference:</strong> <span th:text="${reference}">WEEKLY-20251130</span>
+        </div>
+        <div class="meta-box">
+            <strong>Period:</strong> <span th:text="${startDate + ' to ' + endDate}">25-Nov-2025 to 29-Nov-2025</span>
+        </div>
+        <div class="meta-box">
+            <strong>Generated:</strong> <span th:text="${generatedAt}">30-Nov-2025 15:00</span>
+        </div>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th class="serial-no center">S.No</th>
+                <th>Employee Name</th>
+                <th class="center">Type</th>
+                <th class="center">Days</th>
+                <th class="right">Daily Rate</th>
+                <th class="right">Gross</th>
+                <th class="right">Advance</th>
+                <th class="right">Net Pay</th>
+                <th class="center">Signature</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr th:each="item, iterStat : ${lineItems}">
+                <td class="center" th:text="${iterStat.count}">1</td>
+                <td th:text="${item.employeeName}">Ravi Kumar</td>
+                <td class="center" th:text="${item.employeeType}">LABOUR</td>
+                <td class="center" th:text="${item.presentDays + (item.halfDays > 0 ? '+' + item.halfDays + 'H' : '')}">5+1H</td>
+                <td class="amount" th:text="${'₹' + #numbers.formatDecimal(item.dailyRate, 1, 2)}">₹500.00</td>
+                <td class="amount" th:text="${'₹' + #numbers.formatDecimal(item.grossPay, 1, 2)}">₹2,750.00</td>
+                <td class="amount" th:text="${item.advanceDeduction > 0 ? '-₹' + #numbers.formatDecimal(item.advanceDeduction, 1, 2) : '-'}">-</td>
+                <td class="amount" th:text="${'₹' + #numbers.formatDecimal(item.netPay, 1, 2)}">₹2,750.00</td>
+                <td></td>
+            </tr>
+            <tr class="total-row">
+                <td colspan="5"></td>
+                <td class="amount" th:text="${'₹' + #numbers.formatDecimal(totalGross, 1, 2)}">₹5,500.00</td>
+                <td class="amount" th:text="${totalAdvance > 0 ? '-₹' + #numbers.formatDecimal(totalAdvance, 1, 2) : '-'}">-</td>
+                <td class="amount grand-total" th:text="${'₹' + #numbers.formatDecimal(totalAmount, 1, 2)}">₹5,250.00</td>
+                <td></td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="cash-note">
+        <strong>CASH TO WITHDRAW:</strong> 
+        <span th:text="${'₹' + #numbers.formatDecimal(totalAmount, 1, 2)}" style="font-size: 14pt; color: #856404;">₹5,250.00</span>
+        <br/>
+        <span style="font-size: 9pt;">Please ensure exact denominations for easy distribution.</span>
+    </div>
+
+    <div class="signature-section">
+        <div class="signature-box">
+            <div class="signature-line">Prepared By</div>
+        </div>
+        <div class="signature-box">
+            <div class="signature-line">Approved By</div>
+        </div>
+        <div class="signature-box">
+            <div class="signature-line">Cash Disbursed By</div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>This is a system-generated document. Employee signature confirms receipt of payment.</p>
+        <p th:text="${'Generated on ' + generatedAt + ' | Big Bright Paints ERP System'}">Generated on 30-Nov-2025 15:00 | Big Bright Paints ERP System</p>
+    </div>
+</body>
+</html>

@@ -21,7 +21,18 @@ public interface AccountRepository extends JpaRepository<Account, Long> {
     @Query("select a from Account a where a.company = :company and a.id = :id")
     Optional<Account> lockByCompanyAndId(@Param("company") Company company, @Param("id") Long id);
 
-    @Modifying
+    @Modifying(flushAutomatically = true)
     @Query("UPDATE Account a SET a.balance = a.balance + :delta WHERE a.company = :company AND a.id = :id")
     int updateBalanceAtomic(@Param("company") Company company, @Param("id") Long id, @Param("delta") BigDecimal delta);
+
+    // Hierarchy queries
+    List<Account> findByCompanyAndParentIsNullOrderByCodeAsc(Company company); // Root accounts
+    
+    List<Account> findByCompanyAndParentOrderByCodeAsc(Company company, Account parent); // Children of parent
+    
+    @Query("SELECT a FROM Account a WHERE a.company = :company AND a.parent.id = :parentId ORDER BY a.code")
+    List<Account> findChildrenByParentId(@Param("company") Company company, @Param("parentId") Long parentId);
+    
+    @Query("SELECT a FROM Account a WHERE a.company = :company ORDER BY a.hierarchyLevel, a.code")
+    List<Account> findAllOrderedByHierarchy(@Param("company") Company company);
 }

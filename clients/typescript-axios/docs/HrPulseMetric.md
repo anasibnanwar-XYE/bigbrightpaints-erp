@@ -12,7 +12,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { HrPulseMetric } from 'bbp-erp-api-client';
+import { HrPulseMetric } from '@bigbright/erp-api-client';
 
 const instance: HrPulseMetric = {
     label,

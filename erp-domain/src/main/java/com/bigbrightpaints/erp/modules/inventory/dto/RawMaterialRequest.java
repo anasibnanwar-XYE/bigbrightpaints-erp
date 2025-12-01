@@ -6,7 +6,7 @@ import java.math.BigDecimal;
 
 public record RawMaterialRequest(
         @NotBlank String name,
-        @NotBlank String sku,
+        String sku,
         @NotBlank String unitType,
         @NotNull BigDecimal reorderLevel,
         @NotNull BigDecimal minStock,

@@ -1,6 +1,6 @@
 # RawMaterialControllerApi
 
-All URIs are relative to *http://localhost:50965*
+All URIs are relative to *http://localhost:8081*
 
 |Method | HTTP request | Description|
 |------------- | ------------- | -------------|
@@ -25,7 +25,7 @@ All URIs are relative to *http://localhost:50965*
 import {
     RawMaterialControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new RawMaterialControllerApi(configuration);
@@ -76,7 +76,7 @@ import {
     RawMaterialControllerApi,
     Configuration,
     RawMaterialBatchRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new RawMaterialControllerApi(configuration);
@@ -130,7 +130,7 @@ import {
     RawMaterialControllerApi,
     Configuration,
     RawMaterialRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new RawMaterialControllerApi(configuration);
@@ -180,7 +180,7 @@ No authorization required
 import {
     RawMaterialControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new RawMaterialControllerApi(configuration);
@@ -231,7 +231,7 @@ import {
     RawMaterialControllerApi,
     Configuration,
     RawMaterialIntakeRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new RawMaterialControllerApi(configuration);
@@ -281,7 +281,7 @@ No authorization required
 import {
     RawMaterialControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new RawMaterialControllerApi(configuration);
@@ -324,7 +324,7 @@ No authorization required
 import {
     RawMaterialControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new RawMaterialControllerApi(configuration);
@@ -367,7 +367,7 @@ No authorization required
 import {
     RawMaterialControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new RawMaterialControllerApi(configuration);
@@ -410,7 +410,7 @@ No authorization required
 import {
     RawMaterialControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new RawMaterialControllerApi(configuration);
@@ -454,7 +454,7 @@ import {
     RawMaterialControllerApi,
     Configuration,
     RawMaterialRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new RawMaterialControllerApi(configuration);

@@ -8,16 +8,18 @@ Name | Type | Description | Notes
 **code** | **string** |  | [default to undefined]
 **name** | **string** |  | [default to undefined]
 **type** | **string** |  | [default to undefined]
+**parentId** | **number** |  | [optional] [default to undefined]
 
 ## Example
 
 ```typescript
-import { AccountRequest } from 'bbp-erp-api-client';
+import { AccountRequest } from '@bigbright/erp-api-client';
 
 const instance: AccountRequest = {
     code,
     name,
     type,
+    parentId,
 };
 ```
 

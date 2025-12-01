@@ -1,4 +1,4 @@
-## bbp-erp-api-client@0.1.0
+## @bigbright/erp-api-client@1.0.0
 
 This generator creates TypeScript/JavaScript client that utilizes [axios](https://github.com/axios/axios). The generated Node module can be used in the following environments:
 
@@ -36,7 +36,7 @@ navigate to the folder of your consuming project and run one of the following co
 _published:_
 
 ```
-npm install bbp-erp-api-client@0.1.0 --save
+npm install @bigbright/erp-api-client@1.0.0 --save
 ```
 
 _unPublished (not recommended):_
@@ -47,7 +47,7 @@ npm install PATH_TO_GENERATED_PACKAGE --save
 
 ### Documentation for API Endpoints
 
-All URIs are relative to *http://localhost:50965*
+All URIs are relative to *http://localhost:8081*
 
 Class | Method | HTTP request | Description
 ------------ | ------------- | ------------- | -------------
@@ -59,15 +59,28 @@ Class | Method | HTTP request | Description
 *AccountingControllerApi* | [**adjustWip**](docs/AccountingControllerApi.md#adjustwip) | **POST** /api/v1/accounting/inventory/wip-adjustment | 
 *AccountingControllerApi* | [**auditDigest**](docs/AccountingControllerApi.md#auditdigest) | **GET** /api/v1/accounting/audit/digest | 
 *AccountingControllerApi* | [**auditDigestCsv**](docs/AccountingControllerApi.md#auditdigestcsv) | **GET** /api/v1/accounting/audit/digest.csv | 
+*AccountingControllerApi* | [**cascadeReverseJournalEntry**](docs/AccountingControllerApi.md#cascadereversejournalentry) | **POST** /api/v1/accounting/journal-entries/{entryId}/cascade-reverse | 
 *AccountingControllerApi* | [**checklist**](docs/AccountingControllerApi.md#checklist) | **GET** /api/v1/accounting/month-end/checklist | 
 *AccountingControllerApi* | [**closePeriod**](docs/AccountingControllerApi.md#closeperiod) | **POST** /api/v1/accounting/periods/{periodId}/close | 
+*AccountingControllerApi* | [**compareBalances**](docs/AccountingControllerApi.md#comparebalances) | **GET** /api/v1/accounting/accounts/{accountId}/balance/compare | 
 *AccountingControllerApi* | [**createAccount**](docs/AccountingControllerApi.md#createaccount) | **POST** /api/v1/accounting/accounts | 
 *AccountingControllerApi* | [**createJournalEntry**](docs/AccountingControllerApi.md#createjournalentry) | **POST** /api/v1/accounting/journal-entries | 
-*AccountingControllerApi* | [**dealerAging**](docs/AccountingControllerApi.md#dealeraging) | **GET** /api/v1/accounting/aging/dealers/{dealerId} | 
+*AccountingControllerApi* | [**dealerAging1**](docs/AccountingControllerApi.md#dealeraging1) | **GET** /api/v1/accounting/aging/dealers/{dealerId} | 
 *AccountingControllerApi* | [**dealerAgingPdf**](docs/AccountingControllerApi.md#dealeragingpdf) | **GET** /api/v1/accounting/aging/dealers/{dealerId}/pdf | 
 *AccountingControllerApi* | [**dealerStatement**](docs/AccountingControllerApi.md#dealerstatement) | **GET** /api/v1/accounting/statements/dealers/{dealerId} | 
 *AccountingControllerApi* | [**dealerStatementPdf**](docs/AccountingControllerApi.md#dealerstatementpdf) | **GET** /api/v1/accounting/statements/dealers/{dealerId}/pdf | 
 *AccountingControllerApi* | [**generateGstReturn**](docs/AccountingControllerApi.md#generategstreturn) | **GET** /api/v1/accounting/gst/return | 
+*AccountingControllerApi* | [**getAccountActivity**](docs/AccountingControllerApi.md#getaccountactivity) | **GET** /api/v1/accounting/accounts/{accountId}/activity | 
+*AccountingControllerApi* | [**getAccountTreeByType**](docs/AccountingControllerApi.md#getaccounttreebytype) | **GET** /api/v1/accounting/accounts/tree/{type} | 
+*AccountingControllerApi* | [**getAgedReceivables**](docs/AccountingControllerApi.md#getagedreceivables) | **GET** /api/v1/accounting/reports/aging/receivables | 
+*AccountingControllerApi* | [**getBalanceAsOf**](docs/AccountingControllerApi.md#getbalanceasof) | **GET** /api/v1/accounting/accounts/{accountId}/balance/as-of | 
+*AccountingControllerApi* | [**getBalanceSheetHierarchy**](docs/AccountingControllerApi.md#getbalancesheethierarchy) | **GET** /api/v1/accounting/reports/balance-sheet/hierarchy | 
+*AccountingControllerApi* | [**getChartOfAccountsTree**](docs/AccountingControllerApi.md#getchartofaccountstree) | **GET** /api/v1/accounting/accounts/tree | 
+*AccountingControllerApi* | [**getDealerAging**](docs/AccountingControllerApi.md#getdealeraging) | **GET** /api/v1/accounting/reports/aging/dealer/{dealerId} | 
+*AccountingControllerApi* | [**getDealerAgingDetailed**](docs/AccountingControllerApi.md#getdealeragingdetailed) | **GET** /api/v1/accounting/reports/aging/dealer/{dealerId}/detailed | 
+*AccountingControllerApi* | [**getDealerDSO**](docs/AccountingControllerApi.md#getdealerdso) | **GET** /api/v1/accounting/reports/dso/dealer/{dealerId} | 
+*AccountingControllerApi* | [**getIncomeStatementHierarchy**](docs/AccountingControllerApi.md#getincomestatementhierarchy) | **GET** /api/v1/accounting/reports/income-statement/hierarchy | 
+*AccountingControllerApi* | [**getTrialBalanceAsOf**](docs/AccountingControllerApi.md#gettrialbalanceasof) | **GET** /api/v1/accounting/trial-balance/as-of | 
 *AccountingControllerApi* | [**journalEntries**](docs/AccountingControllerApi.md#journalentries) | **GET** /api/v1/accounting/journal-entries | 
 *AccountingControllerApi* | [**listPeriods**](docs/AccountingControllerApi.md#listperiods) | **GET** /api/v1/accounting/periods | 
 *AccountingControllerApi* | [**lockPeriod**](docs/AccountingControllerApi.md#lockperiod) | **POST** /api/v1/accounting/periods/{periodId}/lock | 
@@ -112,11 +125,25 @@ Class | Method | HTTP request | Description
 *DashboardControllerApi* | [**factoryDashboard**](docs/DashboardControllerApi.md#factorydashboard) | **GET** /api/v1/orchestrator/dashboard/factory | 
 *DashboardControllerApi* | [**financeDashboard**](docs/DashboardControllerApi.md#financedashboard) | **GET** /api/v1/orchestrator/dashboard/finance | 
 *DealerControllerApi* | [**createDealer**](docs/DealerControllerApi.md#createdealer) | **POST** /api/v1/dealers | 
+*DealerControllerApi* | [**dealerAging**](docs/DealerControllerApi.md#dealeraging) | **GET** /api/v1/dealers/{dealerId}/aging | 
+*DealerControllerApi* | [**dealerInvoices1**](docs/DealerControllerApi.md#dealerinvoices1) | **GET** /api/v1/dealers/{dealerId}/invoices | 
 *DealerControllerApi* | [**dealerLedger**](docs/DealerControllerApi.md#dealerledger) | **GET** /api/v1/dealers/{dealerId}/ledger | 
 *DealerControllerApi* | [**holdIfOverdue**](docs/DealerControllerApi.md#holdifoverdue) | **POST** /api/v1/dealers/{dealerId}/dunning/hold | 
 *DealerControllerApi* | [**listDealers**](docs/DealerControllerApi.md#listdealers) | **GET** /api/v1/dealers | 
 *DealerControllerApi* | [**searchDealers**](docs/DealerControllerApi.md#searchdealers) | **GET** /api/v1/dealers/search | 
+*DealerControllerApi* | [**updateDealer**](docs/DealerControllerApi.md#updatedealer) | **PUT** /api/v1/dealers/{dealerId} | 
+*DealerPortalControllerApi* | [**getDashboard**](docs/DealerPortalControllerApi.md#getdashboard) | **GET** /api/v1/dealer-portal/dashboard | 
+*DealerPortalControllerApi* | [**getMyAging**](docs/DealerPortalControllerApi.md#getmyaging) | **GET** /api/v1/dealer-portal/aging | 
+*DealerPortalControllerApi* | [**getMyInvoices**](docs/DealerPortalControllerApi.md#getmyinvoices) | **GET** /api/v1/dealer-portal/invoices | 
+*DealerPortalControllerApi* | [**getMyLedger**](docs/DealerPortalControllerApi.md#getmyledger) | **GET** /api/v1/dealer-portal/ledger | 
 *DemoControllerApi* | [**ping**](docs/DemoControllerApi.md#ping) | **GET** /api/v1/demo/ping | 
+*DispatchControllerApi* | [**cancelBackorder**](docs/DispatchControllerApi.md#cancelbackorder) | **POST** /api/v1/dispatch/backorder/{slipId}/cancel | 
+*DispatchControllerApi* | [**confirmDispatch1**](docs/DispatchControllerApi.md#confirmdispatch1) | **POST** /api/v1/dispatch/confirm | 
+*DispatchControllerApi* | [**getDispatchPreview**](docs/DispatchControllerApi.md#getdispatchpreview) | **GET** /api/v1/dispatch/preview/{slipId} | 
+*DispatchControllerApi* | [**getPackagingSlip**](docs/DispatchControllerApi.md#getpackagingslip) | **GET** /api/v1/dispatch/slip/{slipId} | 
+*DispatchControllerApi* | [**getPackagingSlipByOrder**](docs/DispatchControllerApi.md#getpackagingslipbyorder) | **GET** /api/v1/dispatch/order/{orderId} | 
+*DispatchControllerApi* | [**getPendingSlips**](docs/DispatchControllerApi.md#getpendingslips) | **GET** /api/v1/dispatch/pending | 
+*DispatchControllerApi* | [**updateSlipStatus**](docs/DispatchControllerApi.md#updateslipstatus) | **PATCH** /api/v1/dispatch/slip/{slipId}/status | 
 *FactoryControllerApi* | [**allocateCosts**](docs/FactoryControllerApi.md#allocatecosts) | **POST** /api/v1/factory/cost-allocation | 
 *FactoryControllerApi* | [**batches1**](docs/FactoryControllerApi.md#batches1) | **GET** /api/v1/factory/production-batches | 
 *FactoryControllerApi* | [**createPlan**](docs/FactoryControllerApi.md#createplan) | **POST** /api/v1/factory/production-plans | 
@@ -129,6 +156,14 @@ Class | Method | HTTP request | Description
 *FactoryControllerApi* | [**updatePlan**](docs/FactoryControllerApi.md#updateplan) | **PUT** /api/v1/factory/production-plans/{id} | 
 *FactoryControllerApi* | [**updatePlanStatus**](docs/FactoryControllerApi.md#updateplanstatus) | **PATCH** /api/v1/factory/production-plans/{id}/status | 
 *FactoryControllerApi* | [**updateTask**](docs/FactoryControllerApi.md#updatetask) | **PUT** /api/v1/factory/tasks/{id} | 
+*FinishedGoodControllerApi* | [**createFinishedGood**](docs/FinishedGoodControllerApi.md#createfinishedgood) | **POST** /api/v1/finished-goods | 
+*FinishedGoodControllerApi* | [**getFinishedGood**](docs/FinishedGoodControllerApi.md#getfinishedgood) | **GET** /api/v1/finished-goods/{id} | 
+*FinishedGoodControllerApi* | [**getLowStockItems**](docs/FinishedGoodControllerApi.md#getlowstockitems) | **GET** /api/v1/finished-goods/low-stock | 
+*FinishedGoodControllerApi* | [**getStockSummary**](docs/FinishedGoodControllerApi.md#getstocksummary) | **GET** /api/v1/finished-goods/stock-summary | 
+*FinishedGoodControllerApi* | [**listBatches**](docs/FinishedGoodControllerApi.md#listbatches) | **GET** /api/v1/finished-goods/{id}/batches | 
+*FinishedGoodControllerApi* | [**listFinishedGoods**](docs/FinishedGoodControllerApi.md#listfinishedgoods) | **GET** /api/v1/finished-goods | 
+*FinishedGoodControllerApi* | [**registerBatch**](docs/FinishedGoodControllerApi.md#registerbatch) | **POST** /api/v1/finished-goods/{id}/batches | 
+*FinishedGoodControllerApi* | [**updateFinishedGood**](docs/FinishedGoodControllerApi.md#updatefinishedgood) | **PUT** /api/v1/finished-goods/{id} | 
 *HrControllerApi* | [**createEmployee**](docs/HrControllerApi.md#createemployee) | **POST** /api/v1/hr/employees | 
 *HrControllerApi* | [**createLeaveRequest**](docs/HrControllerApi.md#createleaverequest) | **POST** /api/v1/hr/leave-requests | 
 *HrControllerApi* | [**createPayrollRun**](docs/HrControllerApi.md#createpayrollrun) | **POST** /api/v1/hr/payroll-runs | 
@@ -141,8 +176,10 @@ Class | Method | HTTP request | Description
 *InventoryAdjustmentControllerApi* | [**createAdjustment**](docs/InventoryAdjustmentControllerApi.md#createadjustment) | **POST** /api/v1/inventory/adjustments | 
 *InventoryAdjustmentControllerApi* | [**listAdjustments**](docs/InventoryAdjustmentControllerApi.md#listadjustments) | **GET** /api/v1/inventory/adjustments | 
 *InvoiceControllerApi* | [**dealerInvoices**](docs/InvoiceControllerApi.md#dealerinvoices) | **GET** /api/v1/invoices/dealers/{dealerId} | 
+*InvoiceControllerApi* | [**downloadInvoicePdf**](docs/InvoiceControllerApi.md#downloadinvoicepdf) | **GET** /api/v1/invoices/{id}/pdf | 
 *InvoiceControllerApi* | [**getInvoice**](docs/InvoiceControllerApi.md#getinvoice) | **GET** /api/v1/invoices/{id} | 
 *InvoiceControllerApi* | [**listInvoices**](docs/InvoiceControllerApi.md#listinvoices) | **GET** /api/v1/invoices | 
+*InvoiceControllerApi* | [**sendInvoiceEmail**](docs/InvoiceControllerApi.md#sendinvoiceemail) | **POST** /api/v1/invoices/{id}/email | 
 *MfaControllerApi* | [**activate**](docs/MfaControllerApi.md#activate) | **POST** /api/v1/auth/mfa/activate | 
 *MfaControllerApi* | [**disable**](docs/MfaControllerApi.md#disable) | **POST** /api/v1/auth/mfa/disable | 
 *MfaControllerApi* | [**setup**](docs/MfaControllerApi.md#setup) | **POST** /api/v1/auth/mfa/setup | 
@@ -150,15 +187,22 @@ Class | Method | HTTP request | Description
 *OrchestratorControllerApi* | [**approveOrder**](docs/OrchestratorControllerApi.md#approveorder) | **POST** /api/v1/orchestrator/orders/{orderId}/approve | 
 *OrchestratorControllerApi* | [**dispatch**](docs/OrchestratorControllerApi.md#dispatch) | **POST** /api/v1/orchestrator/factory/dispatch/{batchId} | 
 *OrchestratorControllerApi* | [**dispatchOrder**](docs/OrchestratorControllerApi.md#dispatchorder) | **POST** /api/v1/orchestrator/dispatch | 
+*OrchestratorControllerApi* | [**dispatchOrderAlias**](docs/OrchestratorControllerApi.md#dispatchorderalias) | **POST** /api/v1/orchestrator/dispatch/{orderId} | 
 *OrchestratorControllerApi* | [**eventHealth**](docs/OrchestratorControllerApi.md#eventhealth) | **GET** /api/v1/orchestrator/health/events | 
 *OrchestratorControllerApi* | [**fulfillOrder**](docs/OrchestratorControllerApi.md#fulfillorder) | **POST** /api/v1/orchestrator/orders/{orderId}/fulfillment | 
 *OrchestratorControllerApi* | [**integrationsHealth**](docs/OrchestratorControllerApi.md#integrationshealth) | **GET** /api/v1/orchestrator/health/integrations | 
 *OrchestratorControllerApi* | [**runPayroll**](docs/OrchestratorControllerApi.md#runpayroll) | **POST** /api/v1/orchestrator/payroll/run | 
 *OrchestratorControllerApi* | [**trace**](docs/OrchestratorControllerApi.md#trace) | **GET** /api/v1/orchestrator/traces/{traceId} | 
+*PackagingMappingControllerApi* | [**createMapping**](docs/PackagingMappingControllerApi.md#createmapping) | **POST** /api/v1/factory/packaging-mappings | 
+*PackagingMappingControllerApi* | [**deactivateMapping**](docs/PackagingMappingControllerApi.md#deactivatemapping) | **DELETE** /api/v1/factory/packaging-mappings/{id} | 
+*PackagingMappingControllerApi* | [**listActiveMappings**](docs/PackagingMappingControllerApi.md#listactivemappings) | **GET** /api/v1/factory/packaging-mappings/active | 
+*PackagingMappingControllerApi* | [**listMappings**](docs/PackagingMappingControllerApi.md#listmappings) | **GET** /api/v1/factory/packaging-mappings | 
+*PackagingMappingControllerApi* | [**updateMapping**](docs/PackagingMappingControllerApi.md#updatemapping) | **PUT** /api/v1/factory/packaging-mappings/{id} | 
 *PackingControllerApi* | [**completePacking**](docs/PackingControllerApi.md#completepacking) | **POST** /api/v1/factory/packing-records/{productionLogId}/complete | 
 *PackingControllerApi* | [**listUnpackedBatches**](docs/PackingControllerApi.md#listunpackedbatches) | **GET** /api/v1/factory/unpacked-batches | 
 *PackingControllerApi* | [**packingHistory**](docs/PackingControllerApi.md#packinghistory) | **GET** /api/v1/factory/production-logs/{productionLogId}/packing-history | 
 *PackingControllerApi* | [**recordPacking**](docs/PackingControllerApi.md#recordpacking) | **POST** /api/v1/factory/packing-records | 
+*PayrollControllerApi* | [**processBatchPayment**](docs/PayrollControllerApi.md#processbatchpayment) | **POST** /api/v1/accounting/payroll/payments/batch | 
 *PortalInsightsControllerApi* | [**dashboard**](docs/PortalInsightsControllerApi.md#dashboard) | **GET** /api/v1/portal/dashboard | 
 *PortalInsightsControllerApi* | [**operations**](docs/PortalInsightsControllerApi.md#operations) | **GET** /api/v1/portal/operations | 
 *PortalInsightsControllerApi* | [**workforce**](docs/PortalInsightsControllerApi.md#workforce) | **GET** /api/v1/portal/workforce | 
@@ -195,6 +239,7 @@ Class | Method | HTTP request | Description
 *ReportControllerApi* | [**trialBalance**](docs/ReportControllerApi.md#trialbalance) | **GET** /api/v1/reports/trial-balance | 
 *ReportControllerApi* | [**wastageReport**](docs/ReportControllerApi.md#wastagereport) | **GET** /api/v1/reports/wastage | 
 *RoleControllerApi* | [**createRole**](docs/RoleControllerApi.md#createrole) | **POST** /api/v1/admin/roles | 
+*RoleControllerApi* | [**getRoleByKey**](docs/RoleControllerApi.md#getrolebykey) | **GET** /api/v1/admin/roles/{roleKey} | 
 *RoleControllerApi* | [**listRoles**](docs/RoleControllerApi.md#listroles) | **GET** /api/v1/admin/roles | 
 *SalesControllerApi* | [**cancelOrder**](docs/SalesControllerApi.md#cancelorder) | **POST** /api/v1/sales/orders/{id}/cancel | 
 *SalesControllerApi* | [**confirmDispatch**](docs/SalesControllerApi.md#confirmdispatch) | **POST** /api/v1/sales/dispatch/confirm | 
@@ -225,7 +270,10 @@ Class | Method | HTTP request | Description
 
 ### Documentation For Models
 
+ - [AccountActivityReport](docs/AccountActivityReport.md)
  - [AccountDto](docs/AccountDto.md)
+ - [AccountMovement](docs/AccountMovement.md)
+ - [AccountNode](docs/AccountNode.md)
  - [AccountRequest](docs/AccountRequest.md)
  - [AccountStatementEntryDto](docs/AccountStatementEntryDto.md)
  - [AccountingPeriodCloseRequest](docs/AccountingPeriodCloseRequest.md)
@@ -234,28 +282,44 @@ Class | Method | HTTP request | Description
  - [AccountingPeriodReopenRequest](docs/AccountingPeriodReopenRequest.md)
  - [AccrualRequest](docs/AccrualRequest.md)
  - [AgedDebtorDto](docs/AgedDebtorDto.md)
+ - [AgedReceivablesReport](docs/AgedReceivablesReport.md)
  - [AgingBucketDto](docs/AgingBucketDto.md)
+ - [AgingBuckets](docs/AgingBuckets.md)
+ - [AgingLineItem](docs/AgingLineItem.md)
  - [AgingSummaryResponse](docs/AgingSummaryResponse.md)
  - [Allocation](docs/Allocation.md)
+ - [ApiResponseAccountActivityReport](docs/ApiResponseAccountActivityReport.md)
  - [ApiResponseAccountDto](docs/ApiResponseAccountDto.md)
  - [ApiResponseAccountingPeriodDto](docs/ApiResponseAccountingPeriodDto.md)
+ - [ApiResponseAgedReceivablesReport](docs/ApiResponseAgedReceivablesReport.md)
  - [ApiResponseAgingSummaryResponse](docs/ApiResponseAgingSummaryResponse.md)
  - [ApiResponseAuditDigestResponse](docs/ApiResponseAuditDigestResponse.md)
+ - [ApiResponseBalanceComparison](docs/ApiResponseBalanceComparison.md)
  - [ApiResponseBalanceSheetDto](docs/ApiResponseBalanceSheetDto.md)
+ - [ApiResponseBalanceSheetHierarchy](docs/ApiResponseBalanceSheetHierarchy.md)
  - [ApiResponseBankReconciliationSummaryDto](docs/ApiResponseBankReconciliationSummaryDto.md)
+ - [ApiResponseBigDecimal](docs/ApiResponseBigDecimal.md)
  - [ApiResponseCashFlowDto](docs/ApiResponseCashFlowDto.md)
  - [ApiResponseCatalogImportResponse](docs/ApiResponseCatalogImportResponse.md)
  - [ApiResponseCompanyDto](docs/ApiResponseCompanyDto.md)
  - [ApiResponseCostAllocationResponse](docs/ApiResponseCostAllocationResponse.md)
  - [ApiResponseCostBreakdownDto](docs/ApiResponseCostBreakdownDto.md)
  - [ApiResponseCreditRequestDto](docs/ApiResponseCreditRequestDto.md)
+ - [ApiResponseDSOReport](docs/ApiResponseDSOReport.md)
  - [ApiResponseDashboardInsights](docs/ApiResponseDashboardInsights.md)
+ - [ApiResponseDealerAgingDetail](docs/ApiResponseDealerAgingDetail.md)
+ - [ApiResponseDealerAgingDetailedReport](docs/ApiResponseDealerAgingDetailedReport.md)
  - [ApiResponseDealerResponse](docs/ApiResponseDealerResponse.md)
  - [ApiResponseDispatchConfirmResponse](docs/ApiResponseDispatchConfirmResponse.md)
+ - [ApiResponseDispatchConfirmationResponse](docs/ApiResponseDispatchConfirmationResponse.md)
+ - [ApiResponseDispatchPreviewDto](docs/ApiResponseDispatchPreviewDto.md)
  - [ApiResponseEmployeeDto](docs/ApiResponseEmployeeDto.md)
  - [ApiResponseFactoryDashboardDto](docs/ApiResponseFactoryDashboardDto.md)
  - [ApiResponseFactoryTaskDto](docs/ApiResponseFactoryTaskDto.md)
+ - [ApiResponseFinishedGoodBatchDto](docs/ApiResponseFinishedGoodBatchDto.md)
+ - [ApiResponseFinishedGoodDto](docs/ApiResponseFinishedGoodDto.md)
  - [ApiResponseGstReturnDto](docs/ApiResponseGstReturnDto.md)
+ - [ApiResponseIncomeStatementHierarchy](docs/ApiResponseIncomeStatementHierarchy.md)
  - [ApiResponseInventoryAdjustmentDto](docs/ApiResponseInventoryAdjustmentDto.md)
  - [ApiResponseInventoryCountResponse](docs/ApiResponseInventoryCountResponse.md)
  - [ApiResponseInventoryValuationDto](docs/ApiResponseInventoryValuationDto.md)
@@ -263,6 +327,7 @@ Class | Method | HTTP request | Description
  - [ApiResponseJournalEntryDto](docs/ApiResponseJournalEntryDto.md)
  - [ApiResponseLeaveRequestDto](docs/ApiResponseLeaveRequestDto.md)
  - [ApiResponseListAccountDto](docs/ApiResponseListAccountDto.md)
+ - [ApiResponseListAccountNode](docs/ApiResponseListAccountNode.md)
  - [ApiResponseListAccountStatementEntryDto](docs/ApiResponseListAccountStatementEntryDto.md)
  - [ApiResponseListAccountingPeriodDto](docs/ApiResponseListAccountingPeriodDto.md)
  - [ApiResponseListAgedDebtorDto](docs/ApiResponseListAgedDebtorDto.md)
@@ -273,11 +338,15 @@ Class | Method | HTTP request | Description
  - [ApiResponseListDealerResponse](docs/ApiResponseListDealerResponse.md)
  - [ApiResponseListEmployeeDto](docs/ApiResponseListEmployeeDto.md)
  - [ApiResponseListFactoryTaskDto](docs/ApiResponseListFactoryTaskDto.md)
+ - [ApiResponseListFinishedGoodBatchDto](docs/ApiResponseListFinishedGoodBatchDto.md)
+ - [ApiResponseListFinishedGoodDto](docs/ApiResponseListFinishedGoodDto.md)
  - [ApiResponseListInventoryAdjustmentDto](docs/ApiResponseListInventoryAdjustmentDto.md)
  - [ApiResponseListInventoryStockSnapshot](docs/ApiResponseListInventoryStockSnapshot.md)
  - [ApiResponseListInvoiceDto](docs/ApiResponseListInvoiceDto.md)
  - [ApiResponseListJournalEntryDto](docs/ApiResponseListJournalEntryDto.md)
  - [ApiResponseListLeaveRequestDto](docs/ApiResponseListLeaveRequestDto.md)
+ - [ApiResponseListPackagingSizeMappingDto](docs/ApiResponseListPackagingSizeMappingDto.md)
+ - [ApiResponseListPackagingSlipDto](docs/ApiResponseListPackagingSlipDto.md)
  - [ApiResponseListPackingRecordDto](docs/ApiResponseListPackingRecordDto.md)
  - [ApiResponseListPayrollRunDto](docs/ApiResponseListPayrollRunDto.md)
  - [ApiResponseListProductionBatchDto](docs/ApiResponseListProductionBatchDto.md)
@@ -292,6 +361,7 @@ Class | Method | HTTP request | Description
  - [ApiResponseListRoleDto](docs/ApiResponseListRoleDto.md)
  - [ApiResponseListSalesOrderDto](docs/ApiResponseListSalesOrderDto.md)
  - [ApiResponseListSalesTargetDto](docs/ApiResponseListSalesTargetDto.md)
+ - [ApiResponseListStockSummaryDto](docs/ApiResponseListStockSummaryDto.md)
  - [ApiResponseListSupplierResponse](docs/ApiResponseListSupplierResponse.md)
  - [ApiResponseListUnpackedBatchDto](docs/ApiResponseListUnpackedBatchDto.md)
  - [ApiResponseListUserDto](docs/ApiResponseListUserDto.md)
@@ -303,8 +373,11 @@ Class | Method | HTTP request | Description
  - [ApiResponseMonthEndChecklistDto](docs/ApiResponseMonthEndChecklistDto.md)
  - [ApiResponseMonthlyProductionCostDto](docs/ApiResponseMonthlyProductionCostDto.md)
  - [ApiResponseOperationsInsights](docs/ApiResponseOperationsInsights.md)
+ - [ApiResponsePackagingSizeMappingDto](docs/ApiResponsePackagingSizeMappingDto.md)
+ - [ApiResponsePackagingSlipDto](docs/ApiResponsePackagingSlipDto.md)
  - [ApiResponsePartnerSettlementResponse](docs/ApiResponsePartnerSettlementResponse.md)
  - [ApiResponsePartnerStatementResponse](docs/ApiResponsePartnerStatementResponse.md)
+ - [ApiResponsePayrollBatchPaymentResponse](docs/ApiResponsePayrollBatchPaymentResponse.md)
  - [ApiResponsePayrollRunDto](docs/ApiResponsePayrollRunDto.md)
  - [ApiResponseProductionBatchDto](docs/ApiResponseProductionBatchDto.md)
  - [ApiResponseProductionLogDetailDto](docs/ApiResponseProductionLogDetailDto.md)
@@ -325,14 +398,18 @@ Class | Method | HTTP request | Description
  - [ApiResponseString](docs/ApiResponseString.md)
  - [ApiResponseSupplierResponse](docs/ApiResponseSupplierResponse.md)
  - [ApiResponseTrialBalanceDto](docs/ApiResponseTrialBalanceDto.md)
+ - [ApiResponseTrialBalanceSnapshot](docs/ApiResponseTrialBalanceSnapshot.md)
  - [ApiResponseUserDto](docs/ApiResponseUserDto.md)
+ - [ApiResponseVoid](docs/ApiResponseVoid.md)
  - [ApiResponseWorkforceInsights](docs/ApiResponseWorkforceInsights.md)
  - [ApproveOrderRequest](docs/ApproveOrderRequest.md)
  - [AuditDigestResponse](docs/AuditDigestResponse.md)
  - [AuthResponse](docs/AuthResponse.md)
  - [AutomationRun](docs/AutomationRun.md)
  - [BadDebtWriteOffRequest](docs/BadDebtWriteOffRequest.md)
+ - [BalanceComparison](docs/BalanceComparison.md)
  - [BalanceSheetDto](docs/BalanceSheetDto.md)
+ - [BalanceSheetHierarchy](docs/BalanceSheetHierarchy.md)
  - [BalanceWarningDto](docs/BalanceWarningDto.md)
  - [BankReconciliationItemDto](docs/BankReconciliationItemDto.md)
  - [BankReconciliationRequest](docs/BankReconciliationRequest.md)
@@ -353,7 +430,10 @@ Class | Method | HTTP request | Description
  - [CreditNoteRequest](docs/CreditNoteRequest.md)
  - [CreditRequestDto](docs/CreditRequestDto.md)
  - [CreditRequestRequest](docs/CreditRequestRequest.md)
+ - [DSOReport](docs/DSOReport.md)
  - [DashboardInsights](docs/DashboardInsights.md)
+ - [DealerAgingDetail](docs/DealerAgingDetail.md)
+ - [DealerAgingDetailedReport](docs/DealerAgingDetailedReport.md)
  - [DealerLookupResponse](docs/DealerLookupResponse.md)
  - [DealerReceiptRequest](docs/DealerReceiptRequest.md)
  - [DealerResponse](docs/DealerResponse.md)
@@ -361,19 +441,27 @@ Class | Method | HTTP request | Description
  - [DebitNoteRequest](docs/DebitNoteRequest.md)
  - [DispatchConfirmRequest](docs/DispatchConfirmRequest.md)
  - [DispatchConfirmResponse](docs/DispatchConfirmResponse.md)
+ - [DispatchConfirmationRequest](docs/DispatchConfirmationRequest.md)
+ - [DispatchConfirmationResponse](docs/DispatchConfirmationResponse.md)
  - [DispatchLine](docs/DispatchLine.md)
+ - [DispatchPreviewDto](docs/DispatchPreviewDto.md)
  - [DispatchRequest](docs/DispatchRequest.md)
  - [EmployeeDto](docs/EmployeeDto.md)
  - [EmployeeRequest](docs/EmployeeRequest.md)
  - [FactoryDashboardDto](docs/FactoryDashboardDto.md)
  - [FactoryTaskDto](docs/FactoryTaskDto.md)
  - [FactoryTaskRequest](docs/FactoryTaskRequest.md)
+ - [FinishedGoodBatchDto](docs/FinishedGoodBatchDto.md)
+ - [FinishedGoodBatchRequest](docs/FinishedGoodBatchRequest.md)
+ - [FinishedGoodDto](docs/FinishedGoodDto.md)
+ - [FinishedGoodRequest](docs/FinishedGoodRequest.md)
  - [ForgotPasswordRequest](docs/ForgotPasswordRequest.md)
  - [GstReturnDto](docs/GstReturnDto.md)
  - [GstReturnDtoPeriod](docs/GstReturnDtoPeriod.md)
  - [HighlightMetric](docs/HighlightMetric.md)
  - [HrPulseMetric](docs/HrPulseMetric.md)
  - [ImportError](docs/ImportError.md)
+ - [IncomeStatementHierarchy](docs/IncomeStatementHierarchy.md)
  - [InventoryAdjustmentDto](docs/InventoryAdjustmentDto.md)
  - [InventoryAdjustmentLineDto](docs/InventoryAdjustmentLineDto.md)
  - [InventoryAdjustmentRequest](docs/InventoryAdjustmentRequest.md)
@@ -392,7 +480,11 @@ Class | Method | HTTP request | Description
  - [LandedCostRequest](docs/LandedCostRequest.md)
  - [LeaveRequestDto](docs/LeaveRequestDto.md)
  - [LeaveRequestRequest](docs/LeaveRequestRequest.md)
+ - [LineConfirmation](docs/LineConfirmation.md)
+ - [LinePreview](docs/LinePreview.md)
  - [LineRequest](docs/LineRequest.md)
+ - [LineResult](docs/LineResult.md)
+ - [LineTotal](docs/LineTotal.md)
  - [LoginRequest](docs/LoginRequest.md)
  - [MaterialUsageRequest](docs/MaterialUsageRequest.md)
  - [MeResponse](docs/MeResponse.md)
@@ -407,11 +499,18 @@ Class | Method | HTTP request | Description
  - [OperationsInsights](docs/OperationsInsights.md)
  - [OperationsSummary](docs/OperationsSummary.md)
  - [OrderFulfillmentRequest](docs/OrderFulfillmentRequest.md)
+ - [PackagingSizeMappingDto](docs/PackagingSizeMappingDto.md)
+ - [PackagingSizeMappingRequest](docs/PackagingSizeMappingRequest.md)
+ - [PackagingSlipDto](docs/PackagingSlipDto.md)
+ - [PackagingSlipLineDto](docs/PackagingSlipLineDto.md)
  - [PackingLineRequest](docs/PackingLineRequest.md)
  - [PackingRecordDto](docs/PackingRecordDto.md)
  - [PackingRequest](docs/PackingRequest.md)
  - [PartnerSettlementResponse](docs/PartnerSettlementResponse.md)
  - [PartnerStatementResponse](docs/PartnerStatementResponse.md)
+ - [PayrollBatchPaymentRequest](docs/PayrollBatchPaymentRequest.md)
+ - [PayrollBatchPaymentResponse](docs/PayrollBatchPaymentResponse.md)
+ - [PayrollLine](docs/PayrollLine.md)
  - [PayrollPaymentRequest](docs/PayrollPaymentRequest.md)
  - [PayrollRunDto](docs/PayrollRunDto.md)
  - [PayrollRunRequest](docs/PayrollRunRequest.md)
@@ -470,6 +569,8 @@ Class | Method | HTTP request | Description
  - [SupplyAlert](docs/SupplyAlert.md)
  - [SwitchCompanyRequest](docs/SwitchCompanyRequest.md)
  - [TrialBalanceDto](docs/TrialBalanceDto.md)
+ - [TrialBalanceEntry](docs/TrialBalanceEntry.md)
+ - [TrialBalanceSnapshot](docs/TrialBalanceSnapshot.md)
  - [UnpackedBatchDto](docs/UnpackedBatchDto.md)
  - [UpcomingMoment](docs/UpcomingMoment.md)
  - [UpdateProfileRequest](docs/UpdateProfileRequest.md)

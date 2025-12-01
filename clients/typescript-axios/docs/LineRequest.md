@@ -13,7 +13,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { LineRequest } from 'bbp-erp-api-client';
+import { LineRequest } from '@bigbright/erp-api-client';
 
 const instance: LineRequest = {
     finishedGoodId,

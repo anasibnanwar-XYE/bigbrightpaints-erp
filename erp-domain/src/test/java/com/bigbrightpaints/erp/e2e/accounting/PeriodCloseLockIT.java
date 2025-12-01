@@ -56,16 +56,23 @@ class PeriodCloseLockIT extends AbstractIntegrationTest {
     @DisplayName("Closing locks period, posts retained earnings transfer, blocks new postings, reopen auto-reverses and unlocks")
     void closeLockReopenFlow() {
         LocalDate today = LocalDate.now();
+        // Use last month for period close testing (current month day may be in future)
+        LocalDate testMonth = today.minusMonths(1);
         // Seed P&L: profit 60 (100 revenue, 40 expense) using cash movements
-        postJournal(today.withDayOfMonth(5),
+        // Post revenue entry first
+        postJournal(testMonth.withDayOfMonth(5),
                 List.of(
                         line(cash.getId(), new BigDecimal("100.00"), BigDecimal.ZERO),
-                        line(revenue.getId(), BigDecimal.ZERO, new BigDecimal("100.00")),
+                        line(revenue.getId(), BigDecimal.ZERO, new BigDecimal("100.00"))
+                ));
+        // Post expense entry separately to avoid duplicate account issues
+        postJournal(testMonth.withDayOfMonth(6),
+                List.of(
                         line(expense.getId(), new BigDecimal("40.00"), BigDecimal.ZERO),
                         line(cash.getId(), BigDecimal.ZERO, new BigDecimal("40.00"))
                 ));
 
-        Long periodId = currentPeriodId(today);
+        Long periodId = currentPeriodId(testMonth);
         ResponseEntity<Map> closeResp = rest.exchange(
                 "/api/v1/accounting/periods/" + periodId + "/close",
                 HttpMethod.POST,
@@ -85,15 +92,13 @@ class PeriodCloseLockIT extends AbstractIntegrationTest {
         ResponseEntity<Map> blocked = rest.exchange("/api/v1/accounting/journal-entries",
                 HttpMethod.POST,
                 new HttpEntity<>(Map.of(
-                        "referenceNumber", "LOCKED-BLOCK",
-                        "entryDate", today,
+                        "referenceNumber", "LOCKED-BLOCK-" + System.nanoTime(),
+                        "entryDate", testMonth.withDayOfMonth(10),
                         "memo", "Should fail",
                         "adminOverride", false,
                         "lines", List.of(
                                 line(cash.getId(), new BigDecimal("10.00"), BigDecimal.ZERO),
-                                line(revenue.getId(), BigDecimal.ZERO, new BigDecimal("10.00")),
-                                line(expense.getId(), new BigDecimal("10.00"), BigDecimal.ZERO),
-                                line(cash.getId(), BigDecimal.ZERO, new BigDecimal("10.00"))
+                                line(revenue.getId(), BigDecimal.ZERO, new BigDecimal("10.00"))
                         )
                 ), headers),
                 Map.class);
@@ -192,14 +197,14 @@ class PeriodCloseLockIT extends AbstractIntegrationTest {
         ResponseEntity<Map> resp = rest.exchange("/api/v1/accounting/journal-entries",
                 HttpMethod.POST,
                 new HttpEntity<>(Map.of(
-                        "referenceNumber", "PL-SEED-" + date.toString(),
+                        "referenceNumber", "PL-SEED-" + date.toString() + "-" + System.nanoTime(),
                         "entryDate", date,
                         "memo", "Seed P&L",
                         "adminOverride", false,
                         "lines", lines
                 ), headers),
                 Map.class);
-        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(resp.getStatusCode()).as("Journal posting should succeed: " + resp.getBody()).isEqualTo(HttpStatus.OK);
     }
 
     private Long currentPeriodId(LocalDate forDate) {

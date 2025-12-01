@@ -156,10 +156,11 @@ public class IntegrationCoordinator {
         });
     }
 
-    private void postCogsEntry(String orderId, List<FinishedGoodsService.DispatchPosting> postings) {
+    private void postCogsEntry(SalesOrder order, List<FinishedGoodsService.DispatchPosting> postings) {
         if (postings == null || postings.isEmpty()) {
             return;
         }
+        String orderNumber = order.getOrderNumber();
         for (int index = 0; index < postings.size(); index++) {
             FinishedGoodsService.DispatchPosting posting = postings.get(index);
             if (posting.cogsAccountId() == null || posting.inventoryAccountId() == null) {
@@ -169,13 +170,13 @@ public class IntegrationCoordinator {
             if (cost == null || cost.compareTo(BigDecimal.ZERO) <= 0) {
                 continue;
             }
-            String referenceKey = orderId + "-" + posting.inventoryAccountId() + "-" + index;
+            String referenceKey = orderNumber + "-" + posting.inventoryAccountId() + "-" + index;
             accountingFacade.postCOGS(
                     referenceKey,
                     posting.cogsAccountId(),
                     posting.inventoryAccountId(),
                     cost,
-                    "COGS posting for order " + orderId
+                    "COGS posting for order " + orderNumber
             );
         }
     }
@@ -581,8 +582,12 @@ public class IntegrationCoordinator {
                 state.markSalesJournalPosted();
             }
             if (!state.isDispatchFinalized()) {
-                List<FinishedGoodsService.DispatchPosting> postings = finishedGoodsService.markSlipDispatched(numericId);
-                postCogsEntry(orderId, postings);
+                if (accountingFacade.hasCogsJournalFor(order.getOrderNumber())) {
+                    log.info("Skipping auto COGS post for order {} because journal already exists", order.getOrderNumber());
+                } else {
+                    List<FinishedGoodsService.DispatchPosting> postings = finishedGoodsService.markSlipDispatched(numericId);
+                    postCogsEntry(order, postings);
+                }
                 state.markDispatchFinalized();
             }
             if (!state.isInvoiceIssued()) {

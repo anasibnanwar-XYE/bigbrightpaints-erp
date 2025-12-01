@@ -11,7 +11,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { AuditDigestResponse } from 'bbp-erp-api-client';
+import { AuditDigestResponse } from '@bigbright/erp-api-client';
 
 const instance: AuditDigestResponse = {
     periodLabel,

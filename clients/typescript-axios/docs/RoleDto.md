@@ -13,7 +13,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { RoleDto } from 'bbp-erp-api-client';
+import { RoleDto } from '@bigbright/erp-api-client';
 
 const instance: RoleDto = {
     id,

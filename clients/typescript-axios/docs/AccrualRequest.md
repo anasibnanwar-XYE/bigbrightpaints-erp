@@ -18,7 +18,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { AccrualRequest } from 'bbp-erp-api-client';
+import { AccrualRequest } from '@bigbright/erp-api-client';
 
 const instance: AccrualRequest = {
     debitAccountId,

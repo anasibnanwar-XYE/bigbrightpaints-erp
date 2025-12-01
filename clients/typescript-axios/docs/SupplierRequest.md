@@ -15,7 +15,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { SupplierRequest } from 'bbp-erp-api-client';
+import { SupplierRequest } from '@bigbright/erp-api-client';
 
 const instance: SupplierRequest = {
     name,

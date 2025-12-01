@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8">
+  <title th:text="${subject}">BIG BRIGHT Paints</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Philosopher:wght@700&family=Inter:wght@400;600&display=swap');
+    :root {
+      --blue: #1d358b;
+      --amber: #f28a00;
+      --text: #1a1a1a;
+      --muted: #555;
+      --border: #e6e8eb;
+      --bg: #f5f6f9;
+    }
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Inter', Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .wrap {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 32px 20px 48px;
+    }
+    .card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.06);
+      overflow: hidden;
+    }
+    .header {
+      padding: 28px 32px 12px;
+      text-align: center;
+      border-bottom: 1px solid var(--border);
+      background: #fff;
+    }
+    .logo {
+      font-family: 'Philosopher', serif;
+      font-size: 26px;
+      letter-spacing: 0.6px;
+      margin: 0;
+    }
+    .logo .blue { color: var(--blue); }
+    .logo .amber { color: var(--amber); }
+    .tagline {
+      margin: 6px 0 0;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .content {
+      padding: 28px 32px 32px;
+    }
+    .footer {
+      padding: 18px 24px 28px;
+      text-align: center;
+      font-size: 12px;
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+    }
+    .btn {
+      display: inline-block;
+      background: var(--blue);
+      color: #fff;
+      padding: 12px 22px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+    }
+    .muted { color: var(--muted); }
+    .pill {
+      display: inline-block;
+      padding: 8px 12px;
+      background: #f0f4ff;
+      color: var(--blue);
+      border-radius: 6px;
+      font-weight: 600;
+      letter-spacing: 0.2px;
+    }
+  </style>
+</head>
+<body>
+  <div th:fragment="layout(content)" class="wrap">
+    <div class="card">
+      <div class="header">
+        <div class="logo"><span class="blue">BIG BRIGHT</span> <span class="amber">Paints</span></div>
+        <div class="tagline">Painting The Future</div>
+      </div>
+      <div class="content" th:insert="${content}"></div>
+      <div class="footer">
+        <div>Support: support@bigbrightpaints.com &nbsp;|&nbsp; <a th:href="${baseUrl}">Open ERP</a></div>
+        <div style="margin-top:6px;">&copy; 2025 Big Bright Paints. All rights reserved.</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

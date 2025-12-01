@@ -548,12 +548,13 @@ class HighImpactRegressionIT extends AbstractIntegrationTest {
                 LocalDate.now(),
                 cash.getId(),
                 expense.getId(),
+                null, null, null, null, null, null, null, null, // liability/rate fields
                 "PAY-BATCH-" + System.currentTimeMillis(),
                 "Weekly payroll batch",
                 List.of(
-                        new PayrollBatchPaymentRequest.PayrollLine("Labour A", 5, new BigDecimal("1200"), new BigDecimal("500"), "Advances deducted"),
-                        new PayrollBatchPaymentRequest.PayrollLine("Labour B", 6, new BigDecimal("950"), BigDecimal.ZERO, "Overtime included"),
-                        new PayrollBatchPaymentRequest.PayrollLine("Accountant Claude", 1, new BigDecimal("10000"), BigDecimal.ZERO, "Monthly stub")
+                        new PayrollBatchPaymentRequest.PayrollLine("Labour A", 5, new BigDecimal("1200"), new BigDecimal("500"), null, null, "Advances deducted"),
+                        new PayrollBatchPaymentRequest.PayrollLine("Labour B", 6, new BigDecimal("950"), BigDecimal.ZERO, null, null, "Overtime included"),
+                        new PayrollBatchPaymentRequest.PayrollLine("Accountant Claude", 1, new BigDecimal("10000"), BigDecimal.ZERO, null, null, "Monthly stub")
                 )
         );
 
@@ -586,20 +587,21 @@ class HighImpactRegressionIT extends AbstractIntegrationTest {
                 LocalDate.now(),
                 cash.getId(),
                 expense.getId(),
+                null, null, null, null, null, null, null, null, // liability/rate fields
                 "PAY-BATCH-ADJUSTED-" + System.currentTimeMillis(),
                 "Adjusted payroll batch",
                 List.of(
-                        new PayrollBatchPaymentRequest.PayrollLine("Labour A", 5, new BigDecimal("1200.00"), new BigDecimal("500.00"), "Advances deducted"),
-                        new PayrollBatchPaymentRequest.PayrollLine("Labour B", 6, new BigDecimal("833.33"), BigDecimal.ZERO, "Standard"),
-                        new PayrollBatchPaymentRequest.PayrollLine("Accountant Claude", 1, new BigDecimal("10000.00"), BigDecimal.ZERO, "Monthly")
+                        new PayrollBatchPaymentRequest.PayrollLine("Labour A", 5, new BigDecimal("1200.00"), new BigDecimal("500.00"), null, null, "Advances deducted"),
+                        new PayrollBatchPaymentRequest.PayrollLine("Labour B", 6, new BigDecimal("833.33"), BigDecimal.ZERO, null, null, "Standard"),
+                        new PayrollBatchPaymentRequest.PayrollLine("Accountant Claude", 1, new BigDecimal("10000.00"), BigDecimal.ZERO, null, null, "Monthly")
                 )
         );
 
         PayrollBatchPaymentResponse response = accountingService.processPayrollBatchPayment(adjustedRequest);
 
         // Verify total (accepting variance from the fixture due to rounding)
-        assertThat(response.totalAmount())
-                .as("Payroll total should be calculated correctly")
+        assertThat(response.grossAmount())
+                .as("Payroll gross should be calculated correctly")
                 .isGreaterThan(BigDecimal.ZERO);
 
         assertThat(response.lines()).hasSize(3);
@@ -609,7 +611,7 @@ class HighImpactRegressionIT extends AbstractIntegrationTest {
         assertThat(run.getJournalEntry())
                 .as("Payroll run should have journal entry")
                 .isNotNull();
-        assertThat(run.getTotalAmount()).isEqualByComparingTo(response.totalAmount());
+        assertThat(run.getTotalAmount()).isEqualByComparingTo(response.grossAmount());
 
         // Verify JE has expense/cash lines
         JournalEntry je = run.getJournalEntry();
@@ -629,7 +631,7 @@ class HighImpactRegressionIT extends AbstractIntegrationTest {
         BigDecimal lineTotal = lines.stream()
                 .map(PayrollRunLine::getLineTotal)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        assertThat(lineTotal).isEqualByComparingTo(response.totalAmount());
+        assertThat(lineTotal).isEqualByComparingTo(response.netPayAmount());
     }
 
     // =========================================================================

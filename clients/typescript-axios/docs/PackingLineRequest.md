@@ -14,7 +14,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { PackingLineRequest } from 'bbp-erp-api-client';
+import { PackingLineRequest } from '@bigbright/erp-api-client';
 
 const instance: PackingLineRequest = {
     packagingSize,

@@ -6,8 +6,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.mail.MailException;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
+import org.springframework.mail.javamail.MimeMessagePreparator;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import org.thymeleaf.context.Context;
+import org.thymeleaf.spring6.SpringTemplateEngine;
 
 @Service
 public class EmailService {
@@ -16,10 +20,12 @@ public class EmailService {
 
     private final JavaMailSender mailSender;
     private final EmailProperties properties;
+    private final SpringTemplateEngine templateEngine;
 
-    public EmailService(JavaMailSender mailSender, EmailProperties properties) {
+    public EmailService(JavaMailSender mailSender, EmailProperties properties, SpringTemplateEngine templateEngine) {
         this.mailSender = mailSender;
         this.properties = properties;
+        this.templateEngine = templateEngine;
     }
 
     public void sendSimpleEmail(String to, String subject, String body) {
@@ -50,21 +56,12 @@ public class EmailService {
             return;
         }
         String subject = "Your BigBright ERP account credentials";
-        StringBuilder body = new StringBuilder();
-        if (StringUtils.hasText(displayName)) {
-            body.append("Hi ").append(displayName).append(",\n\n");
-        } else {
-            body.append("Hi,\n\n");
-        }
-        body.append("Your account for BigBright ERP has been created.\n\n")
-            .append("Login email: ").append(to).append("\n")
-            .append("Temporary password: ").append(password).append("\n\n")
-            .append("You can sign in here: ").append(properties.getBaseUrl()).append("\n\n")
-            .append("For security, please change your password after first login.\n\n")
-            .append("Regards,\n")
-            .append("BigBright ERP Team");
-
-        sendSimpleEmail(to, subject, body.toString());
+        Context context = new Context();
+        context.setVariable("displayName", displayName);
+        context.setVariable("email", to);
+        context.setVariable("temporaryPassword", password);
+        context.setVariable("loginUrl", properties.getBaseUrl());
+        sendHtmlEmail(to, subject, "mail/credentials", context);
     }
 
     public void sendPasswordResetEmail(String to, String displayName, String resetToken) {
@@ -74,20 +71,116 @@ public class EmailService {
         }
         String resetLink = properties.getBaseUrl() + "/reset-password?token=" + resetToken;
         String subject = "Reset your BigBright ERP password";
-        StringBuilder body = new StringBuilder();
-        if (StringUtils.hasText(displayName)) {
-            body.append("Hi ").append(displayName).append(",\n\n");
-        } else {
-            body.append("Hi,\n\n");
-        }
-        body.append("We received a request to reset the password for your BigBright ERP account.\n\n")
-            .append("You can reset your password by clicking the link below:\n")
-            .append(resetLink).append("\n\n")
-            .append("If you did not request this, you can safely ignore this email.\n\n")
-            .append("Regards,\n")
-            .append("BigBright ERP Team");
+        Context context = new Context();
+        context.setVariable("displayName", displayName);
+        context.setVariable("email", to);
+        context.setVariable("resetUrl", resetLink);
+        sendHtmlEmail(to, subject, "mail/password-reset", context);
+    }
 
-        sendSimpleEmail(to, subject, body.toString());
+    public void sendPasswordResetConfirmation(String to, String displayName) {
+        String subject = "Your BigBright ERP password has been reset";
+        Context context = new Context();
+        context.setVariable("displayName", displayName);
+        context.setVariable("email", to);
+        sendHtmlEmail(to, subject, "mail/password-reset-confirmed", context);
+    }
+
+    public void sendInvoiceEmail(String to, String dealerName, String invoiceNumber, 
+                                  String invoiceDate, String dueDate, String totalAmount,
+                                  String companyName, byte[] pdfAttachment) {
+        if (!properties.isEnabled()) {
+            log.debug("Email sending disabled. Skipping invoice email to {}", to);
+            return;
+        }
+        if (!StringUtils.hasText(to)) {
+            log.warn("Attempted to send invoice email with empty recipient");
+            return;
+        }
+        String subject = "Invoice " + invoiceNumber + " from " + companyName;
+        Context context = new Context();
+        context.setVariable("dealerName", dealerName);
+        context.setVariable("invoiceNumber", invoiceNumber);
+        context.setVariable("invoiceDate", invoiceDate);
+        context.setVariable("dueDate", dueDate);
+        context.setVariable("totalAmount", totalAmount);
+        context.setVariable("companyName", companyName);
+        context.setVariable("baseUrl", properties.getBaseUrl());
+        
+        MimeMessagePreparator preparator = mimeMessage -> {
+            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
+            helper.setTo(to);
+            helper.setFrom(properties.getFromAddress());
+            helper.setSubject(subject);
+            String html = templateEngine.process("mail/invoice-email", context);
+            helper.setText(html, true);
+            if (pdfAttachment != null && pdfAttachment.length > 0) {
+                helper.addAttachment("Invoice-" + invoiceNumber + ".pdf", 
+                    () -> new java.io.ByteArrayInputStream(pdfAttachment), "application/pdf");
+            }
+        };
+        try {
+            mailSender.send(preparator);
+            log.info("Sent invoice email {} to {}", invoiceNumber, to);
+        } catch (MailException ex) {
+            log.error("Failed to send invoice email to {}: {}", to, ex.getMessage(), ex);
+        }
+    }
+
+    /**
+     * Send payroll payment sheet PDF to admin
+     */
+    public void sendPayrollSheetEmail(String to, String subject, String emailBody, 
+                                       String fileName, byte[] pdfAttachment) {
+        if (!properties.isEnabled()) {
+            log.debug("Email sending disabled. Skipping payroll email to {}", to);
+            return;
+        }
+        if (!StringUtils.hasText(to)) {
+            log.warn("Attempted to send payroll email with empty recipient");
+            return;
+        }
+        MimeMessagePreparator preparator = mimeMessage -> {
+            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
+            helper.setTo(to);
+            helper.setFrom(properties.getFromAddress());
+            helper.setSubject(subject);
+            helper.setText(emailBody);
+            if (pdfAttachment != null && pdfAttachment.length > 0) {
+                helper.addAttachment(fileName, 
+                    () -> new java.io.ByteArrayInputStream(pdfAttachment), "application/pdf");
+            }
+        };
+        try {
+            mailSender.send(preparator);
+            log.info("Sent payroll sheet email to {}", to);
+        } catch (MailException ex) {
+            log.error("Failed to send payroll email to {}: {}", to, ex.getMessage(), ex);
+        }
+    }
+
+    private void sendHtmlEmail(String to, String subject, String templateName, Context context) {
+        if (!properties.isEnabled()) {
+            log.debug("Email sending disabled. Skipping HTML email to {}", to);
+            return;
+        }
+        if (!StringUtils.hasText(to)) {
+            log.warn("Attempted to send email with empty recipient");
+            return;
+        }
+        MimeMessagePreparator preparator = mimeMessage -> {
+            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
+            helper.setTo(to);
+            helper.setFrom(properties.getFromAddress());
+            helper.setSubject(subject);
+            String html = templateEngine.process(templateName, context);
+            helper.setText(html, true);
+        };
+        try {
+            mailSender.send(preparator);
+            log.info("Sent HTML email to {}", to);
+        } catch (MailException ex) {
+            log.error("Failed to send HTML email to {}: {}", to, ex.getMessage(), ex);
+        }
     }
 }
-

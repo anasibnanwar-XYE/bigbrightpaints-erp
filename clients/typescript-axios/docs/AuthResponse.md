@@ -15,7 +15,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { AuthResponse } from 'bbp-erp-api-client';
+import { AuthResponse } from '@bigbright/erp-api-client';
 
 const instance: AuthResponse = {
     tokenType,

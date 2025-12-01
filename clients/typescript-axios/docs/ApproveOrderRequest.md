@@ -12,7 +12,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { ApproveOrderRequest } from 'bbp-erp-api-client';
+import { ApproveOrderRequest } from '@bigbright/erp-api-client';
 
 const instance: ApproveOrderRequest = {
     orderId,

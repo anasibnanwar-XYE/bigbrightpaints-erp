@@ -34,7 +34,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { JournalEntryDto } from 'bbp-erp-api-client';
+import { JournalEntryDto } from '@bigbright/erp-api-client';
 
 const instance: JournalEntryDto = {
     id,

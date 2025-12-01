@@ -7,5 +7,11 @@ import jakarta.validation.constraints.NotNull;
 public record AccountRequest(
         @NotBlank String code,
         @NotBlank String name,
-        @NotNull AccountType type
-) {}
+        @NotNull AccountType type,
+        Long parentId  // Optional: parent account for hierarchy
+) {
+    // Convenience constructor for backward compatibility
+    public AccountRequest(String code, String name, AccountType type) {
+        this(code, name, type, null);
+    }
+}

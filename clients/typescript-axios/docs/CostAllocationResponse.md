@@ -18,7 +18,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { CostAllocationResponse } from 'bbp-erp-api-client';
+import { CostAllocationResponse } from '@bigbright/erp-api-client';
 
 const instance: CostAllocationResponse = {
     year,

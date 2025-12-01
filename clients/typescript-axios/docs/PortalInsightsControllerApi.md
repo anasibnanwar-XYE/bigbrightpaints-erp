@@ -1,6 +1,6 @@
 # PortalInsightsControllerApi
 
-All URIs are relative to *http://localhost:50965*
+All URIs are relative to *http://localhost:8081*
 
 |Method | HTTP request | Description|
 |------------- | ------------- | -------------|
@@ -18,7 +18,7 @@ All URIs are relative to *http://localhost:50965*
 import {
     PortalInsightsControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new PortalInsightsControllerApi(configuration);
@@ -61,7 +61,7 @@ No authorization required
 import {
     PortalInsightsControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new PortalInsightsControllerApi(configuration);
@@ -104,7 +104,7 @@ No authorization required
 import {
     PortalInsightsControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new PortalInsightsControllerApi(configuration);

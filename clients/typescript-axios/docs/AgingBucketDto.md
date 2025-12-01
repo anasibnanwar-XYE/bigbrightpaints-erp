@@ -13,7 +13,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { AgingBucketDto } from 'bbp-erp-api-client';
+import { AgingBucketDto } from '@bigbright/erp-api-client';
 
 const instance: AgingBucketDto = {
     label,

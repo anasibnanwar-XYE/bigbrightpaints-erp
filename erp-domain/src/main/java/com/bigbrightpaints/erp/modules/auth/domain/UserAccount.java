@@ -60,6 +60,18 @@ public class UserAccount extends VersionedEntity {
     @Column(name = "mfa_recovery_codes")
     private String mfaRecoveryCodes;
 
+    @Column(name = "reset_token")
+    private String resetToken;
+
+    @Column(name = "reset_expiry")
+    private Instant resetExpiry;
+
+    // Getters/Setters
+    public String getResetToken() { return resetToken; }
+    public void setResetToken(String resetToken) { this.resetToken = resetToken; }
+    public Instant getResetExpiry() { return resetExpiry; }
+    public void setResetExpiry(Instant resetExpiry) { this.resetExpiry = resetExpiry; }
+
     @Column(name = "preferred_name")
     private String preferredName;
 
@@ -113,6 +125,10 @@ public class UserAccount extends VersionedEntity {
 
     public String getEmail() {
         return email;
+    }
+
+    public void setEmail(String email) {
+        this.email = email;
     }
 
     public String getPasswordHash() {

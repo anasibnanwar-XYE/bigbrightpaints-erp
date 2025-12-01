@@ -15,7 +15,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { CatalogImportResponse } from 'bbp-erp-api-client';
+import { CatalogImportResponse } from '@bigbright/erp-api-client';
 
 const instance: CatalogImportResponse = {
     rowsProcessed,

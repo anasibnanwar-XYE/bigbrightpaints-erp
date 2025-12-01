@@ -105,7 +105,7 @@ class DispatchConfirmationIT extends AbstractIntegrationTest {
 
         // Reserve builds slip with lines
         finishedGoodsService.reserveForOrder(order);
-        PackagingSlip slip = packagingSlipRepository.findBySalesOrderId(order.getId()).orElseThrow();
+        PackagingSlip slip = packagingSlipRepository.findByCompanyAndSalesOrderId(company, order.getId()).orElseThrow();
 
         // Build confirmation request with shipped = ordered per line
         DispatchConfirmationRequest request = new DispatchConfirmationRequest(
@@ -156,7 +156,7 @@ class DispatchConfirmationIT extends AbstractIntegrationTest {
         SalesOrder order = salesOrderRepository.findById(orderDto.id()).orElseThrow();
 
         finishedGoodsService.reserveForOrder(order);
-        PackagingSlip slip = packagingSlipRepository.findBySalesOrderId(order.getId()).orElseThrow();
+        PackagingSlip slip = packagingSlipRepository.findByCompanyAndSalesOrderId(company, order.getId()).orElseThrow();
 
         PackagingSlipLine firstLine = slip.getLines().getFirst();
         BigDecimal orderedQty = firstLine.getOrderedQuantity();

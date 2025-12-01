@@ -1,16 +1,21 @@
 package com.bigbrightpaints.erp.modules.auth.service;
 
+import com.bigbrightpaints.erp.core.notification.EmailService;
 import com.bigbrightpaints.erp.core.security.JwtProperties;
 import com.bigbrightpaints.erp.core.security.JwtTokenService;
+import com.bigbrightpaints.erp.core.security.TokenBlacklistService;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
 import com.bigbrightpaints.erp.modules.auth.web.AuthResponse;
+import com.bigbrightpaints.erp.modules.auth.web.ForgotPasswordRequest;
 import com.bigbrightpaints.erp.modules.auth.web.LoginRequest;
 import com.bigbrightpaints.erp.modules.auth.web.RefreshTokenRequest;
+import com.bigbrightpaints.erp.modules.auth.web.ResetPasswordRequest;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.authentication.LockedException;
 import org.springframework.security.core.Authentication;
@@ -21,6 +26,7 @@ import java.time.Instant;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 @Service
 public class AuthService {
@@ -35,21 +41,30 @@ public class AuthService {
     private final CompanyRepository companyRepository;
     private final JwtProperties properties;
     private final MfaService mfaService;
+    private final PasswordEncoder passwordEncoder;
+    private final EmailService emailService;
+    private final TokenBlacklistService tokenBlacklistService;
 
     public AuthService(AuthenticationManager authenticationManager,
+                       PasswordEncoder passwordEncoder,
                        JwtTokenService tokenService,
                        RefreshTokenService refreshTokenService,
                        UserAccountRepository userAccountRepository,
                        CompanyRepository companyRepository,
                        JwtProperties properties,
-                       MfaService mfaService) {
+                       MfaService mfaService,
+                       EmailService emailService,
+                       TokenBlacklistService tokenBlacklistService) {
         this.authenticationManager = authenticationManager;
+        this.passwordEncoder = passwordEncoder;
         this.tokenService = tokenService;
         this.refreshTokenService = refreshTokenService;
         this.userAccountRepository = userAccountRepository;
         this.companyRepository = companyRepository;
         this.properties = properties;
         this.mfaService = mfaService;
+        this.emailService = emailService;
+        this.tokenBlacklistService = tokenBlacklistService;
     }
 
     public AuthResponse login(LoginRequest request) {
@@ -74,6 +89,35 @@ public class AuthService {
             registerFailure(user);
             throw ex;
         }
+    }
+
+    // Forgot Password
+    public void forgotPassword(ForgotPasswordRequest request) {
+        UserAccount user = userAccountRepository.findByEmailIgnoreCase(request.email())
+            .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        String resetToken = UUID.randomUUID().toString();
+        user.setResetToken(resetToken);
+        user.setResetExpiry(Instant.now().plus(Duration.ofHours(1)));
+        userAccountRepository.save(user);
+        emailService.sendPasswordResetEmail(user.getEmail(), user.getDisplayName(), resetToken);
+    }
+
+    public Map<String, Object> resetPassword(ResetPasswordRequest request) {
+        UserAccount user = userAccountRepository.findByResetToken(request.token())
+            .orElseThrow(() -> new IllegalArgumentException("Invalid or expired token"));
+        if (user.getResetExpiry().isBefore(Instant.now())) {
+            throw new IllegalArgumentException("Token expired");
+        }
+        if (!request.newPassword().equals(request.confirmPassword())) {
+            throw new IllegalArgumentException("Passwords don't match");
+        }
+        user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
+        user.setResetToken(null);
+        user.setResetExpiry(null);
+        userAccountRepository.save(user);
+        tokenBlacklistService.revokeAllUserTokens(user.getEmail());
+        emailService.sendPasswordResetConfirmation(user.getEmail(), user.getDisplayName());
+        return Map.of("success", true, "message", "Password reset. Login now.");
     }
 
     public AuthResponse refresh(RefreshTokenRequest request) {

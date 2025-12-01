@@ -19,7 +19,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { WipAdjustmentRequest } from 'bbp-erp-api-client';
+import { WipAdjustmentRequest } from '@bigbright/erp-api-client';
 
 const instance: WipAdjustmentRequest = {
     productionLogId,

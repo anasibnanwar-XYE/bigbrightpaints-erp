@@ -12,7 +12,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { MaterialUsageRequest } from 'bbp-erp-api-client';
+import { MaterialUsageRequest } from '@bigbright/erp-api-client';
 
 const instance: MaterialUsageRequest = {
     rawMaterialId,

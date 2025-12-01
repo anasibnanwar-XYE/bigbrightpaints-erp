@@ -12,7 +12,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { WorkforceInsights } from 'bbp-erp-api-client';
+import { WorkforceInsights } from '@bigbright/erp-api-client';
 
 const instance: WorkforceInsights = {
     squads,

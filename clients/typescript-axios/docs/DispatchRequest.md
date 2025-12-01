@@ -7,20 +7,16 @@ Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------
 **batchId** | **string** |  | [default to undefined]
 **requestedBy** | **string** |  | [default to undefined]
-**debitAccountId** | **number** |  | [optional] [default to undefined]
-**creditAccountId** | **number** |  | [optional] [default to undefined]
-**postingAmount** | **number** |  | [optional] [default to undefined]
+**postingAmount** | **number** |  | [default to undefined]
 
 ## Example
 
 ```typescript
-import { DispatchRequest } from 'bbp-erp-api-client';
+import { DispatchRequest } from '@bigbright/erp-api-client';
 
 const instance: DispatchRequest = {
     batchId,
     requestedBy,
-    debitAccountId,
-    creditAccountId,
     postingAmount,
 };
 ```

@@ -11,7 +11,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { MfaDisableRequest } from 'bbp-erp-api-client';
+import { MfaDisableRequest } from '@bigbright/erp-api-client';
 
 const instance: MfaDisableRequest = {
     code,

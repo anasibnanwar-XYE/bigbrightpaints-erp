@@ -1,6 +1,6 @@
 # AuthControllerApi
 
-All URIs are relative to *http://localhost:50965*
+All URIs are relative to *http://localhost:8081*
 
 |Method | HTTP request | Description|
 |------------- | ------------- | -------------|
@@ -23,7 +23,7 @@ import {
     AuthControllerApi,
     Configuration,
     ChangePasswordRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AuthControllerApi(configuration);
@@ -74,7 +74,7 @@ import {
     AuthControllerApi,
     Configuration,
     ForgotPasswordRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AuthControllerApi(configuration);
@@ -125,7 +125,7 @@ import {
     AuthControllerApi,
     Configuration,
     LoginRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AuthControllerApi(configuration);
@@ -175,7 +175,7 @@ No authorization required
 import {
     AuthControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AuthControllerApi(configuration);
@@ -225,7 +225,7 @@ No authorization required
 import {
     AuthControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AuthControllerApi(configuration);
@@ -269,7 +269,7 @@ import {
     AuthControllerApi,
     Configuration,
     RefreshTokenRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AuthControllerApi(configuration);
@@ -320,7 +320,7 @@ import {
     AuthControllerApi,
     Configuration,
     ResetPasswordRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new AuthControllerApi(configuration);

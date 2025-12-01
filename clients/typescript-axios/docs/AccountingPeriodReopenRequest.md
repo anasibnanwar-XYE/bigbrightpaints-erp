@@ -10,7 +10,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { AccountingPeriodReopenRequest } from 'bbp-erp-api-client';
+import { AccountingPeriodReopenRequest } from '@bigbright/erp-api-client';
 
 const instance: AccountingPeriodReopenRequest = {
     reason,

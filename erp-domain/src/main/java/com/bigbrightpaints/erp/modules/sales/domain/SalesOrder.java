@@ -64,6 +64,16 @@ public class SalesOrder extends VersionedEntity {
     @Column(name = "idempotency_key", length = 255)
     private String idempotencyKey;
 
+    // Idempotency markers to prevent double posting
+    @Column(name = "sales_journal_entry_id")
+    private Long salesJournalEntryId;
+    
+    @Column(name = "cogs_journal_entry_id")
+    private Long cogsJournalEntryId;
+    
+    @Column(name = "fulfillment_invoice_id")
+    private Long fulfillmentInvoiceId;
+
     private String notes;
 
     @Column(name = "created_at", nullable = false)
@@ -125,4 +135,17 @@ public class SalesOrder extends VersionedEntity {
     public List<SalesOrderItem> getItems() { return items; }
     public String getIdempotencyKey() { return idempotencyKey; }
     public void setIdempotencyKey(String idempotencyKey) { this.idempotencyKey = idempotencyKey; }
+    
+    // Idempotency marker getters/setters
+    public Long getSalesJournalEntryId() { return salesJournalEntryId; }
+    public void setSalesJournalEntryId(Long salesJournalEntryId) { this.salesJournalEntryId = salesJournalEntryId; }
+    public Long getCogsJournalEntryId() { return cogsJournalEntryId; }
+    public void setCogsJournalEntryId(Long cogsJournalEntryId) { this.cogsJournalEntryId = cogsJournalEntryId; }
+    public Long getFulfillmentInvoiceId() { return fulfillmentInvoiceId; }
+    public void setFulfillmentInvoiceId(Long fulfillmentInvoiceId) { this.fulfillmentInvoiceId = fulfillmentInvoiceId; }
+    
+    // Idempotency check helpers
+    public boolean hasSalesJournalPosted() { return salesJournalEntryId != null; }
+    public boolean hasCogsJournalPosted() { return cogsJournalEntryId != null; }
+    public boolean hasInvoiceIssued() { return fulfillmentInvoiceId != null; }
 }

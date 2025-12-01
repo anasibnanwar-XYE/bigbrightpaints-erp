@@ -20,7 +20,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { InventoryCountResponse } from 'bbp-erp-api-client';
+import { InventoryCountResponse } from '@bigbright/erp-api-client';
 
 const instance: InventoryCountResponse = {
     itemId,

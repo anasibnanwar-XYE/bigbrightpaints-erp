@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.invoice.controller;
 
+import com.bigbrightpaints.erp.core.notification.EmailService;
 import com.bigbrightpaints.erp.modules.invoice.dto.InvoiceDto;
 import com.bigbrightpaints.erp.modules.invoice.service.InvoicePdfService;
 import com.bigbrightpaints.erp.modules.invoice.service.InvoiceService;
@@ -9,6 +10,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 @RestController
@@ -17,11 +19,14 @@ public class InvoiceController {
 
     private final InvoiceService invoiceService;
     private final InvoicePdfService invoicePdfService;
+    private final EmailService emailService;
 
     public InvoiceController(InvoiceService invoiceService,
-                             InvoicePdfService invoicePdfService) {
+                             InvoicePdfService invoicePdfService,
+                             EmailService emailService) {
         this.invoiceService = invoiceService;
         this.invoicePdfService = invoicePdfService;
+        this.emailService = emailService;
     }
 
     @GetMapping
@@ -46,5 +51,39 @@ public class InvoiceController {
     @GetMapping("/dealers/{dealerId}")
     public ResponseEntity<ApiResponse<List<InvoiceDto>>> dealerInvoices(@PathVariable Long dealerId) {
         return ResponseEntity.ok(ApiResponse.success(invoiceService.listDealerInvoices(dealerId)));
+    }
+
+    @PostMapping("/{id}/email")
+    public ResponseEntity<ApiResponse<String>> sendInvoiceEmail(@PathVariable Long id) {
+        // Get invoice with dealer email from service
+        var invoiceWithEmail = invoiceService.getInvoiceWithDealerEmail(id);
+        InvoiceDto invoice = invoiceWithEmail.invoice();
+        String dealerEmail = invoiceWithEmail.dealerEmail();
+        String companyName = invoiceWithEmail.companyName();
+        
+        if (dealerEmail == null || dealerEmail.isBlank()) {
+            return ResponseEntity.badRequest()
+                .body(ApiResponse.failure("Dealer email not configured for invoice " + invoice.invoiceNumber()));
+        }
+        
+        InvoicePdfService.PdfDocument pdf = invoicePdfService.renderInvoicePdf(id);
+        
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd MMM yyyy");
+        String invoiceDate = invoice.issueDate() != null ? invoice.issueDate().format(formatter) : "";
+        String dueDate = invoice.dueDate() != null ? invoice.dueDate().format(formatter) : "";
+        String totalAmount = String.format("₹%.2f", invoice.totalAmount() != null ? invoice.totalAmount().doubleValue() : 0);
+        
+        emailService.sendInvoiceEmail(
+            dealerEmail,
+            invoice.dealerName(),
+            invoice.invoiceNumber(),
+            invoiceDate,
+            dueDate,
+            totalAmount,
+            companyName,
+            pdf.content()
+        );
+        
+        return ResponseEntity.ok(ApiResponse.success("Invoice email sent to " + dealerEmail));
     }
 }

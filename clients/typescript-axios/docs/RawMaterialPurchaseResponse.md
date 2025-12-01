@@ -23,7 +23,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { RawMaterialPurchaseResponse } from 'bbp-erp-api-client';
+import { RawMaterialPurchaseResponse } from '@bigbright/erp-api-client';
 
 const instance: RawMaterialPurchaseResponse = {
     id,

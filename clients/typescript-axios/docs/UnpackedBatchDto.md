@@ -18,7 +18,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { UnpackedBatchDto } from 'bbp-erp-api-client';
+import { UnpackedBatchDto } from '@bigbright/erp-api-client';
 
 const instance: UnpackedBatchDto = {
     id,

@@ -1,6 +1,6 @@
 # ProductionLogControllerApi
 
-All URIs are relative to *http://localhost:50965*
+All URIs are relative to *http://localhost:8081*
 
 |Method | HTTP request | Description|
 |------------- | ------------- | -------------|
@@ -19,7 +19,7 @@ import {
     ProductionLogControllerApi,
     Configuration,
     ProductionLogRequest
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new ProductionLogControllerApi(configuration);
@@ -69,7 +69,7 @@ No authorization required
 import {
     ProductionLogControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new ProductionLogControllerApi(configuration);
@@ -119,7 +119,7 @@ No authorization required
 import {
     ProductionLogControllerApi,
     Configuration
-} from 'bbp-erp-api-client';
+} from '@bigbright/erp-api-client';
 
 const configuration = new Configuration();
 const apiInstance = new ProductionLogControllerApi(configuration);

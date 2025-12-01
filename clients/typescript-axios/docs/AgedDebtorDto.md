@@ -14,7 +14,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { AgedDebtorDto } from 'bbp-erp-api-client';
+import { AgedDebtorDto } from '@bigbright/erp-api-client';
 
 const instance: AgedDebtorDto = {
     dealerName,

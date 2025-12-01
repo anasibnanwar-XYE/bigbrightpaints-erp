@@ -17,7 +17,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { InventoryRevaluationRequest } from 'bbp-erp-api-client';
+import { InventoryRevaluationRequest } from '@bigbright/erp-api-client';
 
 const instance: InventoryRevaluationRequest = {
     inventoryAccountId,

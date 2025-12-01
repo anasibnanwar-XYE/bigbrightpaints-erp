@@ -12,7 +12,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { SalesReturnRequest } from 'bbp-erp-api-client';
+import { SalesReturnRequest } from '@bigbright/erp-api-client';
 
 const instance: SalesReturnRequest = {
     invoiceId,

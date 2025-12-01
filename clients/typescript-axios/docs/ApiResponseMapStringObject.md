@@ -13,7 +13,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { ApiResponseMapStringObject } from 'bbp-erp-api-client';
+import { ApiResponseMapStringObject } from '@bigbright/erp-api-client';
 
 const instance: ApiResponseMapStringObject = {
     success,

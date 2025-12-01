@@ -17,7 +17,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { PackingRecordDto } from 'bbp-erp-api-client';
+import { PackingRecordDto } from '@bigbright/erp-api-client';
 
 const instance: PackingRecordDto = {
     id,

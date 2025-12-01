@@ -19,7 +19,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { RawMaterialBatchDto } from 'bbp-erp-api-client';
+import { RawMaterialBatchDto } from '@bigbright/erp-api-client';
 
 const instance: RawMaterialBatchDto = {
     id,

@@ -13,7 +13,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { UpdateUserRequest } from 'bbp-erp-api-client';
+import { UpdateUserRequest } from '@bigbright/erp-api-client';
 
 const instance: UpdateUserRequest = {
     displayName,

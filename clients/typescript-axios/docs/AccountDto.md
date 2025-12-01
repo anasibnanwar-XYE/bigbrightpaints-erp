@@ -15,7 +15,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { AccountDto } from 'bbp-erp-api-client';
+import { AccountDto } from '@bigbright/erp-api-client';
 
 const instance: AccountDto = {
     id,

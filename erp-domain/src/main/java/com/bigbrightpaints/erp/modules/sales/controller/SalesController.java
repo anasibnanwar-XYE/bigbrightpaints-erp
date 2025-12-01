@@ -21,7 +21,8 @@ public class SalesController {
     }
 
     /* Sales Orders */
-    @GetMapping("/sales/orders")\n    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_SALES')")
+    @GetMapping("/sales/orders")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_SALES')")
     public ResponseEntity<ApiResponse<List<SalesOrderDto>>> orders(@RequestParam(required = false) String status) {
         return ResponseEntity.ok(ApiResponse.success(salesService.listOrders(status)));
     }
@@ -71,7 +72,8 @@ public class SalesController {
     public record StatusRequest(String status) {}
 
     /* Promotions */
-    @GetMapping("/sales/promotions")\n    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_SALES')")
+    @GetMapping("/sales/promotions")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_SALES')")
     public ResponseEntity<ApiResponse<List<PromotionDto>>> promotions() {
         return ResponseEntity.ok(ApiResponse.success(salesService.listPromotions()));
     }
@@ -97,7 +99,8 @@ public class SalesController {
     }
 
     /* Sales Targets */
-    @GetMapping("/sales/targets")\n    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_SALES')")
+    @GetMapping("/sales/targets")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_SALES')")
     public ResponseEntity<ApiResponse<List<SalesTargetDto>>> targets() {
         return ResponseEntity.ok(ApiResponse.success(salesService.listTargets()));
     }
@@ -123,7 +126,8 @@ public class SalesController {
     }
 
     /* Credit Requests */
-    @GetMapping("/sales/credit-requests")\n    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_SALES')")
+    @GetMapping("/sales/credit-requests")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_SALES')")
     public ResponseEntity<ApiResponse<List<CreditRequestDto>>> creditRequests() {
         return ResponseEntity.ok(ApiResponse.success(salesService.listCreditRequests()));
     }

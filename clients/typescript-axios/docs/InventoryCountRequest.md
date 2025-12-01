@@ -18,7 +18,7 @@ Name | Type | Description | Notes
 ## Example
 
 ```typescript
-import { InventoryCountRequest } from 'bbp-erp-api-client';
+import { InventoryCountRequest } from '@bigbright/erp-api-client';
 
 const instance: InventoryCountRequest = {
     target,
