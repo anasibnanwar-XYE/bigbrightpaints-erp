@@ -116,6 +116,12 @@ public class AccountingController {
         return ResponseEntity.ok(ApiResponse.success("Receipt recorded", accountingService.recordDealerReceipt(request)));
     }
 
+    @PostMapping("/receipts/dealer/hybrid")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<JournalEntryDto>> recordDealerHybridReceipt(@Valid @RequestBody DealerReceiptSplitRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Receipt recorded", accountingService.recordDealerReceiptSplit(request)));
+    }
+
     @PostMapping("/settlements/dealers")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
     public ResponseEntity<ApiResponse<PartnerSettlementResponse>> settleDealer(@Valid @RequestBody DealerSettlementRequest request) {
@@ -171,6 +177,14 @@ public class AccountingController {
         return ResponseEntity.ok(ApiResponse.success("Bad debt written off", accountingService.writeOffBadDebt(request)));
     }
 
+    @GetMapping("/sales/returns")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING','ROLE_SALES')")
+    public ResponseEntity<ApiResponse<List<JournalEntryDto>>> listSalesReturns() {
+        // Returns are stored as credit note journal entries - filter by reference prefix
+        return ResponseEntity.ok(ApiResponse.success("Sales returns", 
+            accountingService.listJournalEntriesByReferencePrefix("CN-")));
+    }
+
     @PostMapping("/sales/returns")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
     public ResponseEntity<ApiResponse<JournalEntryDto>> recordSalesReturn(@Valid @RequestBody SalesReturnRequest request) {
@@ -202,18 +216,6 @@ public class AccountingController {
     public ResponseEntity<ApiResponse<AccountingPeriodDto>> reopenPeriod(@PathVariable Long periodId,
                                                                          @RequestBody(required = false) AccountingPeriodReopenRequest request) {
         return ResponseEntity.ok(ApiResponse.success("Accounting period reopened", accountingPeriodService.reopenPeriod(periodId, request)));
-    }
-
-    @PostMapping("/bank-reconciliation")
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-    public ResponseEntity<ApiResponse<BankReconciliationSummaryDto>> reconcileBank(@Valid @RequestBody BankReconciliationRequest request) {
-        return ResponseEntity.ok(ApiResponse.success(reconciliationService.reconcileBank(request)));
-    }
-
-    @PostMapping("/inventory/physical-count")
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-    public ResponseEntity<ApiResponse<InventoryCountResponse>> recordInventoryCount(@Valid @RequestBody InventoryCountRequest request) {
-        return ResponseEntity.ok(ApiResponse.success("Inventory count recorded", reconciliationService.recordInventoryCount(request)));
     }
 
     @GetMapping("/month-end/checklist")

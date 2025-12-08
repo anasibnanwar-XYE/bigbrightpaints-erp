@@ -8,6 +8,7 @@ import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.format.DateTimeFormatter;
@@ -15,6 +16,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/invoices")
+@PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_SALES','ROLE_ACCOUNTANT')")
 public class InvoiceController {
 
     private final InvoiceService invoiceService;

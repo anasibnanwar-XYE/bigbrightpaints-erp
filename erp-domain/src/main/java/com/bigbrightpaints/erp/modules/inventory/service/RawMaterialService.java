@@ -91,6 +91,9 @@ public class RawMaterialService {
         material.setMinStock(request.minStock() != null ? request.minStock() : BigDecimal.ZERO);
         material.setMaxStock(request.maxStock() != null ? request.maxStock() : BigDecimal.ZERO);
         material.setInventoryAccountId(request.inventoryAccountId());
+        if (material.getInventoryAccountId() == null) {
+            material.setInventoryAccountId(company.getDefaultInventoryAccountId());
+        }
         RawMaterial saved = rawMaterialRepository.save(material);
         syncProductFromMaterial(company, saved);
         return toDto(saved);
@@ -108,6 +111,9 @@ public class RawMaterialService {
         material.setMinStock(request.minStock() != null ? request.minStock() : BigDecimal.ZERO);
         material.setMaxStock(request.maxStock() != null ? request.maxStock() : BigDecimal.ZERO);
         material.setInventoryAccountId(request.inventoryAccountId());
+        if (material.getInventoryAccountId() == null) {
+            material.setInventoryAccountId(company.getDefaultInventoryAccountId());
+        }
         RawMaterial saved = rawMaterialRepository.save(material);
         syncProductFromMaterial(company, saved);
         return toDto(saved);
@@ -236,7 +242,8 @@ public class RawMaterialService {
     private RawMaterialDto toDto(RawMaterial material) {
         return new RawMaterialDto(material.getId(), material.getPublicId(), material.getName(), material.getSku(),
                 material.getUnitType(), material.getReorderLevel(), material.getCurrentStock(),
-                material.getMinStock(), material.getMaxStock(), stockStatus(material), material.getInventoryAccountId());
+                material.getMinStock(), material.getMaxStock(), stockStatus(material), material.getInventoryAccountId(),
+                material.getMaterialType() != null ? material.getMaterialType().name() : null);
     }
 
     private RawMaterialBatchDto toBatchDto(RawMaterialBatch batch) {
@@ -378,6 +385,10 @@ public class RawMaterialService {
     }
 
     private void ensurePostingAccounts(RawMaterial material, Supplier supplier) {
+        if (material.getInventoryAccountId() == null && material.getCompany() != null) {
+            // Try company default inventory account before failing
+            material.setInventoryAccountId(material.getCompany().getDefaultInventoryAccountId());
+        }
         if (material.getInventoryAccountId() == null) {
             throw new IllegalStateException("Raw material " + material.getName() + " is missing an inventory account");
         }

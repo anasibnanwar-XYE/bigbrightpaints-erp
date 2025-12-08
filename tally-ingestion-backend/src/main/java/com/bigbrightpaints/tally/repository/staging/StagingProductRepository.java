@@ -48,7 +48,7 @@ public interface StagingProductRepository extends JpaRepository<StagingProduct, 
     long countUnprocessedProducts(@Param("run") IngestionRun run);
 
     @Modifying
-    @Query("UPDATE StagingProduct s SET s.processed = true, s.processedAt = CURRENT_TIMESTAMP " +
+    @Query("UPDATE StagingProduct s SET s.processed = true, s.processedAt = :now " +
             "WHERE s.run = :run AND s.id IN :ids")
-    int markAsProcessed(@Param("run") IngestionRun run, @Param("ids") List<Long> ids);
+    int markAsProcessed(@Param("run") IngestionRun run, @Param("ids") List<Long> ids, @Param("now") java.time.Instant now);
 }

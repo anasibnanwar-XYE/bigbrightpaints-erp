@@ -6,6 +6,7 @@ import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import io.swagger.v3.oas.annotations.Operation;
 
 import java.util.List;
 
@@ -43,16 +44,22 @@ public class HrController {
     }
 
     /* Leave Requests */
+    @Deprecated
+    @Operation(deprecated = true)
     @GetMapping("/leave-requests")
     public ResponseEntity<ApiResponse<List<LeaveRequestDto>>> leaveRequests() {
         return ResponseEntity.ok(ApiResponse.success(hrService.listLeaveRequests()));
     }
 
+    @Deprecated
+    @Operation(deprecated = true)
     @PostMapping("/leave-requests")
     public ResponseEntity<ApiResponse<LeaveRequestDto>> createLeaveRequest(@Valid @RequestBody LeaveRequestRequest request) {
         return ResponseEntity.ok(ApiResponse.success("Leave request created", hrService.createLeaveRequest(request)));
     }
 
+    @Deprecated
+    @Operation(deprecated = true)
     @PatchMapping("/leave-requests/{id}/status")
     public ResponseEntity<ApiResponse<LeaveRequestDto>> updateLeaveStatus(@PathVariable Long id,
                                                                            @RequestBody StatusRequest request) {
@@ -60,6 +67,45 @@ public class HrController {
     }
 
     public record StatusRequest(String status) {}
+
+    /* Attendance */
+    @GetMapping("/attendance/date/{date}")
+    public ResponseEntity<ApiResponse<List<AttendanceDto>>> attendanceByDate(
+            @PathVariable @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate date) {
+        return ResponseEntity.ok(ApiResponse.success(hrService.listAttendanceByDate(date)));
+    }
+
+    @GetMapping("/attendance/today")
+    public ResponseEntity<ApiResponse<List<AttendanceDto>>> attendanceToday() {
+        return ResponseEntity.ok(ApiResponse.success(hrService.listAttendanceByDate(java.time.LocalDate.now())));
+    }
+
+    @GetMapping("/attendance/summary")
+    public ResponseEntity<ApiResponse<AttendanceSummaryDto>> attendanceSummary() {
+        return ResponseEntity.ok(ApiResponse.success(hrService.getTodayAttendanceSummary()));
+    }
+
+    @GetMapping("/attendance/employee/{employeeId}")
+    public ResponseEntity<ApiResponse<List<AttendanceDto>>> employeeAttendance(
+            @PathVariable Long employeeId,
+            @RequestParam @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate startDate,
+            @RequestParam @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate endDate) {
+        return ResponseEntity.ok(ApiResponse.success(hrService.listEmployeeAttendance(employeeId, startDate, endDate)));
+    }
+
+    @PostMapping("/attendance/mark/{employeeId}")
+    public ResponseEntity<ApiResponse<AttendanceDto>> markAttendance(
+            @PathVariable Long employeeId,
+            @Valid @RequestBody MarkAttendanceRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Attendance marked", hrService.markAttendance(employeeId, request)));
+    }
+
+    @PostMapping("/attendance/bulk-mark")
+    public ResponseEntity<ApiResponse<List<AttendanceDto>>> bulkMarkAttendance(
+            @Valid @RequestBody BulkMarkAttendanceRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Attendance marked for " + request.employeeIds().size() + " employees",
+                hrService.bulkMarkAttendance(request)));
+    }
 
     /* Payroll */
     @GetMapping("/payroll-runs")

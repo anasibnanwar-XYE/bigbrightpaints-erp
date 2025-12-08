@@ -54,9 +54,9 @@ public class SkuGenerationService {
         // Generate base SKU
         String baseSku = buildSku(pattern, components);
 
-        // Check for existing SKU
+        // Check for existing SKU by exact match first
         Optional<SkuRegistry> existing = skuRegistryRepository
-                .findByCompanyIdAndBaseSku(companyId, baseSku);
+                .findByCompanyIdAndSku(companyId, baseSku);
 
         if (existing.isPresent()) {
             SkuRegistry registry = existing.get();

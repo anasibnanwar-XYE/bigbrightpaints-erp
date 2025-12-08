@@ -53,13 +53,12 @@ public class RoleService {
     @Transactional
     public Role ensureRoleExists(String roleName) {
         String normalizedName = normalizeRoleName(roleName);
-        SystemRole definition = SystemRole.fromName(normalizedName)
-                .orElseThrow(() -> new IllegalArgumentException("Unknown platform role: " + normalizedName));
+        SystemRole definition = SystemRole.fromName(normalizedName).orElse(null);
         // Use pessimistic lock to prevent race condition on concurrent role creation
         return roleRepository.lockByName(normalizedName).orElseGet(() -> {
             Role role = new Role();
             role.setName(normalizedName);
-            role.setDescription(definition.getDescription());
+            role.setDescription(definition != null ? definition.getDescription() : normalizedName);
             return roleRepository.save(role);
         });
     }

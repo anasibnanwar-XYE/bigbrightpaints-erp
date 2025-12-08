@@ -8,19 +8,22 @@ import java.util.List;
 import java.util.Optional;
 
 public interface SalesOrderRepository extends JpaRepository<SalesOrder, Long> {
-    @EntityGraph(attributePaths = "items")
+    @EntityGraph(attributePaths = {"items", "dealer"})
     List<SalesOrder> findByCompanyOrderByCreatedAtDesc(Company company);
 
-    @EntityGraph(attributePaths = "items")
+    @EntityGraph(attributePaths = {"items", "dealer"})
     List<SalesOrder> findByCompanyAndStatusOrderByCreatedAtDesc(Company company, String status);
 
     Optional<SalesOrder> findByCompanyAndId(Company company, Long id);
 
-    @EntityGraph(attributePaths = "items")
+    @EntityGraph(attributePaths = {"items", "dealer"})
     Optional<SalesOrder> findWithItemsByCompanyAndId(Company company, Long id);
 
     @EntityGraph(attributePaths = {"company", "dealer"})
     List<SalesOrder> findAll();
 
     Optional<SalesOrder> findByCompanyAndIdempotencyKey(Company company, String idempotencyKey);
+
+    @EntityGraph(attributePaths = {"items"})
+    List<SalesOrder> findByCompanyAndDealerOrderByCreatedAtDesc(Company company, Dealer dealer);
 }

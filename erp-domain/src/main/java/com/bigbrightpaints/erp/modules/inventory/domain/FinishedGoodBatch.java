@@ -48,6 +48,17 @@ public class FinishedGoodBatch extends VersionedEntity {
     @Column(name = "inventory_type", nullable = false)
     private InventoryType inventoryType = InventoryType.STANDARD;
 
+    // Bulk-to-size packaging: links child batches to parent bulk batch
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "parent_batch_id")
+    private FinishedGoodBatch parentBatch;
+
+    @Column(name = "is_bulk")
+    private boolean bulk = false;
+
+    @Column(name = "size_label")
+    private String sizeLabel; // e.g., "1L", "4L", "20L"
+
     @PrePersist
     public void prePersist() {
         if (publicId == null) {
@@ -95,6 +106,12 @@ public class FinishedGoodBatch extends VersionedEntity {
     public void setExpiryDate(LocalDate expiryDate) { this.expiryDate = expiryDate; }
     public InventoryType getInventoryType() { return inventoryType; }
     public void setInventoryType(InventoryType inventoryType) { this.inventoryType = inventoryType; }
+    public FinishedGoodBatch getParentBatch() { return parentBatch; }
+    public void setParentBatch(FinishedGoodBatch parentBatch) { this.parentBatch = parentBatch; }
+    public boolean isBulk() { return bulk; }
+    public void setBulk(boolean bulk) { this.bulk = bulk; }
+    public String getSizeLabel() { return sizeLabel; }
+    public void setSizeLabel(String sizeLabel) { this.sizeLabel = sizeLabel; }
 
     /**
      * Allocate quantity from this batch in a single step, preventing negatives.

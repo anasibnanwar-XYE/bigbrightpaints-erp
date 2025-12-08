@@ -135,7 +135,7 @@ class SalesFulfillmentServiceTest {
                 new FinishedGoodsService.DispatchPosting(10L, 20L, new BigDecimal("50"))
         );
         when(finishedGoodsService.markSlipDispatched(3L)).thenReturn(dispatches);
-        when(accountingFacade.hasCogsJournalFor("SO-3-COGS-10-0")).thenReturn(true);
+        when(accountingFacade.hasCogsJournalFor("COGS-SO-3")).thenReturn(true);
 
         var options = SalesFulfillmentService.FulfillmentOptions.builder()
                 .reserveInventory(false)
@@ -147,7 +147,7 @@ class SalesFulfillmentServiceTest {
         fulfillmentService.fulfillOrder(3L, options);
 
         verify(accountingFacade, never()).postCOGS(anyString(), any(), any(), any(), anyString());
-        verify(accountingFacade, times(1)).hasCogsJournalFor("SO-3-COGS-10-0");
+        verify(accountingFacade, times(1)).hasCogsJournalFor("COGS-SO-3");
     }
 
     private void setField(Object target, String name, Object value) {

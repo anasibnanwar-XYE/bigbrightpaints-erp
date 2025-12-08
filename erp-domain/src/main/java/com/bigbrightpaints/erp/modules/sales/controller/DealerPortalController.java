@@ -60,4 +60,13 @@ public class DealerPortalController {
         Map<String, Object> aging = dealerPortalService.getMyOutstandingAndAging();
         return ResponseEntity.ok(ApiResponse.success("Outstanding & aging", aging));
     }
+
+    /**
+     * Get all orders for the authenticated dealer.
+     */
+    @GetMapping("/orders")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getMyOrders() {
+        Map<String, Object> orders = dealerPortalService.getMyOrders();
+        return ResponseEntity.ok(ApiResponse.success("Your orders", orders));
+    }
 }

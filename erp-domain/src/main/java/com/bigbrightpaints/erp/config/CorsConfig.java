@@ -1,27 +1,21 @@
 package com.bigbrightpaints.erp.config;
 
-import org.springframework.beans.factory.annotation.Value;
+import com.bigbrightpaints.erp.core.config.SystemSettingsService;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.util.StringUtils;
-import org.springframework.web.servlet.config.annotation.CorsRegistry;
-import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+import org.springframework.web.cors.CorsConfigurationSource;
 
 @Configuration
-public class CorsConfig implements WebMvcConfigurer {
+public class CorsConfig {
 
-    private final String[] allowedOrigins;
+    private final SystemSettingsService systemSettingsService;
 
-    public CorsConfig(@Value("${erp.cors.allowed-origins:http://localhost:3002}") String origins) {
-        this.allowedOrigins = StringUtils.commaDelimitedListToStringArray(origins);
+    public CorsConfig(SystemSettingsService systemSettingsService) {
+        this.systemSettingsService = systemSettingsService;
     }
 
-    @Override
-    public void addCorsMappings(CorsRegistry registry) {
-        registry.addMapping("/**")
-                .allowedOrigins(allowedOrigins)
-                .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
-                .allowedHeaders("*")
-                .allowCredentials(true)
-                .maxAge(3600);
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        return request -> systemSettingsService.buildCorsConfiguration();
     }
 }

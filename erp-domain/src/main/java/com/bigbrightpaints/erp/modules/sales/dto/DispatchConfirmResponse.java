@@ -9,7 +9,9 @@ public record DispatchConfirmResponse(
         Long finalInvoiceId,
         Long arJournalEntryId,
         List<CogsPostingDto> cogsPostings,
-        boolean dispatched
+        boolean dispatched,
+        List<AccountPostingDto> arPostings
 ) {
     public record CogsPostingDto(Long inventoryAccountId, Long cogsAccountId, BigDecimal cost) {}
+    public record AccountPostingDto(Long accountId, String accountName, BigDecimal debit, BigDecimal credit) {}
 }

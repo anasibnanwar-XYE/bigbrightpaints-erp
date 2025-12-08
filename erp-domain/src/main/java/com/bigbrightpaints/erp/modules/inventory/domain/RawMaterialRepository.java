@@ -25,4 +25,17 @@ public interface RawMaterialRepository extends JpaRepository<RawMaterial, Long> 
     @Query("UPDATE RawMaterial rm SET rm.currentStock = rm.currentStock - :quantity, rm.updatedAt = CURRENT_TIMESTAMP " +
            "WHERE rm.id = :id AND rm.currentStock >= :quantity")
     int deductStockIfSufficient(@Param("id") Long id, @Param("quantity") BigDecimal quantity);
+
+    // Filter by material type
+    List<RawMaterial> findByCompanyAndMaterialTypeOrderByNameAsc(Company company, MaterialType materialType);
+
+    // Production materials only (for manufacturing)
+    default List<RawMaterial> findProductionMaterials(Company company) {
+        return findByCompanyAndMaterialTypeOrderByNameAsc(company, MaterialType.PRODUCTION);
+    }
+
+    // Packaging materials only (for packing step)
+    default List<RawMaterial> findPackagingMaterials(Company company) {
+        return findByCompanyAndMaterialTypeOrderByNameAsc(company, MaterialType.PACKAGING);
+    }
 }

@@ -5,10 +5,13 @@ import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
+import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionBrand;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionBrandRepository;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProductRepository;
+import com.bigbrightpaints.erp.modules.production.dto.BulkVariantRequest;
+import com.bigbrightpaints.erp.modules.production.dto.BulkVariantResponse;
 import com.bigbrightpaints.erp.modules.production.dto.CatalogImportResponse;
 import com.bigbrightpaints.erp.modules.production.dto.ProductCreateRequest;
 import com.bigbrightpaints.erp.modules.production.dto.ProductUpdateRequest;
@@ -73,17 +76,20 @@ public class ProductionCatalogService {
     private final ProductionProductRepository productRepository;
     private final RawMaterialRepository rawMaterialRepository;
     private final CompanyEntityLookup companyEntityLookup;
+    private final CompanyDefaultAccountsService companyDefaultAccountsService;
 
     public ProductionCatalogService(CompanyContextService companyContextService,
                                     ProductionBrandRepository brandRepository,
                                     ProductionProductRepository productRepository,
                                     RawMaterialRepository rawMaterialRepository,
-                                    CompanyEntityLookup companyEntityLookup) {
+                                    CompanyEntityLookup companyEntityLookup,
+                                    CompanyDefaultAccountsService companyDefaultAccountsService) {
         this.companyContextService = companyContextService;
         this.brandRepository = brandRepository;
         this.productRepository = productRepository;
         this.rawMaterialRepository = rawMaterialRepository;
         this.companyEntityLookup = companyEntityLookup;
+        this.companyDefaultAccountsService = companyDefaultAccountsService;
     }
 
     @Transactional
@@ -186,12 +192,83 @@ public class ProductionCatalogService {
         product.setMinSellingPrice(money(request.minSellingPrice()));
         Map<String, Object> metadata = normalizeMetadata(request.metadata());
         if (!isRawMaterialCategory(normalizedCategory)) {
-            metadata = ensureFinishedGoodAccounts(sku, metadata);
+            metadata = ensureFinishedGoodAccounts(company, sku, metadata);
         }
         product.setMetadata(metadata);
         ProductionProduct saved = productRepository.save(product);
         syncRawMaterial(company, saved);
         return toProductDto(saved);
+    }
+
+    /**
+     * Bulk variant creation: generates SKUs for each (color x size) and creates products if missing.
+     */
+    @Transactional
+    public BulkVariantResponse createVariants(BulkVariantRequest request) {
+        Company company = companyContextService.requireCurrentCompany();
+        List<String> colors = expandTokens(request.colors());
+        List<String> sizes = expandTokens(request.sizes());
+        if (colors.isEmpty()) {
+            throw new IllegalArgumentException("At least one color is required");
+        }
+        if (sizes.isEmpty()) {
+            throw new IllegalArgumentException("At least one size is required");
+        }
+        String normalizedCategory = normalizeCategory(request.category());
+        BrandResolution resolution = resolveBrand(company, request.brandId(), request.brandName(), request.brandCode());
+        ProductionBrand brand = resolution.brand();
+        String baseName = request.baseProductName().trim();
+        String unit = StringUtils.hasText(request.unitOfMeasure()) ? request.unitOfMeasure().trim() : "UNIT";
+        String prefix = StringUtils.hasText(request.skuPrefix())
+                ? sanitizeSkuFragment(request.skuPrefix())
+                : sanitizeSkuFragment(brand.getCode());
+        List<ProductionProductDto> variants = new ArrayList<>();
+        int created = 0;
+        int skipped = 0;
+        for (String color : colors) {
+            String colorCode = truncate(sanitizeSkuFragment(color), 8);
+            for (String size : sizes) {
+                String sizeCode = truncate(sanitizeSkuFragment(size), 8);
+                String sku = String.join("-",
+                        List.of(prefix, sanitizeSkuFragment(baseName), colorCode, sizeCode))
+                        .replaceAll("-+", "-");
+                if (productRepository.findByCompanyAndSkuCode(company, sku).isPresent()) {
+                    skipped++;
+                    continue;
+                }
+                ProductCreateRequest create = new ProductCreateRequest(
+                        brand.getId(), null, null,
+                        baseName + " " + color + " " + size,
+                        normalizedCategory, color, size, unit, sku,
+                        request.basePrice(), request.gstRate(),
+                        request.minDiscountPercent(), request.minSellingPrice(),
+                        request.metadata()
+                );
+                ProductionProductDto dto = createProduct(create);
+                variants.add(dto);
+                created++;
+            }
+        }
+        return new BulkVariantResponse(created, skipped, variants);
+    }
+
+    private List<String> expandTokens(List<String> items) {
+        if (items == null) return List.of();
+        return items.stream()
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .distinct()
+                .toList();
+    }
+
+    private String truncate(String value, int maxLen) {
+        if (value == null) return "";
+        return value.length() > maxLen ? value.substring(0, maxLen) : value;
+    }
+
+    private String sanitizeSkuFragment(String value) {
+        if (!StringUtils.hasText(value)) return "";
+        return NON_SKU_CHAR.matcher(value.trim().toUpperCase()).replaceAll("");
     }
 
     @Transactional
@@ -261,11 +338,11 @@ public class ProductionCatalogService {
         if (request.metadata() != null) {
             Map<String, Object> metadata = normalizeMetadata(request.metadata());
             if (!isRawMaterialCategory(effectiveCategory)) {
-                metadata = ensureFinishedGoodAccounts(product.getSkuCode(), metadata);
+                metadata = ensureFinishedGoodAccounts(company, product.getSkuCode(), metadata);
             }
             product.setMetadata(metadata);
         } else if (!isRawMaterialCategory(effectiveCategory)) {
-            product.setMetadata(ensureFinishedGoodAccounts(product.getSkuCode(),
+            product.setMetadata(ensureFinishedGoodAccounts(company, product.getSkuCode(),
                     new HashMap<>(Optional.ofNullable(product.getMetadata()).orElseGet(HashMap::new))));
         }
         ProductionProduct saved = productRepository.save(product);
@@ -322,7 +399,7 @@ public class ProductionCatalogService {
             }
         }
         if (!isRawMaterialCategory(category)) {
-            metadata = ensureFinishedGoodAccounts(sku, metadata);
+            metadata = ensureFinishedGoodAccounts(company, sku, metadata);
         }
         product.setMetadata(metadata);
         ProductionProduct saved = productRepository.save(product);
@@ -539,21 +616,33 @@ public class ProductionCatalogService {
         return new HashMap<>(metadata);
     }
 
-    private Map<String, Object> ensureFinishedGoodAccounts(String sku, Map<String, Object> metadata) {
-        if (metadata == null || metadata.isEmpty()) {
-            throw new IllegalArgumentException("SKU " + sku + " missing finished good accounting metadata. "
-                    + "Provide fg_valuation_account_id, fg_cogs_account_id, fg_revenue_account_id, "
-                    + "fg_discount_account_id and fg_tax_account_id columns or metadata JSON.");
-        }
+    private Map<String, Object> ensureFinishedGoodAccounts(Company company, String sku, Map<String, Object> metadata) {
+        Map<String, Object> working = metadata == null ? new HashMap<>() : new HashMap<>(metadata);
+        var defaults = companyDefaultAccountsService.requireDefaults();
+
+        Map<String, Long> defaultsMap = Map.of(
+                "fgValuationAccountId", defaults.inventoryAccountId(),
+                "fgCogsAccountId", defaults.cogsAccountId(),
+                "fgRevenueAccountId", defaults.revenueAccountId(),
+                "fgDiscountAccountId", defaults.discountAccountId(),
+                "fgTaxAccountId", defaults.taxAccountId()
+        );
+
         for (String key : FINISHED_GOOD_ACCOUNT_KEYS) {
-            Object candidate = metadata.get(key);
-            if (!hasLongValue(candidate)) {
-                String column = ACCOUNT_COLUMN_HINTS.getOrDefault(key, key);
-                throw new IllegalArgumentException("SKU " + sku + " missing numeric value for " + key
-                        + " (column '" + column + "')");
+            Object candidate = working.get(key);
+            if (!hasLongValue(candidate) && defaultsMap.get(key) != null) {
+                working.put(key, defaultsMap.get(key));
             }
         }
-        return metadata;
+
+        // Final validation: ensure required defaults are present so postings don't mis-map
+        for (String key : List.of("fgValuationAccountId", "fgCogsAccountId", "fgRevenueAccountId", "fgTaxAccountId")) {
+            if (!hasLongValue(working.get(key))) {
+                throw new IllegalStateException("Default " + key + " is not configured for company " + company.getCode() +
+                        ". Configure company default accounts to enable product posting.");
+            }
+        }
+        return working;
     }
 
     private boolean hasLongValue(Object value) {

@@ -7,6 +7,7 @@ public record MeResponse(
         String displayName,
         String companyId,
         boolean mfaEnabled,
+        boolean mustChangePassword,
         List<String> roles,
         List<String> permissions
 ) {}

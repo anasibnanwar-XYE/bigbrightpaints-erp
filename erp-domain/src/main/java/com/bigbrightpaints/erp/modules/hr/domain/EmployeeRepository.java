@@ -29,4 +29,7 @@ public interface EmployeeRepository extends JpaRepository<Employee, Long> {
 
     // Find all active employees
     List<Employee> findByCompanyAndStatusOrderByFirstNameAsc(Company company, String status);
+
+    // Count employees by status
+    long countByCompanyAndStatus(Company company, String status);
 }

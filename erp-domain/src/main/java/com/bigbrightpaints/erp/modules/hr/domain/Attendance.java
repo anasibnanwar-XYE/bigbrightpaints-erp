@@ -58,6 +58,29 @@ public class Attendance {
     @Column(name = "is_weekend")
     private boolean weekend = false;
 
+    // Work hours tracking for overtime calculation
+    @Column(name = "regular_hours", precision = 5, scale = 2)
+    private java.math.BigDecimal regularHours; // Standard work hours (e.g., 8)
+
+    @Column(name = "overtime_hours", precision = 5, scale = 2)
+    private java.math.BigDecimal overtimeHours; // Extra hours worked
+
+    @Column(name = "double_overtime_hours", precision = 5, scale = 2)
+    private java.math.BigDecimal doubleOvertimeHours; // Holiday/Sunday OT (2x rate)
+
+    // Pay calculation fields (calculated when payroll is processed)
+    @Column(name = "base_pay", precision = 19, scale = 2)
+    private java.math.BigDecimal basePay;
+
+    @Column(name = "overtime_pay", precision = 19, scale = 2)
+    private java.math.BigDecimal overtimePay;
+
+    @Column(name = "total_pay", precision = 19, scale = 2)
+    private java.math.BigDecimal totalPay;
+
+    @Column(name = "payroll_run_id")
+    private Long payrollRunId; // Links to PayrollRun when processed
+
     @PrePersist
     public void prePersist() {
         if (markedAt == null) {
@@ -89,6 +112,21 @@ public class Attendance {
     public void setHoliday(boolean holiday) { this.holiday = holiday; }
     public boolean isWeekend() { return weekend; }
     public void setWeekend(boolean weekend) { this.weekend = weekend; }
+    
+    public java.math.BigDecimal getRegularHours() { return regularHours; }
+    public void setRegularHours(java.math.BigDecimal regularHours) { this.regularHours = regularHours; }
+    public java.math.BigDecimal getOvertimeHours() { return overtimeHours; }
+    public void setOvertimeHours(java.math.BigDecimal overtimeHours) { this.overtimeHours = overtimeHours; }
+    public java.math.BigDecimal getDoubleOvertimeHours() { return doubleOvertimeHours; }
+    public void setDoubleOvertimeHours(java.math.BigDecimal doubleOvertimeHours) { this.doubleOvertimeHours = doubleOvertimeHours; }
+    public java.math.BigDecimal getBasePay() { return basePay; }
+    public void setBasePay(java.math.BigDecimal basePay) { this.basePay = basePay; }
+    public java.math.BigDecimal getOvertimePay() { return overtimePay; }
+    public void setOvertimePay(java.math.BigDecimal overtimePay) { this.overtimePay = overtimePay; }
+    public java.math.BigDecimal getTotalPay() { return totalPay; }
+    public void setTotalPay(java.math.BigDecimal totalPay) { this.totalPay = totalPay; }
+    public Long getPayrollRunId() { return payrollRunId; }
+    public void setPayrollRunId(Long payrollRunId) { this.payrollRunId = payrollRunId; }
 
     public enum AttendanceStatus {
         PRESENT,      // Full day

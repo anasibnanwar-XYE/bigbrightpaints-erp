@@ -1,6 +1,8 @@
 package com.bigbrightpaints.erp.modules.accounting.controller;
 
 import com.bigbrightpaints.erp.modules.production.dto.CatalogImportResponse;
+import com.bigbrightpaints.erp.modules.production.dto.BulkVariantRequest;
+import com.bigbrightpaints.erp.modules.production.dto.BulkVariantResponse;
 import com.bigbrightpaints.erp.modules.production.dto.ProductCreateRequest;
 import com.bigbrightpaints.erp.modules.production.dto.ProductUpdateRequest;
 import com.bigbrightpaints.erp.modules.production.dto.ProductionProductDto;
@@ -44,6 +46,11 @@ public class AccountingCatalogController {
     @PostMapping("/products")
     public ResponseEntity<ApiResponse<ProductionProductDto>> createProduct(@Valid @RequestBody ProductCreateRequest request) {
         return ResponseEntity.ok(ApiResponse.success("Product created", productionCatalogService.createProduct(request)));
+    }
+
+    @PostMapping("/products/bulk-variants")
+    public ResponseEntity<ApiResponse<BulkVariantResponse>> createVariants(@Valid @RequestBody BulkVariantRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Variants processed", productionCatalogService.createVariants(request)));
     }
 
     @PutMapping("/products/{id}")

@@ -9,8 +9,11 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriod;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
+import com.bigbrightpaints.erp.modules.accounting.dto.DealerSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.SettlementAllocationRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.SettlementPaymentRequest;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunLineRepository;
@@ -42,6 +45,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -95,6 +99,8 @@ class AccountingServiceTest {
     private AccountingPeriodService accountingPeriodService;
     @Mock
     private jakarta.persistence.EntityManager entityManager;
+    @Mock
+    private com.bigbrightpaints.erp.core.config.SystemSettingsService systemSettingsService;
 
     private AccountingService accountingService;
     private Company company;
@@ -123,11 +129,14 @@ class AccountingServiceTest {
                 dealerRepository,
                 supplierRepository,
                 invoiceSettlementPolicy,
-                entityManager
+                entityManager,
+                systemSettingsService
         );
         company = new Company();
         company.setBaseCurrency("INR");
         when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        lenient().when(systemSettingsService.isPeriodLockEnforced()).thenReturn(true);
+        lenient().when(accountingPeriodService.requireOpenPeriod(any(), any())).thenReturn(new AccountingPeriod());
     }
 
     @Test
@@ -268,5 +277,69 @@ class AccountingServiceTest {
         assertThatThrownBy(() -> accountingService.createJournalEntry(request))
                 .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Account balance update failed");
+    }
+
+    @Test
+    void settleDealerInvoices_requiresPaymentsToMatchCash() {
+        // Setup company/dealer/invoice
+        Dealer dealer = new Dealer();
+        dealer.setName("Dealer");
+        var arAccount = new com.bigbrightpaints.erp.modules.accounting.domain.Account();
+        arAccount.setCompany(company);
+        arAccount.setCode("AR");
+        dealer.setReceivableAccount(arAccount);
+        // Set IDs for equality checks
+        ReflectionTestUtils.setField(dealer, "id", 1L);
+        ReflectionTestUtils.setField(arAccount, "id", 10L);
+
+        var cashAccount = new com.bigbrightpaints.erp.modules.accounting.domain.Account();
+        cashAccount.setCompany(company);
+        cashAccount.setCode("CASH");
+        ReflectionTestUtils.setField(cashAccount, "id", 2L);
+
+        var invoice = new com.bigbrightpaints.erp.modules.invoice.domain.Invoice();
+        invoice.setDealer(dealer);
+        invoice.setCurrency("INR");
+
+        when(dealerRepository.lockByCompanyAndId(eq(company), eq(1L))).thenReturn(Optional.of(dealer));
+        when(invoiceRepository.lockByCompanyAndId(eq(company), eq(3L))).thenReturn(Optional.of(invoice));
+        when(settlementAllocationRepository.findByCompanyAndIdempotencyKey(any(), any())).thenReturn(List.of());
+        when(referenceNumberService.dealerReceiptReference(eq(company), eq(dealer))).thenReturn("REF-1");
+
+        // Allocation requires an invoice reference
+        var allocation = new SettlementAllocationRequest(
+                3L,
+                null,
+                new BigDecimal("100.00"),
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                null,
+                null);
+
+        // Payments total 50, but cash needed is 100 -> should fail
+        var payment = new SettlementPaymentRequest(2L, new BigDecimal("50.00"), "CASH");
+
+        when(companyEntityLookup.requireAccount(eq(company), eq(2L))).thenReturn(cashAccount);
+
+        DealerSettlementRequest request = new DealerSettlementRequest(
+                1L,
+                null, // legacy cashAccountId not used when payments provided
+                null,
+                null,
+                null,
+                null,
+                LocalDate.now(),
+                null,
+                null,
+                "IDEMP-TEST",
+                Boolean.FALSE,
+                List.of(allocation),
+                List.of(payment)
+        );
+
+        assertThatThrownBy(() -> accountingService.settleDealerInvoices(request))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Payment total")
+                .hasMessageContaining("must equal net cash required");
     }
 }

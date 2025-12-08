@@ -118,7 +118,7 @@ erp:
     enabled: ${ERP_AUTO_APPROVAL_ENABLED:true}
   mail:
     enabled: true
-    from-address: bigbrightpaints@gmail.com
+    from-address: noreply@bigbrightpaints.com
     base-url: ${ERP_MAIL_BASE_URL:http://localhost:3004}
     send-credentials: ${ERP_MAIL_SEND_CREDENTIALS:true}
     send-password-reset: ${ERP_MAIL_SEND_PASSWORD_RESET:true}

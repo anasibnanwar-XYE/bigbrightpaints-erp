@@ -75,7 +75,7 @@ public class AuthController {
                 .sorted()
                 .collect(Collectors.toList());
         MeResponse payload = new MeResponse(principal.getUsername(), principal.getUser().getDisplayName(),
-                companyId, principal.getUser().isMfaEnabled(), roles, permissions);
+                companyId, principal.getUser().isMfaEnabled(), principal.getUser().isMustChangePassword(), roles, permissions);
         return ResponseEntity.ok(ApiResponse.success(payload));
     }
 

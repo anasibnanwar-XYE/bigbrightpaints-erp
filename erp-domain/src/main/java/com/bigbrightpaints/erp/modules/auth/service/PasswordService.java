@@ -34,8 +34,11 @@ public class PasswordService {
 
     @Transactional
     public void changePassword(UserAccount user, ChangePasswordRequest request) {
-        if (!passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
-            throw new IllegalArgumentException("Current password is incorrect");
+        // If forced change is required, skip current password check to avoid blocking on temp passwords
+        if (!user.isMustChangePassword()) {
+            if (!passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
+                throw new IllegalArgumentException("Current password is incorrect");
+            }
         }
         if (!request.newPassword().equals(request.confirmPassword())) {
             throw new IllegalArgumentException("Password confirmation does not match");
@@ -62,6 +65,7 @@ public class PasswordService {
         ensureNotReused(user, newPassword);
         rememberCurrentPassword(user);
         user.setPasswordHash(passwordEncoder.encode(newPassword));
+        user.setMustChangePassword(false);
         userAccountRepository.save(user);
     }
 

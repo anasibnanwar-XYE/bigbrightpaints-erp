@@ -78,7 +78,7 @@ public class Invoice extends VersionedEntity {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
-    @OneToMany(mappedBy = "invoice", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "invoice", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private List<InvoiceLine> lines = new ArrayList<>();
 
     @ElementCollection

@@ -29,6 +29,7 @@ import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderRequest;
 import com.bigbrightpaints.erp.modules.sales.dto.DispatchConfirmRequest;
 import com.bigbrightpaints.erp.modules.sales.event.SalesOrderCreatedEvent;
 import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlip;
+import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -94,6 +95,8 @@ class SalesServiceTest {
     private InvoiceRepository invoiceRepository;
     @Mock
     private FactoryTaskRepository factoryTaskRepository;
+    @Mock
+    private CompanyDefaultAccountsService companyDefaultAccountsService;
 
     private SalesService salesService;
     private Company company;
@@ -120,13 +123,21 @@ class SalesServiceTest {
                 accountingFacade,
                 invoiceNumberService,
                 invoiceRepository,
-                factoryTaskRepository);
+                factoryTaskRepository,
+                companyDefaultAccountsService);
 
         when(finishedGoodsService.reserveForOrder(any()))
                 .thenReturn(new InventoryReservationResult(null, List.of()));
+        when(companyDefaultAccountsService.requireDefaults())
+                .thenReturn(new CompanyDefaultAccountsService.DefaultAccounts(1L, 2L, 3L, 4L, 5L));
         company = new Company();
         company.setCode("COMP");
         company.setTimezone("UTC");
+        company.setDefaultInventoryAccountId(1L);
+        company.setDefaultCogsAccountId(2L);
+        company.setDefaultRevenueAccountId(3L);
+        company.setDefaultDiscountAccountId(4L);
+        company.setDefaultTaxAccountId(5L);
         when(companyContextService.requireCurrentCompany()).thenReturn(company);
     }
 

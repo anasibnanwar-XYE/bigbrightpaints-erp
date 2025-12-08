@@ -5,6 +5,8 @@ import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
+import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
+import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderRepository;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -25,15 +27,18 @@ public class DealerPortalService {
     private final DealerLedgerService dealerLedgerService;
     private final InvoiceRepository invoiceRepository;
     private final DealerService dealerService;
+    private final SalesOrderRepository salesOrderRepository;
 
     public DealerPortalService(DealerRepository dealerRepository,
                                DealerLedgerService dealerLedgerService,
                                InvoiceRepository invoiceRepository,
-                               DealerService dealerService) {
+                               DealerService dealerService,
+                               SalesOrderRepository salesOrderRepository) {
         this.dealerRepository = dealerRepository;
         this.dealerLedgerService = dealerLedgerService;
         this.invoiceRepository = invoiceRepository;
         this.dealerService = dealerService;
+        this.salesOrderRepository = salesOrderRepository;
     }
 
     public Dealer getCurrentDealer() {
@@ -230,6 +235,32 @@ public class DealerPortalService {
         result.put("totalOutstanding", aging.get("totalOutstanding"));
         result.put("pendingInvoices", pendingInvoices);
         result.put("agingBuckets", aging.get("agingBuckets"));
+        return result;
+    }
+
+    @Transactional(readOnly = true)
+    public Map<String, Object> getMyOrders() {
+        Dealer dealer = getCurrentDealer();
+        List<SalesOrder> orders = salesOrderRepository.findByCompanyAndDealerOrderByCreatedAtDesc(
+                dealer.getCompany(), dealer);
+        
+        List<Map<String, Object>> orderList = new ArrayList<>();
+        for (SalesOrder order : orders) {
+            Map<String, Object> orderMap = new LinkedHashMap<>();
+            orderMap.put("id", order.getId());
+            orderMap.put("orderNumber", order.getOrderNumber());
+            orderMap.put("status", order.getStatus());
+            orderMap.put("totalAmount", order.getTotalAmount());
+            orderMap.put("createdAt", order.getCreatedAt());
+            orderMap.put("notes", order.getNotes());
+            orderList.add(orderMap);
+        }
+        
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("dealerId", dealer.getId());
+        result.put("dealerName", dealer.getName());
+        result.put("orderCount", orders.size());
+        result.put("orders", orderList);
         return result;
     }
 }

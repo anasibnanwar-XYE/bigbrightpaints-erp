@@ -34,5 +34,12 @@ public class RefreshTokenService {
         store.remove(refreshToken);
     }
 
+    public void revokeAllForUser(String userEmail) {
+        if (userEmail == null) {
+            return;
+        }
+        store.entrySet().removeIf(entry -> userEmail.equalsIgnoreCase(entry.getValue().userEmail()));
+    }
+
     private record TokenRecord(String userEmail, Instant expiresAt) {}
 }

@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.accounting.service;
 
+import com.bigbrightpaints.erp.core.config.SystemSettingsService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
@@ -89,6 +90,7 @@ public class AccountingService {
     private final SupplierRepository supplierRepository;
     private final InvoiceSettlementPolicy invoiceSettlementPolicy;
     private final EntityManager entityManager;
+    private final SystemSettingsService systemSettingsService;
 
     public AccountingService(CompanyContextService companyContextService,
                              AccountRepository accountRepository,
@@ -111,7 +113,8 @@ public class AccountingService {
                              DealerRepository dealerRepository,
                              SupplierRepository supplierRepository,
                              InvoiceSettlementPolicy invoiceSettlementPolicy,
-                             EntityManager entityManager) {
+                             EntityManager entityManager,
+                             SystemSettingsService systemSettingsService) {
         this.companyContextService = companyContextService;
         this.accountRepository = accountRepository;
         this.journalEntryRepository = journalEntryRepository;
@@ -134,6 +137,7 @@ public class AccountingService {
         this.supplierRepository = supplierRepository;
         this.invoiceSettlementPolicy = invoiceSettlementPolicy;
         this.entityManager = entityManager;
+        this.systemSettingsService = systemSettingsService;
     }
 
     /* Accounts */
@@ -188,6 +192,12 @@ public class AccountingService {
         return listJournalEntries(dealerId, 0, 100);
     }
 
+    public List<JournalEntryDto> listJournalEntriesByReferencePrefix(String prefix) {
+        Company company = companyContextService.requireCurrentCompany();
+        List<JournalEntry> entries = journalEntryRepository.findByCompanyAndReferenceNumberStartingWith(company, prefix);
+        return entries.stream().map(this::toDto).toList();
+    }
+
     @Transactional
     public JournalEntryDto createJournalEntry(JournalEntryRequest request) {
         Company company = companyContextService.requireCurrentCompany();
@@ -214,7 +224,9 @@ public class AccountingService {
         boolean overrideRequested = Boolean.TRUE.equals(request.adminOverride());
         boolean overrideAuthorized = overrideRequested && hasEntryDateOverrideAuthority();
         validateEntryDate(company, entryDate, overrideRequested, overrideAuthorized);
-        AccountingPeriod postingPeriod = accountingPeriodService.requireOpenPeriod(company, entryDate);
+        AccountingPeriod postingPeriod = systemSettingsService.isPeriodLockEnforced()
+                ? accountingPeriodService.requireOpenPeriod(company, entryDate)
+                : accountingPeriodService.ensurePeriod(company, entryDate);
         if (postingPeriod == null) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Accounting period is required for journal posting");
         }
@@ -274,7 +286,6 @@ public class AccountingService {
         }
         BigDecimal totalBaseDebit = BigDecimal.ZERO;
         BigDecimal totalBaseCredit = BigDecimal.ZERO;
-        BigDecimal foreignTotal = BigDecimal.ZERO;
         for (JournalEntryRequest.JournalLineRequest lineRequest : lines) {
             if (lineRequest.accountId() == null) {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Account is required for every journal line");
@@ -297,60 +308,27 @@ public class AccountingService {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Debit and credit cannot both be non-zero on the same line");
             }
 
-            boolean isForeignCurrency = !currency.equalsIgnoreCase(company.getBaseCurrency());
-            BigDecimal foreignDebit = BigDecimal.ZERO;
-            BigDecimal foreignCredit = BigDecimal.ZERO;
-            if (isForeignCurrency && debitInput.compareTo(BigDecimal.ZERO) > 0) {
-                foreignDebit = lineRequest.foreignCurrencyAmount() != null
-                        ? lineRequest.foreignCurrencyAmount()
-                        : debitInput.divide(fxRate, 6, RoundingMode.HALF_UP);
-            }
-            if (isForeignCurrency && creditInput.compareTo(BigDecimal.ZERO) > 0) {
-                foreignCredit = lineRequest.foreignCurrencyAmount() != null
-                        ? lineRequest.foreignCurrencyAmount()
-                        : creditInput.divide(fxRate, 6, RoundingMode.HALF_UP);
-            }
-
-            BigDecimal debitBase;
-            BigDecimal creditBase;
-            if (isForeignCurrency && lineRequest.foreignCurrencyAmount() != null) {
-                debitBase = debitInput.compareTo(BigDecimal.ZERO) > 0
-                        ? toBaseCurrency(foreignDebit, fxRate)
-                        : BigDecimal.ZERO;
-                creditBase = creditInput.compareTo(BigDecimal.ZERO) > 0
-                        ? toBaseCurrency(foreignCredit, fxRate)
-                        : BigDecimal.ZERO;
-            } else {
-                debitBase = debitInput;
-                creditBase = creditInput;
-            }
-
-            line.setDebit(debitBase);
-            line.setCredit(creditBase);
+            // Multi-currency disabled: treat provided amounts as base currency
+            line.setDebit(debitInput);
+            line.setCredit(creditInput);
             entry.getLines().add(line);
-            accountDeltas.merge(account, debitBase.subtract(creditBase), BigDecimal::add);
-            totalBaseDebit = totalBaseDebit.add(debitBase);
-            totalBaseCredit = totalBaseCredit.add(creditBase);
-            if (isForeignCurrency && foreignDebit.compareTo(BigDecimal.ZERO) > 0) {
-                foreignTotal = foreignTotal.add(foreignDebit);
-            }
+            accountDeltas.merge(account, debitInput.subtract(creditInput), BigDecimal::add);
+            totalBaseDebit = totalBaseDebit.add(debitInput);
+            totalBaseCredit = totalBaseCredit.add(creditInput);
 
             if (dealerReceivableAccount != null && Objects.equals(account.getId(), dealerReceivableAccount.getId())) {
-                dealerLedgerDebitTotal = dealerLedgerDebitTotal.add(debitBase);
-                dealerLedgerCreditTotal = dealerLedgerCreditTotal.add(creditBase);
+                dealerLedgerDebitTotal = dealerLedgerDebitTotal.add(debitInput);
+                dealerLedgerCreditTotal = dealerLedgerCreditTotal.add(creditInput);
                 dealerArLines++;
             }
             if (supplierPayableAccount != null && Objects.equals(account.getId(), supplierPayableAccount.getId())) {
-                supplierLedgerDebitTotal = supplierLedgerDebitTotal.add(debitBase);
-                supplierLedgerCreditTotal = supplierLedgerCreditTotal.add(creditBase);
+                supplierLedgerDebitTotal = supplierLedgerDebitTotal.add(debitInput);
+                supplierLedgerCreditTotal = supplierLedgerCreditTotal.add(creditInput);
                 supplierApLines++;
             }
         }
         if (totalBaseDebit.subtract(totalBaseCredit).abs().compareTo(JOURNAL_BALANCE_TOLERANCE) > 0) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Journal entry must balance");
-        }
-        if (!currency.equalsIgnoreCase(company.getBaseCurrency())) {
-            entry.setForeignAmountTotal(foreignTotal.setScale(2, RoundingMode.HALF_UP).doubleValue());
         }
         // Only enforce AR/AP validation when AR/AP lines are present (allow partner context with zero AR/AP lines for COGS/inventory entries)
         if (dealer != null && dealerReceivableAccount != null && dealerArLines > 1 && !overrideAuthorized) {
@@ -444,7 +422,9 @@ public class AccountingService {
         validateEntryDate(company, reversalDate, overrideRequested, overrideAuthorized);
         
         // PERIOD LOCK CHECK: Strictly enforce period status
-        AccountingPeriod postingPeriod = accountingPeriodService.requireOpenPeriod(company, reversalDate);
+        AccountingPeriod postingPeriod = systemSettingsService.isPeriodLockEnforced()
+                ? accountingPeriodService.requireOpenPeriod(company, reversalDate)
+                : accountingPeriodService.ensurePeriod(company, reversalDate);
         AccountingPeriod originalPeriod = entry.getAccountingPeriod();
         if (originalPeriod != null) {
             if (originalPeriod.getStatus() == AccountingPeriodStatus.LOCKED) {
@@ -556,9 +536,66 @@ public class AccountingService {
     }
 
     @Transactional
+    public JournalEntryDto recordDealerReceiptSplit(DealerReceiptSplitRequest request) {
+        Company company = companyContextService.requireCurrentCompany();
+        Dealer dealer = dealerRepository.lockByCompanyAndId(company, request.dealerId())
+                .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Dealer not found"));
+        Account receivableAccount = requireDealerReceivable(dealer);
+        if (request.incomingLines() == null || request.incomingLines().isEmpty()) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "At least one incoming line is required");
+        }
+        BigDecimal total = BigDecimal.ZERO;
+        List<JournalEntryRequest.JournalLineRequest> lines = new java.util.ArrayList<>();
+        for (DealerReceiptSplitRequest.IncomingLine line : request.incomingLines()) {
+            Account incoming = requireAccount(company, line.accountId());
+            BigDecimal amt = requirePositive(line.amount(), "amount");
+            total = total.add(amt);
+            lines.add(new JournalEntryRequest.JournalLineRequest(incoming.getId(), "Dealer receipt", amt, BigDecimal.ZERO));
+        }
+        if (total.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Total receipt amount must be greater than zero");
+        }
+        lines.add(new JournalEntryRequest.JournalLineRequest(receivableAccount.getId(), "Dealer receipt", BigDecimal.ZERO, total));
+
+        String memo = StringUtils.hasText(request.memo()) ? request.memo().trim() : "Receipt for dealer " + dealer.getName();
+        String reference = StringUtils.hasText(request.referenceNumber())
+                ? request.referenceNumber().trim()
+                : referenceNumberService.dealerReceiptReference(company, dealer);
+
+        JournalEntryRequest payload = new JournalEntryRequest(
+                reference,
+                currentDate(company),
+                memo,
+                dealer.getId(),
+                null,
+                Boolean.FALSE,
+                lines
+        );
+        return createJournalEntry(payload);
+    }
+
+    @Transactional
     public JournalEntryDto recordPayrollPayment(PayrollPaymentRequest request) {
         Company company = companyContextService.requireCurrentCompany();
         PayrollRun run = companyEntityLookup.requirePayrollRun(company, request.payrollRunId());
+        
+        // Idempotency check: if already paid, return existing journal entry
+        if ("PAID".equals(run.getStatus())) {
+            if (run.getJournalEntry() != null) {
+                log.info("Payroll run {} already paid with journal {}, returning existing", 
+                    run.getId(), run.getJournalEntry().getReferenceNumber());
+                return toDto(run.getJournalEntry());
+            }
+            throw new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE, 
+                "Payroll run already marked PAID but journal entry reference is missing");
+        }
+        
+        // Block if in processing state (concurrent request guard)
+        if ("PROCESSING".equals(run.getStatus())) {
+            throw new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE, 
+                "Payroll run is currently being processed, please wait");
+        }
+        
         Account cashAccount = requireAccount(company, request.cashAccountId());
         Account expenseAccount = requireAccount(company, request.expenseAccountId());
         BigDecimal amount = requirePositive(request.amount(), "amount");
@@ -905,7 +942,6 @@ public class AccountingService {
         Dealer dealer = dealerRepository.lockByCompanyAndId(company, request.dealerId())
                 .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Dealer not found"));
         Account receivableAccount = requireDealerReceivable(dealer);
-        Account cashAccount = requireAccount(company, request.cashAccountId());
         List<SettlementAllocationRequest> allocations = request.allocations();
         if (allocations == null || allocations.isEmpty()) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "At least one allocation is required");
@@ -1044,6 +1080,13 @@ public class AccountingService {
                 ? requireAccount(company, request.fxLossAccountId())
                 : null;
 
+        String memo = StringUtils.hasText(request.memo())
+                ? request.memo().trim()
+                : "Settlement for dealer " + dealer.getName();
+        String reference = StringUtils.hasText(request.referenceNumber())
+                ? request.referenceNumber().trim()
+                : referenceNumberService.dealerReceiptReference(company, dealer);
+
         // Cash is what actually moves: applied minus concessions and FX loss impact, plus FX gain impact on credits
         BigDecimal cashAmount = totalApplied
                 .add(totalFxGain)      // gain reduces net debits needed because it is a credit line
@@ -1055,17 +1098,36 @@ public class AccountingService {
                     "Calculated cash amount cannot be negative. Adjust discount/write-off/FX values.");
         }
 
-        String memo = StringUtils.hasText(request.memo())
-                ? request.memo().trim()
-                : "Settlement for dealer " + dealer.getName();
-        String reference = StringUtils.hasText(request.referenceNumber())
-                ? request.referenceNumber().trim()
-                : referenceNumberService.dealerReceiptReference(company, dealer);
+        // Resolve payments: prefer explicit payments list; fall back to single legacy cashAccountId
+        List<SettlementPaymentRequest> paymentRequests = request.payments() != null && !request.payments().isEmpty()
+                ? request.payments()
+                : null;
+        List<JournalEntryRequest.JournalLineRequest> paymentLines = new ArrayList<>();
+        if (paymentRequests == null) {
+            // Legacy single-tender path
+            if (cashAmount.compareTo(BigDecimal.ZERO) > 0 && request.cashAccountId() == null) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "cashAccountId is required when cash is moving");
+            }
+            if (cashAmount.compareTo(BigDecimal.ZERO) > 0) {
+                Account cashAccount = requireAccount(company, request.cashAccountId());
+                paymentLines.add(new JournalEntryRequest.JournalLineRequest(cashAccount.getId(), memo, cashAmount, BigDecimal.ZERO));
+            }
+        } else {
+            BigDecimal paymentTotal = BigDecimal.ZERO;
+            for (SettlementPaymentRequest payment : paymentRequests) {
+                BigDecimal amount = requirePositive(payment.amount(), "payment amount");
+                Account account = requireAccount(company, payment.accountId());
+                paymentLines.add(new JournalEntryRequest.JournalLineRequest(account.getId(), memo, amount, BigDecimal.ZERO));
+                paymentTotal = paymentTotal.add(amount);
+            }
+            if (cashAmount.compareTo(paymentTotal) != 0) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        String.format("Payment total (%s) must equal net cash required (%s)", paymentTotal, cashAmount));
+            }
+        }
 
         List<JournalEntryRequest.JournalLineRequest> lines = new ArrayList<>();
-        if (cashAmount.compareTo(BigDecimal.ZERO) > 0) {
-            lines.add(new JournalEntryRequest.JournalLineRequest(cashAccount.getId(), memo, cashAmount, BigDecimal.ZERO));
-        }
+        lines.addAll(paymentLines);
         if (totalDiscount.compareTo(BigDecimal.ZERO) > 0) {
             lines.add(new JournalEntryRequest.JournalLineRequest(
                     discountAccount.getId(),
@@ -1669,37 +1731,21 @@ public class AccountingService {
     }
 
     private String resolveCurrency(String requested, Company company) {
-        if (StringUtils.hasText(requested)) {
-            return requested.trim().toUpperCase();
+        // Multi-currency disabled: always use base (default INR)
+        if (company.getBaseCurrency() != null) {
+            return company.getBaseCurrency();
         }
-        return company.getBaseCurrency() != null ? company.getBaseCurrency() : "INR";
+        return "INR";
     }
 
     private BigDecimal resolveFxRate(String currency, Company company, BigDecimal requestedRate) {
-        String base = company.getBaseCurrency() != null ? company.getBaseCurrency() : "INR";
-        if (currency.equalsIgnoreCase(base)) {
-            return BigDecimal.ONE;
-        }
-        if (requestedRate == null || requestedRate.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
-                    "fxRate is required when currency differs from base currency");
-        }
-        if (requestedRate.compareTo(FX_RATE_MIN) < 0) {
-            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
-                    "fxRate is too small; minimum is " + FX_RATE_MIN);
-        }
-        if (requestedRate.compareTo(FX_RATE_MAX) > 0) {
-            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
-                    "fxRate is too large; maximum is " + FX_RATE_MAX);
-        }
-        return requestedRate;
+        // Multi-currency disabled: always 1
+        return BigDecimal.ONE;
     }
 
     private BigDecimal toBaseCurrency(BigDecimal amount, BigDecimal fxRate) {
-        if (amount == null) {
-            return BigDecimal.ZERO;
-        }
-        return amount.multiply(fxRate).setScale(2, RoundingMode.HALF_UP);
+        // Multi-currency disabled: passthrough
+        return amount == null ? BigDecimal.ZERO : amount;
     }
 
     /* Credit/Debit Notes */

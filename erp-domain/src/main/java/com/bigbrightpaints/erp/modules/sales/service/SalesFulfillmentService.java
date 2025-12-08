@@ -150,7 +150,7 @@ public class SalesFulfillmentService {
                 Long salesJournalId = salesJournalService.postSalesJournal(
                         order,
                         null,
-                        "SALE-" + order.getId(),
+                        "INV-" + orderNumber,
                         options.entryDate() != null ? options.entryDate() : LocalDate.now(),
                         "Sales fulfillment for " + orderNumber
                 );
@@ -250,8 +250,10 @@ public class SalesFulfillmentService {
                 continue;
             }
 
-            // Generate unique reference to prevent duplicates
-            String reference = orderNumber + "-COGS-" + dispatch.inventoryAccountId() + "-" + i;
+            // Generate reference anchored to order number (first dispatch uses COGS-{orderNumber})
+            // Additional layers use suffixed references to avoid missing multi-layer costs
+            String baseRef = "COGS-" + orderNumber;
+            String reference = i == 0 ? baseRef : baseRef + "-P" + (i + 1);
             
             // Check if already posted (idempotency)
             if (accountingFacade.hasCogsJournalFor(reference)) {

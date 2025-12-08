@@ -75,6 +75,7 @@ public class EmailService {
         context.setVariable("displayName", displayName);
         context.setVariable("email", to);
         context.setVariable("resetUrl", resetLink);
+        context.setVariable("baseUrl", properties.getBaseUrl());
         sendHtmlEmail(to, subject, "mail/password-reset", context);
     }
 
@@ -83,7 +84,33 @@ public class EmailService {
         Context context = new Context();
         context.setVariable("displayName", displayName);
         context.setVariable("email", to);
+        context.setVariable("loginUrl", properties.getBaseUrl());
         sendHtmlEmail(to, subject, "mail/password-reset-confirmed", context);
+    }
+
+    public void sendUserSuspendedEmail(String to, String displayName) {
+        String subject = "Your BigBright ERP account has been suspended";
+        String body = """
+                Hello %s,
+
+                Your account has been suspended by an administrator. If you believe this is a mistake, please contact support.
+
+                - BigBright ERP
+                """.formatted(displayName);
+        sendSimpleEmail(to, subject, body);
+    }
+
+    public void sendUserDeletedEmail(String to, String displayName) {
+        String subject = "Your BigBright ERP account has been deleted";
+        String body = """
+                Hello %s,
+
+                Your account has been deleted and you no longer have access to BigBright ERP.
+                If you require access again, please reach out to an administrator.
+
+                - BigBright ERP
+                """.formatted(displayName);
+        sendSimpleEmail(to, subject, body);
     }
 
     public void sendInvoiceEmail(String to, String dealerName, String invoiceNumber, 

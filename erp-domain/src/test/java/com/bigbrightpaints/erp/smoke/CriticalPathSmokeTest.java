@@ -91,6 +91,18 @@ public class CriticalPathSmokeTest extends AbstractIntegrationTest {
         ensureAccount(company, "LIAB-GST", "GST Liability", AccountType.LIABILITY);
         ensureAccount(company, "DISC-SALES", "Sales Discounts", AccountType.EXPENSE);
         ensureAccount(company, "WIP-PROD", "Work In Progress", AccountType.ASSET);
+        // Configure company defaults so product/FG creation passes validation
+        Long inv = accountRepository.findByCompanyAndCodeIgnoreCase(company, "ASSET-INV").orElseThrow().getId();
+        Long cogs = accountRepository.findByCompanyAndCodeIgnoreCase(company, "EXP-COGS").orElseThrow().getId();
+        Long rev = accountRepository.findByCompanyAndCodeIgnoreCase(company, "REV-SALES").orElseThrow().getId();
+        Long disc = accountRepository.findByCompanyAndCodeIgnoreCase(company, "DISC-SALES").orElseThrow().getId();
+        Long tax = accountRepository.findByCompanyAndCodeIgnoreCase(company, "LIAB-GST").orElseThrow().getId();
+        company.setDefaultInventoryAccountId(inv);
+        company.setDefaultCogsAccountId(cogs);
+        company.setDefaultRevenueAccountId(rev);
+        company.setDefaultDiscountAccountId(disc);
+        company.setDefaultTaxAccountId(tax);
+        companyRepository.save(company);
     }
 
     private Account ensureAccount(Company company, String code, String name, AccountType type) {

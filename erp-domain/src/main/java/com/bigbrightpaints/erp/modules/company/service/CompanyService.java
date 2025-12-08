@@ -8,6 +8,7 @@ import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Set;
 
 @Service
 public class CompanyService {
@@ -20,6 +21,13 @@ public class CompanyService {
 
     public List<CompanyDto> findAll() {
         return repository.findAll().stream().map(this::toDto).toList();
+    }
+
+    public List<CompanyDto> findAll(Set<Company> companies) {
+        if (companies == null || companies.isEmpty()) {
+            return List.of();
+        }
+        return companies.stream().map(this::toDto).toList();
     }
 
     public CompanyDto create(CompanyRequest request) {

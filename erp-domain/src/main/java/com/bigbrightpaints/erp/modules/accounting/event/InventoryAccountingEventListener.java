@@ -2,6 +2,7 @@ package com.bigbrightpaints.erp.modules.accounting.event;
 
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -11,15 +12,17 @@ import com.bigbrightpaints.erp.modules.inventory.event.InventoryMovementEvent;
 import com.bigbrightpaints.erp.modules.inventory.event.InventoryValuationChangedEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.context.event.EventListener;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
+import java.util.HexFormat;
 import java.util.List;
 
 /**
@@ -36,13 +39,16 @@ public class InventoryAccountingEventListener {
     private final AccountingService accountingService;
     private final AccountRepository accountRepository;
     private final CompanyRepository companyRepository;
+    private final JournalEntryRepository journalEntryRepository;
 
     public InventoryAccountingEventListener(AccountingService accountingService,
                                             AccountRepository accountRepository,
-                                            CompanyRepository companyRepository) {
+                                            CompanyRepository companyRepository,
+                                            JournalEntryRepository journalEntryRepository) {
         this.accountingService = accountingService;
         this.accountRepository = accountRepository;
         this.companyRepository = companyRepository;
+        this.journalEntryRepository = journalEntryRepository;
     }
 
     /**
@@ -61,19 +67,28 @@ public class InventoryAccountingEventListener {
             return;
         }
 
+        Company company = null;
         try {
-            Company company = companyRepository.findById(event.companyId())
+            company = companyRepository.findById(event.companyId())
                     .orElseThrow(() -> new IllegalStateException("Company not found: " + event.companyId()));
 
             // Set company context for the accounting service
             CompanyContextHolder.setCompanyId(company.getCode());
+
+            // Build idempotent reference from source event
+            String refNumber = buildIdempotentRevalReference(event);
+            
+            // Check if journal already exists (idempotency check)
+            if (journalEntryRepository.findByCompanyAndReferenceNumber(company, refNumber).isPresent()) {
+                log.info("Journal entry {} already exists, skipping duplicate", refNumber);
+                return;
+            }
 
             // Get revaluation account (expense for decreases, income for increases)
             Account revaluationAccount = getRevaluationAccount(company, event.reason());
             Account inventoryAccount = accountRepository.findById(event.inventoryAccountId())
                     .orElseThrow(() -> new IllegalStateException("Inventory account not found"));
 
-            String refNumber = "REVAL-" + event.itemCode() + "-" + System.currentTimeMillis();
             String memo = buildRevaluationMemo(event);
 
             List<JournalEntryRequest.JournalLineRequest> lines;
@@ -125,8 +140,9 @@ public class InventoryAccountingEventListener {
         } catch (Exception e) {
             log.error("Failed to create revaluation journal entry for {}: {}",
                     event.itemCode(), e.getMessage(), e);
-            // Don't rethrow - we don't want to fail the inventory transaction
-            // Consider publishing to a dead-letter queue for retry
+        } finally {
+            // Always clear company context to prevent thread pollution
+            CompanyContextHolder.clear();
         }
     }
 
@@ -156,9 +172,14 @@ public class InventoryAccountingEventListener {
 
             CompanyContextHolder.setCompanyId(company.getCode());
 
-            String refNumber = event.referenceNumber() != null 
-                    ? event.referenceNumber() 
-                    : event.movementType().name() + "-" + event.itemCode() + "-" + System.currentTimeMillis();
+            // Build idempotent reference from source event
+            String refNumber = buildIdempotentMovementReference(event);
+            
+            // Check if journal already exists (idempotency check)
+            if (journalEntryRepository.findByCompanyAndReferenceNumber(company, refNumber).isPresent()) {
+                log.info("Journal entry {} already exists, skipping duplicate", refNumber);
+                return;
+            }
 
             String memo = String.format("%s: %s x %s @ %s",
                     event.movementType(), event.itemCode(), event.quantity(), event.unitCost());
@@ -193,6 +214,9 @@ public class InventoryAccountingEventListener {
         } catch (Exception e) {
             log.error("Failed to create movement journal entry for {}: {}",
                     event.itemCode(), e.getMessage(), e);
+        } finally {
+            // Always clear company context to prevent thread pollution
+            CompanyContextHolder.clear();
         }
     }
 
@@ -221,5 +245,65 @@ public class InventoryAccountingEventListener {
                 event.oldUnitCost(),
                 event.newUnitCost()
         );
+    }
+
+    /**
+     * Build idempotent reference for revaluation events.
+     * Uses source reference if available, otherwise builds deterministic SHA-256 hash from event data.
+     */
+    private String buildIdempotentRevalReference(InventoryValuationChangedEvent event) {
+        if (event.referenceNumber() != null && !event.referenceNumber().isBlank()) {
+            return "REVAL-" + event.referenceNumber();
+        }
+        // Fallback: SHA-256 hash of all event fields (collision-resistant)
+        String eventFingerprint = String.format("%d|%s|%s|%s|%s|%s|%s|%s|%s",
+            event.itemId(),
+            event.itemCode(),
+            event.reason(),
+            event.oldValue(),
+            event.newValue(),
+            event.quantity(),
+            event.oldUnitCost(),
+            event.newUnitCost(),
+            event.timestamp() != null ? event.timestamp().toEpochMilli() : "");
+        String hash = sha256Hex(eventFingerprint, 16); // 16 hex chars = 64 bits
+        return String.format("REVAL-%s-%s-%s", event.itemCode(), event.reason(), hash);
+    }
+
+    /**
+     * Build idempotent reference for movement events.
+     * Uses source reference if available, otherwise builds deterministic SHA-256 hash from event data.
+     */
+    private String buildIdempotentMovementReference(InventoryMovementEvent event) {
+        if (event.referenceNumber() != null && !event.referenceNumber().isBlank()) {
+            return event.referenceNumber();
+        }
+        // Fallback: SHA-256 hash of all event fields (collision-resistant)
+        String eventFingerprint = String.format("%s|%s|%s|%s|%s|%s|%d|%d",
+            event.movementType(),
+            event.itemCode(),
+            event.quantity(),
+            event.unitCost(),
+            event.totalCost(),
+            event.movementDate(),
+            event.sourceAccountId() != null ? event.sourceAccountId() : 0,
+            event.destinationAccountId() != null ? event.destinationAccountId() : 0);
+        String hash = sha256Hex(eventFingerprint, 16); // 16 hex chars = 64 bits
+        return String.format("INV-%s-%s-%s", event.movementType(), event.itemCode(), hash);
+    }
+
+    /**
+     * Compute SHA-256 hash of input and return first N hex characters.
+     */
+    private String sha256Hex(String input, int length) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
+            String fullHex = HexFormat.of().formatHex(hash);
+            return fullHex.substring(0, Math.min(length, fullHex.length()));
+        } catch (NoSuchAlgorithmException e) {
+            // SHA-256 is guaranteed to be available in Java
+            throw new RuntimeException("SHA-256 not available", e);
+        }
     }
 }

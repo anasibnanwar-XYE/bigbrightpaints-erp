@@ -7,6 +7,7 @@ import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -22,27 +23,38 @@ public class CompanyController {
     }
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<CompanyDto>>> list() {
-        return ResponseEntity.ok(ApiResponse.success(companyService.findAll()));
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING','ROLE_SALES')")
+    public ResponseEntity<ApiResponse<List<CompanyDto>>> list(@AuthenticationPrincipal com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal principal) {
+        if (principal == null) {
+            return ResponseEntity.status(401).body(ApiResponse.failure("Unauthenticated"));
+        }
+        return ResponseEntity.ok(ApiResponse.success(companyService.findAll(principal.getUser().getCompanies())));
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    @PreAuthorize("denyAll()") // prevent creating new companies from tenant admins
     public ResponseEntity<ApiResponse<CompanyDto>> create(@Valid @RequestBody CompanyRequest request) {
-        return ResponseEntity.ok(ApiResponse.success("Company created", companyService.create(request)));
+        throw new org.springframework.security.access.AccessDeniedException("Creating companies is not permitted");
     }
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
-    public ResponseEntity<ApiResponse<CompanyDto>> update(@PathVariable Long id,
+    public ResponseEntity<ApiResponse<CompanyDto>> update(@AuthenticationPrincipal com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal principal,
+                                                           @PathVariable Long id,
                                                            @Valid @RequestBody CompanyRequest request) {
+        if (principal == null || principal.getUser().getCompanies().stream().noneMatch(c -> c.getId().equals(id))) {
+            throw new org.springframework.security.access.AccessDeniedException("Not allowed to update company");
+        }
         return ResponseEntity.ok(ApiResponse.success("Company updated", companyService.update(id, request)));
     }
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
-        companyService.delete(id);
-        return ResponseEntity.noContent().build();
+    public ResponseEntity<Void> delete(@AuthenticationPrincipal com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal principal,
+                                       @PathVariable Long id) {
+        if (principal == null || principal.getUser().getCompanies().stream().noneMatch(c -> c.getId().equals(id))) {
+            throw new org.springframework.security.access.AccessDeniedException("Not allowed to delete company");
+        }
+        throw new org.springframework.security.access.AccessDeniedException("Deleting companies is not permitted");
     }
 }

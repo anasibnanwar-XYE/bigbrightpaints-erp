@@ -84,6 +84,6 @@ public class ReferenceNumberService {
         if (!StringUtils.hasText(value)) {
             return "GEN";
         }
-        return value.replaceAll("[^A-Z0-9]", "").toUpperCase();
+        return value.replaceAll("[^A-Z0-9-]", "").toUpperCase();
     }
 }

@@ -32,7 +32,7 @@ public class OrchestratorController {
     }
 
     @PostMapping("/orders/{orderId}/approve")
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_SALES') and hasAuthority('orders.approve')")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_SALES')")
     public ResponseEntity<Map<String, Object>> approveOrder(@PathVariable String orderId,
                                                              @Valid @RequestBody ApproveOrderRequest request,
                                                              @RequestHeader("X-Company-Id") String companyId,
@@ -43,7 +43,7 @@ public class OrchestratorController {
     }
 
     @PostMapping("/orders/{orderId}/fulfillment")
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_SALES') and hasAuthority('orders.fulfill')")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_FACTORY')")
     public ResponseEntity<Map<String, Object>> fulfillOrder(@PathVariable String orderId,
                                                              @Valid @RequestBody OrderFulfillmentRequest request,
                                                              @RequestHeader("X-Company-Id") String companyId,
@@ -53,7 +53,7 @@ public class OrchestratorController {
     }
 
     @PostMapping("/factory/dispatch/{batchId}")
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_FACTORY') and hasAuthority('factory.dispatch')")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN') or (hasAuthority('ROLE_FACTORY') and hasAuthority('factory.dispatch'))")
     public ResponseEntity<Map<String, Object>> dispatch(@PathVariable String batchId,
                                                          @Valid @RequestBody DispatchRequest request,
                                                          @RequestHeader("X-Company-Id") String companyId,

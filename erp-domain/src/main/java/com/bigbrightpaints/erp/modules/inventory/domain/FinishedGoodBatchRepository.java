@@ -50,4 +50,17 @@ public interface FinishedGoodBatchRepository extends JpaRepository<FinishedGoodB
               and b.quantityAvailable > 0
             """)
     BigDecimal calculateWeightedAverageCost(@Param("finishedGood") FinishedGood finishedGood);
+
+    // Bulk packaging support
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select b from FinishedGoodBatch b where b.id = :id")
+    java.util.Optional<FinishedGoodBatch> lockById(@Param("id") Long id);
+
+    List<FinishedGoodBatch> findByParentBatch(FinishedGoodBatch parentBatch);
+
+    @Query("select b from FinishedGoodBatch b where b.finishedGood = :finishedGood and b.bulk = true and b.quantityAvailable > 0")
+    List<FinishedGoodBatch> findAvailableBulkBatches(@Param("finishedGood") FinishedGood finishedGood);
+
+    // For Tally sync idempotency
+    java.util.Optional<FinishedGoodBatch> findByFinishedGoodAndBatchCode(FinishedGood finishedGood, String batchCode);
 }

@@ -93,6 +93,9 @@ public class UserAccount extends VersionedEntity {
     @Column(name = "locked_until")
     private Instant lockedUntil;
 
+    @Column(name = "must_change_password", nullable = false)
+    private boolean mustChangePassword = false;
+
     public UserAccount() {
     }
 
@@ -209,6 +212,14 @@ public class UserAccount extends VersionedEntity {
 
     public void setLockedUntil(Instant lockedUntil) {
         this.lockedUntil = lockedUntil;
+    }
+
+    public boolean isMustChangePassword() {
+        return mustChangePassword;
+    }
+
+    public void setMustChangePassword(boolean mustChangePassword) {
+        this.mustChangePassword = mustChangePassword;
     }
 
     public Set<Role> getRoles() {

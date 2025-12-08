@@ -83,6 +83,16 @@ public class Employee extends VersionedEntity {
     @Column(name = "advance_balance", precision = 19, scale = 2)
     private BigDecimal advanceBalance = BigDecimal.ZERO;
 
+    // Overtime rate multipliers
+    @Column(name = "overtime_rate_multiplier", precision = 5, scale = 2)
+    private BigDecimal overtimeRateMultiplier = new BigDecimal("1.5"); // 1.5x for regular OT
+
+    @Column(name = "double_ot_rate_multiplier", precision = 5, scale = 2)
+    private BigDecimal doubleOtRateMultiplier = new BigDecimal("2.0"); // 2x for holiday OT
+
+    @Column(name = "standard_hours_per_day", precision = 5, scale = 2)
+    private BigDecimal standardHoursPerDay = new BigDecimal("8"); // Standard work hours
+
     @PrePersist
     public void prePersist() {
         if (publicId == null) {
@@ -129,6 +139,12 @@ public class Employee extends VersionedEntity {
     public void setIfscCode(String ifscCode) { this.ifscCode = ifscCode; }
     public BigDecimal getAdvanceBalance() { return advanceBalance != null ? advanceBalance : BigDecimal.ZERO; }
     public void setAdvanceBalance(BigDecimal advanceBalance) { this.advanceBalance = advanceBalance; }
+    public BigDecimal getOvertimeRateMultiplier() { return overtimeRateMultiplier != null ? overtimeRateMultiplier : new BigDecimal("1.5"); }
+    public void setOvertimeRateMultiplier(BigDecimal overtimeRateMultiplier) { this.overtimeRateMultiplier = overtimeRateMultiplier; }
+    public BigDecimal getDoubleOtRateMultiplier() { return doubleOtRateMultiplier != null ? doubleOtRateMultiplier : new BigDecimal("2.0"); }
+    public void setDoubleOtRateMultiplier(BigDecimal doubleOtRateMultiplier) { this.doubleOtRateMultiplier = doubleOtRateMultiplier; }
+    public BigDecimal getStandardHoursPerDay() { return standardHoursPerDay != null ? standardHoursPerDay : new BigDecimal("8"); }
+    public void setStandardHoursPerDay(BigDecimal standardHoursPerDay) { this.standardHoursPerDay = standardHoursPerDay; }
 
     public String getFullName() {
         return firstName + " " + lastName;

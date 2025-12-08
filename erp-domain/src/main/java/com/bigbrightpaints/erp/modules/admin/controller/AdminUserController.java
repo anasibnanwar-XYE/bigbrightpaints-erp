@@ -50,4 +50,16 @@ public class AdminUserController {
         adminUserService.unsuspend(id);
         return ResponseEntity.noContent().build();
     }
+
+    @PatchMapping("/{id}/mfa/disable")
+    public ResponseEntity<Void> disableMfa(@PathVariable Long id) {
+        adminUserService.disableMfa(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        adminUserService.deleteUser(id);
+        return ResponseEntity.noContent().build();
+    }
 }

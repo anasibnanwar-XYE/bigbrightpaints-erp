@@ -13,6 +13,11 @@ import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.rbac.domain.Role;
 import com.bigbrightpaints.erp.modules.rbac.domain.RoleRepository;
 import com.bigbrightpaints.erp.modules.rbac.service.RoleService;
+import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
+import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.Account;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import jakarta.transaction.Transactional;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -31,6 +36,8 @@ public class AdminUserService {
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
     private final TokenBlacklistService tokenBlacklistService;
+    private final DealerRepository dealerRepository;
+    private final AccountRepository accountRepository;
 
     public AdminUserService(UserAccountRepository userRepository,
                             CompanyRepository companyRepository,
@@ -38,7 +45,9 @@ public class AdminUserService {
                             RoleService roleService,
                             PasswordEncoder passwordEncoder,
                             EmailService emailService,
-                            TokenBlacklistService tokenBlacklistService) {
+                            TokenBlacklistService tokenBlacklistService,
+                            DealerRepository dealerRepository,
+                            AccountRepository accountRepository) {
         this.userRepository = userRepository;
         this.companyRepository = companyRepository;
         this.roleRepository = roleRepository;
@@ -46,6 +55,8 @@ public class AdminUserService {
         this.passwordEncoder = passwordEncoder;
         this.emailService = emailService;
         this.tokenBlacklistService = tokenBlacklistService;
+        this.dealerRepository = dealerRepository;
+        this.accountRepository = accountRepository;
     }
 
     public List<UserDto> listUsers() {
@@ -54,13 +65,79 @@ public class AdminUserService {
 
     @Transactional
     public UserDto createUser(CreateUserRequest request) {
-        String tempPassword = (StringUtils.hasText(request.password()) ? request.password() : PasswordUtils.generateTemporaryPassword(12));
-    UserAccount user = new UserAccount(request.email(), passwordEncoder.encode(tempPassword), request.displayName());
+        boolean isTemporaryPassword = !StringUtils.hasText(request.password());
+        String tempPassword = isTemporaryPassword ? PasswordUtils.generateTemporaryPassword(12) : request.password();
+        UserAccount user = new UserAccount(request.email(), passwordEncoder.encode(tempPassword), request.displayName());
+        
+        // Force password change if using temporary password
+        if (isTemporaryPassword) {
+            user.setMustChangePassword(true);
+        }
+        
         attachCompanies(user, request.companyIds());
         attachRoles(user, request.roles());
         UserAccount saved = userRepository.save(user);
+        
+        // Auto-create Dealer entity if user has ROLE_DEALER
+        boolean isDealerUser = request.roles().stream()
+                .anyMatch(r -> r.equalsIgnoreCase("ROLE_DEALER") || r.equalsIgnoreCase("DEALER"));
+        if (isDealerUser && !saved.getCompanies().isEmpty()) {
+            createDealerForUser(saved, saved.getCompanies().iterator().next());
+        }
+        
         emailService.sendUserCredentialsEmail(saved.getEmail(), saved.getDisplayName(), tempPassword);
         return toDto(saved);
+    }
+    
+    private void createDealerForUser(UserAccount user, Company company) {
+        // Check if dealer already exists for this user
+        if (dealerRepository.findByPortalUserEmail(user.getEmail()).isPresent()) {
+            return;
+        }
+        
+        String dealerCode = generateDealerCode(user.getDisplayName(), company);
+        
+        Dealer dealer = new Dealer();
+        dealer.setCompany(company);
+        dealer.setName(user.getDisplayName());
+        dealer.setCode(dealerCode);
+        dealer.setEmail(user.getEmail());
+        dealer.setPortalUser(user);
+        dealer = dealerRepository.save(dealer);
+        
+        // Create receivable account for the dealer
+        Account receivableAccount = createReceivableAccount(company, dealer);
+        dealer.setReceivableAccount(receivableAccount);
+        dealerRepository.save(dealer);
+    }
+    
+    private Account createReceivableAccount(Company company, Dealer dealer) {
+        String baseCode = "AR-" + dealer.getCode();
+        String code = baseCode;
+        int attempt = 1;
+        while (accountRepository.findByCompanyAndCodeIgnoreCase(company, code).isPresent()) {
+            code = baseCode + "-" + attempt++;
+        }
+        Account account = new Account();
+        account.setCompany(company);
+        account.setCode(code);
+        account.setName(dealer.getName() + " Receivable");
+        account.setType(AccountType.ASSET);
+        return accountRepository.save(account);
+    }
+    
+    private String generateDealerCode(String name, Company company) {
+        String normalized = java.text.Normalizer.normalize(name, java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "")
+                .replaceAll("[^A-Za-z0-9]", "")
+                .toUpperCase(Locale.ROOT);
+        String base = normalized.isEmpty() ? "DEALER" : normalized;
+        String code = base;
+        int attempt = 1;
+        while (dealerRepository.findByCompanyAndCodeIgnoreCase(company, code).isPresent()) {
+            code = base + attempt++;
+        }
+        return code;
     }
 
     @Transactional
@@ -100,6 +177,7 @@ public class AdminUserService {
             userRepository.save(user);
             // Revoke all active tokens to force re-authentication
             tokenBlacklistService.revokeAllUserTokens(user.getEmail());
+            emailService.sendUserSuspendedEmail(user.getEmail(), user.getDisplayName());
         });
     }
 
@@ -109,6 +187,26 @@ public class AdminUserService {
         userRepository.lockById(id).ifPresent(user -> {
             user.setEnabled(true);
             userRepository.save(user);
+        });
+    }
+
+    @Transactional
+    public void deleteUser(Long id) {
+        userRepository.lockById(id).ifPresent(user -> {
+            tokenBlacklistService.revokeAllUserTokens(user.getEmail());
+            userRepository.delete(user);
+            emailService.sendUserDeletedEmail(user.getEmail(), user.getDisplayName());
+        });
+    }
+
+    @Transactional
+    public void disableMfa(Long id) {
+        userRepository.lockById(id).ifPresent(user -> {
+            user.setMfaEnabled(false);
+            user.setMfaSecret(null);
+            user.setMfaRecoveryCodeHashes(List.of());
+            userRepository.save(user);
+            tokenBlacklistService.revokeAllUserTokens(user.getEmail());
         });
     }
 
@@ -127,20 +225,15 @@ public class AdminUserService {
             }
             String trimmed = roleName.trim();
             String normalized = trimmed.toUpperCase(Locale.ROOT);
-            if (normalized.startsWith("ROLE_")) {
-                if (!roleService.isSystemRole(trimmed)) {
-                    throw new IllegalArgumentException("Unsupported platform role: " + trimmed);
+            // If caller omitted prefix but matches a system role, add prefix
+            if (!normalized.startsWith("ROLE_")) {
+                String withPrefix = "ROLE_" + normalized;
+                if (roleService.isSystemRole(withPrefix)) {
+                    normalized = withPrefix;
                 }
-                user.addRole(roleService.ensureRoleExists(trimmed));
-                return;
             }
-            // Use pessimistic lock to prevent race condition on role creation
-            Role role = roleRepository.lockByName(trimmed).orElseGet(() -> {
-                Role newRole = new Role();
-                newRole.setName(trimmed);
-                newRole.setDescription(trimmed);
-                return roleRepository.save(newRole);
-            });
+            // Allow both system roles and custom roles
+            Role role = roleService.ensureRoleExists(normalized);
             user.addRole(role);
         });
     }

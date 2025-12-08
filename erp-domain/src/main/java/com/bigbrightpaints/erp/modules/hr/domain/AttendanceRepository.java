@@ -54,4 +54,7 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Long> {
 
     // Check if attendance already marked for today
     boolean existsByCompanyAndEmployeeAndAttendanceDate(Company company, Employee employee, LocalDate date);
+
+    // Find attendance by employee and date range (for payroll calculation)
+    List<Attendance> findByEmployeeAndAttendanceDateBetween(Employee employee, LocalDate startDate, LocalDate endDate);
 }

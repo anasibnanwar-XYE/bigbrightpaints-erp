@@ -54,6 +54,7 @@ public class DataInitializer {
                     });
 
             seedDefaultAccounts(company, accountRepository);
+            setCompanyDefaultAccounts(company, companyRepository, accountRepository);
         };
     }
 
@@ -81,6 +82,29 @@ public class DataInitializer {
                         return accountRepository.save(account);
                     });
         }
+    }
+
+    private void setCompanyDefaultAccounts(Company company,
+                                           CompanyRepository companyRepository,
+                                           AccountRepository accountRepository) {
+        // Only set if missing to avoid overriding user-configured values
+        if (company.getDefaultInventoryAccountId() == null) {
+            accountRepository.findByCompanyAndCodeIgnoreCase(company, "1200")
+                    .ifPresent(a -> company.setDefaultInventoryAccountId(a.getId()));
+        }
+        if (company.getDefaultCogsAccountId() == null) {
+            accountRepository.findByCompanyAndCodeIgnoreCase(company, "5000")
+                    .ifPresent(a -> company.setDefaultCogsAccountId(a.getId()));
+        }
+        if (company.getDefaultRevenueAccountId() == null) {
+            accountRepository.findByCompanyAndCodeIgnoreCase(company, "4000")
+                    .ifPresent(a -> company.setDefaultRevenueAccountId(a.getId()));
+        }
+        if (company.getDefaultTaxAccountId() == null) {
+            accountRepository.findByCompanyAndCodeIgnoreCase(company, "2000")
+                    .ifPresent(a -> company.setDefaultTaxAccountId(a.getId()));
+        }
+        companyRepository.save(company);
     }
 
     private record AccountSeed(String code, String name, AccountType type) {}

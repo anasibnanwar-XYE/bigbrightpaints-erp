@@ -23,6 +23,7 @@ import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
 import com.bigbrightpaints.erp.modules.invoice.service.InvoiceNumberService;
 import com.bigbrightpaints.erp.modules.factory.domain.FactoryTask;
 import com.bigbrightpaints.erp.modules.factory.domain.FactoryTaskRepository;
+import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
 import com.bigbrightpaints.erp.modules.sales.domain.*;
 import com.bigbrightpaints.erp.modules.sales.dto.*;
 import com.bigbrightpaints.erp.modules.sales.event.SalesOrderCreatedEvent;
@@ -68,6 +69,7 @@ public class SalesService {
     private final InvoiceNumberService invoiceNumberService;
     private final InvoiceRepository invoiceRepository;
     private final FactoryTaskRepository factoryTaskRepository;
+    private final CompanyDefaultAccountsService companyDefaultAccountsService;
 
     public SalesService(CompanyContextService companyContextService,
                         DealerRepository dealerRepository,
@@ -88,7 +90,8 @@ public class SalesService {
                         AccountingFacade accountingFacade,
                         InvoiceNumberService invoiceNumberService,
                         InvoiceRepository invoiceRepository,
-                        FactoryTaskRepository factoryTaskRepository) {
+                        FactoryTaskRepository factoryTaskRepository,
+                        CompanyDefaultAccountsService companyDefaultAccountsService) {
         this.companyContextService = companyContextService;
         this.dealerRepository = dealerRepository;
         this.salesOrderRepository = salesOrderRepository;
@@ -109,6 +112,7 @@ public class SalesService {
         this.invoiceNumberService = invoiceNumberService;
         this.invoiceRepository = invoiceRepository;
         this.factoryTaskRepository = factoryTaskRepository;
+        this.companyDefaultAccountsService = companyDefaultAccountsService;
     }
 
     /* Dealers */
@@ -886,6 +890,8 @@ public class SalesService {
     public DispatchConfirmResponse confirmDispatch(DispatchConfirmRequest request) {
         PackagingSlip slip = null;
         Company company = companyContextService.requireCurrentCompany();
+        // Ensure company defaults are configured before proceeding
+        companyDefaultAccountsService.requireDefaults();
         if (request.packingSlipId() != null) {
             slip = packagingSlipRepository.findByIdAndCompany(request.packingSlipId(), company)
                     .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Packing slip not found"));
@@ -906,7 +912,7 @@ public class SalesService {
             Long existingJeId = existingInvoiceOpt.flatMap(inv -> Optional.ofNullable(inv.getJournalEntry()))
                     .map(j -> j.getId())
                     .orElse(null);
-            return new DispatchConfirmResponse(slip.getId(), salesOrderId, existingInvoiceId, existingJeId, List.of(), true);
+            return new DispatchConfirmResponse(slip.getId(), salesOrderId, existingInvoiceId, existingJeId, List.of(), true, List.of());
         }
 
         // Map request lines by slip line id for pricing/qty overrides
@@ -1069,7 +1075,7 @@ public class SalesService {
                         acc[1], "Inventory relief for dispatch " + slip.getSlipNumber(), BigDecimal.ZERO, cost));
             }
             if (!cogsLines.isEmpty()) {
-                String cogsRef = "COGS-DISP-" + slipRef.getId();
+                String cogsRef = resolveOrderReference("COGS-", order);
                 Optional<JournalEntry> existingCogs = companyEntityLookup.findJournalEntryByReference(company, cogsRef);
                 if (existingCogs.isPresent()) {
                     cogsJournalId = existingCogs.get().getId();
@@ -1089,12 +1095,13 @@ public class SalesService {
         }
 
         Long arJournalEntryId = null;
+        List<DispatchConfirmResponse.AccountPostingDto> arPostings = new ArrayList<>();
         if (totalAmount.compareTo(BigDecimal.ZERO) > 0) {
             if (revenueByAccount.isEmpty()) {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
                         "No revenue or tax account configured for dispatched items");
             }
-            String reference = "DISP-" + slipRef.getId();
+            String reference = resolveOrderReference("INV-", order);
             LocalDate dispatchDate = dispatchedDate;
             Optional<JournalEntry> existingAr = companyEntityLookup.findJournalEntryByReference(company, reference);
             if (existingAr.isPresent()) {
@@ -1103,13 +1110,16 @@ public class SalesService {
                 List<com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest.JournalLineRequest> jeLines = new ArrayList<>();
                 jeLines.add(new com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest.JournalLineRequest(
                         dealer.getReceivableAccount().getId(), "AR for dispatch " + slipNumber, totalAmount, BigDecimal.ZERO));
+                arPostings.add(toPosting(dealer.getReceivableAccount().getId(), "AR for dispatch " + slipNumber, totalAmount, BigDecimal.ZERO));
                 for (var entry : revenueByAccount.entrySet()) {
                     jeLines.add(new com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest.JournalLineRequest(
                             entry.getKey(), "Revenue for dispatch " + slipNumber, BigDecimal.ZERO, entry.getValue()));
+                    arPostings.add(toPosting(entry.getKey(), "Revenue for dispatch " + slipNumber, BigDecimal.ZERO, entry.getValue()));
                 }
                 for (var entry : taxByAccount.entrySet()) {
                     jeLines.add(new com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest.JournalLineRequest(
                             entry.getKey(), "Tax for dispatch " + slipNumber, BigDecimal.ZERO, entry.getValue()));
+                    arPostings.add(toPosting(entry.getKey(), "Tax for dispatch " + slipNumber, BigDecimal.ZERO, entry.getValue()));
                 }
                 var jeRequest = new com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest(
                         reference,
@@ -1155,11 +1165,31 @@ public class SalesService {
                 invoice.getId(),
                 arJournalEntryId,
                 cogsDtos,
-                true
+                true,
+                arPostings
         );
+    }
+
+    private DispatchConfirmResponse.AccountPostingDto toPosting(Long accountId, String label, BigDecimal debit, BigDecimal credit) {
+        if (accountId == null) {
+            return new DispatchConfirmResponse.AccountPostingDto(null, label, debit, credit);
+        }
+        String name = accountRepository.findById(accountId)
+                .map(Account::getName)
+                .orElse("Account " + accountId);
+        return new DispatchConfirmResponse.AccountPostingDto(accountId, name, debit, credit);
     }
 
     private LocalDate currentDate(Company company) {
         return LocalDate.now(ZoneId.of(company.getTimezone()));
+    }
+
+    private String resolveOrderReference(String prefix, SalesOrder order) {
+        String orderNumber = order != null ? order.getOrderNumber() : null;
+        if (!StringUtils.hasText(orderNumber)) {
+            orderNumber = order != null && order.getId() != null ? order.getId().toString() : "UNKNOWN";
+        }
+        String normalized = orderNumber.replaceAll("[^A-Za-z0-9-]", "").toUpperCase();
+        return prefix + normalized;
     }
 }

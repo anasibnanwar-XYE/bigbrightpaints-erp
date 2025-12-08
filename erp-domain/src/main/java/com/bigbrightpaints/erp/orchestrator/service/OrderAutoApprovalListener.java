@@ -4,10 +4,11 @@ import com.bigbrightpaints.erp.modules.sales.event.SalesOrderCreatedEvent;
 import com.bigbrightpaints.erp.modules.sales.service.SalesService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
+
+import com.bigbrightpaints.erp.core.config.SystemSettingsService;
 
 @Component
 public class OrderAutoApprovalListener {
@@ -16,20 +17,20 @@ public class OrderAutoApprovalListener {
 
     private final CommandDispatcher commandDispatcher;
     private final SalesService salesService;
-    private final boolean autoApprovalEnabled;
+    private final SystemSettingsService systemSettingsService;
 
     public OrderAutoApprovalListener(CommandDispatcher commandDispatcher,
                                      SalesService salesService,
-                                     @Value("${erp.auto-approval.enabled:true}") boolean autoApprovalEnabled) {
+                                     SystemSettingsService systemSettingsService) {
         this.commandDispatcher = commandDispatcher;
         this.salesService = salesService;
-        this.autoApprovalEnabled = autoApprovalEnabled;
-        log.info("Order auto-approval enabled={}", autoApprovalEnabled);
+        this.systemSettingsService = systemSettingsService;
+        log.info("Order auto-approval enabled={}", systemSettingsService.isAutoApprovalEnabled());
     }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onOrderCreated(SalesOrderCreatedEvent event) {
-        if (!autoApprovalEnabled) {
+        if (!systemSettingsService.isAutoApprovalEnabled()) {
             log.info("Auto-approval disabled; skipping for order {}", event.orderId());
             return;
         }

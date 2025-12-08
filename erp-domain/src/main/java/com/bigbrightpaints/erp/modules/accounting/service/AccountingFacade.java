@@ -1042,7 +1042,8 @@ public class AccountingFacade {
         if (!StringUtils.hasText(value)) {
             return "GEN";
         }
-        return value.replaceAll("[^A-Z0-9]", "").toUpperCase();
+        // Preserve hyphens for readability (BBP-2025-00001 stays readable)
+        return value.replaceAll("[^A-Za-z0-9-]", "").toUpperCase();
     }
 
     private JournalEntryDto toSimpleDto(JournalEntry entry) {

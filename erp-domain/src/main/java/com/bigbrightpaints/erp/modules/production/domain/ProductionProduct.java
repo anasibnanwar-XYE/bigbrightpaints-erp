@@ -31,7 +31,7 @@ public class ProductionProduct extends VersionedEntity {
     @JoinColumn(name = "company_id")
     private Company company;
 
-    @ManyToOne(optional = false, fetch = FetchType.LAZY)
+    @ManyToOne(optional = false, fetch = FetchType.EAGER)
     @JoinColumn(name = "brand_id")
     private ProductionBrand brand;
 

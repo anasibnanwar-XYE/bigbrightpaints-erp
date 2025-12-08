@@ -1,0 +1,75 @@
+spring:
+  application:
+    name: tally-ingestion-backend
+
+  # H2 In-Memory Database for Testing
+  datasource:
+    url: jdbc:h2:mem:tally_test;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=PostgreSQL
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+
+  # H2 Console for debugging
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+  # JPA Configuration
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+    open-in-view: false
+
+  # Disable Flyway for H2 testing
+  flyway:
+    enabled: false
+
+  # Spring Batch Configuration
+  batch:
+    jdbc:
+      initialize-schema: embedded
+    job:
+      enabled: false
+
+  # File Upload Configuration
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 100MB
+      max-request-size: 500MB
+
+  # Caching Configuration
+  cache:
+    type: caffeine
+
+# Server Configuration
+server:
+  port: 8085
+  address: 0.0.0.0
+  servlet:
+    context-path: /api
+
+# Logging
+logging:
+  level:
+    root: INFO
+    com.bigbrightpaints.tally: DEBUG
+    org.hibernate.SQL: DEBUG
+
+# Tally Ingestion Configuration
+tally:
+  ingestion:
+    company-prefix: BBP
+    batch:
+      chunk-size: 1000
+    storage:
+      type: local
+      local:
+        path: ./uploads
+
+# ERP Integration
+erp:
+  default-company-id: 1

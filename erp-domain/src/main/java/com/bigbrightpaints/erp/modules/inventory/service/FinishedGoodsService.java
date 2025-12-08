@@ -7,7 +7,10 @@ import com.bigbrightpaints.erp.modules.inventory.dto.*;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderItem;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderRepository;
+import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
+import com.bigbrightpaints.erp.modules.factory.event.PackagingSlipEvent;
 import jakarta.transaction.Transactional;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -35,6 +38,8 @@ public class FinishedGoodsService {
     private final InventoryReservationRepository inventoryReservationRepository;
     private final BatchNumberService batchNumberService;
     private final SalesOrderRepository salesOrderRepository;
+    private final CompanyDefaultAccountsService companyDefaultAccountsService;
+    private final org.springframework.context.ApplicationEventPublisher eventPublisher;
     private final Map<Long, CachedWac> wacCache = new ConcurrentHashMap<>();
     private static final long WAC_CACHE_MILLIS = 5 * 60 * 1000; // 5 minutes TTL
 
@@ -45,7 +50,9 @@ public class FinishedGoodsService {
                                 InventoryMovementRepository inventoryMovementRepository,
                                 InventoryReservationRepository inventoryReservationRepository,
                                 BatchNumberService batchNumberService,
-                                SalesOrderRepository salesOrderRepository) {
+                                SalesOrderRepository salesOrderRepository,
+                                CompanyDefaultAccountsService companyDefaultAccountsService,
+                                org.springframework.context.ApplicationEventPublisher eventPublisher) {
         this.companyContextService = companyContextService;
         this.finishedGoodRepository = finishedGoodRepository;
         this.finishedGoodBatchRepository = finishedGoodBatchRepository;
@@ -54,6 +61,8 @@ public class FinishedGoodsService {
         this.inventoryReservationRepository = inventoryReservationRepository;
         this.batchNumberService = batchNumberService;
         this.salesOrderRepository = salesOrderRepository;
+        this.companyDefaultAccountsService = companyDefaultAccountsService;
+        this.eventPublisher = eventPublisher;
     }
 
     public List<FinishedGoodDto> listFinishedGoods() {
@@ -100,6 +109,7 @@ public class FinishedGoodsService {
         if (request.taxAccountId() != null) {
             fg.setTaxAccountId(request.taxAccountId());
         }
+        applyDefaultAccountsIfMissing(fg);
         return toDto(finishedGoodRepository.save(fg));
     }
 
@@ -161,6 +171,7 @@ public class FinishedGoodsService {
         finishedGood.setRevenueAccountId(request.revenueAccountId());
         finishedGood.setDiscountAccountId(request.discountAccountId());
         finishedGood.setTaxAccountId(request.taxAccountId());
+        applyDefaultAccountsIfMissing(finishedGood);
         return toDto(finishedGoodRepository.save(finishedGood));
     }
 
@@ -204,6 +215,7 @@ public class FinishedGoodsService {
                 .orElseGet(() -> createSlip(order));
 
         if (!slip.getLines().isEmpty()) {
+            updateSlipStatusBasedOnAvailability(slip, List.of());
             return new InventoryReservationResult(toSlipDto(slip), List.of());
         }
 
@@ -212,7 +224,15 @@ public class FinishedGoodsService {
             FinishedGood finishedGood = lockFinishedGood(managedOrder.getCompany(), item.getProductCode());
             allocateItem(managedOrder, slip, finishedGood, item, shortages);
         }
+
+        if (shortages.isEmpty()) {
+            slip.setStatus("RESERVED");
+        } else {
+            slip.setStatus("PENDING_PRODUCTION");
+        }
+        packagingSlipRepository.save(slip);
         // Soft reservation only: do not throw on shortages; caller can choose to dispatch partial/backorder
+        updateSlipStatusBasedOnAvailability(slip, shortages);
         return new InventoryReservationResult(toSlipDto(slip), List.copyOf(shortages));
     }
 
@@ -724,9 +744,23 @@ public class FinishedGoodsService {
      */
     public PackagingSlipDto getPackagingSlipByOrder(Long salesOrderId) {
         Company company = companyContextService.requireCurrentCompany();
+        // First try to find an existing slip
         PackagingSlip slip = packagingSlipRepository.findByCompanyAndSalesOrderId(company, salesOrderId)
-                .orElseThrow(() -> new IllegalArgumentException("No packaging slip found for order"));
-        return toSlipDto(slip);
+                .orElse(null);
+        if (slip != null) {
+            return toSlipDto(slip);
+        }
+
+        // If no slip exists yet (e.g. legacy order or reservation failed earlier),
+        // lazily create one by running the reservation workflow for this order.
+        SalesOrder order = salesOrderRepository.findByCompanyAndId(company, salesOrderId)
+                .orElseThrow(() -> new IllegalArgumentException("Sales order not found: " + salesOrderId));
+
+        InventoryReservationResult result = reserveForOrder(order);
+        if (result.packagingSlip() == null) {
+            throw new IllegalStateException("Unable to create packaging slip for order " + salesOrderId);
+        }
+        return result.packagingSlip();
     }
 
     /**
@@ -798,6 +832,7 @@ public class FinishedGoodsService {
         slip.setCompany(company);
         slip.setSalesOrder(order);
         slip.setSlipNumber(generateSlipNumber(company));
+        slip.setStatus("PENDING");
         return packagingSlipRepository.save(slip);
     }
 
@@ -988,6 +1023,55 @@ public class FinishedGoodsService {
 
     private String generateSlipNumber(Company company) {
         return company.getCode() + "-PS-" + batchNumberService.nextPackagingSlipNumber(company);
+    }
+
+    private void updateSlipStatusBasedOnAvailability(PackagingSlip slip, List<InventoryShortage> shortages) {
+        if (slip == null) {
+            return;
+        }
+        boolean hasShortage = shortages != null && !shortages.isEmpty();
+        slip.setStatus(hasShortage ? "PENDING_PRODUCTION" : "RESERVED");
+        packagingSlipRepository.save(slip);
+        publishSlipEvent(slip, slip.getStatus(), hasShortage ? "Shortages: " + shortages.size() : "Stock reserved");
+    }
+
+    private void publishSlipEvent(PackagingSlip slip, String status, String reason) {
+        if (slip == null || slip.getCompany() == null) {
+            return;
+        }
+        eventPublisher.publishEvent(new PackagingSlipEvent(
+                slip.getCompany().getId(),
+                slip.getSalesOrder() != null ? slip.getSalesOrder().getId() : null,
+                slip.getId(),
+                status,
+                reason
+        ));
+    }
+
+    private void applyDefaultAccountsIfMissing(FinishedGood finishedGood) {
+        boolean needsDefaults = finishedGood.getValuationAccountId() == null
+                || finishedGood.getCogsAccountId() == null
+                || finishedGood.getRevenueAccountId() == null
+                || finishedGood.getTaxAccountId() == null;
+        if (!needsDefaults) {
+            return;
+        }
+        var defaults = companyDefaultAccountsService.requireDefaults();
+        if (finishedGood.getValuationAccountId() == null) {
+            finishedGood.setValuationAccountId(defaults.inventoryAccountId());
+        }
+        if (finishedGood.getCogsAccountId() == null) {
+            finishedGood.setCogsAccountId(defaults.cogsAccountId());
+        }
+        if (finishedGood.getRevenueAccountId() == null) {
+            finishedGood.setRevenueAccountId(defaults.revenueAccountId());
+        }
+        if (finishedGood.getDiscountAccountId() == null && defaults.discountAccountId() != null) {
+            finishedGood.setDiscountAccountId(defaults.discountAccountId());
+        }
+        if (finishedGood.getTaxAccountId() == null) {
+            finishedGood.setTaxAccountId(defaults.taxAccountId());
+        }
     }
 
     private BigDecimal weightedAverageCost(FinishedGood fg) {

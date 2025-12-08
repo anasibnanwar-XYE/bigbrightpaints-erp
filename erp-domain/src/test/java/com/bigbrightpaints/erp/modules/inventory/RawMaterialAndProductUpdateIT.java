@@ -52,6 +52,7 @@ class RawMaterialAndProductUpdateIT extends AbstractIntegrationTest {
     void setUp() {
         dataSeeder.ensureUser(ADMIN_EMAIL, ADMIN_PASSWORD, "Catalog Admin", COMPANY_CODE,
                 List.of("ROLE_ADMIN", "ROLE_ACCOUNTING"));
+        ensureCompanyDefaults();
     }
 
     @Test
@@ -192,6 +193,21 @@ class RawMaterialAndProductUpdateIT extends AbstractIntegrationTest {
                 "DISC", findAccountId(company, "DISC"),
                 "GST_OUT", findAccountId(company, "GST-OUT")
         );
+    }
+
+    private void ensureCompanyDefaults() {
+        Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
+        Long inv = findAccountId(company, "INV");
+        Long cogs = findAccountId(company, "COGS");
+        Long rev = findAccountId(company, "REV");
+        Long disc = findAccountId(company, "DISC");
+        Long tax = findAccountId(company, "GST-OUT");
+        company.setDefaultInventoryAccountId(inv);
+        company.setDefaultCogsAccountId(cogs);
+        company.setDefaultRevenueAccountId(rev);
+        company.setDefaultDiscountAccountId(disc);
+        company.setDefaultTaxAccountId(tax);
+        companyRepository.save(company);
     }
 
     private Long findAccountId(Company company, String code) {

@@ -1,6 +1,20 @@
 server:
   port: 8081
+  address: 0.0.0.0
 spring:
+  autoconfigure:
+    exclude: org.springframework.boot.autoconfigure.amqp.RabbitAutoConfiguration
+  mail:
+    host: smtp-relay.brevo.com
+    port: 587
+    username: 9baaf7001@smtp-brevo.com
+    password: xsmtpsib-fcee07c8999585e98b78020f5c8242b4afb9d3b35cf1901d64ffaf4a1c82e84e-WDZA6i5RCnU3tOOr
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
   datasource:
     url: jdbc:postgresql://localhost:5432/bigbright_erp
     username: postgres
@@ -22,3 +36,10 @@ erp:
     # Configure with realistic account IDs in your dev DB to enable dispatch journals
     debit-account-id: ${ERP_DISPATCH_DEBIT_ACCOUNT_ID:0}
     credit-account-id: ${ERP_DISPATCH_CREDIT_ACCOUNT_ID:0}
+  mail:
+    base-url: http://localhost:3002
+
+management:
+  health:
+    rabbit:
+      enabled: false

@@ -10,6 +10,7 @@ import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderItem;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProductRepository;
+import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -20,7 +21,6 @@ import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
 import org.springframework.util.StringUtils;
 
 /**
@@ -36,13 +36,16 @@ public class SalesJournalService {
     private final FinishedGoodsService finishedGoodsService;
     private final AccountingFacade accountingFacade;
     private final ProductionProductRepository productionProductRepository;
+    private final CompanyDefaultAccountsService companyDefaultAccountsService;
 
     public SalesJournalService(FinishedGoodsService finishedGoodsService,
                                AccountingFacade accountingFacade,
-                               ProductionProductRepository productionProductRepository) {
+                               ProductionProductRepository productionProductRepository,
+                               CompanyDefaultAccountsService companyDefaultAccountsService) {
         this.finishedGoodsService = finishedGoodsService;
         this.accountingFacade = accountingFacade;
         this.productionProductRepository = productionProductRepository;
+        this.companyDefaultAccountsService = companyDefaultAccountsService;
     }
 
     /**
@@ -179,7 +182,16 @@ public class SalesJournalService {
             taxAccountId = metadataLong(product, "fgTaxAccountId");
         }
         if (revenueAccountId == null || taxAccountId == null) {
-            throw new IllegalStateException("Product " + productCode + " missing revenue or tax account mapping");
+            var defaults = companyDefaultAccountsService.requireDefaults();
+            if (revenueAccountId == null) {
+                revenueAccountId = defaults.revenueAccountId();
+            }
+            if (taxAccountId == null) {
+                taxAccountId = defaults.taxAccountId();
+            }
+        }
+        if (revenueAccountId == null || taxAccountId == null) {
+            throw new IllegalStateException("Company default revenue/tax accounts are not configured for product " + productCode);
         }
         return new ProductAccounts(revenueAccountId, taxAccountId);
     }

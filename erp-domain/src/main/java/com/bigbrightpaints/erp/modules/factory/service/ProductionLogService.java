@@ -344,6 +344,7 @@ public class ProductionLogService {
         if (!StringUtils.hasText(producedAt)) {
             return Instant.now();
         }
+        // Accept common UI formats: ISO_OFFSET_DATE_TIME, ISO_INSTANT, yyyy-MM-dd, dd-MM-yyyy HH:mm[:ss]
         try {
             return OffsetDateTime.parse(producedAt).toInstant();
         } catch (Exception ignored) {
@@ -351,6 +352,18 @@ public class ProductionLogService {
         }
         try {
             return Instant.parse(producedAt);
+        } catch (Exception ignored) {
+            // fall through to final attempt
+        }
+        try {
+            DateTimeFormatter fmt = DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm");
+            return java.time.LocalDateTime.parse(producedAt, fmt).toInstant(ZoneOffset.UTC);
+        } catch (Exception ignored) {
+            // fall through
+        }
+        try {
+            DateTimeFormatter fmtSeconds = DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss");
+            return java.time.LocalDateTime.parse(producedAt, fmtSeconds).toInstant(ZoneOffset.UTC);
         } catch (Exception ignored) {
             // fall through to final attempt
         }

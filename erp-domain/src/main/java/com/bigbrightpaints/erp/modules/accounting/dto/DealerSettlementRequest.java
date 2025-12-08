@@ -9,7 +9,8 @@ import java.util.List;
 
 public record DealerSettlementRequest(
         @NotNull Long dealerId,
-        @NotNull Long cashAccountId,
+        // Legacy single-tender cash field (will be ignored if payments list is provided)
+        Long cashAccountId,
         Long discountAccountId,
         Long writeOffAccountId,
         Long fxGainAccountId,
@@ -19,6 +20,7 @@ public record DealerSettlementRequest(
         String memo,
         String idempotencyKey,
         Boolean adminOverride,
-        @NotEmpty List<@Valid SettlementAllocationRequest> allocations
+        @NotEmpty List<@Valid SettlementAllocationRequest> allocations,
+        List<@Valid SettlementPaymentRequest> payments
 ) {
 }

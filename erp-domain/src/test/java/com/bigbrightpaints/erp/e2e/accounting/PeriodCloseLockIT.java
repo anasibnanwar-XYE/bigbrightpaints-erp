@@ -56,8 +56,8 @@ class PeriodCloseLockIT extends AbstractIntegrationTest {
     @DisplayName("Closing locks period, posts retained earnings transfer, blocks new postings, reopen auto-reverses and unlocks")
     void closeLockReopenFlow() {
         LocalDate today = LocalDate.now();
-        // Use last month for period close testing (current month day may be in future)
-        LocalDate testMonth = today.minusMonths(1);
+        // Use current month to stay within the 30-day posting window enforced by validations
+        LocalDate testMonth = today;
         // Seed P&L: profit 60 (100 revenue, 40 expense) using cash movements
         // Post revenue entry first
         postJournal(testMonth.withDayOfMonth(5),

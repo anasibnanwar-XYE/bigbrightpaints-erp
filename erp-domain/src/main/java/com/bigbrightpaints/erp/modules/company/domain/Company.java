@@ -51,6 +51,22 @@ public class Company extends VersionedEntity {
     @Column(name = "gst_payable_account_id")
     private Long gstPayableAccountId;
 
+    // Company-wide default accounts for automatic postings
+    @Column(name = "default_inventory_account_id")
+    private Long defaultInventoryAccountId;
+
+    @Column(name = "default_cogs_account_id")
+    private Long defaultCogsAccountId;
+
+    @Column(name = "default_revenue_account_id")
+    private Long defaultRevenueAccountId;
+
+    @Column(name = "default_discount_account_id")
+    private Long defaultDiscountAccountId;
+
+    @Column(name = "default_tax_account_id")
+    private Long defaultTaxAccountId;
+
     @Column(name = "default_gst_rate", nullable = false)
     private BigDecimal defaultGstRate = BigDecimal.valueOf(18);
 
@@ -140,6 +156,46 @@ public class Company extends VersionedEntity {
 
     public void setGstPayableAccountId(Long gstPayableAccountId) {
         this.gstPayableAccountId = gstPayableAccountId;
+    }
+
+    public Long getDefaultInventoryAccountId() {
+        return defaultInventoryAccountId;
+    }
+
+    public void setDefaultInventoryAccountId(Long defaultInventoryAccountId) {
+        this.defaultInventoryAccountId = defaultInventoryAccountId;
+    }
+
+    public Long getDefaultCogsAccountId() {
+        return defaultCogsAccountId;
+    }
+
+    public void setDefaultCogsAccountId(Long defaultCogsAccountId) {
+        this.defaultCogsAccountId = defaultCogsAccountId;
+    }
+
+    public Long getDefaultRevenueAccountId() {
+        return defaultRevenueAccountId;
+    }
+
+    public void setDefaultRevenueAccountId(Long defaultRevenueAccountId) {
+        this.defaultRevenueAccountId = defaultRevenueAccountId;
+    }
+
+    public Long getDefaultDiscountAccountId() {
+        return defaultDiscountAccountId;
+    }
+
+    public void setDefaultDiscountAccountId(Long defaultDiscountAccountId) {
+        this.defaultDiscountAccountId = defaultDiscountAccountId;
+    }
+
+    public Long getDefaultTaxAccountId() {
+        return defaultTaxAccountId;
+    }
+
+    public void setDefaultTaxAccountId(Long defaultTaxAccountId) {
+        this.defaultTaxAccountId = defaultTaxAccountId;
     }
 
     public BigDecimal getDefaultGstRate() {

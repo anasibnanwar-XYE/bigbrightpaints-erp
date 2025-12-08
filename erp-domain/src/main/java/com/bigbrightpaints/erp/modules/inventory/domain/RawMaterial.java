@@ -52,6 +52,10 @@ public class RawMaterial extends VersionedEntity {
     @Column(name = "inventory_type", nullable = false)
     private InventoryType inventoryType = InventoryType.STANDARD;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "material_type", nullable = false)
+    private MaterialType materialType = MaterialType.PRODUCTION;
+
     @Column(name = "gst_rate")
     private BigDecimal gstRate = BigDecimal.ZERO;
 
@@ -174,6 +178,14 @@ public class RawMaterial extends VersionedEntity {
 
     public void setInventoryType(InventoryType inventoryType) {
         this.inventoryType = inventoryType;
+    }
+
+    public MaterialType getMaterialType() {
+        return materialType;
+    }
+
+    public void setMaterialType(MaterialType materialType) {
+        this.materialType = materialType;
     }
 
     public BigDecimal getGstRate() {

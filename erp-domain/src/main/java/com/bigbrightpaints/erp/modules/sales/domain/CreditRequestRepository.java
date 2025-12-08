@@ -8,5 +8,6 @@ import java.util.Optional;
 
 public interface CreditRequestRepository extends JpaRepository<CreditRequest, Long> {
     List<CreditRequest> findByCompanyOrderByCreatedAtDesc(Company company);
+    List<CreditRequest> findByCompanyAndStatusOrderByCreatedAtDesc(Company company, String status);
     Optional<CreditRequest> findByCompanyAndId(Company company, Long id);
 }

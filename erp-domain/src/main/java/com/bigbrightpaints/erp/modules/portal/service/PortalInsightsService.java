@@ -126,7 +126,7 @@ public class PortalInsightsService {
                 .filter(request -> "APPROVED".equalsIgnoreCase(request.getStatus()))
                 .count();
         long payrollDrafts = payrollRunRepository.findByCompanyOrderByRunDateDesc(company).stream()
-                .filter(run -> "DRAFT".equalsIgnoreCase(run.getStatus()))
+                .filter(run -> "DRAFT".equalsIgnoreCase(run.getStatusString()))
                 .count();
 
         List<DashboardInsights.HrPulseMetric> hrPulse = List.of(

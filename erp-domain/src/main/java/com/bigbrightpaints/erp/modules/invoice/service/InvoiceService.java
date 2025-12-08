@@ -113,6 +113,7 @@ public class InvoiceService {
         return toDto(saved);
     }
 
+    @Transactional
     public List<InvoiceDto> listInvoices() {
         Company company = companyContextService.requireCurrentCompany();
         return invoiceRepository.findByCompanyOrderByIssueDateDesc(company).stream()
@@ -120,6 +121,7 @@ public class InvoiceService {
                 .toList();
     }
 
+    @Transactional
     public List<InvoiceDto> listDealerInvoices(Long dealerId) {
         Company company = companyContextService.requireCurrentCompany();
         Dealer dealer = companyEntityLookup.requireDealer(company, dealerId);
@@ -137,7 +139,10 @@ public class InvoiceService {
 
     private JournalEntry resolveInvoiceJournal(SalesOrder order, Invoice invoice) {
         Company company = order.getCompany();
-        String reference = "SALE-" + order.getId();
+        // Use order NUMBER (not ID) for consistent reference across all journals
+        // Format: INV-{orderNumber} e.g., INV-BBP-2025-00001
+        String orderNumber = order.getOrderNumber() != null ? order.getOrderNumber() : String.valueOf(order.getId());
+        String reference = "INV-" + orderNumber;
         return journalEntryRepository.findByCompanyAndReferenceNumber(company, reference)
                 .orElseGet(() -> createInvoiceJournal(order, invoice, reference));
     }

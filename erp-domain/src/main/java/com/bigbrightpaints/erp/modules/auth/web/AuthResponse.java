@@ -6,5 +6,6 @@ public record AuthResponse(
         String refreshToken,
         long expiresIn,
         String companyCode,
-        String displayName
+        String displayName,
+        boolean mustChangePassword
 ) {}

@@ -84,7 +84,7 @@ public class AuthService {
             String refreshToken = refreshTokenService.issue(principal.getUsername(),
                     Instant.now().plusSeconds(properties.getRefreshTokenTtlSeconds()));
             return new AuthResponse("Bearer", accessToken, refreshToken, properties.getAccessTokenTtlSeconds(),
-                    company.getCode(), principal.getUser().getDisplayName());
+                    company.getCode(), principal.getUser().getDisplayName(), user.isMustChangePassword());
         } catch (AuthenticationException ex) {
             registerFailure(user);
             throw ex;
@@ -112,10 +112,12 @@ public class AuthService {
             throw new IllegalArgumentException("Passwords don't match");
         }
         user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
+        user.setMustChangePassword(false);
         user.setResetToken(null);
         user.setResetExpiry(null);
         userAccountRepository.save(user);
         tokenBlacklistService.revokeAllUserTokens(user.getEmail());
+        refreshTokenService.revokeAllForUser(user.getEmail());
         emailService.sendPasswordResetConfirmation(user.getEmail(), user.getDisplayName());
         return Map.of("success", true, "message", "Password reset. Login now.");
     }
@@ -125,13 +127,17 @@ public class AuthService {
                 .orElseThrow(() -> new IllegalArgumentException("Invalid refresh token"));
         UserAccount user = userAccountRepository.findByEmailIgnoreCase(userEmail)
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        if (!user.isEnabled()) {
+            throw new IllegalArgumentException("User account is disabled");
+        }
+        enforceLock(user);
         Company company = resolveCompanyForUser(user, request.companyCode());
         Map<String, Object> claims = Map.of("name", userEmail);
         String accessToken = tokenService.generateAccessToken(userEmail, company.getCode(), claims);
         String refreshToken = refreshTokenService.issue(userEmail,
                 Instant.now().plusSeconds(properties.getRefreshTokenTtlSeconds()));
         return new AuthResponse("Bearer", accessToken, refreshToken, properties.getAccessTokenTtlSeconds(),
-                company.getCode(), userEmail);
+                company.getCode(), userEmail, user.isMustChangePassword());
     }
 
     private Company resolveCompanyForUser(UserAccount user, String companyCode) {

@@ -75,11 +75,11 @@ public class ReconciliationService {
         Company company = companyContextService.requireCurrentCompany();
         
         // Get all AR accounts
-        List<Account> arAccounts = accountRepository.findByCompanyAndType(company, AccountType.ASSET)
-                .stream()
-                .filter(a -> a.getCode() != null && 
-                        (a.getCode().toUpperCase().contains("AR") || 
-                         a.getCode().toUpperCase().contains("RECEIVABLE")))
+        List<Account> arAccounts = accountRepository.findByCompanyOrderByCodeAsc(company).stream()
+                .filter(a -> a.getType() == AccountType.ASSET)
+                .filter(a -> a.getCode() != null &&
+                        (a.getCode().toUpperCase().contains("AR") ||
+                                a.getCode().toUpperCase().contains("RECEIVABLE")))
                 .toList();
 
         BigDecimal totalArBalance = arAccounts.stream()
@@ -88,7 +88,7 @@ public class ReconciliationService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         // Get all dealers with their ledger balances
-        List<Dealer> dealers = dealerRepository.findByCompany(company);
+        List<Dealer> dealers = dealerRepository.findByCompanyOrderByNameAsc(company);
         List<Long> dealerIds = dealers.stream().map(Dealer::getId).toList();
         
         Map<Long, BigDecimal> dealerBalances = dealerLedgerRepository
@@ -162,7 +162,7 @@ public class ReconciliationService {
             
             // Check if there's a corresponding packaging slip
             List<PackagingSlip> slips = packagingSlipRepository
-                    .findByCompanyAndSalesOrderId(company, Long.parseLong(refId));
+                    .findAllByCompanyAndSalesOrderId(company, Long.parseLong(refId));
             
             if (slips.isEmpty()) {
                 // No slip = orphan reservation

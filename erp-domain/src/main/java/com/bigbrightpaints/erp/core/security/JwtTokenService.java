@@ -12,6 +12,7 @@ import java.security.Key;
 import java.time.Instant;
 import java.util.Date;
 import java.util.Map;
+import java.util.UUID;
 
 @Component
 public class JwtTokenService {
@@ -40,6 +41,7 @@ public class JwtTokenService {
         Instant expiry = now.plusSeconds(properties.getAccessTokenTtlSeconds());
         return Jwts.builder()
                 .setSubject(subject)
+                .setId(UUID.randomUUID().toString())
                 .addClaims(claims)
                 .claim("cid", companyId)
                 .setIssuedAt(Date.from(now))
@@ -53,6 +55,7 @@ public class JwtTokenService {
         Instant expiry = now.plusSeconds(properties.getRefreshTokenTtlSeconds());
         return Jwts.builder()
                 .setSubject(subject)
+                .setId(UUID.randomUUID().toString())
                 .setIssuedAt(Date.from(now))
                 .setExpiration(Date.from(expiry))
                 .signWith(signingKey, SignatureAlgorithm.HS256)
