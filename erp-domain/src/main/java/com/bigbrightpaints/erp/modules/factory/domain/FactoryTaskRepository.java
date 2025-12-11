@@ -9,4 +9,5 @@ import java.util.Optional;
 public interface FactoryTaskRepository extends JpaRepository<FactoryTask, Long> {
     List<FactoryTask> findByCompanyOrderByCreatedAtDesc(Company company);
     Optional<FactoryTask> findByCompanyAndId(Company company, Long id);
+    List<FactoryTask> findByCompanyAndSalesOrderId(Company company, Long salesOrderId);
 }

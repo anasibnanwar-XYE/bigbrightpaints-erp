@@ -1,0 +1,873 @@
+diff --git a/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/domain/FactoryTask.java b/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/domain/FactoryTask.java
+index 856db0876769c0407ff80faa667d64449f912719..4c57450cb8fda2b4ae374099fbe588d6b7f020f7 100644
+--- a/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/domain/FactoryTask.java
++++ b/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/domain/FactoryTask.java
+@@ -9,57 +9,67 @@ import java.util.UUID;
+ import com.bigbrightpaints.erp.core.domain.VersionedEntity;
+ 
+ @Entity
+ @Table(name = "factory_tasks")
+ public class FactoryTask extends VersionedEntity {
+ 
+     @Id
+     @GeneratedValue(strategy = GenerationType.IDENTITY)
+     private Long id;
+ 
+     @Column(name = "public_id", nullable = false)
+     private UUID publicId;
+ 
+     @ManyToOne(optional = false, fetch = FetchType.LAZY)
+     @JoinColumn(name = "company_id")
+     private Company company;
+ 
+     @Column(nullable = false)
+     private String title;
+ 
+     private String description;
+ 
+     private String assignee;
+ 
+     @Column(nullable = false)
+-    private String status = "PENDING";
+-
+-    private LocalDate dueDate;
++    private String status = "PENDING";
++
++    private LocalDate dueDate;
++
++    @Column(name = "sales_order_id")
++    private Long salesOrderId;
++
++    @Column(name = "packaging_slip_id")
++    private Long packagingSlipId;
+ 
+     @Column(name = "created_at", nullable = false)
+     private Instant createdAt;
+ 
+     @PrePersist
+     public void prePersist() {
+         if (publicId == null) {
+             publicId = UUID.randomUUID();
+         }
+         if (createdAt == null) {
+             createdAt = Instant.now();
+         }
+     }
+ 
+     public Long getId() { return id; }
+     public UUID getPublicId() { return publicId; }
+     public Company getCompany() { return company; }
+     public void setCompany(Company company) { this.company = company; }
+     public String getTitle() { return title; }
+     public void setTitle(String title) { this.title = title; }
+     public String getDescription() { return description; }
+     public void setDescription(String description) { this.description = description; }
+     public String getAssignee() { return assignee; }
+     public void setAssignee(String assignee) { this.assignee = assignee; }
+-    public String getStatus() { return status; }
+-    public void setStatus(String status) { this.status = status; }
+-    public LocalDate getDueDate() { return dueDate; }
+-    public void setDueDate(LocalDate dueDate) { this.dueDate = dueDate; }
+-}
++    public String getStatus() { return status; }
++    public void setStatus(String status) { this.status = status; }
++    public LocalDate getDueDate() { return dueDate; }
++    public void setDueDate(LocalDate dueDate) { this.dueDate = dueDate; }
++    public Long getSalesOrderId() { return salesOrderId; }
++    public void setSalesOrderId(Long salesOrderId) { this.salesOrderId = salesOrderId; }
++    public Long getPackagingSlipId() { return packagingSlipId; }
++    public void setPackagingSlipId(Long packagingSlipId) { this.packagingSlipId = packagingSlipId; }
++}
+diff --git a/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/domain/FactoryTaskRepository.java b/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/domain/FactoryTaskRepository.java
+index 7a764b3c8dc2db9a05b548242827444c4588d71b..472a75bc87177effd7e813138418812e4ae39216 100644
+--- a/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/domain/FactoryTaskRepository.java
++++ b/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/domain/FactoryTaskRepository.java
+@@ -1,12 +1,13 @@
+ package com.bigbrightpaints.erp.modules.factory.domain;
+ 
+ import com.bigbrightpaints.erp.modules.company.domain.Company;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ 
+ import java.util.List;
+ import java.util.Optional;
+ 
+ public interface FactoryTaskRepository extends JpaRepository<FactoryTask, Long> {
+     List<FactoryTask> findByCompanyOrderByCreatedAtDesc(Company company);
+     Optional<FactoryTask> findByCompanyAndId(Company company, Long id);
+-}
++    List<FactoryTask> findByCompanyAndSalesOrderId(Company company, Long salesOrderId);
++}
+diff --git a/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/dto/FactoryTaskDto.java b/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/dto/FactoryTaskDto.java
+index f29a6d4fddf4271f8a3ba768806a23304114763b..195747f633ea1763183defc3612ab7562192e3a9 100644
+--- a/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/dto/FactoryTaskDto.java
++++ b/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/dto/FactoryTaskDto.java
+@@ -1,12 +1,14 @@
+ package com.bigbrightpaints.erp.modules.factory.dto;
+ 
+ import java.time.LocalDate;
+ import java.util.UUID;
+ 
+ public record FactoryTaskDto(Long id,
+                              UUID publicId,
+                              String title,
+                              String description,
+                              String assignee,
+                              String status,
+-                             LocalDate dueDate) {}
++                             LocalDate dueDate,
++                             Long salesOrderId,
++                             Long packagingSlipId) {}
+diff --git a/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/dto/FactoryTaskRequest.java b/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/dto/FactoryTaskRequest.java
+index b023617946706a6d185aa5b8583fb4a6536548f3..4e31c9733e2dd6c2e2cc697a1914d92000ce8d4d 100644
+--- a/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/dto/FactoryTaskRequest.java
++++ b/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/dto/FactoryTaskRequest.java
+@@ -1,13 +1,15 @@
+ package com.bigbrightpaints.erp.modules.factory.dto;
+ 
+ import jakarta.validation.constraints.NotBlank;
+ 
+ import java.time.LocalDate;
+ 
+ public record FactoryTaskRequest(
+         @NotBlank String title,
+         String description,
+         String assignee,
+         String status,
+-        LocalDate dueDate
+-) {}
++        LocalDate dueDate,
++        Long salesOrderId,
++        Long packagingSlipId
++) {}
+diff --git a/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/service/FactoryService.java b/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/service/FactoryService.java
+index ef3032089bbfc908a056e36a5933308ad0a1c021..53d28fe968aea05ae445ba6b475460261cdfe051 100644
+--- a/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/service/FactoryService.java
++++ b/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/service/FactoryService.java
+@@ -1,55 +1,62 @@
+ package com.bigbrightpaints.erp.modules.factory.service;
+ 
+ import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
+ import com.bigbrightpaints.erp.modules.company.domain.Company;
+ import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+ import com.bigbrightpaints.erp.modules.factory.domain.*;
+ import com.bigbrightpaints.erp.modules.factory.dto.*;
++import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
++import com.bigbrightpaints.erp.modules.inventory.dto.FinishedGoodBatchRequest;
++import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
+ import jakarta.transaction.Transactional;
+ import org.springframework.stereotype.Service;
+ 
++import java.math.BigDecimal;
+ import java.util.List;
+ 
+ @Service
+ public class FactoryService {
+ 
+     private final CompanyContextService companyContextService;
+     private final ProductionPlanRepository planRepository;
+     private final ProductionBatchRepository batchRepository;
+     private final FactoryTaskRepository taskRepository;
++    private final FinishedGoodsService finishedGoodsService;
+     private final CompanyEntityLookup companyEntityLookup;
+ 
+     public FactoryService(CompanyContextService companyContextService,
+                           ProductionPlanRepository planRepository,
+                           ProductionBatchRepository batchRepository,
+                           FactoryTaskRepository taskRepository,
++                          FinishedGoodsService finishedGoodsService,
+                           CompanyEntityLookup companyEntityLookup) {
+         this.companyContextService = companyContextService;
+         this.planRepository = planRepository;
+         this.batchRepository = batchRepository;
+         this.taskRepository = taskRepository;
++        this.finishedGoodsService = finishedGoodsService;
+         this.companyEntityLookup = companyEntityLookup;
+     }
+ 
+     public List<ProductionPlanDto> listPlans() {
+         Company company = companyContextService.requireCurrentCompany();
+         return planRepository.findByCompanyOrderByPlannedDateDesc(company).stream().map(this::toDto).toList();
+     }
+ 
+     @Transactional
+     public ProductionPlanDto createPlan(ProductionPlanRequest request) {
+         Company company = companyContextService.requireCurrentCompany();
+         ProductionPlan plan = new ProductionPlan();
+         plan.setCompany(company);
+         plan.setPlanNumber(request.planNumber());
+         plan.setProductName(request.productName());
+         plan.setQuantity(request.quantity());
+         plan.setPlannedDate(request.plannedDate());
+         plan.setNotes(request.notes());
+         return toDto(planRepository.save(plan));
+     }
+ 
+     @Transactional
+     public ProductionPlanDto updatePlan(Long id, ProductionPlanRequest request) {
+         ProductionPlan plan = requirePlan(id);
+         plan.setProductName(request.productName());
+@@ -69,94 +76,113 @@ public class FactoryService {
+     public void deletePlan(Long id) {
+         planRepository.delete(requirePlan(id));
+     }
+ 
+     private ProductionPlan requirePlan(Long id) {
+         Company company = companyContextService.requireCurrentCompany();
+         return companyEntityLookup.requireProductionPlan(company, id);
+     }
+ 
+     private ProductionPlanDto toDto(ProductionPlan plan) {
+         return new ProductionPlanDto(plan.getId(), plan.getPublicId(), plan.getPlanNumber(), plan.getProductName(),
+                 plan.getQuantity(), plan.getPlannedDate(), plan.getStatus(), plan.getNotes());
+     }
+ 
+     /* Batches */
+     public List<ProductionBatchDto> listBatches() {
+         Company company = companyContextService.requireCurrentCompany();
+         return batchRepository.findByCompanyOrderByProducedAtDesc(company).stream().map(this::toDto).toList();
+     }
+ 
+     @Transactional
+     public ProductionBatchDto logBatch(Long planId, ProductionBatchRequest request) {
+         Company company = companyContextService.requireCurrentCompany();
+         ProductionBatch batch = new ProductionBatch();
+         batch.setCompany(company);
++        ProductionPlan plan = null;
+         if (planId != null) {
+-            batch.setPlan(requirePlan(planId));
++            plan = requirePlan(planId);
++            batch.setPlan(plan);
+         }
+         batch.setBatchNumber(request.batchNumber());
+         batch.setQuantityProduced(request.quantityProduced());
+         batch.setLoggedBy(request.loggedBy());
+         batch.setNotes(request.notes());
+         ProductionBatch saved = batchRepository.save(batch);
++
++        if (plan != null) {
++            FinishedGood finishedGood = finishedGoodsService.lockFinishedGoodByProductCode(plan.getProductName());
++            FinishedGoodBatchRequest batchRequest = new FinishedGoodBatchRequest(
++                    finishedGood.getId(),
++                    saved.getBatchNumber(),
++                    BigDecimal.valueOf(saved.getQuantityProduced()),
++                    finishedGoodsService.currentWeightedAverageCost(finishedGood),
++                    saved.getProducedAt(),
++                    null
++            );
++            finishedGoodsService.registerBatch(batchRequest);
++        }
+         return toDto(saved);
+     }
+ 
+     private ProductionBatchDto toDto(ProductionBatch batch) {
+         return new ProductionBatchDto(batch.getId(), batch.getPublicId(), batch.getBatchNumber(), batch.getQuantityProduced(),
+                 batch.getProducedAt(), batch.getLoggedBy(), batch.getNotes());
+     }
+ 
+     /* Tasks */
+     public List<FactoryTaskDto> listTasks() {
+         Company company = companyContextService.requireCurrentCompany();
+         return taskRepository.findByCompanyOrderByCreatedAtDesc(company).stream().map(this::toDto).toList();
+     }
+ 
+     @Transactional
+     public FactoryTaskDto createTask(FactoryTaskRequest request) {
+         Company company = companyContextService.requireCurrentCompany();
+         FactoryTask task = new FactoryTask();
+         task.setCompany(company);
+         task.setTitle(request.title());
+         task.setDescription(request.description());
+         task.setAssignee(request.assignee());
+         if (request.status() != null) {
+             task.setStatus(request.status());
+         }
+         task.setDueDate(request.dueDate());
++        task.setSalesOrderId(request.salesOrderId());
++        task.setPackagingSlipId(request.packagingSlipId());
+         return toDto(taskRepository.save(task));
+     }
+ 
+     @Transactional
+     public FactoryTaskDto updateTask(Long id, FactoryTaskRequest request) {
+         FactoryTask task = requireTask(id);
+         task.setTitle(request.title());
+         task.setDescription(request.description());
+         task.setAssignee(request.assignee());
+         if (request.status() != null) {
+             task.setStatus(request.status());
+         }
+         task.setDueDate(request.dueDate());
++        task.setSalesOrderId(request.salesOrderId());
++        task.setPackagingSlipId(request.packagingSlipId());
+         return toDto(task);
+     }
+ 
+     private FactoryTaskDto toDto(FactoryTask task) {
+         return new FactoryTaskDto(task.getId(), task.getPublicId(), task.getTitle(), task.getDescription(), task.getAssignee(),
+-                task.getStatus(), task.getDueDate());
++                task.getStatus(), task.getDueDate(), task.getSalesOrderId(), task.getPackagingSlipId());
+     }
+ 
+     private FactoryTask requireTask(Long id) {
+         Company company = companyContextService.requireCurrentCompany();
+         return companyEntityLookup.requireFactoryTask(company, id);
+     }
+ 
+     /* Dashboard */
+     public FactoryDashboardDto dashboard() {
+         List<ProductionPlanDto> plans = listPlans();
+         List<ProductionBatchDto> batches = listBatches();
+         double efficiency = plans.isEmpty() ? 0 : (double) batches.size() / plans.size();
+         return new FactoryDashboardDto(efficiency, plans.stream().filter(p -> "COMPLETED".equals(p.status())).count(),
+                 batches.size(), List.of());
+     }
+ }
+diff --git a/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/service/FinishedGoodsService.java b/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/service/FinishedGoodsService.java
+index 31eb31f9b3533db7176fe26c64ac3548eef95ec9..e880b5a165066a4782439102fbcd3940811c8613 100644
+--- a/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/service/FinishedGoodsService.java
++++ b/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/service/FinishedGoodsService.java
+@@ -58,50 +58,59 @@ public class FinishedGoodsService {
+         this.finishedGoodBatchRepository = finishedGoodBatchRepository;
+         this.packagingSlipRepository = packagingSlipRepository;
+         this.inventoryMovementRepository = inventoryMovementRepository;
+         this.inventoryReservationRepository = inventoryReservationRepository;
+         this.batchNumberService = batchNumberService;
+         this.salesOrderRepository = salesOrderRepository;
+         this.companyDefaultAccountsService = companyDefaultAccountsService;
+         this.eventPublisher = eventPublisher;
+     }
+ 
+     public List<FinishedGoodDto> listFinishedGoods() {
+         Company company = companyContextService.requireCurrentCompany();
+         return finishedGoodRepository.findByCompanyOrderByProductCodeAsc(company)
+                 .stream()
+                 .map(this::toDto)
+                 .toList();
+     }
+ 
+     public FinishedGoodDto getFinishedGood(Long id) {
+         Company company = companyContextService.requireCurrentCompany();
+         FinishedGood fg = finishedGoodRepository.findByCompanyAndId(company, id)
+                 .orElseThrow(() -> new IllegalArgumentException("Finished good not found"));
+         return toDto(fg);
+     }
+ 
++    public FinishedGood lockFinishedGoodByProductCode(String productCode) {
++        Company company = companyContextService.requireCurrentCompany();
++        return lockFinishedGood(company, productCode);
++    }
++
++    public BigDecimal currentWeightedAverageCost(FinishedGood fg) {
++        return weightedAverageCost(fg);
++    }
++
+     @Transactional
+     public FinishedGoodDto updateFinishedGood(Long id, FinishedGoodRequest request) {
+         Company company = companyContextService.requireCurrentCompany();
+         FinishedGood fg = finishedGoodRepository.lockByCompanyAndId(company, id)
+                 .orElseThrow(() -> new IllegalArgumentException("Finished good not found"));
+         if (request.name() != null) {
+             fg.setName(request.name());
+         }
+         if (request.unit() != null) {
+             fg.setUnit(request.unit());
+         }
+         if (request.costingMethod() != null) {
+             fg.setCostingMethod(request.costingMethod());
+         }
+         if (request.valuationAccountId() != null) {
+             fg.setValuationAccountId(request.valuationAccountId());
+         }
+         if (request.cogsAccountId() != null) {
+             fg.setCogsAccountId(request.cogsAccountId());
+         }
+         if (request.revenueAccountId() != null) {
+             fg.setRevenueAccountId(request.revenueAccountId());
+         }
+         if (request.discountAccountId() != null) {
+             fg.setDiscountAccountId(request.discountAccountId());
+@@ -199,52 +208,58 @@ public class FinishedGoodsService {
+     }
+ 
+     public List<PackagingSlipDto> listPackagingSlips() {
+         Company company = companyContextService.requireCurrentCompany();
+         return packagingSlipRepository.findByCompanyOrderByCreatedAtDesc(company)
+                 .stream()
+                 .map(this::toSlipDto)
+                 .toList();
+     }
+ 
+     @Transactional
+     public InventoryReservationResult reserveForOrder(SalesOrder order) {
+         Company company = companyContextService.requireCurrentCompany();
+         SalesOrder managedOrder = salesOrderRepository.findWithItemsByCompanyAndId(company, order.getId())
+                 .orElseThrow(() -> new IllegalArgumentException("Sales order not found: " + order.getId()));
+         PackagingSlip slip = packagingSlipRepository.findByCompanyAndSalesOrderId(company, order.getId())
+                 .orElseGet(() -> createSlip(order));
+ 
+         if ("CANCELLED".equalsIgnoreCase(slip.getStatus())) {
+             slip.getLines().clear();
+             slip.setStatus("PENDING");
+             packagingSlipRepository.save(slip);
+         }
+ 
+         if (!slip.getLines().isEmpty()) {
+-            updateSlipStatusBasedOnAvailability(slip, List.of());
+-            return new InventoryReservationResult(toSlipDto(slip), List.of());
++            if (slipLinesMatchOrder(slip, managedOrder)) {
++                updateSlipStatusBasedOnAvailability(slip, List.of());
++                return new InventoryReservationResult(toSlipDto(slip), List.of());
++            }
++            releaseReservationsForOrder(managedOrder.getId());
++            slip.getLines().clear();
++            slip.setStatus("PENDING");
++            packagingSlipRepository.save(slip);
+         }
+ 
+         List<InventoryShortage> shortages = new ArrayList<>();
+         for (SalesOrderItem item : managedOrder.getItems()) {
+             FinishedGood finishedGood = lockFinishedGood(managedOrder.getCompany(), item.getProductCode());
+             allocateItem(managedOrder, slip, finishedGood, item, shortages);
+         }
+ 
+         if (shortages.isEmpty()) {
+             slip.setStatus("RESERVED");
+         } else {
+             slip.setStatus("PENDING_PRODUCTION");
+         }
+         packagingSlipRepository.save(slip);
+         // Soft reservation only: do not throw on shortages; caller can choose to dispatch partial/backorder
+         updateSlipStatusBasedOnAvailability(slip, shortages);
+         return new InventoryReservationResult(toSlipDto(slip), List.copyOf(shortages));
+     }
+ 
+     /**
+      * Release all reservations for an order (e.g., when order is cancelled).
+      * Returns reserved stock back to available and cancels reservation records.
+      */
+     @Transactional
+     public void releaseReservationsForOrder(Long orderId) {
+@@ -360,51 +375,51 @@ public class FinishedGoodsService {
+ 
+     /**
+      * Dispatch using slip line quantities (supports override quantities from confirmDispatch).
+      * Uses the slip line quantities which may have been updated with dispatch overrides.
+      */
+     @Transactional
+     public List<DispatchPosting> markSlipDispatched(Long salesOrderId, PackagingSlip slip) {
+         if ("DISPATCHED".equalsIgnoreCase(slip.getStatus())) {
+             return List.of();
+         }
+ 
+         // Build map of batch ID to requested quantity from slip lines
+         Map<Long, BigDecimal> slipLineQtyByBatch = new HashMap<>();
+         for (var slipLine : slip.getLines()) {
+             if (slipLine.getFinishedGoodBatch() != null && slipLine.getQuantity() != null) {
+                 slipLineQtyByBatch.put(slipLine.getFinishedGoodBatch().getId(), slipLine.getQuantity());
+             }
+         }
+ 
+         List<InventoryReservation> reservations = inventoryReservationRepository
+                 .findByFinishedGoodCompanyAndReferenceTypeAndReferenceId(
+                         slip.getCompany(),
+                         InventoryReference.SALES_ORDER,
+                         salesOrderId.toString());
+         if (reservations.isEmpty()) {
+-            throw new IllegalStateException("No reservations found for order " + salesOrderId);
++            reservations = rebuildReservationsFromSlip(slip, salesOrderId);
+         }
+ 
+         Map<Long, FinishedGood> lockedGoods = lockFinishedGoodsInOrder(
+                 slip.getCompany(),
+                 reservations.stream()
+                         .map(r -> r.getFinishedGood().getId())
+                         .collect(Collectors.toSet()));
+ 
+         Map<Long, DispatchPostingBuilder> postingBuilders = new HashMap<>();
+         List<FinishedGoodBatch> batchesToSave = new ArrayList<>();
+         for (InventoryReservation reservation : reservations) {
+             // Use slip line quantity if available (supports overrides), fallback to reservation
+             BigDecimal requested;
+             if (reservation.getFinishedGoodBatch() != null && 
+                 slipLineQtyByBatch.containsKey(reservation.getFinishedGoodBatch().getId())) {
+                 requested = slipLineQtyByBatch.get(reservation.getFinishedGoodBatch().getId());
+             } else {
+                 requested = reservation.getReservedQuantity() != null ? reservation.getReservedQuantity() : reservation.getQuantity();
+             }
+             if (requested == null) {
+                 requested = BigDecimal.ZERO;
+             }
+             FinishedGood fg = lockedGoods.get(reservation.getFinishedGood().getId());
+             FinishedGoodBatch batch = reservation.getFinishedGoodBatch();
+             BigDecimal current = fg.getCurrentStock() == null ? BigDecimal.ZERO : fg.getCurrentStock();
+@@ -875,50 +890,98 @@ public class FinishedGoodsService {
+             slip.getLines().add(line);
+ 
+             InventoryReservation reservation = new InventoryReservation();
+             reservation.setFinishedGood(finishedGood);
+             reservation.setFinishedGoodBatch(batch);
+             reservation.setReferenceType(InventoryReference.SALES_ORDER);
+             reservation.setReferenceId(order.getId().toString());
+             reservation.setQuantity(allocation);
+             reservation.setReservedQuantity(allocation);
+             reservation.setStatus("RESERVED");
+             inventoryReservationRepository.save(reservation);
+ 
+             recordMovement(finishedGood, batch, InventoryReference.SALES_ORDER, order.getId().toString(), "RESERVE", allocation, batch.getUnitCost());
+             remaining = remaining.subtract(allocation);
+         }
+ 
+         if (remaining.compareTo(BigDecimal.ZERO) > 0) {
+             shortages.add(new InventoryShortage(finishedGood.getProductCode(), remaining, finishedGood.getName()));
+         }
+     }
+ 
+     private BigDecimal safeQuantity(BigDecimal value) {
+         return value != null ? value : BigDecimal.ZERO;
+     }
+ 
++    private boolean slipLinesMatchOrder(PackagingSlip slip, SalesOrder order) {
++        if (slip.getLines() == null || slip.getLines().isEmpty()) {
++            return false;
++        }
++        Map<String, BigDecimal> slipQuantities = new HashMap<>();
++        for (PackagingSlipLine line : slip.getLines()) {
++            if (line.getFinishedGoodBatch() == null || line.getFinishedGoodBatch().getFinishedGood() == null) {
++                return false;
++            }
++            String productCode = line.getFinishedGoodBatch().getFinishedGood().getProductCode();
++            BigDecimal orderedQty = safeQuantity(line.getOrderedQuantity() != null ? line.getOrderedQuantity() : line.getQuantity());
++            slipQuantities.merge(productCode, orderedQty, BigDecimal::add);
++        }
++
++        for (SalesOrderItem item : order.getItems()) {
++            BigDecimal slipQty = slipQuantities.get(item.getProductCode());
++            if (slipQty == null || slipQty.compareTo(safeQuantity(item.getQuantity())) != 0) {
++                return false;
++            }
++            slipQuantities.remove(item.getProductCode());
++        }
++        return slipQuantities.isEmpty();
++    }
++
++    private List<InventoryReservation> rebuildReservationsFromSlip(PackagingSlip slip, Long salesOrderId) {
++        if (slip.getLines() == null || slip.getLines().isEmpty()) {
++            throw new IllegalStateException("No packaging slip lines available to rebuild reservations for order " + salesOrderId);
++        }
++        List<InventoryReservation> rebuilt = new ArrayList<>();
++        for (PackagingSlipLine line : slip.getLines()) {
++            FinishedGoodBatch batch = line.getFinishedGoodBatch();
++            if (batch == null || batch.getFinishedGood() == null) {
++                throw new IllegalStateException("Cannot rebuild reservation without a finished good batch");
++            }
++            InventoryReservation reservation = new InventoryReservation();
++            reservation.setFinishedGood(batch.getFinishedGood());
++            reservation.setFinishedGoodBatch(batch);
++            reservation.setReferenceType(InventoryReference.SALES_ORDER);
++            reservation.setReferenceId(salesOrderId.toString());
++            BigDecimal qty = safeQuantity(line.getQuantity());
++            reservation.setQuantity(qty);
++            reservation.setReservedQuantity(qty);
++            reservation.setStatus("RESERVED");
++            rebuilt.add(reservation);
++        }
++        return inventoryReservationRepository.saveAll(rebuilt);
++    }
++
+     private List<FinishedGoodBatch> selectBatchesByCostingMethod(FinishedGood finishedGood) {
+         String method = finishedGood.getCostingMethod() == null ? "FIFO" : finishedGood.getCostingMethod().trim().toUpperCase();
+         return switch (method) {
+             case "LIFO" -> finishedGoodBatchRepository.findAllocatableBatchesLIFO(finishedGood);
+             default -> finishedGoodBatchRepository.findAllocatableBatchesFIFO(finishedGood);
+         };
+     }
+ 
+     private FinishedGood lockFinishedGood(Long id) {
+         Company company = companyContextService.requireCurrentCompany();
+         return lockFinishedGood(company, id);
+     }
+ 
+     private FinishedGood lockFinishedGood(Company company, Long id) {
+         return finishedGoodRepository.lockByCompanyAndId(company, id)
+                 .orElseThrow(() -> new IllegalArgumentException("Finished good not found"));
+     }
+ 
+     private FinishedGood lockFinishedGood(Company company, String productCode) {
+         return finishedGoodRepository.lockByCompanyAndProductCode(company, productCode)
+                 .orElseThrow(() -> new IllegalArgumentException("Finished good not found for product code " + productCode));
+     }
+ 
+     private void recordMovement(FinishedGood finishedGood,
+                                 FinishedGoodBatch batch,
+diff --git a/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/service/SalesService.java b/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/service/SalesService.java
+index 56c279c1a5b5a5a55bd3f21592166a519ec3ce64..58a8cd68b0e3d31f39b1f7d56edfb03613d0079f 100644
+--- a/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/service/SalesService.java
++++ b/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/service/SalesService.java
+@@ -254,51 +254,52 @@ public class SalesService {
+         }
+         List<PricedOrderLine> items = resolveOrderItems(company, request.items(), gstTreatment, orderLevelRate);
+         SalesOrder order = new SalesOrder();
+         order.setCompany(company);
+         order.setDealer(dealer);
+         order.setOrderNumber(orderNumberService.nextOrderNumber(company));
+         order.setStatus("BOOKED");
+         order.setCurrency(request.currency() == null ? "INR" : request.currency());
+         order.setNotes(request.notes());
+         order.setIdempotencyKey(idempotencyKey);
+         OrderAmountSummary amounts = mapOrderItems(order, items, gstTreatment, orderLevelRate, gstInclusive);
+         validateTotalAmount(request.totalAmount(), amounts.total());
+         enforceCreditLimit(order.getDealer(), amounts.total());
+         SalesOrder saved = salesOrderRepository.save(order);
+ 
+         // Reserve available stock - shortages will be handled as production tasks
+         FinishedGoodsService.InventoryReservationResult reservationResult = finishedGoodsService.reserveForOrder(saved);
+ 
+         // Determine order status based on reservation result
+         if (reservationResult.shortages().isEmpty()) {
+             // Full stock available - order is ready to dispatch
+             saved.setStatus("RESERVED");
+         } else {
+             // Partial or no stock - create production tasks for shortages
+             saved.setStatus("PENDING_PRODUCTION");
+-            createShortageTasksForOrder(company, saved, reservationResult.shortages());
++            Long packagingSlipId = reservationResult.packagingSlip() != null ? reservationResult.packagingSlip().id() : null;
++            createShortageTasksForOrder(company, saved, reservationResult.shortages(), packagingSlipId);
+         }
+         salesOrderRepository.save(saved);
+ 
+         eventPublisher.publishEvent(new SalesOrderCreatedEvent(saved.getId(), company.getCode(), saved.getTotalAmount()));
+         return toDto(saved);
+     }
+ 
+     @Transactional
+     public SalesOrderDto updateOrder(Long id, SalesOrderRequest request) {
+         SalesOrder order = requireOrder(id);
+         GstTreatment gstTreatment = resolveGstTreatment(request.gstTreatment());
+         BigDecimal orderLevelRate = resolveOrderLevelRate(order.getCompany(), gstTreatment, request.gstRate());
+         boolean gstInclusive = Boolean.TRUE.equals(request.gstInclusive());
+         Dealer dealer = null;
+         if (request.dealerId() != null) {
+             dealer = requireDealer(request.dealerId());
+             if ("ON_HOLD".equalsIgnoreCase(dealer.getStatus())) {
+                 throw new IllegalStateException("Dealer " + dealer.getName() + " is on hold");
+             }
+         }
+         List<PricedOrderLine> items = resolveOrderItems(order.getCompany(), request.items(), gstTreatment, orderLevelRate);
+         if (dealer != null) {
+             order.setDealer(dealer);
+         }
+         order.setCurrency(request.currency());
+@@ -309,50 +310,51 @@ public class SalesService {
+     }
+ 
+     public void deleteOrder(Long id) {
+         SalesOrder order = requireOrder(id);
+         salesOrderRepository.delete(order);
+     }
+ 
+     @Transactional
+     public SalesOrderDto confirmOrder(Long id) {
+         SalesOrder order = requireOrder(id);
+         order.setStatus("CONFIRMED");
+         return toDto(order);
+     }
+ 
+     @Transactional
+     public SalesOrderDto cancelOrder(Long id, String reason) {
+         SalesOrder order = requireOrder(id);
+         String currentStatus = order.getStatus();
+ 
+         // Release any reserved inventory before cancelling
+         if ("RESERVED".equalsIgnoreCase(currentStatus) ||
+             "BOOKED".equalsIgnoreCase(currentStatus) ||
+             "CONFIRMED".equalsIgnoreCase(currentStatus) ||
+             "PENDING_PRODUCTION".equalsIgnoreCase(currentStatus)) {
+             finishedGoodsService.releaseReservationsForOrder(order.getId());
++            cancelFactoryTasksForOrder(order);
+         }
+ 
+         order.setStatus("CANCELLED");
+         order.setNotes(reason);
+         return toDto(order);
+     }
+ 
+     @Transactional
+     public SalesOrderDto updateStatus(Long id, String status) {
+         SalesOrder order = requireOrder(id);
+         order.setStatus(status);
+         return toDto(order);
+     }
+ 
+     @Transactional
+     public void attachTraceId(Long id, String traceId) {
+         SalesOrder order = requireOrder(id);
+         order.setTraceId(traceId);
+     }
+ 
+     private SalesOrder requireOrder(Long id) {
+         Company company = companyContextService.requireCurrentCompany();
+         return companyEntityLookup.requireSalesOrder(company, id);
+     }
+ 
+@@ -646,84 +648,101 @@ public class SalesService {
+         if (limit == null || limit.compareTo(BigDecimal.ZERO) <= 0) {
+             return;
+         }
+         BigDecimal outstanding = dealerLedgerService.currentBalance(lockedDealer.getId());
+         if (outstanding == null) {
+             outstanding = BigDecimal.ZERO;
+         }
+         BigDecimal total = orderTotal == null ? BigDecimal.ZERO : orderTotal;
+         BigDecimal projected = outstanding.add(total);
+         if (projected.compareTo(limit) > 0) {
+             throw new IllegalStateException(String.format(
+                     "Dealer %s credit limit exceeded. Limit %.2f, outstanding %.2f, attempted order %.2f",
+                     lockedDealer.getName(),
+                     limit,
+                     outstanding,
+                     total));
+         }
+     }
+ 
+     /**
+      * Create production tasks for stock shortages.
+      * Tasks are prioritized based on shortage quantity - no pricing info shared with factory.
+      */
+     private void createShortageTasksForOrder(Company company,
+                                              SalesOrder order,
+-                                             List<FinishedGoodsService.InventoryShortage> shortages) {
++                                             List<FinishedGoodsService.InventoryShortage> shortages,
++                                             Long packagingSlipId) {
+         for (FinishedGoodsService.InventoryShortage shortage : shortages) {
+             BigDecimal shortageQty = shortage.shortageQuantity();
+ 
+             // Determine urgency based on shortage quantity
+             String urgencyPrefix;
+             LocalDate dueDate;
+             if (shortageQty.compareTo(new BigDecimal("100")) >= 0) {
+                 urgencyPrefix = "[URGENT] ";
+                 dueDate = LocalDate.now().plusDays(1); // Large shortage - due tomorrow
+             } else if (shortageQty.compareTo(new BigDecimal("50")) >= 0) {
+                 urgencyPrefix = "[HIGH] ";
+                 dueDate = LocalDate.now().plusDays(3); // Medium shortage - 3 days
+             } else {
+                 urgencyPrefix = "";
+                 dueDate = LocalDate.now().plusDays(7); // Small shortage - 1 week
+             }
+ 
+             FactoryTask task = new FactoryTask();
+             task.setCompany(company);
+             task.setTitle(urgencyPrefix + "Production required: " + shortage.productCode());
+             task.setDescription(String.format(
+                     "Order #%s requires production of %s (%s).\nQuantity needed: %s units",
+                     order.getOrderNumber(),
+                     shortage.productCode(),
+                     shortage.productName(),
+                     shortageQty
+             ));
+             task.setStatus("PENDING");
+             task.setDueDate(dueDate);
++            task.setSalesOrderId(order.getId());
++            task.setPackagingSlipId(packagingSlipId);
+             factoryTaskRepository.save(task);
+         }
+     }
+ 
++    private void cancelFactoryTasksForOrder(SalesOrder order) {
++        if (order == null || order.getId() == null) {
++            return;
++        }
++        List<FactoryTask> tasks = factoryTaskRepository.findByCompanyAndSalesOrderId(order.getCompany(), order.getId());
++        if (tasks.isEmpty()) {
++            return;
++        }
++        for (FactoryTask task : tasks) {
++            task.setStatus("CANCELLED");
++        }
++        factoryTaskRepository.saveAll(tasks);
++    }
++
+     private record PricedOrderLine(ProductionProduct product,
+                                    String description,
+                                    BigDecimal quantity,
+                                    BigDecimal unitPrice,
+                                    BigDecimal gstRate) {}
+ 
+     private void requireRevenueAccount(FinishedGood finishedGood) {
+         if (finishedGood.getRevenueAccountId() == null) {
+             throw new IllegalStateException("Finished good " + finishedGood.getProductCode()
+                     + " is missing a revenue account");
+         }
+     }
+ 
+     private boolean requiresTaxAccount(GstTreatment treatment, BigDecimal orderLevelRate, BigDecimal lineRate) {
+         return switch (treatment) {
+             case NONE -> false;
+             case PER_ITEM -> lineRate != null && lineRate.compareTo(BigDecimal.ZERO) > 0;
+             case ORDER_TOTAL -> orderLevelRate != null && orderLevelRate.compareTo(BigDecimal.ZERO) > 0;
+         };
+     }
+ 
+     private record OrderAmountSummary(BigDecimal subtotal,
+                                       BigDecimal tax,
+                                       BigDecimal total,
+                                       BigDecimal rounding) {}
+diff --git a/erp-domain/src/main/java/com/bigbrightpaints/erp/orchestrator/service/IntegrationCoordinator.java b/erp-domain/src/main/java/com/bigbrightpaints/erp/orchestrator/service/IntegrationCoordinator.java
+index 6961dff1fbeec2b7622b2cceeb6a44bac3eff632..cca9be4540318bb3a2873b5edf074833afbe0a7f 100644
+--- a/erp-domain/src/main/java/com/bigbrightpaints/erp/orchestrator/service/IntegrationCoordinator.java
++++ b/erp-domain/src/main/java/com/bigbrightpaints/erp/orchestrator/service/IntegrationCoordinator.java
+@@ -442,51 +442,53 @@ public class IntegrationCoordinator {
+         return Map.of("operating", cashflow.operating(),
+                 "investing", cashflow.investing(),
+                 "financing", cashflow.financing(),
+                 "net", cashflow.netChange());
+     }
+ 
+     private void scheduleUrgentProduction(SalesOrder order, List<InventoryShortage> shortages) {
+         if (shortages == null || shortages.isEmpty()) {
+             return;
+         }
+         LocalDate today = LocalDate.now();
+         for (InventoryShortage shortage : shortages) {
+             ProductionPlanRequest planRequest = new ProductionPlanRequest(
+                     "URG-" + order.getId() + "-" + shortage.productCode(),
+                     shortage.productName() + " (" + shortage.productCode() + ")",
+                     shortage.shortageQuantity().doubleValue(),
+                     today,
+                     "Urgent replenishment for order " + order.getOrderNumber());
+             factoryService.createPlan(planRequest);
+ 
+             FactoryTaskRequest taskRequest = new FactoryTaskRequest(
+                     "Urgent build " + shortage.productCode(),
+                     "Short by " + shortage.shortageQuantity() + " units for order " + order.getOrderNumber(),
+                     "production",
+                     "URGENT",
+-                    today.plusDays(1));
++                    today.plusDays(1),
++                    order.getId(),
++                    null);
+             factoryService.createTask(taskRequest);
+         }
+     }
+ 
+     private OrderAutoApprovalState lockAutoApprovalState(String companyId, Long orderId) {
+         return txTemplate.execute(status -> orderAutoApprovalStateRepository.findByCompanyCodeAndOrderId(companyId, orderId)
+                 .orElseGet(() -> {
+                     try {
+                         orderAutoApprovalStateRepository.save(new OrderAutoApprovalState(companyId, orderId));
+                     } catch (DataIntegrityViolationException ex) {
+                         log.warn("Auto-approval state already exists for order {} in company {}; retrying fetch", orderId, companyId);
+                     }
+                     return orderAutoApprovalStateRepository.findByCompanyCodeAndOrderId(companyId, orderId)
+                             .orElseThrow(() -> new IllegalStateException("Unable to initialize auto-approval state"));
+                 }));
+     }
+ 
+     private void runWithCompanyContext(String companyId, Runnable action) {
+         withCompanyContext(companyId, () -> {
+             action.run();
+             return null;
+         });
+     }
+ 
+     private <T> T withCompanyContext(String companyId, Supplier<T> callback) {

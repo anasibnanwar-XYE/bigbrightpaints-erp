@@ -35,6 +35,12 @@ public class FactoryTask extends VersionedEntity {
 
     private LocalDate dueDate;
 
+    @Column(name = "sales_order_id")
+    private Long salesOrderId;
+
+    @Column(name = "packaging_slip_id")
+    private Long packagingSlipId;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -62,4 +68,8 @@ public class FactoryTask extends VersionedEntity {
     public void setStatus(String status) { this.status = status; }
     public LocalDate getDueDate() { return dueDate; }
     public void setDueDate(LocalDate dueDate) { this.dueDate = dueDate; }
+    public Long getSalesOrderId() { return salesOrderId; }
+    public void setSalesOrderId(Long salesOrderId) { this.salesOrderId = salesOrderId; }
+    public Long getPackagingSlipId() { return packagingSlipId; }
+    public void setPackagingSlipId(Long packagingSlipId) { this.packagingSlipId = packagingSlipId; }
 }

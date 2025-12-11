@@ -464,7 +464,9 @@ public class IntegrationCoordinator {
                     "Short by " + shortage.shortageQuantity() + " units for order " + order.getOrderNumber(),
                     "production",
                     "URGENT",
-                    today.plusDays(1));
+                    today.plusDays(1),
+                    order.getId(),
+                    null);
             factoryService.createTask(taskRequest);
         }
     }

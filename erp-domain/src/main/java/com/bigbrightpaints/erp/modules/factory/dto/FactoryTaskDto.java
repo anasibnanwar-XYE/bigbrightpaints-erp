@@ -9,4 +9,6 @@ public record FactoryTaskDto(Long id,
                              String description,
                              String assignee,
                              String status,
-                             LocalDate dueDate) {}
+                             LocalDate dueDate,
+                             Long salesOrderId,
+                             Long packagingSlipId) {}

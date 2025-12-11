@@ -5,9 +5,13 @@ import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.factory.domain.*;
 import com.bigbrightpaints.erp.modules.factory.dto.*;
+import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
+import com.bigbrightpaints.erp.modules.inventory.dto.FinishedGoodBatchRequest;
+import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
 import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @Service
@@ -17,17 +21,20 @@ public class FactoryService {
     private final ProductionPlanRepository planRepository;
     private final ProductionBatchRepository batchRepository;
     private final FactoryTaskRepository taskRepository;
+    private final FinishedGoodsService finishedGoodsService;
     private final CompanyEntityLookup companyEntityLookup;
 
     public FactoryService(CompanyContextService companyContextService,
                           ProductionPlanRepository planRepository,
                           ProductionBatchRepository batchRepository,
                           FactoryTaskRepository taskRepository,
+                          FinishedGoodsService finishedGoodsService,
                           CompanyEntityLookup companyEntityLookup) {
         this.companyContextService = companyContextService;
         this.planRepository = planRepository;
         this.batchRepository = batchRepository;
         this.taskRepository = taskRepository;
+        this.finishedGoodsService = finishedGoodsService;
         this.companyEntityLookup = companyEntityLookup;
     }
 
@@ -86,19 +93,38 @@ public class FactoryService {
         return batchRepository.findByCompanyOrderByProducedAtDesc(company).stream().map(this::toDto).toList();
     }
 
+    /**
+     * @deprecated Use ProductionLogService#createLog for production receipts; this path is a lightweight
+     *             batch logger and should not be called alongside production logs for the same batch.
+     */
+    @Deprecated
     @Transactional
     public ProductionBatchDto logBatch(Long planId, ProductionBatchRequest request) {
         Company company = companyContextService.requireCurrentCompany();
         ProductionBatch batch = new ProductionBatch();
         batch.setCompany(company);
-        if (planId != null) {
-            batch.setPlan(requirePlan(planId));
+        ProductionPlan plan = planId != null ? requirePlan(planId) : null;
+        if (plan != null) {
+            batch.setPlan(plan);
         }
         batch.setBatchNumber(request.batchNumber());
         batch.setQuantityProduced(request.quantityProduced());
         batch.setLoggedBy(request.loggedBy());
         batch.setNotes(request.notes());
         ProductionBatch saved = batchRepository.save(batch);
+
+        if (plan != null) {
+            FinishedGood finishedGood = finishedGoodsService.lockFinishedGoodByProductCode(plan.getProductName());
+            FinishedGoodBatchRequest batchRequest = new FinishedGoodBatchRequest(
+                    finishedGood.getId(),
+                    saved.getBatchNumber(),
+                    BigDecimal.valueOf(saved.getQuantityProduced()),
+                    finishedGoodsService.currentWeightedAverageCost(finishedGood),
+                    saved.getProducedAt(),
+                    null
+            );
+            finishedGoodsService.registerBatch(batchRequest);
+        }
         return toDto(saved);
     }
 
@@ -125,6 +151,8 @@ public class FactoryService {
             task.setStatus(request.status());
         }
         task.setDueDate(request.dueDate());
+        task.setSalesOrderId(request.salesOrderId());
+        task.setPackagingSlipId(request.packagingSlipId());
         return toDto(taskRepository.save(task));
     }
 
@@ -138,12 +166,14 @@ public class FactoryService {
             task.setStatus(request.status());
         }
         task.setDueDate(request.dueDate());
+        task.setSalesOrderId(request.salesOrderId());
+        task.setPackagingSlipId(request.packagingSlipId());
         return toDto(task);
     }
 
     private FactoryTaskDto toDto(FactoryTask task) {
         return new FactoryTaskDto(task.getId(), task.getPublicId(), task.getTitle(), task.getDescription(), task.getAssignee(),
-                task.getStatus(), task.getDueDate());
+                task.getStatus(), task.getDueDate(), task.getSalesOrderId(), task.getPackagingSlipId());
     }
 
     private FactoryTask requireTask(Long id) {

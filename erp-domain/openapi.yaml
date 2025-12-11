@@ -9,7 +9,7 @@ externalDocs:
   description: ERP Documentation
   url: https://docs.bigbrightpaints.com
 servers:
-- url: http://localhost:62897
+- url: http://localhost:36755
   description: Generated server url
 paths:
   /api/v1/suppliers/{id}:
@@ -5386,6 +5386,12 @@ components:
         dueDate:
           type: string
           format: date
+        salesOrderId:
+          type: integer
+          format: int64
+        packagingSlipId:
+          type: integer
+          format: int64
     ApiResponseFactoryTaskDto:
       type: object
       properties:
@@ -5418,6 +5424,12 @@ components:
         dueDate:
           type: string
           format: date
+        salesOrderId:
+          type: integer
+          format: int64
+        packagingSlipId:
+          type: integer
+          format: int64
     ProductionPlanRequest:
       required:
       - planNumber

@@ -80,6 +80,15 @@ public class FinishedGoodsService {
         return toDto(fg);
     }
 
+    public FinishedGood lockFinishedGoodByProductCode(String productCode) {
+        Company company = companyContextService.requireCurrentCompany();
+        return lockFinishedGood(company, productCode);
+    }
+
+    public BigDecimal currentWeightedAverageCost(FinishedGood fg) {
+        return weightedAverageCost(fg);
+    }
+
     @Transactional
     public FinishedGoodDto updateFinishedGood(Long id, FinishedGoodRequest request) {
         Company company = companyContextService.requireCurrentCompany();
@@ -221,8 +230,16 @@ public class FinishedGoodsService {
         }
 
         if (!slip.getLines().isEmpty()) {
-            updateSlipStatusBasedOnAvailability(slip, List.of());
-            return new InventoryReservationResult(toSlipDto(slip), List.of());
+            if (slipLinesMatchOrder(slip, managedOrder)) {
+                updateSlipStatusBasedOnAvailability(slip, List.of());
+                return new InventoryReservationResult(toSlipDto(slip), List.of());
+            } else {
+                // Rebuild slip to match current order items and reset reservations
+                releaseReservationsForOrder(order.getId());
+                slip.getLines().clear();
+                slip.setStatus("PENDING");
+                packagingSlipRepository.save(slip);
+            }
         }
 
         List<InventoryShortage> shortages = new ArrayList<>();
@@ -382,7 +399,10 @@ public class FinishedGoodsService {
                         InventoryReference.SALES_ORDER,
                         salesOrderId.toString());
         if (reservations.isEmpty()) {
-            throw new IllegalStateException("No reservations found for order " + salesOrderId);
+            reservations = rebuildReservationsFromSlip(slip, salesOrderId);
+            if (reservations.isEmpty()) {
+                throw new IllegalStateException("No reservations found for order " + salesOrderId);
+            }
         }
 
         Map<Long, FinishedGood> lockedGoods = lockFinishedGoodsInOrder(
@@ -895,6 +915,54 @@ public class FinishedGoodsService {
 
     private BigDecimal safeQuantity(BigDecimal value) {
         return value != null ? value : BigDecimal.ZERO;
+    }
+
+    private boolean slipLinesMatchOrder(PackagingSlip slip, SalesOrder order) {
+        if (slip.getLines() == null || slip.getLines().isEmpty()) {
+            return false;
+        }
+        Map<String, BigDecimal> slipQuantities = new HashMap<>();
+        for (PackagingSlipLine line : slip.getLines()) {
+            if (line.getFinishedGoodBatch() == null || line.getFinishedGoodBatch().getFinishedGood() == null) {
+                return false;
+            }
+            String productCode = line.getFinishedGoodBatch().getFinishedGood().getProductCode();
+            BigDecimal orderedQty = safeQuantity(line.getOrderedQuantity() != null ? line.getOrderedQuantity() : line.getQuantity());
+            slipQuantities.merge(productCode, orderedQty, BigDecimal::add);
+        }
+
+        for (SalesOrderItem item : order.getItems()) {
+            BigDecimal slipQty = slipQuantities.get(item.getProductCode());
+            if (slipQty == null || slipQty.compareTo(safeQuantity(item.getQuantity())) != 0) {
+                return false;
+            }
+            slipQuantities.remove(item.getProductCode());
+        }
+        return slipQuantities.isEmpty();
+    }
+
+    private List<InventoryReservation> rebuildReservationsFromSlip(PackagingSlip slip, Long salesOrderId) {
+        if (slip.getLines() == null || slip.getLines().isEmpty()) {
+            throw new IllegalStateException("No packaging slip lines available to rebuild reservations for order " + salesOrderId);
+        }
+        List<InventoryReservation> rebuilt = new ArrayList<>();
+        for (PackagingSlipLine line : slip.getLines()) {
+            FinishedGoodBatch batch = line.getFinishedGoodBatch();
+            if (batch == null || batch.getFinishedGood() == null) {
+                throw new IllegalStateException("Cannot rebuild reservation without a finished good batch");
+            }
+            InventoryReservation reservation = new InventoryReservation();
+            reservation.setFinishedGood(batch.getFinishedGood());
+            reservation.setFinishedGoodBatch(batch);
+            reservation.setReferenceType(InventoryReference.SALES_ORDER);
+            reservation.setReferenceId(salesOrderId.toString());
+            BigDecimal qty = safeQuantity(line.getQuantity());
+            reservation.setQuantity(qty);
+            reservation.setReservedQuantity(qty);
+            reservation.setStatus("RESERVED");
+            rebuilt.add(reservation);
+        }
+        return inventoryReservationRepository.saveAll(rebuilt);
     }
 
     private List<FinishedGoodBatch> selectBatchesByCostingMethod(FinishedGood finishedGood) {

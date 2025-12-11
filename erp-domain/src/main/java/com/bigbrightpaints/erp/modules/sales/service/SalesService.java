@@ -276,7 +276,8 @@ public class SalesService {
         } else {
             // Partial or no stock - create production tasks for shortages
             saved.setStatus("PENDING_PRODUCTION");
-            createShortageTasksForOrder(company, saved, reservationResult.shortages());
+            Long packagingSlipId = reservationResult.packagingSlip() != null ? reservationResult.packagingSlip().id() : null;
+            createShortageTasksForOrder(company, saved, reservationResult.shortages(), packagingSlipId);
         }
         salesOrderRepository.save(saved);
 
@@ -331,6 +332,7 @@ public class SalesService {
             "CONFIRMED".equalsIgnoreCase(currentStatus) ||
             "PENDING_PRODUCTION".equalsIgnoreCase(currentStatus)) {
             finishedGoodsService.releaseReservationsForOrder(order.getId());
+            cancelFactoryTasksForOrder(order);
         }
 
         order.setStatus("CANCELLED");
@@ -668,7 +670,8 @@ public class SalesService {
      */
     private void createShortageTasksForOrder(Company company,
                                              SalesOrder order,
-                                             List<FinishedGoodsService.InventoryShortage> shortages) {
+                                             List<FinishedGoodsService.InventoryShortage> shortages,
+                                             Long packagingSlipId) {
         for (FinishedGoodsService.InventoryShortage shortage : shortages) {
             BigDecimal shortageQty = shortage.shortageQuantity();
 
@@ -698,8 +701,24 @@ public class SalesService {
             ));
             task.setStatus("PENDING");
             task.setDueDate(dueDate);
+            task.setSalesOrderId(order.getId());
+            task.setPackagingSlipId(packagingSlipId);
             factoryTaskRepository.save(task);
         }
+    }
+
+    private void cancelFactoryTasksForOrder(SalesOrder order) {
+        if (order == null || order.getId() == null) {
+            return;
+        }
+        List<FactoryTask> tasks = factoryTaskRepository.findByCompanyAndSalesOrderId(order.getCompany(), order.getId());
+        if (tasks.isEmpty()) {
+            return;
+        }
+        for (FactoryTask task : tasks) {
+            task.setStatus("CANCELLED");
+        }
+        factoryTaskRepository.saveAll(tasks);
     }
 
     private record PricedOrderLine(ProductionProduct product,
