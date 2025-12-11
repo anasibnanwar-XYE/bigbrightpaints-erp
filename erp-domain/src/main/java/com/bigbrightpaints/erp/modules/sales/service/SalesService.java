@@ -328,7 +328,8 @@ public class SalesService {
         // Release any reserved inventory before cancelling
         if ("RESERVED".equalsIgnoreCase(currentStatus) ||
             "BOOKED".equalsIgnoreCase(currentStatus) ||
-            "CONFIRMED".equalsIgnoreCase(currentStatus)) {
+            "CONFIRMED".equalsIgnoreCase(currentStatus) ||
+            "PENDING_PRODUCTION".equalsIgnoreCase(currentStatus)) {
             finishedGoodsService.releaseReservationsForOrder(order.getId());
         }
 

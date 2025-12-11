@@ -214,6 +214,12 @@ public class FinishedGoodsService {
         PackagingSlip slip = packagingSlipRepository.findByCompanyAndSalesOrderId(company, order.getId())
                 .orElseGet(() -> createSlip(order));
 
+        if ("CANCELLED".equalsIgnoreCase(slip.getStatus())) {
+            slip.getLines().clear();
+            slip.setStatus("PENDING");
+            packagingSlipRepository.save(slip);
+        }
+
         if (!slip.getLines().isEmpty()) {
             updateSlipStatusBasedOnAvailability(slip, List.of());
             return new InventoryReservationResult(toSlipDto(slip), List.of());
@@ -313,6 +319,7 @@ public class FinishedGoodsService {
         for (PackagingSlip slip : slips) {
             if (!"DISPATCHED".equalsIgnoreCase(slip.getStatus()) &&
                 !"CANCELLED".equalsIgnoreCase(slip.getStatus())) {
+                slip.getLines().clear();
                 slip.setStatus("CANCELLED");
                 slip.setDispatchNotes("Order cancelled");
                 packagingSlipRepository.save(slip);
@@ -429,10 +436,7 @@ public class FinishedGoodsService {
             fg.setReservedStock(newReserved);
             fg.setCurrentStock(current.subtract(shipQty).max(BigDecimal.ZERO));
             if (batch != null) {
-                BigDecimal qtyTotal = batch.getQuantityTotal() == null ? BigDecimal.ZERO : batch.getQuantityTotal();
                 BigDecimal qtyAvailable = batch.getQuantityAvailable() == null ? BigDecimal.ZERO : batch.getQuantityAvailable();
-                BigDecimal updatedTotal = qtyTotal.subtract(shipQty).max(BigDecimal.ZERO);
-                batch.setQuantityTotal(updatedTotal);
                 BigDecimal updatedAvailable = qtyAvailable.subtract(shipQty.min(qtyAvailable)).max(BigDecimal.ZERO);
                 batch.setQuantityAvailable(updatedAvailable);
                 batchesToSave.add(batch);
@@ -454,11 +458,19 @@ public class FinishedGoodsService {
 
         boolean anyShipped = reservations.stream()
                 .anyMatch(r -> r.getFulfilledQuantity() != null && r.getFulfilledQuantity().compareTo(BigDecimal.ZERO) > 0);
+        boolean anyPending = reservations.stream()
+                .anyMatch(r -> !"FULFILLED".equalsIgnoreCase(r.getStatus()) && !"CANCELLED".equalsIgnoreCase(r.getStatus()));
         if (anyShipped) {
-            slip.setStatus("DISPATCHED");
-            slip.setDispatchedAt(Instant.now());
+            if (!anyPending) {
+                slip.setStatus("DISPATCHED");
+            } else {
+                slip.setStatus("PARTIAL");
+            }
+            if (slip.getDispatchedAt() == null) {
+                slip.setDispatchedAt(Instant.now());
+            }
         } else {
-            slip.setStatus("PENDING_STOCK");
+            slip.setStatus(anyPending ? "PENDING_STOCK" : slip.getStatus());
         }
         packagingSlipRepository.save(slip);
 

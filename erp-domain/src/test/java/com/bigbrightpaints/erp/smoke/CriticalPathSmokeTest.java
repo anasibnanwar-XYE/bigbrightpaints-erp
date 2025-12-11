@@ -408,18 +408,57 @@ public class CriticalPathSmokeTest extends AbstractIntegrationTest {
         Long wipAccountId = accountRepository.findByCompanyAndCodeIgnoreCase(company, "WIP-PROD")
                 .map(Account::getId)
                 .orElse(null);
+        Long valuationId = accountRepository.findByCompanyAndCodeIgnoreCase(company, "ASSET-INV")
+                .map(Account::getId)
+                .orElse(null);
+        Long cogsId = accountRepository.findByCompanyAndCodeIgnoreCase(company, "EXP-COGS")
+                .map(Account::getId)
+                .orElse(null);
+        Long revenueId = accountRepository.findByCompanyAndCodeIgnoreCase(company, "REV-SALES")
+                .map(Account::getId)
+                .orElse(null);
+        Long discountId = accountRepository.findByCompanyAndCodeIgnoreCase(company, "DISC-SALES")
+                .map(Account::getId)
+                .orElse(null);
+        Long taxId = accountRepository.findByCompanyAndCodeIgnoreCase(company, "LIAB-GST")
+                .map(Account::getId)
+                .orElse(null);
         return productRepository.findByCompanyAndSkuCode(company, skuCode)
                 .map(existing -> {
                     boolean dirty = false;
-                    if (wipAccountId != null) {
-                        Map<String, Object> metadata = existing.getMetadata() != null
-                                ? new HashMap<>(existing.getMetadata())
-                                : new HashMap<>();
-                        if (!metadata.containsKey("wipAccountId") || metadata.get("wipAccountId") == null) {
-                            metadata.put("wipAccountId", wipAccountId);
-                            existing.setMetadata(metadata);
-                            dirty = true;
-                        }
+                    Map<String, Object> metadata = existing.getMetadata() != null
+                            ? new HashMap<>(existing.getMetadata())
+                            : new HashMap<>();
+                    if (wipAccountId != null && (metadata.get("wipAccountId") == null)) {
+                        metadata.put("wipAccountId", wipAccountId);
+                        dirty = true;
+                    }
+                    if (valuationId != null && metadata.get("fgValuationAccountId") == null) {
+                        metadata.put("fgValuationAccountId", valuationId);
+                        dirty = true;
+                    }
+                    if (valuationId != null && metadata.get("semiFinishedAccountId") == null) {
+                        metadata.put("semiFinishedAccountId", valuationId);
+                        dirty = true;
+                    }
+                    if (cogsId != null && metadata.get("fgCogsAccountId") == null) {
+                        metadata.put("fgCogsAccountId", cogsId);
+                        dirty = true;
+                    }
+                    if (revenueId != null && metadata.get("fgRevenueAccountId") == null) {
+                        metadata.put("fgRevenueAccountId", revenueId);
+                        dirty = true;
+                    }
+                    if (discountId != null && metadata.get("fgDiscountAccountId") == null) {
+                        metadata.put("fgDiscountAccountId", discountId);
+                        dirty = true;
+                    }
+                    if (taxId != null && metadata.get("fgTaxAccountId") == null) {
+                        metadata.put("fgTaxAccountId", taxId);
+                        dirty = true;
+                    }
+                    if (dirty) {
+                        existing.setMetadata(metadata);
                     }
                     return dirty ? productRepository.save(existing) : existing;
                 })
@@ -442,11 +481,27 @@ public class CriticalPathSmokeTest extends AbstractIntegrationTest {
                     p.setSkuCode(skuCode);
                     p.setBasePrice(new BigDecimal("100.00"));
                     p.setGstRate(BigDecimal.ZERO);
+                    Map<String, Object> metadata = new HashMap<>();
                     if (wipAccountId != null) {
-                        Map<String, Object> metadata = new HashMap<>();
                         metadata.put("wipAccountId", wipAccountId);
-                        p.setMetadata(metadata);
                     }
+                    if (valuationId != null) {
+                        metadata.put("fgValuationAccountId", valuationId);
+                        metadata.put("semiFinishedAccountId", valuationId);
+                    }
+                    if (cogsId != null) {
+                        metadata.put("fgCogsAccountId", cogsId);
+                    }
+                    if (revenueId != null) {
+                        metadata.put("fgRevenueAccountId", revenueId);
+                    }
+                    if (discountId != null) {
+                        metadata.put("fgDiscountAccountId", discountId);
+                    }
+                    if (taxId != null) {
+                        metadata.put("fgTaxAccountId", taxId);
+                    }
+                    p.setMetadata(metadata);
                     return productRepository.save(p);
                 });
     }
