@@ -155,7 +155,8 @@ public class PackingService {
             
             PackingRecord savedRecord = packingRecordRepository.save(record);
 
-            FinishedGoodBatch batch = registerFinishedGoodBatch(log, finishedGood, savedRecord, lineQuantity, packedDate, packagingResult);
+            SemiFinishedConsumption semiFinished = consumeSemiFinishedInventory(log, lineQuantity);
+            FinishedGoodBatch batch = registerFinishedGoodBatch(log, finishedGood, savedRecord, lineQuantity, packedDate, packagingResult, semiFinished);
             savedRecord.setFinishedGoodBatch(batch);
             packingRecordRepository.save(savedRecord);
             log.getPackingRecords().add(savedRecord);
@@ -270,9 +271,12 @@ public class PackingService {
                                                         PackingRecord record,
                                                         BigDecimal quantity,
                                                         LocalDate packedDate,
-                                                        PackagingConsumptionResult packagingResult) {
+                                                        PackagingConsumptionResult packagingResult,
+                                                        SemiFinishedConsumption semiFinished) {
         // Capture cost snapshot before any mutations
-        BigDecimal baseUnitCost = Optional.ofNullable(log.getUnitCost()).orElse(BigDecimal.ZERO);
+        BigDecimal baseUnitCost = semiFinished != null && semiFinished.unitCost() != null
+                ? semiFinished.unitCost()
+                : Optional.ofNullable(log.getUnitCost()).orElse(BigDecimal.ZERO);
         BigDecimal materialUnitCost = calculateUnitCost(log.getMaterialCostTotal(), log.getMixedQuantity());
         
         // Add packaging cost per unit (bucket cost / liters in this line)
@@ -290,6 +294,9 @@ public class PackingService {
         batch.setQuantityAvailable(quantity);
         batch.setUnitCost(totalUnitCost);
         batch.setManufacturedAt(log.getProducedAt());
+        if (semiFinished != null) {
+            batch.setParentBatch(semiFinished.batch());
+        }
         FinishedGoodBatch savedBatch = finishedGoodBatchRepository.save(batch);
 
         BigDecimal current = Optional.ofNullable(finishedGood.getCurrentStock()).orElse(BigDecimal.ZERO);
@@ -308,8 +315,7 @@ public class PackingService {
 
         // Post WIP->FG journal immediately to prevent desync on crash
         // Include packaging cost in the journal value
-        BigDecimal journalUnitCost = materialUnitCost.add(packagingCostPerUnit);
-        postPackingSessionJournal(log, finishedGood, quantity, materialUnitCost, packagingCostPerUnit, packedDate, savedMovement);
+        postPackingSessionJournal(log, finishedGood, quantity, materialUnitCost, packagingCostPerUnit, packedDate, savedMovement, semiFinished);
 
         return savedBatch;
     }
@@ -331,11 +337,15 @@ public class PackingService {
                                            BigDecimal materialUnitCost,
                                            BigDecimal packagingCostPerUnit,
                                            LocalDate packedDate,
-                                           InventoryMovement movement) {
+                                           InventoryMovement movement,
+                                           SemiFinishedConsumption semiFinished) {
         if (quantity.compareTo(BigDecimal.ZERO) <= 0) {
             return;
         }
         Long wipAccountId = requireWipAccountId(log.getProduct());
+        Long semiFinishedAccountId = semiFinished != null
+                ? semiFinished.semiFinished().getValuationAccountId()
+                : requireSemiFinishedAccountId(log.getProduct());
         Long fgAccountId = finishedGood.getValuationAccountId();
         if (fgAccountId == null) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
@@ -354,7 +364,7 @@ public class PackingService {
         lines.add(new JournalEntryRequest.JournalLineRequest(fgAccountId, memo, totalValue, BigDecimal.ZERO));
         if (productionValue.compareTo(BigDecimal.ZERO) > 0) {
             lines.add(new JournalEntryRequest.JournalLineRequest(
-                    wipAccountId,
+                    semiFinishedAccountId,
                     memo + " - semi-finished",
                     BigDecimal.ZERO,
                     productionValue));
@@ -380,6 +390,67 @@ public class PackingService {
         JournalEntryDto entry = accountingService.createJournalEntry(request);
         movement.setJournalEntryId(entry.id());
         inventoryMovementRepository.save(movement);
+        if (semiFinished != null && semiFinished.movement() != null) {
+            semiFinished.movement().setJournalEntryId(entry.id());
+            inventoryMovementRepository.save(semiFinished.movement());
+        }
+    }
+
+    private SemiFinishedConsumption consumeSemiFinishedInventory(ProductionLog log, BigDecimal quantity) {
+        if (quantity.compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
+        }
+        Company company = companyContextService.requireCurrentCompany();
+        String semiSku = semiFinishedSku(log.getProduct());
+        FinishedGood semiFinished = finishedGoodRepository.lockByCompanyAndProductCode(company, semiSku)
+                .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                        "Semi-finished SKU " + semiSku + " not found for production " + log.getProductionCode()));
+        FinishedGoodBatch batch = finishedGoodBatchRepository
+                .lockByFinishedGoodAndBatchCode(semiFinished, log.getProductionCode())
+                .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                        "Semi-finished batch " + log.getProductionCode() + " not found"));
+        if (batch.getQuantityAvailable().compareTo(quantity) < 0) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Insufficient semi-finished stock for " + log.getProductionCode());
+        }
+
+        batch.allocate(quantity);
+        finishedGoodBatchRepository.save(batch);
+
+        semiFinished.adjustStock(quantity.negate(), "PACKING");
+        finishedGoodRepository.save(semiFinished);
+
+        InventoryMovement issue = new InventoryMovement();
+        issue.setFinishedGood(semiFinished);
+        issue.setFinishedGoodBatch(batch);
+        issue.setReferenceType(InventoryReference.PRODUCTION_LOG);
+        issue.setReferenceId(log.getProductionCode());
+        issue.setMovementType("ISSUE");
+        issue.setQuantity(quantity);
+        issue.setUnitCost(batch.getUnitCost());
+        InventoryMovement savedIssue = inventoryMovementRepository.save(issue);
+
+        return new SemiFinishedConsumption(semiFinished, batch, savedIssue, batch.getUnitCost());
+    }
+
+    private Long requireSemiFinishedAccountId(ProductionProduct product) {
+        Long accountId = Optional.ofNullable(metadataLong(product, "semiFinishedAccountId"))
+                .orElse(metadataLong(product, "fgValuationAccountId"));
+        if (accountId == null) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                    "Product " + product.getProductName() + " missing semiFinishedAccountId metadata");
+        }
+        return accountId;
+    }
+
+    private String semiFinishedSku(ProductionProduct product) {
+        return product.getSkuCode() + "-BULK";
+    }
+
+    private record SemiFinishedConsumption(FinishedGood semiFinished,
+                                           FinishedGoodBatch batch,
+                                           InventoryMovement movement,
+                                           BigDecimal unitCost) {
     }
 
     private void postPackagingMaterialJournal(ProductionLog log,

@@ -17,12 +17,18 @@ import com.bigbrightpaints.erp.modules.factory.dto.ProductionLogDto;
 import com.bigbrightpaints.erp.modules.factory.dto.ProductionLogMaterialDto;
 import com.bigbrightpaints.erp.modules.factory.dto.ProductionLogRequest;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReference;
+import com.bigbrightpaints.erp.modules.inventory.domain.InventoryMovement;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovement;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
+import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatch;
+import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatchRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.InventoryMovementRepository;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionBrand;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
@@ -59,6 +65,9 @@ public class ProductionLogService {
     private final RawMaterialMovementRepository rawMaterialMovementRepository;
     private final AccountingFacade accountingFacade;
     private final CompanyEntityLookup companyEntityLookup;
+    private final FinishedGoodRepository finishedGoodRepository;
+    private final FinishedGoodBatchRepository finishedGoodBatchRepository;
+    private final InventoryMovementRepository inventoryMovementRepository;
 
     public ProductionLogService(CompanyContextService companyContextService,
                                 ProductionLogRepository logRepository,
@@ -66,7 +75,10 @@ public class ProductionLogService {
                                 RawMaterialBatchRepository rawMaterialBatchRepository,
                                 RawMaterialMovementRepository rawMaterialMovementRepository,
                                 AccountingFacade accountingFacade,
-                                CompanyEntityLookup companyEntityLookup) {
+                                CompanyEntityLookup companyEntityLookup,
+                                FinishedGoodRepository finishedGoodRepository,
+                                FinishedGoodBatchRepository finishedGoodBatchRepository,
+                                InventoryMovementRepository inventoryMovementRepository) {
         this.companyContextService = companyContextService;
         this.logRepository = logRepository;
         this.rawMaterialRepository = rawMaterialRepository;
@@ -74,6 +86,9 @@ public class ProductionLogService {
         this.rawMaterialMovementRepository = rawMaterialMovementRepository;
         this.accountingFacade = accountingFacade;
         this.companyEntityLookup = companyEntityLookup;
+        this.finishedGoodRepository = finishedGoodRepository;
+        this.finishedGoodBatchRepository = finishedGoodBatchRepository;
+        this.inventoryMovementRepository = inventoryMovementRepository;
     }
 
     @Transactional
@@ -128,8 +143,115 @@ public class ProductionLogService {
         ProductionLog saved = logRepository.save(log);
 
         postMaterialJournal(company, saved, product, issueSummary);
+        registerSemiFinishedBatch(company, saved, product, mixedQty, totalCost);
 
         return toDetailDto(saved);
+    }
+
+    private void registerSemiFinishedBatch(Company company,
+                                           ProductionLog log,
+                                           ProductionProduct product,
+                                           BigDecimal mixedQty,
+                                           BigDecimal totalCost) {
+        if (mixedQty.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+
+        FinishedGood semiFinished = ensureSemiFinishedFinishedGood(company, product);
+        Long semiFinishedAccountId = semiFinished.getValuationAccountId();
+        if (semiFinishedAccountId == null) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                    "Semi-finished SKU " + semiFinished.getProductCode() + " missing valuation account");
+        }
+
+        String batchCode = log.getProductionCode();
+        FinishedGoodBatch batch = finishedGoodBatchRepository
+                .findByFinishedGoodAndBatchCode(semiFinished, batchCode)
+                .orElseGet(() -> createSemiFinishedBatch(log, semiFinished, mixedQty, batchCode));
+
+        BigDecimal current = Optional.ofNullable(semiFinished.getCurrentStock()).orElse(BigDecimal.ZERO);
+        semiFinished.setCurrentStock(current.add(mixedQty));
+        finishedGoodRepository.save(semiFinished);
+
+        InventoryMovement movement = new InventoryMovement();
+        movement.setFinishedGood(semiFinished);
+        movement.setFinishedGoodBatch(batch);
+        movement.setReferenceType(InventoryReference.PRODUCTION_LOG);
+        movement.setReferenceId(log.getProductionCode());
+        movement.setMovementType("RECEIPT");
+        movement.setQuantity(mixedQty);
+        movement.setUnitCost(log.getUnitCost());
+        InventoryMovement savedMovement = inventoryMovementRepository.save(movement);
+
+        BigDecimal amount = totalCost.setScale(2, COST_ROUNDING);
+        if (amount.compareTo(BigDecimal.ZERO) > 0) {
+            Long wipAccountId = requireWipAccountId(product);
+            JournalEntryDto entry = accountingFacade.postSimpleJournal(
+                    log.getProductionCode() + "-SEMIFG",
+                    resolveJournalDate(company, log),
+                    "Semi-finished receipt for " + log.getProductionCode(),
+                    semiFinishedAccountId,
+                    wipAccountId,
+                    amount,
+                    false
+            );
+            if (entry != null) {
+                savedMovement.setJournalEntryId(entry.id());
+                inventoryMovementRepository.save(savedMovement);
+            }
+        }
+    }
+
+    private FinishedGood ensureSemiFinishedFinishedGood(Company company, ProductionProduct product) {
+        String semiSku = product.getSkuCode() + "-BULK";
+        return finishedGoodRepository.lockByCompanyAndProductCode(company, semiSku)
+                .orElseGet(() -> initializeSemiFinishedFinishedGood(company, product, semiSku));
+    }
+
+    private FinishedGood initializeSemiFinishedFinishedGood(Company company,
+                                                            ProductionProduct product,
+                                                            String semiSku) {
+        Long valuationAccountId = Optional.ofNullable(metadataLong(product, "semiFinishedAccountId"))
+                .orElse(metadataLong(product, "fgValuationAccountId"));
+        Long cogsAccountId = metadataLong(product, "fgCogsAccountId");
+        Long revenueAccountId = metadataLong(product, "fgRevenueAccountId");
+        Long discountAccountId = metadataLong(product, "fgDiscountAccountId");
+        Long taxAccountId = metadataLong(product, "fgTaxAccountId");
+        if (valuationAccountId == null || cogsAccountId == null || revenueAccountId == null
+                || discountAccountId == null || taxAccountId == null) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                    "Product " + product.getProductName() + " missing finished good account metadata");
+        }
+        FinishedGood created = new FinishedGood();
+        created.setCompany(company);
+        created.setProductCode(semiSku);
+        created.setName(product.getProductName() + " (Bulk)");
+        created.setUnit(Optional.ofNullable(product.getUnitOfMeasure()).orElse("UNIT"));
+        created.setCostingMethod("FIFO");
+        created.setValuationAccountId(valuationAccountId);
+        created.setCogsAccountId(cogsAccountId);
+        created.setRevenueAccountId(revenueAccountId);
+        created.setDiscountAccountId(discountAccountId);
+        created.setTaxAccountId(taxAccountId);
+        created.setCurrentStock(BigDecimal.ZERO);
+        created.setReservedStock(BigDecimal.ZERO);
+        return finishedGoodRepository.save(created);
+    }
+
+    private FinishedGoodBatch createSemiFinishedBatch(ProductionLog log,
+                                                      FinishedGood semiFinished,
+                                                      BigDecimal quantity,
+                                                      String batchCode) {
+        FinishedGoodBatch batch = new FinishedGoodBatch();
+        batch.setFinishedGood(semiFinished);
+        batch.setBatchCode(batchCode);
+        batch.setQuantityTotal(quantity);
+        batch.setQuantityAvailable(quantity);
+        batch.setUnitCost(log.getUnitCost());
+        batch.setManufacturedAt(log.getProducedAt());
+        batch.setBulk(true);
+        batch.setSizeLabel(log.getUnitOfMeasure());
+        return finishedGoodBatchRepository.save(batch);
     }
 
     public List<ProductionLogDto> recentLogs() {

@@ -31,7 +31,8 @@ public class ConfigurationHealthService {
             "fgRevenueAccountId",
             "fgDiscountAccountId",
             "fgTaxAccountId",
-            "wipAccountId"
+            "wipAccountId",
+            "semiFinishedAccountId"
     );
 
     private final CompanyRepository companyRepository;

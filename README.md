@@ -1,5 +1,9 @@
 # BigBright ERP – Backend
 
+[![ERP Domain CI/CD](https://github.com/anasibnanwar-XYE/bigbrightpaints-erp/actions/workflows/erp-domain-ci.yml/badge.svg)](https://github.com/anasibnanwar-XYE/bigbrightpaints-erp/actions/workflows/erp-domain-ci.yml)
+[![Java Version](https://img.shields.io/badge/Java-21-blue.svg)](https://openjdk.org/projects/jdk/21/)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.3.4-brightgreen.svg)](https://spring.io/projects/spring-boot)
+
 ## Prerequisites
 - Java 21
 - Maven 3.9+

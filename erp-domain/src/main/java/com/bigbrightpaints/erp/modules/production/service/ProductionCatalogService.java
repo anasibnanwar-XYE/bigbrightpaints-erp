@@ -803,6 +803,7 @@ public class ProductionCatalogService {
             maybePut(metadata, "fgDiscountAccountId", wholeNumber(record, "fg_discount_account_id"));
             maybePut(metadata, "fgTaxAccountId", wholeNumber(record, "fg_tax_account_id"));
             maybePut(metadata, "wipAccountId", wholeNumber(record, "wip_account_id"));
+            maybePut(metadata, "semiFinishedAccountId", wholeNumber(record, "semi_finished_account_id"));
         }
 
         private static void maybePut(Map<String, Object> metadata, String key, Long value) {

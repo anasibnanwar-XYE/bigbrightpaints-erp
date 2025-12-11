@@ -146,6 +146,8 @@ public class CriticalPathSmokeTest extends AbstractIntegrationTest {
                 "basePrice", new BigDecimal("150.00"),
                 "gstRate", new BigDecimal("18.00"),
                 "metadata", Map.of(
+                        "wipAccountId", valuationId,
+                        "semiFinishedAccountId", valuationId,
                         "fgValuationAccountId", valuationId,
                         "fgCogsAccountId", cogsId,
                         "fgRevenueAccountId", revenueId,

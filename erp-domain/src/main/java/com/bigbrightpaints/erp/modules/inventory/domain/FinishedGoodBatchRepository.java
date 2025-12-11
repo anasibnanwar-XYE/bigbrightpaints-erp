@@ -63,4 +63,9 @@ public interface FinishedGoodBatchRepository extends JpaRepository<FinishedGoodB
 
     // For Tally sync idempotency
     java.util.Optional<FinishedGoodBatch> findByFinishedGoodAndBatchCode(FinishedGood finishedGood, String batchCode);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select b from FinishedGoodBatch b where b.finishedGood = :finishedGood and b.batchCode = :batchCode")
+    java.util.Optional<FinishedGoodBatch> lockByFinishedGoodAndBatchCode(@Param("finishedGood") FinishedGood finishedGood,
+                                                                         @Param("batchCode") String batchCode);
 }

@@ -189,6 +189,7 @@ public class CriticalFixtureService {
         Map<String, Object> metadata = Optional.ofNullable(product.getMetadata()).orElse(new HashMap<>());
         metadata.putIfAbsent("wipAccountId", accounts.get("WIP").getId());
         metadata.putIfAbsent("wastageAccountId", accounts.get("COGS").getId());
+        metadata.putIfAbsent("semiFinishedAccountId", accounts.get("INV").getId());
         metadata.putIfAbsent("fgValuationAccountId", accounts.get("INV").getId());
         metadata.putIfAbsent("fgCogsAccountId", accounts.get("COGS").getId());
         metadata.putIfAbsent("fgRevenueAccountId", accounts.get("REV").getId());

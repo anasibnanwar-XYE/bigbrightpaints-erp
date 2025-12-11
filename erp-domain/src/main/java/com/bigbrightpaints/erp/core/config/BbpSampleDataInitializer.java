@@ -144,6 +144,8 @@ public class BbpSampleDataInitializer {
         maybePut(metadata, "fgRevenueAccountId", accountId(accounts, "REV"));
         maybePut(metadata, "fgDiscountAccountId", accountId(accounts, "DISC"));
         maybePut(metadata, "fgTaxAccountId", accountId(accounts, "GST-OUT"));
+        maybePut(metadata, "wipAccountId", accountId(accounts, "WIP"));
+        maybePut(metadata, "semiFinishedAccountId", accountId(accounts, "INV"));
 
         ProductionProduct product = productRepo.findByCompanyAndSkuCode(brand.getCompany(), sku)
                 .orElseGet(() -> {

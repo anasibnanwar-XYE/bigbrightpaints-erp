@@ -526,6 +526,7 @@ public class CompleteProductionCycleTest extends AbstractIntegrationTest {
                     p.setBasePrice(new BigDecimal("150.00"));
                     p.setGstRate(BigDecimal.ZERO);
                     p.getMetadata().put("wipAccountId", wipAccount.getId());
+                    p.getMetadata().put("semiFinishedAccountId", fgValuation.getId());
                     p.getMetadata().put("fgValuationAccountId", fgValuation.getId());
                     p.getMetadata().put("fgCogsAccountId", cogs.getId());
                     p.getMetadata().put("fgRevenueAccountId", revenue.getId());
