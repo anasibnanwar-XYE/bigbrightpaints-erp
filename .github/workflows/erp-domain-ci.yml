@@ -6,10 +6,19 @@ on:
   pull_request:
     branches: [ main, master ]
 
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
 jobs:
   build-and-test:
     name: Build and Test
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
     
     steps:
       - name: Checkout code
@@ -77,6 +86,8 @@ jobs:
   code-quality:
     name: Code Quality Checks
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     
     steps:
       - name: Checkout code
@@ -89,9 +100,18 @@ jobs:
           java-version: '21'
           cache: 'maven'
       
-      - name: Run Checkstyle
+      - name: Run Checkstyle (advisory)
         working-directory: ./erp-domain
-        run: mvn -B checkstyle:check || true
+        run: mvn -B checkstyle:checkstyle
+        continue-on-error: true
+      
+      - name: Upload Checkstyle report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: checkstyle-report
+          path: erp-domain/target/checkstyle-result.xml
+          retention-days: 30
       
       - name: Verify code compilation
         working-directory: ./erp-domain
@@ -100,6 +120,8 @@ jobs:
   database-migrations:
     name: Database Migration Check
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     
     services:
       postgres:
