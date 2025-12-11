@@ -100,6 +100,9 @@ jobs:
           java-version: '21'
           cache: 'maven'
       
+      # Checkstyle runs in advisory mode (continue-on-error: true) to provide
+      # feedback without blocking builds. This allows teams to gradually improve
+      # code quality while maintaining development velocity.
       - name: Run Checkstyle (advisory)
         working-directory: ./erp-domain
         run: mvn -B checkstyle:checkstyle

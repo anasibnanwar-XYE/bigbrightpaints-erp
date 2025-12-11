@@ -278,6 +278,9 @@
                     </execution>
                 </executions>
             </plugin>
+            <!-- Checkstyle plugin runs in advisory mode (failsOnError=false) to provide
+                 code quality feedback without blocking builds. Teams can review reports
+                 and gradually improve code style without disrupting development flow. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-checkstyle-plugin</artifactId>
