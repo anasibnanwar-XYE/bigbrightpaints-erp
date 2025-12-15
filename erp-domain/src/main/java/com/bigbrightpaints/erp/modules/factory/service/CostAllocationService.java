@@ -23,7 +23,9 @@ import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Service
 public class CostAllocationService {
@@ -155,15 +157,16 @@ public class CostAllocationService {
                     .add(batchOverheadCost);
 
             BigDecimal packedQty = batch.getTotalPackedQuantity();
+            BigDecimal newUnitCost = null;
             if (packedQty.compareTo(BigDecimal.ZERO) > 0) {
-                BigDecimal newUnitCost = totalBatchCost.divide(packedQty, 4, RoundingMode.HALF_UP);
+                newUnitCost = totalBatchCost.divide(packedQty, 4, RoundingMode.HALF_UP);
                 batch.setUnitCost(newUnitCost);
-
-                // Note: Direct link between ProductionLog and FinishedGoodBatch not implemented
-                // Unit cost updates would need to be done through batch tracking system
             }
 
             productionLogRepository.save(batch);
+            if (newUnitCost != null) {
+                updateFinishedGoodBatchCosts(batch, newUnitCost);
+            }
 
             // Post journal entry to move costs from expense accounts to inventory
             if (batchLaborCost.add(batchOverheadCost).compareTo(BigDecimal.ZERO) > 0) {
@@ -210,5 +213,30 @@ public class CostAllocationService {
             throw new IllegalStateException("Account " + account.getCode() + " is not of type " + expectedType);
         }
         return account;
+    }
+
+    private void updateFinishedGoodBatchCosts(ProductionLog log, BigDecimal baseUnitCost) {
+        if (log.getPackingRecords() == null || log.getPackingRecords().isEmpty()) {
+            return;
+        }
+        Set<Long> updatedBatchIds = new HashSet<>();
+        log.getPackingRecords().forEach(record -> {
+            FinishedGoodBatch fgBatch = record.getFinishedGoodBatch();
+            if (fgBatch == null || fgBatch.getId() == null) {
+                return;
+            }
+            if (!updatedBatchIds.add(fgBatch.getId())) {
+                return;
+            }
+            BigDecimal qtyPacked = record.getQuantityPacked() == null ? BigDecimal.ZERO : record.getQuantityPacked();
+            BigDecimal packagingCost = record.getPackagingCost() == null ? BigDecimal.ZERO : record.getPackagingCost();
+            BigDecimal packagingCostPerUnit = BigDecimal.ZERO;
+            if (qtyPacked.compareTo(BigDecimal.ZERO) > 0 && packagingCost.compareTo(BigDecimal.ZERO) > 0) {
+                packagingCostPerUnit = packagingCost.divide(qtyPacked, 4, RoundingMode.HALF_UP);
+            }
+            BigDecimal updatedUnitCost = baseUnitCost.add(packagingCostPerUnit).setScale(4, RoundingMode.HALF_UP);
+            fgBatch.setUnitCost(updatedUnitCost);
+            finishedGoodBatchRepository.save(fgBatch);
+        });
     }
 }

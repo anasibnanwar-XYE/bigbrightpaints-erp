@@ -45,6 +45,7 @@ mvn -q -f erp-domain/pom.xml -DskipTests package
 ```
 
 ## Regenerate API clients (OpenAPI)
+The authoritative OpenAPI spec for the running `erp-domain` service lives in `erp-domain/openapi.yaml` (the repo-root `openapi.yaml` is kept in sync for tooling).
 Install the generator locally if you don't have it:
 ```bash
 npm install @openapitools/openapi-generator-cli

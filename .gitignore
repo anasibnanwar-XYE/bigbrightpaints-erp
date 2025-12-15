@@ -23,10 +23,12 @@ THE-ORCHESTRATOR-FOR-BBP/
 .history/
 .vscode/
 .factory/
+.cli-proxy-api/
 
 # Downloaded JDKs
 .jdk-temurin/
 .jdk-temurin-linux/
+jdk-*/
 temurin*.zip
 temurin*.tar.gz
 
@@ -37,6 +39,7 @@ node_modules/
 .env
 .env.local
 .env.*.local
+config.json
 application-dev.yml
 application-local.yml
 

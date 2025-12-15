@@ -1,0 +1,5 @@
+.env
+tasks/outbox/
+tasks/state/
+tasks/inbox/*.processing
+

@@ -497,21 +497,26 @@ public class ProductionLogService {
     }
 
     private ProductionLogDto toDto(ProductionLog log) {
+        String brandName = log.getBrand() != null ? log.getBrand().getName() : null;
+        ProductionProduct product = log.getProduct();
+        String productName = product != null ? product.getProductName() : null;
+        String skuCode = product != null ? product.getSkuCode() : null;
+        String status = log.getStatus() != null ? log.getStatus().name() : null;
         return new ProductionLogDto(
                 log.getId(),
                 log.getPublicId(),
                 log.getProductionCode(),
                 log.getProducedAt(),
-                log.getBrand().getName(),
-                log.getProduct().getProductName(),
-                log.getProduct().getSkuCode(),
+                brandName,
+                productName,
+                skuCode,
                 log.getBatchColour(),
                 log.getBatchSize(),
                 log.getUnitOfMeasure(),
                 log.getMixedQuantity(),
                 log.getTotalPackedQuantity(),
                 log.getWastageQuantity(),
-                log.getStatus().name(),
+                status,
                 log.getCreatedBy(),
                 log.getUnitCost(),
                 log.getMaterialCostTotal(),
@@ -523,6 +528,11 @@ public class ProductionLogService {
     }
 
     private ProductionLogDetailDto toDetailDto(ProductionLog log) {
+        String brandName = log.getBrand() != null ? log.getBrand().getName() : null;
+        ProductionProduct product = log.getProduct();
+        String productName = product != null ? product.getProductName() : null;
+        String skuCode = product != null ? product.getSkuCode() : null;
+        String status = log.getStatus() != null ? log.getStatus().name() : null;
         List<ProductionLogMaterialDto> materials = log.getMaterials().stream()
                 .map(material -> new ProductionLogMaterialDto(
                         material.getRawMaterial() != null ? material.getRawMaterial().getId() : null,
@@ -538,16 +548,16 @@ public class ProductionLogService {
                 log.getPublicId(),
                 log.getProductionCode(),
                 log.getProducedAt(),
-                log.getBrand().getName(),
-                log.getProduct().getProductName(),
-                log.getProduct().getSkuCode(),
+                brandName,
+                productName,
+                skuCode,
                 log.getBatchColour(),
                 log.getBatchSize(),
                 log.getUnitOfMeasure(),
                 log.getMixedQuantity(),
                 log.getTotalPackedQuantity(),
                 log.getWastageQuantity(),
-                log.getStatus().name(),
+                status,
                 log.getMaterialCostTotal(),
                 log.getLaborCostTotal(),
                 log.getOverheadCostTotal(),

@@ -9,10 +9,8 @@ externalDocs:
   description: ERP Documentation
   url: https://docs.bigbrightpaints.com
 servers:
-- url: http://localhost:8081
-  description: Local development server
-- url: https://api.bigbrightpaints.com
-  description: Production server
+- url: http://localhost:42099
+  description: Generated server url
 paths:
   /api/v1/suppliers/{id}:
     get:
@@ -506,6 +504,49 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ApiResponseUserDto"
+    delete:
+      tags:
+      - admin-user-controller
+      operationId: delete_1
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+  /api/v1/admin/settings:
+    get:
+      tags:
+      - admin-settings-controller
+      operationId: getSettings
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseSystemSettingsDto"
+    put:
+      tags:
+      - admin-settings-controller
+      operationId: updateSettings
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SystemSettingsUpdateRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseSystemSettingsDto"
   /api/v1/accounting/raw-materials/{id}:
     put:
       tags:
@@ -890,6 +931,185 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ApiResponseJournalEntryDto"
+  /api/v1/payroll/runs:
+    get:
+      tags:
+      - hr-payroll-controller
+      operationId: listPayrollRuns
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseListPayrollRunDto"
+    post:
+      tags:
+      - hr-payroll-controller
+      operationId: createPayrollRun
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePayrollRunRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponsePayrollRunDto"
+  /api/v1/payroll/runs/{id}/post:
+    post:
+      tags:
+      - hr-payroll-controller
+      operationId: postPayroll
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponsePayrollRunDto"
+  /api/v1/payroll/runs/{id}/mark-paid:
+    post:
+      tags:
+      - hr-payroll-controller
+      operationId: markAsPaid
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties:
+                type: string
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponsePayrollRunDto"
+  /api/v1/payroll/runs/{id}/calculate:
+    post:
+      tags:
+      - hr-payroll-controller
+      operationId: calculatePayroll
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponsePayrollRunDto"
+  /api/v1/payroll/runs/{id}/approve:
+    post:
+      tags:
+      - hr-payroll-controller
+      operationId: approvePayroll
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponsePayrollRunDto"
+  /api/v1/payroll/runs/weekly:
+    get:
+      tags:
+      - hr-payroll-controller
+      operationId: listWeeklyPayrollRuns
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseListPayrollRunDto"
+    post:
+      tags:
+      - hr-payroll-controller
+      operationId: createWeeklyPayrollRun
+      parameters:
+      - name: weekEndingDate
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponsePayrollRunDto"
+  /api/v1/payroll/runs/monthly:
+    get:
+      tags:
+      - hr-payroll-controller
+      operationId: listMonthlyPayrollRuns
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseListPayrollRunDto"
+    post:
+      tags:
+      - hr-payroll-controller
+      operationId: createMonthlyPayrollRun
+      parameters:
+      - name: year
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      - name: month
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponsePayrollRunDto"
   /api/v1/orchestrator/payroll/run:
     post:
       tags:
@@ -1143,7 +1363,7 @@ paths:
     post:
       tags:
       - hr-controller
-      operationId: createPayrollRun
+      operationId: createPayrollRun_1
       requestBody:
         content:
           application/json:
@@ -1169,6 +1389,7 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ApiResponseListLeaveRequestDto"
+      deprecated: true
     post:
       tags:
       - hr-controller
@@ -1186,6 +1407,7 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ApiResponseLeaveRequestDto"
+      deprecated: true
   /api/v1/hr/employees:
     get:
       tags:
@@ -1215,6 +1437,49 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ApiResponseEmployeeDto"
+  /api/v1/hr/attendance/mark/{employeeId}:
+    post:
+      tags:
+      - hr-controller
+      operationId: markAttendance
+      parameters:
+      - name: employeeId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MarkAttendanceRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseAttendanceDto"
+  /api/v1/hr/attendance/bulk-mark:
+    post:
+      tags:
+      - hr-controller
+      operationId: bulkMarkAttendance
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkMarkAttendanceRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseListAttendanceDto"
   /api/v1/finished-goods:
     get:
       tags:
@@ -1476,6 +1741,24 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ApiResponsePackagingSizeMappingDto"
+  /api/v1/factory/pack:
+    post:
+      tags:
+      - packing-controller
+      operationId: packBulkToSizes
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkPackRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseBulkPackResponse"
   /api/v1/factory/cost-allocation:
     post:
       tags:
@@ -1540,7 +1823,7 @@ paths:
     get:
       tags:
       - dealer-controller
-      operationId: listDealers
+      operationId: listDealers_1
       responses:
         "200":
           description: OK
@@ -1836,6 +2119,24 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ApiResponseRoleDto"
+  /api/v1/admin/notify:
+    post:
+      tags:
+      - admin-settings-controller
+      operationId: notifyUser
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminNotifyRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseString"
   /api/v1/accounting/suppliers/payments:
     post:
       tags:
@@ -1909,6 +2210,23 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiResponsePartnerSettlementResponse"
   /api/v1/accounting/sales/returns:
+    get:
+      tags:
+      - accounting-controller
+      operationId: listSalesReturns
+      responses:
+        "400":
+          description: Bad Request
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseVoid"
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseListJournalEntryDto"
     post:
       tags:
       - accounting-controller
@@ -1942,6 +2260,30 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/DealerReceiptRequest"
+        required: true
+      responses:
+        "400":
+          description: Bad Request
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseVoid"
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseJournalEntryDto"
+  /api/v1/accounting/receipts/dealer/hybrid:
+    post:
+      tags:
+      - accounting-controller
+      operationId: recordDealerHybridReceipt
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DealerReceiptSplitRequest"
         required: true
       responses:
         "400":
@@ -2319,30 +2661,6 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ApiResponseJournalEntryDto"
-  /api/v1/accounting/inventory/physical-count:
-    post:
-      tags:
-      - accounting-controller
-      operationId: recordInventoryCount
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/InventoryCountRequest"
-        required: true
-      responses:
-        "400":
-          description: Bad Request
-          content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/ApiResponseVoid"
-        "200":
-          description: OK
-          content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/ApiResponseInventoryCountResponse"
   /api/v1/accounting/inventory/landed-cost:
     post:
       tags:
@@ -2444,6 +2762,24 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ApiResponseProductionProductDto"
+  /api/v1/accounting/catalog/products/bulk-variants:
+    post:
+      tags:
+      - accounting-catalog-controller
+      operationId: createVariants
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkVariantRequest"
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseBulkVariantResponse"
   /api/v1/accounting/catalog/import:
     post:
       tags:
@@ -2467,30 +2803,6 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ApiResponseCatalogImportResponse"
-  /api/v1/accounting/bank-reconciliation:
-    post:
-      tags:
-      - accounting-controller
-      operationId: reconcileBank
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/BankReconciliationRequest"
-        required: true
-      responses:
-        "400":
-          description: Bad Request
-          content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/ApiResponseVoid"
-        "200":
-          description: OK
-          content:
-            '*/*':
-              schema:
-                $ref: "#/components/schemas/ApiResponseBankReconciliationSummaryDto"
   /api/v1/accounting/bad-debts/write-off:
     post:
       tags:
@@ -2630,6 +2942,7 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ApiResponseLeaveRequestDto"
+      deprecated: true
   /api/v1/factory/production-plans/{id}/status:
     patch:
       tags:
@@ -2709,6 +3022,52 @@ paths:
       responses:
         "200":
           description: OK
+  /api/v1/admin/users/{id}/mfa/disable:
+    patch:
+      tags:
+      - admin-user-controller
+      operationId: disableMfa
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+  /api/v1/sales/dealers:
+    get:
+      tags:
+      - sales-controller
+      operationId: listDealers
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseListDealerResponse"
+  /api/v1/sales/dealers/search:
+    get:
+      tags:
+      - sales-controller
+      operationId: searchDealers
+      parameters:
+      - name: query
+        in: query
+        required: false
+        schema:
+          type: string
+          default: ""
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseListDealerLookupResponse"
   /api/v1/reports/wastage:
     get:
       tags:
@@ -3007,6 +3366,112 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ApiResponseDashboardInsights"
+  /api/v1/payroll/summary/weekly:
+    get:
+      tags:
+      - hr-payroll-controller
+      operationId: getWeeklyPaySummary
+      parameters:
+      - name: weekEndingDate
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseWeeklyPaySummaryDto"
+  /api/v1/payroll/summary/monthly:
+    get:
+      tags:
+      - hr-payroll-controller
+      operationId: getMonthlyPaySummary
+      parameters:
+      - name: year
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      - name: month
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseMonthlyPaySummaryDto"
+  /api/v1/payroll/summary/current-week:
+    get:
+      tags:
+      - hr-payroll-controller
+      operationId: getCurrentWeekPaySummary
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseWeeklyPaySummaryDto"
+  /api/v1/payroll/summary/current-month:
+    get:
+      tags:
+      - hr-payroll-controller
+      operationId: getCurrentMonthPaySummary
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseMonthlyPaySummaryDto"
+  /api/v1/payroll/runs/{id}:
+    get:
+      tags:
+      - hr-payroll-controller
+      operationId: getPayrollRun
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponsePayrollRunDto"
+  /api/v1/payroll/runs/{id}/lines:
+    get:
+      tags:
+      - hr-payroll-controller
+      operationId: getPayrollRunLines
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseListPayrollRunLineDto"
   /api/v1/orchestrator/traces/{traceId}:
     get:
       tags:
@@ -3185,6 +3650,80 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ApiResponseListInvoiceDto"
+  /api/v1/hr/attendance/today:
+    get:
+      tags:
+      - hr-controller
+      operationId: attendanceToday
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseListAttendanceDto"
+  /api/v1/hr/attendance/summary:
+    get:
+      tags:
+      - hr-controller
+      operationId: attendanceSummary
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseAttendanceSummaryDto"
+  /api/v1/hr/attendance/employee/{employeeId}:
+    get:
+      tags:
+      - hr-controller
+      operationId: employeeAttendance
+      parameters:
+      - name: employeeId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - name: startDate
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+      - name: endDate
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseListAttendanceDto"
+  /api/v1/hr/attendance/date/{date}:
+    get:
+      tags:
+      - hr-controller
+      operationId: attendanceByDate
+      parameters:
+      - name: date
+        in: path
+        required: true
+        schema:
+          type: string
+          format: date
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseListAttendanceDto"
   /api/v1/finished-goods/stock-summary:
     get:
       tags:
@@ -3291,6 +3830,44 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ApiResponseFactoryDashboardDto"
+  /api/v1/factory/bulk-batches/{parentBatchId}/children:
+    get:
+      tags:
+      - packing-controller
+      operationId: listChildBatches
+      parameters:
+      - name: parentBatchId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseListChildBatchDto"
+  /api/v1/factory/bulk-batches/{finishedGoodId}:
+    get:
+      tags:
+      - packing-controller
+      operationId: listBulkBatches
+      parameters:
+      - name: finishedGoodId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseListChildBatchDto"
   /api/v1/dispatch/slip/{slipId}:
     get:
       tags:
@@ -3433,7 +4010,7 @@ paths:
     get:
       tags:
       - dealer-controller
-      operationId: searchDealers
+      operationId: searchDealers_1
       parameters:
       - name: query
         in: query
@@ -3448,6 +4025,18 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ApiResponseListDealerLookupResponse"
+  /api/v1/dealer-portal/orders:
+    get:
+      tags:
+      - dealer-portal-controller
+      operationId: getMyOrders
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseMapStringObject"
   /api/v1/dealer-portal/ledger:
     get:
       tags:
@@ -3526,6 +4115,18 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ApiResponseRoleDto"
+  /api/v1/admin/approvals:
+    get:
+      tags:
+      - admin-settings-controller
+      operationId: approvals
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ApiResponseAdminApprovalsResponse"
   /api/v1/accounting/trial-balance/as-of:
     get:
       tags:
@@ -4625,11 +5226,39 @@ components:
           type: string
         email:
           type: string
+        phone:
+          type: string
         role:
           type: string
         hiredDate:
           type: string
           format: date
+        employeeType:
+          type: string
+        paymentSchedule:
+          type: string
+        monthlySalary:
+          type: number
+        dailyWage:
+          type: number
+        workingDaysPerMonth:
+          type: integer
+          format: int32
+        weeklyOffDays:
+          type: integer
+          format: int32
+        standardHoursPerDay:
+          type: number
+        overtimeRateMultiplier:
+          type: number
+        doubleOtRateMultiplier:
+          type: number
+        bankAccountNumber:
+          type: string
+        bankName:
+          type: string
+        ifscCode:
+          type: string
     ApiResponseEmployeeDto:
       type: object
       properties:
@@ -4757,6 +5386,12 @@ components:
         dueDate:
           type: string
           format: date
+        salesOrderId:
+          type: integer
+          format: int64
+        packagingSlipId:
+          type: integer
+          format: int64
     ApiResponseFactoryTaskDto:
       type: object
       properties:
@@ -4789,6 +5424,12 @@ components:
         dueDate:
           type: string
           format: date
+        salesOrderId:
+          type: integer
+          format: int64
+        packagingSlipId:
+          type: integer
+          format: int64
     ProductionPlanRequest:
       required:
       - planNumber
@@ -5136,6 +5777,60 @@ components:
           type: array
           items:
             type: string
+    SystemSettingsUpdateRequest:
+      type: object
+      properties:
+        allowedOrigins:
+          type: array
+          items:
+            type: string
+        autoApprovalEnabled:
+          type: boolean
+        periodLockEnforced:
+          type: boolean
+        mailEnabled:
+          type: boolean
+        mailFromAddress:
+          type: string
+        mailBaseUrl:
+          type: string
+        sendCredentials:
+          type: boolean
+        sendPasswordReset:
+          type: boolean
+    ApiResponseSystemSettingsDto:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          $ref: "#/components/schemas/SystemSettingsDto"
+        timestamp:
+          type: string
+          format: date-time
+    SystemSettingsDto:
+      type: object
+      properties:
+        allowedOrigins:
+          type: array
+          items:
+            type: string
+        autoApprovalEnabled:
+          type: boolean
+        periodLockEnforced:
+          type: boolean
+        mailEnabled:
+          type: boolean
+        mailFromAddress:
+          type: string
+        mailBaseUrl:
+          type: string
+        sendCredentials:
+          type: boolean
+        sendPasswordReset:
+          type: boolean
     RawMaterialRequest:
       required:
       - maxStock
@@ -5200,6 +5895,8 @@ components:
         inventoryAccountId:
           type: integer
           format: int64
+        materialType:
+          type: string
     ProductUpdateRequest:
       type: object
       properties:
@@ -5320,6 +6017,18 @@ components:
           type: number
         taxInclusive:
           type: boolean
+    AccountPostingDto:
+      type: object
+      properties:
+        accountId:
+          type: integer
+          format: int64
+        accountName:
+          type: string
+        debit:
+          type: number
+        credit:
+          type: number
     ApiResponseDispatchConfirmResponse:
       type: object
       properties:
@@ -5364,6 +6073,10 @@ components:
             $ref: "#/components/schemas/CogsPostingDto"
         dispatched:
           type: boolean
+        arPostings:
+          type: array
+          items:
+            $ref: "#/components/schemas/AccountPostingDto"
     RawMaterialIntakeRequest:
       required:
       - costPerUnit
@@ -5682,6 +6395,90 @@ components:
           type: number
         credit:
           type: number
+    CreatePayrollRunRequest:
+      type: object
+      properties:
+        runType:
+          type: string
+          enum:
+          - WEEKLY
+          - MONTHLY
+        periodStart:
+          type: string
+          format: date
+        periodEnd:
+          type: string
+          format: date
+        remarks:
+          type: string
+    ApiResponsePayrollRunDto:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          $ref: "#/components/schemas/PayrollRunDto"
+        timestamp:
+          type: string
+          format: date-time
+    PayrollRunDto:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        publicId:
+          type: string
+          format: uuid
+        runNumber:
+          type: string
+        runType:
+          type: string
+        periodStart:
+          type: string
+          format: date
+        periodEnd:
+          type: string
+          format: date
+        status:
+          type: string
+        totalEmployees:
+          type: integer
+          format: int32
+        totalPresentDays:
+          type: number
+        totalOvertimeHours:
+          type: number
+        totalBasePay:
+          type: number
+        totalOvertimePay:
+          type: number
+        totalDeductions:
+          type: number
+        totalNetPay:
+          type: number
+        journalEntryId:
+          type: integer
+          format: int64
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        approvedBy:
+          type: string
+        approvedAt:
+          type: string
+          format: date-time
+        postedBy:
+          type: string
+        postedAt:
+          type: string
+          format: date-time
+        remarks:
+          type: string
     PayrollRunRequest:
       required:
       - creditAccountId
@@ -5860,43 +6657,6 @@ components:
           type: number
         note:
           type: string
-    ApiResponsePayrollRunDto:
-      type: object
-      properties:
-        success:
-          type: boolean
-        message:
-          type: string
-        data:
-          $ref: "#/components/schemas/PayrollRunDto"
-        timestamp:
-          type: string
-          format: date-time
-    PayrollRunDto:
-      type: object
-      properties:
-        id:
-          type: integer
-          format: int64
-        publicId:
-          type: string
-          format: uuid
-        runDate:
-          type: string
-          format: date
-        status:
-          type: string
-        processedBy:
-          type: string
-        notes:
-          type: string
-        totalAmount:
-          type: number
-        journalEntryId:
-          type: integer
-          format: int64
-        idempotencyKey:
-          type: string
     LeaveRequestRequest:
       required:
       - endDate
@@ -5958,6 +6718,139 @@ components:
         reason:
           type: string
         createdAt:
+          type: string
+          format: date-time
+    LocalTime:
+      type: object
+      properties:
+        hour:
+          type: integer
+          format: int32
+        minute:
+          type: integer
+          format: int32
+        second:
+          type: integer
+          format: int32
+        nano:
+          type: integer
+          format: int32
+    MarkAttendanceRequest:
+      required:
+      - status
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        status:
+          type: string
+        checkInTime:
+          $ref: "#/components/schemas/LocalTime"
+        checkOutTime:
+          $ref: "#/components/schemas/LocalTime"
+        regularHours:
+          type: number
+        overtimeHours:
+          type: number
+        doubleOvertimeHours:
+          type: number
+        holiday:
+          type: boolean
+        weekend:
+          type: boolean
+        remarks:
+          type: string
+    ApiResponseAttendanceDto:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          $ref: "#/components/schemas/AttendanceDto"
+        timestamp:
+          type: string
+          format: date-time
+    AttendanceDto:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        employeeId:
+          type: integer
+          format: int64
+        employeeName:
+          type: string
+        employeeType:
+          type: string
+        date:
+          type: string
+          format: date
+        status:
+          type: string
+        checkInTime:
+          $ref: "#/components/schemas/LocalTime"
+        checkOutTime:
+          $ref: "#/components/schemas/LocalTime"
+        regularHours:
+          type: number
+        overtimeHours:
+          type: number
+        doubleOvertimeHours:
+          type: number
+        holiday:
+          type: boolean
+        weekend:
+          type: boolean
+        remarks:
+          type: string
+        markedBy:
+          type: string
+        markedAt:
+          type: string
+          format: date-time
+    BulkMarkAttendanceRequest:
+      required:
+      - date
+      - employeeIds
+      - status
+      type: object
+      properties:
+        employeeIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+        date:
+          type: string
+          format: date
+        status:
+          type: string
+        checkInTime:
+          $ref: "#/components/schemas/LocalTime"
+        checkOutTime:
+          $ref: "#/components/schemas/LocalTime"
+        regularHours:
+          type: number
+        overtimeHours:
+          type: number
+        remarks:
+          type: string
+    ApiResponseListAttendanceDto:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AttendanceDto"
+        timestamp:
           type: string
           format: date-time
     FinishedGoodBatchRequest:
@@ -6239,6 +7132,120 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PackingLineRequest"
+    BulkPackRequest:
+      required:
+      - bulkBatchId
+      - packs
+      type: object
+      properties:
+        bulkBatchId:
+          type: integer
+          format: int64
+        packs:
+          type: array
+          items:
+            $ref: "#/components/schemas/PackLine"
+        packagingMaterials:
+          type: array
+          items:
+            $ref: "#/components/schemas/MaterialConsumption"
+        packDate:
+          type: string
+          format: date
+        packedBy:
+          type: string
+        notes:
+          type: string
+    MaterialConsumption:
+      required:
+      - materialId
+      - quantity
+      type: object
+      properties:
+        materialId:
+          type: integer
+          format: int64
+        quantity:
+          type: number
+        unit:
+          type: string
+    PackLine:
+      required:
+      - childSkuId
+      - quantity
+      type: object
+      properties:
+        childSkuId:
+          type: integer
+          format: int64
+        quantity:
+          type: number
+        sizeLabel:
+          type: string
+        unit:
+          type: string
+    ApiResponseBulkPackResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          $ref: "#/components/schemas/BulkPackResponse"
+        timestamp:
+          type: string
+          format: date-time
+    BulkPackResponse:
+      type: object
+      properties:
+        bulkBatchId:
+          type: integer
+          format: int64
+        bulkBatchCode:
+          type: string
+        volumeDeducted:
+          type: number
+        remainingBulkQuantity:
+          type: number
+        packagingCost:
+          type: number
+        childBatches:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChildBatchDto"
+        journalEntryId:
+          type: integer
+          format: int64
+        packedAt:
+          type: string
+          format: date-time
+    ChildBatchDto:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        publicId:
+          type: string
+          format: uuid
+        batchCode:
+          type: string
+        finishedGoodId:
+          type: integer
+          format: int64
+        finishedGoodCode:
+          type: string
+        finishedGoodName:
+          type: string
+        sizeLabel:
+          type: string
+        quantity:
+          type: number
+        unitCost:
+          type: number
+        totalValue:
+          type: number
     CostAllocationRequest:
       required:
       - finishedGoodsAccountId
@@ -6532,6 +7539,8 @@ components:
           type: string
         displayName:
           type: string
+        mustChangePassword:
+          type: boolean
     ResetPasswordRequest:
       required:
       - confirmPassword
@@ -6711,6 +7720,19 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PermissionDto"
+    AdminNotifyRequest:
+      required:
+      - body
+      - subject
+      - to
+      type: object
+      properties:
+        to:
+          type: string
+        subject:
+          type: string
+        body:
+          type: string
     SupplierPaymentRequest:
       required:
       - amount
@@ -6854,7 +7876,6 @@ components:
     DealerSettlementRequest:
       required:
       - allocations
-      - cashAccountId
       - dealerId
       type: object
       properties:
@@ -6891,6 +7912,25 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/SettlementAllocationRequest"
+        payments:
+          type: array
+          items:
+            $ref: "#/components/schemas/SettlementPaymentRequest"
+    SettlementPaymentRequest:
+      required:
+      - accountId
+      - amount
+      type: object
+      properties:
+        accountId:
+          type: integer
+          format: int64
+        amount:
+          minimum: 0.01
+          exclusiveMinimum: false
+          type: number
+        method:
+          type: string
     ReturnLine:
       required:
       - invoiceLineId
@@ -6939,6 +7979,36 @@ components:
           type: string
         memo:
           type: string
+    DealerReceiptSplitRequest:
+      required:
+      - dealerId
+      - incomingLines
+      type: object
+      properties:
+        dealerId:
+          type: integer
+          format: int64
+        incomingLines:
+          type: array
+          items:
+            $ref: "#/components/schemas/IncomingLine"
+        referenceNumber:
+          type: string
+        memo:
+          type: string
+    IncomingLine:
+      required:
+      - accountId
+      - amount
+      type: object
+      properties:
+        accountId:
+          type: integer
+          format: int64
+        amount:
+          minimum: 0.01
+          exclusiveMinimum: false
+          type: number
     AccountingPeriodReopenRequest:
       type: object
       properties:
@@ -7421,82 +8491,6 @@ components:
           type: string
         adminOverride:
           type: boolean
-    InventoryCountRequest:
-      required:
-      - adjustmentAccountId
-      - itemId
-      - physicalQuantity
-      - target
-      - unitCost
-      type: object
-      properties:
-        target:
-          type: string
-          enum:
-          - RAW_MATERIAL
-          - FINISHED_GOOD
-        itemId:
-          type: integer
-          format: int64
-        physicalQuantity:
-          type: number
-        unitCost:
-          type: number
-        adjustmentAccountId:
-          type: integer
-          format: int64
-        countDate:
-          type: string
-          format: date
-        accountingPeriodId:
-          type: integer
-          format: int64
-        markAsComplete:
-          type: boolean
-        note:
-          type: string
-    ApiResponseInventoryCountResponse:
-      type: object
-      properties:
-        success:
-          type: boolean
-        message:
-          type: string
-        data:
-          $ref: "#/components/schemas/InventoryCountResponse"
-        timestamp:
-          type: string
-          format: date-time
-    InventoryCountResponse:
-      type: object
-      properties:
-        itemId:
-          type: integer
-          format: int64
-        itemName:
-          type: string
-        target:
-          type: string
-          enum:
-          - RAW_MATERIAL
-          - FINISHED_GOOD
-        systemQuantity:
-          type: number
-        physicalQuantity:
-          type: number
-        varianceQuantity:
-          type: number
-        varianceValue:
-          type: number
-        adjustmentPosted:
-          type: boolean
-        journalEntryId:
-          type: integer
-          format: int64
-        alertRaised:
-          type: boolean
-        alertReason:
-          type: string
     LandedCostRequest:
       required:
       - amount
@@ -7603,6 +8597,74 @@ components:
           type: object
           additionalProperties:
             type: object
+    BulkVariantRequest:
+      required:
+      - baseProductName
+      - category
+      - colors
+      - sizes
+      type: object
+      properties:
+        brandId:
+          type: integer
+          format: int64
+        brandName:
+          type: string
+        brandCode:
+          type: string
+        baseProductName:
+          type: string
+        category:
+          type: string
+        colors:
+          type: array
+          items:
+            type: string
+        sizes:
+          type: array
+          items:
+            type: string
+        unitOfMeasure:
+          type: string
+        skuPrefix:
+          type: string
+        basePrice:
+          type: number
+        gstRate:
+          type: number
+        minDiscountPercent:
+          type: number
+        minSellingPrice:
+          type: number
+        metadata:
+          type: object
+          additionalProperties:
+            type: object
+    ApiResponseBulkVariantResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          $ref: "#/components/schemas/BulkVariantResponse"
+        timestamp:
+          type: string
+          format: date-time
+    BulkVariantResponse:
+      type: object
+      properties:
+        created:
+          type: integer
+          format: int32
+        skippedExisting:
+          type: integer
+          format: int32
+        variants:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductionProductDto"
     ApiResponseCatalogImportResponse:
       type: object
       properties:
@@ -7645,102 +8707,6 @@ components:
           format: int64
         message:
           type: string
-    BankReconciliationRequest:
-      required:
-      - bankAccountId
-      - statementDate
-      - statementEndingBalance
-      type: object
-      properties:
-        bankAccountId:
-          type: integer
-          format: int64
-        statementDate:
-          type: string
-          format: date
-        statementEndingBalance:
-          type: number
-        startDate:
-          type: string
-          format: date
-        endDate:
-          type: string
-          format: date
-        clearedReferences:
-          type: array
-          items:
-            type: string
-        accountingPeriodId:
-          type: integer
-          format: int64
-        markAsComplete:
-          type: boolean
-        note:
-          type: string
-    ApiResponseBankReconciliationSummaryDto:
-      type: object
-      properties:
-        success:
-          type: boolean
-        message:
-          type: string
-        data:
-          $ref: "#/components/schemas/BankReconciliationSummaryDto"
-        timestamp:
-          type: string
-          format: date-time
-    BankReconciliationItemDto:
-      type: object
-      properties:
-        journalEntryId:
-          type: integer
-          format: int64
-        referenceNumber:
-          type: string
-        entryDate:
-          type: string
-          format: date
-        memo:
-          type: string
-        debit:
-          type: number
-        credit:
-          type: number
-        netAmount:
-          type: number
-    BankReconciliationSummaryDto:
-      type: object
-      properties:
-        accountId:
-          type: integer
-          format: int64
-        accountCode:
-          type: string
-        accountName:
-          type: string
-        statementDate:
-          type: string
-          format: date
-        ledgerBalance:
-          type: number
-        statementEndingBalance:
-          type: number
-        outstandingDeposits:
-          type: number
-        outstandingChecks:
-          type: number
-        difference:
-          type: number
-        balanced:
-          type: boolean
-        unclearedDeposits:
-          type: array
-          items:
-            $ref: "#/components/schemas/BankReconciliationItemDto"
-        unclearedChecks:
-          type: array
-          items:
-            $ref: "#/components/schemas/BankReconciliationItemDto"
     BadDebtWriteOffRequest:
       required:
       - amount
@@ -7924,6 +8890,51 @@ components:
         timestamp:
           type: string
           format: date-time
+    ApiResponseListDealerResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/DealerResponse"
+        timestamp:
+          type: string
+          format: date-time
+    ApiResponseListDealerLookupResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/DealerLookupResponse"
+        timestamp:
+          type: string
+          format: date-time
+    DealerLookupResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        publicId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        code:
+          type: string
+        outstandingBalance:
+          type: number
+        creditLimit:
+          type: number
     ApiResponseListCreditRequestDto:
       type: object
       properties:
@@ -8616,6 +9627,198 @@ components:
         count:
           type: integer
           format: int64
+    ApiResponseWeeklyPaySummaryDto:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          $ref: "#/components/schemas/WeeklyPaySummaryDto"
+        timestamp:
+          type: string
+          format: date-time
+    EmployeeWeeklyPayDto:
+      type: object
+      properties:
+        employeeId:
+          type: integer
+          format: int64
+        name:
+          type: string
+        dailyRate:
+          type: number
+        daysWorked:
+          type: integer
+          format: int32
+        overtimeHours:
+          type: number
+        basePay:
+          type: number
+        overtimePay:
+          type: number
+        netPay:
+          type: number
+    WeeklyPaySummaryDto:
+      type: object
+      properties:
+        weekStart:
+          type: string
+          format: date
+        weekEnd:
+          type: string
+          format: date
+        totalLabourers:
+          type: integer
+          format: int32
+        totalBasePay:
+          type: number
+        totalOvertimePay:
+          type: number
+        totalNetPay:
+          type: number
+        employees:
+          type: array
+          items:
+            $ref: "#/components/schemas/EmployeeWeeklyPayDto"
+    ApiResponseMonthlyPaySummaryDto:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          $ref: "#/components/schemas/MonthlyPaySummaryDto"
+        timestamp:
+          type: string
+          format: date-time
+    EmployeeMonthlyPayDto:
+      type: object
+      properties:
+        employeeId:
+          type: integer
+          format: int64
+        name:
+          type: string
+        monthlySalary:
+          type: number
+        presentDays:
+          type: integer
+          format: int32
+        absentDays:
+          type: integer
+          format: int32
+        grossPay:
+          type: number
+        pfDeduction:
+          type: number
+        netPay:
+          type: number
+    MonthlyPaySummaryDto:
+      type: object
+      properties:
+        year:
+          type: integer
+          format: int32
+        month:
+          type: integer
+          format: int32
+        totalStaff:
+          type: integer
+          format: int32
+        totalGrossPay:
+          type: number
+        totalDeductions:
+          type: number
+        totalNetPay:
+          type: number
+        employees:
+          type: array
+          items:
+            $ref: "#/components/schemas/EmployeeMonthlyPayDto"
+    ApiResponseListPayrollRunDto:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/PayrollRunDto"
+        timestamp:
+          type: string
+          format: date-time
+    ApiResponseListPayrollRunLineDto:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/PayrollRunLineDto"
+        timestamp:
+          type: string
+          format: date-time
+    PayrollRunLineDto:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        employeeId:
+          type: integer
+          format: int64
+        employeeName:
+          type: string
+        employeeType:
+          type: string
+        presentDays:
+          type: number
+        halfDays:
+          type: number
+        absentDays:
+          type: number
+        leaveDays:
+          type: number
+        holidayDays:
+          type: number
+        regularHours:
+          type: number
+        overtimeHours:
+          type: number
+        doubleOtHours:
+          type: number
+        dailyRate:
+          type: number
+        hourlyRate:
+          type: number
+        basePay:
+          type: number
+        overtimePay:
+          type: number
+        holidayPay:
+          type: number
+        grossPay:
+          type: number
+        advanceDeduction:
+          type: number
+        pfDeduction:
+          type: number
+        totalDeductions:
+          type: number
+        netPay:
+          type: number
+        paymentStatus:
+          type: string
+        paymentReference:
+          type: string
     ApiResponseListInvoiceDto:
       type: object
       properties:
@@ -8721,20 +9924,6 @@ components:
         timestamp:
           type: string
           format: date-time
-    ApiResponseListPayrollRunDto:
-      type: object
-      properties:
-        success:
-          type: boolean
-        message:
-          type: string
-        data:
-          type: array
-          items:
-            $ref: "#/components/schemas/PayrollRunDto"
-        timestamp:
-          type: string
-          format: date-time
     ApiResponseListLeaveRequestDto:
       type: object
       properties:
@@ -8763,6 +9952,42 @@ components:
         timestamp:
           type: string
           format: date-time
+    ApiResponseAttendanceSummaryDto:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          $ref: "#/components/schemas/AttendanceSummaryDto"
+        timestamp:
+          type: string
+          format: date-time
+    AttendanceSummaryDto:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        totalEmployees:
+          type: integer
+          format: int64
+        present:
+          type: integer
+          format: int64
+        absent:
+          type: integer
+          format: int64
+        halfDay:
+          type: integer
+          format: int64
+        onLeave:
+          type: integer
+          format: int64
+        notMarked:
+          type: integer
+          format: int64
     ApiResponseListFinishedGoodDto:
       type: object
       properties:
@@ -9027,6 +10252,20 @@ components:
           type: array
           items:
             type: string
+    ApiResponseListChildBatchDto:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChildBatchDto"
+        timestamp:
+          type: string
+          format: date-time
     ApiResponseDispatchPreviewDto:
       type: object
       properties:
@@ -9110,51 +10349,6 @@ components:
         timestamp:
           type: string
           format: date-time
-    ApiResponseListDealerResponse:
-      type: object
-      properties:
-        success:
-          type: boolean
-        message:
-          type: string
-        data:
-          type: array
-          items:
-            $ref: "#/components/schemas/DealerResponse"
-        timestamp:
-          type: string
-          format: date-time
-    ApiResponseListDealerLookupResponse:
-      type: object
-      properties:
-        success:
-          type: boolean
-        message:
-          type: string
-        data:
-          type: array
-          items:
-            $ref: "#/components/schemas/DealerLookupResponse"
-        timestamp:
-          type: string
-          format: date-time
-    DealerLookupResponse:
-      type: object
-      properties:
-        id:
-          type: integer
-          format: int64
-        publicId:
-          type: string
-          format: uuid
-        name:
-          type: string
-        code:
-          type: string
-        outstandingBalance:
-          type: number
-        creditLimit:
-          type: number
     ApiResponseListCompanyDto:
       type: object
       properties:
@@ -9192,6 +10386,8 @@ components:
           type: string
         mfaEnabled:
           type: boolean
+        mustChangePassword:
+          type: boolean
         roles:
           type: array
           items:
@@ -9225,6 +10421,49 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/RoleDto"
+        timestamp:
+          type: string
+          format: date-time
+    AdminApprovalItemDto:
+      type: object
+      properties:
+        type:
+          type: string
+        id:
+          type: integer
+          format: int64
+        publicId:
+          type: string
+          format: uuid
+        reference:
+          type: string
+        status:
+          type: string
+        summary:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    AdminApprovalsResponse:
+      type: object
+      properties:
+        creditRequests:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminApprovalItemDto"
+        payrollRuns:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminApprovalItemDto"
+    ApiResponseAdminApprovalsResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          $ref: "#/components/schemas/AdminApprovalsResponse"
         timestamp:
           type: string
           format: date-time

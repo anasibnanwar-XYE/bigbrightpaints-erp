@@ -179,10 +179,10 @@ class HighImpactRegressionIT extends AbstractIntegrationTest {
                 null,
                 Boolean.FALSE,
                 List.of(
-                        new JournalEntryRequest.JournalLineRequest(accountsA.get("AR").getId(), "AR Debit USD", inrDebit1, BigDecimal.ZERO, usdDebit1),
-                        new JournalEntryRequest.JournalLineRequest(accountsA.get("REV").getId(), "Revenue Credit USD", BigDecimal.ZERO, inrCredit1, usdCredit1),
-                        new JournalEntryRequest.JournalLineRequest(accountsA.get("CASH").getId(), "Cash Debit USD", inrDebit2, BigDecimal.ZERO, usdDebit2),
-                        new JournalEntryRequest.JournalLineRequest(accountsA.get("AP").getId(), "AP Credit USD", BigDecimal.ZERO, inrCredit2, usdCredit2)
+                        new JournalEntryRequest.JournalLineRequest(accountsA.get("AR").getId(), "AR Debit USD", usdDebit1, BigDecimal.ZERO, usdDebit1),
+                        new JournalEntryRequest.JournalLineRequest(accountsA.get("REV").getId(), "Revenue Credit USD", BigDecimal.ZERO, usdCredit1, usdCredit1),
+                        new JournalEntryRequest.JournalLineRequest(accountsA.get("CASH").getId(), "Cash Debit USD", usdDebit2, BigDecimal.ZERO, usdDebit2),
+                        new JournalEntryRequest.JournalLineRequest(accountsA.get("AP").getId(), "AP Credit USD", BigDecimal.ZERO, usdCredit2, usdCredit2)
                 ),
                 "USD",
                 fxRate
@@ -205,8 +205,8 @@ class HighImpactRegressionIT extends AbstractIntegrationTest {
 
         // Verify foreignAmountTotal = sum of foreign debits (not net zero)
         assertThat(entry.getForeignAmountTotal())
-                .as("foreignAmountTotal is not tracked when multi-currency is disabled")
-                .isNull();
+                .as("foreignAmountTotal should reflect total foreign debits")
+                .isEqualTo(usdDebit1.add(usdDebit2).doubleValue());
 
         // Verify AR account balance reflects base conversion
         Account arAccount = accountRepository.findById(accountsA.get("AR").getId()).orElseThrow();

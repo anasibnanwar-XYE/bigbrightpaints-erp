@@ -3,10 +3,12 @@ package com.bigbrightpaints.erp.orchestrator.service;
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
+import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
 import com.bigbrightpaints.erp.modules.factory.service.FactoryService;
 import com.bigbrightpaints.erp.modules.hr.service.HrService;
 import com.bigbrightpaints.erp.modules.invoice.service.InvoiceService;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
+import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.DispatchPosting;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.InventoryReservationResult;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
@@ -63,6 +65,8 @@ class IntegrationCoordinatorTest {
     private OrderAutoApprovalStateRepository orderAutoApprovalStateRepository;
     @Mock
     private AccountingFacade accountingFacade;
+    @Mock
+    private CompanyDefaultAccountsService companyDefaultAccountsService;
 
     private IntegrationCoordinator integrationCoordinator;
     private SalesOrder order;
@@ -82,6 +86,7 @@ class IntegrationCoordinatorTest {
                 reportService,
                 orderAutoApprovalStateRepository,
                 accountingFacade,
+                companyDefaultAccountsService,
                 new NoOpTransactionManager(),
                 10L,
                 20L);
@@ -167,6 +172,46 @@ class IntegrationCoordinatorTest {
         verify(salesService, never()).updateStatus(eq(ORDER_ID), eq("READY_TO_SHIP"));
         verify(salesService, never()).updateStatus(eq(ORDER_ID), eq("RESERVED"));
         verify(salesService, times(1)).updateStatus(ORDER_ID, "SHIPPED");
+    }
+
+    @Test
+    void autoApproveOrder_postsCogsWhenDispatchPostingsAvailable() {
+        order.setOrderNumber("SO-42");
+        InventoryReservationResult reservation = new InventoryReservationResult(null, List.of());
+        when(salesService.getOrderWithItems(ORDER_ID)).thenReturn(order);
+        when(finishedGoodsService.reserveForOrder(order)).thenReturn(reservation);
+        when(accountingFacade.hasCogsJournalFor("SO-42")).thenReturn(false);
+        when(finishedGoodsService.markSlipDispatched(ORDER_ID)).thenReturn(List.of(
+                new DispatchPosting(111L, 222L, new BigDecimal("50.00"))
+        ));
+        when(salesJournalService.postSalesJournal(any(), any(), any(), any(), any())).thenReturn(100L);
+        when(invoiceService.issueInvoiceForOrder(ORDER_ID)).thenReturn(null);
+
+        integrationCoordinator.autoApproveOrder(String.valueOf(ORDER_ID), new BigDecimal("1500"), COMPANY_ID);
+
+        verify(accountingFacade).postCOGS(
+                eq("SO-42-111-0"),
+                eq(222L),
+                eq(111L),
+                eq(new BigDecimal("50.00")),
+                eq("COGS posting for order SO-42")
+        );
+    }
+
+    @Test
+    void autoApproveOrder_skipsCogsWhenJournalAlreadyExists() {
+        order.setOrderNumber("SO-42");
+        InventoryReservationResult reservation = new InventoryReservationResult(null, List.of());
+        when(salesService.getOrderWithItems(ORDER_ID)).thenReturn(order);
+        when(finishedGoodsService.reserveForOrder(order)).thenReturn(reservation);
+        when(accountingFacade.hasCogsJournalFor("SO-42")).thenReturn(true);
+        when(salesJournalService.postSalesJournal(any(), any(), any(), any(), any())).thenReturn(100L);
+        when(invoiceService.issueInvoiceForOrder(ORDER_ID)).thenReturn(null);
+
+        integrationCoordinator.autoApproveOrder(String.valueOf(ORDER_ID), new BigDecimal("1500"), COMPANY_ID);
+
+        verify(finishedGoodsService, never()).markSlipDispatched(ORDER_ID);
+        verify(accountingFacade, never()).postCOGS(any(), any(), any(), any(), any());
     }
 
     private static class NoOpTransactionManager extends AbstractPlatformTransactionManager {

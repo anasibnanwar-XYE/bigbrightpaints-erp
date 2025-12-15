@@ -21,6 +21,8 @@ import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatch;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatchRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.InventoryMovement;
+import com.bigbrightpaints.erp.modules.inventory.domain.InventoryMovementRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReference;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReservation;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReservationRepository;
@@ -31,6 +33,8 @@ import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovement;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionBrand;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionBrandRepository;
@@ -76,9 +80,11 @@ public class FactoryPackagingCostingIT extends AbstractIntegrationTest {
     @Autowired private PackingService packingService;
     @Autowired private FinishedGoodRepository finishedGoodRepository;
     @Autowired private FinishedGoodBatchRepository finishedGoodBatchRepository;
+    @Autowired private InventoryMovementRepository inventoryMovementRepository;
     @Autowired private InventoryReservationRepository inventoryReservationRepository;
     @Autowired private PackagingSlipRepository packagingSlipRepository;
     @Autowired private PackagingSlipLineRepository packagingSlipLineRepository;
+    @Autowired private RawMaterialMovementRepository rawMaterialMovementRepository;
     @Autowired private DealerRepository dealerRepository;
     @Autowired private SalesOrderRepository salesOrderRepository;
     @Autowired private SalesService salesService;
@@ -150,6 +156,7 @@ public class FactoryPackagingCostingIT extends AbstractIntegrationTest {
                         "KG"
                 ))
         ));
+        String productionCode = log.productionCode();
 
         // STEP 2: Packing 5×20L buckets (100L) with packaging cost 5*50=250
         packingService.recordPacking(new PackingRequest(
@@ -188,6 +195,59 @@ public class FactoryPackagingCostingIT extends AbstractIntegrationTest {
 
         BigDecimal expectedUnitCost = fgBatch.getUnitCost(); // 55 production + 2.5 packaging = 57.5 per liter
         assertThat(expectedUnitCost).isEqualByComparingTo(new BigDecimal("57.5000"));
+
+        JournalEntry rmJournal = requireJournal(company, productionCode + "-RM");
+        assertBalanced(rmJournal);
+        assertLineAmount(rmJournal, wip.getId(), new BigDecimal("5500.00"), false);
+        assertLineAmount(rmJournal, rmInventory.getId(), new BigDecimal("5500.00"), true);
+
+        JournalEntry semiFinishedJournal = requireJournal(company, productionCode + "-SEMIFG");
+        assertBalanced(semiFinishedJournal);
+        assertLineAmount(semiFinishedJournal, fgInventory.getId(), new BigDecimal("5500.00"), false);
+        assertLineAmount(semiFinishedJournal, wip.getId(), new BigDecimal("5500.00"), true);
+
+        JournalEntry packagingJournal = requireJournal(company, productionCode + "-PACK-1-PACKMAT");
+        assertBalanced(packagingJournal);
+        assertLineAmount(packagingJournal, wip.getId(), new BigDecimal("250.00"), false);
+        assertLineAmount(packagingJournal, packagingInventory.getId(), new BigDecimal("250.00"), true);
+
+        List<JournalEntry> packingRelated = journalEntryRepository
+                .findByCompanyAndReferenceNumberStartingWith(company, productionCode + "-PACK-");
+        JournalEntry packingSessionJournal = packingRelated.stream()
+                .filter(entry -> entry.getReferenceNumber() != null && !entry.getReferenceNumber().endsWith("-PACKMAT"))
+                .findFirst()
+                .map(entry -> journalEntryRepository.findById(entry.getId()).orElseThrow())
+                .orElseThrow();
+        assertBalanced(packingSessionJournal);
+        assertLineAmount(packingSessionJournal, fgInventory.getId(), new BigDecimal("5750.00"), false);
+        assertLineAmount(packingSessionJournal, fgInventory.getId(), new BigDecimal("5500.00"), true);
+        assertLineAmount(packingSessionJournal, wip.getId(), new BigDecimal("250.00"), true);
+
+        List<RawMaterialMovement> rmMovements = rawMaterialMovementRepository
+                .findByReferenceTypeAndReferenceId(InventoryReference.PRODUCTION_LOG, productionCode);
+        assertThat(rmMovements).isNotEmpty();
+        assertThat(rmMovements).allMatch(movement -> rmJournal.getId().equals(movement.getJournalEntryId()));
+
+        String packagingReference = productionCode + "-PACK-1";
+        List<RawMaterialMovement> packagingMovements = rawMaterialMovementRepository
+                .findByReferenceTypeAndReferenceId(InventoryReference.PACKING_RECORD, packagingReference);
+        assertThat(packagingMovements).isNotEmpty();
+        assertThat(packagingMovements).allMatch(movement -> packagingJournal.getId().equals(movement.getJournalEntryId()));
+
+        List<InventoryMovement> movements = inventoryMovementRepository
+                .findByReferenceTypeAndReferenceIdOrderByCreatedAtAsc(InventoryReference.PRODUCTION_LOG, productionCode);
+        assertThat(movements).isNotEmpty();
+        assertThat(movements).anyMatch(movement ->
+                "RECEIPT".equals(movement.getMovementType())
+                        && semiFinishedJournal.getId().equals(movement.getJournalEntryId())
+                        && movement.getUnitCost().compareTo(log.unitCost()) == 0);
+        assertThat(movements).anyMatch(movement ->
+                "ISSUE".equals(movement.getMovementType())
+                        && packingSessionJournal.getId().equals(movement.getJournalEntryId()));
+        assertThat(movements).anyMatch(movement ->
+                "RECEIPT".equals(movement.getMovementType())
+                        && packingSessionJournal.getId().equals(movement.getJournalEntryId())
+                        && movement.getUnitCost().compareTo(expectedUnitCost) == 0);
     }
 
     private Account ensureAccount(String code, AccountType type) {
@@ -324,6 +384,12 @@ public class FactoryPackagingCostingIT extends AbstractIntegrationTest {
         reservation.setReservedQuantity(qty);
         reservation.setStatus("RESERVED");
         inventoryReservationRepository.save(reservation);
+    }
+
+    private JournalEntry requireJournal(Company company, String reference) {
+        JournalEntry entry = journalEntryRepository.findByCompanyAndReferenceNumber(company, reference)
+                .orElseThrow();
+        return journalEntryRepository.findById(entry.getId()).orElseThrow();
     }
 
     private void assertBalanced(JournalEntry entry) {

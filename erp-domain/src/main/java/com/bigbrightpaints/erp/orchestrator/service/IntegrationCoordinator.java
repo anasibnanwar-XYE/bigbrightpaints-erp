@@ -6,6 +6,7 @@ import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.PayrollPaymentRequest;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
+import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
 import com.bigbrightpaints.erp.modules.factory.dto.FactoryDashboardDto;
 import com.bigbrightpaints.erp.modules.factory.dto.FactoryTaskDto;
 import com.bigbrightpaints.erp.modules.factory.dto.FactoryTaskRequest;
@@ -71,6 +72,7 @@ public class IntegrationCoordinator {
     private final ReportService reportService;
     private final OrderAutoApprovalStateRepository orderAutoApprovalStateRepository;
     private final AccountingFacade accountingFacade;
+    private final CompanyDefaultAccountsService companyDefaultAccountsService;
     private final Long dispatchDebitAccountId;
     private final Long dispatchCreditAccountId;
     private final TransactionTemplate txTemplate;
@@ -86,6 +88,7 @@ public class IntegrationCoordinator {
                                   ReportService reportService,
                                   OrderAutoApprovalStateRepository orderAutoApprovalStateRepository,
                                   AccountingFacade accountingFacade,
+                                  CompanyDefaultAccountsService companyDefaultAccountsService,
                                   PlatformTransactionManager txManager,
                                   @Value("${erp.dispatch.debit-account-id:0}") Long dispatchDebitAccountId,
                                   @Value("${erp.dispatch.credit-account-id:0}") Long dispatchCreditAccountId) {
@@ -99,6 +102,7 @@ public class IntegrationCoordinator {
         this.reportService = reportService;
         this.orderAutoApprovalStateRepository = orderAutoApprovalStateRepository;
         this.accountingFacade = accountingFacade;
+        this.companyDefaultAccountsService = companyDefaultAccountsService;
         this.dispatchDebitAccountId = normalizeAccount(dispatchDebitAccountId);
         this.dispatchCreditAccountId = normalizeAccount(dispatchCreditAccountId);
         if (this.dispatchDebitAccountId == null || this.dispatchCreditAccountId == null) {
@@ -308,11 +312,20 @@ public class IntegrationCoordinator {
                                     String companyId,
                                     BigDecimal amount) {
         runWithCompanyContext(companyId, () -> {
-            if (dispatchDebitAccountId == null || dispatchCreditAccountId == null) {
-                log.warn("Skipping dispatch journal for batch {} - dispatch accounts not configured", batchId);
-                return;
+            Long debitAccountId = dispatchDebitAccountId;
+            Long creditAccountId = dispatchCreditAccountId;
+            if (debitAccountId == null || creditAccountId == null) {
+                try {
+                    var defaults = companyDefaultAccountsService.requireDefaults();
+                    debitAccountId = defaults.cogsAccountId();
+                    creditAccountId = defaults.inventoryAccountId();
+                    log.warn("Dispatch accounts not configured; using company default COGS/Inventory for batch {}", batchId);
+                } catch (RuntimeException ex) {
+                    log.warn("Skipping dispatch journal for batch {} - dispatch accounts and company defaults not configured", batchId);
+                    return;
+                }
             }
-            postJournal("DISPATCH-" + batchId, amount, "Dispatch journal for batch " + batchId, dispatchDebitAccountId, dispatchCreditAccountId);
+            postJournal("DISPATCH-" + batchId, amount, "Dispatch journal for batch " + batchId, debitAccountId, creditAccountId);
         });
     }
 

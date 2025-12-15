@@ -127,6 +127,8 @@ class DispatchConfirmationIT extends AbstractIntegrationTest {
         assertThat(response.totalBackorderAmount()).isZero();
         FinishedGood refreshed = finishedGoodRepository.findById(fg.getId()).orElseThrow();
         assertThat(refreshed.getCurrentStock()).isEqualByComparingTo(new BigDecimal("40.00"));
+        assertThat(refreshed.getReservedStock()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(packagingSlipRepository.findById(slip.getId()).orElseThrow().getStatus()).isEqualTo("DISPATCHED");
         assertThat(response.totalShippedAmount()).isEqualByComparingTo(new BigDecimal("100.00"));
         // line shipped equals ordered
         response.lines().forEach(l -> assertThat(l.shippedQuantity()).isEqualByComparingTo(l.orderedQuantity()));

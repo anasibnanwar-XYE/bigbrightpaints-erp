@@ -69,6 +69,7 @@ public class AccountingService {
     private static final BigDecimal JOURNAL_BALANCE_TOLERANCE = BigDecimal.ZERO;
     private static final BigDecimal FX_RATE_MIN = new BigDecimal("0.0001");
     private static final BigDecimal FX_RATE_MAX = new BigDecimal("100000");
+    private static final BigDecimal FX_ROUNDING_TOLERANCE = new BigDecimal("0.05");
 
     private final CompanyContextService companyContextService;
     private final AccountRepository accountRepository;
@@ -220,6 +221,10 @@ public class AccountingService {
         }
         String currency = resolveCurrency(request.currency(), company);
         BigDecimal fxRate = resolveFxRate(currency, company, request.fxRate());
+        String baseCurrency = company.getBaseCurrency() != null && !company.getBaseCurrency().isBlank()
+                ? company.getBaseCurrency().trim().toUpperCase()
+                : "INR";
+        boolean foreignCurrency = !currency.equalsIgnoreCase(baseCurrency);
         JournalEntry entry = new JournalEntry();
         entry.setCompany(company);
         entry.setCurrency(currency);
@@ -305,6 +310,9 @@ public class AccountingService {
         }
         BigDecimal totalBaseDebit = BigDecimal.ZERO;
         BigDecimal totalBaseCredit = BigDecimal.ZERO;
+        BigDecimal totalForeignDebit = BigDecimal.ZERO;
+        BigDecimal totalForeignCredit = BigDecimal.ZERO;
+        List<JournalLine> postedLines = new ArrayList<>();
         for (JournalEntryRequest.JournalLineRequest lineRequest : lines) {
             if (lineRequest.accountId() == null) {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Account is required for every journal line");
@@ -327,27 +335,67 @@ public class AccountingService {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Debit and credit cannot both be non-zero on the same line");
             }
 
-            // Multi-currency disabled: treat provided amounts as base currency
-            line.setDebit(debitInput);
-            line.setCredit(creditInput);
+            if (foreignCurrency) {
+                totalForeignDebit = totalForeignDebit.add(debitInput);
+                totalForeignCredit = totalForeignCredit.add(creditInput);
+            }
+
+            BigDecimal baseDebit = toBaseCurrency(debitInput, fxRate);
+            BigDecimal baseCredit = toBaseCurrency(creditInput, fxRate);
+            line.setDebit(baseDebit);
+            line.setCredit(baseCredit);
             entry.getLines().add(line);
-            accountDeltas.merge(account, debitInput.subtract(creditInput), BigDecimal::add);
-            totalBaseDebit = totalBaseDebit.add(debitInput);
-            totalBaseCredit = totalBaseCredit.add(creditInput);
+            postedLines.add(line);
+            accountDeltas.merge(account, baseDebit.subtract(baseCredit), BigDecimal::add);
+            totalBaseDebit = totalBaseDebit.add(baseDebit);
+            totalBaseCredit = totalBaseCredit.add(baseCredit);
 
             if (dealerReceivableAccount != null && Objects.equals(account.getId(), dealerReceivableAccount.getId())) {
-                dealerLedgerDebitTotal = dealerLedgerDebitTotal.add(debitInput);
-                dealerLedgerCreditTotal = dealerLedgerCreditTotal.add(creditInput);
                 dealerArLines++;
             }
             if (supplierPayableAccount != null && Objects.equals(account.getId(), supplierPayableAccount.getId())) {
-                supplierLedgerDebitTotal = supplierLedgerDebitTotal.add(debitInput);
-                supplierLedgerCreditTotal = supplierLedgerCreditTotal.add(creditInput);
                 supplierApLines++;
+            }
+        }
+        BigDecimal roundingDelta = totalBaseDebit.subtract(totalBaseCredit);
+        if (roundingDelta.compareTo(BigDecimal.ZERO) != 0) {
+            if (roundingDelta.abs().compareTo(FX_ROUNDING_TOLERANCE) > 0) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Journal entry must balance" )
+                        .withDetail("delta", roundingDelta)
+                        .withDetail("currency", currency)
+                        .withDetail("fxRate", fxRate);
+            }
+            // Adjust a single line to absorb minor FX/base rounding variance.
+            if (roundingDelta.signum() > 0) {
+                JournalLine target = postedLines.stream()
+                        .filter(l -> l.getCredit().compareTo(BigDecimal.ZERO) > 0)
+                        .max(Comparator.comparing(JournalLine::getCredit))
+                        .orElse(null);
+                if (target != null) {
+                    target.setCredit(target.getCredit().add(roundingDelta));
+                    accountDeltas.merge(target.getAccount(), roundingDelta.negate(), BigDecimal::add);
+                    totalBaseCredit = totalBaseCredit.add(roundingDelta);
+                }
+            } else {
+                BigDecimal adjust = roundingDelta.abs();
+                JournalLine target = postedLines.stream()
+                        .filter(l -> l.getDebit().compareTo(BigDecimal.ZERO) > 0)
+                        .max(Comparator.comparing(JournalLine::getDebit))
+                        .orElse(null);
+                if (target != null) {
+                    target.setDebit(target.getDebit().add(adjust));
+                    accountDeltas.merge(target.getAccount(), adjust, BigDecimal::add);
+                    totalBaseDebit = totalBaseDebit.add(adjust);
+                }
             }
         }
         if (totalBaseDebit.subtract(totalBaseCredit).abs().compareTo(JOURNAL_BALANCE_TOLERANCE) > 0) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Journal entry must balance");
+        }
+
+        if (foreignCurrency && totalForeignDebit.compareTo(BigDecimal.ZERO) > 0) {
+            entry.setForeignAmountTotal(totalForeignDebit.setScale(2, RoundingMode.HALF_UP).doubleValue());
         }
         // Only enforce AR/AP validation when AR/AP lines are present (allow partner context with zero AR/AP lines for COGS/inventory entries)
         if (dealer != null && dealerReceivableAccount != null && dealerArLines > 1 && !overrideAuthorized) {
@@ -389,6 +437,12 @@ public class AccountingService {
             publishAccountCacheInvalidated(company.getId());
         }
         if (saved.getDealer() != null && dealerReceivableAccount != null) {
+            for (JournalLine l : saved.getLines()) {
+                if (l.getAccount() != null && Objects.equals(l.getAccount().getId(), dealerReceivableAccount.getId())) {
+                    dealerLedgerDebitTotal = dealerLedgerDebitTotal.add(l.getDebit());
+                    dealerLedgerCreditTotal = dealerLedgerCreditTotal.add(l.getCredit());
+                }
+            }
             if (dealerLedgerDebitTotal.compareTo(BigDecimal.ZERO) != 0
                     || dealerLedgerCreditTotal.compareTo(BigDecimal.ZERO) != 0) {
                 dealerLedgerService.recordLedgerEntry(
@@ -403,6 +457,12 @@ public class AccountingService {
             }
         }
         if (saved.getSupplier() != null && supplierPayableAccount != null) {
+            for (JournalLine l : saved.getLines()) {
+                if (l.getAccount() != null && Objects.equals(l.getAccount().getId(), supplierPayableAccount.getId())) {
+                    supplierLedgerDebitTotal = supplierLedgerDebitTotal.add(l.getDebit());
+                    supplierLedgerCreditTotal = supplierLedgerCreditTotal.add(l.getCredit());
+                }
+            }
             if (supplierLedgerDebitTotal.compareTo(BigDecimal.ZERO) != 0
                     || supplierLedgerCreditTotal.compareTo(BigDecimal.ZERO) != 0) {
                 supplierLedgerService.recordLedgerEntry(
@@ -1762,21 +1822,47 @@ public class AccountingService {
     }
 
     private String resolveCurrency(String requested, Company company) {
-        // Multi-currency disabled: always use base (default INR)
-        if (company.getBaseCurrency() != null) {
-            return company.getBaseCurrency();
+        String base = company != null && StringUtils.hasText(company.getBaseCurrency())
+                ? company.getBaseCurrency().trim().toUpperCase()
+                : "INR";
+        if (!StringUtils.hasText(requested)) {
+            return base;
         }
-        return "INR";
+        return requested.trim().toUpperCase();
     }
 
     private BigDecimal resolveFxRate(String currency, Company company, BigDecimal requestedRate) {
-        // Multi-currency disabled: always 1
-        return BigDecimal.ONE;
+        String base = company != null && StringUtils.hasText(company.getBaseCurrency())
+                ? company.getBaseCurrency().trim().toUpperCase()
+                : "INR";
+        if (!StringUtils.hasText(currency) || currency.equalsIgnoreCase(base)) {
+            return BigDecimal.ONE;
+        }
+        if (requestedRate == null) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "FX rate is required for currency " + currency);
+        }
+        BigDecimal rate = requestedRate;
+        if (rate.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "FX rate must be positive");
+        }
+        if (rate.compareTo(FX_RATE_MIN) < 0 || rate.compareTo(FX_RATE_MAX) > 0) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "FX rate out of bounds")
+                    .withDetail("min", FX_RATE_MIN)
+                    .withDetail("max", FX_RATE_MAX)
+                    .withDetail("requested", rate);
+        }
+        return rate.setScale(6, RoundingMode.HALF_UP);
     }
 
     private BigDecimal toBaseCurrency(BigDecimal amount, BigDecimal fxRate) {
-        // Multi-currency disabled: passthrough
-        return amount == null ? BigDecimal.ZERO : amount;
+        if (amount == null) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal rate = fxRate == null ? BigDecimal.ONE : fxRate;
+        return amount.multiply(rate).setScale(2, RoundingMode.HALF_UP);
     }
 
     /* Credit/Debit Notes */
