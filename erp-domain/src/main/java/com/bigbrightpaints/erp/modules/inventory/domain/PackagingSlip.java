@@ -56,6 +56,9 @@ public class PackagingSlip extends VersionedEntity {
     @Column(name = "cogs_journal_entry_id")
     private Long cogsJournalEntryId;
 
+    @Column(name = "invoice_id")
+    private Long invoiceId;
+
     @OneToMany(mappedBy = "packagingSlip", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<PackagingSlipLine> lines = new ArrayList<>();
 
@@ -92,5 +95,7 @@ public class PackagingSlip extends VersionedEntity {
     public void setJournalEntryId(Long journalEntryId) { this.journalEntryId = journalEntryId; }
     public Long getCogsJournalEntryId() { return cogsJournalEntryId; }
     public void setCogsJournalEntryId(Long cogsJournalEntryId) { this.cogsJournalEntryId = cogsJournalEntryId; }
+    public Long getInvoiceId() { return invoiceId; }
+    public void setInvoiceId(Long invoiceId) { this.invoiceId = invoiceId; }
     public List<PackagingSlipLine> getLines() { return lines; }
 }

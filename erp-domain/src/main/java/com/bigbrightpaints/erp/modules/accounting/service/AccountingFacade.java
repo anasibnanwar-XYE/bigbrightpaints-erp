@@ -20,6 +20,8 @@ import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
 import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
+import com.bigbrightpaints.erp.modules.sales.util.SalesOrderReference;
+import com.bigbrightpaints.erp.modules.accounting.service.JournalReferenceResolver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.event.EventListener;
@@ -71,6 +73,7 @@ public class AccountingFacade {
     private final CompanyClock companyClock;
     private final CompanyEntityLookup companyEntityLookup;
     private final CompanyAccountingSettingsService companyAccountingSettingsService;
+    private final JournalReferenceResolver journalReferenceResolver;
 
     // Thread-safe account cache with TTL to reduce DB queries
     private final Map<String, CachedAccount> accountCache = new ConcurrentHashMap<>();
@@ -90,7 +93,8 @@ public class AccountingFacade {
                             SupplierRepository supplierRepository,
                             CompanyClock companyClock,
                             CompanyEntityLookup companyEntityLookup,
-                            CompanyAccountingSettingsService companyAccountingSettingsService) {
+                            CompanyAccountingSettingsService companyAccountingSettingsService,
+                            JournalReferenceResolver journalReferenceResolver) {
         this.companyContextService = companyContextService;
         this.accountRepository = accountRepository;
         this.accountingService = accountingService;
@@ -101,6 +105,7 @@ public class AccountingFacade {
         this.companyClock = companyClock;
         this.companyEntityLookup = companyEntityLookup;
         this.companyAccountingSettingsService = companyAccountingSettingsService;
+        this.journalReferenceResolver = journalReferenceResolver;
     }
 
     /**
@@ -141,17 +146,16 @@ public class AccountingFacade {
                     .withDetail("dealerName", dealer.getName());
         }
 
-        // Generate reference number
+        // Generate canonical reference number
         String reference = StringUtils.hasText(referenceNumber)
                 ? referenceNumber.trim()
-                : referenceNumberService.salesOrderReference(company, orderNumber);
+                : SalesOrderReference.invoiceReference(orderNumber);
 
-        // Check for duplicate
-        if (journalEntryRepository.findByCompanyAndReferenceNumber(company, reference).isPresent()) {
+        // Check for duplicate (canonical reference first, then legacy SALE- prefix)
+        Optional<JournalEntry> existing = journalReferenceResolver.findExistingEntry(company, reference);
+        if (existing.isPresent()) {
             log.info("Sales journal already exists for reference: {}", reference);
-            return journalEntryRepository.findByCompanyAndReferenceNumber(company, reference)
-                    .map(this::toSimpleDto)
-                    .orElseThrow();
+            return toSimpleDto(existing.get());
         }
 
         // Build journal lines
@@ -611,6 +615,7 @@ public class AccountingFacade {
      * Post COGS journal entry (Dr COGS / Cr Inventory).
      *
      * @param referenceId      the reference ID (order ID, dispatch ID, etc.)
+     * @param dealerId         optional dealer ID for linkage
      * @param cogsAccountId    the COGS account ID
      * @param inventoryAcctId  the inventory account ID
      * @param cost             the cost amount
@@ -620,6 +625,7 @@ public class AccountingFacade {
     @Transactional(isolation = Isolation.REPEATABLE_READ)
     @Retryable(value = OptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 100))
     public JournalEntryDto postCOGS(String referenceId,
+                                    Long dealerId,
                                     Long cogsAccountId,
                                     Long inventoryAcctId,
                                     BigDecimal cost,
@@ -644,7 +650,7 @@ public class AccountingFacade {
         String reference = "COGS-" + sanitize(referenceId);
 
         // Check for duplicate (allow variants with same logical reference)
-        Optional<JournalEntry> existing = journalEntryRepository.findFirstByCompanyAndReferenceNumberStartingWith(company, reference);
+        Optional<JournalEntry> existing = journalReferenceResolver.findExistingEntry(company, reference);
         if (existing.isPresent()) {
             log.info("COGS journal already exists for reference: {}", reference);
             return toSimpleDto(existing.get());
@@ -672,7 +678,7 @@ public class AccountingFacade {
                 reference,
                 companyClock.today(company),
                 resolvedMemo,
-                null,
+                dealerId,
                 null,
                 Boolean.FALSE,
                 lines);
@@ -681,10 +687,53 @@ public class AccountingFacade {
         return accountingService.createJournalEntry(request);
     }
 
-    public boolean hasCogsJournalFor(String referenceId) {
+    public JournalEntryDto postCOGS(String referenceId,
+                                    Long cogsAccountId,
+                                    Long inventoryAcctId,
+                                    BigDecimal cost,
+                                    String memo) {
+        return postCOGS(referenceId, null, cogsAccountId, inventoryAcctId, cost, memo);
+    }
+
+    @Transactional(isolation = Isolation.REPEATABLE_READ)
+    @Retryable(value = OptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 100))
+    public JournalEntryDto postCogsJournal(String referenceId,
+                                           Long dealerId,
+                                           LocalDate entryDate,
+                                           String memo,
+                                           List<JournalEntryRequest.JournalLineRequest> lines) {
+        if (!StringUtils.hasText(referenceId) || lines == null || lines.isEmpty()) {
+            return null;
+        }
         Company company = companyContextService.requireCurrentCompany();
         String reference = "COGS-" + sanitize(referenceId);
-        return journalEntryRepository.findFirstByCompanyAndReferenceNumberStartingWith(company, reference).isPresent();
+
+        Optional<JournalEntry> existing = journalReferenceResolver.findExistingEntry(company, reference);
+        if (existing.isPresent()) {
+            log.info("COGS journal already exists for reference: {}", reference);
+            return toSimpleDto(existing.get());
+        }
+
+        LocalDate effectiveDate = entryDate != null ? entryDate : companyClock.today(company);
+        String resolvedMemo = StringUtils.hasText(memo) ? memo : "COGS for " + referenceId;
+        JournalEntryRequest request = new JournalEntryRequest(
+                reference,
+                effectiveDate,
+                resolvedMemo,
+                dealerId,
+                null,
+                Boolean.FALSE,
+                lines
+        );
+        log.info("Posting consolidated COGS journal: reference={}, lines={}", reference, lines.size());
+        return accountingService.createJournalEntry(request);
+    }
+
+    public boolean hasCogsJournalFor(String referenceId) {
+        Company company = companyContextService.requireCurrentCompany();
+        String normalized = sanitize(referenceId);
+        String reference = normalized.startsWith("COGS-") ? normalized : "COGS-" + normalized;
+        return journalReferenceResolver.exists(company, reference);
     }
 
     /**

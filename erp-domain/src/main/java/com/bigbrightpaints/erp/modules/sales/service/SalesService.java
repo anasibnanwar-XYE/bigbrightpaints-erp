@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.sales.service;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.CreditLimitExceededException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.util.MoneyUtils;
@@ -35,7 +36,10 @@ import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -70,6 +74,7 @@ public class SalesService {
     private final InvoiceRepository invoiceRepository;
     private final FactoryTaskRepository factoryTaskRepository;
     private final CompanyDefaultAccountsService companyDefaultAccountsService;
+    private final CreditLimitOverrideService creditLimitOverrideService;
 
     public SalesService(CompanyContextService companyContextService,
                         DealerRepository dealerRepository,
@@ -91,7 +96,8 @@ public class SalesService {
                         InvoiceNumberService invoiceNumberService,
                         InvoiceRepository invoiceRepository,
                         FactoryTaskRepository factoryTaskRepository,
-                        CompanyDefaultAccountsService companyDefaultAccountsService) {
+                        CompanyDefaultAccountsService companyDefaultAccountsService,
+                        CreditLimitOverrideService creditLimitOverrideService) {
         this.companyContextService = companyContextService;
         this.dealerRepository = dealerRepository;
         this.salesOrderRepository = salesOrderRepository;
@@ -113,6 +119,7 @@ public class SalesService {
         this.invoiceRepository = invoiceRepository;
         this.factoryTaskRepository = factoryTaskRepository;
         this.companyDefaultAccountsService = companyDefaultAccountsService;
+        this.creditLimitOverrideService = creditLimitOverrideService;
     }
 
     /* Dealers */
@@ -905,6 +912,54 @@ public class SalesService {
         return normalized;
     }
 
+    private void enforceDispatchCreditLimit(Company company,
+                                            Dealer dealer,
+                                            PackagingSlip slip,
+                                            SalesOrder order,
+                                            BigDecimal dispatchAmount,
+                                            Long overrideRequestId) {
+        if (dealer == null || dispatchAmount == null) {
+            return;
+        }
+        BigDecimal limit = dealer.getCreditLimit();
+        if (limit == null || limit.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+        BigDecimal exposure = dealerLedgerService.currentBalance(dealer.getId());
+        if (exposure == null) {
+            exposure = BigDecimal.ZERO;
+        }
+        BigDecimal projected = exposure.add(dispatchAmount);
+        if (projected.compareTo(limit) <= 0) {
+            return;
+        }
+        boolean overrideApproved = creditLimitOverrideService.isOverrideApproved(
+                overrideRequestId,
+                company,
+                dealer,
+                slip,
+                order,
+                dispatchAmount
+        );
+        if (overrideApproved) {
+            return;
+        }
+        BigDecimal requiredHeadroom = projected.subtract(limit);
+        if (requiredHeadroom.compareTo(BigDecimal.ZERO) < 0) {
+            requiredHeadroom = BigDecimal.ZERO;
+        }
+        CreditLimitExceededException ex = new CreditLimitExceededException(
+                "Credit limit exceeded for dealer " + dealer.getName());
+        ex.withDetail("dealerId", dealer.getId())
+                .withDetail("companyId", company.getId())
+                .withDetail("currentExposure", exposure)
+                .withDetail("creditLimit", limit)
+                .withDetail("dispatchAmount", dispatchAmount)
+                .withDetail("requiredHeadroom", requiredHeadroom)
+                .withDetail("overrideRequestId", overrideRequestId);
+        throw ex;
+    }
+
     /* Dispatch confirmation: inventory issue + COGS posting (AR/Invoice to be wired) */
     @org.springframework.transaction.annotation.Transactional(isolation = Isolation.SERIALIZABLE)
     public DispatchConfirmResponse confirmDispatch(DispatchConfirmRequest request) {
@@ -913,10 +968,20 @@ public class SalesService {
         // Ensure company defaults are configured before proceeding
         companyDefaultAccountsService.requireDefaults();
         if (request.packingSlipId() != null) {
-            slip = packagingSlipRepository.findByIdAndCompany(request.packingSlipId(), company)
+            slip = packagingSlipRepository.findAndLockByIdAndCompany(request.packingSlipId(), company)
                     .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Packing slip not found"));
         } else if (request.orderId() != null) {
-            slip = packagingSlipRepository.findByCompanyAndSalesOrderId(company, request.orderId())
+            List<PackagingSlip> slips = packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, request.orderId());
+            if (slips.isEmpty()) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                        "Packing slip not found for order " + request.orderId());
+            }
+            if (slips.size() > 1) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                        "Multiple packing slips found for order; provide packingSlipId");
+            }
+            Long slipId = slips.get(0).getId();
+            slip = packagingSlipRepository.findAndLockByIdAndCompany(slipId, company)
                     .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
                             "Packing slip not found for order " + request.orderId()));
         } else {
@@ -926,13 +991,10 @@ public class SalesService {
         if (salesOrderId == null) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Sales order is required on packing slip");
         }
-        Optional<Invoice> existingInvoiceOpt = invoiceRepository.findByCompanyAndSalesOrderId(company, salesOrderId);
-        if ("DISPATCHED".equalsIgnoreCase(slip.getStatus())) {
-            Long existingInvoiceId = existingInvoiceOpt.map(Invoice::getId).orElse(null);
-            Long existingJeId = existingInvoiceOpt.flatMap(inv -> Optional.ofNullable(inv.getJournalEntry()))
-                    .map(j -> j.getId())
-                    .orElse(null);
-            return new DispatchConfirmResponse(slip.getId(), salesOrderId, existingInvoiceId, existingJeId, List.of(), true, List.of());
+        String slipNumber = slip.getSlipNumber();
+        Invoice existingInvoice = null;
+        if (slip.getInvoiceId() != null) {
+            existingInvoice = invoiceRepository.findByCompanyAndId(company, slip.getInvoiceId()).orElse(null);
         }
 
         // Map request lines by slip line id for pricing/qty overrides
@@ -944,8 +1006,29 @@ public class SalesService {
                 }
             }
         }
+        Map<Long, BigDecimal> shipQtyByLineId = new HashMap<>();
 
         SalesOrder order = requireOrder(salesOrderId);
+        boolean alreadyDispatched = "DISPATCHED".equalsIgnoreCase(slip.getStatus());
+        if (alreadyDispatched) {
+            Long existingInvoiceId = existingInvoice != null ? existingInvoice.getId() : slip.getInvoiceId();
+            Long existingJeId = slip.getJournalEntryId();
+            if (existingJeId == null && existingInvoice != null && existingInvoice.getJournalEntry() != null) {
+                existingJeId = existingInvoice.getJournalEntry().getId();
+            }
+            boolean hasInvoice = existingInvoiceId != null;
+            boolean hasArJournal = existingJeId != null;
+            boolean hasCogsJournal = slip.getCogsJournalEntryId() != null
+                    || (slipNumber != null && accountingFacade.hasCogsJournalFor(slipNumber));
+            if (hasInvoice && hasArJournal && hasCogsJournal) {
+                String nextStatus = resolveOrderStatusAfterDispatch(company, order);
+                if (!nextStatus.equalsIgnoreCase(order.getStatus())) {
+                    order.setStatus(nextStatus);
+                    salesOrderRepository.save(order);
+                }
+                return new DispatchConfirmResponse(slip.getId(), salesOrderId, existingInvoiceId, existingJeId, List.of(), true, List.of());
+            }
+        }
         
         // Validate order status - block dispatch for cancelled/on-hold orders
         String orderStatus = order.getStatus();
@@ -965,8 +1048,20 @@ public class SalesService {
                 .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Dealer not found"));
 
         // Build shipped financial lines from slip lines + overrides
-        Map<String, SalesOrderItem> orderItemsByProduct = order.getItems().stream()
-                .collect(Collectors.toMap(SalesOrderItem::getProductCode, it -> it, (a, b) -> a));
+        List<SalesOrderItem> sortedItems = new ArrayList<>(order.getItems());
+        sortedItems.sort(Comparator.comparing(SalesOrderItem::getId, Comparator.nullsLast(Long::compareTo)));
+        Map<String, Deque<OrderItemAllocation>> orderItemsByProduct = new HashMap<>();
+        Map<String, BigDecimal> remainingQtyByProduct = new HashMap<>();
+        for (SalesOrderItem item : sortedItems) {
+            if (item.getProductCode() == null) {
+                continue;
+            }
+            BigDecimal qty = item.getQuantity() != null ? item.getQuantity() : BigDecimal.ZERO;
+            orderItemsByProduct
+                    .computeIfAbsent(item.getProductCode(), k -> new ArrayDeque<>())
+                    .add(new OrderItemAllocation(item, qty));
+            remainingQtyByProduct.merge(item.getProductCode(), qty, BigDecimal::add);
+        }
         Map<Long, BigDecimal> revenueByAccount = new HashMap<>();
         Map<Long, BigDecimal> taxByAccount = new HashMap<>();
         List<InvoiceLine> invoiceLines = new ArrayList<>();
@@ -975,65 +1070,170 @@ public class SalesService {
 
         for (var slipLine : slip.getLines()) {
             DispatchConfirmRequest.DispatchLine override = lineOverrides.get(slipLine.getId());
-            BigDecimal requestedShip = override != null && override.shipQty() != null ? override.shipQty() : slipLine.getQuantity();
-            if (requestedShip == null || requestedShip.compareTo(BigDecimal.ZERO) <= 0) {
-                continue;
-            }
-            FinishedGood fg = slipLine.getFinishedGoodBatch().getFinishedGood();
-            SalesOrderItem item = orderItemsByProduct.get(fg.getProductCode());
-            if (item == null) {
-                continue;
-            }
-            BigDecimal onHand = fg.getCurrentStock() == null ? BigDecimal.ZERO : fg.getCurrentStock();
-            BigDecimal shipQty = requestedShip.min(onHand);
-            if (shipQty.compareTo(BigDecimal.ZERO) <= 0) {
-                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
-                        "Insufficient stock to dispatch " + fg.getProductCode());
-            }
-            BigDecimal price = override != null && override.priceOverride() != null ? override.priceOverride() : item.getUnitPrice();
-            BigDecimal discount = override != null && override.discount() != null ? override.discount() : BigDecimal.ZERO;
-            BigDecimal taxRate = override != null && override.taxRate() != null ? override.taxRate() : (item.getGstRate() == null ? BigDecimal.ZERO : item.getGstRate());
-
-            BigDecimal lineGross = price.multiply(shipQty);
-            BigDecimal lineNet = lineGross.subtract(discount);
-            BigDecimal lineTax;
-            if (Boolean.TRUE.equals(override != null ? override.taxInclusive() : Boolean.FALSE)) {
-                BigDecimal divisor = BigDecimal.ONE.add(taxRate.divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP));
-                if (divisor.signum() == 0) {
-                    lineTax = BigDecimal.ZERO;
-                } else {
-                    BigDecimal preTax = lineNet.divide(divisor, 6, RoundingMode.HALF_UP);
-                    lineTax = lineNet.subtract(preTax);
-                    lineNet = preTax;
-                }
+            BigDecimal requestedShip;
+            if (alreadyDispatched) {
+                requestedShip = slipLine.getShippedQuantity() != null ? slipLine.getShippedQuantity() : slipLine.getQuantity();
             } else {
-                lineTax = lineNet.multiply(taxRate).divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP);
+                requestedShip = override != null && override.shipQty() != null ? override.shipQty() : slipLine.getQuantity();
             }
-            BigDecimal lineTotal = lineNet.add(lineTax);
-
-            subtotal = subtotal.add(lineNet);
-            taxTotal = taxTotal.add(lineTax);
-
-            if (fg.getRevenueAccountId() != null) {
-                revenueByAccount.merge(fg.getRevenueAccountId(), lineNet, BigDecimal::add);
+            if (requestedShip == null) {
+                requestedShip = BigDecimal.ZERO;
             }
-            if (fg.getTaxAccountId() != null && lineTax.compareTo(BigDecimal.ZERO) > 0) {
-                taxByAccount.merge(fg.getTaxAccountId(), lineTax, BigDecimal::add);
+            BigDecimal shipQty = requestedShip;
+            FinishedGood fg = slipLine.getFinishedGoodBatch().getFinishedGood();
+            if (!alreadyDispatched) {
+                if (shipQty.compareTo(BigDecimal.ZERO) > 0) {
+                    BigDecimal onHand = fg.getCurrentStock() == null ? BigDecimal.ZERO : fg.getCurrentStock();
+                    shipQty = requestedShip.min(onHand);
+                    BigDecimal remaining = remainingQtyByProduct.getOrDefault(fg.getProductCode(), BigDecimal.ZERO);
+                    if (remaining.compareTo(BigDecimal.ZERO) <= 0) {
+                        shipQty = BigDecimal.ZERO;
+                    } else if (shipQty.compareTo(remaining) > 0) {
+                        shipQty = remaining;
+                    }
+                    if (shipQty.compareTo(BigDecimal.ZERO) <= 0 && requestedShip.compareTo(BigDecimal.ZERO) > 0
+                            && onHand.compareTo(BigDecimal.ZERO) <= 0) {
+                        throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                                "Insufficient stock to dispatch " + fg.getProductCode());
+                    }
+                } else {
+                    shipQty = BigDecimal.ZERO;
+                }
+                shipQtyByLineId.put(slipLine.getId(), shipQty);
+            }
+            if (shipQty.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+            Deque<OrderItemAllocation> allocations = orderItemsByProduct.get(fg.getProductCode());
+            if (allocations == null || allocations.isEmpty()) {
+                continue;
+            }
+            if (alreadyDispatched) {
+                shipQty = requestedShip;
+            }
+            BigDecimal totalShipQty = shipQty;
+            BigDecimal discountTotal = override != null && override.discount() != null ? override.discount() : BigDecimal.ZERO;
+            BigDecimal discountRemaining = discountTotal;
+            BigDecimal remainingToAllocate = shipQty;
+            SalesOrderItem lastItem = null;
+            while (remainingToAllocate.compareTo(BigDecimal.ZERO) > 0 && !allocations.isEmpty()) {
+                OrderItemAllocation allocation = allocations.peekFirst();
+                BigDecimal allocQty = allocation.remaining.min(remainingToAllocate);
+                if (allocQty.compareTo(BigDecimal.ZERO) <= 0) {
+                    allocations.removeFirst();
+                    continue;
+                }
+                boolean lastAllocation = allocQty.compareTo(remainingToAllocate) == 0;
+                SalesOrderItem item = allocation.item;
+                lastItem = item;
+
+                BigDecimal price = override != null && override.priceOverride() != null
+                        ? override.priceOverride()
+                        : item.getUnitPrice();
+                BigDecimal taxRate = override != null && override.taxRate() != null
+                        ? override.taxRate()
+                        : (item.getGstRate() == null ? BigDecimal.ZERO : item.getGstRate());
+                BigDecimal discount = BigDecimal.ZERO;
+                if (discountTotal.compareTo(BigDecimal.ZERO) > 0) {
+                    if (lastAllocation) {
+                        discount = discountRemaining;
+                    } else {
+                        discount = discountTotal.multiply(allocQty)
+                                .divide(totalShipQty, 6, RoundingMode.HALF_UP);
+                        discountRemaining = discountRemaining.subtract(discount);
+                    }
+                }
+
+                BigDecimal lineGross = price.multiply(allocQty);
+                BigDecimal lineNet = lineGross.subtract(discount);
+                BigDecimal lineTax;
+                if (Boolean.TRUE.equals(override != null ? override.taxInclusive() : Boolean.FALSE)) {
+                    BigDecimal divisor = BigDecimal.ONE.add(taxRate.divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP));
+                    if (divisor.signum() == 0) {
+                        lineTax = BigDecimal.ZERO;
+                    } else {
+                        BigDecimal preTax = lineNet.divide(divisor, 6, RoundingMode.HALF_UP);
+                        lineTax = lineNet.subtract(preTax);
+                        lineNet = preTax;
+                    }
+                } else {
+                    lineTax = lineNet.multiply(taxRate).divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP);
+                }
+                BigDecimal lineTotal = lineNet.add(lineTax);
+
+                subtotal = subtotal.add(lineNet);
+                taxTotal = taxTotal.add(lineTax);
+
+                if (fg.getRevenueAccountId() != null) {
+                    revenueByAccount.merge(fg.getRevenueAccountId(), lineNet, BigDecimal::add);
+                }
+                if (fg.getTaxAccountId() != null && lineTax.compareTo(BigDecimal.ZERO) > 0) {
+                    taxByAccount.merge(fg.getTaxAccountId(), lineTax, BigDecimal::add);
+                }
+
+                InvoiceLine invLine = new InvoiceLine();
+                invLine.setProductCode(fg.getProductCode());
+                invLine.setDescription(item.getDescription());
+                invLine.setQuantity(allocQty);
+                invLine.setUnitPrice(price);
+                invLine.setTaxRate(taxRate);
+                invLine.setLineTotal(lineTotal);
+                invoiceLines.add(invLine);
+
+                allocation.remaining = allocation.remaining.subtract(allocQty).max(BigDecimal.ZERO);
+                if (allocation.remaining.compareTo(BigDecimal.ZERO) <= 0) {
+                    allocations.removeFirst();
+                }
+                remainingQtyByProduct.computeIfPresent(
+                        fg.getProductCode(),
+                        (key, value) -> value.subtract(allocQty).max(BigDecimal.ZERO));
+                remainingToAllocate = remainingToAllocate.subtract(allocQty);
             }
 
-            InvoiceLine invLine = new InvoiceLine();
-            invLine.setProductCode(fg.getProductCode());
-            invLine.setDescription(item.getDescription());
-            invLine.setQuantity(shipQty);
-            invLine.setUnitPrice(price);
-            invLine.setTaxRate(taxRate);
-            invLine.setLineTotal(lineTotal);
-            invoiceLines.add(invLine);
-            slipLine.setQuantity(shipQty);
+            if (remainingToAllocate.compareTo(BigDecimal.ZERO) > 0 && lastItem != null) {
+                BigDecimal price = override != null && override.priceOverride() != null
+                        ? override.priceOverride()
+                        : lastItem.getUnitPrice();
+                BigDecimal taxRate = override != null && override.taxRate() != null
+                        ? override.taxRate()
+                        : (lastItem.getGstRate() == null ? BigDecimal.ZERO : lastItem.getGstRate());
+                BigDecimal discount = discountRemaining;
+                BigDecimal lineGross = price.multiply(remainingToAllocate);
+                BigDecimal lineNet = lineGross.subtract(discount);
+                BigDecimal lineTax;
+                if (Boolean.TRUE.equals(override != null ? override.taxInclusive() : Boolean.FALSE)) {
+                    BigDecimal divisor = BigDecimal.ONE.add(taxRate.divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP));
+                    if (divisor.signum() == 0) {
+                        lineTax = BigDecimal.ZERO;
+                    } else {
+                        BigDecimal preTax = lineNet.divide(divisor, 6, RoundingMode.HALF_UP);
+                        lineTax = lineNet.subtract(preTax);
+                        lineNet = preTax;
+                    }
+                } else {
+                    lineTax = lineNet.multiply(taxRate).divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP);
+                }
+                BigDecimal lineTotal = lineNet.add(lineTax);
+
+                subtotal = subtotal.add(lineNet);
+                taxTotal = taxTotal.add(lineTax);
+                if (fg.getRevenueAccountId() != null) {
+                    revenueByAccount.merge(fg.getRevenueAccountId(), lineNet, BigDecimal::add);
+                }
+                if (fg.getTaxAccountId() != null && lineTax.compareTo(BigDecimal.ZERO) > 0) {
+                    taxByAccount.merge(fg.getTaxAccountId(), lineTax, BigDecimal::add);
+                }
+
+                InvoiceLine invLine = new InvoiceLine();
+                invLine.setProductCode(fg.getProductCode());
+                invLine.setDescription(lastItem.getDescription());
+                invLine.setQuantity(remainingToAllocate);
+                invLine.setUnitPrice(price);
+                invLine.setTaxRate(taxRate);
+                invLine.setLineTotal(lineTotal);
+                invoiceLines.add(invLine);
+            }
         }
-
-        // Save slip with updated line quantities before inventory posting
-        packagingSlipRepository.save(slip);
 
         BigDecimal totalAmount = subtotal.add(taxTotal);
         if (totalAmount.compareTo(BigDecimal.ZERO) <= 0) {
@@ -1041,49 +1241,99 @@ public class SalesService {
                     "No shippable quantity available for dispatch");
         }
 
-        // Credit limit check
-        if (dealer.getCreditLimit() != null && dealer.getCreditLimit().compareTo(BigDecimal.ZERO) > 0) {
-            BigDecimal outstanding = dealerLedgerService.currentBalance(dealer.getId());
-            if (outstanding == null) {
-                outstanding = BigDecimal.ZERO;
-            }
-            if (outstanding.add(totalAmount).compareTo(dealer.getCreditLimit()) > 0
-                    && !Boolean.TRUE.equals(request.adminOverrideCreditLimit())) {
-                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
-                        "Credit limit exceeded for dealer " + dealer.getName());
-            }
+        enforceDispatchCreditLimit(company, dealer, slip, order, totalAmount, request.overrideRequestId());
+
+        if (!alreadyDispatched) {
+            List<com.bigbrightpaints.erp.modules.inventory.dto.DispatchConfirmationRequest.LineConfirmation> confirmations =
+                    slip.getLines().stream()
+                            .map(line -> new com.bigbrightpaints.erp.modules.inventory.dto.DispatchConfirmationRequest.LineConfirmation(
+                                    line.getId(),
+                                    shipQtyByLineId.getOrDefault(line.getId(), BigDecimal.ZERO),
+                                    lineOverrides.get(line.getId()) != null
+                                            ? lineOverrides.get(line.getId()).notes()
+                                            : null))
+                            .toList();
+            finishedGoodsService.confirmDispatch(
+                    new com.bigbrightpaints.erp.modules.inventory.dto.DispatchConfirmationRequest(
+                            slip.getId(),
+                            confirmations,
+                            request.dispatchNotes(),
+                            request.confirmedBy(),
+                            request.overrideRequestId()
+                    ),
+                    request.confirmedBy() != null ? request.confirmedBy() : "system"
+            );
         }
 
         // Post inventory/COGS using slip line quantities (not reservation quantities)
-        List<FinishedGoodsService.DispatchPosting> postings = finishedGoodsService.markSlipDispatched(salesOrderId, slip);
+        Map<String, BigDecimal> costByPair = new HashMap<>();
+        Map<String, Long[]> accountsByPair = new HashMap<>();
+        for (var slipLine : slip.getLines()) {
+            BigDecimal shippedQty = slipLine.getShippedQuantity();
+            if (shippedQty == null) {
+                shippedQty = shipQtyByLineId.getOrDefault(slipLine.getId(), slipLine.getQuantity());
+            }
+            if (shippedQty == null || shippedQty.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+            FinishedGood fg = slipLine.getFinishedGoodBatch().getFinishedGood();
+            if (fg == null) {
+                continue;
+            }
+            Long inventoryAccountId = fg.getValuationAccountId();
+            Long cogsAccountId = fg.getCogsAccountId();
+            if (inventoryAccountId == null || cogsAccountId == null) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Finished good " + fg.getProductCode() + " missing accounting configuration");
+            }
+            BigDecimal unitCost = slipLine.getUnitCost();
+            if (unitCost == null) {
+                unitCost = slipLine.getFinishedGoodBatch() != null
+                        ? slipLine.getFinishedGoodBatch().getUnitCost()
+                        : BigDecimal.ZERO;
+            }
+            if (unitCost == null) {
+                unitCost = BigDecimal.ZERO;
+            }
+            BigDecimal cost = unitCost.multiply(shippedQty);
+            if (cost.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+            String key = cogsAccountId + ":" + inventoryAccountId;
+            costByPair.merge(key, cost, BigDecimal::add);
+            accountsByPair.putIfAbsent(key, new Long[]{cogsAccountId, inventoryAccountId});
+        }
+        List<FinishedGoodsService.DispatchPosting> postings = new ArrayList<>();
+        for (Map.Entry<String, BigDecimal> entry : costByPair.entrySet()) {
+            Long[] accounts = accountsByPair.get(entry.getKey());
+            postings.add(new FinishedGoodsService.DispatchPosting(accounts[1], accounts[0], entry.getValue()));
+        }
         List<DispatchConfirmResponse.CogsPostingDto> cogsDtos = postings.stream()
                 .map(p -> new DispatchConfirmResponse.CogsPostingDto(p.inventoryAccountId(), p.cogsAccountId(), p.cost()))
                 .toList();
 
         // Post AR/Revenue/Tax journal
         // Post COGS/Inventory for dispatched quantities
-        final PackagingSlip slipRef = slip;
-        final String slipNumber = slipRef.getSlipNumber();
-        final LocalDate dispatchedDate = slipRef.getDispatchedAt() != null
-                ? LocalDate.ofInstant(slipRef.getDispatchedAt(), ZoneId.of(company.getTimezone()))
+        final LocalDate dispatchedDate = slip.getDispatchedAt() != null
+                ? LocalDate.ofInstant(slip.getDispatchedAt(), ZoneId.of(company.getTimezone()))
                 : currentDate(company);
 
         Long cogsJournalId = null;
         if (postings != null && !postings.isEmpty()) {
-            Map<String, BigDecimal> costByPair = new HashMap<>();
-            Map<String, Long[]> accountsByPair = new HashMap<>();
+            Map<String, BigDecimal> cogsCostByPair = new HashMap<>();
+            Map<String, Long[]> cogsAccountsByPair = new HashMap<>();
             for (FinishedGoodsService.DispatchPosting posting : postings) {
                 if (posting.cogsAccountId() == null || posting.inventoryAccountId() == null) {
                     continue;
                 }
                 String key = posting.cogsAccountId() + ":" + posting.inventoryAccountId();
-                costByPair.merge(key, posting.cost(), BigDecimal::add);
-                accountsByPair.putIfAbsent(key, new Long[]{posting.cogsAccountId(), posting.inventoryAccountId()});
+                cogsCostByPair.merge(key, posting.cost(), BigDecimal::add);
+                cogsAccountsByPair.putIfAbsent(key, new Long[]{posting.cogsAccountId(), posting.inventoryAccountId()});
             }
             BigDecimal totalCost = BigDecimal.ZERO;
             List<com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest.JournalLineRequest> cogsLines = new ArrayList<>();
-            for (Map.Entry<String, BigDecimal> entry : costByPair.entrySet()) {
-                Long[] acc = accountsByPair.get(entry.getKey());
+            for (Map.Entry<String, BigDecimal> entry : cogsCostByPair.entrySet()) {
+                Long[] acc = cogsAccountsByPair.get(entry.getKey());
                 BigDecimal cost = entry.getValue();
                 if (cost == null || cost.compareTo(BigDecimal.ZERO) <= 0) {
                     continue;
@@ -1095,80 +1345,68 @@ public class SalesService {
                         acc[1], "Inventory relief for dispatch " + slip.getSlipNumber(), BigDecimal.ZERO, cost));
             }
             if (!cogsLines.isEmpty()) {
-                String cogsRef = resolveOrderReference("COGS-", order);
-                Optional<JournalEntry> existingCogs = companyEntityLookup.findJournalEntryByReference(company, cogsRef);
-                if (existingCogs.isPresent()) {
-                    cogsJournalId = existingCogs.get().getId();
-                } else {
-                    var req = new com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest(
-                            cogsRef,
-                            dispatchedDate,
-                            "COGS for dispatch " + slipNumber,
-                            dealer.getId(),
-                            null,
-                            request.adminOverrideCreditLimit(),
-                            cogsLines
-                    );
-                    cogsJournalId = accountingService.createJournalEntry(req).id();
-                }
+                var cogsEntry = accountingFacade.postCogsJournal(
+                        slipNumber,
+                        dealer.getId(),
+                        dispatchedDate,
+                        "COGS for dispatch " + slipNumber,
+                        cogsLines
+                );
+                cogsJournalId = cogsEntry != null ? cogsEntry.id() : null;
             }
         }
 
-        Long arJournalEntryId = null;
+        String invoiceNumber = existingInvoice != null
+                ? existingInvoice.getInvoiceNumber()
+                : invoiceNumberService.nextInvoiceNumber(company);
+
+        Long arJournalEntryId = existingInvoice != null && existingInvoice.getJournalEntry() != null
+                ? existingInvoice.getJournalEntry().getId()
+                : null;
         List<DispatchConfirmResponse.AccountPostingDto> arPostings = new ArrayList<>();
-        if (totalAmount.compareTo(BigDecimal.ZERO) > 0) {
+        if (arJournalEntryId == null && totalAmount.compareTo(BigDecimal.ZERO) > 0) {
             if (revenueByAccount.isEmpty()) {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
                         "No revenue or tax account configured for dispatched items");
             }
-            String reference = resolveOrderReference("INV-", order);
             LocalDate dispatchDate = dispatchedDate;
-            Optional<JournalEntry> existingAr = companyEntityLookup.findJournalEntryByReference(company, reference);
-            if (existingAr.isPresent()) {
-                arJournalEntryId = existingAr.get().getId();
-            } else {
-                List<com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest.JournalLineRequest> jeLines = new ArrayList<>();
-                jeLines.add(new com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest.JournalLineRequest(
-                        dealer.getReceivableAccount().getId(), "AR for dispatch " + slipNumber, totalAmount, BigDecimal.ZERO));
-                arPostings.add(toPosting(dealer.getReceivableAccount().getId(), "AR for dispatch " + slipNumber, totalAmount, BigDecimal.ZERO));
-                for (var entry : revenueByAccount.entrySet()) {
-                    jeLines.add(new com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest.JournalLineRequest(
-                            entry.getKey(), "Revenue for dispatch " + slipNumber, BigDecimal.ZERO, entry.getValue()));
-                    arPostings.add(toPosting(entry.getKey(), "Revenue for dispatch " + slipNumber, BigDecimal.ZERO, entry.getValue()));
-                }
-                for (var entry : taxByAccount.entrySet()) {
-                    jeLines.add(new com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest.JournalLineRequest(
-                            entry.getKey(), "Tax for dispatch " + slipNumber, BigDecimal.ZERO, entry.getValue()));
-                    arPostings.add(toPosting(entry.getKey(), "Tax for dispatch " + slipNumber, BigDecimal.ZERO, entry.getValue()));
-                }
-                var jeRequest = new com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest(
-                        reference,
-                        dispatchDate,
-                        "Dispatch " + slipNumber,
-                        dealer.getId(),
-                        null,
-                        request.adminOverrideCreditLimit(),
-                        jeLines
-                );
-                arJournalEntryId = accountingService.createJournalEntry(jeRequest).id();
+            arPostings.add(toPosting(dealer.getReceivableAccount().getId(), "AR for dispatch " + slipNumber, totalAmount, BigDecimal.ZERO));
+            for (var entry : revenueByAccount.entrySet()) {
+                arPostings.add(toPosting(entry.getKey(), "Revenue for dispatch " + slipNumber, BigDecimal.ZERO, entry.getValue()));
             }
+            for (var entry : taxByAccount.entrySet()) {
+                arPostings.add(toPosting(entry.getKey(), "Tax for dispatch " + slipNumber, BigDecimal.ZERO, entry.getValue()));
+            }
+            var arEntry = accountingFacade.postSalesJournal(
+                    dealer.getId(),
+                    order.getOrderNumber(),
+                    dispatchDate,
+                    "Dispatch " + slipNumber,
+                    revenueByAccount,
+                    taxByAccount,
+                    totalAmount,
+                    invoiceNumber
+            );
+            arJournalEntryId = arEntry != null ? arEntry.id() : null;
         }
 
         // Create final invoice for shipped qty
-        Invoice invoice = existingInvoiceOpt.orElseGet(Invoice::new);
+        Invoice invoice = existingInvoice != null ? existingInvoice : new Invoice();
         boolean newInvoice = invoice.getId() == null;
         if (newInvoice) {
             invoice.setCompany(company);
             invoice.setDealer(dealer);
             invoice.setSalesOrder(order);
-            invoice.setInvoiceNumber(invoiceNumberService.nextInvoiceNumber(company));
+            invoice.setInvoiceNumber(invoiceNumber);
             invoice.setCurrency(order.getCurrency());
-            invoice.setIssueDate(currentDate(company));
-            invoice.setDueDate(currentDate(company).plusDays(15));
+            invoice.setIssueDate(dispatchedDate);
+            invoice.setDueDate(dispatchedDate.plusDays(15));
             invoice.setStatus("ISSUED");
             invoice.setSubtotal(subtotal);
             invoice.setTaxTotal(taxTotal);
             invoice.setTotalAmount(totalAmount);
+            invoice.setOutstandingAmount(totalAmount);
+            invoice.setNotes("Dispatch " + slipNumber);
             for (InvoiceLine line : invoiceLines) {
                 line.setInvoice(invoice);
                 invoice.getLines().add(line);
@@ -1177,7 +1415,33 @@ public class SalesService {
         if (arJournalEntryId != null && (invoice.getJournalEntry() == null || !arJournalEntryId.equals(invoice.getJournalEntry().getId()))) {
             invoice.setJournalEntry(companyEntityLookup.requireJournalEntry(company, arJournalEntryId));
         }
-        invoiceRepository.save(invoice);
+        invoice = invoiceRepository.save(invoice);
+
+        if (arJournalEntryId != null) {
+            slip.setJournalEntryId(arJournalEntryId);
+        }
+        if (cogsJournalId != null) {
+            slip.setCogsJournalEntryId(cogsJournalId);
+        }
+        if (invoice.getId() != null) {
+            slip.setInvoiceId(invoice.getId());
+        }
+        packagingSlipRepository.save(slip);
+
+        if (arJournalEntryId != null && order.getSalesJournalEntryId() == null) {
+            order.setSalesJournalEntryId(arJournalEntryId);
+        }
+        if (cogsJournalId != null && order.getCogsJournalEntryId() == null) {
+            order.setCogsJournalEntryId(cogsJournalId);
+        }
+        if (invoice.getId() != null && order.getFulfillmentInvoiceId() == null) {
+            order.setFulfillmentInvoiceId(invoice.getId());
+        }
+        String nextStatus = resolveOrderStatusAfterDispatch(company, order);
+        if (!nextStatus.equalsIgnoreCase(order.getStatus())) {
+            order.setStatus(nextStatus);
+        }
+        salesOrderRepository.save(order);
 
         return new DispatchConfirmResponse(
                 slip.getId(),
@@ -1200,16 +1464,37 @@ public class SalesService {
         return new DispatchConfirmResponse.AccountPostingDto(accountId, name, debit, credit);
     }
 
+    private static final class OrderItemAllocation {
+        private final SalesOrderItem item;
+        private BigDecimal remaining;
+
+        private OrderItemAllocation(SalesOrderItem item, BigDecimal remaining) {
+            this.item = item;
+            this.remaining = remaining != null ? remaining : BigDecimal.ZERO;
+        }
+    }
+
+    private String resolveOrderStatusAfterDispatch(Company company, SalesOrder order) {
+        if (order == null || company == null) {
+            return order != null ? order.getStatus() : null;
+        }
+        List<PackagingSlip> slips = packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, order.getId());
+        if (slips.isEmpty()) {
+            return order.getStatus();
+        }
+        boolean allDispatched = slips.stream().allMatch(slip -> "DISPATCHED".equalsIgnoreCase(slip.getStatus()));
+        if (allDispatched) {
+            return "SHIPPED";
+        }
+        boolean anyBackorder = slips.stream().anyMatch(slip -> "BACKORDER".equalsIgnoreCase(slip.getStatus()));
+        if (anyBackorder) {
+            return "PENDING_PRODUCTION";
+        }
+        return "READY_TO_SHIP";
+    }
+
     private LocalDate currentDate(Company company) {
         return LocalDate.now(ZoneId.of(company.getTimezone()));
     }
 
-    private String resolveOrderReference(String prefix, SalesOrder order) {
-        String orderNumber = order != null ? order.getOrderNumber() : null;
-        if (!StringUtils.hasText(orderNumber)) {
-            orderNumber = order != null && order.getId() != null ? order.getId().toString() : "UNKNOWN";
-        }
-        String normalized = orderNumber.replaceAll("[^A-Za-z0-9-]", "").toUpperCase();
-        return prefix + normalized;
-    }
 }

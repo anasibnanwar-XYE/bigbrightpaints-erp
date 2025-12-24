@@ -3,6 +3,8 @@ package com.bigbrightpaints.erp.modules.inventory.controller;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import com.bigbrightpaints.erp.modules.inventory.dto.*;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
+import com.bigbrightpaints.erp.modules.sales.dto.DispatchConfirmRequest;
+import com.bigbrightpaints.erp.modules.sales.service.SalesService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -20,9 +22,12 @@ import java.util.List;
 public class DispatchController {
 
     private final FinishedGoodsService finishedGoodsService;
+    private final SalesService salesService;
 
-    public DispatchController(FinishedGoodsService finishedGoodsService) {
+    public DispatchController(FinishedGoodsService finishedGoodsService,
+                              SalesService salesService) {
         this.finishedGoodsService = finishedGoodsService;
+        this.salesService = salesService;
     }
 
     /**
@@ -92,6 +97,26 @@ public class DispatchController {
             @Valid @RequestBody DispatchConfirmationRequest request,
             Principal principal) {
         String username = principal != null ? principal.getName() : "system";
+        DispatchConfirmRequest accountingRequest = new DispatchConfirmRequest(
+                request.packagingSlipId(),
+                null,
+                request.lines().stream()
+                        .map(line -> new DispatchConfirmRequest.DispatchLine(
+                                line.lineId(),
+                                null,
+                                line.shippedQuantity(),
+                                null,
+                                null,
+                                null,
+                                null,
+                                line.notes()))
+                        .toList(),
+                request.notes(),
+                username,
+                Boolean.FALSE,
+                request.overrideRequestId()
+        );
+        salesService.confirmDispatch(accountingRequest);
         DispatchConfirmationResponse response = finishedGoodsService.confirmDispatch(request, username);
         return ResponseEntity.ok(ApiResponse.success(response));
     }

@@ -224,6 +224,7 @@
                 <version>3.2.5</version>
                 <configuration>
                     <skipTests>${skipTests}</skipTests>
+                    <forkedProcessExitTimeoutInSeconds>180</forkedProcessExitTimeoutInSeconds>
                     <includes>
                         <include>**/*Tests.java</include>
                         <include>**/*Test.java</include>
@@ -255,9 +256,10 @@
             <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
-                <version>0.8.11</version>
+                <version>0.8.12</version>
                 <configuration>
                     <skip>${jacoco.skip}</skip>
+                    <append>false</append>
                 </configuration>
                 <executions>
                     <execution>

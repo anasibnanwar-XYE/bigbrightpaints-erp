@@ -8,6 +8,7 @@ import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.Fi
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderItem;
+import com.bigbrightpaints.erp.modules.sales.util.SalesOrderReference;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProductRepository;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
@@ -148,7 +149,9 @@ public class SalesJournalService {
         }
 
         String resolvedMemo = memo != null ? memo : "Sales order " + order.getOrderNumber();
-        String resolvedReference = StringUtils.hasText(referenceNumber) ? referenceNumber.trim() : null;
+        String resolvedReference = StringUtils.hasText(referenceNumber)
+                ? referenceNumber.trim()
+                : SalesOrderReference.invoiceReference(order);
 
         // Delegate to AccountingFacade
         JournalEntryDto result = accountingFacade.postSalesJournal(

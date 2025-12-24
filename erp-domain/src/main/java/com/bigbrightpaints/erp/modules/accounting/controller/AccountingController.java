@@ -9,6 +9,7 @@ import com.bigbrightpaints.erp.modules.accounting.service.StatementService;
 import com.bigbrightpaints.erp.modules.accounting.service.TemporalBalanceService;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountHierarchyService;
 import com.bigbrightpaints.erp.modules.accounting.service.AgingReportService;
+import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.modules.sales.service.SalesReturnService;
@@ -40,6 +41,7 @@ public class AccountingController {
     private final TemporalBalanceService temporalBalanceService;
     private final AccountHierarchyService accountHierarchyService;
     private final AgingReportService agingReportService;
+    private final CompanyDefaultAccountsService companyDefaultAccountsService;
 
     public AccountingController(AccountingService accountingService,
                                 SalesReturnService salesReturnService,
@@ -49,7 +51,8 @@ public class AccountingController {
                                 TaxService taxService,
                                 TemporalBalanceService temporalBalanceService,
                                 AccountHierarchyService accountHierarchyService,
-                                AgingReportService agingReportService) {
+                                AgingReportService agingReportService,
+                                CompanyDefaultAccountsService companyDefaultAccountsService) {
         this.accountingService = accountingService;
         this.salesReturnService = salesReturnService;
         this.accountingPeriodService = accountingPeriodService;
@@ -59,6 +62,7 @@ public class AccountingController {
         this.temporalBalanceService = temporalBalanceService;
         this.accountHierarchyService = accountHierarchyService;
         this.agingReportService = agingReportService;
+        this.companyDefaultAccountsService = companyDefaultAccountsService;
     }
 
     /**
@@ -74,6 +78,42 @@ public class AccountingController {
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
     public ResponseEntity<ApiResponse<List<AccountDto>>> accounts() {
         return ResponseEntity.ok(ApiResponse.success(accountingService.listAccounts()));
+    }
+
+    @GetMapping("/default-accounts")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<CompanyDefaultAccountsResponse>> defaultAccounts() {
+        CompanyDefaultAccountsService.DefaultAccounts defaults = companyDefaultAccountsService.getDefaults();
+        return ResponseEntity.ok(ApiResponse.success(
+                new CompanyDefaultAccountsResponse(
+                        defaults.inventoryAccountId(),
+                        defaults.cogsAccountId(),
+                        defaults.revenueAccountId(),
+                        defaults.discountAccountId(),
+                        defaults.taxAccountId()
+                )));
+    }
+
+    @PutMapping("/default-accounts")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<CompanyDefaultAccountsResponse>> updateDefaultAccounts(
+            @Valid @RequestBody CompanyDefaultAccountsRequest request) {
+        CompanyDefaultAccountsService.DefaultAccounts defaults = companyDefaultAccountsService.updateDefaults(
+                request.inventoryAccountId(),
+                request.cogsAccountId(),
+                request.revenueAccountId(),
+                request.discountAccountId(),
+                request.taxAccountId()
+        );
+        return ResponseEntity.ok(ApiResponse.success(
+                "Default accounts updated",
+                new CompanyDefaultAccountsResponse(
+                        defaults.inventoryAccountId(),
+                        defaults.cogsAccountId(),
+                        defaults.revenueAccountId(),
+                        defaults.discountAccountId(),
+                        defaults.taxAccountId()
+                )));
     }
 
     @PostMapping("/accounts")

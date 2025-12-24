@@ -19,6 +19,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -220,8 +221,13 @@ public class FinishedGoodsService {
         Company company = companyContextService.requireCurrentCompany();
         SalesOrder managedOrder = salesOrderRepository.findWithItemsByCompanyAndId(company, order.getId())
                 .orElseThrow(() -> new IllegalArgumentException("Sales order not found: " + order.getId()));
-        PackagingSlip slip = packagingSlipRepository.findByCompanyAndSalesOrderId(company, order.getId())
-                .orElseGet(() -> createSlip(order));
+        List<PackagingSlip> existingSlips = packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, order.getId());
+        if (existingSlips.size() > 1) {
+            throw new IllegalArgumentException("Multiple packaging slips found for order; provide packingSlipId");
+        }
+        PackagingSlip slip = existingSlips.isEmpty()
+                ? createSlip(order)
+                : existingSlips.get(0);
 
         if ("CANCELLED".equalsIgnoreCase(slip.getStatus())) {
             slip.getLines().clear();
@@ -370,7 +376,15 @@ public class FinishedGoodsService {
     @Transactional
     public List<DispatchPosting> markSlipDispatched(Long salesOrderId) {
         Company company = companyContextService.requireCurrentCompany();
-        PackagingSlip slip = packagingSlipRepository.findAndLockBySalesOrderId(salesOrderId, company)
+        List<PackagingSlip> slips = packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, salesOrderId);
+        if (slips.isEmpty()) {
+            throw new IllegalArgumentException("Packaging slip not found for order " + salesOrderId);
+        }
+        if (slips.size() > 1) {
+            throw new IllegalArgumentException("Multiple packaging slips found for order; provide packingSlipId");
+        }
+        Long slipId = slips.get(0).getId();
+        PackagingSlip slip = packagingSlipRepository.findAndLockByIdAndCompany(slipId, company)
                 .orElseThrow(() -> new IllegalArgumentException("Packaging slip not found for order " + salesOrderId));
         return markSlipDispatched(salesOrderId, slip);
     }
@@ -389,7 +403,10 @@ public class FinishedGoodsService {
         Map<Long, BigDecimal> slipLineQtyByBatch = new HashMap<>();
         for (var slipLine : slip.getLines()) {
             if (slipLine.getFinishedGoodBatch() != null && slipLine.getQuantity() != null) {
-                slipLineQtyByBatch.put(slipLine.getFinishedGoodBatch().getId(), slipLine.getQuantity());
+                slipLineQtyByBatch.merge(
+                        slipLine.getFinishedGoodBatch().getId(),
+                        slipLine.getQuantity(),
+                        BigDecimal::add);
             }
         }
 
@@ -411,7 +428,7 @@ public class FinishedGoodsService {
                         .map(r -> r.getFinishedGood().getId())
                         .collect(Collectors.toSet()));
 
-        Map<Long, DispatchPostingBuilder> postingBuilders = new HashMap<>();
+        Map<String, DispatchPostingBuilder> postingBuilders = new HashMap<>();
         List<FinishedGoodBatch> batchesToSave = new ArrayList<>();
         for (InventoryReservation reservation : reservations) {
             // Use slip line quantity if available (supports overrides), fallback to reservation
@@ -464,9 +481,10 @@ public class FinishedGoodsService {
             BigDecimal unitCost = batch != null ? batch.getUnitCost() : BigDecimal.ZERO;
             recordMovement(fg, batch, InventoryReference.SALES_ORDER, salesOrderId.toString(), "DISPATCH", shipQty, unitCost);
 
+            String postingKey = fg.getValuationAccountId() + ":" + fg.getCogsAccountId();
             postingBuilders
-                    .computeIfAbsent(fg.getValuationAccountId(),
-                            id -> new DispatchPostingBuilder(fg.getValuationAccountId(), fg.getCogsAccountId()))
+                    .computeIfAbsent(postingKey,
+                            key -> new DispatchPostingBuilder(fg.getValuationAccountId(), fg.getCogsAccountId()))
                     .addCost(unitCost.multiply(shipQty));
         }
         finishedGoodRepository.saveAll(lockedGoods.values());
@@ -575,7 +593,7 @@ public class FinishedGoodsService {
                 .orElseThrow(() -> new IllegalArgumentException("Packaging slip not found"));
 
         if ("DISPATCHED".equalsIgnoreCase(slip.getStatus())) {
-            throw new IllegalStateException("Slip already dispatched");
+            return buildDispatchConfirmationResponse(slip, company);
         }
 
         SalesOrder order = slip.getSalesOrder();
@@ -588,6 +606,37 @@ public class FinishedGoodsService {
         BigDecimal totalBackorder = BigDecimal.ZERO;
         BigDecimal totalCogsCost = BigDecimal.ZERO;
         boolean hasBackorder = false;
+
+        List<InventoryReservation> reservationsToUpdate = new ArrayList<>();
+        Map<Long, List<InventoryReservation>> reservationsByBatch = new HashMap<>();
+        if (order != null) {
+            List<InventoryReservation> reservations = inventoryReservationRepository
+                    .findByFinishedGoodCompanyAndReferenceTypeAndReferenceId(
+                            company,
+                            InventoryReference.SALES_ORDER,
+                            order.getId().toString());
+            for (InventoryReservation reservation : reservations) {
+                if ("CANCELLED".equalsIgnoreCase(reservation.getStatus())) {
+                    continue;
+                }
+                FinishedGoodBatch batch = reservation.getFinishedGoodBatch();
+                if (batch == null || batch.getId() == null) {
+                    continue;
+                }
+                BigDecimal reservedQty = resolveReservedQuantity(reservation);
+                reservation.setReservedQuantity(reservedQty);
+                if (reservation.getFulfilledQuantity() == null) {
+                    reservation.setFulfilledQuantity(BigDecimal.ZERO);
+                }
+                reservationsByBatch
+                        .computeIfAbsent(batch.getId(), k -> new ArrayList<>())
+                        .add(reservation);
+                reservationsToUpdate.add(reservation);
+            }
+            for (List<InventoryReservation> batchReservations : reservationsByBatch.values()) {
+                batchReservations.sort(Comparator.comparing(InventoryReservation::getId, Comparator.nullsLast(Long::compareTo)));
+            }
+        }
 
         Map<Long, FinishedGood> lockedGoods = new HashMap<>();
         List<FinishedGoodBatch> batchesToSave = new ArrayList<>();
@@ -626,6 +675,14 @@ public class FinishedGoodsService {
             line.setShippedQuantity(shipped);
             line.setBackorderQuantity(backorder);
             line.setNotes(conf.notes());
+            BigDecimal unitCost = batch.getUnitCost();
+            if (unitCost == null) {
+                unitCost = line.getUnitCost();
+            }
+            if (unitCost == null) {
+                unitCost = BigDecimal.ZERO;
+            }
+            line.setUnitCost(unitCost);
 
             // Update inventory if actually shipping
             if (shipped.compareTo(BigDecimal.ZERO) > 0) {
@@ -643,10 +700,14 @@ public class FinishedGoodsService {
                 batch.setQuantityTotal(batchQty.subtract(shipped).max(BigDecimal.ZERO));
                 batchesToSave.add(batch);
 
-                totalCogsCost = totalCogsCost.add(shipped.multiply(line.getUnitCost()));
+                totalCogsCost = totalCogsCost.add(shipped.multiply(unitCost));
 
                 recordMovement(fg, batch, InventoryReference.SALES_ORDER, order.getId().toString(), 
-                        "DISPATCH", shipped, line.getUnitCost());
+                        "DISPATCH", shipped, unitCost);
+            }
+
+            if (shipped.compareTo(BigDecimal.ZERO) > 0) {
+                applyReservationFulfillment(reservationsByBatch, batch, shipped);
             }
 
             lineResults.add(new DispatchConfirmationResponse.LineResult(
@@ -681,30 +742,142 @@ public class FinishedGoodsService {
         slip.setDispatchNotes(request.notes());
         packagingSlipRepository.save(slip);
 
-        // If this dispatch clears all backorders, mark any related slips as dispatched too.
-        if (!hasBackorder) {
-            List<PackagingSlip> related = packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, order.getId());
-            for (PackagingSlip relatedSlip : related) {
-                if (!"DISPATCHED".equalsIgnoreCase(relatedSlip.getStatus())) {
-                    relatedSlip.setStatus("DISPATCHED");
-                    if (relatedSlip.getDispatchedAt() == null) {
-                        relatedSlip.setDispatchedAt(slip.getDispatchedAt());
-                    }
-                    if (relatedSlip.getConfirmedAt() == null) {
-                        relatedSlip.setConfirmedAt(slip.getConfirmedAt());
-                    }
-                    if (relatedSlip.getConfirmedBy() == null) {
-                        relatedSlip.setConfirmedBy(username);
-                    }
-                    packagingSlipRepository.save(relatedSlip);
-                }
-            }
+        if (!reservationsToUpdate.isEmpty()) {
+            updateReservationStatuses(reservationsToUpdate);
+            inventoryReservationRepository.saveAll(reservationsToUpdate);
         }
 
         // Handle backorders - create new slip if needed
         Long backorderSlipId = null;
         if (hasBackorder) {
             backorderSlipId = createBackorderSlip(slip, lineResults);
+        }
+
+        return new DispatchConfirmationResponse(
+                slip.getId(),
+                slip.getSlipNumber(),
+                slip.getStatus(),
+                slip.getConfirmedAt(),
+                slip.getConfirmedBy(),
+                totalOrdered,
+                totalShipped,
+                totalBackorder,
+                slip.getJournalEntryId(),
+                slip.getCogsJournalEntryId(),
+                lineResults,
+                backorderSlipId
+        );
+    }
+
+    private void applyReservationFulfillment(Map<Long, List<InventoryReservation>> reservationsByBatch,
+                                             FinishedGoodBatch batch,
+                                             BigDecimal shipped) {
+        if (batch == null || batch.getId() == null || shipped == null || shipped.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+        List<InventoryReservation> reservations = reservationsByBatch.get(batch.getId());
+        if (reservations == null || reservations.isEmpty()) {
+            return;
+        }
+        BigDecimal remaining = shipped;
+        for (InventoryReservation reservation : reservations) {
+            if (remaining.compareTo(BigDecimal.ZERO) <= 0) {
+                break;
+            }
+            BigDecimal reservedQty = resolveReservedQuantity(reservation);
+            if (reservedQty.compareTo(BigDecimal.ZERO) <= 0) {
+                reservation.setReservedQuantity(BigDecimal.ZERO);
+                continue;
+            }
+            BigDecimal applied = remaining.min(reservedQty);
+            reservation.setReservedQuantity(reservedQty.subtract(applied).max(BigDecimal.ZERO));
+            BigDecimal fulfilled = safeQuantity(reservation.getFulfilledQuantity());
+            reservation.setFulfilledQuantity(fulfilled.add(applied));
+            remaining = remaining.subtract(applied);
+        }
+    }
+
+    private void updateReservationStatuses(List<InventoryReservation> reservations) {
+        for (InventoryReservation reservation : reservations) {
+            if ("CANCELLED".equalsIgnoreCase(reservation.getStatus())) {
+                continue;
+            }
+            BigDecimal reservedQty = safeQuantity(reservation.getReservedQuantity());
+            BigDecimal fulfilledQty = safeQuantity(reservation.getFulfilledQuantity());
+            if (fulfilledQty.compareTo(BigDecimal.ZERO) > 0) {
+                if (reservedQty.compareTo(BigDecimal.ZERO) > 0) {
+                    reservation.setStatus("PARTIAL");
+                } else {
+                    reservation.setStatus("FULFILLED");
+                    reservation.setReservedQuantity(BigDecimal.ZERO);
+                }
+            } else if (reservedQty.compareTo(BigDecimal.ZERO) > 0) {
+                reservation.setStatus("BACKORDER");
+            }
+        }
+    }
+
+    private BigDecimal resolveReservedQuantity(InventoryReservation reservation) {
+        BigDecimal reserved = reservation.getReservedQuantity();
+        if (reserved == null || reserved.compareTo(BigDecimal.ZERO) <= 0) {
+            reserved = reservation.getQuantity();
+        }
+        return safeQuantity(reserved);
+    }
+
+    private DispatchConfirmationResponse buildDispatchConfirmationResponse(PackagingSlip slip, Company company) {
+        List<DispatchConfirmationResponse.LineResult> lineResults = new ArrayList<>();
+        BigDecimal totalOrdered = BigDecimal.ZERO;
+        BigDecimal totalShipped = BigDecimal.ZERO;
+        BigDecimal totalBackorder = BigDecimal.ZERO;
+        boolean hasBackorder = false;
+
+        for (PackagingSlipLine line : slip.getLines()) {
+            FinishedGood fg = line.getFinishedGoodBatch().getFinishedGood();
+            BigDecimal orderedQty = line.getOrderedQuantity() != null ? line.getOrderedQuantity() : line.getQuantity();
+            if (orderedQty == null) {
+                orderedQty = BigDecimal.ZERO;
+            }
+            BigDecimal shippedQty = line.getShippedQuantity();
+            if (shippedQty == null) {
+                shippedQty = line.getQuantity();
+            }
+            if (shippedQty == null) {
+                shippedQty = BigDecimal.ZERO;
+            }
+            BigDecimal backorderQty = line.getBackorderQuantity();
+            if (backorderQty == null) {
+                backorderQty = orderedQty.subtract(shippedQty).max(BigDecimal.ZERO);
+            }
+            if (backorderQty.compareTo(BigDecimal.ZERO) > 0) {
+                hasBackorder = true;
+            }
+            BigDecimal unitCost = line.getUnitCost() != null ? line.getUnitCost() : BigDecimal.ZERO;
+            BigDecimal lineTotal = shippedQty.multiply(unitCost);
+            totalOrdered = totalOrdered.add(orderedQty.multiply(unitCost));
+            totalShipped = totalShipped.add(lineTotal);
+            totalBackorder = totalBackorder.add(backorderQty.multiply(unitCost));
+
+            lineResults.add(new DispatchConfirmationResponse.LineResult(
+                    line.getId(),
+                    fg.getProductCode(),
+                    fg.getName(),
+                    orderedQty,
+                    shippedQty,
+                    backorderQty,
+                    unitCost,
+                    lineTotal,
+                    line.getNotes()
+            ));
+        }
+
+        Long backorderSlipId = null;
+        if (hasBackorder && slip.getSalesOrder() != null) {
+            backorderSlipId = packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, slip.getSalesOrder().getId()).stream()
+                    .filter(existing -> "BACKORDER".equalsIgnoreCase(existing.getStatus()))
+                    .findFirst()
+                    .map(PackagingSlip::getId)
+                    .orElse(null);
         }
 
         return new DispatchConfirmationResponse(
@@ -777,9 +950,14 @@ public class FinishedGoodsService {
     public PackagingSlipDto getPackagingSlipByOrder(Long salesOrderId) {
         Company company = companyContextService.requireCurrentCompany();
         // First try to find an existing slip
-        PackagingSlip slip = packagingSlipRepository.findByCompanyAndSalesOrderId(company, salesOrderId)
-                .orElse(null);
-        if (slip != null) {
+        List<PackagingSlip> slips = packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, salesOrderId);
+        if (!slips.isEmpty()) {
+            if (slips.size() > 1) {
+                throw new IllegalArgumentException("Multiple packaging slips found for order; provide packingSlipId");
+            }
+            Long slipId = slips.get(0).getId();
+            PackagingSlip slip = packagingSlipRepository.findByIdAndCompany(slipId, company)
+                    .orElseThrow(() -> new IllegalArgumentException("Packaging slip not found"));
             return toSlipDto(slip);
         }
 

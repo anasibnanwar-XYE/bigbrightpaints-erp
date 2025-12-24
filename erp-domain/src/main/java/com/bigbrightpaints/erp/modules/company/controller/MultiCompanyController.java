@@ -4,8 +4,13 @@ import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.dto.CompanyDto;
 import com.bigbrightpaints.erp.modules.company.service.CompanyService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
+import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -22,7 +27,18 @@ public class MultiCompanyController {
     }
 
     @PostMapping("/companies/switch")
-    public ResponseEntity<ApiResponse<CompanyDto>> switchCompany(@RequestBody SwitchCompanyRequest request) {
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<CompanyDto>> switchCompany(
+            @AuthenticationPrincipal UserPrincipal principal,
+            @Valid @RequestBody SwitchCompanyRequest request) {
+        if (principal == null) {
+            return ResponseEntity.status(401).body(ApiResponse.failure("Unauthenticated"));
+        }
+        boolean member = principal.getUser().getCompanies().stream()
+                .anyMatch(company -> company.getCode().equalsIgnoreCase(request.companyCode()));
+        if (!member) {
+            throw new AccessDeniedException("Not allowed to access company");
+        }
         Company company = companyService.findByCode(request.companyCode());
         return ResponseEntity.ok(ApiResponse.success("Switched company",
                 new CompanyDto(

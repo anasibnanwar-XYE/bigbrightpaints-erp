@@ -1,9 +1,10 @@
 package com.bigbrightpaints.erp.modules.invoice.service;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.util.MoneyUtils;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
-import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
@@ -11,11 +12,13 @@ import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceLine;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
 import com.bigbrightpaints.erp.modules.invoice.dto.InvoiceDto;
 import com.bigbrightpaints.erp.modules.invoice.dto.InvoiceLineDto;
+import com.bigbrightpaints.erp.modules.accounting.service.JournalReferenceResolver;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderItem;
 import com.bigbrightpaints.erp.modules.sales.service.SalesJournalService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesService;
+import com.bigbrightpaints.erp.modules.sales.util.SalesOrderReference;
 import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
 
@@ -23,6 +26,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class InvoiceService {
@@ -31,33 +35,36 @@ public class InvoiceService {
     private final InvoiceRepository invoiceRepository;
     private final SalesService salesService;
     private final InvoiceNumberService invoiceNumberService;
-    private final JournalEntryRepository journalEntryRepository;
     private final SalesJournalService salesJournalService;
     private final CompanyEntityLookup companyEntityLookup;
+    private final JournalReferenceResolver journalReferenceResolver;
 
     public InvoiceService(CompanyContextService companyContextService,
                           InvoiceRepository invoiceRepository,
                           SalesService salesService,
                           InvoiceNumberService invoiceNumberService,
-                          JournalEntryRepository journalEntryRepository,
                           SalesJournalService salesJournalService,
-                          CompanyEntityLookup companyEntityLookup) {
+                          CompanyEntityLookup companyEntityLookup,
+                          JournalReferenceResolver journalReferenceResolver) {
         this.companyContextService = companyContextService;
         this.invoiceRepository = invoiceRepository;
         this.salesService = salesService;
         this.invoiceNumberService = invoiceNumberService;
-        this.journalEntryRepository = journalEntryRepository;
         this.salesJournalService = salesJournalService;
         this.companyEntityLookup = companyEntityLookup;
+        this.journalReferenceResolver = journalReferenceResolver;
     }
 
     @Transactional
     public InvoiceDto issueInvoiceForOrder(Long salesOrderId) {
         Company company = companyContextService.requireCurrentCompany();
-        // Use pessimistic lock to prevent duplicate invoice creation race condition
-        Invoice existing = invoiceRepository.lockByCompanyAndSalesOrderId(company, salesOrderId).orElse(null);
-        if (existing != null) {
-            return toDto(existing);
+        List<Invoice> existingInvoices = invoiceRepository.findAllByCompanyAndSalesOrderId(company, salesOrderId);
+        if (!existingInvoices.isEmpty()) {
+            if (existingInvoices.size() == 1) {
+                return toDto(existingInvoices.get(0));
+            }
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                    "Multiple invoices exist for order; issue invoices per dispatch");
         }
         SalesOrder order = salesService.getOrderWithItems(salesOrderId);
         if (order.getDealer() == null) {
@@ -130,6 +137,7 @@ public class InvoiceService {
                 .toList();
     }
 
+    @Transactional
     public InvoiceDto getInvoice(Long id) {
         Company company = companyContextService.requireCurrentCompany();
         Invoice invoice = invoiceRepository.findByCompanyAndId(company, id)
@@ -139,11 +147,9 @@ public class InvoiceService {
 
     private JournalEntry resolveInvoiceJournal(SalesOrder order, Invoice invoice) {
         Company company = order.getCompany();
-        // Use order NUMBER (not ID) for consistent reference across all journals
-        String orderNumber = order.getOrderNumber() != null ? order.getOrderNumber() : String.valueOf(order.getId());
-        String legacyReference = "INV-" + orderNumber;
-        return journalEntryRepository.findByCompanyAndReferenceNumber(company, legacyReference)
-                .orElseGet(() -> createInvoiceJournal(order, invoice, null));
+        String reference = SalesOrderReference.invoiceReference(order);
+        Optional<JournalEntry> existing = journalReferenceResolver.findExistingEntry(company, reference);
+        return existing.orElseGet(() -> createInvoiceJournal(order, invoice, reference));
     }
 
     private JournalEntry createInvoiceJournal(SalesOrder order, Invoice invoice, String reference) {
@@ -166,6 +172,7 @@ public class InvoiceService {
 
     public record InvoiceWithEmail(InvoiceDto invoice, String dealerEmail, String companyName) {}
 
+    @Transactional
     public InvoiceWithEmail getInvoiceWithDealerEmail(Long id) {
         Company company = companyContextService.requireCurrentCompany();
         Invoice invoice = invoiceRepository.findByCompanyAndId(company, id)

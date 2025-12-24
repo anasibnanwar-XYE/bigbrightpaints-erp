@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.orchestrator.service;
 
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
+import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
@@ -8,7 +9,6 @@ import com.bigbrightpaints.erp.modules.factory.service.FactoryService;
 import com.bigbrightpaints.erp.modules.hr.service.HrService;
 import com.bigbrightpaints.erp.modules.invoice.service.InvoiceService;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
-import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.DispatchPosting;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.InventoryReservationResult;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
@@ -33,9 +33,9 @@ import org.springframework.transaction.support.DefaultTransactionStatus;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -66,6 +66,8 @@ class IntegrationCoordinatorTest {
     @Mock
     private AccountingFacade accountingFacade;
     @Mock
+    private CompanyEntityLookup companyEntityLookup;
+    @Mock
     private CompanyDefaultAccountsService companyDefaultAccountsService;
 
     private IntegrationCoordinator integrationCoordinator;
@@ -86,6 +88,7 @@ class IntegrationCoordinatorTest {
                 reportService,
                 orderAutoApprovalStateRepository,
                 accountingFacade,
+                companyEntityLookup,
                 companyDefaultAccountsService,
                 new NoOpTransactionManager(),
                 10L,
@@ -109,30 +112,26 @@ class IntegrationCoordinatorTest {
     }
 
     @Test
-    void autoApproveOrderFinalizesShipmentWhenInventoryAvailable() {
+    void autoApproveOrderMarksReadyToShipWhenInventoryAvailable() {
         InventoryReservationResult reservation = new InventoryReservationResult(null, List.of());
         when(salesService.getOrderWithItems(ORDER_ID)).thenReturn(order);
         when(finishedGoodsService.reserveForOrder(order)).thenReturn(reservation);
-        when(finishedGoodsService.markSlipDispatched(ORDER_ID)).thenReturn(List.of());
-        when(salesJournalService.postSalesJournal(any(), any(), any(), any(), any())).thenReturn(100L);
-        when(invoiceService.issueInvoiceForOrder(ORDER_ID)).thenReturn(null);
 
         IntegrationCoordinator.AutoApprovalResult result =
                 integrationCoordinator.autoApproveOrder(String.valueOf(ORDER_ID), new BigDecimal("1500"), COMPANY_ID);
 
-        assertThat(result.orderStatus()).isEqualTo("SHIPPED");
+        assertThat(result.orderStatus()).isEqualTo("READY_TO_SHIP");
         assertThat(result.awaitingProduction()).isFalse();
         assertThat(state.isInventoryReserved()).isTrue();
-        assertThat(state.isDispatchFinalized()).isTrue();
-        assertThat(state.isInvoiceIssued()).isTrue();
+        assertThat(state.isDispatchFinalized()).isFalse();
+        assertThat(state.isInvoiceIssued()).isFalse();
         assertThat(state.isOrderStatusUpdated()).isTrue();
         assertThat(state.isCompleted()).isTrue();
 
         verify(salesService).updateStatus(ORDER_ID, "RESERVED");
         verify(salesService).updateStatus(ORDER_ID, "READY_TO_SHIP");
-        verify(salesService).updateStatus(ORDER_ID, "SHIPPED");
-        verify(finishedGoodsService).markSlipDispatched(ORDER_ID);
-        verify(invoiceService).issueInvoiceForOrder(ORDER_ID);
+        verify(salesService, never()).updateStatus(ORDER_ID, "SHIPPED");
+        verify(salesService, never()).confirmDispatch(any());
     }
 
     @Test
@@ -152,66 +151,44 @@ class IntegrationCoordinatorTest {
         state.markInventoryReserved();
         state.markOrderStatusUpdated();
 
-        when(salesService.getOrderWithItems(ORDER_ID)).thenReturn(order);
-        when(finishedGoodsService.markSlipDispatched(ORDER_ID)).thenReturn(List.of());
-        when(salesJournalService.postSalesJournal(any(), any(), any(), any(), any())).thenReturn(200L);
-        when(invoiceService.issueInvoiceForOrder(ORDER_ID)).thenReturn(null);
-
         IntegrationCoordinator.AutoApprovalResult result =
                 integrationCoordinator.autoApproveOrder(String.valueOf(ORDER_ID), null, COMPANY_ID);
 
-        assertThat(result.orderStatus()).isEqualTo("SHIPPED");
+        assertThat(result.orderStatus()).isEqualTo("READY_TO_SHIP");
         assertThat(result.awaitingProduction()).isFalse();
         assertThat(state.isInventoryReserved()).isTrue();
-        assertThat(state.isDispatchFinalized()).isTrue();
-        assertThat(state.isSalesJournalPosted()).isTrue();
-        assertThat(state.isInvoiceIssued()).isTrue();
+        assertThat(state.isDispatchFinalized()).isFalse();
+        assertThat(state.isSalesJournalPosted()).isFalse();
+        assertThat(state.isInvoiceIssued()).isFalse();
         assertThat(state.isCompleted()).isTrue();
 
         verify(finishedGoodsService, never()).reserveForOrder(any());
-        verify(salesService, never()).updateStatus(eq(ORDER_ID), eq("READY_TO_SHIP"));
-        verify(salesService, never()).updateStatus(eq(ORDER_ID), eq("RESERVED"));
-        verify(salesService, times(1)).updateStatus(ORDER_ID, "SHIPPED");
+        verify(salesService, never()).updateStatus(eq(ORDER_ID), anyString());
+        verify(salesService, never()).confirmDispatch(any());
     }
 
     @Test
-    void autoApproveOrder_postsCogsWhenDispatchPostingsAvailable() {
+    void autoApproveOrderDoesNotDispatchAutomatically() {
         order.setOrderNumber("SO-42");
         InventoryReservationResult reservation = new InventoryReservationResult(null, List.of());
         when(salesService.getOrderWithItems(ORDER_ID)).thenReturn(order);
         when(finishedGoodsService.reserveForOrder(order)).thenReturn(reservation);
-        when(accountingFacade.hasCogsJournalFor("SO-42")).thenReturn(false);
-        when(finishedGoodsService.markSlipDispatched(ORDER_ID)).thenReturn(List.of(
-                new DispatchPosting(111L, 222L, new BigDecimal("50.00"))
-        ));
-        when(salesJournalService.postSalesJournal(any(), any(), any(), any(), any())).thenReturn(100L);
-        when(invoiceService.issueInvoiceForOrder(ORDER_ID)).thenReturn(null);
 
         integrationCoordinator.autoApproveOrder(String.valueOf(ORDER_ID), new BigDecimal("1500"), COMPANY_ID);
 
-        verify(accountingFacade).postCOGS(
-                eq("SO-42-111-0"),
-                eq(222L),
-                eq(111L),
-                eq(new BigDecimal("50.00")),
-                eq("COGS posting for order SO-42")
-        );
+        verify(salesService, never()).confirmDispatch(any());
     }
 
     @Test
-    void autoApproveOrder_skipsCogsWhenJournalAlreadyExists() {
+    void autoApproveOrderDoesNotFinalizeShipmentOnRetry() {
         order.setOrderNumber("SO-42");
         InventoryReservationResult reservation = new InventoryReservationResult(null, List.of());
         when(salesService.getOrderWithItems(ORDER_ID)).thenReturn(order);
         when(finishedGoodsService.reserveForOrder(order)).thenReturn(reservation);
-        when(accountingFacade.hasCogsJournalFor("SO-42")).thenReturn(true);
-        when(salesJournalService.postSalesJournal(any(), any(), any(), any(), any())).thenReturn(100L);
-        when(invoiceService.issueInvoiceForOrder(ORDER_ID)).thenReturn(null);
 
         integrationCoordinator.autoApproveOrder(String.valueOf(ORDER_ID), new BigDecimal("1500"), COMPANY_ID);
 
-        verify(finishedGoodsService, never()).markSlipDispatched(ORDER_ID);
-        verify(accountingFacade, never()).postCOGS(any(), any(), any(), any(), any());
+        verify(salesService, never()).confirmDispatch(any());
     }
 
     private static class NoOpTransactionManager extends AbstractPlatformTransactionManager {

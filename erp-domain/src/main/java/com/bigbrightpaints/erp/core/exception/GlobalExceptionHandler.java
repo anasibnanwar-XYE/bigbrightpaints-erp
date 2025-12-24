@@ -46,6 +46,31 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     /**
+     * Handles credit limit failures with a stable machine code and detailed payload.
+     */
+    @ExceptionHandler(CreditLimitExceededException.class)
+    public ResponseEntity<ApiResponse<Map<String, Object>>> handleCreditLimitExceeded(
+            CreditLimitExceededException ex, HttpServletRequest request) {
+
+        String traceId = UUID.randomUUID().toString();
+
+        logger.warn("Credit limit exceeded [{}] - Path: {}, User: {}",
+                traceId, request.getRequestURI(),
+                request.getUserPrincipal() != null ? request.getUserPrincipal().getName() : "anonymous",
+                ex);
+
+        Map<String, Object> errorResponse = new HashMap<>();
+        errorResponse.put("code", "CREDIT_LIMIT_EXCEEDED");
+        errorResponse.put("message", ex.getUserMessage());
+        errorResponse.put("traceId", traceId);
+        errorResponse.put("timestamp", LocalDateTime.now());
+        errorResponse.put("details", ex.getDetails());
+
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.failure(ex.getUserMessage(), errorResponse));
+    }
+
+    /**
      * Handles application-specific exceptions with error codes.
      */
     @ExceptionHandler(ApplicationException.class)

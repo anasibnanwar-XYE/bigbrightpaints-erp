@@ -8,7 +8,8 @@ public record DispatchConfirmationRequest(
         @NotNull Long packagingSlipId,
         @NotNull List<LineConfirmation> lines,
         String notes,
-        String confirmedBy
+        String confirmedBy,
+        Long overrideRequestId
 ) {
     public record LineConfirmation(
             @NotNull Long lineId,

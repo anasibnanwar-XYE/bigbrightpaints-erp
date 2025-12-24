@@ -12,6 +12,7 @@ import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -23,6 +24,8 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.ClientHttpRequestFactory;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -53,9 +56,11 @@ public class AccrualBadDebtIT extends AbstractIntegrationTest {
     private Account ar;
     private Dealer dealer;
     private Invoice invoice;
+    private ClientHttpRequestFactory originalRequestFactory;
 
     @BeforeEach
     void setup() {
+        configureRestTemplateTimeouts();
         dataSeeder.ensureUser(ADMIN_EMAIL, ADMIN_PASSWORD, "Accrual Admin", COMPANY_CODE,
                 List.of("ROLE_ADMIN", "ROLE_ACCOUNTING"));
         company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
@@ -67,6 +72,21 @@ public class AccrualBadDebtIT extends AbstractIntegrationTest {
         invoice = ensureInvoice();
         headers = authHeaders();
         seedInvoicePosting();
+    }
+
+    @AfterEach
+    void resetRestTemplateFactory() {
+        if (originalRequestFactory != null) {
+            rest.getRestTemplate().setRequestFactory(originalRequestFactory);
+        }
+    }
+
+    private void configureRestTemplateTimeouts() {
+        originalRequestFactory = rest.getRestTemplate().getRequestFactory();
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(30_000);
+        requestFactory.setReadTimeout(120_000);
+        rest.getRestTemplate().setRequestFactory(requestFactory);
     }
 
     private HttpHeaders authHeaders() {

@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.sales.service;
 
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
+import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.DispatchPosting;
@@ -9,6 +10,7 @@ import com.bigbrightpaints.erp.modules.invoice.dto.InvoiceDto;
 import com.bigbrightpaints.erp.modules.invoice.service.InvoiceService;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderRepository;
+import com.bigbrightpaints.erp.modules.sales.dto.DispatchConfirmRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -17,7 +19,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Orchestrates the complete sales fulfillment flow:
@@ -133,6 +137,35 @@ public class SalesFulfillmentService {
                 log.info("Reserved inventory for order {}", orderNumber);
             }
 
+            if (options.issueInvoice()) {
+                var dispatchResponse = salesService.confirmDispatch(
+                        new DispatchConfirmRequest(null, orderId, null, null, null, Boolean.FALSE, null)
+                );
+                List<DispatchPosting> dispatches = dispatchResponse.cogsPostings().stream()
+                        .map(p -> new DispatchPosting(p.inventoryAccountId(), p.cogsAccountId(), p.cost()))
+                        .toList();
+                result.dispatches(dispatches);
+                BigDecimal totalCogs = dispatches.stream()
+                        .map(DispatchPosting::cost)
+                        .filter(c -> c != null)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+                result.cogsAmount(totalCogs);
+                result.salesJournalId(dispatchResponse.arJournalEntryId());
+                if (dispatchResponse.finalInvoiceId() != null) {
+                    InvoiceDto invoice = invoiceService.getInvoice(dispatchResponse.finalInvoiceId());
+                    result.invoiceId(invoice.id());
+                    result.invoiceNumber(invoice.invoiceNumber());
+                }
+                if (order.getCogsJournalEntryId() != null) {
+                    result.cogsJournalIds(List.of(order.getCogsJournalEntryId()));
+                }
+                result.status(FulfillmentStatus.COMPLETED);
+                log.info("Completed fulfillment for order {} - Revenue: {}, COGS: {}, Gross Profit: {}",
+                        orderNumber, order.getTotalAmount(), totalCogs,
+                        order.getTotalAmount().subtract(totalCogs));
+                return result.build();
+            }
+
             // Step 2: Dispatch inventory and get COGS from actual cost layers
             List<DispatchPosting> dispatches = finishedGoodsService.markSlipDispatched(orderId);
             result.dispatches(dispatches);
@@ -188,7 +221,6 @@ public class SalesFulfillmentService {
 
             // Step 6: Save idempotency markers and update order status
             salesOrderRepository.save(order);
-            salesService.updateStatus(orderId, "SHIPPED");
             result.status(FulfillmentStatus.COMPLETED);
             
             log.info("Completed fulfillment for order {} - Revenue: {}, COGS: {}, Gross Profit: {}",
@@ -212,6 +244,17 @@ public class SalesFulfillmentService {
      * If issueInvoice=true, postSalesJournal is automatically disabled.
      */
     private FulfillmentOptions validateAndNormalizeOptions(FulfillmentOptions options) {
+        if (!options.issueInvoice()) {
+            log.warn("Fulfillment now requires dispatch confirmation; forcing issueInvoice=true and disabling manual journals.");
+            return FulfillmentOptions.builder()
+                    .reserveInventory(options.reserveInventory())
+                    .postSalesJournal(false)
+                    .postCogsJournal(false)
+                    .issueInvoice(true)
+                    .allowPartialFulfillment(options.allowPartialFulfillment())
+                    .entryDate(options.entryDate())
+                    .build();
+        }
         // DEFENSIVE: If issuing invoice, NEVER post sales journal separately
         // Invoice will handle AR/Revenue/Tax posting
         if (options.issueInvoice() && options.postSalesJournal()) {
@@ -236,39 +279,65 @@ public class SalesFulfillmentService {
     private List<Long> postCogsFromDispatches(SalesOrder order, List<DispatchPosting> dispatches) {
         List<Long> journalIds = new ArrayList<>();
         String orderNumber = order.getOrderNumber();
+        Long dealerId = order.getDealer() != null ? order.getDealer().getId() : null;
 
+        if (accountingFacade.hasCogsJournalFor(orderNumber)) {
+            log.info("COGS already posted for order {}, skipping", orderNumber);
+            return journalIds;
+        }
+
+        Map<String, BigDecimal> costByPair = new HashMap<>();
+        Map<String, Long[]> accountsByPair = new HashMap<>();
         for (int i = 0; i < dispatches.size(); i++) {
             DispatchPosting dispatch = dispatches.get(i);
-            
             if (dispatch.cogsAccountId() == null || dispatch.inventoryAccountId() == null) {
                 log.warn("Skipping COGS posting for dispatch {} - missing account IDs", i);
                 continue;
             }
-            
             BigDecimal cost = dispatch.cost();
             if (cost == null || cost.compareTo(BigDecimal.ZERO) <= 0) {
                 continue;
             }
+            String key = dispatch.cogsAccountId() + ":" + dispatch.inventoryAccountId();
+            costByPair.merge(key, cost, BigDecimal::add);
+            accountsByPair.putIfAbsent(key, new Long[]{dispatch.cogsAccountId(), dispatch.inventoryAccountId()});
+        }
 
-            // Generate reference anchored to order number (first dispatch uses COGS-{orderNumber})
-            // Additional layers use suffixed references to avoid missing multi-layer costs
-            String baseRef = "COGS-" + orderNumber;
-            String reference = i == 0 ? baseRef : baseRef + "-P" + (i + 1);
-            
-            // Check if already posted (idempotency)
-            if (accountingFacade.hasCogsJournalFor(reference)) {
-                log.info("COGS already posted for {}", reference);
+        if (costByPair.isEmpty()) {
+            return journalIds;
+        }
+
+        List<JournalEntryRequest.JournalLineRequest> lines = new ArrayList<>();
+        for (Map.Entry<String, BigDecimal> entry : costByPair.entrySet()) {
+            BigDecimal cost = entry.getValue();
+            if (cost == null || cost.compareTo(BigDecimal.ZERO) <= 0) {
                 continue;
             }
-
-            JournalEntryDto cogsEntry = accountingFacade.postCOGS(
-                    reference,
-                    dispatch.cogsAccountId(),
-                    dispatch.inventoryAccountId(),
+            Long[] accounts = accountsByPair.get(entry.getKey());
+            lines.add(new JournalEntryRequest.JournalLineRequest(
+                    accounts[0],
+                    "COGS for " + orderNumber,
                     cost,
-                    "COGS for " + orderNumber + " (Layer " + (i + 1) + ")"
-            );
-            
+                    BigDecimal.ZERO));
+            lines.add(new JournalEntryRequest.JournalLineRequest(
+                    accounts[1],
+                    "Inventory relief for " + orderNumber,
+                    BigDecimal.ZERO,
+                    cost));
+        }
+
+        if (lines.isEmpty()) {
+            return journalIds;
+        }
+
+        JournalEntryDto cogsEntry = accountingFacade.postCogsJournal(
+                orderNumber,
+                dealerId,
+                null,
+                "COGS for " + orderNumber,
+                lines
+        );
+        if (cogsEntry != null) {
             journalIds.add(cogsEntry.id());
         }
 
@@ -292,15 +361,20 @@ public class SalesFulfillmentService {
     @Transactional
     public DispatchResult dispatchOrder(Long orderId) {
         SalesOrder order = salesService.getOrderWithItems(orderId);
-        List<DispatchPosting> dispatches = finishedGoodsService.markSlipDispatched(orderId);
-        List<Long> cogsIds = postCogsFromDispatches(order, dispatches);
-        
+        var response = salesService.confirmDispatch(
+                new DispatchConfirmRequest(null, orderId, null, null, null, Boolean.FALSE, null)
+        );
+        List<DispatchPosting> dispatches = response.cogsPostings().stream()
+                .map(p -> new DispatchPosting(p.inventoryAccountId(), p.cogsAccountId(), p.cost()))
+                .toList();
         BigDecimal totalCogs = dispatches.stream()
                 .map(DispatchPosting::cost)
                 .filter(c -> c != null)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        
-        salesService.updateStatus(orderId, "DISPATCHED");
+        SalesOrder refreshed = salesService.getOrderWithItems(orderId);
+        List<Long> cogsIds = refreshed.getCogsJournalEntryId() != null
+                ? List.of(refreshed.getCogsJournalEntryId())
+                : List.of();
         return new DispatchResult(dispatches, cogsIds, totalCogs);
     }
 

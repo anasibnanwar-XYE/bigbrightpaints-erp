@@ -49,6 +49,11 @@ jwt:
   # Default 30 days refresh; reduce for shared environments
   refresh-token-ttl-seconds: ${JWT_REFRESH_TTL:2592000}
 erp:
+  environment:
+    validation:
+      enabled: true
+      health-indicator:
+        enabled: true
   licensing:
     product-id: ${ERP_LICENSE_PRODUCT_ID:31720}
     license-key: ${ERP_LICENSE_KEY}
@@ -84,6 +89,13 @@ management:
         allowed-methods: GET
   endpoint:
     health:
+      probes:
+        enabled: true
+      group:
+        liveness:
+          include: livenessState,ping
+        readiness:
+          include: readinessState,db,rabbit,configuration,dispatchMapping
       show-details: when_authorized
   security:
     enabled: true

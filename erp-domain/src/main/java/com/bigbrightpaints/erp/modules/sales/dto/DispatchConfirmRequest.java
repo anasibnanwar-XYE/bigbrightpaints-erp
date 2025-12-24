@@ -9,7 +9,10 @@ public record DispatchConfirmRequest(
         Long packingSlipId,
         Long orderId,
         List<DispatchLine> lines,
-        Boolean adminOverrideCreditLimit
+        String dispatchNotes,
+        String confirmedBy,
+        Boolean adminOverrideCreditLimit,
+        Long overrideRequestId
 ) {
     public record DispatchLine(
             Long lineId,
@@ -18,6 +21,7 @@ public record DispatchConfirmRequest(
             BigDecimal priceOverride,
             BigDecimal discount,
             BigDecimal taxRate,
-            Boolean taxInclusive
+            Boolean taxInclusive,
+            String notes
     ) {}
 }

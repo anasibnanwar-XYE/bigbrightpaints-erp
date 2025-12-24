@@ -45,6 +45,17 @@ public class CompanyDefaultAccountsService {
         );
     }
 
+    public DefaultAccounts getDefaults() {
+        Company company = companyContextService.requireCurrentCompany();
+        return new DefaultAccounts(
+                company.getDefaultInventoryAccountId(),
+                company.getDefaultCogsAccountId(),
+                company.getDefaultRevenueAccountId(),
+                company.getDefaultDiscountAccountId(),
+                company.getDefaultTaxAccountId()
+        );
+    }
+
     @Transactional
     public DefaultAccounts updateDefaults(Long inventoryAccountId,
                                           Long cogsAccountId,

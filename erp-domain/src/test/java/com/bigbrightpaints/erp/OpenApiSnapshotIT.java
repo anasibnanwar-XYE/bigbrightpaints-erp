@@ -36,12 +36,6 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
         if (repoRoot == null) {
             repoRoot = moduleRoot;
         }
-        Files.writeString(moduleRoot.resolve("openapi.json"), json.getBody(), StandardCharsets.UTF_8);
         Files.writeString(repoRoot.resolve("openapi.json"), json.getBody(), StandardCharsets.UTF_8);
-
-        ResponseEntity<String> yaml = rest.getForEntity("/v3/api-docs.yaml", String.class);
-        assertThat(yaml.getStatusCode()).isEqualTo(HttpStatus.OK);
-        Files.writeString(moduleRoot.resolve("openapi.yaml"), yaml.getBody(), StandardCharsets.UTF_8);
-        Files.writeString(repoRoot.resolve("openapi.yaml"), yaml.getBody(), StandardCharsets.UTF_8);
     }
 }

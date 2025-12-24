@@ -182,7 +182,10 @@ public class FactoryPackagingCostingIT extends AbstractIntegrationTest {
                 slip.getId(),
                 order.getId(),
                 null,
-                true
+                null,
+                null,
+                false,
+                null
         ));
 
         // Inventory assertions

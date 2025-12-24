@@ -12,6 +12,8 @@ import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
+import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
+import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -44,6 +46,7 @@ public class BusinessLogicRegressionTest extends AbstractIntegrationTest {
     @Autowired private JournalEntryRepository journalEntryRepository;
     @Autowired private RawMaterialRepository rawMaterialRepository;
     @Autowired private FinishedGoodRepository finishedGoodRepository;
+    @Autowired private DealerRepository dealerRepository;
 
     private String authToken;
     private HttpHeaders headers;
@@ -197,6 +200,7 @@ public class BusinessLogicRegressionTest extends AbstractIntegrationTest {
     @DisplayName("Dealer Balance: After Multiple Transactions Always Accurate")
     void dealerBalance_AfterMultipleTransactions_AlwaysAccurate() {
         Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
+        Dealer dealer = dealerRepository.findByCompanyAndCodeIgnoreCase(company, "FIX-DEALER").orElseThrow();
 
         // Create multiple ledger transactions and verify consistency
         Account arAccount = accountRepository.findByCompanyAndCodeIgnoreCase(company, "AR").orElseThrow();
@@ -223,6 +227,7 @@ public class BusinessLogicRegressionTest extends AbstractIntegrationTest {
                 "entryDate", LocalDate.now(),
                 "referenceNumber", "JE-REG-" + System.currentTimeMillis(),
                 "memo", "Test sale",
+                "dealerId", dealer.getId(),
                 "lines", List.of(debitLine, creditLine)
         );
 

@@ -1,11 +1,9 @@
 package com.bigbrightpaints.erp.modules.sales.service;
 
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -15,6 +13,7 @@ import com.bigbrightpaints.erp.modules.invoice.dto.InvoiceDto;
 import com.bigbrightpaints.erp.modules.invoice.service.InvoiceService;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderRepository;
+import com.bigbrightpaints.erp.modules.sales.dto.DispatchConfirmResponse;
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -64,13 +63,13 @@ class SalesFulfillmentServiceTest {
         order.setTotalAmount(new BigDecimal("100"));
 
         when(salesService.getOrderWithItems(1L)).thenReturn(order);
-        when(salesOrderRepository.save(order)).thenReturn(order);
-        when(finishedGoodsService.markSlipDispatched(1L)).thenReturn(List.of());
-        when(invoiceService.issueInvoiceForOrder(1L)).thenReturn(
-                new InvoiceDto(10L, UUID.randomUUID(), "INV-1", "ISSUED",
-                        BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
-                        "INR", LocalDate.now(), LocalDate.now().plusDays(15),
-                        null, null, order.getId(), null, null, List.of()));
+        InvoiceDto invoice = new InvoiceDto(10L, UUID.randomUUID(), "INV-1", "ISSUED",
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                "INR", LocalDate.now(), LocalDate.now().plusDays(15),
+                null, null, order.getId(), null, null, List.of());
+        when(salesService.confirmDispatch(any())).thenReturn(
+                new DispatchConfirmResponse(20L, order.getId(), invoice.id(), 555L, List.of(), true, List.of()));
+        when(invoiceService.getInvoice(invoice.id())).thenReturn(invoice);
 
         var options = SalesFulfillmentService.FulfillmentOptions.builder()
                 .reserveInventory(false)
@@ -83,9 +82,9 @@ class SalesFulfillmentServiceTest {
 
         // Sales journal should be skipped to avoid double posting
         verify(salesJournalService, never()).postSalesJournal(any(), any(), anyString(), any(), anyString());
-        verify(invoiceService).issueInvoiceForOrder(1L);
-        verify(salesService).updateStatus(1L, "SHIPPED");
-        assertNull(result.salesJournalId());
+        verify(salesService).confirmDispatch(any());
+        verify(invoiceService).getInvoice(10L);
+        org.junit.jupiter.api.Assertions.assertEquals(555L, result.salesJournalId());
     }
 
     @Test
@@ -98,13 +97,13 @@ class SalesFulfillmentServiceTest {
         order.setSalesJournalEntryId(999L);
 
         when(salesService.getOrderWithItems(2L)).thenReturn(order);
-        when(salesOrderRepository.save(order)).thenReturn(order);
-        when(finishedGoodsService.markSlipDispatched(2L)).thenReturn(List.of());
-        when(invoiceService.issueInvoiceForOrder(2L)).thenReturn(
-                new InvoiceDto(11L, UUID.randomUUID(), "INV-2", "ISSUED",
-                        BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
-                        "INR", LocalDate.now(), LocalDate.now().plusDays(15),
-                        null, null, order.getId(), null, null, List.of()));
+        InvoiceDto invoice = new InvoiceDto(11L, UUID.randomUUID(), "INV-2", "ISSUED",
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                "INR", LocalDate.now(), LocalDate.now().plusDays(15),
+                null, null, order.getId(), null, null, List.of());
+        when(salesService.confirmDispatch(any())).thenReturn(
+                new DispatchConfirmResponse(21L, order.getId(), invoice.id(), 999L, List.of(), true, List.of()));
+        when(invoiceService.getInvoice(invoice.id())).thenReturn(invoice);
 
         var options = SalesFulfillmentService.FulfillmentOptions.builder()
                 .reserveInventory(false)
@@ -116,8 +115,8 @@ class SalesFulfillmentServiceTest {
         var result = fulfillmentService.fulfillOrder(2L, options);
 
         verify(salesJournalService, never()).postSalesJournal(any(), any(), anyString(), any(), anyString());
-        verify(invoiceService).issueInvoiceForOrder(2L);
-        verify(salesService).updateStatus(2L, "SHIPPED");
+        verify(salesService).confirmDispatch(any());
+        verify(invoiceService).getInvoice(11L);
         org.junit.jupiter.api.Assertions.assertEquals(999L, result.salesJournalId());
     }
 
@@ -130,12 +129,13 @@ class SalesFulfillmentServiceTest {
         order.setTotalAmount(new BigDecimal("300"));
 
         when(salesService.getOrderWithItems(3L)).thenReturn(order);
-        when(salesOrderRepository.save(order)).thenReturn(order);
-        List<FinishedGoodsService.DispatchPosting> dispatches = List.of(
-                new FinishedGoodsService.DispatchPosting(10L, 20L, new BigDecimal("50"))
-        );
-        when(finishedGoodsService.markSlipDispatched(3L)).thenReturn(dispatches);
-        when(accountingFacade.hasCogsJournalFor("COGS-SO-3")).thenReturn(true);
+        InvoiceDto invoice = new InvoiceDto(12L, UUID.randomUUID(), "INV-3", "ISSUED",
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                "INR", LocalDate.now(), LocalDate.now().plusDays(15),
+                null, null, order.getId(), null, null, List.of());
+        when(salesService.confirmDispatch(any())).thenReturn(
+                new DispatchConfirmResponse(22L, order.getId(), invoice.id(), 123L, List.of(), true, List.of()));
+        when(invoiceService.getInvoice(invoice.id())).thenReturn(invoice);
 
         var options = SalesFulfillmentService.FulfillmentOptions.builder()
                 .reserveInventory(false)
@@ -146,8 +146,9 @@ class SalesFulfillmentServiceTest {
 
         fulfillmentService.fulfillOrder(3L, options);
 
-        verify(accountingFacade, never()).postCOGS(anyString(), any(), any(), any(), anyString());
-        verify(accountingFacade, times(1)).hasCogsJournalFor("COGS-SO-3");
+        verify(salesService).confirmDispatch(any());
+        verify(finishedGoodsService, never()).markSlipDispatched(anyLong());
+        verify(accountingFacade, never()).postCogsJournal(anyString(), any(), any(), anyString(), any());
     }
 
     private void setField(Object target, String name, Object value) {

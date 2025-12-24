@@ -117,7 +117,8 @@ class DispatchConfirmationIT extends AbstractIntegrationTest {
                                 "ship all"))
                         .toList(),
                 "Final check done",
-                "dispatch-user"
+                "dispatch-user",
+                null
         );
 
         var response = finishedGoodsService.confirmDispatch(request, "dispatch-user");
@@ -175,7 +176,8 @@ class DispatchConfirmationIT extends AbstractIntegrationTest {
                                 "partial ship"))
                         .toList(),
                 "Partial dispatch",
-                "dispatch-user"
+                "dispatch-user",
+                null
         );
         var firstResponse = finishedGoodsService.confirmDispatch(firstConfirm, "dispatch-user");
         assertThat(firstResponse.backorderSlipId()).isNotNull();
@@ -193,7 +195,8 @@ class DispatchConfirmationIT extends AbstractIntegrationTest {
                                 "ship remainder"))
                         .toList(),
                 "Backorder cleared",
-                "dispatch-user"
+                "dispatch-user",
+                null
         );
         var secondResponse = finishedGoodsService.confirmDispatch(secondConfirm, "dispatch-user");
 

@@ -13,11 +13,11 @@ import java.util.List;
 import java.util.Optional;
 
 public interface PackagingSlipRepository extends JpaRepository<PackagingSlip, Long> {
-    @EntityGraph(attributePaths = {"salesOrder", "salesOrder.dealer", "lines", "lines.finishedGoodBatch"})
+    @EntityGraph(attributePaths = {"salesOrder", "salesOrder.dealer", "lines", "lines.finishedGoodBatch", "lines.finishedGoodBatch.finishedGood"})
     List<PackagingSlip> findByCompanyOrderByCreatedAtDesc(Company company);
-    @EntityGraph(attributePaths = {"salesOrder", "salesOrder.dealer", "lines", "lines.finishedGoodBatch"})
+    @EntityGraph(attributePaths = {"salesOrder", "salesOrder.dealer", "lines", "lines.finishedGoodBatch", "lines.finishedGoodBatch.finishedGood"})
     Optional<PackagingSlip> findByIdAndCompany(Long id, Company company);
-    @EntityGraph(attributePaths = {"salesOrder", "salesOrder.dealer", "lines", "lines.finishedGoodBatch"})
+    @EntityGraph(attributePaths = {"salesOrder", "salesOrder.dealer", "lines", "lines.finishedGoodBatch", "lines.finishedGoodBatch.finishedGood"})
     Optional<PackagingSlip> findByCompanyAndSalesOrderId(Company company, Long orderId);
     List<PackagingSlip> findAllByCompanyAndSalesOrderId(Company company, Long orderId);
 

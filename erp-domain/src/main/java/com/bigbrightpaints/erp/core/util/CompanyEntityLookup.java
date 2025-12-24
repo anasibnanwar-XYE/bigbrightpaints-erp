@@ -186,6 +186,13 @@ public class CompanyEntityLookup {
         return journalEntryRepository.findByCompanyAndReferenceNumber(company, referenceNumber);
     }
 
+    public Optional<JournalEntry> findJournalEntryByReferencePrefix(Company company, String referencePrefix) {
+        if (referencePrefix == null || referencePrefix.isBlank()) {
+            return Optional.empty();
+        }
+        return journalEntryRepository.findFirstByCompanyAndReferenceNumberStartingWith(company, referencePrefix);
+    }
+
     public AccountingPeriod requireAccountingPeriod(Company company, Long accountingPeriodId) {
         return accountingPeriodRepository.findByCompanyAndId(company, accountingPeriodId)
                 .orElseThrow(() -> new IllegalArgumentException("Accounting period not found: id=" + accountingPeriodId));

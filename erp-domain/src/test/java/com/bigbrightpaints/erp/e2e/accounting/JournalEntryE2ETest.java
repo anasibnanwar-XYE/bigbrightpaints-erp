@@ -3,6 +3,10 @@ package com.bigbrightpaints.erp.e2e.accounting;
 import com.bigbrightpaints.erp.modules.accounting.domain.*;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
+import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
+import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
+import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
+import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -33,6 +37,8 @@ public class JournalEntryE2ETest extends AbstractIntegrationTest {
     @Autowired private AccountRepository accountRepository;
     @Autowired private JournalEntryRepository journalEntryRepository;
     @Autowired private JournalLineRepository journalLineRepository;
+    @Autowired private DealerRepository dealerRepository;
+    @Autowired private SupplierRepository supplierRepository;
 
     private String authToken;
     private HttpHeaders headers;
@@ -223,6 +229,7 @@ public class JournalEntryE2ETest extends AbstractIntegrationTest {
         Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
         Account cashAccount = accountRepository.findByCompanyAndCodeIgnoreCase(company, "CASH").orElseThrow();
         Account arAccount = accountRepository.findByCompanyAndCodeIgnoreCase(company, "AR").orElseThrow();
+        Dealer dealer = dealerRepository.findByCompanyAndCodeIgnoreCase(company, "FIX-DEALER").orElseThrow();
 
         // Create payment entry (debit cash, credit AR)
         BigDecimal paymentAmount = new BigDecimal("5000.00");
@@ -245,6 +252,7 @@ public class JournalEntryE2ETest extends AbstractIntegrationTest {
                 "entryDate", LocalDate.now(),
                 "referenceNumber", "JE-E2E-" + System.currentTimeMillis(),
                 "memo", "Dealer payment",
+                "dealerId", dealer.getId(),
                 "lines", List.of(debitLine, creditLine)
         );
 
@@ -260,9 +268,37 @@ public class JournalEntryE2ETest extends AbstractIntegrationTest {
         Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
         Account cashAccount = accountRepository.findByCompanyAndCodeIgnoreCase(company, "CASH").orElseThrow();
         Account apAccount = accountRepository.findByCompanyAndCodeIgnoreCase(company, "AP").orElseThrow();
+        Account expenseAccount = accountRepository.findByCompanyAndCodeIgnoreCase(company, "EXPENSE").orElseThrow();
+        Supplier supplier = supplierRepository.findByCompanyAndCodeIgnoreCase(company, "FIX-SUP").orElseThrow();
 
         // Create supplier payment (debit AP, credit cash)
         BigDecimal paymentAmount = new BigDecimal("3000.00");
+
+        Map<String, Object> purchaseDebit = Map.of(
+                "accountId", expenseAccount.getId(),
+                "debit", paymentAmount,
+                "credit", BigDecimal.ZERO,
+                "description", "Purchase expense"
+        );
+
+        Map<String, Object> purchaseCredit = Map.of(
+                "accountId", apAccount.getId(),
+                "debit", BigDecimal.ZERO,
+                "credit", paymentAmount,
+                "description", "AP increase"
+        );
+
+        Map<String, Object> purchaseRequest = Map.of(
+                "entryDate", LocalDate.now(),
+                "referenceNumber", "JE-E2E-PO-" + System.currentTimeMillis(),
+                "memo", "Supplier purchase",
+                "supplierId", supplier.getId(),
+                "lines", List.of(purchaseDebit, purchaseCredit)
+        );
+
+        ResponseEntity<Map> purchaseResponse = rest.exchange("/api/v1/accounting/journal-entries",
+                HttpMethod.POST, new HttpEntity<>(purchaseRequest, headers), Map.class);
+        assertThat(purchaseResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
 
         Map<String, Object> debitLine = Map.of(
                 "accountId", apAccount.getId(),
@@ -282,6 +318,7 @@ public class JournalEntryE2ETest extends AbstractIntegrationTest {
                 "entryDate", LocalDate.now(),
                 "referenceNumber", "JE-E2E-" + System.currentTimeMillis(),
                 "memo", "Supplier payment",
+                "supplierId", supplier.getId(),
                 "lines", List.of(debitLine, creditLine)
         );
 

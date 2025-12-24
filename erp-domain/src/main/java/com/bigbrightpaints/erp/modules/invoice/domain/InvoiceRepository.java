@@ -20,6 +20,8 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     @EntityGraph(attributePaths = "lines")
     List<Invoice> findByCompanyAndDealerOrderByIssueDateDesc(Company company, Dealer dealer);
 
+    List<Invoice> findAllByCompanyAndSalesOrderId(Company company, Long salesOrderId);
+
     Optional<Invoice> findByCompanyAndSalesOrderId(Company company, Long salesOrderId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)

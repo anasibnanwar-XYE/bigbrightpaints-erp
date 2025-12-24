@@ -28,6 +28,8 @@ import com.bigbrightpaints.erp.modules.production.domain.ProductionBrand;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionBrandRepository;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProductRepository;
+import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
+import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
@@ -94,6 +96,7 @@ class HighImpactRegressionIT extends AbstractIntegrationTest {
     @Autowired private AccountingPeriodRepository accountingPeriodRepository;
     @Autowired private CompanyRepository companyRepository;
     @Autowired private DealerRepository dealerRepository;
+    @Autowired private SupplierRepository supplierRepository;
     @Autowired private FinishedGoodsService finishedGoodsService;
     @Autowired private FinishedGoodRepository finishedGoodRepository;
     @Autowired private FinishedGoodBatchRepository finishedGoodBatchRepository;
@@ -115,6 +118,8 @@ class HighImpactRegressionIT extends AbstractIntegrationTest {
     private final Map<String, Account> accountsB = new HashMap<>();
     private Dealer dealerA;
     private Dealer dealerB;
+    private Supplier supplierA;
+    private Supplier supplierB;
     private ProductionBrand brandA;
     private HttpHeaders headers;
 
@@ -129,6 +134,7 @@ class HighImpactRegressionIT extends AbstractIntegrationTest {
 
         ensureAccounts(companyA, accountsA);
         dealerA = ensureDealer(companyA, "DEALER-A", "Test Dealer A", accountsA.get("AR"));
+        supplierA = ensureSupplier(companyA, "SUP-A", "Test Supplier A", accountsA.get("AP"));
         brandA = ensureBrand(companyA, "BRAND-A");
 
         // Setup second company for multi-tenant tests
@@ -139,6 +145,7 @@ class HighImpactRegressionIT extends AbstractIntegrationTest {
         companyRepository.save(companyB);
         ensureAccounts(companyB, accountsB);
         dealerB = ensureDealer(companyB, "DEALER-B", "Test Dealer B", accountsB.get("AR"));
+        supplierB = ensureSupplier(companyB, "SUP-B", "Test Supplier B", accountsB.get("AP"));
 
         CompanyContextHolder.setCompanyId(COMPANY_CODE_A);
         headers = authHeaders();
@@ -175,8 +182,8 @@ class HighImpactRegressionIT extends AbstractIntegrationTest {
                 "FX-JE-" + UUID.randomUUID(),
                 LocalDate.now(),
                 "Multi-currency journal entry",
-                null,
-                null,
+                dealerA.getId(),
+                supplierA.getId(),
                 Boolean.FALSE,
                 List.of(
                         new JournalEntryRequest.JournalLineRequest(accountsA.get("AR").getId(), "AR Debit USD", usdDebit1, BigDecimal.ZERO, usdDebit1),
@@ -919,6 +926,20 @@ class HighImpactRegressionIT extends AbstractIntegrationTest {
                     dealer.setOutstandingBalance(BigDecimal.ZERO);
                     dealer.setReceivableAccount(arAccount);
                     return dealerRepository.save(dealer);
+                });
+    }
+
+    private Supplier ensureSupplier(Company company, String code, String name, Account apAccount) {
+        CompanyContextHolder.setCompanyId(company.getCode());
+        return supplierRepository.findByCompanyAndCodeIgnoreCase(company, code)
+                .orElseGet(() -> {
+                    Supplier supplier = new Supplier();
+                    supplier.setCompany(company);
+                    supplier.setCode(code);
+                    supplier.setName(name);
+                    supplier.setOutstandingBalance(BigDecimal.ZERO);
+                    supplier.setPayableAccount(apAccount);
+                    return supplierRepository.save(supplier);
                 });
     }
 

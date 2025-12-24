@@ -97,6 +97,8 @@ class SalesServiceTest {
     private FactoryTaskRepository factoryTaskRepository;
     @Mock
     private CompanyDefaultAccountsService companyDefaultAccountsService;
+    @Mock
+    private CreditLimitOverrideService creditLimitOverrideService;
 
     private SalesService salesService;
     private Company company;
@@ -124,7 +126,8 @@ class SalesServiceTest {
                 invoiceNumberService,
                 invoiceRepository,
                 factoryTaskRepository,
-                companyDefaultAccountsService);
+                companyDefaultAccountsService,
+                creditLimitOverrideService);
 
         when(finishedGoodsService.reserveForOrder(any()))
                 .thenReturn(new InventoryReservationResult(null, List.of()));
@@ -196,12 +199,14 @@ class SalesServiceTest {
         slip.setCompany(company);
         slip.setSalesOrder(cancelled);
         slip.setStatus("PENDING");
+        setField(slip, "id", 55L);
 
-        when(packagingSlipRepository.findByCompanyAndSalesOrderId(company, 10L)).thenReturn(Optional.of(slip));
-        when(invoiceRepository.findByCompanyAndSalesOrderId(company, 10L)).thenReturn(Optional.empty());
+        when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, 10L))
+                .thenReturn(List.of(slip));
+        when(packagingSlipRepository.findAndLockByIdAndCompany(55L, company)).thenReturn(Optional.of(slip));
         when(companyEntityLookup.requireSalesOrder(company, 10L)).thenReturn(cancelled);
 
-        DispatchConfirmRequest request = new DispatchConfirmRequest(null, 10L, List.of(), false);
+        DispatchConfirmRequest request = new DispatchConfirmRequest(null, 10L, List.of(), null, null, false, null);
 
         assertThrows(ApplicationException.class, () -> salesService.confirmDispatch(request));
     }

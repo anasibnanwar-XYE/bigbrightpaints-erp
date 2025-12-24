@@ -144,7 +144,7 @@ class CriticalAccountingAxesIT extends AbstractIntegrationTest {
                 saleRef,
                 LocalDate.now(),
                 "GST sale",
-                null,
+                dealer.getId(),
                 null,
                 Boolean.FALSE,
                 List.of(
@@ -160,7 +160,7 @@ class CriticalAccountingAxesIT extends AbstractIntegrationTest {
                 LocalDate.now(),
                 "Inventory buy",
                 null,
-                null,
+                supplier.getId(),
                 Boolean.FALSE,
                 List.of(
                         new JournalEntryRequest.JournalLineRequest(accounts.get("INV").getId(), "Inventory", new BigDecimal("500.00"), BigDecimal.ZERO),
@@ -402,7 +402,7 @@ class CriticalAccountingAxesIT extends AbstractIntegrationTest {
                 "FZ-SALE-" + UUID.randomUUID(),
                 LocalDate.now(),
                 "Fuzz sale",
-                null,
+                dealer.getId(),
                 null,
                 Boolean.FALSE,
                 List.of(
@@ -421,7 +421,7 @@ class CriticalAccountingAxesIT extends AbstractIntegrationTest {
                 LocalDate.now(),
                 "Fuzz purchase",
                 null,
-                null,
+                supplier.getId(),
                 Boolean.FALSE,
                 List.of(
                         new JournalEntryRequest.JournalLineRequest(accounts.get("INV").getId(), "Inventory", amount, BigDecimal.ZERO),
@@ -453,7 +453,7 @@ class CriticalAccountingAxesIT extends AbstractIntegrationTest {
                 "FZ-SET-" + UUID.randomUUID(),
                 LocalDate.now(),
                 "Settle receivable",
-                null,
+                dealer.getId(),
                 null,
                 Boolean.FALSE,
                 List.of(

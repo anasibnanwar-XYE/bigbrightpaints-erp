@@ -40,6 +40,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -233,30 +234,24 @@ public class AccountingService {
         auditMetadata.put("referenceNumber", entry.getReferenceNumber());
 
         Optional<JournalEntry> duplicate = journalEntryRepository.findByCompanyAndReferenceNumber(company, entry.getReferenceNumber());
-        if (duplicate.isPresent()) {
-            log.info("Idempotent return: journal entry '{}' already exists, returning existing entry",
-                    entry.getReferenceNumber());
-            if (duplicate.get().getId() != null) {
-                auditMetadata.put("journalEntryId", duplicate.get().getId().toString());
-            }
-            auditMetadata.put("idempotent", "true");
-            auditService.logSuccess(AuditEvent.JOURNAL_ENTRY_POSTED, auditMetadata);
-            return toDto(duplicate.get());
-        }
 
         LocalDate entryDate = request.entryDate();
+        if (entryDate == null) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Entry date is required");
+        }
         boolean overrideRequested = Boolean.TRUE.equals(request.adminOverride());
         boolean overrideAuthorized = overrideRequested && hasEntryDateOverrideAuthority();
-        validateEntryDate(company, entryDate, overrideRequested, overrideAuthorized);
-        AccountingPeriod postingPeriod = systemSettingsService.isPeriodLockEnforced()
-                ? accountingPeriodService.requireOpenPeriod(company, entryDate)
-                : accountingPeriodService.ensurePeriod(company, entryDate);
-        if (postingPeriod == null) {
-            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Accounting period is required for journal posting");
+        if (duplicate.isEmpty()) {
+            validateEntryDate(company, entryDate, overrideRequested, overrideAuthorized);
+            AccountingPeriod postingPeriod = systemSettingsService.isPeriodLockEnforced()
+                    ? accountingPeriodService.requireOpenPeriod(company, entryDate)
+                    : accountingPeriodService.ensurePeriod(company, entryDate);
+            if (postingPeriod == null) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Accounting period is required for journal posting");
+            }
+            entry.setAccountingPeriod(postingPeriod);
         }
-
         entry.setEntryDate(entryDate);
-        entry.setAccountingPeriod(postingPeriod);
         entry.setMemo(request.memo());
         entry.setStatus("POSTED");
         Dealer dealer = null;
@@ -296,16 +291,26 @@ public class AccountingService {
         Supplier supplierContext = supplier;
         for (Account account : lockedAccounts.values()) {
             List<Dealer> dealerOwners = dealerRepository.findAllByCompanyAndReceivableAccount(company, account);
-            if (!dealerOwners.isEmpty() && dealerContext != null &&
-                    dealerOwners.stream().noneMatch(owner -> owner.getId().equals(dealerContext.getId()))) {
-                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
-                        "Dealer receivable account " + account.getCode() + " requires matching dealer context");
+            if (!dealerOwners.isEmpty()) {
+                if (dealerContext == null) {
+                    throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                            "Dealer receivable account " + account.getCode() + " requires a dealer context");
+                }
+                if (dealerOwners.stream().noneMatch(owner -> owner.getId().equals(dealerContext.getId()))) {
+                    throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                            "Dealer receivable account " + account.getCode() + " requires matching dealer context");
+                }
             }
             List<Supplier> supplierOwners = supplierRepository.findAllByCompanyAndPayableAccount(company, account);
-            if (!supplierOwners.isEmpty() && supplierContext != null &&
-                    supplierOwners.stream().noneMatch(owner -> owner.getId().equals(supplierContext.getId()))) {
-                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
-                        "Supplier payable account " + account.getCode() + " requires matching supplier context");
+            if (!supplierOwners.isEmpty()) {
+                if (supplierContext == null) {
+                    throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                            "Supplier payable account " + account.getCode() + " requires a supplier context");
+                }
+                if (supplierOwners.stream().noneMatch(owner -> owner.getId().equals(supplierContext.getId()))) {
+                    throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                            "Supplier payable account " + account.getCode() + " requires matching supplier context");
+                }
             }
         }
         BigDecimal totalBaseDebit = BigDecimal.ZERO;
@@ -397,6 +402,20 @@ public class AccountingService {
         if (foreignCurrency && totalForeignDebit.compareTo(BigDecimal.ZERO) > 0) {
             entry.setForeignAmountTotal(totalForeignDebit.setScale(2, RoundingMode.HALF_UP).doubleValue());
         }
+
+        if (duplicate.isPresent()) {
+            JournalEntry existingEntry = duplicate.get();
+            if (existingEntry.getId() != null) {
+                auditMetadata.put("journalEntryId", existingEntry.getId().toString());
+            }
+            ensureDuplicateMatchesExisting(existingEntry, entry, postedLines);
+            log.info("Idempotent return: journal entry '{}' already exists, returning existing entry",
+                    entry.getReferenceNumber());
+            auditMetadata.put("idempotent", "true");
+            auditService.logSuccess(AuditEvent.JOURNAL_ENTRY_POSTED, auditMetadata);
+            return toDto(existingEntry);
+        }
+
         // Only enforce AR/AP validation when AR/AP lines are present (allow partner context with zero AR/AP lines for COGS/inventory entries)
         if (dealer != null && dealerReceivableAccount != null && dealerArLines > 1 && !overrideAuthorized) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
@@ -414,7 +433,25 @@ public class AccountingService {
         entry.setCreatedBy(username);
         entry.setLastModifiedBy(username);
         entry.setPostedBy(username);
-        JournalEntry saved = journalEntryRepository.save(entry);
+        JournalEntry saved;
+        try {
+            saved = journalEntryRepository.save(entry);
+        } catch (DataIntegrityViolationException ex) {
+            Optional<JournalEntry> existing = journalEntryRepository.findByCompanyAndReferenceNumber(company, entry.getReferenceNumber());
+            if (existing.isPresent()) {
+                JournalEntry existingEntry = existing.get();
+                if (existingEntry.getId() != null) {
+                    auditMetadata.put("journalEntryId", existingEntry.getId().toString());
+                }
+                ensureDuplicateMatchesExisting(existingEntry, entry, postedLines);
+                log.info("Idempotent return: journal entry '{}' already exists, returning existing entry",
+                        entry.getReferenceNumber());
+                auditMetadata.put("idempotent", "true");
+                auditService.logSuccess(AuditEvent.JOURNAL_ENTRY_POSTED, auditMetadata);
+                return toDto(existingEntry);
+            }
+            throw ex;
+        }
         if (!accountDeltas.isEmpty()) {
             // Sort accounts by ID to prevent deadlocks - consistent lock ordering
             List<Map.Entry<Account, BigDecimal>> sortedDeltas = accountDeltas.entrySet().stream()
@@ -1796,6 +1833,85 @@ public class AccountingService {
             return;
         }
         eventPublisher.publishEvent(new AccountCacheInvalidatedEvent(companyId));
+    }
+
+    private void ensureDuplicateMatchesExisting(JournalEntry existing,
+                                                JournalEntry candidate,
+                                                List<JournalLine> candidateLines) {
+        List<String> mismatches = new ArrayList<>();
+        if (!Objects.equals(existing.getEntryDate(), candidate.getEntryDate())) {
+            mismatches.add("entryDate");
+        }
+        if (!Objects.equals(existing.getDealer() != null ? existing.getDealer().getId() : null,
+                candidate.getDealer() != null ? candidate.getDealer().getId() : null)) {
+            mismatches.add("dealerId");
+        }
+        if (!Objects.equals(existing.getSupplier() != null ? existing.getSupplier().getId() : null,
+                candidate.getSupplier() != null ? candidate.getSupplier().getId() : null)) {
+            mismatches.add("supplierId");
+        }
+        if (!sameCurrency(existing.getCurrency(), candidate.getCurrency())) {
+            mismatches.add("currency");
+        }
+        if (!sameFxRate(existing.getFxRate(), candidate.getFxRate())) {
+            mismatches.add("fxRate");
+        }
+        if (StringUtils.hasText(candidate.getMemo()) && !Objects.equals(existing.getMemo(), candidate.getMemo())) {
+            mismatches.add("memo");
+        }
+        if (!lineSignatureCounts(existing.getLines()).equals(lineSignatureCounts(candidateLines))) {
+            mismatches.add("lines");
+        }
+        if (!mismatches.isEmpty()) {
+            throw new ApplicationException(ErrorCode.BUSINESS_DUPLICATE_ENTRY,
+                    "Journal entry reference already exists with different details")
+                    .withDetail("reference", existing.getReferenceNumber())
+                    .withDetail("mismatches", mismatches);
+        }
+    }
+
+    private Map<JournalLineSignature, Integer> lineSignatureCounts(List<JournalLine> lines) {
+        Map<JournalLineSignature, Integer> counts = new HashMap<>();
+        if (lines == null) {
+            return counts;
+        }
+        for (JournalLine line : lines) {
+            if (line.getAccount() == null || line.getAccount().getId() == null) {
+                continue;
+            }
+            JournalLineSignature signature = new JournalLineSignature(
+                    line.getAccount().getId(),
+                    normalizeAmount(line.getDebit()),
+                    normalizeAmount(line.getCredit()));
+            counts.merge(signature, 1, Integer::sum);
+        }
+        return counts;
+    }
+
+    private BigDecimal normalizeAmount(BigDecimal amount) {
+        if (amount == null) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+        return amount.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private boolean sameCurrency(String left, String right) {
+        if (left == null && right == null) {
+            return true;
+        }
+        if (left == null || right == null) {
+            return false;
+        }
+        return left.equalsIgnoreCase(right);
+    }
+
+    private boolean sameFxRate(BigDecimal left, BigDecimal right) {
+        BigDecimal normalizedLeft = left == null ? BigDecimal.ONE : left;
+        BigDecimal normalizedRight = right == null ? BigDecimal.ONE : right;
+        return normalizedLeft.compareTo(normalizedRight) == 0;
+    }
+
+    private record JournalLineSignature(Long accountId, BigDecimal debit, BigDecimal credit) {
     }
 
     private Account requireDealerReceivable(Dealer dealer) {

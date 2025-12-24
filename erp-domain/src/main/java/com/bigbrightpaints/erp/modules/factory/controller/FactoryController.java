@@ -6,12 +6,14 @@ import com.bigbrightpaints.erp.modules.factory.service.FactoryService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/factory")
+@PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_FACTORY')")
 public class FactoryController {
 
     private final FactoryService factoryService;

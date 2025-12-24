@@ -221,8 +221,34 @@ class AccountingServiceTest {
         existingEntry.setCompany(company);
         existingEntry.setReferenceNumber("DUP-REF");
         existingEntry.setEntryDate(today);
+        existingEntry.setMemo("Duplicate ref");
         existingEntry.setStatus("POSTED");
         org.springframework.test.util.ReflectionTestUtils.setField(existingEntry, "id", 999L);
+
+        var debitAccount = new com.bigbrightpaints.erp.modules.accounting.domain.Account();
+        ReflectionTestUtils.setField(debitAccount, "id", 1L);
+        debitAccount.setCompany(company);
+        debitAccount.setCode("ACC-1");
+        var creditAccount = new com.bigbrightpaints.erp.modules.accounting.domain.Account();
+        ReflectionTestUtils.setField(creditAccount, "id", 2L);
+        creditAccount.setCompany(company);
+        creditAccount.setCode("ACC-2");
+        when(accountRepository.lockByCompanyAndId(eq(company), eq(1L))).thenReturn(Optional.of(debitAccount));
+        when(accountRepository.lockByCompanyAndId(eq(company), eq(2L))).thenReturn(Optional.of(creditAccount));
+
+        var debitLine = new com.bigbrightpaints.erp.modules.accounting.domain.JournalLine();
+        debitLine.setJournalEntry(existingEntry);
+        debitLine.setAccount(debitAccount);
+        debitLine.setDebit(new BigDecimal("10.00"));
+        debitLine.setCredit(BigDecimal.ZERO);
+        existingEntry.getLines().add(debitLine);
+
+        var creditLine = new com.bigbrightpaints.erp.modules.accounting.domain.JournalLine();
+        creditLine.setJournalEntry(existingEntry);
+        creditLine.setAccount(creditAccount);
+        creditLine.setDebit(BigDecimal.ZERO);
+        creditLine.setCredit(new BigDecimal("10.00"));
+        existingEntry.getLines().add(creditLine);
         
         when(journalEntryRepository.findByCompanyAndReferenceNumber(eq(company), eq("DUP-REF")))
                 .thenReturn(Optional.of(existingEntry));
@@ -234,7 +260,10 @@ class AccountingServiceTest {
                 null,
                 null,
                 Boolean.FALSE,
-                List.of(new JournalEntryRequest.JournalLineRequest(1L, "Line", new BigDecimal("10.00"), BigDecimal.ZERO))
+                List.of(
+                        new JournalEntryRequest.JournalLineRequest(1L, "Debit", new BigDecimal("10.00"), BigDecimal.ZERO),
+                        new JournalEntryRequest.JournalLineRequest(2L, "Credit", BigDecimal.ZERO, new BigDecimal("10.00"))
+                )
         );
 
         // Should return existing entry (idempotent) instead of throwing

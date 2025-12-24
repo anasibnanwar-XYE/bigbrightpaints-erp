@@ -1,9 +1,12 @@
 package com.bigbrightpaints.erp.orchestrator.service;
 
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
+import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
+import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.PayrollPaymentRequest;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
@@ -32,6 +35,7 @@ import com.bigbrightpaints.erp.modules.sales.dto.DealerDto;
 import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderDto;
 import com.bigbrightpaints.erp.modules.sales.service.SalesJournalService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesService;
+import com.bigbrightpaints.erp.modules.sales.util.SalesOrderReference;
 import com.bigbrightpaints.erp.orchestrator.repository.OrderAutoApprovalState;
 import com.bigbrightpaints.erp.orchestrator.repository.OrderAutoApprovalStateRepository;
 import java.math.BigDecimal;
@@ -72,6 +76,7 @@ public class IntegrationCoordinator {
     private final ReportService reportService;
     private final OrderAutoApprovalStateRepository orderAutoApprovalStateRepository;
     private final AccountingFacade accountingFacade;
+    private final CompanyEntityLookup companyEntityLookup;
     private final CompanyDefaultAccountsService companyDefaultAccountsService;
     private final Long dispatchDebitAccountId;
     private final Long dispatchCreditAccountId;
@@ -88,6 +93,7 @@ public class IntegrationCoordinator {
                                   ReportService reportService,
                                   OrderAutoApprovalStateRepository orderAutoApprovalStateRepository,
                                   AccountingFacade accountingFacade,
+                                  CompanyEntityLookup companyEntityLookup,
                                   CompanyDefaultAccountsService companyDefaultAccountsService,
                                   PlatformTransactionManager txManager,
                                   @Value("${erp.dispatch.debit-account-id:0}") Long dispatchDebitAccountId,
@@ -102,6 +108,7 @@ public class IntegrationCoordinator {
         this.reportService = reportService;
         this.orderAutoApprovalStateRepository = orderAutoApprovalStateRepository;
         this.accountingFacade = accountingFacade;
+        this.companyEntityLookup = companyEntityLookup;
         this.companyDefaultAccountsService = companyDefaultAccountsService;
         this.dispatchDebitAccountId = normalizeAccount(dispatchDebitAccountId);
         this.dispatchCreditAccountId = normalizeAccount(dispatchCreditAccountId);
@@ -161,7 +168,7 @@ public class IntegrationCoordinator {
             return salesJournalService.postSalesJournal(
                     order,
                     null,
-                    null,
+                    SalesOrderReference.invoiceReference(order),
                     LocalDate.now(),
                     "Sales order " + order.getOrderNumber());
         });
@@ -172,6 +179,9 @@ public class IntegrationCoordinator {
             return;
         }
         String orderNumber = order.getOrderNumber();
+        Long dealerId = order.getDealer() != null ? order.getDealer().getId() : null;
+        Map<String, BigDecimal> costByPair = new HashMap<>();
+        Map<String, Long[]> accountsByPair = new HashMap<>();
         for (int index = 0; index < postings.size(); index++) {
             FinishedGoodsService.DispatchPosting posting = postings.get(index);
             if (posting.cogsAccountId() == null || posting.inventoryAccountId() == null) {
@@ -184,15 +194,41 @@ public class IntegrationCoordinator {
                 log.warn("Skipping COGS posting for order {} idx {} because cost is null/zero (value={})", orderNumber, index, cost);
                 continue;
             }
-            String referenceKey = orderNumber + "-" + posting.inventoryAccountId() + "-" + index;
-            accountingFacade.postCOGS(
-                    referenceKey,
-                    posting.cogsAccountId(),
-                    posting.inventoryAccountId(),
-                    cost,
-                    "COGS posting for order " + orderNumber
-            );
+            String key = posting.cogsAccountId() + ":" + posting.inventoryAccountId();
+            costByPair.merge(key, cost, BigDecimal::add);
+            accountsByPair.putIfAbsent(key, new Long[]{posting.cogsAccountId(), posting.inventoryAccountId()});
         }
+        if (costByPair.isEmpty()) {
+            return;
+        }
+        List<JournalEntryRequest.JournalLineRequest> lines = new java.util.ArrayList<>();
+        for (Map.Entry<String, BigDecimal> entry : costByPair.entrySet()) {
+            BigDecimal cost = entry.getValue();
+            if (cost == null || cost.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+            Long[] accounts = accountsByPair.get(entry.getKey());
+            lines.add(new JournalEntryRequest.JournalLineRequest(
+                    accounts[0],
+                    "COGS posting for order " + orderNumber,
+                    cost,
+                    BigDecimal.ZERO));
+            lines.add(new JournalEntryRequest.JournalLineRequest(
+                    accounts[1],
+                    "Inventory relief for order " + orderNumber,
+                    BigDecimal.ZERO,
+                    cost));
+        }
+        if (lines.isEmpty()) {
+            return;
+        }
+        accountingFacade.postCogsJournal(
+                orderNumber,
+                dealerId,
+                LocalDate.now(),
+                "COGS posting for order " + orderNumber,
+                lines
+        );
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -208,12 +244,11 @@ public class IntegrationCoordinator {
         }
         AtomicReference<String> status = new AtomicReference<>("PENDING_PRODUCTION");
         AtomicBoolean awaitingProduction = new AtomicBoolean(false);
-        AtomicBoolean readyForShipment = new AtomicBoolean(false);
         runWithCompanyContext(normalizedCompanyId, () -> {
             OrderAutoApprovalState state = lockAutoApprovalState(normalizedCompanyId, numericId);
             if (state.isCompleted()) {
                 log.info("Auto-approval already completed for order {} (company {})", orderId, normalizedCompanyId);
-                status.set("APPROVED");
+                status.set(state.isDispatchFinalized() ? "SHIPPED" : "READY_TO_SHIP");
                 return;
             }
             state.startAttempt();
@@ -232,8 +267,8 @@ public class IntegrationCoordinator {
                 }
                 log.info("Auto-approved order {} for company {}; awaitingProduction={}", orderId, normalizedCompanyId, awaitingProduction.get());
                 status.set(awaitingProduction.get() ? "PENDING_PRODUCTION" : "READY_TO_SHIP");
-                if (!awaitingProduction.get() && !state.isDispatchFinalized()) {
-                    readyForShipment.set(true);
+                if (!awaitingProduction.get()) {
+                    state.markCompleted();
                 }
             } catch (RuntimeException ex) {
                 state.markFailed(ex.getMessage());
@@ -242,11 +277,6 @@ public class IntegrationCoordinator {
                 throw ex;
             }
         });
-        if (readyForShipment.get()) {
-            AutoApprovalResult shipment = finalizeShipment(orderId, normalizedCompanyId);
-            status.set(shipment.orderStatus());
-            awaitingProduction.set(shipment.awaitingProduction());
-        }
         return new AutoApprovalResult(status.get(), awaitingProduction.get());
     }
 
@@ -287,7 +317,11 @@ public class IntegrationCoordinator {
                 case "READY_TO_SHIP":
                     return autoApproveOrder(orderId, null, companyId);
                 case "SHIPPED":
-                    return finalizeShipment(orderId, companyId);
+                    salesService.updateStatus(id, "SHIPPED");
+                    OrderAutoApprovalState approvalState = lockAutoApprovalState(companyId, id);
+                    approvalState.markOrderStatusUpdated();
+                    approvalState.markCompleted();
+                    return new AutoApprovalResult("SHIPPED", false);
                 default:
                     throw new IllegalArgumentException("Unsupported fulfillment status: " + requestedStatus);
             }
@@ -591,40 +625,6 @@ public class IntegrationCoordinator {
                 postingAmount,
                 false
         );
-    }
-
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    private AutoApprovalResult finalizeShipment(String orderId, String companyId) {
-        return withCompanyContext(companyId, () -> {
-            Long numericId = parseNumericId(orderId);
-            if (numericId == null) {
-                return new AutoApprovalResult("INVALID", false);
-            }
-            SalesOrder order = salesService.getOrderWithItems(numericId);
-            OrderAutoApprovalState state = lockAutoApprovalState(companyId, numericId);
-            if (!state.isSalesJournalPosted()) {
-                createAccountingEntry(orderId, companyId);
-                state.markSalesJournalPosted();
-            }
-            if (!state.isDispatchFinalized()) {
-                if (accountingFacade.hasCogsJournalFor(order.getOrderNumber())) {
-                    log.info("Skipping auto COGS post for order {} because journal already exists", order.getOrderNumber());
-                } else {
-                    List<FinishedGoodsService.DispatchPosting> postings = finishedGoodsService.markSlipDispatched(numericId);
-                    postCogsEntry(order, postings);
-                }
-                state.markDispatchFinalized();
-            }
-            if (!state.isInvoiceIssued()) {
-                invoiceService.issueInvoiceForOrder(numericId);
-                state.markInvoiceIssued();
-            }
-            salesService.updateStatus(numericId, "SHIPPED");
-            state.markOrderStatusUpdated();
-            state.markCompleted();
-            log.info("Finalized shipment for order {}", orderId);
-            return new AutoApprovalResult("SHIPPED", false);
-        });
     }
 
     private Long parseNumericId(String id) {
