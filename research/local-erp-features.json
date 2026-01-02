@@ -1,0 +1,74 @@
+{
+  "Accounting & GL": {
+    "endpoint_count": 61,
+    "coverage_score": 5.0
+  },
+  "AR/AP & Invoicing": {
+    "endpoint_count": 30,
+    "coverage_score": 4.43
+  },
+  "Inventory & Warehouse": {
+    "endpoint_count": 24,
+    "coverage_score": 4.22
+  },
+  "Manufacturing & MRP": {
+    "endpoint_count": 26,
+    "coverage_score": 4.3
+  },
+  "Sales & CRM": {
+    "endpoint_count": 45,
+    "coverage_score": 4.83
+  },
+  "Purchasing & Procurement": {
+    "endpoint_count": 11,
+    "coverage_score": 3.48
+  },
+  "Payroll & HR": {
+    "endpoint_count": 27,
+    "coverage_score": 4.33
+  },
+  "Reporting & Analytics": {
+    "endpoint_count": 25,
+    "coverage_score": 4.26
+  },
+  "Tax & Compliance (GST/VAT)": {
+    "endpoint_count": 1,
+    "coverage_score": 1.69
+  },
+  "Automation & Workflow": {
+    "endpoint_count": 13,
+    "coverage_score": 3.64
+  },
+  "Integrations & API": {
+    "endpoint_count": 2,
+    "coverage_score": 2.1
+  },
+  "Multi-company / Branch": {
+    "endpoint_count": 3,
+    "coverage_score": 2.39
+  },
+  "Customization & Extensibility": {
+    "endpoint_count": 0,
+    "coverage_score": 0.0
+  },
+  "Usability & UX": {
+    "endpoint_count": 0,
+    "coverage_score": 0.0
+  },
+  "Support & Service": {
+    "endpoint_count": 0,
+    "coverage_score": 0.0
+  },
+  "Pricing & Value": {
+    "endpoint_count": 0,
+    "coverage_score": 0.0
+  },
+  "Performance & Reliability": {
+    "endpoint_count": 0,
+    "coverage_score": 0.0
+  },
+  "Implementation & Onboarding": {
+    "endpoint_count": 0,
+    "coverage_score": 0.0
+  }
+}

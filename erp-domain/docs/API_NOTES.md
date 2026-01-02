@@ -1,0 +1,244 @@
+# API Notes
+
+## Canonical Endpoints (Grouped by Module)
+
+### ADMIN
+- `DELETE /api/v1/admin/users/{id}`
+- `DELETE /api/v1/companies/{id}`
+- `GET /api/integration/health`
+- `GET /api/v1/admin/approvals`
+- `GET /api/v1/admin/roles/{roleKey}`
+- `GET /api/v1/admin/settings`
+- `GET /api/v1/auth/me`
+- `GET /api/v1/demo/ping`
+- `GET /api/v1/orchestrator/dashboard/admin`
+- `GET /api/v1/orchestrator/dashboard/factory`
+- `GET /api/v1/orchestrator/dashboard/finance`
+- `GET /api/v1/orchestrator/health/events`
+- `GET /api/v1/orchestrator/health/integrations`
+- `GET /api/v1/orchestrator/traces/{traceId}`
+- `GET /api/v1/portal/dashboard`
+- `GET /api/v1/portal/operations`
+- `GET /api/v1/portal/workforce`
+- `PATCH /api/v1/admin/users/{id}/mfa/disable`
+- `PATCH /api/v1/admin/users/{id}/suspend`
+- `PATCH /api/v1/admin/users/{id}/unsuspend`
+- `POST /api/v1/admin/notify`
+- `POST /api/v1/auth/login`
+- `POST /api/v1/auth/logout`
+- `POST /api/v1/auth/mfa/activate`
+- `POST /api/v1/auth/mfa/disable`
+- `POST /api/v1/auth/mfa/setup`
+- `POST /api/v1/auth/password/change`
+- `POST /api/v1/auth/password/forgot`
+- `POST /api/v1/auth/password/reset`
+- `POST /api/v1/auth/refresh-token`
+- `POST /api/v1/multi-company/companies/switch`
+- `POST /api/v1/orchestrator/dispatch`
+- `POST /api/v1/orchestrator/factory/dispatch/{batchId}`
+- `POST /api/v1/orchestrator/orders/{orderId}/approve`
+- `POST /api/v1/orchestrator/orders/{orderId}/fulfillment`
+- `POST /api/v1/orchestrator/payroll/run`
+- `PUT /api/v1/admin/settings`
+- `PUT /api/v1/admin/users/{id}`
+- `PUT /api/v1/companies/{id}`
+
+### ACCOUNTING
+- `DELETE /api/v1/accounting/raw-materials/{id}`
+- `DELETE /api/v1/hr/employees/{id}`
+- `GET /api/v1/accounting/accounts`
+- `GET /api/v1/accounting/aging/dealers/{dealerId}`
+- `GET /api/v1/accounting/aging/dealers/{dealerId}/pdf`
+- `GET /api/v1/accounting/aging/suppliers/{supplierId}`
+- `GET /api/v1/accounting/aging/suppliers/{supplierId}/pdf`
+- `GET /api/v1/accounting/audit/digest`
+- `GET /api/v1/accounting/audit/digest.csv`
+- `GET /api/v1/accounting/catalog/products`
+- `GET /api/v1/accounting/default-accounts`
+- `GET /api/v1/accounting/gst/return`
+- `GET /api/v1/accounting/journal-entries`
+- `GET /api/v1/accounting/month-end/checklist`
+- `GET /api/v1/accounting/periods`
+- `GET /api/v1/accounting/raw-materials`
+- `GET /api/v1/accounting/reports/aged-debtors`
+- `GET /api/v1/accounting/sales/returns`
+- `GET /api/v1/accounting/statements/dealers/{dealerId}`
+- `GET /api/v1/accounting/statements/dealers/{dealerId}/pdf`
+- `GET /api/v1/accounting/statements/suppliers/{supplierId}`
+- `GET /api/v1/accounting/statements/suppliers/{supplierId}/pdf`
+- `GET /api/v1/dispatch/order/{orderId}`
+- `GET /api/v1/dispatch/pending`
+- `GET /api/v1/dispatch/preview/{slipId}`
+- `GET /api/v1/dispatch/slip/{slipId}`
+- `GET /api/v1/finished-goods/low-stock`
+- `GET /api/v1/finished-goods/stock-summary`
+- `GET /api/v1/finished-goods/{id}`
+- `GET /api/v1/finished-goods/{id}/batches`
+- `GET /api/v1/hr/attendance/date/{date}`
+- `GET /api/v1/hr/attendance/employee/{employeeId}`
+- `GET /api/v1/hr/attendance/summary`
+- `GET /api/v1/hr/attendance/today`
+- `GET /api/v1/hr/employees`
+- `GET /api/v1/hr/leave-requests`
+- `GET /api/v1/payroll/runs`
+- `GET /api/v1/payroll/runs/monthly`
+- `GET /api/v1/payroll/runs/weekly`
+- `GET /api/v1/payroll/runs/{id}`
+- `GET /api/v1/payroll/runs/{id}/lines`
+- `GET /api/v1/payroll/summary/current-month`
+- `GET /api/v1/payroll/summary/current-week`
+- `GET /api/v1/payroll/summary/monthly`
+- `GET /api/v1/payroll/summary/weekly`
+- `GET /api/v1/purchasing/raw-material-purchases/{id}`
+- `GET /api/v1/raw-material-batches/{rawMaterialId}`
+- `GET /api/v1/raw-materials/stock`
+- `GET /api/v1/raw-materials/stock/inventory`
+- `GET /api/v1/raw-materials/stock/low-stock`
+- `GET /api/v1/reports/account-statement`
+- `GET /api/v1/reports/balance-sheet`
+- `GET /api/v1/reports/balance-warnings`
+- `GET /api/v1/reports/cash-flow`
+- `GET /api/v1/reports/inventory-reconciliation`
+- `GET /api/v1/reports/inventory-valuation`
+- `GET /api/v1/reports/monthly-production-costs`
+- `GET /api/v1/reports/production-logs/{id}/cost-breakdown`
+- `GET /api/v1/reports/profit-loss`
+- `GET /api/v1/reports/reconciliation-dashboard`
+- `GET /api/v1/reports/trial-balance`
+- `GET /api/v1/reports/wastage`
+- `GET /api/v1/suppliers/{id}`
+- `PATCH /api/v1/dispatch/slip/{slipId}/status`
+- `PATCH /api/v1/hr/leave-requests/{id}/status`
+- `POST /api/v1/accounting/accounts`
+- `POST /api/v1/accounting/accruals`
+- `POST /api/v1/accounting/bad-debts/write-off`
+- `POST /api/v1/accounting/catalog/import`
+- `POST /api/v1/accounting/catalog/products`
+- `POST /api/v1/accounting/catalog/products/bulk-variants`
+- `POST /api/v1/accounting/credit-notes`
+- `POST /api/v1/accounting/debit-notes`
+- `POST /api/v1/accounting/inventory/landed-cost`
+- `POST /api/v1/accounting/inventory/revaluation`
+- `POST /api/v1/accounting/inventory/wip-adjustment`
+- `POST /api/v1/accounting/journal-entries`
+- `POST /api/v1/accounting/journal-entries/{entryId}/cascade-reverse`
+- `POST /api/v1/accounting/journal-entries/{entryId}/reverse`
+- `POST /api/v1/accounting/month-end/checklist/{periodId}`
+- `POST /api/v1/accounting/payroll/payments`
+- `POST /api/v1/accounting/payroll/payments/batch`
+- `POST /api/v1/accounting/periods/{periodId}/close`
+- `POST /api/v1/accounting/periods/{periodId}/lock`
+- `POST /api/v1/accounting/periods/{periodId}/reopen`
+- `POST /api/v1/accounting/raw-materials`
+- `POST /api/v1/accounting/receipts/dealer`
+- `POST /api/v1/accounting/receipts/dealer/hybrid`
+- `POST /api/v1/accounting/sales/returns`
+- `POST /api/v1/accounting/settlements/dealers`
+- `POST /api/v1/accounting/settlements/suppliers`
+- `POST /api/v1/accounting/suppliers/payments`
+- `POST /api/v1/dispatch/backorder/{slipId}/cancel`
+- `POST /api/v1/dispatch/confirm`
+- `POST /api/v1/finished-goods/{id}/batches`
+- `POST /api/v1/hr/attendance/bulk-mark`
+- `POST /api/v1/hr/attendance/mark/{employeeId}`
+- `POST /api/v1/hr/employees`
+- `POST /api/v1/hr/leave-requests`
+- `POST /api/v1/inventory/opening-stock`
+- `POST /api/v1/payroll/runs`
+- `POST /api/v1/payroll/runs/monthly`
+- `POST /api/v1/payroll/runs/weekly`
+- `POST /api/v1/payroll/runs/{id}/approve`
+- `POST /api/v1/payroll/runs/{id}/calculate`
+- `POST /api/v1/payroll/runs/{id}/mark-paid`
+- `POST /api/v1/payroll/runs/{id}/post`
+- `POST /api/v1/purchasing/raw-material-purchases/returns`
+- `POST /api/v1/raw-material-batches/{rawMaterialId}`
+- `POST /api/v1/raw-materials/intake`
+- `PUT /api/v1/accounting/catalog/products/{id}`
+- `PUT /api/v1/accounting/default-accounts`
+- `PUT /api/v1/accounting/raw-materials/{id}`
+- `PUT /api/v1/finished-goods/{id}`
+- `PUT /api/v1/hr/employees/{id}`
+- `PUT /api/v1/suppliers/{id}`
+
+### FACTORY_PRODUCTION
+- `DELETE /api/v1/factory/packaging-mappings/{id}`
+- `DELETE /api/v1/factory/production-plans/{id}`
+- `GET /api/v1/factory/dashboard`
+- `GET /api/v1/factory/packaging-mappings/active`
+- `GET /api/v1/factory/production-batches`
+- `GET /api/v1/factory/production-logs/{productionLogId}/packing-history`
+- `GET /api/v1/factory/production-plans`
+- `GET /api/v1/factory/production/logs/{id}`
+- `GET /api/v1/factory/tasks`
+- `GET /api/v1/factory/unpacked-batches`
+- `GET /api/v1/production/brands`
+- `GET /api/v1/production/brands/{brandId}/products`
+- `PATCH /api/v1/factory/production-plans/{id}/status`
+- `POST /api/v1/factory/cost-allocation`
+- `POST /api/v1/factory/pack`
+- `POST /api/v1/factory/packing-records`
+- `POST /api/v1/factory/packing-records/{productionLogId}/complete`
+- `POST /api/v1/factory/production-batches`
+- `POST /api/v1/factory/production-plans`
+- `POST /api/v1/factory/tasks`
+- `PUT /api/v1/factory/packaging-mappings/{id}`
+- `PUT /api/v1/factory/production-plans/{id}`
+- `PUT /api/v1/factory/tasks/{id}`
+
+### SALES
+- `DELETE /api/v1/sales/orders/{id}`
+- `DELETE /api/v1/sales/promotions/{id}`
+- `DELETE /api/v1/sales/targets/{id}`
+- `GET /api/v1/invoices/dealers/{dealerId}`
+- `GET /api/v1/invoices/{id}`
+- `GET /api/v1/invoices/{id}/pdf`
+- `GET /api/v1/sales/credit-requests`
+- `GET /api/v1/sales/orders`
+- `GET /api/v1/sales/promotions`
+- `GET /api/v1/sales/targets`
+- `PATCH /api/v1/sales/orders/{id}/status`
+- `POST /api/v1/credit/override-requests/{id}/approve`
+- `POST /api/v1/credit/override-requests/{id}/reject`
+- `POST /api/v1/invoices/{id}/email`
+- `POST /api/v1/sales/credit-requests`
+- `POST /api/v1/sales/dispatch/confirm`
+- `POST /api/v1/sales/orders`
+- `POST /api/v1/sales/orders/{id}/cancel`
+- `POST /api/v1/sales/orders/{id}/confirm`
+- `POST /api/v1/sales/promotions`
+- `POST /api/v1/sales/targets`
+- `PUT /api/v1/sales/credit-requests/{id}`
+- `PUT /api/v1/sales/orders/{id}`
+- `PUT /api/v1/sales/promotions/{id}`
+- `PUT /api/v1/sales/targets/{id}`
+
+### DEALERS
+- `GET /api/v1/dealer-portal/aging`
+- `GET /api/v1/dealer-portal/dashboard`
+- `GET /api/v1/dealer-portal/invoices`
+- `GET /api/v1/dealer-portal/invoices/{invoiceId}/pdf`
+- `GET /api/v1/dealer-portal/ledger`
+- `GET /api/v1/dealer-portal/orders`
+- `GET /api/v1/dealers/search`
+- `GET /api/v1/dealers/{dealerId}/aging`
+- `GET /api/v1/dealers/{dealerId}/invoices`
+- `GET /api/v1/dealers/{dealerId}/ledger`
+- `POST /api/v1/dealers/{dealerId}/dunning/hold`
+- `PUT /api/v1/dealers/{dealerId}`
+
+## Deprecated/Alias Endpoints
+- `GET /api/v1/hr/payroll-runs` -> `GET /api/v1/payroll/runs`
+- `GET /api/v1/sales/dealers` -> `GET /api/v1/dealers`
+- `GET /api/v1/sales/dealers/search` -> `GET /api/v1/dealers/search`
+- `POST /api/v1/hr/payroll-runs` -> `POST /api/v1/payroll/runs`
+- `POST /api/v1/orchestrator/dispatch/{orderId}` -> `POST /api/v1/orchestrator/dispatch`
+
+## Response and Error Conventions
+- `ApiResponse<T>` wraps responses with `success`, `message`, `data`, `timestamp`.
+- Validation/business errors typically return 400 with `ApiResponse.failure`.
+- Authentication is JWT-based; most endpoints require a valid bearer token.
+
+## Naming Conventions
+- Base path: `/api/v1` with kebab-case resources.
+- Module tags in OpenAPI: `ADMIN`, `ACCOUNTING`, `FACTORY_PRODUCTION`, `SALES`, `DEALERS`.

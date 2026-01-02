@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1920" height="1080" viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg">
+<rect width="1920" height="1080" fill="#0b0f14"/>
+<text x="120" y="90" fill="#e5e7eb" font-family="Segoe UI, sans-serif" font-size="36" font-weight="600">SMB and Mid-Market ERP Competitive Benchmark</text>
+<text x="120" y="130" fill="#9ca3af" font-family="Segoe UI, sans-serif" font-size="16">Benchmark scores by category (0-5 scale, higher is better)</text>
+<rect x="1080" y="110" width="14" height="14" rx="3" fill="#7aa2ff"/>
+<text x="1102" y="122" fill="#e5e7eb" font-family="Segoe UI, sans-serif" font-size="14">Overall</text>
+<rect x="1240" y="110" width="14" height="14" rx="3" fill="#8b5cf6"/>
+<text x="1262" y="122" fill="#e5e7eb" font-family="Segoe UI, sans-serif" font-size="14">Automation</text>
+<rect x="1400" y="110" width="14" height="14" rx="3" fill="#6ecf88"/>
+<text x="1422" y="122" fill="#e5e7eb" font-family="Segoe UI, sans-serif" font-size="14">Inventory and Manufacturing</text>
+<line x1="120" y1="880.00" x2="1840" y2="880.00" stroke="#1f2937" stroke-width="1" stroke-dasharray="6 6"/>
+<text x="80" y="885.00" fill="#9ca3af" font-family="Segoe UI, sans-serif" font-size="14">0</text>
+<line x1="120" y1="748.00" x2="1840" y2="748.00" stroke="#1f2937" stroke-width="1" stroke-dasharray="6 6"/>
+<text x="80" y="753.00" fill="#9ca3af" font-family="Segoe UI, sans-serif" font-size="14">1</text>
+<line x1="120" y1="616.00" x2="1840" y2="616.00" stroke="#1f2937" stroke-width="1" stroke-dasharray="6 6"/>
+<text x="80" y="621.00" fill="#9ca3af" font-family="Segoe UI, sans-serif" font-size="14">2</text>
+<line x1="120" y1="484.00" x2="1840" y2="484.00" stroke="#1f2937" stroke-width="1" stroke-dasharray="6 6"/>
+<text x="80" y="489.00" fill="#9ca3af" font-family="Segoe UI, sans-serif" font-size="14">3</text>
+<line x1="120" y1="352.00" x2="1840" y2="352.00" stroke="#1f2937" stroke-width="1" stroke-dasharray="6 6"/>
+<text x="80" y="357.00" fill="#9ca3af" font-family="Segoe UI, sans-serif" font-size="14">4</text>
+<line x1="120" y1="220.00" x2="1840" y2="220.00" stroke="#1f2937" stroke-width="1" stroke-dasharray="6 6"/>
+<text x="80" y="225.00" fill="#9ca3af" font-family="Segoe UI, sans-serif" font-size="14">5</text>
+<text x="40" y="200" fill="#9ca3af" font-family="Segoe UI, sans-serif" font-size="14">Score</text>
+<rect x="161.50" y="313.65" width="36" height="566.35" rx="4" fill="#7aa2ff"/>
+<text x="179.50" y="307.65" fill="#e5e7eb" font-family="Segoe UI, sans-serif" font-size="14" text-anchor="middle">4.3</text>
+<rect x="209.50" y="523.60" width="36" height="356.40" rx="4" fill="#8b5cf6"/>
+<text x="227.50" y="517.60" fill="#e5e7eb" font-family="Segoe UI, sans-serif" font-size="14" text-anchor="middle">2.7</text>
+<rect x="257.50" y="340.78" width="36" height="539.22" rx="4" fill="#6ecf88"/>
+<text x="275.50" y="334.78" fill="#e5e7eb" font-family="Segoe UI, sans-serif" font-size="14" text-anchor="middle">4.1</text>
+<text x="227.50" y="910" fill="#e5e7eb" font-family="Segoe UI, sans-serif" font-size="14" text-anchor="middle">Busy</text>
+<text x="227.50" y="926" fill="#e5e7eb" font-family="Segoe UI, sans-serif" font-size="14" text-anchor="middle">Accounting</text>
+<rect x="376.50" y="313.94" width="36" height="566.06" rx="4" fill="#7aa2ff"/>
+<text x="394.50" y="307.94" fill="#e5e7eb" font-family="Segoe UI, sans-serif" font-size="14" text-anchor="middle">4.3</text>
+<rect x="424.50" y="220.00" width="36" height="660.00" rx="4" fill="#8b5cf6"/>
+<text x="442.50" y="214.00" fill="#e5e7eb" font-family="Segoe UI, sans-serif" font-size="14" text-anchor="middle">5.0</text>
+<rect x="472.50" y="392.92" width="36" height="487.08" rx="4" fill="#6ecf88"/>
+<text x="490.50" y="386.92" fill="#e5e7eb" font-family="Segoe UI, sans-serif" font-size="14" text-anchor="middle">3.7</text>
+<text x="442.50" y="910" fill="#e5e7eb" font-family="Segoe UI, sans-serif" font-size="14" text-anchor="middle">Zoho</text>
+<text x="442.50" y="926" fill="#e5e7eb" font-family="Segoe UI, sans-serif" font-size="14" text-anchor="middle">Books</text>
+<rect x="591.50" y="331.17" width="36" height="548.83" rx="4" fill="#7aa2ff"/>
+<text x="609.50" y="325.17" fill="#e5e7eb" font-family="Segoe UI, sans-serif" font-size="14" text-anchor="middle">4.2</text>
+<rect x="639.50" y="382.36" width="36" height="497.64" rx="4" fill="#8b5cf6"/>
+<text x="657.50" y="376.36" fill="#e5e7eb" font-family="Segoe UI, sans-serif" font-size="14" text-anchor="middle">3.8</text>
+<rect x="687.50" y="373.78" width="36" height="506.22" rx="4" fill="#6ecf88"/>
+<text x="705.50" y="367.78" fill="#e5e7eb" font-family="Segoe UI, sans-serif" font-size="14" text-anchor="middle">3.8</text>
+<text x="657.50" y="910" fill="#e5e7eb" font-family="Segoe UI, sans-serif" font-size="14" text-anchor="middle">TallyPrime</text>
+<rect x="806.50" y="353.03" width="36" height="526.97" rx="4" fill="#7aa2ff"/>
+<text x="824.50" y="347.03" fill="#e5e7eb" font-family="Segoe UI, sans-serif" font-size="14" text-anchor="middle">4.0</text>
+<rect x="854.50" y="336.16" width="36" height="543.84" rx="4" fill="#8b5cf6"/>
+<text x="872.50" y="330.16" fill="#e5e7eb" font-family="Segoe UI, sans-serif" font-size="14" text-anchor="middle">4.1</text>
+<rect x="902.50" y="511.06" width="36" height="368.94" rx="4" fill="#6ecf88"/>
+<text x="920.50" y="505.06" fill="#e5e7eb" font-family="Segoe UI, sans-serif" font-size="14" text-anchor="middle">2.8</text>
+<text x="872.50" y="910" fill="#e5e7eb" font-family="Segoe UI, sans-serif" font-size="14" text-anchor="middle">QuickBooks</text>
+<text x="872.50" y="926" fill="#e5e7eb" font-family="Segoe UI, sans-serif" font-size="14" text-anchor="middle">Online</text>
+<rect x="1021.50" y="353.98" width="36" height="526.02" rx="4" fill="#7aa2ff"/>
+<text x="1039.50" y="347.98" fill="#e5e7eb" font-family="Segoe UI, sans-serif" font-size="14" text-anchor="middle">4.0</text>
+<rect x="1069.50" y="362.56" width="36" height="517.44" rx="4" fill="#8b5cf6"/>
+<text x="1087.50" y="356.56" fill="#e5e7eb" font-family="Segoe UI, sans-serif" font-size="14" text-anchor="middle">3.9</text>
+<rect x="1117.50" y="274.12" width="36" height="605.88" rx="4" fill="#6ecf88"/>
+<text x="1135.50" y="268.12" fill="#e5e7eb" font-family="Segoe UI, sans-serif" font-size="14" text-anchor="middle">4.6</text>
+<text x="1087.50" y="910" fill="#e5e7eb" font-family="Segoe UI, sans-serif" font-size="14" text-anchor="middle">SAP</text>
+<text x="1087.50" y="926" fill="#e5e7eb" font-family="Segoe UI, sans-serif" font-size="14" text-anchor="middle">Business One</text>
+<rect x="1236.50" y="358.09" width="36" height="521.91" rx="4" fill="#7aa2ff"/>
+<text x="1254.50" y="352.09" fill="#e5e7eb" font-family="Segoe UI, sans-serif" font-size="14" text-anchor="middle">4.0</text>
+<rect x="1284.50" y="342.76" width="36" height="537.24" rx="4" fill="#8b5cf6"/>
+<text x="1302.50" y="336.76" fill="#e5e7eb" font-family="Segoe UI, sans-serif" font-size="14" text-anchor="middle">4.1</text>
+<rect x="1332.50" y="378.40" width="36" height="501.60" rx="4" fill="#6ecf88"/>
+<text x="1350.50" y="372.40" fill="#e5e7eb" font-family="Segoe UI, sans-serif" font-size="14" text-anchor="middle">3.8</text>
+<text x="1302.50" y="910" fill="#e5e7eb" font-family="Segoe UI, sans-serif" font-size="14" text-anchor="middle">Odoo</text>
+<rect x="1451.50" y="414.41" width="36" height="465.59" rx="4" fill="#7aa2ff"/>
+<text x="1469.50" y="408.41" fill="#e5e7eb" font-family="Segoe UI, sans-serif" font-size="14" text-anchor="middle">3.5</text>
+<rect x="1499.50" y="503.80" width="36" height="376.20" rx="4" fill="#8b5cf6"/>
+<text x="1517.50" y="497.80" fill="#e5e7eb" font-family="Segoe UI, sans-serif" font-size="14" text-anchor="middle">2.9</text>
+<rect x="1547.50" y="336.82" width="36" height="543.18" rx="4" fill="#6ecf88"/>
+<text x="1565.50" y="330.82" fill="#e5e7eb" font-family="Segoe UI, sans-serif" font-size="14" text-anchor="middle">4.1</text>
+<text x="1517.50" y="910" fill="#e5e7eb" font-family="Segoe UI, sans-serif" font-size="14" text-anchor="middle">ERPNext</text>
+<rect x="1625.00" y="190" width="215.00" height="740" fill="#0f172a" opacity="0.6"/>
+<rect x="1625.00" y="190" width="215.00" height="740" fill="none" stroke="#22d3ee" stroke-width="2"/>
+<rect x="1666.50" y="552.42" width="36" height="327.58" rx="4" fill="#7aa2ff"/>
+<text x="1684.50" y="546.42" fill="#e5e7eb" font-family="Segoe UI, sans-serif" font-size="14" text-anchor="middle">2.5</text>
+<rect x="1714.50" y="399.52" width="36" height="480.48" rx="4" fill="#8b5cf6"/>
+<text x="1732.50" y="393.52" fill="#e5e7eb" font-family="Segoe UI, sans-serif" font-size="14" text-anchor="middle">3.6</text>
+<rect x="1762.50" y="317.68" width="36" height="562.32" rx="4" fill="#6ecf88"/>
+<text x="1780.50" y="311.68" fill="#e5e7eb" font-family="Segoe UI, sans-serif" font-size="14" text-anchor="middle">4.3</text>
+<text x="1732.50" y="910" fill="#e5e7eb" font-family="Segoe UI, sans-serif" font-size="14" text-anchor="middle">ORCHESTRATOR</text>
+<text x="1732.50" y="926" fill="#e5e7eb" font-family="Segoe UI, sans-serif" font-size="14" text-anchor="middle">by SKEINA</text>
+<text x="120" y="1040" fill="#6b7280" font-family="Segoe UI, sans-serif" font-size="12">Overall = average across 18 features. Inventory and Manufacturing = avg(Inventory & Warehouse, Manufacturing & MRP).</text>
+</svg>
