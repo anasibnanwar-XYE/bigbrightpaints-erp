@@ -621,6 +621,9 @@ class HighImpactRegressionIT extends AbstractIntegrationTest {
         assertThat(run.getJournalEntry())
                 .as("Payroll run should have journal entry")
                 .isNotNull();
+        assertThat(run.getJournalEntryId())
+                .as("Payroll run should have journal entry id")
+                .isNotNull();
         assertThat(run.getTotalAmount()).isEqualByComparingTo(response.grossAmount());
 
         // Verify JE has expense/cash lines

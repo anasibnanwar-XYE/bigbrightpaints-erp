@@ -146,3 +146,20 @@
   - Surefire warning: corrupted channel dump recorded at `erp-domain/target/surefire-reports/2026-01-02T14-40-29_972-jvmRun1.dumpstream` (build succeeded).
 - Notes:
   - Test logs include repeated "Invalid company ID format" and "Unusual negative balance" warnings plus openhtmltopdf CSS warnings; tests still passed.
+
+## 2026-01-02 (epic-01 M3 verification)
+- Changes:
+  - Ensured invoice and orchestrator postings persist the sales journal entry ID on the originating order when missing.
+  - Kept payroll runs aligned by setting both `journalEntryId` and `journalEntry` references where postings occur; added DTO fallback to use stored IDs.
+  - Added payroll run journal link backfill migration and regression tests covering invoice/payroll journal links.
+- Commands run:
+  - `docker run --rm -v "/mnt/c/Users/ASUS/Downloads/CLI BACKEND":/workspace -w /workspace/erp-domain maven:3.9.9-eclipse-temurin-21 mvn -DskipTests compile`
+  - `docker run --rm -v "/mnt/c/Users/ASUS/Downloads/CLI BACKEND":/workspace -w /workspace/erp-domain maven:3.9.9-eclipse-temurin-21 mvn -Dcheckstyle.failOnViolation=false checkstyle:check`
+  - `docker run --rm --network host -v "/mnt/c/Users/ASUS/Downloads/CLI BACKEND":/workspace -w /workspace/erp-domain -v /var/run/docker.sock:/var/run/docker.sock -e TESTCONTAINERS_RYUK_DISABLED=true -e TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal maven:3.9.9-eclipse-temurin-21 mvn test`
+- Validation:
+  - `mvn -DskipTests compile` succeeded via Docker.
+  - Checkstyle reported 28892 violations; `failOnViolation=false` used to surface baseline warnings without failing.
+  - `mvn test` (Docker/Testcontainers) succeeded: Tests run 183, Failures 0, Errors 0, Skipped 4.
+  - Surefire warning: corrupted channel dump recorded at `erp-domain/target/surefire-reports/2026-01-02T15-34-32_253-jvmRun1.dumpstream` (build succeeded).
+- Notes:
+  - Test logs include repeated "Invalid company ID format", "Unusual negative balance", and openhtmltopdf CSS warnings; tests still passed.

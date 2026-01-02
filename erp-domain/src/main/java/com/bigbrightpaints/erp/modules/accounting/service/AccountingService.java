@@ -760,6 +760,7 @@ public class AccountingService {
         JournalEntryDto entry = createJournalEntry(payload);
         JournalEntry payrollEntry = companyEntityLookup.requireJournalEntry(company, entry.id());
         run.setStatus("PAID");
+        run.setJournalEntryId(payrollEntry.getId());
         run.setJournalEntry(payrollEntry);
         payrollRunRepository.save(run);
         return entry;
@@ -1012,6 +1013,7 @@ public class AccountingService {
         
         // Update PayrollRun status
         savedRun.setStatus("PAID");
+        savedRun.setJournalEntryId(payrollEntry.getId());
         savedRun.setJournalEntry(payrollEntry);
         payrollRunRepository.save(savedRun);
 

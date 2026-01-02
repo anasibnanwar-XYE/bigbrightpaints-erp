@@ -8,6 +8,7 @@ import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest.Journa
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.hr.domain.*;
 import jakarta.transaction.Transactional;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -34,6 +35,7 @@ public class PayrollService {
     private final AccountingService accountingService;
     private final AccountRepository accountRepository;
     private final CompanyContextService companyContextService;
+    private final CompanyEntityLookup companyEntityLookup;
 
     public PayrollService(PayrollRunRepository payrollRunRepository,
                           PayrollRunLineRepository payrollRunLineRepository,
@@ -41,7 +43,8 @@ public class PayrollService {
                           AttendanceRepository attendanceRepository,
                           AccountingService accountingService,
                           AccountRepository accountRepository,
-                          CompanyContextService companyContextService) {
+                          CompanyContextService companyContextService,
+                          CompanyEntityLookup companyEntityLookup) {
         this.payrollRunRepository = payrollRunRepository;
         this.payrollRunLineRepository = payrollRunLineRepository;
         this.employeeRepository = employeeRepository;
@@ -49,6 +52,7 @@ public class PayrollService {
         this.accountingService = accountingService;
         this.accountRepository = accountRepository;
         this.companyContextService = companyContextService;
+        this.companyEntityLookup = companyEntityLookup;
     }
 
     // ===== PAYROLL RUN MANAGEMENT =====
@@ -344,6 +348,7 @@ public class PayrollService {
 
         // Update run status
         run.setJournalEntryId(journal.id());
+        run.setJournalEntry(companyEntityLookup.requireJournalEntry(company, journal.id()));
         run.setStatus(PayrollRun.PayrollStatus.POSTED);
         run.setPostedBy(getCurrentUser());
         run.setPostedAt(Instant.now());

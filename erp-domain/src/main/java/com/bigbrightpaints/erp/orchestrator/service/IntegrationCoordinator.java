@@ -165,12 +165,16 @@ public class IntegrationCoordinator {
                 return null;
             }
             SalesOrder order = salesService.getOrderWithItems(id);
-            return salesJournalService.postSalesJournal(
+            Long entryId = salesJournalService.postSalesJournal(
                     order,
                     null,
                     SalesOrderReference.invoiceReference(order),
                     LocalDate.now(),
                     "Sales order " + order.getOrderNumber());
+            if (entryId != null && order.getSalesJournalEntryId() == null) {
+                order.setSalesJournalEntryId(entryId);
+            }
+            return entryId;
         });
     }
 

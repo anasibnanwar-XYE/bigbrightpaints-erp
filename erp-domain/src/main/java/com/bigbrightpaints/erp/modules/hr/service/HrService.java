@@ -213,7 +213,9 @@ public class HrService {
     }
 
     private PayrollRunDto toDto(PayrollRun run) {
-        Long journalEntryId = run.getJournalEntry() != null ? run.getJournalEntry().getId() : null;
+        Long journalEntryId = run.getJournalEntry() != null
+                ? run.getJournalEntry().getId()
+                : run.getJournalEntryId();
         return new PayrollRunDto(
                 run.getId(),
                 run.getPublicId(),

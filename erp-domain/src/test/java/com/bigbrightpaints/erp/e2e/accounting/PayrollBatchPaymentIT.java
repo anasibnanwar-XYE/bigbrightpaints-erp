@@ -86,6 +86,7 @@ public class PayrollBatchPaymentIT extends AbstractIntegrationTest {
 
         PayrollRun run = payrollRunRepository.findById(response.payrollRunId()).orElseThrow();
         assertThat(run.getJournalEntry()).isNotNull();
+        assertThat(run.getJournalEntryId()).isNotNull();
         assertThat(run.getTotalAmount()).isEqualByComparingTo(new BigDecimal("21700.00")); // Gross is stored
 
         List<PayrollRunLine> lines = payrollRunLineRepository.findAll();

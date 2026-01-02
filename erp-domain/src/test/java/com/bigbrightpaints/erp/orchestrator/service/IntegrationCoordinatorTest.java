@@ -35,6 +35,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -102,7 +103,7 @@ class IntegrationCoordinatorTest {
         order.setDealer(new Dealer());
 
         state = new OrderAutoApprovalState(COMPANY_ID, ORDER_ID);
-        when(orderAutoApprovalStateRepository.findByCompanyCodeAndOrderId(COMPANY_ID, ORDER_ID))
+        lenient().when(orderAutoApprovalStateRepository.findByCompanyCodeAndOrderId(COMPANY_ID, ORDER_ID))
                 .thenReturn(Optional.of(state));
     }
 
@@ -189,6 +190,18 @@ class IntegrationCoordinatorTest {
         integrationCoordinator.autoApproveOrder(String.valueOf(ORDER_ID), new BigDecimal("1500"), COMPANY_ID);
 
         verify(salesService, never()).confirmDispatch(any());
+    }
+
+    @Test
+    void createAccountingEntryStoresOrderJournalId() {
+        order.setOrderNumber("SO-42");
+        when(salesService.getOrderWithItems(ORDER_ID)).thenReturn(order);
+        when(salesJournalService.postSalesJournal(eq(order), any(), anyString(), any(), anyString())).thenReturn(555L);
+
+        Long journalId = integrationCoordinator.createAccountingEntry(String.valueOf(ORDER_ID), COMPANY_ID);
+
+        assertThat(journalId).isEqualTo(555L);
+        assertThat(order.getSalesJournalEntryId()).isEqualTo(555L);
     }
 
     private static class NoOpTransactionManager extends AbstractPlatformTransactionManager {

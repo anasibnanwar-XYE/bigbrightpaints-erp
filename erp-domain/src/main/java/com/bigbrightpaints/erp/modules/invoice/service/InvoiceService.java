@@ -114,6 +114,9 @@ public class InvoiceService {
         JournalEntry journalEntry = resolveInvoiceJournal(order, invoice);
         if (journalEntry != null) {
             invoice.setJournalEntry(journalEntry);
+            if (order.getSalesJournalEntryId() == null) {
+                order.setSalesJournalEntryId(journalEntry.getId());
+            }
         }
         Invoice saved = invoiceRepository.save(invoice);
 
