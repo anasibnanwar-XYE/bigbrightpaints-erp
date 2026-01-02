@@ -25,6 +25,8 @@ import java.util.*;
 @Service
 public class PayrollService {
 
+    private static final BigDecimal ADVANCE_DEDUCTION_CAP = new BigDecimal("0.20");
+
     private final PayrollRunRepository payrollRunRepository;
     private final PayrollRunLineRepository payrollRunLineRepository;
     private final EmployeeRepository employeeRepository;
@@ -64,6 +66,8 @@ public class PayrollService {
         run.setRunType(request.runType());
         run.setPeriodStart(request.periodStart());
         run.setPeriodEnd(request.periodEnd());
+        LocalDate runDate = request.periodEnd() != null ? request.periodEnd() : request.periodStart();
+        run.setRunDate(runDate != null ? runDate : LocalDate.now());
         run.setRunNumber(generateRunNumber(company, request.runType(), request.periodStart()));
         run.setCreatedBy(currentUser);
         run.setRemarks(request.remarks());
@@ -165,6 +169,7 @@ public class PayrollService {
         PayrollRunLine line = new PayrollRunLine();
         line.setPayrollRun(run);
         line.setEmployee(employee);
+        line.setName(employee.getFullName());
 
         // Get attendance for period
         List<Attendance> attendance = attendanceRepository.findByEmployeeAndAttendanceDateBetween(
@@ -211,7 +216,12 @@ public class PayrollService {
 
         // Calculate rates
         BigDecimal dailyRate = employee.getDailyRate();
+        if (dailyRate == null) {
+            dailyRate = BigDecimal.ZERO;
+        }
+        BigDecimal dailyWage = employee.getDailyWage() != null ? employee.getDailyWage() : dailyRate;
         BigDecimal hourlyRate = dailyRate.divide(employee.getStandardHoursPerDay(), 2, RoundingMode.HALF_UP);
+        line.setDailyWage(dailyWage);
         line.setDailyRate(dailyRate);
         line.setHourlyRate(hourlyRate);
         line.setOtRateMultiplier(employee.getOvertimeRateMultiplier());
@@ -219,6 +229,7 @@ public class PayrollService {
 
         // Calculate base pay
         BigDecimal effectiveDays = presentDays.add(halfDays.multiply(new BigDecimal("0.5")));
+        line.setDaysWorked(effectiveDays.setScale(0, RoundingMode.HALF_UP).intValue());
         BigDecimal basePay = dailyRate.multiply(effectiveDays);
         line.setBasePay(basePay);
 
@@ -237,27 +248,19 @@ public class PayrollService {
         line.setGrossPay(grossPay);
 
         // Calculate deductions
-        BigDecimal advanceDeduction = BigDecimal.ZERO;
-        if (employee.getAdvanceBalance() != null && employee.getAdvanceBalance().compareTo(BigDecimal.ZERO) > 0) {
-            // Deduct up to 20% of gross pay or remaining advance, whichever is less
-            BigDecimal maxDeduction = grossPay.multiply(new BigDecimal("0.2"));
-            advanceDeduction = employee.getAdvanceBalance().min(maxDeduction);
-        }
+        BigDecimal advanceDeduction = calculateAdvanceDeduction(grossPay, employee);
         line.setAdvanceDeduction(advanceDeduction);
+        line.setAdvances(advanceDeduction);
 
-        // PF deduction (12% of base for eligible employees)
-        BigDecimal pfDeduction = BigDecimal.ZERO;
-        if (employee.getEmployeeType() == Employee.EmployeeType.STAFF && grossPay.compareTo(new BigDecimal("15000")) >= 0) {
-            pfDeduction = basePay.multiply(new BigDecimal("0.12")).setScale(0, RoundingMode.HALF_UP);
-        }
-        line.setPfDeduction(pfDeduction);
+        line.setPfDeduction(BigDecimal.ZERO);
 
-        BigDecimal totalDeductions = advanceDeduction.add(pfDeduction);
+        BigDecimal totalDeductions = advanceDeduction;
         line.setTotalDeductions(totalDeductions);
 
         // Calculate net pay
         BigDecimal netPay = grossPay.subtract(totalDeductions);
         line.setNetPay(netPay);
+        line.setLineTotal(netPay);
 
         return line;
     }
@@ -299,39 +302,32 @@ public class PayrollService {
         // Find required accounts
         Account salaryExpenseAccount = findAccountByCode(company, "SALARY-EXP");
         Account wageExpenseAccount = findAccountByCode(company, "WAGE-EXP");
-        Account pfPayableAccount = findAccountByCode(company, "PF-PAYABLE");
         Account salaryPayableAccount = findAccountByCode(company, "SALARY-PAYABLE");
 
         // Load payroll lines to calculate totals
         List<PayrollRunLine> runLines = payrollRunLineRepository.findByPayrollRun(run);
 
-        // Calculate total gross pay (base + overtime + holiday pay)
-        // This ensures journal is balanced: Gross = PF Payable + Salary Payable
+        // Calculate totals from run lines
         BigDecimal totalGrossPay = runLines.stream()
             .map(PayrollRunLine::getGrossPay)
             .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        BigDecimal totalPf = runLines.stream()
-            .map(PayrollRunLine::getPfDeduction)
+        BigDecimal totalAdvances = runLines.stream()
+            .map(PayrollRunLine::getAdvanceDeduction)
             .reduce(BigDecimal.ZERO, BigDecimal::add);
-        // Salary payable should include advances so debits/credits stay balanced
-        BigDecimal salaryPayableAmount = totalGrossPay.subtract(totalPf);
+
+        // Salary payable is net of advances (advance balances are cleared in HR when paid)
+        BigDecimal salaryPayableAmount = totalGrossPay.subtract(totalAdvances);
 
         // Build journal entry
-        // Debit: Expense (gross pay = base + OT + holiday)
-        // Credit: PF Payable (employee PF deduction)
-        // Credit: Salary Payable (net pay = gross - deductions)
+        // Debit: Expense (net pay; advances are treated as already cleared)
+        // Credit: Salary Payable (net pay)
         List<JournalLineRequest> lines = new ArrayList<>();
 
         Account expenseAccount = run.getRunType() == PayrollRun.RunType.MONTHLY 
             ? salaryExpenseAccount : wageExpenseAccount;
-        lines.add(new JournalLineRequest(expenseAccount.getId(), "Payroll expense", totalGrossPay, BigDecimal.ZERO));
+        lines.add(new JournalLineRequest(expenseAccount.getId(), "Payroll expense", salaryPayableAmount, BigDecimal.ZERO));
 
-        if (totalPf.compareTo(BigDecimal.ZERO) > 0) {
-            lines.add(new JournalLineRequest(pfPayableAccount.getId(), "PF liability", BigDecimal.ZERO, totalPf));
-        }
-
-        // Credit: Salary Payable (gross - PF; advances are recovered against this balance)
         lines.add(new JournalLineRequest(salaryPayableAccount.getId(), "Payroll payable", BigDecimal.ZERO, salaryPayableAmount));
 
         JournalEntryRequest journalRequest = new JournalEntryRequest(
@@ -386,9 +382,9 @@ public class PayrollService {
             line.setPaymentReference(paymentReference);
             
             // Deduct advance from employee if applicable
-            if (line.getAdvanceDeduction().compareTo(BigDecimal.ZERO) > 0) {
+            if (line.getAdvances().compareTo(BigDecimal.ZERO) > 0) {
                 Employee emp = line.getEmployee();
-                emp.setAdvanceBalance(emp.getAdvanceBalance().subtract(line.getAdvanceDeduction()));
+                emp.setAdvanceBalance(emp.getAdvanceBalance().subtract(line.getAdvances()));
                 employeeRepository.save(emp);
             }
         }
@@ -426,6 +422,18 @@ public class PayrollService {
             .orElseThrow(() -> new IllegalArgumentException("Payroll run not found"));
         return payrollRunLineRepository.findByPayrollRunOrderByEmployeeFirstNameAsc(run)
             .stream().map(this::toLineDto).toList();
+    }
+
+    private BigDecimal calculateAdvanceDeduction(BigDecimal grossPay, Employee employee) {
+        if (employee == null) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal balance = employee.getAdvanceBalance();
+        if (balance == null || balance.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal cap = grossPay.multiply(ADVANCE_DEDUCTION_CAP).setScale(2, RoundingMode.HALF_UP);
+        return balance.min(cap);
     }
 
     /**
