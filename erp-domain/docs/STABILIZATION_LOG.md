@@ -317,3 +317,21 @@
   - `mvn -Dtest=*Sales* test` succeeded: Tests run 21, Failures 0, Errors 0, Skipped 0.
 - Notes:
   - Test logs include expected sequence contention, invalid company ID format warnings, negative balance warnings, and openhtmltopdf CSS warnings; tests still passed.
+
+## 2026-01-04 (epic-04 M1 verification)
+- Changes:
+  - Documented Procure-to-Pay state machines in `erp-domain/docs/PROCURE_TO_PAY_STATE_MACHINES.md`.
+  - Restored missing inventory reference and repository query methods used by dashboards and reports.
+  - Aligned P2P invariant request payload with DTO (removed unsupported taxAmount) and made period close E2E dates non-future.
+- Commands run:
+  - `mvn -f erp-domain/pom.xml -DskipTests compile`
+  - `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check`
+  - `mvn -f erp-domain/pom.xml test`
+  - `mvn -f erp-domain/pom.xml -Dtest=*Purchasing* test`
+- Validation:
+  - `mvn -DskipTests compile` succeeded.
+  - Checkstyle reported 28780 violations; `failOnViolation=false` used to surface baseline warnings without failing.
+  - `mvn test` succeeded: Tests run 187, Failures 0, Errors 0, Skipped 4.
+  - `mvn -Dtest=*Purchasing* test` succeeded: Tests run 4, Failures 0, Errors 0, Skipped 0.
+- Notes:
+  - Test logs include expected invalid company ID format warnings, negative balance warnings, and dynamic agent warnings; tests still passed.

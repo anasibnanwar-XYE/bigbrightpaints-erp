@@ -17,6 +17,7 @@ import java.util.Optional;
 public interface ProductionLogRepository extends JpaRepository<ProductionLog, Long> {
     List<ProductionLog> findTop25ByCompanyOrderByProducedAtDesc(Company company);
     Optional<ProductionLog> findByCompanyAndId(Company company, Long id);
+    List<ProductionLog> findByCompanyAndProducedAtBetween(Company company, Instant start, Instant end);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT pl FROM ProductionLog pl WHERE pl.company = :company AND pl.id = :id")

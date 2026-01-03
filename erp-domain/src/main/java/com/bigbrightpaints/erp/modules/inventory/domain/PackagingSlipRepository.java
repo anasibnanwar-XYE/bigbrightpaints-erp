@@ -9,8 +9,10 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 public interface PackagingSlipRepository extends JpaRepository<PackagingSlip, Long> {
     @EntityGraph(attributePaths = {"salesOrder", "salesOrder.dealer", "lines", "lines.finishedGoodBatch", "lines.finishedGoodBatch.finishedGood"})
@@ -20,6 +22,8 @@ public interface PackagingSlipRepository extends JpaRepository<PackagingSlip, Lo
     @EntityGraph(attributePaths = {"salesOrder", "salesOrder.dealer", "lines", "lines.finishedGoodBatch", "lines.finishedGoodBatch.finishedGood"})
     Optional<PackagingSlip> findByCompanyAndSalesOrderId(Company company, Long orderId);
     List<PackagingSlip> findAllByCompanyAndSalesOrderId(Company company, Long orderId);
+    List<PackagingSlip> findByCompanyAndDispatchedAtBetween(Company company, Instant start, Instant end);
+    long countByCompanyAndStatusInAndCreatedAtBefore(Company company, Set<String> statuses, Instant cutoff);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @QueryHints({@QueryHint(name = "javax.persistence.lock.timeout", value = "5000")})

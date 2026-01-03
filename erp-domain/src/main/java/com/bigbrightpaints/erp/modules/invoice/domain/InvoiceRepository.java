@@ -17,6 +17,11 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
     @EntityGraph(attributePaths = "lines")
     List<Invoice> findByCompanyOrderByIssueDateDesc(Company company);
 
+    @EntityGraph(attributePaths = {"lines", "dealer"})
+    List<Invoice> findByCompanyAndIssueDateBetweenOrderByIssueDateAsc(Company company,
+                                                                      java.time.LocalDate start,
+                                                                      java.time.LocalDate end);
+
     @EntityGraph(attributePaths = "lines")
     List<Invoice> findByCompanyAndDealerOrderByIssueDateDesc(Company company, Dealer dealer);
 

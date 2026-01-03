@@ -3,6 +3,7 @@ package com.bigbrightpaints.erp.e2e.accounting;
 import com.bigbrightpaints.erp.modules.accounting.domain.*;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
+import com.bigbrightpaints.erp.test.support.TestDateUtils;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -55,18 +56,21 @@ class PeriodCloseLockIT extends AbstractIntegrationTest {
     @Test
     @DisplayName("Closing locks period, posts retained earnings transfer, blocks new postings, reopen auto-reverses and unlocks")
     void closeLockReopenFlow() {
-        LocalDate today = LocalDate.now();
-        // Use current month to stay within the 30-day posting window enforced by validations
+        LocalDate today = TestDateUtils.safeDate(company);
         LocalDate testMonth = today;
+        int day = testMonth.getDayOfMonth();
+        LocalDate revenueDate = testMonth.withDayOfMonth(Math.max(1, day - 2));
+        LocalDate expenseDate = testMonth.withDayOfMonth(Math.max(1, day - 1));
+        LocalDate lockedDate = testMonth.withDayOfMonth(day);
         // Seed P&L: profit 60 (100 revenue, 40 expense) using cash movements
         // Post revenue entry first
-        postJournal(testMonth.withDayOfMonth(5),
+        postJournal(revenueDate,
                 List.of(
                         line(cash.getId(), new BigDecimal("100.00"), BigDecimal.ZERO),
                         line(revenue.getId(), BigDecimal.ZERO, new BigDecimal("100.00"))
                 ));
         // Post expense entry separately to avoid duplicate account issues
-        postJournal(testMonth.withDayOfMonth(6),
+        postJournal(expenseDate,
                 List.of(
                         line(expense.getId(), new BigDecimal("40.00"), BigDecimal.ZERO),
                         line(cash.getId(), BigDecimal.ZERO, new BigDecimal("40.00"))
@@ -93,7 +97,7 @@ class PeriodCloseLockIT extends AbstractIntegrationTest {
                 HttpMethod.POST,
                 new HttpEntity<>(Map.of(
                         "referenceNumber", "LOCKED-BLOCK-" + System.nanoTime(),
-                        "entryDate", testMonth.withDayOfMonth(10),
+                        "entryDate", lockedDate,
                         "memo", "Should fail",
                         "adminOverride", false,
                         "lines", List.of(
