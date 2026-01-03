@@ -55,6 +55,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.HashMap;
@@ -626,14 +627,28 @@ public class ErpInvariantsSuiteIT extends AbstractIntegrationTest {
                 .orElseThrow(() -> new AssertionError("Raw material missing: " + rm2.getSku()));
         assertThat(rm1Updated.getCurrentStock()).isEqualByComparingTo(new BigDecimal("90"));
         assertThat(rm2Updated.getCurrentStock()).isEqualByComparingTo(new BigDecimal("45"));
+        invariants.assertNoNegativeStock(company.getId(), rm1.getSku());
+        invariants.assertNoNegativeStock(company.getId(), rm2.getSku());
 
         List<RawMaterialMovement> rmMovements = rawMaterialMovementRepository
-                .findByReferenceTypeAndReferenceId(InventoryReference.PRODUCTION_LOG, productionCode);
+                .findByReferenceTypeAndReferenceIdAndRawMaterialCompany(
+                        InventoryReference.PRODUCTION_LOG, productionCode, company);
         assertThat(rmMovements).as("raw material movements created").hasSizeGreaterThanOrEqualTo(2);
         JournalEntry rmJournal = journalEntryRepository
                 .findByCompanyAndReferenceNumber(company, productionCode + "-RM")
                 .orElseThrow(() -> new AssertionError("Material journal missing for " + productionCode));
-        assertThat(rmMovements).allMatch(movement -> rmJournal.getId().equals(movement.getJournalEntryId()));
+        Long rmJournalId = rmJournal.getId();
+        JournalEntry rmJournalWithLines = journalEntryRepository.findById(rmJournalId)
+                .orElseThrow(() -> new AssertionError("Material journal missing lines for " + productionCode));
+        assertThat(rmMovements).allMatch(movement -> rmJournalId.equals(movement.getJournalEntryId()));
+        BigDecimal materialCostTotal = rmMovements.stream()
+                .map(movement -> movement.getUnitCost().multiply(movement.getQuantity()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, RoundingMode.HALF_UP);
+        BigDecimal rmCredits = rmJournalWithLines.getLines().stream()
+                .map(line -> line.getCredit() == null ? BigDecimal.ZERO : line.getCredit())
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        assertThat(rmCredits).isEqualByComparingTo(materialCostTotal);
 
         List<InventoryMovement> movements = inventoryMovementRepository
                 .findByReferenceTypeAndReferenceIdOrderByCreatedAtAsc(InventoryReference.PRODUCTION_LOG, productionCode);
@@ -645,7 +660,14 @@ public class ErpInvariantsSuiteIT extends AbstractIntegrationTest {
         JournalEntry semiFinishedJournal = journalEntryRepository
                 .findByCompanyAndReferenceNumber(company, productionCode + "-SEMIFG")
                 .orElseThrow(() -> new AssertionError("Semi-finished journal missing for " + productionCode));
-        assertThat(movements).anyMatch(movement -> semiFinishedJournal.getId().equals(movement.getJournalEntryId()));
+        Long semiFinishedJournalId = semiFinishedJournal.getId();
+        JournalEntry semiFinishedJournalWithLines = journalEntryRepository.findById(semiFinishedJournalId)
+                .orElseThrow(() -> new AssertionError("Semi-finished journal missing lines for " + productionCode));
+        assertThat(movements).anyMatch(movement -> semiFinishedJournalId.equals(movement.getJournalEntryId()));
+        BigDecimal semiFinishedDebits = semiFinishedJournalWithLines.getLines().stream()
+                .map(line -> line.getDebit() == null ? BigDecimal.ZERO : line.getDebit())
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        assertThat(semiFinishedDebits).isEqualByComparingTo(materialCostTotal);
         invariants.assertNoNegativeStock(company.getId(), finishedGood.getProductCode());
         assertThat(productionLogRepository.findById(logId)).isPresent();
     }

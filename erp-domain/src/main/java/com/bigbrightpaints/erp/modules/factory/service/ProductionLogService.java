@@ -384,16 +384,17 @@ public class ProductionLogService {
         );
 
         if (entry != null) {
-            linkRawMaterialMovementsToJournal(log.getProductionCode(), entry.id());
+            linkRawMaterialMovementsToJournal(company, log.getProductionCode(), entry.id());
         }
     }
 
-    private void linkRawMaterialMovementsToJournal(String referenceId, Long journalEntryId) {
+    private void linkRawMaterialMovementsToJournal(Company company, String referenceId, Long journalEntryId) {
         if (journalEntryId == null) {
             return;
         }
         List<RawMaterialMovement> movements = rawMaterialMovementRepository
-                .findByReferenceTypeAndReferenceId(InventoryReference.PRODUCTION_LOG, referenceId);
+                .findByReferenceTypeAndReferenceIdAndRawMaterialCompany(
+                        InventoryReference.PRODUCTION_LOG, referenceId, company);
         if (movements.isEmpty()) {
             return;
         }
