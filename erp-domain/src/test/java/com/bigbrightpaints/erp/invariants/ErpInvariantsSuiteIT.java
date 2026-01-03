@@ -22,6 +22,8 @@ import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovement;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
 import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceLine;
@@ -83,6 +85,7 @@ public class ErpInvariantsSuiteIT extends AbstractIntegrationTest {
     @Autowired private InvoiceRepository invoiceRepository;
     @Autowired private PackagingSlipRepository packagingSlipRepository;
     @Autowired private InventoryMovementRepository inventoryMovementRepository;
+    @Autowired private RawMaterialMovementRepository rawMaterialMovementRepository;
     @Autowired private RawMaterialPurchaseRepository purchaseRepository;
     @Autowired private PayrollRunRepository payrollRunRepository;
     @Autowired private JournalEntryRepository journalEntryRepository;
@@ -617,9 +620,32 @@ public class ErpInvariantsSuiteIT extends AbstractIntegrationTest {
                 .orElseThrow(() -> new AssertionError("Finished good missing after packing"));
         assertThat(finishedGood.getCurrentStock()).isGreaterThan(BigDecimal.ZERO);
 
+        RawMaterial rm1Updated = rawMaterialRepository.findById(rm1.getId())
+                .orElseThrow(() -> new AssertionError("Raw material missing: " + rm1.getSku()));
+        RawMaterial rm2Updated = rawMaterialRepository.findById(rm2.getId())
+                .orElseThrow(() -> new AssertionError("Raw material missing: " + rm2.getSku()));
+        assertThat(rm1Updated.getCurrentStock()).isEqualByComparingTo(new BigDecimal("90"));
+        assertThat(rm2Updated.getCurrentStock()).isEqualByComparingTo(new BigDecimal("45"));
+
+        List<RawMaterialMovement> rmMovements = rawMaterialMovementRepository
+                .findByReferenceTypeAndReferenceId(InventoryReference.PRODUCTION_LOG, productionCode);
+        assertThat(rmMovements).as("raw material movements created").hasSizeGreaterThanOrEqualTo(2);
+        JournalEntry rmJournal = journalEntryRepository
+                .findByCompanyAndReferenceNumber(company, productionCode + "-RM")
+                .orElseThrow(() -> new AssertionError("Material journal missing for " + productionCode));
+        assertThat(rmMovements).allMatch(movement -> rmJournal.getId().equals(movement.getJournalEntryId()));
+
         List<InventoryMovement> movements = inventoryMovementRepository
                 .findByReferenceTypeAndReferenceIdOrderByCreatedAtAsc(InventoryReference.PRODUCTION_LOG, productionCode);
         assertThat(movements).as("production movements created").isNotEmpty();
+        assertThat(movements).allMatch(movement -> productionCode.equals(movement.getReferenceId()));
+        assertThat(movements).anyMatch(movement -> "RECEIPT".equals(movement.getMovementType()));
+        assertThat(movements).anyMatch(movement -> "ISSUE".equals(movement.getMovementType()));
+        assertThat(movements).allMatch(movement -> movement.getJournalEntryId() != null);
+        JournalEntry semiFinishedJournal = journalEntryRepository
+                .findByCompanyAndReferenceNumber(company, productionCode + "-SEMIFG")
+                .orElseThrow(() -> new AssertionError("Semi-finished journal missing for " + productionCode));
+        assertThat(movements).anyMatch(movement -> semiFinishedJournal.getId().equals(movement.getJournalEntryId()));
         invariants.assertNoNegativeStock(company.getId(), finishedGood.getProductCode());
         assertThat(productionLogRepository.findById(logId)).isPresent();
     }
