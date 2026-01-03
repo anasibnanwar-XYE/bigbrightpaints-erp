@@ -44,7 +44,7 @@ public class SupplierService {
     @Transactional
     public List<SupplierResponse> listSuppliers() {
         Company company = companyContextService.requireCurrentCompany();
-        List<Supplier> suppliers = supplierRepository.findByCompanyOrderByNameAsc(company);
+        List<Supplier> suppliers = supplierRepository.findByCompanyWithPayableAccountOrderByNameAsc(company);
         // Always use ledger as source of truth - never fall back to stale denormalized field
         Map<Long, BigDecimal> balances = supplierLedgerService.currentBalances(
                 suppliers.stream().map(Supplier::getId).toList());

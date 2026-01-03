@@ -76,7 +76,7 @@ public class PurchasingService {
 
     public List<RawMaterialPurchaseResponse> listPurchases() {
         Company company = companyContextService.requireCurrentCompany();
-        return purchaseRepository.findByCompanyOrderByInvoiceDateDesc(company).stream()
+        return purchaseRepository.findByCompanyWithLinesOrderByInvoiceDateDesc(company).stream()
                 .map(this::toResponse)
                 .toList();
     }
