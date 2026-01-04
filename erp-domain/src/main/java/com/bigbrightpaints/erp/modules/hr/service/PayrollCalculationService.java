@@ -42,6 +42,7 @@ import java.util.stream.Collectors;
 public class PayrollCalculationService {
 
     private static final Logger log = LoggerFactory.getLogger(PayrollCalculationService.class);
+    private static final BigDecimal ADVANCE_DEDUCTION_CAP = new BigDecimal("0.20");
 
     private final EmployeeRepository employeeRepository;
     private final AttendanceRepository attendanceRepository;
@@ -94,19 +95,25 @@ public class PayrollCalculationService {
                 company, Employee.PaymentSchedule.WEEKLY, "ACTIVE");
         
         List<PayrollLineItem> lineItems = new ArrayList<>();
-        BigDecimal totalAmount = BigDecimal.ZERO;
+        BigDecimal totalGross = BigDecimal.ZERO;
+        BigDecimal totalAdvances = BigDecimal.ZERO;
+        BigDecimal totalNet = BigDecimal.ZERO;
         
         for (Employee labourer : labourers) {
             PayrollLineItem item = calculateEmployeePay(company, labourer, weekStart, weekEnd);
-            if (item.netPay().compareTo(BigDecimal.ZERO) > 0) {
-                lineItems.add(item);
-                totalAmount = totalAmount.add(item.netPay());
+            if (item.netPay().compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
             }
+            lineItems.add(item);
+            totalGross = totalGross.add(item.grossPay());
+            totalAdvances = totalAdvances.add(item.advanceDeduction());
+            totalNet = totalNet.add(item.netPay());
         }
         
         // Create payroll run
         String reference = "WEEKLY-" + weekEnd.format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-        PayrollRun run = createPayrollRun(company, reference, today, totalAmount, lineItems);
+        PayrollRun run = createPayrollRun(company, reference, PayrollRun.RunType.WEEKLY,
+                weekStart, weekEnd, today, totalGross, totalAdvances, totalNet, lineItems);
         
         PayrollSummary summary = new PayrollSummary(
                 run.getId(),
@@ -115,7 +122,7 @@ public class PayrollCalculationService {
                 weekStart,
                 weekEnd,
                 lineItems,
-                totalAmount,
+                totalNet,
                 LocalDateTime.now()
         );
         
@@ -144,19 +151,25 @@ public class PayrollCalculationService {
                 company, Employee.PaymentSchedule.MONTHLY, "ACTIVE");
         
         List<PayrollLineItem> lineItems = new ArrayList<>();
-        BigDecimal totalAmount = BigDecimal.ZERO;
+        BigDecimal totalGross = BigDecimal.ZERO;
+        BigDecimal totalAdvances = BigDecimal.ZERO;
+        BigDecimal totalNet = BigDecimal.ZERO;
         
         for (Employee employee : staff) {
             PayrollLineItem item = calculateEmployeePay(company, employee, monthStart, monthEnd);
-            if (item.netPay().compareTo(BigDecimal.ZERO) > 0) {
-                lineItems.add(item);
-                totalAmount = totalAmount.add(item.netPay());
+            if (item.netPay().compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
             }
+            lineItems.add(item);
+            totalGross = totalGross.add(item.grossPay());
+            totalAdvances = totalAdvances.add(item.advanceDeduction());
+            totalNet = totalNet.add(item.netPay());
         }
         
         // Create payroll run
         String reference = "MONTHLY-" + monthEnd.format(DateTimeFormatter.ofPattern("yyyyMM"));
-        PayrollRun run = createPayrollRun(company, reference, today, totalAmount, lineItems);
+        PayrollRun run = createPayrollRun(company, reference, PayrollRun.RunType.MONTHLY,
+                monthStart, monthEnd, today, totalGross, totalAdvances, totalNet, lineItems);
         
         PayrollSummary summary = new PayrollSummary(
                 run.getId(),
@@ -165,7 +178,7 @@ public class PayrollCalculationService {
                 monthStart,
                 monthEnd,
                 lineItems,
-                totalAmount,
+                totalNet,
                 LocalDateTime.now()
         );
         
@@ -180,34 +193,68 @@ public class PayrollCalculationService {
      */
     private PayrollLineItem calculateEmployeePay(Company company, Employee employee, 
                                                   LocalDate startDate, LocalDate endDate) {
-        // Count attendance
-        long presentDays = attendanceRepository.countByEmployeeAndDateRangeAndStatus(
-                company, employee, startDate, endDate, Attendance.AttendanceStatus.PRESENT);
-        long halfDays = attendanceRepository.countByEmployeeAndDateRangeAndStatus(
-                company, employee, startDate, endDate, Attendance.AttendanceStatus.HALF_DAY);
-        
-        // Calculate gross pay
-        BigDecimal grossPay = employee.calculatePay((int) presentDays, (int) halfDays);
-        
-        // Deduct advance balance if any
-        BigDecimal advanceDeduction = BigDecimal.ZERO;
-        if (employee.getAdvanceBalance().compareTo(BigDecimal.ZERO) > 0) {
-            // Deduct up to 50% of gross pay or remaining advance, whichever is less
-            BigDecimal maxDeduction = grossPay.multiply(new BigDecimal("0.5")).setScale(2, RoundingMode.HALF_UP);
-            advanceDeduction = employee.getAdvanceBalance().min(maxDeduction);
+        List<Attendance> attendance = attendanceRepository.findByEmployeeAndAttendanceDateBetween(
+                employee, startDate, endDate);
+
+        BigDecimal presentDays = BigDecimal.ZERO;
+        BigDecimal halfDays = BigDecimal.ZERO;
+        BigDecimal leaveDays = BigDecimal.ZERO;
+        BigDecimal holidayDays = BigDecimal.ZERO;
+        BigDecimal overtimeHours = BigDecimal.ZERO;
+        BigDecimal doubleOtHours = BigDecimal.ZERO;
+
+        for (Attendance att : attendance) {
+            switch (att.getStatus()) {
+                case PRESENT -> presentDays = presentDays.add(BigDecimal.ONE);
+                case HALF_DAY -> halfDays = halfDays.add(BigDecimal.ONE);
+                case LEAVE -> leaveDays = leaveDays.add(BigDecimal.ONE);
+                case HOLIDAY -> holidayDays = holidayDays.add(BigDecimal.ONE);
+                case ABSENT, WEEKEND -> {}
+            }
+            if (att.getOvertimeHours() != null) {
+                overtimeHours = overtimeHours.add(att.getOvertimeHours());
+            }
+            if (att.getDoubleOvertimeHours() != null) {
+                doubleOtHours = doubleOtHours.add(att.getDoubleOvertimeHours());
+            }
         }
-        
-        BigDecimal netPay = grossPay.subtract(advanceDeduction);
-        
+
+        BigDecimal dailyRate = employee.getDailyRate() != null ? employee.getDailyRate() : BigDecimal.ZERO;
+        BigDecimal hourlyRate = dailyRate.divide(employee.getStandardHoursPerDay(), 2, RoundingMode.HALF_UP);
+
+        BigDecimal effectiveDays = presentDays.add(halfDays.multiply(new BigDecimal("0.5")));
+        BigDecimal basePay = dailyRate.multiply(effectiveDays);
+
+        BigDecimal otRate = hourlyRate.multiply(employee.getOvertimeRateMultiplier());
+        BigDecimal doubleOtRate = hourlyRate.multiply(employee.getDoubleOtRateMultiplier());
+        BigDecimal overtimePay = otRate.multiply(overtimeHours).add(doubleOtRate.multiply(doubleOtHours));
+
+        BigDecimal holidayPay = dailyRate.multiply(holidayDays);
+        BigDecimal grossPay = basePay.add(overtimePay).add(holidayPay);
+
+        BigDecimal balance = Optional.ofNullable(employee.getAdvanceBalance()).orElse(BigDecimal.ZERO);
+        BigDecimal advanceDeduction = balance.compareTo(BigDecimal.ZERO) > 0
+                ? balance.min(grossPay.multiply(ADVANCE_DEDUCTION_CAP).setScale(2, RoundingMode.HALF_UP))
+                : BigDecimal.ZERO;
+
+        BigDecimal totalDeductions = advanceDeduction;
+        BigDecimal netPay = grossPay.subtract(totalDeductions);
+
         return new PayrollLineItem(
                 employee.getId(),
                 employee.getFullName(),
                 employee.getEmployeeType().name(),
-                employee.getDailyRate(),
-                (int) presentDays,
-                (int) halfDays,
+                dailyRate,
+                presentDays,
+                halfDays,
+                overtimeHours,
+                doubleOtHours,
+                basePay,
+                overtimePay,
+                holidayPay,
                 grossPay,
                 advanceDeduction,
+                totalDeductions,
                 netPay
         );
     }
@@ -239,12 +286,16 @@ public class PayrollCalculationService {
                 company, schedule, "ACTIVE");
         
         List<PayrollLineItem> lineItems = new ArrayList<>();
-        BigDecimal totalAmount = BigDecimal.ZERO;
+        BigDecimal totalGross = BigDecimal.ZERO;
+        BigDecimal totalAdvances = BigDecimal.ZERO;
+        BigDecimal totalNet = BigDecimal.ZERO;
         
         for (Employee employee : employees) {
             PayrollLineItem item = calculateEmployeePay(company, employee, startDate, endDate);
             lineItems.add(item);
-            totalAmount = totalAmount.add(item.netPay());
+            totalGross = totalGross.add(item.grossPay());
+            totalAdvances = totalAdvances.add(item.advanceDeduction());
+            totalNet = totalNet.add(item.netPay());
         }
         
         return new PayrollSummary(
@@ -254,7 +305,7 @@ public class PayrollCalculationService {
                 startDate,
                 endDate,
                 lineItems,
-                totalAmount,
+                totalNet,
                 LocalDateTime.now()
         );
     }
@@ -276,15 +327,26 @@ public class PayrollCalculationService {
                 amount, employee.getFullName(), newBalance);
     }
 
-    private PayrollRun createPayrollRun(Company company, String reference, LocalDate runDate,
-                                         BigDecimal totalAmount, List<PayrollLineItem> lineItems) {
+    private PayrollRun createPayrollRun(Company company, String reference, PayrollRun.RunType runType,
+                                         LocalDate periodStart, LocalDate periodEnd, LocalDate runDate,
+                                         BigDecimal totalGross, BigDecimal totalAdvances, BigDecimal totalNet,
+                                         List<PayrollLineItem> lineItems) {
         PayrollRun run = new PayrollRun();
         run.setCompany(company);
+        run.setRunType(runType);
+        run.setPeriodStart(periodStart);
+        run.setPeriodEnd(periodEnd);
         run.setRunDate(runDate);
-        run.setTotalAmount(totalAmount);
-        run.setStatus("PENDING");
+        run.setRunNumber(reference);
+        run.setTotalAmount(totalNet);
+        run.setTotalNetPay(totalNet);
+        run.setTotalDeductions(totalAdvances);
+        run.setStatus(PayrollRun.PayrollStatus.DRAFT);
         run.setIdempotencyKey(reference);
         run.setNotes("Auto-calculated from attendance");
+        run.setTotalEmployees(lineItems.size());
+        run.setApprovedBy(null);
+        run.setApprovedAt(null);
         payrollRunRepository.save(run);
         
         // Create line items
@@ -292,9 +354,21 @@ public class PayrollCalculationService {
             PayrollRunLine line = new PayrollRunLine();
             line.setPayrollRun(run);
             line.setName(item.employeeName());
-            line.setDaysWorked(item.presentDays() + item.halfDays()); // Total days (half days count as 1 for display)
+            BigDecimal effectiveDays = item.presentDays().add(item.halfDays().multiply(new BigDecimal("0.5")));
+            line.setDaysWorked(effectiveDays.setScale(0, RoundingMode.HALF_UP).intValue());
+            line.setPresentDays(item.presentDays());
+            line.setHalfDays(item.halfDays());
+            line.setOvertimeHours(item.overtimeHours());
+            line.setDoubleOtHours(item.doubleOtHours());
             line.setDailyWage(item.dailyRate());
+            line.setBasePay(item.basePay());
+            line.setOvertimePay(item.overtimePay());
+            line.setHolidayPay(item.holidayPay());
+            line.setGrossPay(item.grossPay());
+            line.setAdvanceDeduction(item.advanceDeduction());
             line.setAdvances(item.advanceDeduction());
+            line.setTotalDeductions(item.totalDeductions());
+            line.setNetPay(item.netPay());
             line.setLineTotal(item.netPay());
             line.setNotes(item.employeeType() + " - " + item.presentDays() + " full + " + item.halfDays() + " half days");
             payrollRunLineRepository.save(line);
@@ -396,10 +470,16 @@ public class PayrollCalculationService {
             String employeeName,
             String employeeType,
             BigDecimal dailyRate,
-            int presentDays,
-            int halfDays,
+            BigDecimal presentDays,
+            BigDecimal halfDays,
+            BigDecimal overtimeHours,
+            BigDecimal doubleOtHours,
+            BigDecimal basePay,
+            BigDecimal overtimePay,
+            BigDecimal holidayPay,
             BigDecimal grossPay,
             BigDecimal advanceDeduction,
+            BigDecimal totalDeductions,
             BigDecimal netPay
     ) {}
 

@@ -433,3 +433,18 @@
 - Warnings/notes:
   - Checkstyle reports baseline violations (~28k) unrelated to this change.
   - Test logs include expected Testcontainers startup messages and known warnings (invalid company ID format, negative balance notices); no failures.
+
+## 2026-01-05 (epic-05 M2 — payroll calculation sources aligned)
+- Changes:
+  - Aligned payroll calculations across preview/auto and run flows: attendance-driven computation now matches PayrollService (present/half/holiday/OT handling, 20% advance cap, zero PF in calculation).
+  - Auto-created payroll runs now use canonical fields (run type, period start/end, run number, DRAFT status) and populate line/pay totals for traceability.
+- Commands run:
+  - `mvn -f erp-domain/pom.xml -DskipTests compile`
+  - `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check`
+  - `mvn -f erp-domain/pom.xml test`
+  - `mvn -f erp-domain/pom.xml -Dtest=*Payroll* test`
+- Validation:
+  - All commands above succeeded (checkstyle warnings remain at baseline; failOnViolation=false).
+- Warnings/notes:
+  - Baseline checkstyle violations (~28k) unaffected.
+  - Test logs contain expected Testcontainers startup chatter and accounting warnings (invalid company ID format, negative balance notices); no test failures.
