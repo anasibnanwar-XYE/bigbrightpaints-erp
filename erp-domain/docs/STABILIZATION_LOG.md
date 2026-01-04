@@ -419,3 +419,17 @@
   - `mvn -Dtest=*Purchasing* test` succeeded: Tests run 4, Failures 0, Errors 0, Skipped 0.
 - Notes:
   - Test logs include expected invalid company ID format warnings, negative balance warnings, and dynamic agent warnings; tests still passed.
+
+## 2026-01-05 (epic-05 M1 — payroll run states and invariants)
+- Changes:
+  - Added hire-to-pay state machine and invariants documentation (`HIRE_TO_PAY_STATE_MACHINES.md`), capturing current payroll run statuses, transitions, posting semantics, payment/clearing behavior, and invariants.
+- Commands run:
+  - `mvn -f erp-domain/pom.xml -DskipTests compile`
+  - `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check`
+  - `mvn -f erp-domain/pom.xml test`
+  - `mvn -f erp-domain/pom.xml -Dtest=*Payroll* test`
+- Validation:
+  - All commands above succeeded (checkstyle warnings present at baseline; failOnViolation=false).
+- Warnings/notes:
+  - Checkstyle reports baseline violations (~28k) unrelated to this change.
+  - Test logs include expected Testcontainers startup messages and known warnings (invalid company ID format, negative balance notices); no failures.
