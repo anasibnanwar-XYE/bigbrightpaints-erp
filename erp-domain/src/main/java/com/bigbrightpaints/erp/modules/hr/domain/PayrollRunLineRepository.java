@@ -11,6 +11,12 @@ import java.util.Optional;
 public interface PayrollRunLineRepository extends JpaRepository<PayrollRunLine, Long> {
     
     List<PayrollRunLine> findByPayrollRunOrderByEmployeeFirstNameAsc(PayrollRun payrollRun);
+
+    @Query("SELECT prl FROM PayrollRunLine prl JOIN FETCH prl.employee "
+           + "WHERE prl.payrollRun = :run "
+           + "ORDER BY prl.employee.firstName ASC")
+    List<PayrollRunLine> findByPayrollRunWithEmployeeOrderByEmployeeFirstNameAsc(
+            @Param("run") PayrollRun run);
     
     List<PayrollRunLine> findByPayrollRun(PayrollRun payrollRun);
     

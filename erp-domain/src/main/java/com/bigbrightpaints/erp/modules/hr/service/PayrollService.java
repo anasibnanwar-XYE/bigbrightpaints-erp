@@ -434,7 +434,7 @@ public class PayrollService {
         Company company = companyContextService.requireCurrentCompany();
         PayrollRun run = payrollRunRepository.findByCompanyAndId(company, payrollRunId)
             .orElseThrow(() -> new IllegalArgumentException("Payroll run not found"));
-        return payrollRunLineRepository.findByPayrollRunOrderByEmployeeFirstNameAsc(run)
+        return payrollRunLineRepository.findByPayrollRunWithEmployeeOrderByEmployeeFirstNameAsc(run)
             .stream().map(this::toLineDto).toList();
     }
 
@@ -460,33 +460,39 @@ public class PayrollService {
 
         List<Employee> labourers = employeeRepository.findByCompanyAndEmployeeTypeAndStatus(
             company, Employee.EmployeeType.LABOUR, "ACTIVE");
+        List<Attendance> attendance = attendanceRepository.findByEmployeeTypeAndStatusAndDateRange(
+            company, Employee.EmployeeType.LABOUR, "ACTIVE", weekStart, weekEnd);
 
         List<EmployeeWeeklyPayDto> employeePay = new ArrayList<>();
         BigDecimal totalBasePay = BigDecimal.ZERO;
         BigDecimal totalOtPay = BigDecimal.ZERO;
         BigDecimal totalNetPay = BigDecimal.ZERO;
 
-        for (Employee emp : labourers) {
-            List<Attendance> attendance = attendanceRepository.findByEmployeeAndAttendanceDateBetween(
-                emp, weekStart, weekEnd);
-            
-            BigDecimal presentDays = BigDecimal.ZERO;
-            BigDecimal otHours = BigDecimal.ZERO;
-            
-            for (Attendance att : attendance) {
-                if (att.getStatus() == Attendance.AttendanceStatus.PRESENT) {
-                    presentDays = presentDays.add(BigDecimal.ONE);
-                } else if (att.getStatus() == Attendance.AttendanceStatus.HALF_DAY) {
-                    presentDays = presentDays.add(new BigDecimal("0.5"));
-                }
-                if (att.getOvertimeHours() != null) {
-                    otHours = otHours.add(att.getOvertimeHours());
-                }
+        Map<Long, BigDecimal> presentDaysByEmployee = new HashMap<>();
+        Map<Long, BigDecimal> overtimeHoursByEmployee = new HashMap<>();
+        for (Attendance att : attendance) {
+            Long employeeId = att.getEmployee().getId();
+            if (att.getStatus() == Attendance.AttendanceStatus.PRESENT) {
+                presentDaysByEmployee.merge(employeeId, BigDecimal.ONE, BigDecimal::add);
+            } else if (att.getStatus() == Attendance.AttendanceStatus.HALF_DAY) {
+                presentDaysByEmployee.merge(employeeId, new BigDecimal("0.5"), BigDecimal::add);
             }
+            if (att.getOvertimeHours() != null) {
+                overtimeHoursByEmployee.merge(employeeId, att.getOvertimeHours(), BigDecimal::add);
+            }
+        }
+
+        for (Employee emp : labourers) {
+            BigDecimal presentDays = presentDaysByEmployee.getOrDefault(
+                    emp.getId(), BigDecimal.ZERO);
+            BigDecimal otHours = overtimeHoursByEmployee.getOrDefault(
+                    emp.getId(), BigDecimal.ZERO);
 
             BigDecimal basePay = emp.getDailyRate().multiply(presentDays);
-            BigDecimal hourlyRate = emp.getDailyRate().divide(emp.getStandardHoursPerDay(), 2, RoundingMode.HALF_UP);
-            BigDecimal otPay = hourlyRate.multiply(emp.getOvertimeRateMultiplier()).multiply(otHours);
+            BigDecimal hourlyRate = emp.getDailyRate().divide(
+                    emp.getStandardHoursPerDay(), 2, RoundingMode.HALF_UP);
+            BigDecimal otPay = hourlyRate.multiply(
+                    emp.getOvertimeRateMultiplier()).multiply(otHours);
             BigDecimal netPay = basePay.add(otPay);
 
             employeePay.add(new EmployeeWeeklyPayDto(
@@ -513,28 +519,39 @@ public class PayrollService {
 
         List<Employee> staff = employeeRepository.findByCompanyAndEmployeeTypeAndStatus(
             company, Employee.EmployeeType.STAFF, "ACTIVE");
+        List<Attendance> attendance = attendanceRepository.findByEmployeeTypeAndStatusAndDateRange(
+            company, Employee.EmployeeType.STAFF, "ACTIVE", monthStart, monthEnd);
 
         List<EmployeeMonthlyPayDto> employeePay = new ArrayList<>();
         BigDecimal totalGross = BigDecimal.ZERO;
         BigDecimal totalDeductions = BigDecimal.ZERO;
         BigDecimal totalNet = BigDecimal.ZERO;
 
-        for (Employee emp : staff) {
-            List<Attendance> attendance = attendanceRepository.findByEmployeeAndAttendanceDateBetween(
-                emp, monthStart, monthEnd);
-            
-            BigDecimal presentDays = BigDecimal.ZERO;
-            BigDecimal absentDays = BigDecimal.ZERO;
-            
-            for (Attendance att : attendance) {
-                switch (att.getStatus()) {
-                    case PRESENT, HOLIDAY -> presentDays = presentDays.add(BigDecimal.ONE);
-                    case HALF_DAY -> presentDays = presentDays.add(new BigDecimal("0.5"));
-                    case ABSENT -> absentDays = absentDays.add(BigDecimal.ONE);
+        Map<Long, BigDecimal> presentDaysByEmployee = new HashMap<>();
+        Map<Long, BigDecimal> absentDaysByEmployee = new HashMap<>();
+        for (Attendance att : attendance) {
+            Long employeeId = att.getEmployee().getId();
+            switch (att.getStatus()) {
+                case PRESENT, HOLIDAY -> presentDaysByEmployee.merge(
+                        employeeId, BigDecimal.ONE, BigDecimal::add);
+                case HALF_DAY -> presentDaysByEmployee.merge(
+                        employeeId, new BigDecimal("0.5"), BigDecimal::add);
+                case ABSENT -> absentDaysByEmployee.merge(
+                        employeeId, BigDecimal.ONE, BigDecimal::add);
+                default -> {
                 }
             }
+        }
 
-            BigDecimal grossPay = emp.getMonthlySalary() != null ? emp.getMonthlySalary() : BigDecimal.ZERO;
+        for (Employee emp : staff) {
+            BigDecimal presentDays = presentDaysByEmployee.getOrDefault(
+                    emp.getId(), BigDecimal.ZERO);
+            BigDecimal absentDays = absentDaysByEmployee.getOrDefault(
+                    emp.getId(), BigDecimal.ZERO);
+
+            BigDecimal grossPay = emp.getMonthlySalary() != null
+                    ? emp.getMonthlySalary()
+                    : BigDecimal.ZERO;
             // Deduct for absences
             if (absentDays.compareTo(BigDecimal.ZERO) > 0) {
                 BigDecimal dailyRate = emp.getDailyRate();

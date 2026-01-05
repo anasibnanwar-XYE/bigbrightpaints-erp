@@ -499,3 +499,21 @@
 - Warnings/notes:
   - Baseline checkstyle violations (~28k) unchanged.
   - Test logs include expected Testcontainers startup chatter, invalid company ID format warnings, negative balance warnings, and dynamic agent warnings; no failures.
+
+## 2026-01-06 (epic-05 M6 — payroll list/run lines/summary performance)
+- Changes:
+  - Batched payroll summary attendance fetches and added fetch-join payroll run line queries to avoid N+1 lookups.
+  - Added payroll run list indexes for company/created_at and company/run_type/created_at (V95__payroll_run_list_indexes.sql).
+- Commands run:
+  - `mvn -f erp-domain/pom.xml -DskipTests compile`
+  - `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check`
+  - `mvn -f erp-domain/pom.xml test`
+  - `mvn -f erp-domain/pom.xml -Dtest=*Payroll* test`
+- Validation:
+  - `mvn -DskipTests compile` succeeded (javac warns about javax.annotation.meta.When.MAYBE and deprecated APIs).
+  - Checkstyle reported 28861 violations; failOnViolation=false used to surface baseline warnings.
+  - `mvn test` succeeded: Tests run 192, Failures 0, Errors 0, Skipped 4.
+  - `mvn -Dtest=*Payroll* test` succeeded: Tests run 1, Failures 0, Errors 0, Skipped 0.
+- Warnings/notes:
+  - Checkstyle baseline now 28861 (previously 28857) due to existing indentation rules in modified HR files.
+  - Test logs include expected Testcontainers startup chatter, invalid company ID format warnings, negative balance warnings, and dynamic agent warnings; no failures.
