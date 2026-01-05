@@ -29,7 +29,11 @@ import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
 import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceLine;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
+import com.bigbrightpaints.erp.modules.hr.domain.Employee;
+import com.bigbrightpaints.erp.modules.hr.domain.EmployeeRepository;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRun;
+import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunLine;
+import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunLineRepository;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunRepository;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionBrand;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionBrandRepository;
@@ -56,6 +60,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.HashMap;
@@ -88,7 +93,9 @@ public class ErpInvariantsSuiteIT extends AbstractIntegrationTest {
     @Autowired private PackagingSlipRepository packagingSlipRepository;
     @Autowired private InventoryMovementRepository inventoryMovementRepository;
     @Autowired private RawMaterialPurchaseRepository purchaseRepository;
+    @Autowired private EmployeeRepository employeeRepository;
     @Autowired private PayrollRunRepository payrollRunRepository;
+    @Autowired private PayrollRunLineRepository payrollRunLineRepository;
     @Autowired private JournalEntryRepository journalEntryRepository;
     @Autowired private DealerLedgerRepository dealerLedgerRepository;
     @Autowired private SupplierLedgerRepository supplierLedgerRepository;
@@ -761,7 +768,8 @@ public class ErpInvariantsSuiteIT extends AbstractIntegrationTest {
         employeeReq.put("hiredDate", entryDate.minusDays(10));
         employeeReq.put("employeeType", "STAFF");
         employeeReq.put("paymentSchedule", "MONTHLY");
-        employeeReq.put("monthlySalary", new BigDecimal("26000.00"));
+        BigDecimal monthlySalary = new BigDecimal("26000.00");
+        employeeReq.put("monthlySalary", monthlySalary);
         employeeReq.put("workingDaysPerMonth", 26);
         employeeReq.put("weeklyOffDays", 1);
         employeeReq.put("standardHoursPerDay", new BigDecimal("8"));
@@ -772,6 +780,10 @@ public class ErpInvariantsSuiteIT extends AbstractIntegrationTest {
                 HttpMethod.POST, new HttpEntity<>(employeeReq, headers), Map.class);
         Map<?, ?> empData = requireData(empResp, "create employee");
         Long employeeId = ((Number) empData.get("id")).longValue();
+        Employee employee = employeeRepository.findByCompanyAndId(company, employeeId)
+                .orElseThrow(() -> new AssertionError("Employee missing after create"));
+        employee.setAdvanceBalance(new BigDecimal("500.00"));
+        employeeRepository.save(employee);
 
         Map<String, Object> attendanceReq = new HashMap<>();
         attendanceReq.put("date", entryDate);
@@ -808,9 +820,46 @@ public class ErpInvariantsSuiteIT extends AbstractIntegrationTest {
 
         PayrollRun run = payrollRunRepository.findById(runId)
                 .orElseThrow(() -> new AssertionError("Payroll run missing: " + runId));
+        BigDecimal dailyRate = monthlySalary.divide(new BigDecimal("26"), 2, RoundingMode.HALF_UP);
+        BigDecimal expectedGross = dailyRate;
+        BigDecimal expectedAdvance = expectedGross.multiply(new BigDecimal("0.20")).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal expectedNet = expectedGross.subtract(expectedAdvance);
+
+        assertThat(run.getTotalEmployees()).isEqualTo(1);
+        assertThat(run.getTotalBasePay()).isEqualByComparingTo(expectedGross);
+        assertThat(run.getTotalDeductions()).isEqualByComparingTo(expectedAdvance);
+        assertThat(run.getTotalNetPay()).isEqualByComparingTo(expectedNet);
+
+        List<PayrollRunLine> lines = payrollRunLineRepository.findByPayrollRun(run);
+        assertThat(lines).hasSize(1);
+        PayrollRunLine line = lines.get(0);
+        assertThat(line.getGrossPay()).isEqualByComparingTo(expectedGross);
+        assertThat(line.getAdvanceDeduction()).isEqualByComparingTo(expectedAdvance);
+        assertThat(line.getNetPay()).isEqualByComparingTo(expectedNet);
+
         invariants.assertJournalLinkedTo("PAYROLL_RUN", runId);
         if (run.getJournalEntryId() != null) {
             invariants.assertJournalBalanced(run.getJournalEntryId());
+            JournalEntry journal = journalEntryRepository.findById(run.getJournalEntryId())
+                    .orElseThrow(() -> new AssertionError("Payroll journal missing: " + run.getJournalEntryId()));
+            Account salaryExpense = accountRepository.findByCompanyAndCodeIgnoreCase(company, "SALARY-EXP")
+                    .orElseThrow(() -> new AssertionError("Salary expense account missing"));
+            Account salaryPayable = accountRepository.findByCompanyAndCodeIgnoreCase(company, "SALARY-PAYABLE")
+                    .orElseThrow(() -> new AssertionError("Salary payable account missing"));
+
+            JournalLine expenseLine = journal.getLines().stream()
+                    .filter(journalLine -> journalLine.getAccount().getId().equals(salaryExpense.getId()))
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError("Payroll expense line missing"));
+            JournalLine payableLine = journal.getLines().stream()
+                    .filter(journalLine -> journalLine.getAccount().getId().equals(salaryPayable.getId()))
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError("Payroll payable line missing"));
+
+            assertThat(expenseLine.getDebit()).isEqualByComparingTo(expectedNet);
+            assertThat(expenseLine.getCredit()).isEqualByComparingTo(BigDecimal.ZERO);
+            assertThat(payableLine.getCredit()).isEqualByComparingTo(expectedNet);
+            assertThat(payableLine.getDebit()).isEqualByComparingTo(BigDecimal.ZERO);
         }
 
         Map<String, Object> markPaidReq = Map.of("paymentReference", "PAYROLL-PAY-001");
@@ -820,6 +869,9 @@ public class ErpInvariantsSuiteIT extends AbstractIntegrationTest {
         PayrollRun paid = payrollRunRepository.findById(runId)
                 .orElseThrow(() -> new AssertionError("Payroll run missing after pay: " + runId));
         assertThat(paid.getStatusString()).isEqualTo("PAID");
+        Employee paidEmployee = employeeRepository.findByCompanyAndId(company, employeeId)
+                .orElseThrow(() -> new AssertionError("Employee missing after pay"));
+        assertThat(paidEmployee.getAdvanceBalance()).isEqualByComparingTo(new BigDecimal("300.00"));
     }
 
     private HttpHeaders authHeaders(String email, String companyCode) {
