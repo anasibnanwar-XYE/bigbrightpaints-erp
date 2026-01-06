@@ -11,6 +11,7 @@ import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -19,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/v1/auth/mfa")
+@PreAuthorize("isAuthenticated()")
 public class MfaController {
 
     private final MfaService mfaService;
@@ -57,4 +59,3 @@ public class MfaController {
         return ResponseEntity.ok(ApiResponse.success("MFA disabled", new MfaStatusResponse(false)));
     }
 }
-

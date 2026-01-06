@@ -7,6 +7,7 @@ import com.bigbrightpaints.erp.modules.auth.web.UpdateProfileRequest;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/v1/auth/profile")
+@PreAuthorize("isAuthenticated()")
 public class UserProfileController {
 
     private final UserProfileService userProfileService;

@@ -16,6 +16,7 @@ import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -53,12 +54,14 @@ public class AuthController {
     }
 
     @PostMapping("/logout")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<Void> logout(@RequestParam(required = false) String refreshToken) {
         authService.logout(refreshToken);
         return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/me")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<MeResponse>> me(@AuthenticationPrincipal UserPrincipal principal) {
         if (principal == null) {
             return ResponseEntity.status(401).body(ApiResponse.failure("Unauthenticated"));
@@ -80,6 +83,7 @@ public class AuthController {
     }
 
     @PostMapping("/password/change")
+    @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<String>> changePassword(@AuthenticationPrincipal UserPrincipal principal,
                                                               @Valid @RequestBody ChangePasswordRequest request) {
         if (principal == null) {
