@@ -1,5 +1,7 @@
 package com.bigbrightpaints.erp.modules.sales.service;
 
+import com.bigbrightpaints.erp.core.audit.AuditEvent;
+import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.CreditLimitExceededException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
@@ -75,6 +77,7 @@ public class SalesService {
     private final FactoryTaskRepository factoryTaskRepository;
     private final CompanyDefaultAccountsService companyDefaultAccountsService;
     private final CreditLimitOverrideService creditLimitOverrideService;
+    private final AuditService auditService;
 
     public SalesService(CompanyContextService companyContextService,
                         DealerRepository dealerRepository,
@@ -97,7 +100,8 @@ public class SalesService {
                         InvoiceRepository invoiceRepository,
                         FactoryTaskRepository factoryTaskRepository,
                         CompanyDefaultAccountsService companyDefaultAccountsService,
-                        CreditLimitOverrideService creditLimitOverrideService) {
+                        CreditLimitOverrideService creditLimitOverrideService,
+                        AuditService auditService) {
         this.companyContextService = companyContextService;
         this.dealerRepository = dealerRepository;
         this.salesOrderRepository = salesOrderRepository;
@@ -120,6 +124,7 @@ public class SalesService {
         this.factoryTaskRepository = factoryTaskRepository;
         this.companyDefaultAccountsService = companyDefaultAccountsService;
         this.creditLimitOverrideService = creditLimitOverrideService;
+        this.auditService = auditService;
     }
 
     /* Dealers */
@@ -1036,6 +1041,8 @@ public class SalesService {
                     order.setStatus(nextStatus);
                     salesOrderRepository.save(order);
                 }
+                logDispatchAudit(slip, order, existingInvoice, existingJeId, slip.getCogsJournalEntryId(),
+                        existingInvoice != null ? existingInvoice.getTotalAmount() : null, true);
                 return new DispatchConfirmResponse(slip.getId(), salesOrderId, existingInvoiceId, existingJeId, List.of(), true, List.of());
             }
         }
@@ -1456,6 +1463,7 @@ public class SalesService {
         }
         salesOrderRepository.save(order);
 
+        logDispatchAudit(slip, order, invoice, arJournalEntryId, cogsJournalId, totalAmount, alreadyDispatched);
         return new DispatchConfirmResponse(
                 slip.getId(),
                 salesOrderId,
@@ -1465,6 +1473,42 @@ public class SalesService {
                 true,
                 arPostings
         );
+    }
+
+    private void logDispatchAudit(PackagingSlip slip,
+                                  SalesOrder order,
+                                  Invoice invoice,
+                                  Long arJournalEntryId,
+                                  Long cogsJournalEntryId,
+                                  BigDecimal totalAmount,
+                                  boolean alreadyDispatched) {
+        Map<String, String> metadata = new HashMap<>();
+        if (slip != null && slip.getId() != null) {
+            metadata.put("packingSlipId", slip.getId().toString());
+        }
+        if (slip != null && StringUtils.hasText(slip.getSlipNumber())) {
+            metadata.put("packingSlipNumber", slip.getSlipNumber());
+        }
+        if (order != null && order.getId() != null) {
+            metadata.put("salesOrderId", order.getId().toString());
+        }
+        if (order != null && StringUtils.hasText(order.getOrderNumber())) {
+            metadata.put("salesOrderNumber", order.getOrderNumber());
+        }
+        if (invoice != null && invoice.getId() != null) {
+            metadata.put("invoiceId", invoice.getId().toString());
+        }
+        if (arJournalEntryId != null) {
+            metadata.put("arJournalEntryId", arJournalEntryId.toString());
+        }
+        if (cogsJournalEntryId != null) {
+            metadata.put("cogsJournalEntryId", cogsJournalEntryId.toString());
+        }
+        if (totalAmount != null) {
+            metadata.put("dispatchTotal", totalAmount.toPlainString());
+        }
+        metadata.put("alreadyDispatched", Boolean.toString(alreadyDispatched));
+        auditService.logSuccess(AuditEvent.DISPATCH_CONFIRMED, metadata);
     }
 
     private DispatchConfirmResponse.AccountPostingDto toPosting(Long accountId, String label, BigDecimal debit, BigDecimal credit) {

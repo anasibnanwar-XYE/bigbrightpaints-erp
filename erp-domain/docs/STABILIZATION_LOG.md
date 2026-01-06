@@ -593,3 +593,21 @@
 - Warnings/notes:
   - Testcontainers auth config warnings and dynamic agent loading notices persisted.
   - Test logs include invalid company ID format, negative balance warnings, dispatch mapping warnings, sequence contention warnings, and HTML-to-PDF CSS parse warnings; no failures.
+
+## 2026-01-07 (epic-06 M5 — audit logging coverage)
+- Changes:
+  - Added audit events and metadata for dispatch confirmations, settlements, payroll postings, and journal reversals.
+  - Logged dispatch/settlement/payroll/reversal actions with slip/order/partner/journal context for traceability.
+- Commands run:
+  - `mvn -f erp-domain/pom.xml -DskipTests compile`
+  - `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check`
+  - `mvn -f erp-domain/pom.xml test`
+  - `mvn -f erp-domain/pom.xml -Dtest=*Auth* test`
+- Validation:
+  - `mvn -DskipTests compile` succeeded (javac warnings about javax.annotation.meta.When.MAYBE, deprecated API notice).
+  - Checkstyle reported 29110 violations; `failOnViolation=false` used for baseline visibility.
+  - `mvn test` succeeded: Tests run 193, Failures 0, Errors 0, Skipped 4.
+  - `mvn -Dtest=*Auth* test` succeeded: Tests run 2, Failures 0, Errors 0, Skipped 0.
+- Warnings/notes:
+  - Testcontainers emitted auth config warnings and dynamic agent loading notices persisted.
+  - Test logs include invalid company ID format, negative balance warnings, dispatch mapping warnings, and HTML-to-PDF CSS parse warnings; no failures.

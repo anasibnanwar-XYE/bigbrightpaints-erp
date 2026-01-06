@@ -613,6 +613,22 @@ public class AccountingService {
             entry.setReversalEntry(reversalEntry);
             entry.setLastModifiedBy(resolveCurrentUsername());
             journalEntryRepository.save(entry);
+            Map<String, String> auditMetadata = new HashMap<>();
+            auditMetadata.put("originalJournalEntryId", entry.getId().toString());
+            auditMetadata.put("reversalEntryId", reversalEntry.getId().toString());
+            auditMetadata.put("reversalType", JournalCorrectionType.VOID.name());
+            auditMetadata.put("reversalDate", reversalDate.toString());
+            auditMetadata.put("partial", Boolean.toString(isPartial));
+            auditMetadata.put("reversalFactor", reversalFactor.toPlainString());
+            auditMetadata.put("adminOverrideRequested", Boolean.toString(overrideRequested));
+            auditMetadata.put("adminOverrideAuthorized", Boolean.toString(overrideAuthorized));
+            if (entry.getReferenceNumber() != null) {
+                auditMetadata.put("referenceNumber", entry.getReferenceNumber());
+            }
+            if (sanitizedReason != null) {
+                auditMetadata.put("reason", sanitizedReason);
+            }
+            auditService.logSuccess(AuditEvent.JOURNAL_ENTRY_REVERSED, auditMetadata);
             return toDto(reversalEntry);
         }
         JournalEntryDto reversalDto = createJournalEntry(payload);
@@ -631,6 +647,22 @@ public class AccountingService {
         entry.setReversalEntry(reversalEntry);
         entry.setLastModifiedBy(resolveCurrentUsername());
         journalEntryRepository.save(entry);
+        Map<String, String> auditMetadata = new HashMap<>();
+        auditMetadata.put("originalJournalEntryId", entry.getId().toString());
+        auditMetadata.put("reversalEntryId", reversalEntry.getId().toString());
+        auditMetadata.put("reversalType", JournalCorrectionType.REVERSAL.name());
+        auditMetadata.put("reversalDate", reversalDate.toString());
+        auditMetadata.put("partial", Boolean.toString(isPartial));
+        auditMetadata.put("reversalFactor", reversalFactor.toPlainString());
+        auditMetadata.put("adminOverrideRequested", Boolean.toString(overrideRequested));
+        auditMetadata.put("adminOverrideAuthorized", Boolean.toString(overrideAuthorized));
+        if (entry.getReferenceNumber() != null) {
+            auditMetadata.put("referenceNumber", entry.getReferenceNumber());
+        }
+        if (sanitizedReason != null) {
+            auditMetadata.put("reason", sanitizedReason);
+        }
+        auditService.logSuccess(AuditEvent.JOURNAL_ENTRY_REVERSED, auditMetadata);
         return reversalDto;
     }
 
@@ -1328,6 +1360,29 @@ public class AccountingService {
                 ))
                 .toList();
 
+        Map<String, String> auditMetadata = new HashMap<>();
+        auditMetadata.put("partnerType", PartnerType.DEALER.name());
+        if (dealer.getId() != null) {
+            auditMetadata.put("partnerId", dealer.getId().toString());
+        }
+        if (journalEntryDto != null && journalEntryDto.id() != null) {
+            auditMetadata.put("journalEntryId", journalEntryDto.id().toString());
+        }
+        if (entryDate != null) {
+            auditMetadata.put("settlementDate", entryDate.toString());
+        }
+        if (trimmedIdempotencyKey != null) {
+            auditMetadata.put("idempotencyKey", trimmedIdempotencyKey);
+        }
+        auditMetadata.put("allocationCount", Integer.toString(settlementRows.size()));
+        auditMetadata.put("totalApplied", totalApplied.toPlainString());
+        auditMetadata.put("cashAmount", cashAmount.toPlainString());
+        auditMetadata.put("totalDiscount", totalDiscount.toPlainString());
+        auditMetadata.put("totalWriteOff", totalWriteOff.toPlainString());
+        auditMetadata.put("totalFxGain", totalFxGain.toPlainString());
+        auditMetadata.put("totalFxLoss", totalFxLoss.toPlainString());
+        auditService.logSuccess(AuditEvent.SETTLEMENT_RECORDED, auditMetadata);
+
         return new PartnerSettlementResponse(
                 journalEntryDto,
                 totalApplied,
@@ -1558,6 +1613,29 @@ public class AccountingService {
                         row.getMemo()
                 ))
                 .toList();
+
+        Map<String, String> auditMetadata = new HashMap<>();
+        auditMetadata.put("partnerType", PartnerType.SUPPLIER.name());
+        if (supplier.getId() != null) {
+            auditMetadata.put("partnerId", supplier.getId().toString());
+        }
+        if (journalEntryDto != null && journalEntryDto.id() != null) {
+            auditMetadata.put("journalEntryId", journalEntryDto.id().toString());
+        }
+        if (entryDate != null) {
+            auditMetadata.put("settlementDate", entryDate.toString());
+        }
+        if (trimmedIdempotencyKey != null) {
+            auditMetadata.put("idempotencyKey", trimmedIdempotencyKey);
+        }
+        auditMetadata.put("allocationCount", Integer.toString(settlementRows.size()));
+        auditMetadata.put("totalApplied", totalApplied.toPlainString());
+        auditMetadata.put("cashAmount", cashAmount.toPlainString());
+        auditMetadata.put("totalDiscount", totalDiscount.toPlainString());
+        auditMetadata.put("totalWriteOff", totalWriteOff.toPlainString());
+        auditMetadata.put("totalFxGain", totalFxGain.toPlainString());
+        auditMetadata.put("totalFxLoss", totalFxLoss.toPlainString());
+        auditService.logSuccess(AuditEvent.SETTLEMENT_RECORDED, auditMetadata);
 
         return new PartnerSettlementResponse(
                 journalEntryDto,

@@ -1,5 +1,7 @@
 package com.bigbrightpaints.erp.modules.hr.service;
 
+import com.bigbrightpaints.erp.core.audit.AuditEvent;
+import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
@@ -38,6 +40,7 @@ public class PayrollService {
     private final CompanyContextService companyContextService;
     private final CompanyEntityLookup companyEntityLookup;
     private final CompanyClock companyClock;
+    private final AuditService auditService;
 
     public PayrollService(PayrollRunRepository payrollRunRepository,
                           PayrollRunLineRepository payrollRunLineRepository,
@@ -47,7 +50,8 @@ public class PayrollService {
                           AccountRepository accountRepository,
                           CompanyContextService companyContextService,
                           CompanyEntityLookup companyEntityLookup,
-                          CompanyClock companyClock) {
+                          CompanyClock companyClock,
+                          AuditService auditService) {
         this.payrollRunRepository = payrollRunRepository;
         this.payrollRunLineRepository = payrollRunLineRepository;
         this.employeeRepository = employeeRepository;
@@ -57,6 +61,7 @@ public class PayrollService {
         this.companyContextService = companyContextService;
         this.companyEntityLookup = companyEntityLookup;
         this.companyClock = companyClock;
+        this.auditService = auditService;
     }
 
     // ===== PAYROLL RUN MANAGEMENT =====
@@ -373,6 +378,32 @@ public class PayrollService {
         }
 
         payrollRunRepository.save(run);
+        Map<String, String> auditMetadata = new HashMap<>();
+        if (run.getId() != null) {
+            auditMetadata.put("payrollRunId", run.getId().toString());
+        }
+        if (run.getRunNumber() != null) {
+            auditMetadata.put("runNumber", run.getRunNumber());
+        }
+        if (run.getRunType() != null) {
+            auditMetadata.put("runType", run.getRunType().name());
+        }
+        if (run.getPeriodStart() != null) {
+            auditMetadata.put("periodStart", run.getPeriodStart().toString());
+        }
+        if (run.getPeriodEnd() != null) {
+            auditMetadata.put("periodEnd", run.getPeriodEnd().toString());
+        }
+        if (journal != null && journal.id() != null) {
+            auditMetadata.put("journalEntryId", journal.id().toString());
+        }
+        if (postingDate != null) {
+            auditMetadata.put("postingDate", postingDate.toString());
+        }
+        auditMetadata.put("totalGrossPay", totalGrossPay.toPlainString());
+        auditMetadata.put("totalAdvances", totalAdvances.toPlainString());
+        auditMetadata.put("netPayable", salaryPayableAmount.toPlainString());
+        auditService.logSuccess(AuditEvent.PAYROLL_POSTED, auditMetadata);
         return toDto(run);
     }
 

@@ -58,6 +58,10 @@ public enum AuditEvent {
     REFERENCE_GENERATED("Business reference generated"),
     ORDER_NUMBER_GENERATED("Order number generated"),
     JOURNAL_ENTRY_POSTED("Journal entry posted"),
+    JOURNAL_ENTRY_REVERSED("Journal entry reversed"),
+    DISPATCH_CONFIRMED("Dispatch confirmed"),
+    SETTLEMENT_RECORDED("Settlement recorded"),
+    PAYROLL_POSTED("Payroll posted to accounting"),
 
     // Financial Events
     TRANSACTION_CREATED("Financial transaction created"),

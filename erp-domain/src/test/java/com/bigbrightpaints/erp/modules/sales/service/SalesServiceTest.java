@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.sales.service;
 
+import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
@@ -104,6 +105,8 @@ class SalesServiceTest {
     private CompanyDefaultAccountsService companyDefaultAccountsService;
     @Mock
     private CreditLimitOverrideService creditLimitOverrideService;
+    @Mock
+    private AuditService auditService;
 
     private SalesService salesService;
     private Company company;
@@ -132,7 +135,8 @@ class SalesServiceTest {
                 invoiceRepository,
                 factoryTaskRepository,
                 companyDefaultAccountsService,
-                creditLimitOverrideService);
+                creditLimitOverrideService,
+                auditService);
 
         when(finishedGoodsService.reserveForOrder(any()))
                 .thenReturn(new InventoryReservationResult(null, List.of()));
