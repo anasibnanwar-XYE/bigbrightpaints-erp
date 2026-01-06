@@ -555,3 +555,22 @@
 - Warnings/notes:
   - Testcontainers auth config warnings and dynamic agent loading notices persisted.
   - Known test logs include invalid company ID format, negative balance warnings, and dispatch mapping warnings; no failures.
+
+## 2026-01-07 (epic-06 M3 — company boundary enforcement)
+- Changes:
+  - Scoped admin user management to the active company context for list/update/lock operations and validated company assignments.
+  - Enforced company scoping in dealer portal lookups, reconciliation cleanup, bulk packing child batch listing, and temporal balance account reads.
+  - Added company-aware repository lookups for users, dealers, and inventory reservations.
+- Commands run:
+  - `mvn -f erp-domain/pom.xml -DskipTests compile`
+  - `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check`
+  - `mvn -f erp-domain/pom.xml test`
+  - `mvn -f erp-domain/pom.xml -Dtest=*Auth* test`
+- Validation:
+  - `mvn -DskipTests compile` succeeded (javac warnings about javax.annotation.meta.When.MAYBE, deprecated API notice).
+  - Checkstyle reported 28933 violations; `failOnViolation=false` used for baseline visibility.
+  - `mvn test` succeeded: Tests run 193, Failures 0, Errors 0, Skipped 4.
+  - `mvn -Dtest=*Auth* test` succeeded: Tests run 2, Failures 0, Errors 0, Skipped 0.
+- Warnings/notes:
+  - Testcontainers auth config warnings and dynamic agent loading notices persisted.
+  - Test logs include invalid company ID format, negative balance warnings, dispatch mapping warnings, and HTML-to-PDF CSS parse warnings; no failures.

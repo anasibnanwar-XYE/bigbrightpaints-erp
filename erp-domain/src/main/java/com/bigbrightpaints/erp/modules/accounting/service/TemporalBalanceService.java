@@ -44,7 +44,7 @@ public class TemporalBalanceService {
         Company company = companyContextService.requireCurrentCompany();
         return eventRepository.findLastEventForAccountAsOfDate(company, accountId, asOfDate)
                 .map(AccountingEvent::getBalanceAfter)
-                .orElseGet(() -> getCurrentBalance(accountId));
+                .orElseGet(() -> getCurrentBalance(company, accountId));
     }
 
     /**
@@ -54,7 +54,7 @@ public class TemporalBalanceService {
         Company company = companyContextService.requireCurrentCompany();
         return eventRepository.findLastEventForAccountAsOf(company, accountId, asOf)
                 .map(AccountingEvent::getBalanceAfter)
-                .orElseGet(() -> getCurrentBalance(accountId));
+                .orElseGet(() -> getCurrentBalance(company, accountId));
     }
 
     /**
@@ -67,7 +67,7 @@ public class TemporalBalanceService {
         for (Long accountId : accountIds) {
             BigDecimal balance = eventRepository.findLastEventForAccountAsOfDate(company, accountId, asOfDate)
                     .map(AccountingEvent::getBalanceAfter)
-                    .orElseGet(() -> getCurrentBalance(accountId));
+                    .orElseGet(() -> getCurrentBalance(company, accountId));
             balances.put(accountId, balance);
         }
         
@@ -182,8 +182,8 @@ public class TemporalBalanceService {
         return new BalanceComparison(accountId, date1, balance1, date2, balance2, change);
     }
 
-    private BigDecimal getCurrentBalance(Long accountId) {
-        return accountRepository.findById(accountId)
+    private BigDecimal getCurrentBalance(Company company, Long accountId) {
+        return accountRepository.findByCompanyAndId(company, accountId)
                 .map(Account::getBalance)
                 .orElse(BigDecimal.ZERO);
     }

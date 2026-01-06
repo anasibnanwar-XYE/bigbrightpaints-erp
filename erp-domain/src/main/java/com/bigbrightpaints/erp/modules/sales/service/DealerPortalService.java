@@ -1,6 +1,8 @@
 package com.bigbrightpaints.erp.modules.sales.service;
 
 import com.bigbrightpaints.erp.modules.accounting.service.DealerLedgerService;
+import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
 import com.bigbrightpaints.erp.modules.invoice.service.InvoicePdfService;
@@ -27,6 +29,7 @@ import java.util.Map;
 public class DealerPortalService {
 
     private final DealerRepository dealerRepository;
+    private final CompanyContextService companyContextService;
     private final DealerLedgerService dealerLedgerService;
     private final InvoiceRepository invoiceRepository;
     private final InvoicePdfService invoicePdfService;
@@ -34,12 +37,14 @@ public class DealerPortalService {
     private final SalesOrderRepository salesOrderRepository;
 
     public DealerPortalService(DealerRepository dealerRepository,
+                               CompanyContextService companyContextService,
                                DealerLedgerService dealerLedgerService,
                                InvoiceRepository invoiceRepository,
                                InvoicePdfService invoicePdfService,
                                DealerService dealerService,
                                SalesOrderRepository salesOrderRepository) {
         this.dealerRepository = dealerRepository;
+        this.companyContextService = companyContextService;
         this.dealerLedgerService = dealerLedgerService;
         this.invoiceRepository = invoiceRepository;
         this.invoicePdfService = invoicePdfService;
@@ -52,8 +57,9 @@ public class DealerPortalService {
         if (auth == null || auth.getName() == null) {
             throw new IllegalStateException("No authenticated user");
         }
+        Company company = companyContextService.requireCurrentCompany();
         String email = auth.getName();
-        return dealerRepository.findByPortalUserEmail(email)
+        return dealerRepository.findByCompanyAndPortalUserEmail(company, email)
                 .orElseThrow(() -> new IllegalStateException("No dealer account linked to user: " + email));
     }
 
@@ -93,7 +99,8 @@ public class DealerPortalService {
     @Transactional(readOnly = true)
     public Map<String, Object> getInvoicesForDealer(Long dealerId) {
         verifyDealerAccess(dealerId);
-        Dealer dealer = dealerRepository.findById(dealerId)
+        Company company = companyContextService.requireCurrentCompany();
+        Dealer dealer = dealerRepository.findByCompanyAndId(company, dealerId)
                 .orElseThrow(() -> new IllegalArgumentException("Dealer not found"));
         return buildInvoicesView(dealer);
     }
@@ -140,7 +147,8 @@ public class DealerPortalService {
     @Transactional(readOnly = true)
     public Map<String, Object> getAgingForDealer(Long dealerId) {
         verifyDealerAccess(dealerId);
-        Dealer dealer = dealerRepository.findById(dealerId)
+        Company company = companyContextService.requireCurrentCompany();
+        Dealer dealer = dealerRepository.findByCompanyAndId(company, dealerId)
                 .orElseThrow(() -> new IllegalArgumentException("Dealer not found"));
         return buildAgingView(dealer);
     }
@@ -273,7 +281,7 @@ public class DealerPortalService {
     @Transactional(readOnly = true)
     public InvoicePdfService.PdfDocument getMyInvoicePdf(Long invoiceId) {
         Dealer dealer = getCurrentDealer();
-        Invoice invoice = invoiceRepository.findById(invoiceId)
+        Invoice invoice = invoiceRepository.findByCompanyAndId(dealer.getCompany(), invoiceId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Invoice not found"));
 
         if (invoice.getDealer() == null

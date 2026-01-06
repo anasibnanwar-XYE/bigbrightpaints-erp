@@ -15,6 +15,8 @@ public interface InventoryReservationRepository extends JpaRepository<InventoryR
     
     // For orphan detection: find RESERVED reservations that might need cleanup
     List<InventoryReservation> findByFinishedGoodCompanyAndStatus(Company company, String status);
+
+    Optional<InventoryReservation> findByFinishedGoodCompanyAndId(Company company, Long id);
     
     // Find reservations by order reference
     List<InventoryReservation> findByReferenceTypeAndReferenceId(String referenceType, String referenceId);

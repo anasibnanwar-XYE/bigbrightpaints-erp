@@ -167,9 +167,14 @@ public class BulkPackingService {
      * List child batches created from a parent bulk batch.
      */
     public List<BulkPackResponse.ChildBatchDto> listChildBatches(Long parentBatchId) {
+        Company company = companyContextService.requireCurrentCompany();
         FinishedGoodBatch parentBatch = finishedGoodBatchRepository.findById(parentBatchId)
                 .orElseThrow(() -> new ApplicationException(ErrorCode.BUSINESS_ENTITY_NOT_FOUND,
                         "Parent batch not found"));
+        if (!parentBatch.getFinishedGood().getCompany().getId().equals(company.getId())) {
+            throw new ApplicationException(ErrorCode.BUSINESS_ENTITY_NOT_FOUND,
+                    "Parent batch not found");
+        }
         
         return finishedGoodBatchRepository.findByParentBatch(parentBatch).stream()
                 .map(this::toChildBatchDto)

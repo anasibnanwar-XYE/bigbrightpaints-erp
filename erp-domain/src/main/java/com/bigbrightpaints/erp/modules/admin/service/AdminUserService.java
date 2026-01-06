@@ -9,7 +9,7 @@ import com.bigbrightpaints.erp.modules.admin.dto.UserDto;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
-import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
+import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.rbac.domain.Role;
 import com.bigbrightpaints.erp.modules.rbac.domain.RoleRepository;
 import com.bigbrightpaints.erp.modules.rbac.service.RoleService;
@@ -30,7 +30,7 @@ import java.util.Locale;
 public class AdminUserService {
 
     private final UserAccountRepository userRepository;
-    private final CompanyRepository companyRepository;
+    private final CompanyContextService companyContextService;
     private final RoleRepository roleRepository;
     private final RoleService roleService;
     private final PasswordEncoder passwordEncoder;
@@ -40,7 +40,7 @@ public class AdminUserService {
     private final AccountRepository accountRepository;
 
     public AdminUserService(UserAccountRepository userRepository,
-                            CompanyRepository companyRepository,
+                            CompanyContextService companyContextService,
                             RoleRepository roleRepository,
                             RoleService roleService,
                             PasswordEncoder passwordEncoder,
@@ -49,7 +49,7 @@ public class AdminUserService {
                             DealerRepository dealerRepository,
                             AccountRepository accountRepository) {
         this.userRepository = userRepository;
-        this.companyRepository = companyRepository;
+        this.companyContextService = companyContextService;
         this.roleRepository = roleRepository;
         this.roleService = roleService;
         this.passwordEncoder = passwordEncoder;
@@ -60,11 +60,15 @@ public class AdminUserService {
     }
 
     public List<UserDto> listUsers() {
-        return userRepository.findAll().stream().map(this::toDto).toList();
+        Company company = companyContextService.requireCurrentCompany();
+        return userRepository.findDistinctByCompanies_Id(company.getId()).stream()
+                .map(this::toDto)
+                .toList();
     }
 
     @Transactional
     public UserDto createUser(CreateUserRequest request) {
+        Company company = companyContextService.requireCurrentCompany();
         boolean isTemporaryPassword = !StringUtils.hasText(request.password());
         String tempPassword = isTemporaryPassword ? PasswordUtils.generateTemporaryPassword(12) : request.password();
         UserAccount user = new UserAccount(request.email(), passwordEncoder.encode(tempPassword), request.displayName());
@@ -74,7 +78,7 @@ public class AdminUserService {
             user.setMustChangePassword(true);
         }
         
-        attachCompanies(user, request.companyIds());
+        attachCompanies(user, company, request.companyIds());
         attachRoles(user, request.roles());
         UserAccount saved = userRepository.save(user);
         
@@ -82,7 +86,7 @@ public class AdminUserService {
         boolean isDealerUser = request.roles().stream()
                 .anyMatch(r -> r.equalsIgnoreCase("ROLE_DEALER") || r.equalsIgnoreCase("DEALER"));
         if (isDealerUser && !saved.getCompanies().isEmpty()) {
-            createDealerForUser(saved, saved.getCompanies().iterator().next());
+            createDealerForUser(saved, company);
         }
         
         emailService.sendUserCredentialsEmail(saved.getEmail(), saved.getDisplayName(), tempPassword);
@@ -142,7 +146,8 @@ public class AdminUserService {
 
     @Transactional
     public UserDto updateUser(Long id, UpdateUserRequest request) {
-        UserAccount user = userRepository.findById(id)
+        Company company = companyContextService.requireCurrentCompany();
+        UserAccount user = userRepository.findByIdAndCompanies_Id(id, company.getId())
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
         user.setDisplayName(request.displayName());
         boolean requiresReauth = false;
@@ -154,7 +159,7 @@ public class AdminUserService {
         }
         if (request.companyIds() != null && !request.companyIds().isEmpty()) {
             user.getCompanies().clear();
-            attachCompanies(user, request.companyIds());
+            attachCompanies(user, company, request.companyIds());
             requiresReauth = true; // Company access changed
         }
         if (request.roles() != null && !request.roles().isEmpty()) {
@@ -171,8 +176,9 @@ public class AdminUserService {
 
     @Transactional
     public void suspend(Long id) {
+        Company company = companyContextService.requireCurrentCompany();
         // Use pessimistic lock to prevent race condition on concurrent status changes
-        userRepository.lockById(id).ifPresent(user -> {
+        userRepository.lockByIdAndCompanyId(id, company.getId()).ifPresent(user -> {
             user.setEnabled(false);
             userRepository.save(user);
             // Revoke all active tokens to force re-authentication
@@ -183,8 +189,9 @@ public class AdminUserService {
 
     @Transactional
     public void unsuspend(Long id) {
+        Company company = companyContextService.requireCurrentCompany();
         // Use pessimistic lock to prevent race condition on concurrent status changes
-        userRepository.lockById(id).ifPresent(user -> {
+        userRepository.lockByIdAndCompanyId(id, company.getId()).ifPresent(user -> {
             user.setEnabled(true);
             userRepository.save(user);
         });
@@ -192,7 +199,8 @@ public class AdminUserService {
 
     @Transactional
     public void deleteUser(Long id) {
-        userRepository.lockById(id).ifPresent(user -> {
+        Company company = companyContextService.requireCurrentCompany();
+        userRepository.lockByIdAndCompanyId(id, company.getId()).ifPresent(user -> {
             tokenBlacklistService.revokeAllUserTokens(user.getEmail());
             userRepository.delete(user);
             emailService.sendUserDeletedEmail(user.getEmail(), user.getDisplayName());
@@ -201,7 +209,8 @@ public class AdminUserService {
 
     @Transactional
     public void disableMfa(Long id) {
-        userRepository.lockById(id).ifPresent(user -> {
+        Company company = companyContextService.requireCurrentCompany();
+        userRepository.lockByIdAndCompanyId(id, company.getId()).ifPresent(user -> {
             user.setMfaEnabled(false);
             user.setMfaSecret(null);
             user.setMfaRecoveryCodeHashes(List.of());
@@ -210,12 +219,19 @@ public class AdminUserService {
         });
     }
 
-    private void attachCompanies(UserAccount user, List<Long> companyIds) {
-        List<Company> companies = companyRepository.findAllById(companyIds);
-        if (companies.size() != companyIds.size()) {
-            throw new IllegalArgumentException("One or more companies not found");
+    private void validateCompanyScope(Company company, List<Long> companyIds) {
+        if (companyIds == null || companyIds.isEmpty()) {
+            throw new IllegalArgumentException("User must belong to an active company");
         }
-        companies.forEach(user::addCompany);
+        boolean allMatch = companyIds.stream().allMatch(id -> id.equals(company.getId()));
+        if (!allMatch) {
+            throw new IllegalArgumentException("User must be assigned to the active company");
+        }
+    }
+
+    private void attachCompanies(UserAccount user, Company company, List<Long> companyIds) {
+        validateCompanyScope(company, companyIds);
+        user.addCompany(company);
     }
 
     private void attachRoles(UserAccount user, List<String> roles) {

@@ -161,15 +161,16 @@ public class ReconciliationService {
             }
             
             // Check if there's a corresponding packaging slip
+            Long orderId = Long.parseLong(refId);
             List<PackagingSlip> slips = packagingSlipRepository
-                    .findAllByCompanyAndSalesOrderId(company, Long.parseLong(refId));
+                    .findAllByCompanyAndSalesOrderId(company, orderId);
             
             if (slips.isEmpty()) {
                 // No slip = orphan reservation
-                Optional<SalesOrder> order = salesOrderRepository.findById(Long.parseLong(refId));
+                Optional<SalesOrder> order = salesOrderRepository.findByCompanyAndId(company, orderId);
                 orphans.add(new OrphanReservation(
                         reservation.getId(),
-                        Long.parseLong(refId),
+                        orderId,
                         order.map(SalesOrder::getOrderNumber).orElse("UNKNOWN-" + refId),
                         reservation.getReservedQuantity() != null 
                                 ? reservation.getReservedQuantity() 
@@ -190,11 +191,13 @@ public class ReconciliationService {
      */
     @Transactional
     public int cleanOrphanReservations() {
+        Company company = companyContextService.requireCurrentCompany();
         OrphanReservationReport report = findOrphanReservations();
         int cleaned = 0;
         
         for (OrphanReservation orphan : report.orphans()) {
-            Optional<InventoryReservation> opt = inventoryReservationRepository.findById(orphan.reservationId());
+            Optional<InventoryReservation> opt = inventoryReservationRepository
+                    .findByFinishedGoodCompanyAndId(company, orphan.reservationId());
             if (opt.isPresent()) {
                 InventoryReservation reservation = opt.get();
                 reservation.setStatus("CANCELLED");
