@@ -4,6 +4,7 @@ import com.bigbrightpaints.erp.modules.sales.dto.*;
 import com.bigbrightpaints.erp.modules.sales.service.DealerService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
+import io.micrometer.core.annotation.Timed;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -38,6 +39,7 @@ public class SalesController {
 
     /* Sales Orders */
     @GetMapping("/sales/orders")
+    @Timed(value = "erp.sales.orders.list", description = "List sales orders")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_SALES','ROLE_FACTORY')")
     public ResponseEntity<ApiResponse<List<SalesOrderDto>>> orders(@RequestParam(required = false) String status) {
         return ResponseEntity.ok(ApiResponse.success(salesService.listOrders(status)));

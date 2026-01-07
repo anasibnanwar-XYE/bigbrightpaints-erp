@@ -5,6 +5,7 @@ import com.bigbrightpaints.erp.modules.invoice.dto.InvoiceDto;
 import com.bigbrightpaints.erp.modules.invoice.service.InvoicePdfService;
 import com.bigbrightpaints.erp.modules.invoice.service.InvoiceService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
+import io.micrometer.core.annotation.Timed;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -35,6 +36,7 @@ public class InvoiceController {
     }
 
     @GetMapping
+    @Timed(value = "erp.invoices.list", description = "List invoices")
     public ResponseEntity<ApiResponse<List<InvoiceDto>>> listInvoices() {
         return ResponseEntity.ok(ApiResponse.success(invoiceService.listInvoices()));
     }
@@ -63,6 +65,7 @@ public class InvoiceController {
     }
 
     @GetMapping("/dealers/{dealerId}")
+    @Timed(value = "erp.invoices.list.dealer", description = "List dealer invoices")
     public ResponseEntity<ApiResponse<List<InvoiceDto>>> dealerInvoices(@PathVariable Long dealerId) {
         return ResponseEntity.ok(ApiResponse.success(invoiceService.listDealerInvoices(dealerId)));
     }
