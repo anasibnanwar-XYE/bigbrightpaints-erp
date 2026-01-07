@@ -32,6 +32,8 @@ import com.bigbrightpaints.erp.modules.sales.dto.*;
 import com.bigbrightpaints.erp.modules.sales.event.SalesOrderCreatedEvent;
 import jakarta.transaction.Transactional;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.util.StringUtils;
@@ -236,6 +238,21 @@ public class SalesService {
     }
 
     /* Sales Orders */
+    public List<SalesOrderDto> listOrders(String status, int page, int size) {
+        Company company = companyContextService.requireCurrentCompany();
+        int safeSize = Math.max(1, Math.min(size, 200));
+        PageRequest pageable = PageRequest.of(Math.max(page, 0), safeSize);
+        Page<Long> orderIds = (status == null || status.isBlank())
+                ? salesOrderRepository.findIdsByCompanyOrderByCreatedAtDescIdDesc(company, pageable)
+                : salesOrderRepository.findIdsByCompanyAndStatusOrderByCreatedAtDescIdDesc(company, status, pageable);
+        List<Long> ids = orderIds.getContent();
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        List<SalesOrder> orders = salesOrderRepository.findByCompanyAndIdInOrderByCreatedAtDescIdDesc(company, ids);
+        return orders.stream().map(this::toDto).toList();
+    }
+
     public List<SalesOrderDto> listOrders(String status) {
         Company company = companyContextService.requireCurrentCompany();
         List<SalesOrder> orders = (status == null || status.isBlank())

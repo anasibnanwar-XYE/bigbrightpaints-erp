@@ -41,8 +41,10 @@ public class SalesController {
     @GetMapping("/sales/orders")
     @Timed(value = "erp.sales.orders.list", description = "List sales orders")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_SALES','ROLE_FACTORY')")
-    public ResponseEntity<ApiResponse<List<SalesOrderDto>>> orders(@RequestParam(required = false) String status) {
-        return ResponseEntity.ok(ApiResponse.success(salesService.listOrders(status)));
+    public ResponseEntity<ApiResponse<List<SalesOrderDto>>> orders(@RequestParam(required = false) String status,
+                                                                   @RequestParam(defaultValue = "0") int page,
+                                                                   @RequestParam(defaultValue = "100") int size) {
+        return ResponseEntity.ok(ApiResponse.success(salesService.listOrders(status, page, size)));
     }
 
     @PostMapping("/sales/orders")

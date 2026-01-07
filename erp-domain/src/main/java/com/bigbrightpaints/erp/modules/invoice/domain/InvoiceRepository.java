@@ -3,10 +3,13 @@ package com.bigbrightpaints.erp.modules.invoice.domain;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
@@ -14,7 +17,7 @@ import java.util.Optional;
 
 public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
 
-    @EntityGraph(attributePaths = "lines")
+    @EntityGraph(attributePaths = {"lines", "dealer"})
     List<Invoice> findByCompanyOrderByIssueDateDesc(Company company);
 
     @EntityGraph(attributePaths = {"lines", "dealer"})
@@ -22,8 +25,27 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
                                                                       java.time.LocalDate start,
                                                                       java.time.LocalDate end);
 
-    @EntityGraph(attributePaths = "lines")
+    @EntityGraph(attributePaths = {"lines", "dealer"})
     List<Invoice> findByCompanyAndDealerOrderByIssueDateDesc(Company company, Dealer dealer);
+
+    @EntityGraph(attributePaths = {"lines", "dealer"})
+    Page<Invoice> findByCompanyOrderByIssueDateDescIdDesc(Company company, Pageable pageable);
+
+    @EntityGraph(attributePaths = {"lines", "dealer"})
+    Page<Invoice> findByCompanyAndDealerOrderByIssueDateDescIdDesc(Company company, Dealer dealer, Pageable pageable);
+
+    @Query("select i.id from Invoice i where i.company = :company order by i.issueDate desc, i.id desc")
+    Page<Long> findIdsByCompanyOrderByIssueDateDescIdDesc(@Param("company") Company company, Pageable pageable);
+
+    @Query("select i.id from Invoice i where i.company = :company and i.dealer = :dealer order by i.issueDate desc, i.id desc")
+    Page<Long> findIdsByCompanyAndDealerOrderByIssueDateDescIdDesc(@Param("company") Company company,
+                                                                   @Param("dealer") Dealer dealer,
+                                                                   Pageable pageable);
+
+    @EntityGraph(attributePaths = {"lines", "dealer"})
+    @Query("select i from Invoice i where i.company = :company and i.id in :ids order by i.issueDate desc, i.id desc")
+    List<Invoice> findByCompanyAndIdInOrderByIssueDateDescIdDesc(@Param("company") Company company,
+                                                                 @Param("ids") List<Long> ids);
 
     List<Invoice> findAllByCompanyAndSalesOrderId(Company company, Long salesOrderId);
 

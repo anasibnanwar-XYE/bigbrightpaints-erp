@@ -1,8 +1,12 @@
 package com.bigbrightpaints.erp.modules.sales.domain;
 
 import com.bigbrightpaints.erp.modules.company.domain.Company;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
@@ -13,6 +17,25 @@ public interface SalesOrderRepository extends JpaRepository<SalesOrder, Long> {
 
     @EntityGraph(attributePaths = {"items", "dealer"})
     List<SalesOrder> findByCompanyAndStatusOrderByCreatedAtDesc(Company company, String status);
+
+    @EntityGraph(attributePaths = {"items", "dealer"})
+    Page<SalesOrder> findByCompanyOrderByCreatedAtDescIdDesc(Company company, Pageable pageable);
+
+    @EntityGraph(attributePaths = {"items", "dealer"})
+    Page<SalesOrder> findByCompanyAndStatusOrderByCreatedAtDescIdDesc(Company company, String status, Pageable pageable);
+
+    @Query("select o.id from SalesOrder o where o.company = :company order by o.createdAt desc, o.id desc")
+    Page<Long> findIdsByCompanyOrderByCreatedAtDescIdDesc(@Param("company") Company company, Pageable pageable);
+
+    @Query("select o.id from SalesOrder o where o.company = :company and o.status = :status order by o.createdAt desc, o.id desc")
+    Page<Long> findIdsByCompanyAndStatusOrderByCreatedAtDescIdDesc(@Param("company") Company company,
+                                                                   @Param("status") String status,
+                                                                   Pageable pageable);
+
+    @EntityGraph(attributePaths = {"items", "dealer"})
+    @Query("select o from SalesOrder o where o.company = :company and o.id in :ids order by o.createdAt desc, o.id desc")
+    List<SalesOrder> findByCompanyAndIdInOrderByCreatedAtDescIdDesc(@Param("company") Company company,
+                                                                    @Param("ids") List<Long> ids);
 
     Optional<SalesOrder> findByCompanyAndId(Company company, Long id);
 

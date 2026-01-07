@@ -188,9 +188,9 @@ public class AccountingService {
         List<JournalEntry> entries;
         if (dealerId != null) {
             Dealer dealer = requireDealer(company, dealerId);
-            entries = journalEntryRepository.findByCompanyAndDealerOrderByEntryDateDesc(company, dealer, pageable).getContent();
+            entries = journalEntryRepository.findByCompanyAndDealerOrderByEntryDateDescIdDesc(company, dealer, pageable).getContent();
         } else {
-            entries = journalEntryRepository.findByCompanyOrderByEntryDateDesc(company, pageable).getContent();
+            entries = journalEntryRepository.findByCompanyOrderByEntryDateDescIdDesc(company, pageable).getContent();
         }
         return entries.stream().map(this::toDto).toList();
     }

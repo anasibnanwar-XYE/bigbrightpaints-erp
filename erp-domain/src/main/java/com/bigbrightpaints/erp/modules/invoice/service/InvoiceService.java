@@ -21,6 +21,8 @@ import com.bigbrightpaints.erp.modules.sales.service.SalesJournalService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesService;
 import com.bigbrightpaints.erp.modules.sales.util.SalesOrderReference;
 import jakarta.transaction.Transactional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -126,6 +128,35 @@ public class InvoiceService {
         dealerLedgerService.syncInvoiceLedger(saved, null);
 
         return toDto(saved);
+    }
+
+    @Transactional
+    public List<InvoiceDto> listInvoices(int page, int size) {
+        Company company = companyContextService.requireCurrentCompany();
+        int safeSize = Math.max(1, Math.min(size, 200));
+        PageRequest pageable = PageRequest.of(Math.max(page, 0), safeSize);
+        Page<Long> invoiceIds = invoiceRepository.findIdsByCompanyOrderByIssueDateDescIdDesc(company, pageable);
+        List<Long> ids = invoiceIds.getContent();
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        List<Invoice> invoices = invoiceRepository.findByCompanyAndIdInOrderByIssueDateDescIdDesc(company, ids);
+        return invoices.stream().map(this::toDto).toList();
+    }
+
+    @Transactional
+    public List<InvoiceDto> listDealerInvoices(Long dealerId, int page, int size) {
+        Company company = companyContextService.requireCurrentCompany();
+        Dealer dealer = companyEntityLookup.requireDealer(company, dealerId);
+        int safeSize = Math.max(1, Math.min(size, 200));
+        PageRequest pageable = PageRequest.of(Math.max(page, 0), safeSize);
+        Page<Long> invoiceIds = invoiceRepository.findIdsByCompanyAndDealerOrderByIssueDateDescIdDesc(company, dealer, pageable);
+        List<Long> ids = invoiceIds.getContent();
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        List<Invoice> invoices = invoiceRepository.findByCompanyAndIdInOrderByIssueDateDescIdDesc(company, ids);
+        return invoices.stream().map(this::toDto).toList();
     }
 
     @Transactional

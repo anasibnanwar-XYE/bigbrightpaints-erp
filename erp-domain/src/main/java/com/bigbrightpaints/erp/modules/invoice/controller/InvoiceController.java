@@ -37,8 +37,9 @@ public class InvoiceController {
 
     @GetMapping
     @Timed(value = "erp.invoices.list", description = "List invoices")
-    public ResponseEntity<ApiResponse<List<InvoiceDto>>> listInvoices() {
-        return ResponseEntity.ok(ApiResponse.success(invoiceService.listInvoices()));
+    public ResponseEntity<ApiResponse<List<InvoiceDto>>> listInvoices(@RequestParam(defaultValue = "0") int page,
+                                                                      @RequestParam(defaultValue = "100") int size) {
+        return ResponseEntity.ok(ApiResponse.success(invoiceService.listInvoices(page, size)));
     }
 
     @GetMapping("/{id}")
@@ -66,8 +67,10 @@ public class InvoiceController {
 
     @GetMapping("/dealers/{dealerId}")
     @Timed(value = "erp.invoices.list.dealer", description = "List dealer invoices")
-    public ResponseEntity<ApiResponse<List<InvoiceDto>>> dealerInvoices(@PathVariable Long dealerId) {
-        return ResponseEntity.ok(ApiResponse.success(invoiceService.listDealerInvoices(dealerId)));
+    public ResponseEntity<ApiResponse<List<InvoiceDto>>> dealerInvoices(@PathVariable Long dealerId,
+                                                                        @RequestParam(defaultValue = "0") int page,
+                                                                        @RequestParam(defaultValue = "100") int size) {
+        return ResponseEntity.ok(ApiResponse.success(invoiceService.listDealerInvoices(dealerId, page, size)));
     }
 
     @PostMapping("/{id}/email")
