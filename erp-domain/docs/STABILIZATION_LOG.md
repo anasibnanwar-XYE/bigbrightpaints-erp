@@ -660,3 +660,22 @@
 - Warnings/notes:
   - Testcontainers auth config warnings and dynamic agent loading notices persisted.
   - Test logs include invalid company ID format, negative balance warnings, dispatch mapping warnings, sequence contention warnings, and HTML-to-PDF CSS parse warnings; no failures.
+
+## 2026-01-07 (epic-07 M3 — list pagination + index tuning)
+- Changes:
+  - Added paged list parameters for sales orders and invoices with stable (date desc, id desc) ordering.
+  - Switched sales order and invoice list queries to ID paging + fetch to avoid collection-fetch pagination warnings.
+  - Added stable paging for journal entry lists (date desc, id desc).
+  - Added list-performance indexes for sales orders, invoices, inventory movements, and outbox pending scans.
+- Commands run:
+  - `mvn -f erp-domain/pom.xml -DskipTests compile`
+  - `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check`
+  - `mvn -f erp-domain/pom.xml test`
+- Validation:
+  - `mvn -DskipTests compile` succeeded.
+  - Checkstyle reported 29192 violations; `failOnViolation=false` used for baseline visibility.
+  - `mvn test` succeeded: Tests run 198, Failures 0, Errors 0, Skipped 4.
+  - PerformanceExplainIT logged index scans for sales/invoice lists and inventory movements; outbox pending still used `idx_orchestrator_outbox_status_created`.
+- Warnings/notes:
+  - Testcontainers auth config warnings and dynamic agent loading notices persisted.
+  - Test logs include invalid company ID format, negative balance warnings, dispatch mapping warnings, sequence contention/duplicate key retries, and HTML-to-PDF CSS parse warnings; no failures.
