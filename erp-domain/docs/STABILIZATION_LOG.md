@@ -725,6 +725,25 @@
   - Testcontainers auth config warnings, dynamic agent loading notices persisted.
   - Test logs include invalid company ID format, negative balance warnings, dispatch mapping warnings, sequence contention/duplicate key retries, and HTML-to-PDF CSS parse warnings; no failures.
 
+## 2026-01-08 (epic-09 M3 — readiness/health hardening)
+- Changes:
+  - Added required config health indicator for JWT/encryption/license/mail settings.
+  - Added `requiredConfig` to the readiness health group in prod config.
+- Commands run:
+  - `mvn -f erp-domain/pom.xml -DskipTests compile`
+  - `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check`
+  - `mvn -f erp-domain/pom.xml test`
+  - `DB_PORT=55432 JWT_SECRET=... ERP_SECURITY_ENCRYPTION_KEY=... docker compose up -d --build`
+  - `curl --retry 10 --retry-connrefused --retry-delay 5 http://localhost:9090/actuator/health`
+- Validation:
+  - `mvn -DskipTests compile` succeeded.
+  - Checkstyle reported 29436 violations; `failOnViolation=false` used for baseline visibility.
+  - `mvn test` succeeded: Tests run 202, Failures 0, Errors 0, Skipped 4.
+  - Docker compose boot succeeded with `DB_PORT=55432`; `/actuator/health` returned `{"status":"UP","groups":["liveness","readiness"]}`.
+- Warnings/notes:
+  - Testcontainers auth config warnings, dynamic agent loading notices persisted.
+  - Test logs include invalid company ID format, negative balance warnings, dispatch mapping warnings, sequence contention/duplicate key retries, and HTML-to-PDF CSS parse warnings; no failures.
+
 ## 2026-01-08 (epic-08 M2 — reconciliation service hardening)
 - Changes:
   - Inventory reconciliation now prefers the default inventory control account.

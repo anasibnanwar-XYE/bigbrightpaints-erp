@@ -95,7 +95,7 @@ management:
         liveness:
           include: livenessState,ping
         readiness:
-          include: readinessState,db,rabbit,configuration,dispatchMapping
+          include: readinessState,db,rabbit,requiredConfig,configuration,dispatchMapping
       show-details: when_authorized
   security:
     enabled: true
