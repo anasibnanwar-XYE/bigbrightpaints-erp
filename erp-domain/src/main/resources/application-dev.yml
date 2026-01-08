@@ -5,10 +5,10 @@ spring:
   autoconfigure:
     exclude: org.springframework.boot.autoconfigure.amqp.RabbitAutoConfiguration
   mail:
-    host: smtp-relay.brevo.com
-    port: 587
-    username: 9baaf7001@smtp-brevo.com
-    password: xsmtpsib-fcee07c8999585e98b78020f5c8242b4afb9d3b35cf1901d64ffaf4a1c82e84e-WDZA6i5RCnU3tOOr
+    host: ${SPRING_MAIL_HOST:smtp-relay.brevo.com}
+    port: ${SPRING_MAIL_PORT:587}
+    username: ${SPRING_MAIL_USERNAME:}
+    password: ${SPRING_MAIL_PASSWORD:}
     properties:
       mail:
         smtp:
@@ -16,21 +16,21 @@ spring:
           starttls:
             enable: true
   datasource:
-    url: jdbc:postgresql://localhost:5432/bigbright_erp
-    username: postgres
-    password: Anas@2627
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/bigbright_erp}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
     driver-class-name: org.postgresql.Driver
   flyway:
     enabled: true
     locations: classpath:db/migration
 jwt:
-  # 256-bit (32 bytes) secret for HS256. Override with JWT_SECRET env for production.
-  secret: ${JWT_SECRET:X9kPm2Tz7vQwYp4Rn6Jc8Df1Gh3Lw5Bv0sA}
+  # 256-bit (32 bytes) secret for HS256. Must be provided via JWT_SECRET env variable.
+  secret: ${JWT_SECRET:}
   access-token-ttl-seconds: 3600
   refresh-token-ttl-seconds: 604800
 erp:
   security:
-    encryption.key: ${ERP_ENCRYPTION_KEY:Qw3rTy9Xz8Uv2Kp6Jn4Hg7Df0Ls5Ma1B}
+    encryption.key: ${ERP_ENCRYPTION_KEY:}
     mfa.enabled: true
   dispatch:
     # Configure with realistic account IDs in your dev DB to enable dispatch journals

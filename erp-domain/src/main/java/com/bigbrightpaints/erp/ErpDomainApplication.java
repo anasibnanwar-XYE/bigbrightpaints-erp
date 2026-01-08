@@ -21,14 +21,45 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.security.SecureRandom;
+
 @SpringBootApplication
 @EnableRetry
 @EnableScheduling
 @EnableConfigurationProperties({JwtProperties.class, EmailProperties.class})
 public class ErpDomainApplication {
 
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+    private static final String PASSWORD_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%^&*";
+
     public static void main(String[] args) {
         SpringApplication.run(ErpDomainApplication.class, args);
+    }
+
+    /**
+     * Generates a cryptographically secure temporary password.
+     * Password meets policy requirements: 12+ chars, upper, lower, digit, special char.
+     */
+    private static String generateSecureTemporaryPassword() {
+        StringBuilder password = new StringBuilder(14);
+        // Ensure at least one of each required character type
+        password.append(PASSWORD_CHARS.charAt(SECURE_RANDOM.nextInt(23))); // uppercase
+        password.append(PASSWORD_CHARS.charAt(SECURE_RANDOM.nextInt(23) + 23)); // lowercase
+        password.append(PASSWORD_CHARS.charAt(SECURE_RANDOM.nextInt(8) + 46)); // digit
+        password.append(PASSWORD_CHARS.charAt(SECURE_RANDOM.nextInt(8) + 54)); // special
+        // Fill remaining characters randomly
+        for (int i = 4; i < 14; i++) {
+            password.append(PASSWORD_CHARS.charAt(SECURE_RANDOM.nextInt(PASSWORD_CHARS.length())));
+        }
+        // Shuffle the password to avoid predictable patterns
+        char[] chars = password.toString().toCharArray();
+        for (int i = chars.length - 1; i > 0; i--) {
+            int j = SECURE_RANDOM.nextInt(i + 1);
+            char temp = chars[i];
+            chars[i] = chars[j];
+            chars[j] = temp;
+        }
+        return new String(chars);
     }
 
     @Bean
@@ -55,10 +86,11 @@ public class ErpDomainApplication {
                 UserAccount user = new UserAccount();
                 user.setEmail("mdanas7869292@gmail.com");
                 user.setDisplayName("Md Anas");
-                String tempPass = "Admin@12345";
+                String tempPass = generateSecureTemporaryPassword();
                 user.setPasswordHash(encoder.encode(tempPass));
+                user.setMustChangePassword(true);
                 emailService.sendUserCredentialsEmail(user.getEmail(), user.getDisplayName(), tempPass);
-                System.out.println("✅ Seeded Md Anas & sent credentials email from bigbrightpaints@gmail.com");
+                System.out.println("✅ Seeded Md Anas with secure temp password & sent credentials email");
                 return user;
             });
             if (!mdAnas.getRoles().contains(adminRole)) mdAnas.getRoles().add(adminRole);
@@ -69,10 +101,11 @@ public class ErpDomainApplication {
                 UserAccount user = new UserAccount();
                 user.setEmail("ateeb.warsi7869292@gmail.com");
                 user.setDisplayName("Ateeb Warsi");
-                String tempPass = "Admin@12345";
+                String tempPass = generateSecureTemporaryPassword();
                 user.setPasswordHash(encoder.encode(tempPass));
+                user.setMustChangePassword(true);
                 emailService.sendUserCredentialsEmail(user.getEmail(), user.getDisplayName(), tempPass);
-                System.out.println("✅ Seeded Ateeb Warsi & sent credentials email from bigbrightpaints@gmail.com");
+                System.out.println("✅ Seeded Ateeb Warsi with secure temp password & sent credentials email");
                 return user;
             });
             if (!ateeb.getRoles().contains(adminRole)) ateeb.getRoles().add(adminRole);
