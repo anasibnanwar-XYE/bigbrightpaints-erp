@@ -67,6 +67,11 @@
   - Requeue all: `UPDATE orchestrator_outbox SET status='PENDING', dead_letter=false, retry_count=0, next_attempt_at=now() WHERE dead_letter = true;`
   - Note: replays are at-least-once; confirm consumer idempotency before bulk requeue.
 
+## Operator Smoke Checks
+- Script: `erp-domain/scripts/ops_smoke.sh`
+- Required env: `ERP_SMOKE_EMAIL`, `ERP_SMOKE_PASSWORD`, `ERP_SMOKE_COMPANY`.
+- Optional overrides: `BASE_URL`, `MGMT_URL`.
+
 ## Logs/Metrics
 - File log: `logs/erp-backend.log`
 - Actuator endpoints enabled for `health`, `info`, `metrics`.

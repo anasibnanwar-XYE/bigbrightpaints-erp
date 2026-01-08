@@ -764,6 +764,26 @@
   - Testcontainers auth config warnings, dynamic agent loading notices persisted.
   - Test logs include invalid company ID format, negative balance warnings, dispatch mapping warnings, sequence contention/duplicate key retries, and HTML-to-PDF CSS parse warnings; no failures.
 
+## 2026-01-08 (epic-09 M5 — operator smoke checks)
+- Changes:
+  - Added operator smoke script for health/docs/authenticated profile checks.
+  - Documented operator smoke checks in the deploy checklist.
+- Commands run:
+  - `mvn -f erp-domain/pom.xml -DskipTests compile`
+  - `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check`
+  - `mvn -f erp-domain/pom.xml test`
+  - `DB_PORT=55432 JWT_SECRET=... ERP_SECURITY_ENCRYPTION_KEY=... docker compose up -d --build`
+  - `curl --retry 10 --retry-connrefused --retry-delay 5 http://localhost:9090/actuator/health`
+- Validation:
+  - `mvn -DskipTests compile` succeeded.
+  - Checkstyle reported 29441 violations; `failOnViolation=false` used for baseline visibility.
+  - `mvn test` succeeded: Tests run 202, Failures 0, Errors 0, Skipped 4.
+  - Docker compose boot succeeded with `DB_PORT=55432`; `/actuator/health` returned `{"status":"UP","groups":["liveness","readiness"]}`.
+- Warnings/notes:
+  - Operator smoke script requires ERP_SMOKE credentials; not executed in this run.
+  - Testcontainers auth config warnings, dynamic agent loading notices persisted.
+  - Test logs include invalid company ID format, negative balance warnings, dispatch mapping warnings, sequence contention/duplicate key retries, and HTML-to-PDF CSS parse warnings; no failures.
+
 ## 2026-01-08 (epic-08 M2 — reconciliation service hardening)
 - Changes:
   - Inventory reconciliation now prefers the default inventory control account.
