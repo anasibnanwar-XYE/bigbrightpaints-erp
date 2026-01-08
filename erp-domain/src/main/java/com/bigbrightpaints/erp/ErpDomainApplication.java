@@ -10,6 +10,8 @@ import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.rbac.domain.Role;
 import com.bigbrightpaints.erp.modules.rbac.domain.RoleRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -28,6 +30,8 @@ import java.security.SecureRandom;
 @EnableScheduling
 @EnableConfigurationProperties({JwtProperties.class, EmailProperties.class})
 public class ErpDomainApplication {
+
+    private static final Logger logger = LoggerFactory.getLogger(ErpDomainApplication.class);
 
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
     private static final String UPPERCASE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ";
@@ -94,7 +98,7 @@ public class ErpDomainApplication {
                 user.setPasswordHash(encoder.encode(tempPass));
                 user.setMustChangePassword(true);
                 emailService.sendUserCredentialsEmail(user.getEmail(), user.getDisplayName(), tempPass);
-                System.out.println("✅ Seeded Md Anas with secure temp password & sent credentials email");
+                logger.info("Seeded user: {} with secure temp password & sent credentials email", user.getEmail());
                 return user;
             });
             if (!mdAnas.getRoles().contains(adminRole)) mdAnas.getRoles().add(adminRole);
@@ -109,7 +113,7 @@ public class ErpDomainApplication {
                 user.setPasswordHash(encoder.encode(tempPass));
                 user.setMustChangePassword(true);
                 emailService.sendUserCredentialsEmail(user.getEmail(), user.getDisplayName(), tempPass);
-                System.out.println("✅ Seeded Ateeb Warsi with secure temp password & sent credentials email");
+                logger.info("Seeded user: {} with secure temp password & sent credentials email", user.getEmail());
                 return user;
             });
             if (!ateeb.getRoles().contains(adminRole)) ateeb.getRoles().add(adminRole);
