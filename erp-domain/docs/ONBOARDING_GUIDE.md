@@ -33,6 +33,35 @@ Account suggestions (read-only):
 
 This returns current default account IDs plus candidate lists for inventory, COGS, revenue, tax, WIP, and semi-finished selection.
 
+Recommended default chart of accounts mapping (minimal):
+
+- Inventory control (raw + finished): asset account (example: INV)
+- WIP inventory: asset account (example: WIP)
+- Semi-finished inventory: asset account (example: SEMI)
+- COGS: COGS account (example: COGS)
+- Revenue: revenue account (example: SALES)
+- GST output: liability account (example: GST-OUTPUT)
+- GST input (if used): asset account (example: GST-INPUT)
+- Salary expense: expense account (example: SALARY-EXP)
+- Salary payable: liability account (example: SALARY-PAY)
+- AR control: asset account (example: AR)
+- AP control: liability account (example: AP)
+- Opening balance equity: equity account (example: OPENING-EQUITY)
+
+Posting summary (high level):
+
+- Purchase intake: Dr Inventory (and GST input, if used) / Cr AP or Cash
+- Dispatch (COGS): Dr COGS / Cr Inventory (requires dispatch debit/credit accounts)
+- Invoice: Dr AR / Cr Revenue + GST output
+- Settlement: Dr Cash / Cr AR
+- Payroll post: Dr Salary expense / Cr Salary payable (payment clears payable)
+
+Required configuration checklist:
+
+- Default accounts configured (`/api/v1/accounting/default-accounts`).
+- Dispatch debit/credit accounts set (`ERP_DISPATCH_DEBIT_ACCOUNT_ID`, `ERP_DISPATCH_CREDIT_ACCOUNT_ID`).
+- Production-enabled products include `metadata.wipAccountId` and `metadata.semiFinishedAccountId`.
+
 ## 2) Master data bootstrap
 
 ### Brands
@@ -182,3 +211,12 @@ Use existing reports to confirm postings:
 - `GET /api/v1/reports/reconciliation-dashboard`
 
 For period close readiness, review the accounting period checklist in the accounting UI or the period APIs.
+
+## Future auto-mapping plan (not implemented)
+
+This outlines a safe approach for future automation without changing accounting semantics:
+
+- Prefer explicit company defaults; do not auto-pick if defaults are missing.
+- Use account type + code/name hints (INV, COGS, SALES, GST, AR, AP, WIP, SEMI) to suggest candidates.
+- Require a single explicit selection per mapping and persist it (never overwrite existing mappings).
+- For product onboarding, prefill metadata using the selected defaults and keep validation strict.
