@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
 import com.bigbrightpaints.erp.modules.invoice.dto.InvoiceDto;
 import com.bigbrightpaints.erp.modules.invoice.service.InvoiceService;
@@ -149,6 +150,31 @@ class SalesFulfillmentServiceTest {
         verify(salesService).confirmDispatch(any());
         verify(finishedGoodsService, never()).markSlipDispatched(anyLong());
         verify(accountingFacade, never()).postCogsJournal(anyString(), any(), any(), anyString(), any());
+    }
+
+    @Test
+    void rejectsDispatchCogsWhenAccountsMissing() {
+        SalesOrder order = new SalesOrder();
+        setField(order, "id", 4L);
+        order.setOrderNumber("SO-4");
+        order.setStatus("BOOKED");
+        order.setTotalAmount(new BigDecimal("200"));
+
+        when(salesService.getOrderWithItems(4L)).thenReturn(order);
+        when(salesService.confirmDispatch(any())).thenReturn(
+                new DispatchConfirmResponse(10L, order.getId(), null, null,
+                        List.of(new DispatchConfirmResponse.CogsPostingDto(null, null, new BigDecimal("10"))),
+                        true, List.of()));
+
+        var options = SalesFulfillmentService.FulfillmentOptions.builder()
+                .reserveInventory(false)
+                .postSalesJournal(false)
+                .postCogsJournal(true)
+                .issueInvoice(false)
+                .build();
+
+        org.junit.jupiter.api.Assertions.assertThrows(ApplicationException.class,
+                () -> fulfillmentService.fulfillOrder(4L, options));
     }
 
     private void setField(Object target, String name, Object value) {

@@ -3,6 +3,8 @@ package com.bigbrightpaints.erp.modules.sales.service;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.DispatchPosting;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.InventoryReservationResult;
@@ -141,9 +143,17 @@ public class SalesFulfillmentService {
                 var dispatchResponse = salesService.confirmDispatch(
                         new DispatchConfirmRequest(null, orderId, null, null, null, Boolean.FALSE, null)
                 );
+                if (dispatchResponse == null) {
+                    throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                            "Dispatch confirmation failed for order " + orderNumber);
+                }
                 List<DispatchPosting> dispatches = dispatchResponse.cogsPostings().stream()
                         .map(p -> new DispatchPosting(p.inventoryAccountId(), p.cogsAccountId(), p.cost()))
                         .toList();
+                if (dispatches.stream().anyMatch(dispatch -> dispatch.cogsAccountId() == null || dispatch.inventoryAccountId() == null)) {
+                    throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                            "Dispatch posting missing inventory/COGS account mapping for order " + orderNumber);
+                }
                 result.dispatches(dispatches);
                 BigDecimal totalCogs = dispatches.stream()
                         .map(DispatchPosting::cost)
@@ -294,8 +304,9 @@ public class SalesFulfillmentService {
         for (int i = 0; i < dispatches.size(); i++) {
             DispatchPosting dispatch = dispatches.get(i);
             if (dispatch.cogsAccountId() == null || dispatch.inventoryAccountId() == null) {
-                log.warn("Skipping COGS posting for dispatch {} - missing account IDs", i);
-                continue;
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Dispatch posting missing inventory/COGS account mapping for order " + orderNumber
+                                + " (dispatch index " + i + ")");
             }
             BigDecimal cost = dispatch.cost();
             if (cost == null || cost.compareTo(BigDecimal.ZERO) <= 0) {
