@@ -9,26 +9,30 @@
 - Epic 08: branch `epic-08-reconciliation-controls`, tip `afe04b5561d9d6510d61bce58640da2dfbec5010`.
 - Epic 09: branch `epic-09-operational-readiness`, tip `ca3851aea88ca5b791e65b896a1419a741283c49`.
 - Epic 10: branch `epic-10-cross-module-traceability`, tip `c94755d70bcb5ba452ae64ddd7d8a6b96b50d392`.
+- Epic 10 (onboarding integrity): branch `epic-10-onboarding-integrity`, tip `c3586c4`.
 
 ## Repo / Worktree State
 - Worktree: `/home/realnigga/Desktop/CLI_BACKEND_epic04`
-- Branch: `epic-10-cross-module-traceability`
-- Dirty: clean
+- Branch: `epic-10-onboarding-integrity`
+- Dirty: clean (after hydration update commit)
 
 ## Environment Setup
 - No new installs; Docker/Testcontainers working.
 
 ## Commands Run (Latest)
 - `mvn -f erp-domain/pom.xml -DskipTests compile` (PASS).
-- `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check` (PASS; 29446 violations reported).
-- `mvn -f erp-domain/pom.xml test` (PASS; Tests run 202, Failures 0, Errors 0, Skipped 4).
+- `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check` (PASS; 30757 violations reported).
+- `mvn -f erp-domain/pom.xml test` (PASS; Tests run 206, Failures 0, Errors 0, Skipped 4).
 - `mvn -f erp-domain/pom.xml -Dtest=*FullCycle* test` (PASS; Tests run 2, Failures 0, Errors 0, Skipped 2).
+- `JWT_SECRET=... ERP_SECURITY_ENCRYPTION_KEY=... ERP_DISPATCH_DEBIT_ACCOUNT_ID=5000 ERP_DISPATCH_CREDIT_ACCOUNT_ID=1200 DB_PORT=55432 docker compose up -d --build` (PASS).
+- `curl -fsS http://localhost:9090/actuator/health` (PASS; UP).
 
 ## Warnings / Notes
-- Checkstyle baseline warnings (29446) persisted with failOnViolation=false.
+- Checkstyle baseline warnings (30757) persisted with failOnViolation=false.
 - Testcontainers auth config warnings and dynamic agent loading notices persisted.
-- Test logs include expected warnings (invalid company IDs, negative balances, dispatch mapping, sequence contention/duplicate key retries, HTML-to-PDF CSS parsing); no failures.
+- Test logs include expected warnings (invalid company IDs, negative balances, sequence contention/duplicate key retries, HTML-to-PDF CSS parsing, dispatch mapping not configured in test env); no failures.
+- Docker logs note licensing enforcement disabled (erp.licensing.enforce=false).
 
 ## Resume Instructions (Post Epic 10)
-1. Epic 10 complete; no remaining milestones in scope.
-2. If new work is requested, branch from `epic-10-cross-module-traceability` at `c94755d70bcb5ba452ae64ddd7d8a6b96b50d392` and re-run hydration.
+1. Epic 10 onboarding integrity complete; no remaining milestones in scope.
+2. If new work is requested, branch from `epic-10-onboarding-integrity` at `c3586c4` and re-run hydration.
