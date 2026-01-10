@@ -9,12 +9,12 @@
 - Epic 08: branch `epic-08-reconciliation-controls`, tip `afe04b5561d9d6510d61bce58640da2dfbec5010`.
 - Epic 09: branch `epic-09-operational-readiness`, tip `ca3851aea88ca5b791e65b896a1419a741283c49`.
 - Epic 10: branch `epic-10-cross-module-traceability`, tip `c94755d70bcb5ba452ae64ddd7d8a6b96b50d392`.
-- Epic 10 (onboarding integrity): branch `epic-10-onboarding-integrity`, tip `39f9896`.
+- Epic 10 (onboarding integrity): branch `epic-10-onboarding-integrity`, tip `cbec6d3`.
 
 ## Repo / Worktree State
 - Worktree: `/home/realnigga/Desktop/CLI_BACKEND_epic04`
 - Branch: `epic-10-onboarding-integrity`
-- Dirty: clean (after hydration update commit)
+- Dirty: yes (debugging + final predeploy task packs and ops/docs updates added locally)
 
 ## Environment Setup
 - No new installs; Docker/Testcontainers working.
@@ -35,4 +35,6 @@
 
 ## Resume Instructions (Post Epic 10)
 1. Epic 10 onboarding integrity complete; no remaining milestones in scope.
-2. If new work is requested, branch from `epic-10-onboarding-integrity` at `39f9896` and re-run hydration.
+2. If new work is requested, branch from `epic-10-onboarding-integrity` at `cbec6d3` and re-run hydration.
+3. Deep Debugging Program: run `tasks/debugging/README.md` (tasks 01–07) sequentially with required verification gates after every milestone.
+4. Final predeploy stabilization phase: run `tasks/predeploy/README.md` (tasks 08–12) sequentially with required verification gates after every milestone.

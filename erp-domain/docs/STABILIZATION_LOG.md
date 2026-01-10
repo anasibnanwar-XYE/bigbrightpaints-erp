@@ -1034,3 +1034,29 @@
   - `mvn test` succeeded: Tests run 206, Failures 0, Errors 0, Skipped 4.
 - Warnings/notes:
   - Test logs include expected warnings (invalid company IDs, negative balances, dynamic agent loading); no failures.
+
+## 2026-01-10 (deep debugging program + final predeploy phase planning)
+- Scope: create a runnable Deep Debugging Program (planning + docs + test/evidence harness; no feature work), then re-number the existing predeploy pack as the final phase.
+- Artifacts created/updated:
+  - Debugging program:
+    - `tasks/debugging/README.md`
+    - `tasks/debugging/task-01-architecture-and-module-map.md`
+    - `tasks/debugging/task-02-endpoint-and-portal-matrix.md`
+    - `tasks/debugging/task-03-auditability-and-linkage-contracts.md`
+    - `tasks/debugging/task-04-module-by-module-deep-debug.md`
+    - `tasks/debugging/task-05-reconciliation-and-period-controls.md`
+    - `tasks/debugging/task-06-security-rbac-and-company-boundaries.md`
+    - `tasks/debugging/task-07-performance-and-ops-evidence.md`
+  - Evidence + portal surface:
+    - `docs/API_PORTAL_MATRIX.md`
+    - `docs/ops_and_debug/EVIDENCE.md` (standard/template + append-only log)
+  - Final predeploy phase (renumbered from 11–15 → 08–12):
+    - `tasks/predeploy/README.md`
+    - `tasks/predeploy/task-08-predeploy-consistency.md`
+    - `tasks/predeploy/task-09-ledger-subledger-gaps.md`
+    - `tasks/predeploy/task-10-masterdata-and-onboarding-audit.md`
+    - `tasks/predeploy/task-11-endpoint-hygiene-and-deprecations.md`
+    - `tasks/predeploy/task-12-ops-and-data-integrity.md`
+- Notes:
+  - Execute tasks sequentially and run the required verification gates after every milestone.
+  - Do not start the final predeploy phase until the debugging program tasks are complete.
