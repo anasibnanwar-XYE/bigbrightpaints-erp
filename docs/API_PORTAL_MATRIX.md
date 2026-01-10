@@ -22,15 +22,15 @@ Maintained by: `tasks/debugging/task-02-endpoint-and-portal-matrix.md`.
 
 Company scoping: `CompanyContextFilter` enforces `X-Company-Id` or JWT `cid` and validates company access; `CompanyContextService` applies company scoping. Dealer endpoints note explicit self-scope enforcement.
 
-## Deprecation ledger (aliases/canonical)
-| Endpoint | Status | Canonical replacement | Notes |
-|---|---|---|---|
-| `POST /api/v1/dispatch/confirm` | deprecated/alias | `POST /api/v1/sales/dispatch/confirm` | Legacy alias of `POST /api/v1/sales/dispatch/confirm` (canonical). |
-| `GET /api/v1/hr/payroll-runs` | deprecated/alias | `GET /api/v1/payroll/runs` | Legacy alias of `GET /api/v1/payroll/runs` (canonical). |
-| `POST /api/v1/hr/payroll-runs` | deprecated/alias | `POST /api/v1/payroll/runs` | Legacy alias of `POST /api/v1/payroll/runs` (canonical). |
-| `POST /api/v1/orchestrator/dispatch/{orderId}` | deprecated/alias | `POST /api/v1/orchestrator/dispatch` | Alias of `POST /api/v1/orchestrator/dispatch` with `{orderId}` in body. |
-| `GET /api/v1/sales/dealers` | deprecated/alias | `GET /api/v1/dealers` | Alias of `GET /api/v1/dealers` (canonical). |
-| `GET /api/v1/sales/dealers/search` | deprecated/alias | `GET /api/v1/dealers/search` | Alias of `GET /api/v1/dealers/search` (canonical). |
+## Deprecated endpoints ledger
+| Endpoint | Status | Canonical replacement | Proof required | Tests required | Notes |
+|---|---|---|---|---|---|
+| `POST /api/v1/dispatch/confirm` | deprecated | `POST /api/v1/sales/dispatch/confirm` | 0 hits in access logs for 2 releases + client inventory shows canonical endpoint only. | `OpenApiSnapshotIT` + `SalesControllerIT` | Legacy alias of `POST /api/v1/sales/dispatch/confirm` (canonical). |
+| `GET /api/v1/hr/payroll-runs` | deprecated | `GET /api/v1/payroll/runs` | 0 hits in access logs for 2 releases + client inventory shows canonical endpoint only. | `OpenApiSnapshotIT` + `HrControllerIT` | Legacy alias of `GET /api/v1/payroll/runs` (canonical). |
+| `POST /api/v1/hr/payroll-runs` | deprecated | `POST /api/v1/payroll/runs` | 0 hits in access logs for 2 releases + client inventory shows canonical endpoint only. | `OpenApiSnapshotIT` + `HrControllerIT` | Legacy alias of `POST /api/v1/payroll/runs` (canonical). |
+| `POST /api/v1/orchestrator/dispatch/{orderId}` | deprecated | `POST /api/v1/orchestrator/dispatch` | 0 hits in access logs for 2 releases + callers migrated to body-based dispatch. | `OpenApiSnapshotIT` + `OrchestratorControllerIT` | Alias of `POST /api/v1/orchestrator/dispatch` with `{orderId}` in path. |
+| `GET /api/v1/sales/dealers` | deprecated | `GET /api/v1/dealers` | 0 hits in access logs for 2 releases + portals updated to canonical endpoint. | `OpenApiSnapshotIT` + `SalesControllerIT` | Alias of `GET /api/v1/dealers` (canonical). |
+| `GET /api/v1/sales/dealers/search` | deprecated | `GET /api/v1/dealers/search` | 0 hits in access logs for 2 releases + portals updated to canonical endpoint. | `OpenApiSnapshotIT` + `SalesControllerIT` | Alias of `GET /api/v1/dealers/search` (canonical). |
 
 ---
 
