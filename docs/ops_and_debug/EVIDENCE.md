@@ -434,3 +434,41 @@ Start: 2026-01-10T06:56:18Z
 ### Go/No-Go
 - Status: GO
 - Blockers: none
+
+## Run 20260110T070312Z
+Start: 2026-01-10T07:03:12Z
+
+### Start condition
+- Branch: `debug-01-module-map`
+- Commit: `334a4d2`
+- Dirty worktree: no
+- Docker: not used
+
+### Task 01 — Milestone M3 (test coverage map + gaps)
+- Command: `mvn -f erp-domain/pom.xml -DskipTests compile`
+- Log: `docs/ops_and_debug/LOGS/20260110T070312Z_task01_M3_compile.txt`
+- Exit: 0
+- Summary: BUILD SUCCESS
+
+- Command: `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check`
+- Log: `docs/ops_and_debug/LOGS/20260110T070319Z_task01_M3_checkstyle.txt`
+- Exit: 0
+- Summary: BUILD SUCCESS (violations: 30804)
+
+- Command: `mvn -f erp-domain/pom.xml test`
+- Log: `docs/ops_and_debug/LOGS/20260110T070332Z_task01_M3_test.txt`
+- Exit: 0
+- Summary: Tests run 206, Failures 0, Errors 0, Skipped 4
+
+- Command: `mvn -f erp-domain/pom.xml -Dtest=ErpInvariantsSuiteIT,ReconciliationControlsIT,PeriodCloseLockIT test`
+- Log: `docs/ops_and_debug/LOGS/20260110T070446Z_task01_M3_focus.txt`
+- Exit: 0
+- Summary: Tests run 14, Failures 0, Errors 0, Skipped 0
+
+### Gap checklist
+- Added test coverage map and gaps list in `tasks/debugging/task-01-architecture-and-module-map.md`.
+- Gaps flagged: CSV opening stock import tests, raw material intake journal linkage tests, orchestrator trigger linkage tests, dealer portal scoping tests.
+
+### Go/No-Go
+- Status: GO
+- Blockers: none

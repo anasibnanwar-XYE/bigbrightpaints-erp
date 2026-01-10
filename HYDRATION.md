@@ -13,7 +13,7 @@
 
 ## Repo / Worktree State
 - Worktree: `/home/realnigga/Desktop/CLI_BACKEND_epic04`
-- Branch: `debug-01-module-map` (Task 01 M2 complete, tip `ecb1880`)
+- Branch: `debug-01-module-map` (Task 01 M3 complete, tip `334a4d2`)
 - Dirty: no
 
 ## Environment Setup
@@ -23,16 +23,16 @@
 - `mvn -f erp-domain/pom.xml -DskipTests compile` (PASS).
 - `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check` (PASS; 30804 violations reported).
 - `mvn -f erp-domain/pom.xml test` (PASS; Tests run 206, Failures 0, Errors 0, Skipped 4).
-- `mvn -f erp-domain/pom.xml -Dtest=ErpInvariantsSuiteIT test` (PASS; Tests run 9, Failures 0, Errors 0, Skipped 0).
+- `mvn -f erp-domain/pom.xml -Dtest=ErpInvariantsSuiteIT,ReconciliationControlsIT,PeriodCloseLockIT test` (PASS; Tests run 14, Failures 0, Errors 0, Skipped 0).
 
 ## Warnings / Notes
 - Checkstyle baseline warnings (30804) persisted with failOnViolation=false.
 - Endpoint inventory mismatch: openapi has endpoints missing from endpoint_inventory.tsv; inventory-only includes `/api/integration/health` (see evidence log).
 - Idempotency verification flagged for opening stock import and raw material intake (see Task 01 M2 list).
+- Gap checklist flagged CSV opening stock import tests, raw material intake journal linkage tests, orchestrator trigger linkage tests, and dealer portal scoping tests.
 
 ## Resume Instructions (Post Epic 10)
-1. Task 01 M2 complete on `debug-01-module-map` at `ecb1880`.
-2. Next milestone: Task 01 M3 in `tasks/debugging/task-01-architecture-and-module-map.md` (map touchpoints to enforcing tests + gap checklist).
-3. After M3 run gates: compile, checkstyle (failOnViolation=false), full test suite, and `mvn -f erp-domain/pom.xml -Dtest=ErpInvariantsSuiteIT,ReconciliationControlsIT,PeriodCloseLockIT test`.
-4. Update `docs/ops_and_debug/EVIDENCE.md`, `erp-domain/docs/STABILIZATION_LOG.md`, and `HYDRATION.md`, then commit with message `debug-01: M3 <summary>`.
-5. Continue Task 01 final gates + push once M3 is complete and verified.
+1. Task 01 M3 complete on `debug-01-module-map` at `334a4d2`.
+2. Run final Task 01 gates: compile, checkstyle (failOnViolation=false), full test suite, plus `OpenApiSnapshotIT` and `ErpInvariantsSuiteIT,ReconciliationControlsIT,PeriodCloseLockIT`.
+3. Update `docs/ops_and_debug/EVIDENCE.md`, `erp-domain/docs/STABILIZATION_LOG.md`, and `HYDRATION.md`, then commit with message `debug-01: Task01 final gates`.
+4. Push branch and produce Task 01 completion report.
