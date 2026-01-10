@@ -872,14 +872,21 @@ public class ErpInvariantsSuiteIT extends AbstractIntegrationTest {
         ResponseEntity<Map> runResp = rest.exchange("/api/v1/payroll/runs",
                 HttpMethod.POST, new HttpEntity<>(runRequest, headers), Map.class);
         Map<?, ?> runData = requireData(runResp, "create payroll run");
+        System.out.println("M4 API evidence payroll run created: " + runResp.getBody());
         Long runId = ((Number) runData.get("id")).longValue();
 
-        rest.exchange("/api/v1/payroll/runs/" + runId + "/calculate",
+        ResponseEntity<Map> calcResp = rest.exchange("/api/v1/payroll/runs/" + runId + "/calculate",
                 HttpMethod.POST, new HttpEntity<>(headers), Map.class);
-        rest.exchange("/api/v1/payroll/runs/" + runId + "/approve",
+        System.out.println("M4 API evidence payroll calculated: " + calcResp.getBody());
+        ResponseEntity<Map> approveResp = rest.exchange("/api/v1/payroll/runs/" + runId + "/approve",
                 HttpMethod.POST, new HttpEntity<>(headers), Map.class);
-        rest.exchange("/api/v1/payroll/runs/" + runId + "/post",
+        System.out.println("M4 API evidence payroll approved: " + approveResp.getBody());
+        ResponseEntity<Map> postResp = rest.exchange("/api/v1/payroll/runs/" + runId + "/post",
                 HttpMethod.POST, new HttpEntity<>(headers), Map.class);
+        System.out.println("M4 API evidence payroll posted: " + postResp.getBody());
+        ResponseEntity<Map> runDetailResp = rest.exchange("/api/v1/payroll/runs/" + runId,
+                HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+        System.out.println("M4 API evidence payroll run detail: " + runDetailResp.getBody());
 
         PayrollRun run = payrollRunRepository.findById(runId)
                 .orElseThrow(() -> new AssertionError("Payroll run missing: " + runId));
@@ -971,8 +978,9 @@ public class ErpInvariantsSuiteIT extends AbstractIntegrationTest {
         }
 
         Map<String, Object> markPaidReq = Map.of("paymentReference", "PAYROLL-PAY-001");
-        rest.exchange("/api/v1/payroll/runs/" + runId + "/mark-paid",
+        ResponseEntity<Map> markPaidResp = rest.exchange("/api/v1/payroll/runs/" + runId + "/mark-paid",
                 HttpMethod.POST, new HttpEntity<>(markPaidReq, headers), Map.class);
+        System.out.println("M4 API evidence payroll mark-paid: " + markPaidResp.getBody());
 
         PayrollRun paid = payrollRunRepository.findById(runId)
                 .orElseThrow(() -> new AssertionError("Payroll run missing after pay: " + runId));
