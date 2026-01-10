@@ -489,3 +489,26 @@ Note: “Key tables” are taken from Flyway migrations in `erp-domain/src/main/
   - Ledger/subledger: downstream ledgers
   - Reconciliation: same reports as underlying flows
   - Idempotent: REQUIRED (outbox + traceId should prevent duplicate postings; verify)
+
+---
+
+## M3 — Evidence enforcement map + gaps
+
+### Evidence map (touchpoint -> enforcing tests)
+- Manual journals/reversals: `ErpInvariantsSuiteIT` (recordToReport_manualJournalReversal), `JournalEntryE2ETest`, `CriticalAccountingAxesIT`.
+- Dealer receipts/settlements/allocations: `SettlementE2ETest`, `StatementAgingIT`, `ErpInvariantsSuiteIT` (O2C dataset).
+- Supplier purchases/settlements: `ProcureToPayE2ETest`, `SupplierStatementAgingIT`, `ErpInvariantsSuiteIT` (P2P dataset).
+- Dispatch/invoice/COGS chain: `ErpInvariantsSuiteIT` (O2C chain), `FactoryPackagingCostingIT` (dispatch + COGS postings), `DispatchConfirmationIT` (inventory/packing slip only).
+- Inventory adjustments: `InventoryGlReconciliationIT`, `HighImpactRegressionIT` (deterministicInventoryAdjustmentUnderContention).
+- Inventory revaluation/landed cost/WIP: `RevaluationCogsIT`, `LandedCostRevaluationIT`, `WipToFinishedCostIT`.
+- Opening stock (onboarding API): `OnboardingFlowIT` (journal link + idempotency rejection).
+- Production logs/packing/costing: `CompleteProductionCycleTest`, `FactoryPackagingCostingIT`.
+- Payroll posting/payments: `PayrollBatchPaymentIT`, `ErpInvariantsSuiteIT` (Payroll dataset).
+- Period lock/close + reconciliation controls: `PeriodCloseLockIT`, `ReconciliationControlsIT`.
+- Reconciliation reports: `InventoryGlReconciliationIT`, `ReconciliationControlsIT`, `CriticalAccountingAxesIT`.
+
+### Gaps to close (feed Task 03/04)
+- CSV opening stock import (`/api/v1/inventory/opening-stock`) has no explicit test for idempotency or journal linkage.
+- Raw material intake (`/api/v1/raw-materials/intake`) lacks a test asserting journal entry linkage and supplier ledger impact.
+- Orchestrator dispatch/payroll triggers lack a test asserting downstream journal/ledger linkage (OrchestratorControllerIT only validates endpoint responses).
+- Dealer portal scoping tests for cross-company/data leakage are not evident in `src/test` (to review in Task 02/06).
