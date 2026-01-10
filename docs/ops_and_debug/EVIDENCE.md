@@ -476,6 +476,32 @@ Start: 2026-01-10T06:41:31Z
 - Inventory reconciliation variance=0 confirmed in `ReconciliationControlsIT` and `/api/v1/reports/inventory-reconciliation` output.
 - `openapi.json` newline-only change observed during tests and reverted per contract policy.
 
+### Task 04 — Milestone M3 (Factory/Production deep debug)
+- Command: `mvn -f erp-domain/pom.xml -DskipTests compile`
+- Log: `docs/ops_and_debug/LOGS/20260110T133421Z_task04_M3_compile.txt`
+- Exit: 0
+- Summary: BUILD SUCCESS
+
+- Command: `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check`
+- Log: `docs/ops_and_debug/LOGS/20260110T133429Z_task04_M3_checkstyle.txt`
+- Exit: 0
+- Summary: BUILD SUCCESS (violations: 30804)
+
+- Command: `mvn -f erp-domain/pom.xml test`
+- Log: `docs/ops_and_debug/LOGS/20260110T133440Z_task04_M3_test.txt`
+- Exit: 0
+- Summary: Tests run 206, Failures 0, Errors 0, Skipped 4 (warnings: negative balances, invalid company ID format).
+
+- Command: `mvn -f erp-domain/pom.xml -Dtest=ErpInvariantsSuiteIT,FactoryPackagingCostingIT,CompleteProductionCycleTest,WipToFinishedCostIT test`
+- Log: `docs/ops_and_debug/LOGS/20260110T133553Z_task04_M3_focus_production.txt`
+- Exit: 0
+- Summary: Tests run 18, Failures 0, Errors 0, Skipped 0.
+
+### Notes
+- Evidence for production movement references captured in focused log (`M3 evidence ...` lines for RM/packaging/inventory movements).
+- Journal linkage verified in `FactoryPackagingCostingIT` (movement journals linked to production code and packing reference).
+- `openapi.json` newline-only change observed during tests and reverted per contract policy.
+
 ### Task 03 — Milestone M1 (linkage contracts verification)
 - Command: `mvn -f erp-domain/pom.xml -DskipTests compile`
 - Log: `docs/ops_and_debug/LOGS/20260110T102714Z_task03_M1_compile.txt`
