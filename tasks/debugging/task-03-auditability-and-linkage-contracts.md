@@ -90,10 +90,25 @@ Chain of evidence (minimum):
    - dealer statement/aging
    - AR control reconciliation (`RECONCILIATION_CONTRACTS.md`)
 
+Observed linkage keys (verified in code/docs):
+- `sales_orders.fulfillment_invoice_id` -> `invoices.id`
+- `sales_orders.sales_journal_entry_id` / `sales_orders.cogs_journal_entry_id` -> `journal_entries.id`
+- `packaging_slips.invoice_id` -> `invoices.id`
+- `packaging_slips.journal_entry_id` / `packaging_slips.cogs_journal_entry_id` -> `journal_entries.id`
+- `invoices.journal_entry_id` -> `journal_entries.id`
+- `dealer_ledger_entries.journal_entry_id` -> `journal_entries.id`
+- `dealer_ledger_entries.invoice_number` -> `invoices.invoice_number`
+- `partner_settlement_allocations.invoice_id` -> `invoices.id`
+- `partner_settlement_allocations.journal_entry_id` -> `journal_entries.id`
+- `packaging_slip_lines.packaging_slip_id` -> `packaging_slips.id`
+- `packaging_slip_lines.finished_good_batch_id` -> `finished_good_batches.id`
+- `inventory_movements.reference_type=SALES_ORDER` uses `reference_id = sales_orders.id`
+
 Required invariants:
-- Dispatch confirm is idempotent: retries do not double-issue stock, double-create invoices, or double-post journals.
-- Posted invoice has a journal link (`invoices.journal_entry_id` or equivalent) and is same-company.
-- Inventory issue movements created by dispatch are linked to their posting journals when posting is expected.
+- Dispatch confirm is idempotent: retries do not double-issue stock, double-create invoices, or double-post journals (SalesOrder idempotency markers + PackagingSlip status).
+- Posted invoice has a journal link (`invoices.journal_entry_id`) and is same-company.
+- Dispatch sets `packaging_slips.invoice_id`, `packaging_slips.journal_entry_id`, and `packaging_slips.cogs_journal_entry_id` once posted.
+- Inventory issue movements created by dispatch carry `reference_type=SALES_ORDER` and link to the posting journal when COGS is posted.
 - Dealer ledger entries reference the same invoice/journal identifiers used by accounting and are same-company.
 - Settlement allocations are idempotent and cannot exceed outstanding (no negative outstanding drift).
 
@@ -117,11 +132,20 @@ Chain of evidence (minimum):
    - supplier statement/aging
    - AP control reconciliation
 
+Observed linkage keys (verified in code/docs):
+- `raw_material_purchases.journal_entry_id` -> `journal_entries.id`
+- `raw_material_purchases.supplier_id` -> `suppliers.id`
+- `partner_settlement_allocations.purchase_id` -> `raw_material_purchases.id`
+- `partner_settlement_allocations.journal_entry_id` -> `journal_entries.id`
+- `supplier_ledger_entries.journal_entry_id` -> `journal_entries.id`
+- `raw_material_movements.reference_type=RAW_MATERIAL_PURCHASE` uses `reference_id = raw_material_batches.batch_code`
+- `raw_material_movements.reference_type=PURCHASE_RETURN` uses `reference_id = purchase return reference`
+
 Required invariants:
 - Purchase posts AP + inventory effects and is linked to journals (same-company).
 - Receipt movements exist, are ordered/idempotent, and link to journals when posting is expected.
 - Supplier settlements/payments are idempotent and reconcile to AP control account within tolerance.
-- Purchase returns reverse inventory and AP consistently and are traceable.
+- Purchase returns reverse inventory and AP consistently, set `raw_material_movements.journal_entry_id`, and are traceable.
 
 Existing tests (verify/extend as needed):
 - `ErpInvariantsSuiteIT` (golden P2P)
@@ -138,6 +162,16 @@ Chain of evidence (minimum):
 7) Reconciliation outputs:
    - inventory valuation/reconciliation
    - WIP/FG rollforward (if applicable)
+
+Observed linkage keys (verified in code/docs):
+- `packing_records.production_log_id` -> `production_logs.id`
+- `packing_records.finished_good_batch_id` -> `finished_good_batches.id`
+- `production_logs.production_code` used as `inventory_movements.reference_id` when `reference_type=PRODUCTION_LOG`
+- `inventory_movements.reference_type=PACKING_RECORD` uses `reference_id = <production_code>-PACK-<lineIndex>`
+- `inventory_movements.journal_entry_id` -> `journal_entries.id` (when costing posted)
+- `finished_good_batches.parent_batch_id` links bulk-to-size child batches
+- `inventory_movements.reference_type=MANUFACTURING_ORDER` uses `reference_id = finished_good_batches.public_id`
+- `inventory_movements.reference_type=OPENING_STOCK` uses `reference_id = opening stock batch code`
 
 Required invariants:
 - No orphan production logs/packing records: each creates the expected movements/batches.
@@ -158,6 +192,12 @@ Chain of evidence (minimum):
    - payroll expense vs payable clearing
    - period close impact
 
+Observed linkage keys (verified in code/docs):
+- `payroll_runs.journal_entry_id` -> `journal_entries.id`
+- `payroll_runs.journal_entry_ref_id` -> `journal_entries.id` (back-compat)
+- `payroll_run_lines.payroll_run_id` -> `payroll_runs.id`
+- `attendance.payroll_run_id` -> `payroll_runs.id`
+
 Required invariants:
 - Payroll run state machine is enforced: calculate → approve → post → mark-paid (no skipping).
 - Posting produces a linked journal entry; reversals are balanced inverse.
@@ -168,3 +208,11 @@ Existing tests (verify/extend as needed):
 - `ErpInvariantsSuiteIT` (hire-to-pay golden + reversal)
 - `PayrollBatchPaymentIT`, `PeriodCloseLockIT`
 
+---
+
+## M1 contracts completion notes
+- Status: contracts updated with verified linkage keys from `erp-domain/docs/CROSS_MODULE_LINKAGE_MATRIX.md`.
+- UNKNOWN/needs verify:
+  - Confirm unallocated receipt flows (if any) cannot drift dealer ledger or AR control.
+  - Confirm dispatch idempotency uses `sales_orders.idempotency_key` consistently across slip/invoice/journal creation.
+  - Confirm payroll payment artifacts table(s) and linkage to `payroll_runs` for mark-paid audit trails.
