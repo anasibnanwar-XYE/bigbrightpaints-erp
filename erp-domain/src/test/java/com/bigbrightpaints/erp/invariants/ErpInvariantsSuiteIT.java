@@ -260,6 +260,18 @@ public class ErpInvariantsSuiteIT extends AbstractIntegrationTest {
                 .orElseThrow(() -> new AssertionError("Invoice missing for O2C flow"));
         invariants.assertJournalLinkedTo("INVOICE", invoiceId);
         invariants.assertJournalBalanced(invoice.getJournalEntry().getId());
+        ResponseEntity<Map> invoiceDetailResp = rest.exchange("/api/v1/invoices/" + invoiceId,
+                HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+        assertThat(invoiceDetailResp.getStatusCode().is2xxSuccessful()).isTrue();
+        System.out.println("M1 API evidence invoice detail: " + invoiceDetailResp.getBody());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> invoiceDetailData = (Map<String, Object>) invoiceDetailResp.getBody().get("data");
+        assertThat(((Number) invoiceDetailData.get("journalEntryId")).longValue())
+                .isEqualTo(invoice.getJournalEntry().getId());
+        ResponseEntity<Map> invoiceListResp = rest.exchange("/api/v1/invoices?page=0&size=5",
+                HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+        assertThat(invoiceListResp.getStatusCode().is2xxSuccessful()).isTrue();
+        System.out.println("M1 API evidence invoice list: " + invoiceListResp.getBody());
         List<DealerLedgerEntry> invoiceLedgerEntries =
                 dealerLedgerRepository.findByCompanyAndJournalEntry(company, invoice.getJournalEntry());
         assertThat(invoiceLedgerEntries)
@@ -373,6 +385,26 @@ public class ErpInvariantsSuiteIT extends AbstractIntegrationTest {
             assertThat(entry.getAmountPaid()).isEqualByComparingTo(settledInvoice.getTotalAmount());
             assertThat(entry.getPaidDate()).isEqualTo(entryDate);
         }
+
+        LocalDate statementStart = entryDate.minusDays(1);
+        LocalDate statementEnd = invoice.getIssueDate() != null
+                ? invoice.getIssueDate().plusDays(1)
+                : entryDate.plusDays(1);
+        ResponseEntity<Map> statementResp = rest.exchange(
+                "/api/v1/accounting/statements/dealers/" + o2c.dealer().getId()
+                        + "?from=" + statementStart + "&to=" + statementEnd,
+                HttpMethod.GET,
+                new HttpEntity<>(headers),
+                Map.class);
+        assertThat(statementResp.getStatusCode().is2xxSuccessful()).isTrue();
+        System.out.println("M1 API evidence dealer statement: " + statementResp.getBody());
+        ResponseEntity<Map> agingResp = rest.exchange(
+                "/api/v1/accounting/aging/dealers/" + o2c.dealer().getId(),
+                HttpMethod.GET,
+                new HttpEntity<>(headers),
+                Map.class);
+        assertThat(agingResp.getStatusCode().is2xxSuccessful()).isTrue();
+        System.out.println("M1 API evidence dealer aging: " + agingResp.getBody());
 
         invariants.assertSubledgerReconciles(o2c.requireAccount("AR").getId(), null);
     }

@@ -111,6 +111,7 @@ public class DealerLedgerIT extends AbstractIntegrationTest {
                 HttpMethod.GET, new HttpEntity<>(headers), Map.class);
 
         assertThat(resp.getStatusCode().is2xxSuccessful()).isTrue();
+        System.out.println("M1 API evidence dealer ledger: " + resp.getBody());
         @SuppressWarnings("unchecked")
         Map<String, Object> data = (Map<String, Object>) resp.getBody().get("data");
         assertThat(data.get("dealerId")).isEqualTo(dealer.getId().intValue());
