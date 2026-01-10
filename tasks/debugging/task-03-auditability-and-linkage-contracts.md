@@ -278,6 +278,37 @@ Existing tests (verify/extend as needed):
 4) Packing record packaging-material journal linkage (`InventoryReference.PACKING_RECORD` movements have `journal_entry_id` set).
 5) Payroll mark-paid audit linkage (verify payment reference persistence + idempotent mark-paid behavior).
 
+## M3 evidence chain assertions (runnable checks)
+Assertions (SQL/API) - run per company where applicable:
+- Invoices issued must have journal links:
+  - SQL: `select count(*) as missing_invoice_journal from invoices where status='ISSUED' and journal_entry_id is null;`
+- Dispatched slips must link to invoice + journals:
+  - SQL: `select count(*) as missing_dispatch_links from packaging_slips where status='DISPATCHED' and (invoice_id is null or journal_entry_id is null);`
+- Dispatch inventory movements must link to journal when COGS posted:
+  - SQL: `select count(*) as dispatch_moves_missing_journal from inventory_movements where reference_type='SALES_ORDER' and movement_type='DISPATCH' and journal_entry_id is null;`
+- Packing/purchase return RM movements must link to journals:
+  - SQL: `select count(*) as packing_rm_missing_journal from raw_material_movements where reference_type='PACKING_RECORD' and journal_entry_id is null;`
+  - SQL: `select count(*) as return_rm_missing_journal from raw_material_movements where reference_type='PURCHASE_RETURN' and journal_entry_id is null;`
+- Dealer/Supplier ledger entries must link to journals:
+  - SQL: `select count(*) as dealer_ledger_missing_journal from dealer_ledger_entries where journal_entry_id is null;`
+  - SQL: `select count(*) as supplier_ledger_missing_journal from supplier_ledger_entries where journal_entry_id is null;`
+- Settlement allocations must link to journals and be idempotent:
+  - SQL: `select count(*) as settlement_missing_journal from partner_settlement_allocations where journal_entry_id is null;`
+  - SQL: `select count(*) as settlement_missing_idempotency from partner_settlement_allocations where idempotency_key is null;`
+- Payroll runs posted/paid must link to journals; lines must be linked:
+  - SQL: `select count(*) as payroll_missing_journal from payroll_runs where status in ('POSTED','PAID') and journal_entry_id is null;`
+  - SQL: `select count(*) as payroll_line_missing_run from payroll_run_lines where payroll_run_id is null;`
+- Production packing completeness:
+  - SQL: `select count(*) as packed_missing_records from production_logs pl where pl.status='FULLY_PACKED' and not exists (select 1 from packing_records pr where pr.production_log_id = pl.id);`
+  - SQL: `select count(*) as packing_record_missing_batch from packing_records where finished_good_batch_id is null;`
+
+Sample outputs (seeded dataset):
+- ReconciliationControlsIT:
+  - `AR Reconciliation: GL=0.00, DealerLedger=0, Variance=0.00, Reconciled=true`
+  - `AP Reconciliation: GL=0.00, SupplierLedger=0, Variance=0.00, Reconciled=true`
+- InventoryGlReconciliationIT:
+  - `Tests run: 2, Failures: 0, Errors: 0, Skipped: 0`
+
 ## M1 contracts completion notes
 - Status: contracts updated with verified linkage keys from `erp-domain/docs/CROSS_MODULE_LINKAGE_MATRIX.md`.
 - UNKNOWN/needs verify:
