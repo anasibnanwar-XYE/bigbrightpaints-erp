@@ -83,46 +83,83 @@ Note: “Key tables” are taken from Flyway migrations in `erp-domain/src/main/
   - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/admin/**`
   - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/rbac/**`
   - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/**`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/core/config/**`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/core/audit/**`
 - Primary controllers:
-  - `AdminSettingsController` (`/api/v1/admin/**`)
-  - `AdminUserController` (`/api/v1/admin/users/**`)
-  - `RoleController` (`/api/v1/admin/roles/**`)
+  - `AdminSettingsController` (`/api/v1/admin`)
+  - `AdminUserController` (`/api/v1/admin/users`)
+  - `RoleController` (`/api/v1/admin/roles`)
   - `CompanyController` (`/api/v1/companies`)
-  - `MultiCompanyController` (`/api/v1/multi-company/**`)
+  - `MultiCompanyController` (`/api/v1/multi-company`)
+- Primary services:
+  - `AdminUserService`
+  - `RoleService`
+  - `CompanyService`
+  - `CompanyContextService`
+  - `SystemSettingsService`
 - Key tables (representative):
-  - `companies`, `app_users`, `roles`, `permissions`, `user_roles`, `user_companies`
-  - security tables: `mfa_recovery_codes`, `password_reset_tokens`, `user_password_history`
-  - audit tables: `audit_log_entries` (name may vary; verify in migrations)
+  - `companies`
+  - `app_users`
+  - `roles`, `permissions`
+  - `user_roles`, `user_companies`
+  - `system_settings`
+  - `audit_logs`
 - Financial touchpoints:
-  - Company defaults for posting accounts (inventory/COGS/revenue/tax/payroll) and enforcement of “cannot post without defaults”.
-  - Company boundary enforcement via `X-Company-Id` and membership checks (high risk for cross‑company leakage).
+  - Company boundary enforcement via `CompanyContextService` and `X-Company-Id` membership checks.
+  - Posting defaults are enforced in accounting via `CompanyDefaultAccountsService` (admin settings influence configuration only).
 
 ### AUTH (JWT/MFA/Profile)
 - Code: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/**` and `erp-domain/src/main/java/com/bigbrightpaints/erp/core/security/**`
 - Primary controllers:
-  - `AuthController` (`/api/v1/auth/**`)
-  - `MfaController` (`/api/v1/auth/mfa/**`)
+  - `AuthController` (`/api/v1/auth`)
+  - `MfaController` (`/api/v1/auth/mfa`)
   - `UserProfileController` (`/api/v1/auth/profile`)
+- Primary services:
+  - `AuthService`
+  - `RefreshTokenService`
+  - `PasswordService`
+  - `PasswordResetService`
+  - `MfaService`
+  - `UserProfileService`
+  - `UserAccountDetailsService`
 - Key tables (representative):
-  - `refresh_tokens` / token blacklist (verify actual table names)
-  - `mfa_recovery_codes`, `user_profile` fields
+  - `app_users`
+  - `user_roles`, `user_companies`
+  - `blacklisted_tokens`, `user_token_revocations`
+  - `password_reset_tokens`, `user_password_history`
+  - `mfa_recovery_codes`
 - Financial touchpoints:
   - None directly, but auth controls access to all financially significant endpoints.
 
 ### ACCOUNTING (GL/Journals/Periods/Settlements/Reconciliation)
 - Code: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/**` + related shared services
 - Primary controllers:
-  - `AccountingController` (`/api/v1/accounting/**`)
-  - `AccountingCatalogController` (`/api/v1/accounting/catalog/**`)
-  - `AccountingConfigurationController` (`/api/v1/accounting/config/**` or similar; verify)
-  - `OnboardingController` (`/api/v1/onboarding/**` or `/api/v1/accounting/onboarding/**`; verify)
-  - `PayrollController` (batch payroll payment under accounting: `/api/v1/accounting/payroll/**`)
+  - `AccountingController` (`/api/v1/accounting`)
+  - `AccountingCatalogController` (`/api/v1/accounting/catalog`)
+  - `AccountingConfigurationController` (`/api/v1/accounting/configuration`)
+  - `OnboardingController` (`/api/v1/accounting/onboarding`)
+  - `PayrollController` (`/api/v1/accounting/payroll`)
+- Primary services:
+  - `AccountingService`
+  - `AccountingPeriodService`
+  - `ReconciliationService`
+  - `TaxService`
+  - `StatementService`
+  - `TemporalBalanceService`
+  - `AccountHierarchyService`
+  - `AgingReportService`
+  - `CompanyDefaultAccountsService`
+  - `CompanyAccountingSettingsService`
+  - `DealerLedgerService`
+  - `SupplierLedgerService`
+  - `OnboardingService`
 - Key tables (representative):
   - `accounts`
   - `journal_entries`, `journal_lines`
-  - `ledger_entries`
-  - `accounting_periods` / `periods`, month-end checklist tables (verify)
+  - `journal_reference_mappings`
+  - `accounting_periods` (includes month-end checklist + closing journal fields)
   - subledgers: `dealer_ledger_entries`, `supplier_ledger_entries`, `partner_settlement_allocations`
+  - `accounting_events`
 - Financial touchpoints:
   - Creating/posting journal entries (must be balanced, linked, same-company).
   - Posting settlements/receipts/payments and producing subledger allocations.
@@ -132,47 +169,74 @@ Note: “Key tables” are taken from Flyway migrations in `erp-domain/src/main/
 ### SALES (Dealers/Orders/Dispatch Confirm Trigger/Invoice issuance)
 - Code: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/**` + `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/invoice/**`
 - Primary controllers:
-  - `DealerController` (`/api/v1/dealers/**`)
-  - `SalesController` (`/api/v1/sales/**`)
-  - `CreditLimitOverrideController` (`/api/v1/sales/credit-limit-overrides/**`)
-  - `InvoiceController` (`/api/v1/invoices/**`)
-  - `DealerPortalController` (`/api/v1/dealer-portal/**`)
+  - `DealerController` (`/api/v1/dealers`)
+  - `SalesController` (`/api/v1` with `/sales/**` endpoints)
+  - `CreditLimitOverrideController` (`/api/v1/credit/override-requests`)
+  - `InvoiceController` (`/api/v1/invoices`)
+  - `DealerPortalController` (`/api/v1/dealer-portal`)
+- Primary services:
+  - `SalesService`
+  - `SalesFulfillmentService`
+  - `SalesJournalService`
+  - `SalesReturnService`
+  - `DealerService`
+  - `DealerPortalService`
+  - `DunningService`
+  - `CreditLimitOverrideService`
+  - `OrderNumberService`
+  - `InvoiceService`
+  - `InvoicePdfService`
+  - `InvoiceNumberService`
 - Key tables (representative):
   - `dealers`
-  - `sales_orders`, `sales_order_items`
-  - `packaging_slips` (dispatch artifact; may live under inventory migrations)
-  - `invoices` (+ journal linkage via `invoice_journal_link` migration)
-  - `dealer_ledger_entries`
+  - `sales_orders`, `sales_order_items`, `order_sequences`
+  - `credit_requests`, `credit_limit_override_requests`
+  - `promotions`, `sales_targets`
+  - `invoices`, `invoice_lines`, `invoice_sequences`
+  - `packaging_slips`, `packaging_slip_lines` (dispatch artifacts; inventory-owned)
 - Financial touchpoints:
-  - Dispatch confirmation posts inventory movements and (typically) invoices + journals (AR/COGS/inventory).
-  - Dealer settlements update dealer ledger + allocations and post journals.
+  - Dispatch confirmation posts inventory movements and invoice/AR + COGS journals (`SalesService.confirmDispatch`).
+  - Sales orders carry idempotency markers (`sales_orders.sales_journal_entry_id`, `sales_orders.cogs_journal_entry_id`).
+  - Dealer settlements update dealer ledger + allocations and post journals (via accounting flows).
   - Rounding/tax computations must be stable and auditable (GST inclusive rules).
 
 ### INVENTORY (Finished goods, raw materials, movements, opening stock, adjustments)
 - Code: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/**`
 - Primary controllers:
-  - `DispatchController` (dispatch workflows; verify mapping to `/api/v1/dispatch/**`)
+  - `DispatchController` (`/api/v1/dispatch`)
   - `FinishedGoodController`
   - `RawMaterialController`
   - `InventoryAdjustmentController`
   - `OpeningStockImportController`
+- Primary services:
+  - `FinishedGoodsService`
+  - `RawMaterialService`
+  - `InventoryAdjustmentService`
+  - `OpeningStockImportService`
+  - `BatchNumberService`
 - Key tables (representative):
   - `finished_goods`, `finished_good_batches`
-  - `inventory_movements` (+ journal linkage via `inventory_movement_journal_link` migration)
+  - `inventory_movements`, `inventory_reservations`
   - `raw_materials`, `raw_material_batches`, `raw_material_movements`
-  - `packaging_slips`
+  - `inventory_adjustments`, `inventory_adjustment_lines`
+  - `packaging_slips`, `packaging_slip_lines`
 - Financial touchpoints:
-  - Inventory movements (receipt/issue/adjustment) must be ordered, idempotent, and linked when posting is expected.
+  - `inventory_movements.journal_entry_id` + `raw_material_movements.journal_entry_id` link to journals (V29).
+  - `inventory_adjustments.journal_entry_id` links adjustments to journals (V60).
+  - `packaging_slips` include `journal_entry_id` + `cogs_journal_entry_id` on dispatch (V64).
   - Opening stock import must be idempotent and tie to opening balance journals when configured.
 
 ### PURCHASING/AP (Suppliers, purchases/receipts, supplier settlements/payments)
 - Code: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/purchasing/**`
 - Primary controllers:
-  - `SupplierController` (`/api/v1/suppliers/**`)
-  - `RawMaterialPurchaseController` (`/api/v1/purchasing/raw-material-purchases/**`)
+  - `SupplierController` (`/api/v1/suppliers`)
+  - `RawMaterialPurchaseController` (`/api/v1/purchasing/raw-material-purchases`)
+- Primary services:
+  - `SupplierService`
+  - `PurchasingService`
 - Key tables (representative):
   - `suppliers`
-  - `raw_material_purchases` (+ items/lines; verify)
+  - `raw_material_purchases`, `raw_material_purchase_items`
   - `raw_material_movements` (receipts/returns)
   - `supplier_ledger_entries`, `partner_settlement_allocations`
 - Financial touchpoints:
@@ -184,29 +248,43 @@ Note: “Key tables” are taken from Flyway migrations in `erp-domain/src/main/
   - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/**`
   - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/production/**`
 - Primary controllers:
-  - `FactoryController`
-  - `ProductionLogController`
-  - `PackingController`
-  - `PackagingMappingController`
-  - `ProductionCatalogController`
+  - `FactoryController` (`/api/v1/factory`)
+  - `ProductionLogController` (`/api/v1/factory/production/logs`)
+  - `PackingController` (`/api/v1/factory`)
+  - `PackagingMappingController` (`/api/v1/factory/packaging-mappings`)
+  - `ProductionCatalogController` (`/api/v1/production`)
+- Primary services:
+  - `FactoryService`
+  - `ProductionLogService`
+  - `PackingService`
+  - `BulkPackingService`
+  - `CostAllocationService`
+  - `PackagingMaterialService`
+  - `ProductionCatalogService`
 - Key tables (representative):
   - factory ops: `production_plans`, `production_batches`, `factory_tasks`
   - production logs: `production_logs`, `production_log_materials`
-  - packing/catalog: `packing_records`, product/brand/catalog tables (`products`, `brands`, `product_variants`, pricing tables; verify)
-  - inventory movements and batches (RM + FG)
+  - packing/catalog: `packing_records`, `packaging_size_mappings`, `production_products`, `production_brands`, `production_categories`
+  - inventory movements and batches (RM + FG) live under inventory module tables
 - Financial touchpoints:
-  - Production logs consume RM and create WIP/FG movements; costing journals (WIP→FG, COGS) must be traceable where enabled.
+  - Production logs consume RM and create WIP/FG movements; costing journals (WIP→FG, COGS) are posted via `CostAllocationService`.
   - Packing must not create orphan finished goods batches/movements.
 
 ### HR/PAYROLL (Employees, leave, payroll runs, posting + payment marking)
 - Code: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/**` + accounting payroll endpoints
 - Primary controllers:
-  - `HrController`
-  - `HrPayrollController` (HR payroll runs alias endpoints; verify)
+  - `HrController` (`/api/v1/hr`)
+  - `HrPayrollController` (`/api/v1/payroll`)
+  - `PayrollController` (`/api/v1/accounting/payroll`)
+- Primary services:
+  - `HrService`
+  - `PayrollService`
+  - `PayrollCalculationService`
+  - `AttendanceService`
 - Key tables (representative):
-  - `employees`, `leave_requests`
-  - `payroll_runs` (+ totals migration)
-  - payroll line/adjustment tables (verify)
+  - `employees`, `leave_requests`, `attendance`
+  - `payroll_runs` (includes `journal_entry_id` + `journal_entry_ref_id`)
+  - `payroll_run_lines`
 - Financial touchpoints:
   - Payroll run calculate→approve→post must produce a linked journal.
   - Payroll payments/mark-paid must be auditable and reversible where intended.
@@ -218,15 +296,57 @@ Note: “Key tables” are taken from Flyway migrations in `erp-domain/src/main/
 - Financial touchpoints:
   - None directly (read-only), but must never expose cross‑dealer or cross‑company data.
 
+### PORTAL (Admin insights)
+- Code: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/portal/**`
+- Primary controllers:
+  - `PortalInsightsController` (`/api/v1/portal`)
+- Primary services:
+  - `PortalInsightsService`
+  - `EnterpriseDashboardService`
+- Key tables (representative):
+  - None (aggregates from other modules)
+- Financial touchpoints:
+  - None directly (read-only aggregation).
+
+### REPORTS (Financial + ops reporting)
+- Code: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/reports/**`
+- Primary controllers:
+  - `ReportController` (`/api/v1/reports/**` and `/api/v1/accounting/reports/aged-debtors`)
+- Primary services:
+  - `ReportService`
+- Key tables (representative):
+  - None (read-only; queries accounting/inventory tables)
+- Financial touchpoints:
+  - None directly; outputs reconciliation/statement data that must tie to ledger + movements.
+
+### DEMO (Non-production test surface)
+- Code: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/demo/**`
+- Primary controllers:
+  - `DemoController` (`/api/v1/demo`)
+- Primary services:
+  - None
+- Key tables (representative):
+  - None
+- Financial touchpoints:
+  - None.
+
 ### ORCHESTRATOR/OUTBOX (Workflows, auto-approval, background processing)
 - Code: `erp-domain/src/main/java/com/bigbrightpaints/erp/orchestrator/**`
 - Primary controllers:
-  - `DashboardController` (admin dashboards)
-  - `OrchestratorController` (workflow actions, traces, health endpoints)
+  - `DashboardController` (`/api/v1/orchestrator/dashboard`)
+  - `OrchestratorController` (`/api/v1/orchestrator`)
   - `IntegrationHealthController` (`/api/integration/health`, permitAll)
+- Primary services:
+  - `CommandDispatcher`
+  - `TraceService`
+  - `EventPublisherService`
+  - `WorkflowService`
+  - `SchedulerService`
+  - `ExternalSyncService`
+  - `DashboardAggregationService`
 - Key tables (representative):
   - `orchestrator_outbox`, `orchestrator_audit`, `scheduled_jobs`
+  - `order_auto_approval_state`
 - Financial touchpoints:
   - At-least-once dispatching must be idempotent; retries must not duplicate postings/movements.
   - Trace/audit endpoints must not leak sensitive data; health endpoints must be safe for public exposure.
-
