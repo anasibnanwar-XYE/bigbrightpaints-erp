@@ -13,7 +13,7 @@
 
 ## Repo / Worktree State
 - Worktree: `/home/realnigga/Desktop/CLI_BACKEND_epic04`
-- Branch: `debug-03-auditability-linkage` (Task 03 M2 complete, tip `460c1bc`)
+- Branch: `debug-03-auditability-linkage` (Task 03 M3 complete, tip `e9b3dc6`)
 - Dirty: no
 
 ## Environment Setup
@@ -23,7 +23,7 @@
 - `mvn -f erp-domain/pom.xml -DskipTests compile` (PASS).
 - `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check` (PASS; 30804 violations reported).
 - `mvn -f erp-domain/pom.xml test` (PASS; Tests run 206, Failures 0, Errors 0, Skipped 4).
-- `mvn -f erp-domain/pom.xml -Dtest=ErpInvariantsSuiteIT test` (PASS; Tests run 9, Failures 0, Errors 0, Skipped 0).
+- `mvn -f erp-domain/pom.xml -Dtest=ReconciliationControlsIT,InventoryGlReconciliationIT test` (PASS; Tests run 4, Failures 0, Errors 0, Skipped 0).
 
 ## Warnings / Notes
 - Checkstyle baseline warnings (30804) persisted with failOnViolation=false.
@@ -37,8 +37,10 @@
 - `mvn test` warnings about negative balance and invalid company ID surfaced in M1 logs.
 - `openapi.json` newline-only change reverted per contract policy.
 - Task 03 M2 warnings: negative balances/invalid company ID format in fixtures; dispatch debit/credit accounts not configured (COGS postings skipped).
+- Task 03 M3 assertion list + sample outputs captured; `mvn test` warnings (negative balances/invalid company ID format) and focused test warnings (dispatch debit/credit accounts not configured) persisted.
 
 ## Resume Instructions (Post Epic 10)
-1. Task 03 M2 complete on `debug-03-auditability-linkage` at `460c1bc`.
-2. Run Task 03 M3: define evidence chain assertions in `tasks/debugging/task-03-auditability-and-linkage-contracts.md`.
-3. Run gates + focused tests `mvn -f erp-domain/pom.xml -Dtest=ReconciliationControlsIT,InventoryGlReconciliationIT test`, log to `docs/ops_and_debug/LOGS/`.
+1. Task 03 M3 complete on `debug-03-auditability-linkage` at `e9b3dc6`.
+2. Run Task 03 final gates (compile/checkstyle/test + `ReconciliationControlsIT,InventoryGlReconciliationIT`) and log to `docs/ops_and_debug/LOGS/`.
+3. Update `docs/ops_and_debug/EVIDENCE.md`, `erp-domain/docs/STABILIZATION_LOG.md`, and `HYDRATION.md` with final gate results; commit.
+4. Push branch and prepare Task 03 completion report.

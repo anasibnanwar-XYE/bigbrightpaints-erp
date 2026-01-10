@@ -1220,3 +1220,19 @@
   - `ErpInvariantsSuiteIT` succeeded: Tests run 9, Failures 0, Errors 0, Skipped 0.
 - Warnings/notes:
   - Fixture warnings: negative balances, invalid company ID format, dispatch debit/credit accounts not configured (see evidence logs).
+
+## 2026-01-10 (debug-03 M3 evidence chain assertions)
+- Changes:
+  - Added runnable assertion list + sample outputs to Task 03.
+- Commands run:
+  - `mvn -f erp-domain/pom.xml -DskipTests compile`
+  - `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check`
+  - `mvn -f erp-domain/pom.xml test`
+  - `mvn -f erp-domain/pom.xml -Dtest=ReconciliationControlsIT,InventoryGlReconciliationIT test`
+- Validation:
+  - `mvn -DskipTests compile` succeeded.
+  - Checkstyle reported 30804 violations; `failOnViolation=false` used for baseline visibility.
+  - `mvn test` succeeded: Tests run 206, Failures 0, Errors 0, Skipped 4.
+  - Focused reconciliation tests succeeded: Tests run 4, Failures 0, Errors 0, Skipped 0.
+- Warnings/notes:
+  - Fixture warnings: negative balances, invalid company ID format; dispatch debit/credit accounts not configured (see evidence logs).
