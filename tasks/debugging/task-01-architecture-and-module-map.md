@@ -350,3 +350,142 @@ Note: “Key tables” are taken from Flyway migrations in `erp-domain/src/main/
 - Financial touchpoints:
   - At-least-once dispatching must be idempotent; retries must not duplicate postings/movements.
   - Trace/audit endpoints must not leak sensitive data; health endpoints must be safe for public exposure.
+
+---
+
+## M2 — Financial touchpoints and evidence chain (verified list)
+
+### Accounting (GL/Journals/Periods/Settlements)
+- Journal entry create/reverse (`POST /api/v1/accounting/journal-entries`, `/api/v1/accounting/journal-entries/{entryId}/reverse`, `/api/v1/accounting/journal-entries/{entryId}/cascade-reverse`; `AccountingService`)
+  - Source document: journal entry request or reversal request
+  - Journal entry: `journal_entries`, `journal_lines`, `journal_reference_mappings`
+  - Ledger/subledger: `dealer_ledger_entries` or `supplier_ledger_entries` when partner control accounts are posted
+  - Reconciliation: `/api/v1/reports/trial-balance`, `/api/v1/reports/balance-sheet`, `/api/v1/reports/profit-loss`
+  - Idempotent: REQUIRED (reference_number unique per company; reversal_of_id linkage)
+- Dealer receipts/settlements (`POST /api/v1/accounting/receipts/dealer`, `/api/v1/accounting/settlements/dealers`; `AccountingService`)
+  - Source document: DealerReceiptRequest / DealerSettlementRequest with invoice refs
+  - Journal entry: `journal_entries` + `partner_settlement_allocations`
+  - Ledger/subledger: `dealer_ledger_entries` (invoice_number, journal_entry_id)
+  - Reconciliation: `/api/v1/accounting/statements/dealers/{dealerId}`, `/api/v1/accounting/aging/dealers/{dealerId}`, `/api/v1/accounting/reports/aging/dealer/{dealerId}`
+  - Idempotent: REQUIRED (reference_number + allocations)
+- Supplier payments/settlements (`POST /api/v1/accounting/suppliers/payments`, `/api/v1/accounting/settlements/suppliers`; `AccountingService`)
+  - Source document: SupplierPaymentRequest / SupplierSettlementRequest
+  - Journal entry: `journal_entries` + `partner_settlement_allocations`
+  - Ledger/subledger: `supplier_ledger_entries`
+  - Reconciliation: `/api/v1/accounting/statements/suppliers/{supplierId}`, `/api/v1/accounting/aging/suppliers/{supplierId}`
+  - Idempotent: REQUIRED (reference_number + allocations)
+- Payroll payments (`POST /api/v1/accounting/payroll/payments`, `/api/v1/accounting/payroll/payments/batch`; `AccountingService`)
+  - Source document: payroll_run + payment request
+  - Journal entry: `journal_entries` linked to `payroll_runs.journal_entry_id`
+  - Ledger/subledger: GL only (cash/bank accounts)
+  - Reconciliation: `/api/v1/reports/trial-balance`, `/api/v1/reports/balance-sheet`
+  - Idempotent: REQUIRED (payroll_run journal_entry_id, payment reference)
+- Period lock/close/reopen (`POST /api/v1/accounting/periods/{periodId}/lock|close|reopen`; `AccountingPeriodService`)
+  - Source document: `accounting_periods`
+  - Journal entry: `accounting_periods.closing_journal_entry_id` when closing posts entries
+  - Ledger/subledger: trial balance and statements
+  - Reconciliation: `/api/v1/reports/trial-balance`, `/api/v1/reports/balance-warnings`
+  - Idempotent: REQUIRED (single close/lock per period)
+- Inventory revaluation/WIP/landed cost (`POST /api/v1/accounting/inventory/revaluation`, `/api/v1/accounting/inventory/wip-adjustment`, `/api/v1/accounting/inventory/landed-cost`; `AccountingService`)
+  - Source document: revaluation/adjustment request
+  - Journal entry: `journal_entries` + `journal_lines`
+  - Ledger/subledger: GL only
+  - Reconciliation: `/api/v1/reports/inventory-valuation`, `/api/v1/reports/inventory-reconciliation`
+  - Idempotent: REQUIRED (reference_number)
+- Credit/debit notes and bad debt write-offs (`POST /api/v1/accounting/credit-notes`, `/api/v1/accounting/debit-notes`, `/api/v1/accounting/bad-debts/write-off`; `AccountingService`)
+  - Source document: credit/debit note request
+  - Journal entry: `journal_entries` + `journal_lines`
+  - Ledger/subledger: dealer/supplier ledgers when partner control accounts are posted
+  - Reconciliation: statements/aging + trial balance
+  - Idempotent: REQUIRED (reference_number)
+- Onboarding opening balances (`POST /api/v1/accounting/onboarding/opening-stock`, `/api/v1/accounting/onboarding/opening-balances/dealers`, `/api/v1/accounting/onboarding/opening-balances/suppliers`; `OnboardingService`)
+  - Source document: onboarding request + batch codes
+  - Journal entry: `journal_entries` (opening balances) + `inventory_movements` for opening stock
+  - Ledger/subledger: dealer/supplier ledger for opening balances
+  - Reconciliation: inventory valuation + AR/AP aging + trial balance
+  - Idempotent: REQUIRED (deterministic reference numbers; verify in code)
+
+### Sales + Invoice (O2C)
+- Dispatch confirmation (`POST /api/v1/sales/dispatch/confirm` or `/api/v1/dispatch/confirm`; `SalesService.confirmDispatch`)
+  - Source document: `sales_orders` + `packaging_slips` + dispatch request
+  - Journal entry: `packaging_slips.journal_entry_id` (AR/revenue), `packaging_slips.cogs_journal_entry_id`; `invoices.journal_entry_id`
+  - Ledger/subledger: `dealer_ledger_entries`, `partner_settlement_allocations`
+  - Reconciliation: `/api/v1/reports/inventory-reconciliation`, `/api/v1/accounting/statements/dealers/{dealerId}`, `/api/v1/accounting/aging/dealers/{dealerId}`, `/api/v1/reports/trial-balance`
+  - Idempotent: REQUIRED (`sales_orders.sales_journal_entry_id`, `sales_orders.cogs_journal_entry_id`, slip status)
+- Dealer receipts/settlements are recorded under Accounting (see above)
+
+### Purchasing/AP (P2P)
+- Raw material purchase (`POST /api/v1/purchasing/raw-material-purchases`; `PurchasingService`)
+  - Source document: `raw_material_purchases` + items + supplier invoice
+  - Journal entry: `raw_material_purchases.journal_entry_id`; `raw_material_movements.journal_entry_id`
+  - Ledger/subledger: `supplier_ledger_entries`, `partner_settlement_allocations`
+  - Reconciliation: `/api/v1/accounting/aging/suppliers/{supplierId}`, `/api/v1/accounting/statements/suppliers/{supplierId}`, `/api/v1/reports/inventory-valuation`, `/api/v1/reports/trial-balance`
+  - Idempotent: REQUIRED (reference_number via ReferenceNumberService)
+- Purchase return (`POST /api/v1/purchasing/raw-material-purchases/returns`; `PurchasingService.recordPurchaseReturn`)
+  - Source document: purchase return request
+  - Journal entry: `journal_entries` + `raw_material_movements` (reference_type=PURCHASE_RETURN)
+  - Ledger/subledger: `supplier_ledger_entries`
+  - Reconciliation: supplier statements/aging + trial balance
+  - Idempotent: REQUIRED (reference_number)
+
+### Inventory
+- Raw material intake (`POST /api/v1/raw-materials/intake`; `RawMaterialService`)
+  - Source document: RawMaterialIntakeRequest + RawMaterialBatch
+  - Journal entry: `journal_entries` via `postInventoryReceipt`; `raw_material_movements.journal_entry_id`
+  - Ledger/subledger: supplier ledger when payable account is used
+  - Reconciliation: `/api/v1/reports/inventory-valuation`, `/api/v1/reports/inventory-reconciliation`, supplier aging
+  - Idempotent: REQUIRED (reference_number uses batch code; verify duplicate handling)
+- Inventory adjustments (`POST /api/v1/inventory/adjustments`; `InventoryAdjustmentService`)
+  - Source document: `inventory_adjustments` + lines
+  - Journal entry: `inventory_adjustments.journal_entry_id`, `inventory_movements.journal_entry_id`
+  - Ledger/subledger: GL only
+  - Reconciliation: `/api/v1/reports/inventory-valuation`, `/api/v1/reports/inventory-reconciliation`
+  - Idempotent: REQUIRED (journal_entry_id on adjustment)
+- Opening stock import (`POST /api/v1/inventory/opening-stock`; `OpeningStockImportService`)
+  - Source document: CSV import -> `inventory_movements` (reference_type=OPENING_STOCK)
+  - Journal entry: NONE in import service (opening balance journals handled via onboarding)
+  - Ledger/subledger: N/A unless opening balance posting is done separately
+  - Reconciliation: inventory valuation + inventory vs GL
+  - Idempotent: REQUIRED (no import id tracking observed; verify)
+
+### Factory/Production
+- Production logs (`POST /api/v1/factory/production/logs`; `ProductionLogService`)
+  - Source document: `production_logs` + materials
+  - Journal entry: inventory movements; journals posted via cost allocation when configured
+  - Ledger/subledger: GL through inventory movements
+  - Reconciliation: `/api/v1/reports/inventory-valuation`, `/api/v1/reports/inventory-reconciliation`
+  - Idempotent: REQUIRED (production_code used as reference_id; verify duplicates)
+- Packing and bulk pack (`POST /api/v1/factory/packing-records`, `/api/v1/factory/pack`; `PackingService`/`BulkPackingService`)
+  - Source document: `packing_records` + finished_good_batches
+  - Journal entry: inventory movements
+  - Ledger/subledger: GL via inventory movements
+  - Reconciliation: inventory valuation/reconciliation
+  - Idempotent: REQUIRED (packing record id)
+- Cost allocation (`POST /api/v1/factory/cost-allocation`; `CostAllocationService`)
+  - Source document: cost allocation request
+  - Journal entry: `journal_entries` from `AccountingFacade.postCostAllocation`
+  - Ledger/subledger: GL only
+  - Reconciliation: trial balance + inventory valuation
+  - Idempotent: REQUIRED (allocation reference; verify)
+
+### HR/Payroll
+- Payroll post (`POST /api/v1/payroll/runs/{id}/post`; `PayrollService.postPayrollToAccounting`)
+  - Source document: `payroll_runs` + run lines + attendance
+  - Journal entry: `payroll_runs.journal_entry_id` + `journal_entry_ref_id`
+  - Ledger/subledger: GL only
+  - Reconciliation: `/api/v1/reports/trial-balance`, payroll reports
+  - Idempotent: REQUIRED (journal_entry_id markers)
+- Payroll mark-paid (`POST /api/v1/payroll/runs/{id}/mark-paid` and accounting payroll payments)
+  - Source document: payroll run + payment reference
+  - Journal entry: payment journal entry (accounting)
+  - Ledger/subledger: GL only
+  - Reconciliation: trial balance + payroll reports
+  - Idempotent: REQUIRED (payment reference)
+
+### Orchestrator/Outbox
+- Workflow dispatch and payroll triggers (`POST /api/v1/orchestrator/dispatch`, `/api/v1/orchestrator/orders/{orderId}/fulfillment`, `/api/v1/orchestrator/payroll/run`)
+  - Source document: orchestrator command + traceId
+  - Journal entry: downstream postings in sales/inventory/payroll modules
+  - Ledger/subledger: downstream ledgers
+  - Reconciliation: same reports as underlying flows
+  - Idempotent: REQUIRED (outbox + traceId should prevent duplicate postings; verify)
