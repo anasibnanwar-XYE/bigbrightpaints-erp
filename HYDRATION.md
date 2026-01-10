@@ -13,7 +13,7 @@
 
 ## Repo / Worktree State
 - Worktree: `/home/realnigga/Desktop/CLI_BACKEND_epic04`
-- Branch: `debug-02-endpoint-matrix` (Task 02 M3 complete, tip `f210004`)
+- Branch: `debug-02-endpoint-matrix` (Task 02 complete, tip `f210004`)
 - Dirty: no
 
 ## Environment Setup
@@ -24,6 +24,7 @@
 - `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check` (PASS; 30804 violations reported).
 - `mvn -f erp-domain/pom.xml test` (PASS; Tests run 206, Failures 0, Errors 0, Skipped 4).
 - `mvn -f erp-domain/pom.xml -Dtest=OpenApiSnapshotIT test` (PASS; Tests run 1, Failures 0, Errors 0, Skipped 0).
+- `mvn -f erp-domain/pom.xml -Dtest=AuthControllerIT,AdminUserSecurityIT test` (PASS; Tests run 5, Failures 0, Errors 0, Skipped 0).
 
 ## Warnings / Notes
 - Checkstyle baseline warnings (30804) persisted with failOnViolation=false.
@@ -35,7 +36,5 @@
 - Deprecated endpoints ledger updated with proof requirements; no removals executed.
 
 ## Resume Instructions (Post Epic 10)
-1. Task 02 M3 complete on `debug-02-endpoint-matrix` at `f210004`.
-2. Run Task 02 final gates: compile, checkstyle (failOnViolation=false), full test suite, `mvn -f erp-domain/pom.xml -Dtest=OpenApiSnapshotIT test`, and `mvn -f erp-domain/pom.xml -Dtest=AuthControllerIT,AdminUserSecurityIT test`.
-3. Update `docs/ops_and_debug/EVIDENCE.md`, `erp-domain/docs/STABILIZATION_LOG.md`, and `HYDRATION.md`, then commit with message `debug-02: Task02 final <summary>`.
-4. Push branch `debug-02-endpoint-matrix`.
+1. Task 02 complete on `debug-02-endpoint-matrix` at `f210004`.
+2. Push branch `debug-02-endpoint-matrix`.

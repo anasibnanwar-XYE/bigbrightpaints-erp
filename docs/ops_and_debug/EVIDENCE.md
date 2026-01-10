@@ -397,6 +397,45 @@ Start: 2026-01-10T06:41:31Z
 - Status: GO
 - Blockers: none
 
+## Run 20260110T100511Z
+Start: 2026-01-10T10:05:11Z
+
+### Start condition
+- Branch: `debug-02-endpoint-matrix`
+- Commit: `95f75cb`
+- Dirty worktree: no
+- Docker: not used
+
+### Task 02 — Final gates
+- Command: `mvn -f erp-domain/pom.xml -DskipTests compile`
+- Log: `docs/ops_and_debug/LOGS/20260110T100511Z_task02_final_compile.txt`
+- Exit: 0
+- Summary: BUILD SUCCESS
+
+- Command: `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check`
+- Log: `docs/ops_and_debug/LOGS/20260110T100519Z_task02_final_checkstyle.txt`
+- Exit: 0
+- Summary: BUILD SUCCESS (violations: 30804)
+
+- Command: `mvn -f erp-domain/pom.xml test`
+- Log: `docs/ops_and_debug/LOGS/20260110T100530Z_task02_final_test.txt`
+- Exit: 0
+- Summary: Tests run 206, Failures 0, Errors 0, Skipped 4
+
+- Command: `mvn -f erp-domain/pom.xml -Dtest=OpenApiSnapshotIT test`
+- Log: `docs/ops_and_debug/LOGS/20260110T100641Z_task02_final_openapi.txt`
+- Exit: 0
+- Summary: Tests run 1, Failures 0, Errors 0, Skipped 0
+
+- Command: `mvn -f erp-domain/pom.xml -Dtest=AuthControllerIT,AdminUserSecurityIT test`
+- Log: `docs/ops_and_debug/LOGS/20260110T100710Z_task02_final_focus.txt`
+- Exit: 0
+- Summary: Tests run 5, Failures 0, Errors 0, Skipped 0
+
+### Go/No-Go
+- Status: GO
+- Blockers: none
+
 ## Run 20260110T100056Z
 Start: 2026-01-10T10:00:56Z
 
