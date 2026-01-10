@@ -1020,3 +1020,17 @@
   - Testcontainers auth config warnings and dynamic agent loading notices persisted.
   - Test logs include invalid company ID format, negative balance warnings, sequence contention retries, and dispatch mapping not configured in tests; no failures.
   - Docker logs note licensing enforcement disabled (erp.licensing.enforce=false).
+
+## 2026-01-10 (epic-10 onboarding integrity -- opening balance idempotency fix)
+- Changes:
+  - Reused existing opening balance journals for dealer/supplier retries; reject idempotency conflicts and backfill missing ledger links.
+- Commands run:
+  - `mvn -f erp-domain/pom.xml -DskipTests compile`
+  - `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check`
+  - `mvn -f erp-domain/pom.xml test`
+- Validation:
+  - `mvn -DskipTests compile` succeeded.
+  - Checkstyle reported 30804 violations; `failOnViolation=false` used for baseline visibility.
+  - `mvn test` succeeded: Tests run 206, Failures 0, Errors 0, Skipped 4.
+- Warnings/notes:
+  - Test logs include expected warnings (invalid company IDs, negative balances, dynamic agent loading); no failures.
