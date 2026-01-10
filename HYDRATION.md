@@ -13,7 +13,7 @@
 
 ## Repo / Worktree State
 - Worktree: `/home/realnigga/Desktop/CLI_BACKEND_epic04`
-- Branch: `debug-01-module-map` (Task 01 complete, tip `69bc1ff`)
+- Branch: `debug-02-endpoint-matrix` (Task 02 M1 complete, tip `7fc8aa0`)
 - Dirty: no
 
 ## Environment Setup
@@ -24,16 +24,17 @@
 - `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check` (PASS; 30804 violations reported).
 - `mvn -f erp-domain/pom.xml test` (PASS; Tests run 206, Failures 0, Errors 0, Skipped 4).
 - `mvn -f erp-domain/pom.xml -Dtest=OpenApiSnapshotIT test` (PASS; Tests run 1, Failures 0, Errors 0, Skipped 0).
-- `mvn -f erp-domain/pom.xml -Dtest=ErpInvariantsSuiteIT,ReconciliationControlsIT,PeriodCloseLockIT test` (PASS; Tests run 14, Failures 0, Errors 0, Skipped 0).
+- `endpoint_inventory.tsv vs openapi.json drift scan` (PASS; see evidence log).
 
 ## Warnings / Notes
 - Checkstyle baseline warnings (30804) persisted with failOnViolation=false.
 - Endpoint inventory mismatch: openapi has endpoints missing from endpoint_inventory.tsv; inventory-only includes `/api/integration/health` (see evidence log).
+- Alias handler drift flagged for `AccountingController#recordDealerReceipt` (cascade-reverse vs receipts/dealer path in endpoint inventory scan).
 - Idempotency verification flagged for opening stock import and raw material intake (see Task 01 M2 list).
 - Gap checklist flagged CSV opening stock import tests, raw material intake journal linkage tests, orchestrator trigger linkage tests, and dealer portal scoping tests.
 
 ## Resume Instructions (Post Epic 10)
-1. Task 01 complete on `debug-01-module-map` at `69bc1ff`.
-2. Push branch and produce Task 01 completion report.
-3. Create Task 02 branch: `debug-02-<short-slug>` from `debug-01-module-map`.
-4. Read `tasks/debugging/task-02-endpoint-and-portal-matrix.md`, then execute milestones with required gates/tests.
+1. Task 02 M1 complete on `debug-02-endpoint-matrix` at `7fc8aa0`.
+2. Next milestone: Task 02 M2 - build `docs/API_PORTAL_MATRIX.md` with endpoint -> portal -> auth mapping and flag authenticated-only endpoints.
+3. After M2 run gates: compile, checkstyle (failOnViolation=false), full test suite, and `mvn -f erp-domain/pom.xml -Dtest=AuthControllerIT,AdminUserSecurityIT test`.
+4. Update `docs/ops_and_debug/EVIDENCE.md`, `erp-domain/docs/STABILIZATION_LOG.md`, and `HYDRATION.md`, then commit with message `debug-02: M2 <summary>`.

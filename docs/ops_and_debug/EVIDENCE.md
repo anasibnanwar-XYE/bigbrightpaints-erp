@@ -511,3 +511,47 @@ Start: 2026-01-10T07:07:12Z
 ### Go/No-Go
 - Status: GO
 - Blockers: none
+
+## Run 20260110T071320Z
+Start: 2026-01-10T07:13:20Z
+
+### Start condition
+- Branch: `debug-02-endpoint-matrix`
+- Commit: `7fc8aa0`
+- Dirty worktree: no
+- Docker: not used
+
+### Task 02 — Milestone M1 (API drift reconciliation)
+- Command: endpoint inventory vs OpenAPI drift scan (jq + comm + alias scan)
+- Log: `docs/ops_and_debug/LOGS/20260110T071320Z_task02_M1_endpoint_drift.txt`
+- Exit: 0
+- Summary: inventory_only includes GET /api/integration/health; openapi_only list captured; alias detected for AccountingController#recordDealerReceipt (mapped to cascade-reverse + receipts/dealer).
+
+- Command: `mvn -f erp-domain/pom.xml -DskipTests compile`
+- Log: `docs/ops_and_debug/LOGS/20260110T071349Z_task02_M1_compile.txt`
+- Exit: 0
+- Summary: BUILD SUCCESS
+
+- Command: `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check`
+- Log: `docs/ops_and_debug/LOGS/20260110T071358Z_task02_M1_checkstyle.txt`
+- Exit: 0
+- Summary: BUILD SUCCESS (violations: 30804)
+
+- Command: `mvn -f erp-domain/pom.xml test`
+- Log: `docs/ops_and_debug/LOGS/20260110T071409Z_task02_M1_test.txt`
+- Exit: 0
+- Summary: Tests run 206, Failures 0, Errors 0, Skipped 4
+
+- Command: `mvn -f erp-domain/pom.xml -Dtest=OpenApiSnapshotIT test`
+- Log: `docs/ops_and_debug/LOGS/20260110T071526Z_task02_M1_openapi.txt`
+- Exit: 0
+- Summary: Tests run 1, Failures 0, Errors 0, Skipped 0
+
+### Drift report highlights
+- openapi_only list includes accounting hierarchy/aging endpoints and onboarding endpoints not present in endpoint_inventory.tsv (see log for full list).
+- inventory_only includes `/api/integration/health` (present in code scan, missing in OpenAPI snapshot).
+- Alias detection suggests handler mapping drift for `AccountingController#recordDealerReceipt` in endpoint inventory (see log).
+
+### Go/No-Go
+- Status: GO
+- Blockers: none

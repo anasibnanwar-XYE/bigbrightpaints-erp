@@ -1126,3 +1126,20 @@
   - Focused tests succeeded: Tests run 14, Failures 0, Errors 0, Skipped 0.
 - Warnings/notes:
   - OpenAPI snapshot normalized after test run (newline change only).
+
+## 2026-01-10 (debug-02 M1 API drift reconciliation)
+- Changes:
+  - Recorded OpenAPI vs endpoint inventory drift and alias/duplicate handler scan (no code changes).
+- Commands run:
+  - `mvn -f erp-domain/pom.xml -DskipTests compile`
+  - `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check`
+  - `mvn -f erp-domain/pom.xml test`
+  - `mvn -f erp-domain/pom.xml -Dtest=OpenApiSnapshotIT test`
+- Validation:
+  - `mvn -DskipTests compile` succeeded.
+  - Checkstyle reported 30804 violations; `failOnViolation=false` used for baseline visibility.
+  - `mvn test` succeeded: Tests run 206, Failures 0, Errors 0, Skipped 4.
+  - `OpenApiSnapshotIT` succeeded: Tests run 1, Failures 0, Errors 0, Skipped 0.
+- Warnings/notes:
+  - Drift detected: OpenAPI contains endpoints not present in endpoint_inventory.tsv; endpoint_inventory includes `/api/integration/health` not present in OpenAPI.
+  - Alias handler drift flagged for `AccountingController#recordDealerReceipt` (cascade-reverse vs receipts/dealer path).
