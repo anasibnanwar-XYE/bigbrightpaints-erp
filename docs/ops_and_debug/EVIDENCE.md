@@ -914,3 +914,29 @@ Start: 2026-01-10T07:13:20Z
 ### Go/No-Go
 - Status: GO
 - Blockers: none
+
+### Task 04 — Milestone M5 (Admin/Auth/Dealer portal deep debug)
+- Command: `mvn -f erp-domain/pom.xml -DskipTests compile`
+- Log: `docs/ops_and_debug/LOGS/20260110T135434Z_task04_M5_compile.txt`
+- Exit: 0
+- Summary: BUILD SUCCESS
+
+- Command: `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check`
+- Log: `docs/ops_and_debug/LOGS/20260110T135451Z_task04_M5_checkstyle.txt`
+- Exit: 0
+- Summary: BUILD SUCCESS (violations: 30804)
+
+- Command: `mvn -f erp-domain/pom.xml test`
+- Log: `docs/ops_and_debug/LOGS/20260110T135505Z_task04_M5_test.txt`
+- Exit: 0
+- Summary: Tests run 210, Failures 0, Errors 0, Skipped 4 (warnings: negative balances, invalid company ID format).
+
+- Command: `mvn -f erp-domain/pom.xml -Dtest=AuthControllerIT,AuthHardeningIT,MfaControllerIT,AdminUserSecurityIT test`
+- Log: `docs/ops_and_debug/LOGS/20260110T135624Z_task04_M5_focus_auth.txt`
+- Exit: 0
+- Summary: Tests run 12, Failures 0, Errors 0, Skipped 0.
+
+### Notes
+- API evidence captured in focused log: admin unauth/role mismatch, dealer portal ledger read-only, cross-dealer/cross-company ledger rejection, and cross-company admin update (`M5 API evidence ...` lines).
+- Dealer portal read-only enforced for order creation (403) and dealer-only ledger access.
+- `openapi.json` newline-only change observed during tests and reverted per contract policy.

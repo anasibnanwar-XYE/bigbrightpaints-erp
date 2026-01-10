@@ -1322,3 +1322,21 @@
 - Warnings/notes:
   - Fixture warnings persisted (negative balances, invalid company ID format).
   - `openapi.json` newline-only change reverted per contract policy.
+
+## 2026-01-10 (debug-04 M5 Admin/Auth/Dealer portal deep debug)
+- Changes:
+  - Raised dealer portal cross-dealer access to AccessDenied (403) via `DealerPortalService`.
+  - Added auth/admin evidence coverage for dealer portal scoping and read-only enforcement in `AdminUserSecurityIT`.
+- Commands run:
+  - `mvn -f erp-domain/pom.xml -DskipTests compile`
+  - `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check`
+  - `mvn -f erp-domain/pom.xml test`
+  - `mvn -f erp-domain/pom.xml -Dtest=AuthControllerIT,AuthHardeningIT,MfaControllerIT,AdminUserSecurityIT test`
+- Validation:
+  - `mvn -DskipTests compile` succeeded.
+  - Checkstyle reported 30804 violations; `failOnViolation=false` used for baseline visibility.
+  - `mvn test` succeeded: Tests run 210, Failures 0, Errors 0, Skipped 4.
+  - Focused auth/admin suite succeeded: Tests run 12, Failures 0, Errors 0, Skipped 0.
+- Warnings/notes:
+  - Fixture warnings persisted (negative balances, invalid company ID format).
+  - `openapi.json` newline-only change reverted per contract policy.
