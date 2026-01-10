@@ -21,7 +21,16 @@ public class TraceService {
         auditRepository.save(record);
     }
 
-    public List<AuditRecord> getTrace(String traceId) {
-        return auditRepository.findByTraceIdOrderByTimestampAsc(traceId);
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public List<TraceEvent> getTrace(String traceId) {
+        return auditRepository.findByTraceIdOrderByTimestampAsc(traceId).stream()
+                .map(record -> new TraceEvent(
+                        record.getId().toString(),
+                        record.getEventType(),
+                        record.getTimestamp(),
+                        record.getDetails()))
+                .toList();
     }
+
+    public record TraceEvent(String id, String eventType, Instant timestamp, String details) {}
 }

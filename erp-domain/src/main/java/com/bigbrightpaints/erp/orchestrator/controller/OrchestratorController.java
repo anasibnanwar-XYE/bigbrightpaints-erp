@@ -95,16 +95,19 @@ public class OrchestratorController {
     }
 
     @GetMapping("/traces/{traceId}")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<Map<String, Object>> trace(@PathVariable String traceId) {
         return ResponseEntity.ok(Map.of("traceId", traceId, "events", traceService.getTrace(traceId)));
     }
 
     @GetMapping("/health/integrations")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<Map<String, Object>> integrationsHealth() {
         return ResponseEntity.ok(commandDispatcher.integrationHealth());
     }
 
     @GetMapping("/health/events")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<Map<String, Object>> eventHealth() {
         return ResponseEntity.ok(commandDispatcher.eventHealth());
     }
