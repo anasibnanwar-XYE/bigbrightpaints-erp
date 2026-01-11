@@ -1332,3 +1332,61 @@ Start: 2026-01-11T08:10:00Z
 ### Go/No-Go
 - Status: GO
 - Blockers: none
+
+## Run 20260111T082055Z
+Start: 2026-01-11T08:22:44Z
+
+### Start condition
+- Branch: `debug-05-reconciliation-period-controls`
+- Commit: `15a6abc0b9a0ce2f6a99efb1528a9dfb74918562`
+- Dirty worktree: yes (untracked reconciliation checklist + logs)
+- Docker: Docker version 28.2.2; running erp_domain_app/erp_db/erp_rabbit
+
+### Task 05 — Milestone M3 (reconciliation evidence pack)
+- Command: `mvn -f erp-domain/pom.xml -DskipTests compile`
+- Log: `docs/ops_and_debug/LOGS/20260111T082055Z_task05_M3_compile.txt`
+- Exit: 0
+- Summary: BUILD SUCCESS
+
+- Command: `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check`
+- Log: `docs/ops_and_debug/LOGS/20260111T082055Z_task05_M3_checkstyle.txt`
+- Exit: 0
+- Summary: BUILD SUCCESS (violations: 30807)
+
+- Command: `mvn -f erp-domain/pom.xml test`
+- Log: `docs/ops_and_debug/LOGS/20260111T082055Z_task05_M3_test.txt`
+- Exit: 0
+- Summary: Tests run 215, Failures 0, Errors 0, Skipped 4
+
+- Command: `mvn -f erp-domain/pom.xml -Dtest=ReconciliationControlsIT,InventoryGlReconciliationIT,PeriodCloseLockIT test`
+- Log: `docs/ops_and_debug/LOGS/20260111T082055Z_task05_M3_focus_recon_period.txt`
+- Exit: 0
+- Summary: Tests run 8, Failures 0, Errors 0, Skipped 0
+
+- Checklist: `docs/ops_and_debug/RECONCILIATION_EVIDENCE_CHECKLIST.md`
+
+- Command: `PGPASSWORD=erp psql -h localhost -p 55432 -U erp -d erp_domain -v company_id=1 -v as_of='2026-01-31' -v tolerance=0.01 -f docs/ops_and_debug/LOGS/20260111T082055Z_task05_M3_recon_checks.sql`
+- Log: `docs/ops_and_debug/LOGS/20260111T082055Z_task05_M3_recon_checks.txt`
+- Exit: 0
+- Summary: orphan journals 0; raw material orphan count 0; inventory orphan count 0; AR/AP variances 0; inventory control account balance 2300.00.
+
+- Command: `curl -X POST $BASE_URL/api/v1/auth/login (ops admin creds redacted)`
+- Log: `docs/ops_and_debug/LOGS/20260111T082055Z_task05_M3_login_redacted.json`
+- Exit: 0
+- Summary: login ok; token redacted.
+
+- Command: `curl -H "Authorization: Bearer <redacted>" -H "X-Company-Id: OPS" $BASE_URL/api/v1/reports/inventory-reconciliation`
+- Log: `docs/ops_and_debug/LOGS/20260111T082055Z_task05_M3_inventory_reconciliation.json`
+- Exit: 0
+- Summary: physicalInventoryValue 2300.00, ledgerInventoryBalance 2300.00, variance 0.
+
+### Invariant / reconciliation assertions
+- Assertion: No orphan journals or movements; AR/AP control ties to subledger within tolerance as-of date.
+- Evidence: `docs/ops_and_debug/LOGS/20260111T082055Z_task05_M3_recon_checks.txt` + `docs/ops_and_debug/LOGS/20260111T082055Z_task05_M3_recon_checks.sql`
+
+- Assertion: Inventory control balance matches inventory reconciliation API variance within tolerance.
+- Evidence: `docs/ops_and_debug/LOGS/20260111T082055Z_task05_M3_recon_checks.txt` + `docs/ops_and_debug/LOGS/20260111T082055Z_task05_M3_inventory_reconciliation.json`
+
+### Go/No-Go
+- Status: GO
+- Blockers: none

@@ -1,0 +1,9 @@
+{
+  "tokenType": "Bearer",
+  "accessToken": "REDACTED",
+  "refreshToken": "REDACTED",
+  "expiresIn": 900,
+  "companyCode": "OPS",
+  "displayName": "Ops Admin",
+  "mustChangePassword": false
+}

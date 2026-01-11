@@ -206,3 +206,22 @@
   1. Commit M2 changes with message `debug-05: M2 <summary>`.
   2. Continue Task 05 M3 (reconciliation evidence pack) on `debug-05-reconciliation-period-controls`.
   3. Run required gates, capture logs, update evidence/stabilization/hydration.
+
+## Update 2026-01-11 (Task 05 M3 Reconciliation evidence pack)
+- Branch: `debug-05-reconciliation-period-controls`
+- Tip: pending commit (M3 reconciliation evidence pack)
+- Dirty: yes (pre-commit)
+- Commands run:
+  - `mvn -f erp-domain/pom.xml -DskipTests compile` (PASS).
+  - `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check` (PASS; 30807 violations).
+  - `mvn -f erp-domain/pom.xml test` (PASS; Tests run 215, Failures 0, Errors 0, Skipped 4).
+  - `mvn -f erp-domain/pom.xml -Dtest=ReconciliationControlsIT,InventoryGlReconciliationIT,PeriodCloseLockIT test` (PASS; Tests run 8, Failures 0, Errors 0, Skipped 0).
+- Notes:
+  - Evidence logs captured under `docs/ops_and_debug/LOGS/20260111T082055Z_task05_M3_*` and appended to `docs/ops_and_debug/EVIDENCE.md`.
+  - Reconciliation checklist added at `docs/ops_and_debug/RECONCILIATION_EVIDENCE_CHECKLIST.md`.
+  - Fixture warnings persisted (invalid company ID format, negative balances, dispatch accounts not configured).
+  - `openapi.json` regenerated during tests and restored to repository state.
+- Resume instructions:
+  1. Commit M3 changes with message `debug-05: M3 <summary>`.
+  2. Run final gates + focused reconciliation tests for Task 05.
+  3. Capture logs, update evidence/stabilization/hydration, and push `debug-05-reconciliation-period-controls`.

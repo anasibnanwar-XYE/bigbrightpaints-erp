@@ -1,0 +1,35 @@
+1) Orphan journals (no lines)
+ id | reference_number | entry_date 
+----+------------------+------------
+(0 rows)
+
+2) Orphan raw material movements (purchase/return)
+ missing_journal 
+-----------------
+               0
+(1 row)
+
+3) Orphan inventory movements (adjustments)
+ missing_journal 
+-----------------
+               0
+(1 row)
+
+4) AR control vs dealer ledger tie-out (as-of)
+ ar_control | dealer_ledger | variance 
+------------+---------------+----------
+       0.00 |          0.00 |     0.00
+(1 row)
+
+5) AP control vs supplier ledger tie-out (as-of)
+ ap_control | supplier_ledger | variance 
+------------+-----------------+----------
+          0 |               0 |        0
+(1 row)
+
+6) Inventory control account balance
+ company_code | inventory_account_id | ledger_balance 
+--------------+----------------------+----------------
+ OPS          |                 1200 |        2300.00
+(1 row)
+
