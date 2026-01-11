@@ -31,7 +31,7 @@
 
 ## Current Task
 - Task 06 (security/RBAC + company boundaries) on `debug-06-security-rbac-boundaries`.
-- M1 complete + verified; commit pending `debug-06: M1 rbac alignment` (update SHA after commit).
+- M1 complete + verified; commit `48bfbef9647b098de9a97e10a06270e17df07f5c`.
 
 ## Resume Instructions (Task 06)
 1. Confirm M1 commit SHA and proceed to M2 in `tasks/debugging/task-06-security-rbac-and-company-boundaries.md`.
