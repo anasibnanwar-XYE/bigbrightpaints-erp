@@ -1035,3 +1035,29 @@ Start: 2026-01-10T07:13:20Z
 
 ### Notes
 - `openapi.json` newline-only change observed during final gates and reverted per contract policy.
+
+### Task 04 — Milestone M1 rerun (Sales/O2C deep debug) — 2026-01-11
+- Command: `mvn -f erp-domain/pom.xml -DskipTests compile`
+- Log: `docs/ops_and_debug/LOGS/20260111T051933Z_task04_M1_compile.txt`
+- Exit: 0
+- Summary: BUILD SUCCESS
+
+- Command: `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check`
+- Log: `docs/ops_and_debug/LOGS/20260111T051940Z_task04_M1_checkstyle.txt`
+- Exit: 0
+- Summary: BUILD SUCCESS (violations: 30807)
+
+- Command: `mvn -f erp-domain/pom.xml test`
+- Log: `docs/ops_and_debug/LOGS/20260111T051958Z_task04_M1_test.txt`
+- Exit: 0
+- Summary: Tests run 214, Failures 0, Errors 0, Skipped 4 (warnings: negative balances, invalid company ID format).
+
+- Command: `mvn -f erp-domain/pom.xml -Dtest=ErpInvariantsSuiteIT,OrderFulfillmentE2ETest,DispatchConfirmationIT,DealerLedgerIT,SettlementE2ETest,GstInclusiveRoundingIT test`
+- Log: `docs/ops_and_debug/LOGS/20260111T052221Z_task04_M1_focus_sales.txt`
+- Exit: 0
+- Summary: Tests run 24, Failures 0, Errors 0, Skipped 0.
+
+### Notes
+- API evidence captured in focused log: dealer ledger, dealer statement/aging, invoice list/detail (`M1 API evidence ...` lines).
+- Idempotency checks validated by `ErpInvariantsSuiteIT`: repeat order/dispatch/settlement returns same IDs and inventory movements unchanged on replay.
+- `openapi.json` newline-only change observed during tests and reverted per contract policy.
