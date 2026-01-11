@@ -1247,3 +1247,47 @@ Start: 2026-01-10T07:13:20Z
 
 ### Notes
 - `openapi.json` newline-only change observed during final gates and reverted per contract policy.
+
+## Run 20260111T075611Z
+Start: 2026-01-11T07:56:11Z
+
+### Start condition
+- Branch: `debug-05-reconciliation-period-controls`
+- Commit: `9f376bda35b6e3a67506f8fe11df8748361fa469`
+- Dirty worktree: yes (modified reconciliation service/test + openapi snapshot)
+- Docker: available via Testcontainers (server 28.2.2)
+
+### Task 05 — Milestone M1 (reconciliation controls)
+- Command: `mvn -f erp-domain/pom.xml -DskipTests compile`
+- Log: `docs/ops_and_debug/LOGS/20260111T075611Z_task05_M1_compile.txt`
+- Exit: 0
+- Summary: BUILD SUCCESS
+
+- Command: `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check`
+- Log: `docs/ops_and_debug/LOGS/20260111T075611Z_task05_M1_checkstyle.txt`
+- Exit: 0
+- Summary: BUILD SUCCESS (violations: 30807)
+
+- Command: `mvn -f erp-domain/pom.xml test`
+- Log: `docs/ops_and_debug/LOGS/20260111T075611Z_task05_M1_test.txt`
+- Exit: 0
+- Summary: Tests run 215, Failures 0, Errors 0, Skipped 4
+
+- Command: `mvn -f erp-domain/pom.xml -Dtest=ReconciliationControlsIT,InventoryGlReconciliationIT test`
+- Log: `docs/ops_and_debug/LOGS/20260111T075611Z_task05_M1_focus_recon.txt`
+- Exit: 0
+- Summary: Tests run 5, Failures 0, Errors 0, Skipped 0
+
+### Invariant / reconciliation assertions
+- Assertion: Inventory valuation reconciles to inventory control account within tolerance (variance=0 for seeded scenario).
+- Evidence: `docs/ops_and_debug/LOGS/20260111T075611Z_task05_M1_focus_recon.txt` (inventory valuation + inventory reconciliation JSON)
+
+- Assertion: AR/AP control accounts tie to subledgers as-of date within tolerance.
+- Evidence: `docs/ops_and_debug/LOGS/20260111T075611Z_task05_M1_focus_recon.txt` (M1 SQL tie-out AR/AP)
+
+- Assertion: Subledger discrepancies prevent reconciliation status even when totals net to zero.
+- Evidence: `docs/ops_and_debug/LOGS/20260111T075611Z_task05_M1_focus_recon.txt` (AR/AP reconciled=false for RECON-DIFF)
+
+### Go/No-Go
+- Status: GO
+- Blockers: none

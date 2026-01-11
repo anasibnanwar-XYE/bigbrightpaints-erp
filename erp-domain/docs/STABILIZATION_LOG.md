@@ -1504,3 +1504,21 @@
 - Warnings/notes:
   - Fixture warnings persisted (negative balances, invalid company ID format).
   - `openapi.json` newline-only change reverted per contract policy.
+
+## 2026-01-11 (debug-05 M1 Reconciliation controls)
+- Changes:
+  - Reconciliation marks AR/AP as unreconciled when dealer/supplier discrepancies exist despite net-zero totals.
+  - Added SQL tie-out evidence and discrepancy assertions in `ReconciliationControlsIT`.
+- Commands run:
+  - `mvn -f erp-domain/pom.xml -DskipTests compile`
+  - `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check`
+  - `mvn -f erp-domain/pom.xml test`
+  - `mvn -f erp-domain/pom.xml -Dtest=ReconciliationControlsIT,InventoryGlReconciliationIT test`
+- Validation:
+  - `mvn -DskipTests compile` succeeded.
+  - Checkstyle reported 30807 violations; `failOnViolation=false` used for baseline visibility.
+  - `mvn test` succeeded: Tests run 215, Failures 0, Errors 0, Skipped 4.
+  - Focused reconciliation suite succeeded: Tests run 5, Failures 0, Errors 0, Skipped 0.
+- Warnings/notes:
+  - Fixture warnings persisted (invalid company ID format, negative balances, dispatch debit/credit accounts not configured).
+  - `openapi.json` regeneration observed during tests and reverted to repository state.

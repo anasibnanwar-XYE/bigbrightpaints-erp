@@ -10,10 +10,15 @@ import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
 import com.bigbrightpaints.erp.modules.accounting.service.ReconciliationService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
+import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
+import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
 import com.bigbrightpaints.erp.modules.reports.dto.InventoryValuationDto;
 import com.bigbrightpaints.erp.modules.reports.dto.ReconciliationSummaryDto;
 import com.bigbrightpaints.erp.modules.reports.service.ReportService;
+import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
+import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
+import com.bigbrightpaints.erp.test.support.TestDateUtils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -24,6 +29,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
@@ -54,6 +60,15 @@ public class ReconciliationControlsIT extends AbstractIntegrationTest {
 
     @Autowired
     private CompanyRepository companyRepository;
+
+    @Autowired
+    private DealerRepository dealerRepository;
+
+    @Autowired
+    private SupplierRepository supplierRepository;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @Autowired
     private TestRestTemplate rest;
@@ -126,6 +141,7 @@ public class ReconciliationControlsIT extends AbstractIntegrationTest {
 
     @Test
     void arAndApReconciliationsReturnZeroVarianceForSeededCompany() {
+        Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
         ReconciliationService.ReconciliationResult ar = reconciliationService.reconcileArWithDealerLedger();
         assertThat(ar.isReconciled()).isTrue();
         assertThat(ar.variance()).isEqualByComparingTo(BigDecimal.ZERO);
@@ -137,6 +153,79 @@ public class ReconciliationControlsIT extends AbstractIntegrationTest {
         assertThat(ap.variance()).isEqualByComparingTo(BigDecimal.ZERO);
         assertThat(ap.apAccountCount()).isPositive();
         assertThat(ap.supplierCount()).isPositive();
+
+        LocalDate asOf = TestDateUtils.safeDate(company);
+        String arControlSql = """
+                select coalesce(sum(balance), 0)
+                from accounts
+                where company_id = ?
+                  and type = 'ASSET'
+                  and (upper(code) like '%AR%' or upper(code) like '%RECEIVABLE%')
+                """;
+        String arLedgerSql = """
+                select coalesce(sum(debit - credit), 0)
+                from dealer_ledger_entries
+                where company_id = ?
+                  and entry_date <= ?
+                """;
+        BigDecimal arControlBalance = jdbcTemplate.queryForObject(arControlSql, BigDecimal.class, company.getId());
+        BigDecimal arLedgerBalance = jdbcTemplate.queryForObject(arLedgerSql, BigDecimal.class, company.getId(), asOf);
+        arControlBalance = arControlBalance == null ? BigDecimal.ZERO : arControlBalance;
+        arLedgerBalance = arLedgerBalance == null ? BigDecimal.ZERO : arLedgerBalance;
+        BigDecimal arVariance = arControlBalance.subtract(arLedgerBalance);
+        System.out.println("M1 SQL tie-out AR: control=" + arControlBalance
+                + " ledger=" + arLedgerBalance + " variance=" + arVariance + " asOf=" + asOf);
+
+        String apControlSql = """
+                select coalesce(sum(balance), 0)
+                from accounts
+                where company_id = ?
+                  and type = 'LIABILITY'
+                  and (upper(code) like '%AP%' or upper(code) like '%PAYABLE%')
+                """;
+        String apLedgerSql = """
+                select coalesce(sum(credit - debit), 0)
+                from supplier_ledger_entries
+                where company_id = ?
+                  and entry_date <= ?
+                """;
+        BigDecimal apControlBalance = jdbcTemplate.queryForObject(apControlSql, BigDecimal.class, company.getId());
+        BigDecimal apLedgerBalance = jdbcTemplate.queryForObject(apLedgerSql, BigDecimal.class, company.getId(), asOf);
+        apControlBalance = apControlBalance == null ? BigDecimal.ZERO : apControlBalance;
+        apLedgerBalance = apLedgerBalance == null ? BigDecimal.ZERO : apLedgerBalance;
+        BigDecimal apVariance = apControlBalance.subtract(apLedgerBalance);
+        System.out.println("M1 SQL tie-out AP: control=" + apControlBalance
+                + " ledger=" + apLedgerBalance + " variance=" + apVariance + " asOf=" + asOf);
+
+        BigDecimal tolerance = new BigDecimal("0.01");
+        assertThat(arVariance.abs()).isLessThanOrEqualTo(tolerance);
+        assertThat(apVariance.abs()).isLessThanOrEqualTo(tolerance);
+    }
+
+    @Test
+    void arAndApReconciliationsRejectSubledgerDiscrepancies() {
+        String reconCompany = "RECON-DIFF";
+        CompanyContextHolder.setCompanyId(reconCompany);
+        dataSeeder.ensureCompany(reconCompany, "Reconciliation Discrepancy Co");
+
+        Company company = companyRepository.findByCodeIgnoreCase(reconCompany).orElseThrow();
+        Dealer dealer = dealerRepository.findByCompanyAndCodeIgnoreCase(company, "FIX-DEALER").orElseThrow();
+        Supplier supplier = supplierRepository.findByCompanyAndCodeIgnoreCase(company, "FIX-SUP").orElseThrow();
+
+        dealer.setOutstandingBalance(new BigDecimal("25.00"));
+        dealerRepository.save(dealer);
+        supplier.setOutstandingBalance(new BigDecimal("12.00"));
+        supplierRepository.save(supplier);
+
+        ReconciliationService.ReconciliationResult ar = reconciliationService.reconcileArWithDealerLedger();
+        assertThat(ar.variance()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(ar.discrepancies()).isNotEmpty();
+        assertThat(ar.isReconciled()).isFalse();
+
+        ReconciliationService.SupplierReconciliationResult ap = reconciliationService.reconcileApWithSupplierLedger();
+        assertThat(ap.variance()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(ap.discrepancies()).isNotEmpty();
+        assertThat(ap.isReconciled()).isFalse();
     }
 
     private HttpHeaders authHeaders() {

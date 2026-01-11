@@ -170,3 +170,21 @@
 - Resume instructions:
   1. Push branch `debug-04-module-deep-debug`.
   2. Deliver Task 04 completion report with log paths and summaries.
+
+## Update 2026-01-11 (Task 05 M1 Reconciliation controls)
+- Branch: `debug-05-reconciliation-period-controls`
+- Tip: pending commit (M1 reconciliation controls)
+- Dirty: yes (pre-commit)
+- Commands run:
+  - `mvn -f erp-domain/pom.xml -DskipTests compile` (PASS).
+  - `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check` (PASS; 30807 violations).
+  - `mvn -f erp-domain/pom.xml test` (PASS; Tests run 215, Failures 0, Errors 0, Skipped 4).
+  - `mvn -f erp-domain/pom.xml -Dtest=ReconciliationControlsIT,InventoryGlReconciliationIT test` (PASS; Tests run 5, Failures 0, Errors 0, Skipped 0).
+- Notes:
+  - Evidence logs captured under `docs/ops_and_debug/LOGS/20260111T075611Z_task05_M1_*` and appended to `docs/ops_and_debug/EVIDENCE.md`.
+  - Fixture warnings persisted (invalid company ID format, negative balances, dispatch accounts not configured).
+  - `openapi.json` regenerated during tests and restored to repository state.
+- Resume instructions:
+  1. Commit M1 changes with message `debug-05: M1 <summary>`.
+  2. Continue Task 05 M2 (period lock/close/reopen controls) on `debug-05-reconciliation-period-controls`.
+  3. Run required gates + focused `PeriodCloseLockIT`, capture logs, update evidence/stabilization/hydration.

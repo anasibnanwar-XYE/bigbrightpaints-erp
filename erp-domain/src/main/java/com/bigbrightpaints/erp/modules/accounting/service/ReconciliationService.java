@@ -110,8 +110,6 @@ public class ReconciliationService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         BigDecimal variance = totalArBalance.subtract(totalDealerLedgerBalance);
-        boolean isReconciled = variance.abs().compareTo(TOLERANCE) <= 0;
-
         List<DealerDiscrepancy> discrepancies = new ArrayList<>();
         
         // Check individual dealers
@@ -133,6 +131,8 @@ public class ReconciliationService {
                 ));
             }
         }
+
+        boolean isReconciled = variance.abs().compareTo(TOLERANCE) <= 0 && discrepancies.isEmpty();
 
         log.info("AR Reconciliation: GL={}, DealerLedger={}, Variance={}, Reconciled={}",
                 totalArBalance, totalDealerLedgerBalance, variance, isReconciled);
@@ -179,8 +179,6 @@ public class ReconciliationService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         BigDecimal variance = totalApBalance.subtract(totalSupplierLedgerBalance);
-        boolean isReconciled = variance.abs().compareTo(TOLERANCE) <= 0;
-
         List<SupplierDiscrepancy> discrepancies = new ArrayList<>();
 
         for (Supplier supplier : suppliers) {
@@ -201,6 +199,8 @@ public class ReconciliationService {
                 ));
             }
         }
+
+        boolean isReconciled = variance.abs().compareTo(TOLERANCE) <= 0 && discrepancies.isEmpty();
 
         log.info("AP Reconciliation: GL={}, SupplierLedger={}, Variance={}, Reconciled={}",
                 totalApBalance, totalSupplierLedgerBalance, variance, isReconciled);
