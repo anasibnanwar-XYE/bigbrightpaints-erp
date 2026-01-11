@@ -134,3 +134,18 @@
 - Resume instructions:
   1. Continue Task 04 M6 (Orchestrator/outbox deep debug) on `debug-04-module-deep-debug`.
   2. Run required gates + focused tests, capture logs, update `docs/ops_and_debug/EVIDENCE.md`, `erp-domain/docs/STABILIZATION_LOG.md`, and `HYDRATION.md`, then commit `debug-04: M6 <summary>`.
+
+## Update 2026-01-11 (Task 04 M6 Orchestrator/outbox deep debug)
+- Branch: `debug-04-module-deep-debug`
+- Tip: `252594e`
+- Dirty: no
+- Commands run:
+  - `mvn -f erp-domain/pom.xml -DskipTests compile` (PASS).
+  - `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check` (PASS; 30807 violations).
+  - `mvn -f erp-domain/pom.xml test` (PASS; Tests run 214, Failures 0, Errors 0, Skipped 4).
+  - `mvn -f erp-domain/pom.xml -Dtest=OrchestratorControllerIT,CommandDispatcherTest,IntegrationCoordinatorTest test` (PASS; Tests run 13, Failures 0, Errors 0, Skipped 0).
+- Notes:
+  - `openapi.json` newline-only change reverted per contract policy.
+- Resume instructions:
+  1. Run Task 04 final gates + all focused module suites.
+  2. Capture logs, update `docs/ops_and_debug/EVIDENCE.md`, `erp-domain/docs/STABILIZATION_LOG.md`, and `HYDRATION.md`, then commit `debug-04: final gates`.
