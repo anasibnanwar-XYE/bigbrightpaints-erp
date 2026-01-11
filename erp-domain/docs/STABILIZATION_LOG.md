@@ -1032,3 +1032,18 @@
 - Warnings/notes:
   - Testcontainers auth config warnings and dynamic agent loading notices persisted.
   - Test logs include invalid company ID format, negative balance warnings, and dispatch mapping warnings; no failures.
+
+## 2026-01-11 (task-06 final verification)
+- Commands run:
+  - `mvn -f erp-domain/pom.xml -DskipTests compile`
+  - `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check`
+  - `mvn -f erp-domain/pom.xml test`
+  - `mvn -f erp-domain/pom.xml -Dtest=AuthControllerIT,AdminUserSecurityIT,CompanyControllerIT,DealerSecurityIT,DealerPortalSecurityIT test`
+- Validation:
+  - Compile succeeded.
+  - Checkstyle reported 29454 violations; `failOnViolation=false` used for baseline visibility.
+  - `mvn test` succeeded: Tests run 208, Failures 0, Errors 0, Skipped 4.
+  - Focused tests succeeded: Tests run 12, Failures 0, Errors 0, Skipped 0.
+- Warnings/notes:
+  - Testcontainers auth config warnings and dynamic agent loading notices persisted.
+  - Test logs include invalid company ID format, negative balance warnings, dispatch mapping warnings, sequence contention/duplicate key retries, and HTML-to-PDF CSS parse warnings; no failures.

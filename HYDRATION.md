@@ -22,7 +22,7 @@
 - `mvn -f erp-domain/pom.xml -DskipTests compile` (PASS).
 - `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check` (PASS; 29454 violations reported).
 - `mvn -f erp-domain/pom.xml test` (PASS; Tests run 208, Failures 0, Errors 0, Skipped 4).
-- `mvn -f erp-domain/pom.xml -Dtest=DealerSecurityIT,DealerPortalSecurityIT test` (PASS; Tests run 2, Failures 0, Errors 0, Skipped 0).
+- `mvn -f erp-domain/pom.xml -Dtest=AuthControllerIT,AdminUserSecurityIT,CompanyControllerIT,DealerSecurityIT,DealerPortalSecurityIT test` (PASS; Tests run 12, Failures 0, Errors 0, Skipped 0).
 
 ## Warnings / Notes
 - Checkstyle baseline warnings (29454) persisted with failOnViolation=false.
@@ -34,8 +34,8 @@
 - M1 complete + verified; commit `48bfbef9647b098de9a97e10a06270e17df07f5c`.
 - M2 complete + verified; commit `3fa23e3783c07a7e99b2d219926e543cba2c7cf6`.
 - M3 complete + verified; commit `8b485c748046fabde28078485513a48a59f1c6f3`.
+- Final verification gates completed; ready to push.
 
 ## Resume Instructions (Task 06)
-1. Run final gates + focused suites for Task 06.
-2. Push branch `debug-06-security-rbac-boundaries`.
-3. Prepare Task 06 completion report (milestones, SHAs, files, tests, warnings).
+1. Push branch `debug-06-security-rbac-boundaries`.
+2. Prepare Task 06 completion report (milestones, SHAs, files, tests, warnings).

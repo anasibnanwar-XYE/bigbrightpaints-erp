@@ -52,3 +52,15 @@
   - `docs/ops_and_debug/LOGS/20260111T112327Z_task06_M3_checkstyle.txt`
   - `docs/ops_and_debug/LOGS/20260111T112341Z_task06_M3_test.txt`
   - `docs/ops_and_debug/LOGS/20260111T112620Z_task06_M3_focus_dealer_portal.txt`
+
+## 2026-01-11 Task 06 Final verification
+- Verification:
+  - `mvn -f erp-domain/pom.xml -DskipTests compile`
+  - `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check`
+  - `mvn -f erp-domain/pom.xml test`
+  - `mvn -f erp-domain/pom.xml -Dtest=AuthControllerIT,AdminUserSecurityIT,CompanyControllerIT,DealerSecurityIT,DealerPortalSecurityIT test`
+- Logs:
+  - `docs/ops_and_debug/LOGS/20260111T112838Z_task06_final_compile.txt`
+  - `docs/ops_and_debug/LOGS/20260111T112846Z_task06_final_checkstyle.txt`
+  - `docs/ops_and_debug/LOGS/20260111T112901Z_task06_final_test.txt`
+  - `docs/ops_and_debug/LOGS/20260111T113117Z_task06_final_focus.txt`
