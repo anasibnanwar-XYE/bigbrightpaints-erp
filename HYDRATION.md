@@ -13,6 +13,7 @@
 ## Repo / Worktree State
 - Worktree: `/home/realnigga/Desktop/CLI_BACKEND_epic04`
 - Branch: `debug-06-security-rbac-boundaries`
+- Tip: `94257be0fcafbb0ed8653f07b08113c03916bddf`
 - Dirty: untracked logs present under `docs/ops_and_debug/LOGS` (pre-existing).
 
 ## Environment Setup
