@@ -1118,3 +1118,28 @@ Start: 2026-01-10T07:13:20Z
 - M3 movement evidence (RM, packaging, inventory) captured in `docs/ops_and_debug/LOGS/20260111T054837Z_task04_M3_focus_production.txt` (`M3 evidence ...` lines).
 - SQL orphan checks: raw material production/packing and inventory movements missingReference=0 in `docs/ops_and_debug/LOGS/20260111T054837Z_task04_M3_focus_production.txt`.
 - `openapi.json` newline-only change observed during tests and reverted per contract policy.
+
+### Task 04 — Milestone M4 (HR/Payroll deep debug) — 2026-01-11
+- Command: `mvn -f erp-domain/pom.xml -DskipTests compile`
+- Log: `docs/ops_and_debug/LOGS/20260111T055143Z_task04_M4_compile.txt`
+- Exit: 0
+- Summary: BUILD SUCCESS
+
+- Command: `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check`
+- Log: `docs/ops_and_debug/LOGS/20260111T055156Z_task04_M4_checkstyle.txt`
+- Exit: 0
+- Summary: BUILD SUCCESS (violations: 30807)
+
+- Command: `mvn -f erp-domain/pom.xml test`
+- Log: `docs/ops_and_debug/LOGS/20260111T055213Z_task04_M4_test.txt`
+- Exit: 0
+- Summary: Tests run 214, Failures 0, Errors 0, Skipped 4 (warnings: negative balances, invalid company ID format).
+
+- Command: `mvn -f erp-domain/pom.xml -Dtest=ErpInvariantsSuiteIT,PayrollBatchPaymentIT,PeriodCloseLockIT test`
+- Log: `docs/ops_and_debug/LOGS/20260111T055434Z_task04_M4_focus_payroll.txt`
+- Exit: 0
+- Summary: Tests run 13, Failures 0, Errors 0, Skipped 0.
+
+### Notes
+- Payroll run status transitions + journal linkage evidence captured in `docs/ops_and_debug/LOGS/20260111T055434Z_task04_M4_focus_payroll.txt` (`M4 API evidence ...` lines with `journalEntryId`).
+- `openapi.json` newline-only change observed during tests and reverted per contract policy.
