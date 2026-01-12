@@ -12,8 +12,8 @@
 
 ## Repo / Worktree State
 - Worktree: `/home/realnigga/Desktop/CLI_BACKEND_epic04`
-- Branch: `debug-06-security-rbac-boundaries`
-- Tip: `94257be0fcafbb0ed8653f07b08113c03916bddf`
+- Branch: `debug-07-performance-ops-evidence`
+- Tip: `6b3c89b8e283b6608151f11e99a91c1a538b10ab`
 - Dirty: untracked logs present under `docs/ops_and_debug/LOGS` (pre-existing).
 
 ## Environment Setup
@@ -22,8 +22,8 @@
 ## Commands Run (Latest)
 - `mvn -f erp-domain/pom.xml -DskipTests compile` (PASS).
 - `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check` (PASS; 29454 violations reported).
-- `mvn -f erp-domain/pom.xml test` (PASS; Tests run 208, Failures 0, Errors 0, Skipped 4).
-- `mvn -f erp-domain/pom.xml -Dtest=AuthControllerIT,AdminUserSecurityIT,CompanyControllerIT,DealerSecurityIT,DealerPortalSecurityIT test` (PASS; Tests run 12, Failures 0, Errors 0, Skipped 0).
+- `mvn -f erp-domain/pom.xml test` (PASS; Tests run 213, Failures 0, Errors 0, Skipped 4).
+- `mvn -f erp-domain/pom.xml -Dtest=PerformanceBudgetIT,PerformanceExplainIT test` (PASS; Tests run 8, Failures 0, Errors 0, Skipped 0).
 
 ## Warnings / Notes
 - Checkstyle baseline warnings (29454) persisted with failOnViolation=false.
@@ -31,12 +31,12 @@
 - Test logs include expected warnings (invalid company IDs, negative balances, dispatch mapping, sequence contention/duplicate key retries, HTML-to-PDF CSS parsing); no failures.
 
 ## Current Task
-- Task 06 (security/RBAC + company boundaries) on `debug-06-security-rbac-boundaries`.
-- M1 complete + verified; commit `48bfbef9647b098de9a97e10a06270e17df07f5c`.
-- M2 complete + verified; commit `3fa23e3783c07a7e99b2d219926e543cba2c7cf6`.
-- M3 complete + verified; commit `8b485c748046fabde28078485513a48a59f1c6f3`.
-- Final verification gates completed; ready to push.
+- Task 07 (performance + ops evidence) on `debug-07-performance-ops-evidence`.
+- M1 complete + verified; commit `6b3c89b8e283b6608151f11e99a91c1a538b10ab`.
+- M2 pending.
+- M3 pending.
 
-## Resume Instructions (Task 06)
-1. Push branch `debug-06-security-rbac-boundaries`.
-2. Prepare Task 06 completion report (milestones, SHAs, files, tests, warnings).
+## Resume Instructions (Task 07)
+1. Execute M2 deliverables (compose boot + health evidence) and capture logs under `docs/ops_and_debug/LOGS`.
+2. Run M2 gates: compile, checkstyle, `mvn test`, plus runtime checks (`docker compose up -d --build`, `curl -fsS http://localhost:9090/actuator/health`).
+3. Update `docs/ops_and_debug/EVIDENCE.md`, `erp-domain/docs/STABILIZATION_LOG.md`, and `HYDRATION.md`, then commit `debug-07: M2 <summary>`.
