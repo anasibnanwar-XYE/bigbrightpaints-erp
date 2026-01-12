@@ -15,7 +15,7 @@ This folder contains **discovery + planning artifacts only** (no behavioral chan
 ## Run metadata (this audit run)
 - Repo: `CLI_BACKEND_epic04`
 - Branch: `audit-inv-03-evidence-and-inventory`
-- HEAD SHA: `14e07669337916a6d3974610c60ea4a9856207e3`
+- HEAD SHA: `7abdc72d039d7f5d7fbaab6639bf2ee11aa72759`
 - Git status: **DIRTY** (untracked logs under `docs/ops_and_debug/LOGS/` + workspace artifacts like `interview/`; do not delete)
 
 ## Investigation run report (LEAD-010/011 evidence + Task-03)
