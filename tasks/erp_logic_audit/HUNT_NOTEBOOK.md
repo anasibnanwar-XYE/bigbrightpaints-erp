@@ -20,6 +20,7 @@ Rules:
 | LEAD-008 | MED? | Auditor / Close | Inventory revaluation journals use `LocalDate.now()` | Revalue dated into closed period; inspect JE entry_date |
 | LEAD-009 | MED? | Operator / Auditor | AR/AP reconciliation depends on account code substrings | Change COA codes; verify recon returns false positives/negatives |
 | LEAD-010 | HIGH? | Backend / Operator | Sales order idempotency key not enforced at DB | Run duplicate idempotency query; attempt concurrent order creation |
+| LEAD-011 | MED? | Backend / Operator | Purchase return idempotency relies on optional reference | Retry purchase returns without reference; check for duplicates |
 
 ---
 
@@ -215,3 +216,21 @@ Rules:
   - Dev-only: concurrent POSTs to `/api/v1/sales/orders` with the same `idempotencyKey` and payload.
 - What would count as confirmed flaw:
   - Duplicate `sales_orders` rows sharing the same `idempotency_key` for a company.
+
+---
+
+## LEAD-011 — Purchase return idempotency relies on optional reference (retry duplicates possible)
+
+- Hypothesis:
+  - Purchase return requests without a stable `referenceNumber` generate a new reference on each call, allowing duplicate journals and movements on retries.
+- Why this matters (ERP expectation):
+  - Return postings must be exactly-once; retries should not duplicate inventory and AP reversals.
+- Code anchors:
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/purchasing/service/PurchasingService.java` (`recordPurchaseReturn` chooses generated reference when `referenceNumber` absent).
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingFacade.java` (`postPurchaseReturn` idempotency keyed by reference).
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/purchasing/dto/PurchaseReturnRequest.java` (`referenceNumber` is optional).
+- Minimal probes:
+  - Dev-only: submit the same purchase return payload twice without `referenceNumber` and compare resulting `journal_entries` and `raw_material_movements`.
+  - SQL: `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-02/SQL/04_p2p_settlement_idempotency_duplicates.sql` (for duplicate idempotency signal) plus a targeted purchase return reference scan if needed.
+- What would count as confirmed flaw:
+  - Duplicate purchase return journals/movements created from a retry without a stable reference.
