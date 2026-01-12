@@ -15,14 +15,15 @@ This folder contains **discovery + planning artifacts only** (no behavioral chan
 ## Run metadata (this audit run)
 - Repo: `CLI_BACKEND_epic04`
 - Branch: `audit-inv-01-02`
-- HEAD SHA: `a0dfdf97a372fa63be015c9db5fec95e39ccea39`
+- HEAD SHA: `225c16a2b4fd3616d9ee1a1208450332d1f0269e`
 - Git status: **DIRTY** (untracked logs under `docs/ops_and_debug/LOGS/` + workspace artifacts like `interview/`; do not delete)
 
 ## Investigation run report (Task-01 + Task-02)
-- Checked O2C chain-of-evidence: orders → slips → movements → invoices → AR + dealer ledger.
-- Checked P2P chain-of-evidence: purchases → RM receipts/returns → AP + supplier ledger.
+- Re-ran O2C/P2P SQL probes for BBP (company_id=5); no missing JE links, no idempotency duplicates, AR/AP tie-outs at 0.00.
+- GET evidence for reports + checklist returned clean zero balances; reconciliation dashboard still requires `bankAccountId` (400 without it).
+- Dealer portal GETs verified with a fresh dealer login; portal scoped to dealer-only data.
 - Confirmed new LFs: none in this run.
-- New leads: **LEAD-010** (sales order idempotency key not enforced at DB), **LEAD-011** (purchase return idempotency relies on optional reference).
+- New leads: none (existing **LEAD-010**/**LEAD-011** remain open).
 - Recommended next investigation: `tasks/erp_logic_audit/taskpack_investigation/task-03-inventory-valuation-cogs-hunt.md`.
 
 ## AS-BUILT coverage summary (Phase 0 gate)
