@@ -1047,3 +1047,21 @@
 - Warnings/notes:
   - Testcontainers auth config warnings and dynamic agent loading notices persisted.
   - Test logs include invalid company ID format, negative balance warnings, dispatch mapping warnings, sequence contention/duplicate key retries, and HTML-to-PDF CSS parse warnings; no failures.
+
+## 2026-01-12 (task-07 M1 — performance budgets)
+- Changes:
+  - Expanded `PerformanceBudgetIT` to include budgets for trial balance, dealer statement, account statement, inventory reconciliation, and reconciliation dashboard reports.
+  - Standardized report calls to include `X-Company-Id` header.
+- Commands run:
+  - `mvn -f erp-domain/pom.xml -DskipTests compile`
+  - `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check`
+  - `mvn -f erp-domain/pom.xml test`
+  - `mvn -f erp-domain/pom.xml -Dtest=PerformanceBudgetIT,PerformanceExplainIT test`
+- Validation:
+  - Compile succeeded.
+  - Checkstyle reported 29454 violations; `failOnViolation=false` used for baseline visibility.
+  - `mvn test` succeeded: Tests run 213, Failures 0, Errors 0, Skipped 4.
+  - Focused performance tests succeeded: Tests run 8, Failures 0, Errors 0, Skipped 0.
+- Warnings/notes:
+  - Testcontainers auth config warnings and dynamic agent loading notices persisted.
+  - Test logs include invalid company ID format, negative balance warnings, dispatch mapping warnings, sequence contention/duplicate key retries, and HTML-to-PDF CSS parse warnings; no failures.

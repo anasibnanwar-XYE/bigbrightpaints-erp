@@ -1,6 +1,9 @@
 package com.bigbrightpaints.erp.performance;
 
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
+import com.bigbrightpaints.erp.modules.accounting.domain.Account;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
@@ -39,9 +42,13 @@ class PerformanceBudgetIT extends AbstractIntegrationTest {
     private static final String COMPANY_CODE = "PERF-BUDGET";
     private static final String ADMIN_EMAIL = "perf-admin@bbp.com";
     private static final String ADMIN_PASSWORD = "admin123";
+    private static final Duration REPORT_BUDGET = Duration.ofSeconds(3);
 
     @Autowired
     private SalesService salesService;
+
+    @Autowired
+    private AccountRepository accountRepository;
 
     @Autowired
     private SalesOrderRepository salesOrderRepository;
@@ -55,9 +62,12 @@ class PerformanceBudgetIT extends AbstractIntegrationTest {
     @Autowired
     private TestRestTemplate rest;
 
+    private Company company;
+
     @BeforeEach
     void seedFixtures() {
         dataSeeder.ensureUser(ADMIN_EMAIL, ADMIN_PASSWORD, "Perf Admin", COMPANY_CODE, List.of("ROLE_ADMIN"));
+        company = dataSeeder.ensureCompany(COMPANY_CODE, "Perf Budget Co");
     }
 
     @AfterEach
@@ -67,7 +77,6 @@ class PerformanceBudgetIT extends AbstractIntegrationTest {
 
     @Test
     void salesOrderListQueryCountIsBounded() {
-        Company company = dataSeeder.ensureCompany(COMPANY_CODE, "Perf Budget Co");
         Dealer dealer = dealerRepository.findByCompanyAndCodeIgnoreCase(company, "FIX-DEALER")
                 .orElseThrow(() -> new IllegalStateException("Fixture dealer missing for " + COMPANY_CODE));
         seedOrders(company, dealer, 5);
@@ -86,22 +95,78 @@ class PerformanceBudgetIT extends AbstractIntegrationTest {
 
     @Test
     void balanceSheetReportCompletesWithinBudget() {
-        String token = loginToken();
-        HttpHeaders headers = new HttpHeaders();
-        headers.setBearerAuth(token);
-        headers.setContentType(MediaType.APPLICATION_JSON);
-
-        long start = System.nanoTime();
-        ResponseEntity<Map> response = rest.exchange(
+        ResponseEntity<Map> response = timedGet(
                 "/api/v1/accounting/reports/balance-sheet/hierarchy",
-                HttpMethod.GET,
-                new HttpEntity<>(headers),
-                Map.class);
-        Duration elapsed = Duration.ofNanos(System.nanoTime() - start);
+                authHeaders(),
+                REPORT_BUDGET);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).isNotNull();
-        assertThat(elapsed).isLessThanOrEqualTo(Duration.ofSeconds(3));
+    }
+
+    @Test
+    void trialBalanceReportCompletesWithinBudget() {
+        ResponseEntity<Map> response = timedGet(
+                "/api/v1/reports/trial-balance",
+                authHeaders(),
+                REPORT_BUDGET);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isNotNull();
+    }
+
+    @Test
+    void dealerStatementCompletesWithinBudget() {
+        Dealer dealer = dealerRepository.findByCompanyAndCodeIgnoreCase(company, "FIX-DEALER")
+                .orElseThrow(() -> new IllegalStateException("Fixture dealer missing for " + COMPANY_CODE));
+        ResponseEntity<Map> response = timedGet(
+                "/api/v1/accounting/statements/dealers/" + dealer.getId(),
+                authHeaders(),
+                REPORT_BUDGET);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isNotNull();
+    }
+
+    @Test
+    void accountStatementReportCompletesWithinBudget() {
+        ResponseEntity<Map> response = timedGet(
+                "/api/v1/reports/account-statement",
+                authHeaders(),
+                REPORT_BUDGET);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isNotNull();
+    }
+
+    @Test
+    void inventoryReconciliationCompletesWithinBudget() {
+        ResponseEntity<Map> response = timedGet(
+                "/api/v1/reports/inventory-reconciliation",
+                authHeaders(),
+                REPORT_BUDGET);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isNotNull();
+    }
+
+    @Test
+    void reconciliationDashboardCompletesWithinBudget() {
+        Account bankAccount = accountRepository.findByCompanyAndCodeIgnoreCase(company, "CASH")
+                .orElseGet(() -> {
+                    Account account = new Account();
+                    account.setCompany(company);
+                    account.setCode("CASH");
+                    account.setName("Cash");
+                    account.setType(AccountType.ASSET);
+                    return accountRepository.save(account);
+                });
+        String url = String.format("/api/v1/reports/reconciliation-dashboard?bankAccountId=%d",
+                bankAccount.getId());
+        ResponseEntity<Map> response = timedGet(url, authHeaders(), REPORT_BUDGET);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isNotNull();
     }
 
     private String loginToken() {
@@ -115,6 +180,27 @@ class PerformanceBudgetIT extends AbstractIntegrationTest {
         Map<String, Object> body = response.getBody();
         assertThat(body).isNotNull();
         return body.get("accessToken").toString();
+    }
+
+    private HttpHeaders authHeaders() {
+        String token = loginToken();
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("X-Company-Id", COMPANY_CODE);
+        return headers;
+    }
+
+    private ResponseEntity<Map> timedGet(String url, HttpHeaders headers, Duration budget) {
+        long start = System.nanoTime();
+        ResponseEntity<Map> response = rest.exchange(
+                url,
+                HttpMethod.GET,
+                new HttpEntity<>(headers),
+                Map.class);
+        Duration elapsed = Duration.ofNanos(System.nanoTime() - start);
+        assertThat(elapsed).isLessThanOrEqualTo(budget);
+        return response;
     }
 
     private void seedOrders(Company company, Dealer dealer, int count) {

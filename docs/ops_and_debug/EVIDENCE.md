@@ -64,3 +64,18 @@
   - `docs/ops_and_debug/LOGS/20260111T112846Z_task06_final_checkstyle.txt`
   - `docs/ops_and_debug/LOGS/20260111T112901Z_task06_final_test.txt`
   - `docs/ops_and_debug/LOGS/20260111T113117Z_task06_final_focus.txt`
+
+## 2026-01-12 Task 07 M1 — Performance budgets
+- Changes:
+  - Extended `PerformanceBudgetIT` to budget critical finance reports (trial balance, dealer statement, account statement, inventory reconciliation, reconciliation dashboard).
+  - Standardized auth headers with `X-Company-Id` for report endpoints.
+- Verification:
+  - `mvn -f erp-domain/pom.xml -DskipTests compile`
+  - `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check`
+  - `mvn -f erp-domain/pom.xml test`
+  - `mvn -f erp-domain/pom.xml -Dtest=PerformanceBudgetIT,PerformanceExplainIT test`
+- Logs:
+  - `docs/ops_and_debug/LOGS/20260112T064835Z_task07_M1_compile.txt`
+  - `docs/ops_and_debug/LOGS/20260112T064846Z_task07_M1_checkstyle.txt`
+  - `docs/ops_and_debug/LOGS/20260112T064920Z_task07_M1_test.txt`
+  - `docs/ops_and_debug/LOGS/20260112_122255_task07_M1_focus_performance.txt`
