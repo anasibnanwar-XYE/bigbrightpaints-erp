@@ -1065,3 +1065,27 @@
 - Warnings/notes:
   - Testcontainers auth config warnings and dynamic agent loading notices persisted.
   - Test logs include invalid company ID format, negative balance warnings, dispatch mapping warnings, sequence contention/duplicate key retries, and HTML-to-PDF CSS parse warnings; no failures.
+
+## 2026-01-12 (task-07 M2 — ops boot + health evidence)
+- Changes:
+  - Captured Docker compose boot evidence and actuator health/readiness/liveness checks.
+  - Recorded env var checklist and smoke checks for auth, reconciliation dashboard, inventory reconciliation, and orchestrator endpoints.
+  - Noted DB seed correction for `accounts_id_seq` alignment during compose boot.
+- Commands run:
+  - `docker compose up -d --build` (initial attempt failed due to port 5432 in use).
+  - `DB_PORT=55432 docker compose up -d --build`.
+  - `curl -fsS http://localhost:9090/actuator/health`
+  - `curl -fsS http://localhost:9090/actuator/health/readiness`
+  - `curl -fsS http://localhost:9090/actuator/health/liveness`
+  - `mvn -f erp-domain/pom.xml -DskipTests compile`
+  - `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check`
+  - `mvn -f erp-domain/pom.xml test`
+- Validation:
+  - Compose boot succeeded after shifting DB port; actuator health/readiness/liveness returned `UP`.
+  - Compile succeeded.
+  - Checkstyle reported 29454 violations; `failOnViolation=false` used for baseline visibility.
+  - `mvn test` succeeded: Tests run 213, Failures 0, Errors 0, Skipped 4.
+- Warnings/notes:
+  - Port 5432 conflict required `DB_PORT=55432` for compose.
+  - Seed DB had `accounts_id_seq` behind max id; sequence reset via `setval` to avoid duplicate key.
+  - Evidence logs stored under `docs/ops_and_debug/LOGS/` (see Task 07 M2 entries in `docs/ops_and_debug/EVIDENCE.md`).
