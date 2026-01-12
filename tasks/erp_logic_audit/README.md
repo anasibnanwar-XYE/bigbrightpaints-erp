@@ -14,8 +14,8 @@ This folder contains **discovery + planning artifacts only** (no behavioral chan
 
 ## Run metadata (this audit run)
 - Repo: `CLI_BACKEND_epic04`
-- Branch: `audit-inv-03-evidence-and-inventory`
-- HEAD SHA: `7abdc72d039d7f5d7fbaab6639bf2ee11aa72759`
+- Branch: `audit-inv-04-05-prod-tax`
+- HEAD SHA: `9030c9722c3ed01c9e62ef2eccf8d89108877971`
 - Git status: **DIRTY** (untracked logs under `docs/ops_and_debug/LOGS/` + workspace artifacts like `interview/`; do not delete)
 
 ## Investigation run report (LEAD-010/011 evidence + Task-03)
@@ -24,6 +24,12 @@ This folder contains **discovery + planning artifacts only** (no behavioral chan
 - LEAD-011 confirmed and promoted to **LF-010**: retrying purchase return without `referenceNumber` produced two posted returns (duplicate journals + movements).
 - Task-03 inventory valuation + COGS probes executed (SQL + accounting reports GETs); no new anomalies detected in BBP dataset.
 - Recommended next investigation: `tasks/erp_logic_audit/taskpack_investigation/task-04-production-costing-wip-hunt.md`.
+
+## Investigation run report (Task-04 + Task-05)
+- Task-04 production/WIP probes executed (SQL + GET); BBP dataset has no production logs, so WIP/packing/wastage chain not verifiable; no orphan movements or valuation variance observed.
+- Task-05 tax/rounding probes executed; no invoice/header arithmetic or journal tax mismatches in BBP data; GST return endpoint blocked by missing tax account configuration (LEAD-013).
+- New leads logged: LEAD-012 (production WIP unverified), LEAD-013 (GST config blocker).
+- Recommended next investigation: `tasks/erp_logic_audit/taskpack_investigation/task-06-period-close-adjustments-hunt.md`, then re-run task-04 after seeding production logs and task-05 after GST accounts configured.
 
 ## AS-BUILT coverage summary (Phase 0 gate)
 - Portals/actors mapped: Admin, Accounting, Sales, Manufacturing/Factory, Dealer.
@@ -54,6 +60,7 @@ Top “HIGH” list: currently 6 items (LF-001..LF-006).
 ## Leads pending confirmation (not yet LF items)
 Source: `tasks/erp_logic_audit/HUNT_NOTEBOOK.md`
 - LEAD-001..LEAD-009 (outstanding overwrite on create; RM stock clamp; double-dispatch confirm; payroll PF drift; inventory event posting risks; batch code uniqueness; revaluation date; recon code-substring footgun).
+- LEAD-012..LEAD-013 (production WIP probes blocked by missing data; GST return blocked by missing tax account config).
 
 ## Investigation taskpack (Phase 3)
 - Count: **9** tasks under `tasks/erp_logic_audit/taskpack_investigation/`.
