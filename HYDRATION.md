@@ -13,23 +13,17 @@
 ## Repo / Worktree State
 - Worktree: `/home/realnigga/Desktop/CLI_BACKEND_epic04`
 - Branch: `debug-07-performance-ops-evidence`
-- Tip: `fca29015fab211f7bca80546cf00f807c52b9e4c`
+- Tip: `0241c12f9192c0ed2b40f2cff7407785dc962f97`
 - Dirty: untracked logs present under `docs/ops_and_debug/LOGS` (pre-existing).
 
 ## Environment Setup
 - No new installs; Docker/Testcontainers working.
 
 ## Commands Run (Latest)
-- `docker exec -e PGPASSWORD=erp erp_db psql -U erp -d erp_domain -c "SELECT status, dead_letter, COUNT(*) ..."` (PASS).
-- `docker exec -e PGPASSWORD=erp erp_db pg_dump -U erp -d erp_domain --format=custom --no-owner --no-acl -f /tmp/erp_domain.dump` (PASS).
-- `docker exec -e PGPASSWORD=erp erp_db dropdb -U erp --if-exists erp_domain_restore_test` (PASS).
-- `docker exec -e PGPASSWORD=erp erp_db createdb -U erp erp_domain_restore_test` (PASS).
-- `docker exec -e PGPASSWORD=erp erp_db pg_restore -U erp -d erp_domain_restore_test /tmp/erp_domain.dump` (PASS).
-- `docker exec -e PGPASSWORD=erp erp_db psql -U erp -d erp_domain_restore_test -c "SELECT COUNT(*) FROM flyway_schema_history;"` (PASS).
 - `mvn -f erp-domain/pom.xml -DskipTests compile` (PASS).
 - `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check` (PASS; 29454 violations reported).
 - `mvn -f erp-domain/pom.xml test` (PASS; Tests run 213, Failures 0, Errors 0, Skipped 4).
-- `mvn -f erp-domain/pom.xml -Dtest=OrchestratorControllerIT,IntegrationCoordinatorTest test` (PASS; Tests run 8, Failures 0, Errors 0, Skipped 0).
+- `mvn -f erp-domain/pom.xml -Dtest=PerformanceBudgetIT,PerformanceExplainIT,OrchestratorControllerIT,IntegrationCoordinatorTest test` (PASS; Tests run 16, Failures 0, Errors 0, Skipped 0).
 
 ## Warnings / Notes
 - Checkstyle baseline warnings (29454) persisted with failOnViolation=false.
@@ -42,8 +36,8 @@
 - M1 complete + verified; commit `6b3c89b8e283b6608151f11e99a91c1a538b10ab`.
 - M2 complete + verified; commit `9577ca5fb73c325c38e81a42dd17ec3dabef1811`.
 - M3 complete + verified; commit `fca29015fab211f7bca80546cf00f807c52b9e4c`.
+- Final verification complete; commit `0241c12f9192c0ed2b40f2cff7407785dc962f97`.
 
 ## Resume Instructions (Task 07)
-1. Run final verification gates: compile, checkstyle, `mvn test`, plus focused tests (`-Dtest=PerformanceBudgetIT,PerformanceExplainIT,OrchestratorControllerIT,IntegrationCoordinatorTest` if task requires full focused set).
-2. Update `docs/ops_and_debug/EVIDENCE.md`, `erp-domain/docs/STABILIZATION_LOG.md`, and `HYDRATION.md` with final verification evidence.
-3. Commit final verification updates, push branch, and produce Task 07 completion report.
+1. Push branch `debug-07-performance-ops-evidence`.
+2. Produce Task 07 completion report (milestones, SHAs, files changed, test outputs, log paths, warnings, residual risks).
