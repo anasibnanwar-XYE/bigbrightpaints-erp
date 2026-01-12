@@ -1,0 +1,11 @@
+== GET /api/v1/accounting/gst/return
+{
+  "success": false,
+  "message": "GST tax accounts not configured for company BBP",
+  "data": {
+    "traceId": "47ee6208-60d4-49d5-9a8a-c4c2a08a72e0",
+    "code": "BUS_001",
+    "message": "GST tax accounts not configured for company BBP"
+  },
+  "timestamp": 1768232032.990203155
+}

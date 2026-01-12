@@ -22,6 +22,7 @@ Rules:
 | LEAD-010 | HIGH? | Backend / Operator | Sales order idempotency key not enforced at DB | Closed: duplicate attempt rejected; unique index present (see evidence) |
 | LEAD-011 | MED? | Backend / Operator | Purchase return idempotency relies on optional reference | Confirmed → LF-010 (duplicate returns created without reference) |
 | LEAD-012 | MED? | Auditor / Operator | Production WIP postings unverified (no production logs) | Seed production log with labor/overhead + packing; rerun task-04 SQL |
+| LEAD-013 | MED? | Auditor / Operator | GST return blocked by missing tax account config | Configure GST input/output accounts; re-run return + tax SQL |
 
 ---
 
@@ -265,3 +266,21 @@ Rules:
 - Next probes:
   - Seed a production log with non-zero labor/overhead and at least one packing record.
   - Re-run task-04 SQL probes to confirm WIP debit/credit alignment and journal linkage.
+
+---
+
+## LEAD-013 — GST return blocked by missing tax account config
+
+- Hypothesis:
+  - BBP company lacks GST input/output tax account configuration, preventing GST return generation and masking tax/reporting checks.
+- Why this matters (ERP expectation):
+  - GST/VAT reporting should be available once configured; missing config should be surfaced as a setup blocker with clear remediation.
+- Evidence:
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-05/OUTPUTS/20260112T153335Z_05_tax_reports_gets.txt` shows `GST tax accounts not configured for company BBP`.
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-05/OUTPUTS/20260112T153335Z_03_gst_return_journal_snapshot.txt` shows zero output/input tax (no configured accounts).
+- Code anchors:
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/CompanyAccountingSettingsService.java` (`requireTaxAccounts`).
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/TaxService.java` (`generateGstReturn`).
+- Next probes:
+  - Configure GST input/output accounts for BBP and rerun task-05 SQL + `/api/v1/accounting/gst/return`.
+  - Compare GST return output to journal lines for the same period.

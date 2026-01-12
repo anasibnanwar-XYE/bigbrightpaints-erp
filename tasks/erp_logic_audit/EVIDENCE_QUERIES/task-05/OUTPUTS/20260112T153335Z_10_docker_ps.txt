@@ -1,0 +1,5 @@
+NAMES            STATUS                 PORTS
+erp_domain_app   Up 8 hours             0.0.0.0:8081->8081/tcp, [::]:8081->8081/tcp, 0.0.0.0:9090->9090/tcp, [::]:9090->9090/tcp
+erp_db           Up 9 hours (healthy)   0.0.0.0:55432->5432/tcp, [::]:55432->5432/tcp
+erp_rabbit       Up 9 hours (healthy)   4369/tcp, 5671/tcp, 0.0.0.0:5672->5672/tcp, [::]:5672->5672/tcp, 15671/tcp, 15691-15692/tcp, 25672/tcp, 0.0.0.0:15672->15672/tcp, [::]:15672->15672/tcp
+erp_mailhog      Up 9 hours             0.0.0.0:1025->1025/tcp, [::]:1025->1025/tcp, 0.0.0.0:8025->8025/tcp, [::]:8025->8025/tcp
