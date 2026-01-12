@@ -117,3 +117,38 @@
   - `docs/ops_and_debug/LOGS/20260112_124343_task07_M2_compile.txt`
   - `docs/ops_and_debug/LOGS/20260112_124353_task07_M2_checkstyle.txt`
   - `docs/ops_and_debug/LOGS/20260112_124427_task07_M2_test.txt`
+
+## 2026-01-12 Task 07 M3 — Outbox + backup/restore evidence
+- Outbox safety:
+  - Retry policy: exponential backoff (30s * 2^retry), max 5 attempts, then status=FAILED + dead_letter=true (documented in deploy checklist; implemented in EventPublisherService).
+  - Seeded dataset snapshot: outbox table empty; no retrying or dead-lettered events; stuck retry count (next_attempt_at older than 15m) = 0.
+- Idempotency checks:
+  - IntegrationCoordinator retry protection validated via IntegrationCoordinatorTest (no replay of reservations on retry).
+  - OrchestratorControllerIT confirms order approval produces an outbox event for traceability.
+- Backup/restore runbook:
+  - `pg_dump` from `erp_domain`, restore into `erp_domain_restore_test`, sanity queries for Flyway history + companies/outbox counts.
+- Verification:
+  - `mvn -f erp-domain/pom.xml -DskipTests compile`
+  - `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check`
+  - `mvn -f erp-domain/pom.xml test`
+  - `mvn -f erp-domain/pom.xml -Dtest=OrchestratorControllerIT,IntegrationCoordinatorTest test`
+- Logs:
+  - `docs/ops_and_debug/LOGS/20260112T072542Z_task07_M3_compose_ps.txt`
+  - `docs/ops_and_debug/LOGS/20260112T072630Z_task07_M3_outbox_counts.txt`
+  - `docs/ops_and_debug/LOGS/20260112T072635Z_task07_M3_outbox_total.txt`
+  - `docs/ops_and_debug/LOGS/20260112T072639Z_task07_M3_outbox_retrying.txt`
+  - `docs/ops_and_debug/LOGS/20260112T072651Z_task07_M3_outbox_stuck_count.txt`
+  - `docs/ops_and_debug/LOGS/20260112T072702Z_task07_M3_outbox_deadletters.txt`
+  - `docs/ops_and_debug/LOGS/20260112T072714Z_task07_M3_backup_dump.txt`
+  - `docs/ops_and_debug/LOGS/20260112T072718Z_task07_M3_backup_ls.txt`
+  - `docs/ops_and_debug/LOGS/20260112T072722Z_task07_M3_restore_db_exists.txt`
+  - `docs/ops_and_debug/LOGS/20260112T072725Z_task07_M3_restore_dropdb.txt`
+  - `docs/ops_and_debug/LOGS/20260112T072731Z_task07_M3_restore_createdb.txt`
+  - `docs/ops_and_debug/LOGS/20260112T072737Z_task07_M3_restore_pg_restore.txt`
+  - `docs/ops_and_debug/LOGS/20260112T072747Z_task07_M3_restore_flyway_count.txt`
+  - `docs/ops_and_debug/LOGS/20260112T072750Z_task07_M3_restore_companies_count.txt`
+  - `docs/ops_and_debug/LOGS/20260112T072756Z_task07_M3_restore_outbox_count.txt`
+  - `docs/ops_and_debug/LOGS/20260112T072812Z_task07_M3_compile.txt`
+  - `docs/ops_and_debug/LOGS/20260112T072821Z_task07_M3_checkstyle.txt`
+  - `docs/ops_and_debug/LOGS/20260112T072850Z_task07_M3_test.txt`
+  - `docs/ops_and_debug/LOGS/20260112T073255Z_task07_M3_focus_orchestrator.txt`

@@ -1089,3 +1089,28 @@
   - Port 5432 conflict required `DB_PORT=55432` for compose.
   - Seed DB had `accounts_id_seq` behind max id; sequence reset via `setval` to avoid duplicate key.
   - Evidence logs stored under `docs/ops_and_debug/LOGS/` (see Task 07 M2 entries in `docs/ops_and_debug/EVIDENCE.md`).
+
+## 2026-01-12 (task-07 M3 — outbox + backup/restore evidence)
+- Changes:
+  - Captured outbox retry/backoff evidence, stuck-event query results, and idempotency coverage notes.
+  - Captured pg_dump/pg_restore runbook evidence with sanity checks on restored DB.
+- Commands run:
+  - `docker exec -e PGPASSWORD=erp erp_db psql -U erp -d erp_domain -c "SELECT status, dead_letter, COUNT(*) ..."`
+  - `docker exec -e PGPASSWORD=erp erp_db pg_dump -U erp -d erp_domain --format=custom --no-owner --no-acl -f /tmp/erp_domain.dump`
+  - `docker exec -e PGPASSWORD=erp erp_db dropdb -U erp --if-exists erp_domain_restore_test`
+  - `docker exec -e PGPASSWORD=erp erp_db createdb -U erp erp_domain_restore_test`
+  - `docker exec -e PGPASSWORD=erp erp_db pg_restore -U erp -d erp_domain_restore_test /tmp/erp_domain.dump`
+  - `mvn -f erp-domain/pom.xml -DskipTests compile`
+  - `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check`
+  - `mvn -f erp-domain/pom.xml test`
+  - `mvn -f erp-domain/pom.xml -Dtest=OrchestratorControllerIT,IntegrationCoordinatorTest test`
+- Validation:
+  - Outbox query snapshot showed no pending/retrying/dead-letter events; stuck retry count 0.
+  - Backup/restore completed; sanity checks (Flyway history + company counts) returned expected rows.
+  - Compile succeeded.
+  - Checkstyle reported 29454 violations; `failOnViolation=false` used for baseline visibility.
+  - `mvn test` succeeded: Tests run 213, Failures 0, Errors 0, Skipped 4.
+  - Focused orchestrator tests succeeded: Tests run 8, Failures 0, Errors 0, Skipped 0.
+- Warnings/notes:
+  - Testcontainers auth config warnings, dynamic agent loading notices, and expected validation warnings persisted.
+  - Evidence logs stored under `docs/ops_and_debug/LOGS/` (see Task 07 M3 entries in `docs/ops_and_debug/EVIDENCE.md`).
