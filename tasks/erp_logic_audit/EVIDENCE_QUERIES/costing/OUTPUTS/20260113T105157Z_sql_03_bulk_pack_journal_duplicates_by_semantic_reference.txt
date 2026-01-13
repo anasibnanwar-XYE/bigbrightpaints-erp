@@ -1,0 +1,4 @@
+ semantic_reference | journal_count | first_created_at | last_created_at 
+--------------------+---------------+------------------+-----------------
+(0 rows)
+

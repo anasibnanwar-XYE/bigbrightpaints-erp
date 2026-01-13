@@ -127,3 +127,49 @@
 - Commands executed (detail in RUN.md): docker compose up -d; curl/psql probes in `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-014` and `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-016`; git add/commit for lead dispositions
 - Evidence paths: `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-014/OUTPUTS/`; `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-016/OUTPUTS/`
 - Resume steps: from repo root, run `docker compose up -d` with required env vars; rerun lead scripts if repro needed; continue from `tasks/erp_logic_audit/HUNT_NOTEBOOK.md`
+
+## 2026-01-13 costing lead investigation (LEAD-COST-001/002/005)
+- Branch (time of probe): `fix-phase5-lead015-and-lf011-014`
+- Tip SHA (time of probe): `918636a890a6e06542e8ebb3d0fa881a59ab20de`
+- Scope: LEAD-COST-001, LEAD-COST-002, LEAD-COST-005 only (investigation).
+- Commands executed:
+  - `psql -h localhost -p 55432 -U erp -d erp_domain -f tasks/erp_logic_audit/EVIDENCE_QUERIES/SQL/00_company_lookup.sql`
+  - `psql -v company_id=5 -f tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/SQL/*.sql`
+  - `curl -X POST http://localhost:8081/api/v1/auth/login` (dev admin; token captured)
+  - `curl -X POST http://localhost:8081/api/v1/factory/pack` twice with the same request (dev-only idempotency probe)
+- Evidence paths:
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/SQL/`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/`
+- Disposition:
+  - LEAD-COST-001 confirmed → LF-016
+  - LEAD-COST-002 confirmed → LF-017
+  - LEAD-COST-005 closed (material-only unit_cost policy)
+
+## 2026-01-13 LF-016/LF-017 fix run (bulk packing idempotency + movement linkage)
+- Branch (time of fix): `fix-phase5-lead015-and-lf011-014`
+- Tip SHA (time of fix): `b4418f2b0f1377ebc8414f642b031bca3a2d4604`
+- Design fork: chose deterministic pack reference + existing-movement lookup under `lockById` (PESSIMISTIC_WRITE) to enforce idempotency without adding a DB unique constraint/migration.
+- Commands executed:
+  - `docker compose build app` (rebuilt image with fixes)
+  - `docker compose run -d --service-ports -e ERP_ENVIRONMENT_VALIDATION_ENABLED=false app`
+  - `curl -X POST http://localhost:8081/api/v1/auth/login`
+  - `curl -X POST http://localhost:8081/api/v1/factory/production/logs` (seed bulk batch)
+  - `curl -X POST http://localhost:8081/api/v1/factory/pack` (twice, same request)
+  - `psql -v company_id=5 -v pack_reference=... -f tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/SQL/*.sql`
+- Tests executed:
+  - `mvn -f erp-domain/pom.xml -DskipTests compile` (pass)
+  - `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check` (pass; 29651 warnings)
+  - `mvn -f erp-domain/pom.xml test` (pass; 220 tests, 4 skipped)
+- Regression test:
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/regression/BulkPackMovementIdempotencyRegressionIT.java`
+- Evidence outputs:
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T120613Z_production_log_create_for_bulk.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T120643Z_bulk_pack_after_fix_response_1.json`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T120643Z_bulk_pack_after_fix_response_2.json`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T120701Z_sql_08_bulk_pack_reference_lookup_after_fix.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T120827Z_sql_01_bulk_pack_child_receipts_missing_journal_after_fix.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T120827Z_sql_02_bulk_pack_missing_bulk_issue_movement_after_fix.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T120827Z_sql_03_bulk_pack_journal_duplicates_by_semantic_reference_after_fix.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T120827Z_sql_04_bulk_pack_movements_vs_journals_linkage_after_fix.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T120827Z_sql_07_bulk_pack_recent_journals_after_fix.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T120827Z_sql_08_bulk_pack_movements_by_type_after_fix.txt`

@@ -1,0 +1,2 @@
+{"success":false,"message":"Batch has no available quantity: PROD-20260113-003","data":{"traceId":"611d9c89-941b-4226-bb84-f914a5e97a0f","code":"VAL_001","message":"Batch has no available quantity: PROD-20260113-003","timestamp":[2026,1,13,12,2,8,207263730]},"timestamp":1768305728.207295193}
+HTTP_STATUS:400

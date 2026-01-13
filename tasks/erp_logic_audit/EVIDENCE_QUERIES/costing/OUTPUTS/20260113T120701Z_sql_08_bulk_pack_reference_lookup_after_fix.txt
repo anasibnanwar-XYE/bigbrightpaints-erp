@@ -1,0 +1,5 @@
+ journal_entry_id |            reference_number             
+------------------+-----------------------------------------
+               31 | PACK-PROD-20260113-004-fabfa2db3a9d7282
+(1 row)
+

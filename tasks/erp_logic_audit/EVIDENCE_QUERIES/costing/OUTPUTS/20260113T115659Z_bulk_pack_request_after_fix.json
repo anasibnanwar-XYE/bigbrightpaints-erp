@@ -1,0 +1,15 @@
+{
+  "bulkBatchId": 6,
+  "packs": [
+    {
+      "childSkuId": 4,
+      "quantity": 1,
+      "sizeLabel": "1L",
+      "unit": "L"
+    }
+  ],
+  "packagingMaterials": [],
+  "packDate": "2026-01-13",
+  "packedBy": "audit",
+  "notes": "LF-016/017 after-fix probe"
+}

@@ -1,0 +1,4 @@
+ semantic_reference | movement_count | movements_missing_je_link | journal_count 
+--------------------+----------------+---------------------------+---------------
+(0 rows)
+

@@ -1,0 +1,6 @@
+             pack_reference              | movement_type | movement_count | movements_missing_je_link | min_journal_entry_id | max_journal_entry_id 
+-----------------------------------------+---------------+----------------+---------------------------+----------------------+----------------------
+ PACK-PROD-20260113-004-fabfa2db3a9d7282 | ISSUE         |              1 |                         0 |                   31 |                   31
+ PACK-PROD-20260113-004-fabfa2db3a9d7282 | RECEIPT       |              1 |                         0 |                   31 |                   31
+(2 rows)
+

@@ -15,7 +15,7 @@ This folder contains **discovery + planning artifacts only** (no behavioral chan
 ## Run metadata (this audit run)
 - Repo: `CLI_BACKEND_epic04`
 - Branch: `fix-phase5-lead015-and-lf011-014`
-- HEAD SHA: `229354a`
+- HEAD SHA: `7b64620`
 - Git status: **DIRTY** (untracked logs under `docs/ops_and_debug/LOGS/` + workspace artifacts like `interview/`; do not delete)
 
 ## Investigation run report (LEAD-010/011 evidence + Task-03)
@@ -42,6 +42,28 @@ This folder contains **discovery + planning artifacts only** (no behavioral chan
 - New lead logged: LEAD-017 (unpacked-batches endpoint 500 due to lazy-loaded product).
 - Verification gates: `mvn -f erp-domain/pom.xml -DskipTests compile` (pass), `mvn -f erp-domain/pom.xml checkstyle:check` (fail; baseline violations), `mvn -f erp-domain/pom.xml test` (pass; 219 tests, 4 skipped).
 
+## Investigation run report (Costing LEADs)
+- Scope: LEAD-COST-001, LEAD-COST-002, LEAD-COST-005 only (investigation; no production logic changes).
+- Evidence folder: `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/`.
+- LEAD-COST-001 confirmed and promoted to **LF-016** (bulk pack missing bulk ISSUE movement + missing movement↔journal linkage).
+- LEAD-COST-002 confirmed and promoted to **LF-017** (timestamp-based journal reference; retries duplicate POSTED journals).
+- LEAD-COST-005 closed (as-built costing is material-only; wastage valuation aligns to `unit_cost`).
+
+## Phase 5 fix run report (LF-016/LF-017)
+- Deterministic pack reference + idempotent guard + movement↔journal linkage implemented in `BulkPackingService`.
+- Regression test added: `erp-domain/src/test/java/com/bigbrightpaints/erp/regression/BulkPackMovementIdempotencyRegressionIT.java`.
+- Evidence outputs:
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T120643Z_bulk_pack_after_fix_response_1.json`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T120643Z_bulk_pack_after_fix_response_2.json`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T120701Z_sql_08_bulk_pack_reference_lookup_after_fix.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T120827Z_sql_01_bulk_pack_child_receipts_missing_journal_after_fix.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T120827Z_sql_02_bulk_pack_missing_bulk_issue_movement_after_fix.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T120827Z_sql_03_bulk_pack_journal_duplicates_by_semantic_reference_after_fix.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T120827Z_sql_04_bulk_pack_movements_vs_journals_linkage_after_fix.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T120827Z_sql_07_bulk_pack_recent_journals_after_fix.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T120827Z_sql_08_bulk_pack_movements_by_type_after_fix.txt`
+- Verification gates: `mvn -f erp-domain/pom.xml -DskipTests compile` (pass), `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check` (pass; 29651 warnings), `mvn -f erp-domain/pom.xml test` (pass; 220 tests, 4 skipped).
+
 ## AS-BUILT coverage summary (Phase 0 gate)
 - Portals/actors mapped: Admin, Accounting, Sales, Manufacturing/Factory, Dealer.
 - Core objects/IDs mapped: COA/accounts, journals/lines, dealer/supplier ledgers, inventory masters/batches/movements, orders/slips/invoices, purchases, production logs/packing, payroll runs, periods/checklist/reconciliation.
@@ -59,6 +81,8 @@ Source: `tasks/erp_logic_audit/LOGIC_FLAWS.md`
 - LF-004 — FG valuation mixes `current_stock` with FIFO slices of `quantity_available` (reserved stock misvaluation).
 - LF-005 — Opening stock import updates inventory without a GL opening entry (systematic inventory↔GL drift).
 - LF-006 — AP reconciliation compares signed GL liabilities vs positive supplier ledger (sign mismatch).
+- LF-016 — Bulk-to-size packing missing bulk ISSUE movement + movement↔journal linkage (fixed Phase 5).
+- LF-017 — Bulk-to-size packing journals duplicate on retry (timestamp-based reference) (fixed Phase 5).
 
 **MED severity**
 - LF-007 — Payroll run `idempotency_key` is globally unique (cross-company collision risk).
@@ -71,7 +95,7 @@ Source: `tasks/erp_logic_audit/LOGIC_FLAWS.md`
 - LF-014 — Finished-good creation 500s when default discount account unset.
 - LF-015 — Production log list/detail 500s due to lazy-load on brand/product.
 
-Top “HIGH” list: currently 6 items (LF-001..LF-006).
+Top “HIGH” list: currently 6 items (LF-001..LF-006); LF-016..LF-017 fixed in Phase 5.
 
 ## Leads pending confirmation (not yet LF items)
 Source: `tasks/erp_logic_audit/HUNT_NOTEBOOK.md`
@@ -113,5 +137,5 @@ Source: `tasks/erp_logic_audit/HUNT_NOTEBOOK.md`
 - Multi-company uniqueness guidelines: confirm the standard for idempotency keys and reference numbers across companies (LF-007 and broader).
 ## Latest audit tip
 - Branch: fix-phase5-lead015-and-lf011-014
-- Tip SHA: 229354a2c0565128341936ee6315d8fb8b59c5de
+- Tip SHA: 7b64620df027e62aee650d7163daa67762130333
 - Lead dispositions: LEAD-015 promoted to LF-015 (fixed), LEAD-017 opened (unpacked-batches lazy-load)

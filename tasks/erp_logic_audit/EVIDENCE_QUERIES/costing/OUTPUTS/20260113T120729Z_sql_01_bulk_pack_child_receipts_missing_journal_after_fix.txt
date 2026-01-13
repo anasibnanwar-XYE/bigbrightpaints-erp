@@ -1,0 +1,8 @@
+ movement_id |    child_product_code     | reference_type |      reference_id      | movement_type | quantity | unit_cost | journal_entry_id |          created_at           | child_batch_id |             child_batch_code              | parent_batch_id | parent_batch_code 
+-------------+---------------------------+----------------+------------------------+---------------+----------+-----------+------------------+-------------------------------+----------------+-------------------------------------------+-----------------+-------------------
+          15 | AUDIT-FG-20260113T072208Z | PACKAGING      | PACK-PROD-20260113-003 | RECEIPT       |    1.000 |    5.0000 |                  | 2026-01-13 11:57:10.007023+00 |             10 | BBP-FG-AUDITFG20260113T072208Z-202601-006 |               6 | PROD-20260113-003
+          14 | AUDIT-FG-20260113T072208Z | PACKAGING      | PACK-PROD-20260113-003 | RECEIPT       |    1.000 |    5.0000 |                  | 2026-01-13 11:57:09.942942+00 |              9 | BBP-FG-AUDITFG20260113T072208Z-202601-005 |               6 | PROD-20260113-003
+          13 | AUDIT-FG-20260113T072208Z | PACKAGING      | PACK-PROD-20260113-003 | RECEIPT       |    1.000 |    5.0000 |                  | 2026-01-13 10:59:04.053531+00 |              8 | BBP-FG-AUDITFG20260113T072208Z-202601-004 |               6 | PROD-20260113-003
+          12 | AUDIT-FG-20260113T072208Z | PACKAGING      | PACK-PROD-20260113-003 | RECEIPT       |    1.000 |    5.0000 |                  | 2026-01-13 10:58:44.69467+00  |              7 | BBP-FG-AUDITFG20260113T072208Z-202601-003 |               6 | PROD-20260113-003
+(4 rows)
+

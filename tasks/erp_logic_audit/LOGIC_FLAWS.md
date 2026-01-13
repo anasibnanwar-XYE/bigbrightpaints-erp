@@ -461,3 +461,90 @@ Policy:
   - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-015/OUTPUTS/20260113T103611Z_production_logs_list_after_fix.txt`
   - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-015/OUTPUTS/20260113T103622Z_production_logs_detail_after_fix.txt`
   - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-015/OUTPUTS/20260113T103637Z_erp_domain_app_logs_after_fix.txt`
+
+---
+
+## LF-016 — Bulk-to-size packing: missing bulk ISSUE movement and missing movement↔journal linkage
+
+- Workflow + modules + portal: Production/bulk packing (`factory`, `inventory`, `accounting`) — Factory/Accounting portals
+- ERP expectation:
+  - Converting bulk inventory into sized child SKUs should produce a complete, auditable movement chain:
+    - bulk batch stock decreases are recorded as ISSUE movements
+    - child batch stock increases are recorded as RECEIPT movements
+    - financially-impacting movements link to the posting `journal_entry_id`
+- As-built behavior:
+  - `BulkPackingService.pack(...)` reduces the parent bulk batch available quantity and bulk finished-good stock directly, but does **not** write an ISSUE `inventory_movements` row for the bulk deduction.
+  - `BulkPackingService.createChildBatch(...)` writes child RECEIPT `inventory_movements` (`reference_type='PACKAGING'`, `reference_id='PACK-'||parent_batch_code`) but never sets `journal_entry_id`.
+  - `BulkPackingService.postPackagingJournal(...)` posts a balanced journal entry and returns `journal.id()` without updating the movements.
+- Evidence:
+  - Code anchors:
+    - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/service/BulkPackingService.java:222` (bulk quantity deduction)
+    - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/service/BulkPackingService.java:314` (child RECEIPT movement write)
+    - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/service/BulkPackingService.java:328` (journal posting without movement linkage)
+  - SQL probe outputs (BBP company_id=5):
+    - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T105920Z_sql_01_bulk_pack_child_receipts_missing_journal.txt`
+    - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T105920Z_sql_02_bulk_pack_missing_bulk_issue_movement.txt`
+    - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T105920Z_sql_04_bulk_pack_movements_vs_journals_linkage.txt`
+- Severity: **HIGH** (inventory audit trail and movement↔GL traceability broken; investigations become manual/fragile)
+- Repro steps (dev):
+  1) Login and POST `/api/v1/factory/pack` (bulk-to-size) once.
+  2) Run `psql -v company_id=5 -f tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/SQL/01_bulk_pack_child_receipts_missing_journal.sql`.
+  3) Run `psql -v company_id=5 -f tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/SQL/02_bulk_pack_missing_bulk_issue_movement.sql`.
+- Fix direction (no implementation):
+  - Write a parent-batch ISSUE movement for the bulk deduction under the same semantic reference.
+  - Link both ISSUE/RECEIPT movements to the posted journal entry (`inventory_movements.journal_entry_id`).
+  - Define a stable reference mapping between movement reference_id and journal reference_number.
+- Fix implemented (Phase 5):
+  - `BulkPackingService.pack` now records a parent-batch ISSUE movement and links ISSUE/RECEIPT movements to the posted journal entry.
+  - Pack reference is deterministic (`PACK-<batch>-<hash>`), shared by movements and the posted journal.
+- Regression test:
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/regression/BulkPackMovementIdempotencyRegressionIT.java`
+- Fix evidence (Phase 5):
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T120643Z_bulk_pack_after_fix_response_1.json`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T120643Z_bulk_pack_after_fix_response_2.json`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T120827Z_sql_08_bulk_pack_movements_by_type_after_fix.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T120827Z_sql_01_bulk_pack_child_receipts_missing_journal_after_fix.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T120827Z_sql_02_bulk_pack_missing_bulk_issue_movement_after_fix.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T120827Z_sql_04_bulk_pack_movements_vs_journals_linkage_after_fix.txt`
+- Future-proof test suggestion:
+  - Integration test: bulk pack creates both ISSUE + RECEIPT movements and sets `journal_entry_id` on both.
+
+---
+
+## LF-017 — Bulk-to-size packing journals duplicate on retry due to timestamp-based reference
+
+- Workflow + modules + portal: Production/bulk packing idempotency (`factory`, `accounting`) — Factory/Accounting portals
+- ERP expectation:
+  - Retry of the same business action should not create multiple POSTED journals (and should not duplicate inventory side effects).
+- As-built behavior:
+  - `BulkPackingService.postPackagingJournal(...)` builds the journal reference number using `System.currentTimeMillis()`, so each retry generates a new `(company_id, reference_number)` and posts a new journal.
+- Evidence:
+  - Code anchor:
+    - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/service/BulkPackingService.java:402` (`reference = "PACK-" + bulkBatch.getBatchCode() + "-" + System.currentTimeMillis()`)
+  - SQL probe outputs (BBP company_id=5):
+    - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T105920Z_sql_03_bulk_pack_journal_duplicates_by_semantic_reference.txt`
+    - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T110014Z_sql_07_bulk_pack_recent_journals.txt`
+  - API probe responses:
+    - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T105824Z_bulk_pack_response_1.json` (journalEntryId=24)
+    - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T105856Z_bulk_pack_response_2.json` (journalEntryId=25)
+- Severity: **HIGH** (duplicate financial postings + stock changes under client/network retries)
+- Repro steps (dev):
+  1) POST `/api/v1/factory/pack` twice with the same payload.
+  2) Run `psql -v company_id=5 -f tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/SQL/03_bulk_pack_journal_duplicates_by_semantic_reference.sql`.
+- Fix direction (no implementation):
+  - Use a deterministic reference (e.g., derived from bulkBatchId + request hash or client-supplied idempotency key).
+  - Persist an idempotency marker (e.g., on a BulkPack document/table) so retries return the original journal.
+- Fix implemented (Phase 5):
+  - Deterministic pack reference is derived from bulk batch + request hash (no timestamps).
+  - Idempotency guard returns the original pack response when movements exist for the pack reference.
+  - Bulk batch locking (`lockById`) keeps concurrent requests serialized for the same batch.
+- Regression test:
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/regression/BulkPackMovementIdempotencyRegressionIT.java`
+- Fix evidence (Phase 5):
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T120643Z_bulk_pack_after_fix_response_1.json`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T120643Z_bulk_pack_after_fix_response_2.json`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T120701Z_sql_08_bulk_pack_reference_lookup_after_fix.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T120827Z_sql_03_bulk_pack_journal_duplicates_by_semantic_reference_after_fix.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T120827Z_sql_07_bulk_pack_recent_journals_after_fix.txt`
+- Future-proof test suggestion:
+  - Integration test: repeated bulk pack request is idempotent (no extra journal entries, no extra movements).

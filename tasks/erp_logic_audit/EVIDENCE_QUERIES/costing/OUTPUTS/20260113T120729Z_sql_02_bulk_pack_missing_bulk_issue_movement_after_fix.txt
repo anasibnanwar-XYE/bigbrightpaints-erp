@@ -1,0 +1,5 @@
+ parent_batch_id | parent_batch_code |       bulk_product_code        |     pack_reference     | receipt_movements_for_pack_ref | receipt_qty_for_pack_ref | issue_movements_for_pack_ref | issue_qty_for_pack_ref 
+-----------------+-------------------+--------------------------------+------------------------+--------------------------------+--------------------------+------------------------------+------------------------
+               6 | PROD-20260113-003 | AUDIT-FG-20260113T072208Z-BULK | PACK-PROD-20260113-003 |                              4 |                    4.000 |                            0 |                      0
+(1 row)
+

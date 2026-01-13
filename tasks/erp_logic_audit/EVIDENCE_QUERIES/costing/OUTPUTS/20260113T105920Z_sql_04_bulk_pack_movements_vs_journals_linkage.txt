@@ -1,0 +1,5 @@
+   semantic_reference   | movement_count | movements_missing_je_link | journal_count 
+------------------------+----------------+---------------------------+---------------
+ PACK-PROD-20260113-003 |              2 |                         2 |             2
+(1 row)
+

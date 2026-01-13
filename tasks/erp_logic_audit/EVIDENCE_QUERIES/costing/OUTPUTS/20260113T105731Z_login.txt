@@ -1,0 +1,2 @@
+{"tokenType":"Bearer","accessToken":"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbkBiYnAuZGV2IiwianRpIjoiMjIzMmE2Y2YtYTZiZS00N2Y5LTlkYWUtYjJiYjIwNGNkZGZkIiwibmFtZSI6IkRldiBBZG1pbiIsImNpZCI6IkJCUCIsImlhdCI6MTc2ODMwMTg1MSwiZXhwIjoxNzY4MzAyNzUxfQ.U3r_3RM9DF8SAc28yXMett_PbGoMu4pHM5ESWjULy9g","refreshToken":"c610786f-46a8-4f3f-bece-e21466beae0f","expiresIn":900,"companyCode":"BBP","displayName":"Dev Admin","mustChangePassword":false}
+HTTP_STATUS:200

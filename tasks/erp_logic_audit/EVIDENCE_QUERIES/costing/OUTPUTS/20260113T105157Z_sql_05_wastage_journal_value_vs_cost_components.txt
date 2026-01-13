@@ -1,0 +1,5 @@
+  production_code  | mixed_quantity | wastage_quantity | material_cost_total | labor_cost_total | overhead_cost_total | logged_unit_cost | material_unit_cost | expected_material_wastage_value | expected_full_wastage_value | journal_entry_id | entry_date | status | posted_debit | posted_credit | delta_vs_material | delta_vs_full 
+-------------------+----------------+------------------+---------------------+------------------+---------------------+------------------+--------------------+---------------------------------+-----------------------------+------------------+------------+--------+--------------+---------------+-------------------+---------------
+ PROD-20260113-003 |           5.00 |             5.00 |               25.00 |             2.00 |                1.00 |           5.0000 | 5.0000000000000000 |                           25.00 |                       25.00 |                  |            |        |              |               |                   |              
+(1 row)
+
