@@ -1,0 +1,2 @@
+{"success":true,"data":{"inventoryAccountId":7007,"cogsAccountId":7010,"revenueAccountId":7009,"discountAccountId":null,"taxAccountId":7008},"timestamp":1768300633.194050620}
+HTTP_STATUS:200
