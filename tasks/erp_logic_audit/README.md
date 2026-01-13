@@ -14,8 +14,8 @@ This folder contains **discovery + planning artifacts only** (no behavioral chan
 
 ## Run metadata (this audit run)
 - Repo: `CLI_BACKEND_epic04`
-- Branch: `audit-inv-09-06-ops-close`
-- HEAD SHA: `52b60d9`
+- Branch: `fix-phase5-lead015-and-lf011-014`
+- HEAD SHA: `229354a`
 - Git status: **DIRTY** (untracked logs under `docs/ops_and_debug/LOGS/` + workspace artifacts like `interview/`; do not delete)
 
 ## Investigation run report (LEAD-010/011 evidence + Task-03)
@@ -35,6 +35,12 @@ This folder contains **discovery + planning artifacts only** (no behavioral chan
 - Task-09: ops failure-mode probes (health + outbox + drift SQL) executed; no new LFs. LEAD-014 added for actuator health app-port 404 vs management-port health.
 - Task-06: period lock/close probes executed (SQL + checklist + controlled POSTs). Posting into locked period blocked with/without override; close without force blocked by checklist. LEAD-016 added to confirm policy on admin override vs reopen.
 - Evidence: `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-09/OUTPUTS/20260113T082939Z_actuator_health.json`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-06/OUTPUTS/20260113T084648Z_period_lock_response.json`.
+
+## Phase 5 fix run report (LEAD-015 + LF-011..LF-014)
+- LEAD-015 confirmed and promoted to **LF-015**; list/detail endpoints fixed with transactional boundaries + regression test.
+- LF-011..LF-014 fixes implemented with regression tests and evidence harnesses under `tasks/erp_logic_audit/EVIDENCE_QUERIES/lf-0xx/`.
+- New lead logged: LEAD-017 (unpacked-batches endpoint 500 due to lazy-loaded product).
+- Verification gates: `mvn -f erp-domain/pom.xml -DskipTests compile` (pass), `mvn -f erp-domain/pom.xml checkstyle:check` (fail; baseline violations), `mvn -f erp-domain/pom.xml test` (pass; 219 tests, 4 skipped).
 
 ## AS-BUILT coverage summary (Phase 0 gate)
 - Portals/actors mapped: Admin, Accounting, Sales, Manufacturing/Factory, Dealer.
@@ -63,6 +69,7 @@ Source: `tasks/erp_logic_audit/LOGIC_FLAWS.md`
 - LF-012 — WIP over-credited when labor/overhead included on production logs.
 - LF-013 — Production log status remains READY_TO_PACK after full packing.
 - LF-014 — Finished-good creation 500s when default discount account unset.
+- LF-015 — Production log list/detail 500s due to lazy-load on brand/product.
 
 Top “HIGH” list: currently 6 items (LF-001..LF-006).
 
@@ -70,8 +77,8 @@ Top “HIGH” list: currently 6 items (LF-001..LF-006).
 Source: `tasks/erp_logic_audit/HUNT_NOTEBOOK.md`
 - LEAD-001..LEAD-009 (outstanding overwrite on create; RM stock clamp; double-dispatch confirm; payroll PF drift; inventory event posting risks; batch code uniqueness; revaluation date; recon code-substring footgun).
 - LEAD-014 (actuator health app-port 404; management port required).
-- LEAD-015 (production log list/detail 500 due to lazy-load).
 - LEAD-016 (admin override does not bypass locked period posting).
+- LEAD-017 (unpacked-batches 500 due to lazy-load).
 
 ## Investigation taskpack (Phase 3)
 - Count: **9** tasks under `tasks/erp_logic_audit/taskpack_investigation/`.
@@ -105,6 +112,6 @@ Source: `tasks/erp_logic_audit/HUNT_NOTEBOOK.md`
 - Opening balances policy: define the GL counterpart of opening stock (equity vs suspense/clearing) and whether import must fail-closed without it (LF-005).
 - Multi-company uniqueness guidelines: confirm the standard for idempotency keys and reference numbers across companies (LF-007 and broader).
 ## Latest audit tip
-- Branch: audit-inv-leads-014-016
-- Tip SHA: 59d9ad6b48e6ec3d28f1c330fb335fbad6772436
-- Lead dispositions: LEAD-014 closed (expected config), LEAD-016 closed (expected control)
+- Branch: fix-phase5-lead015-and-lf011-014
+- Tip SHA: 229354a2c0565128341936ee6315d8fb8b59c5de
+- Lead dispositions: LEAD-015 promoted to LF-015 (fixed), LEAD-017 opened (unpacked-batches lazy-load)

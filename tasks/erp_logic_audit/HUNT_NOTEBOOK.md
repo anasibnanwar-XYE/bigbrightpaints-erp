@@ -24,8 +24,9 @@ Rules:
 | LEAD-012 | MED? | Auditor / Operator | Production WIP postings unverified (no production logs) | Closed → LF-012 |
 | LEAD-013 | MED? | Auditor / Operator | GST return blocked by missing tax account config | Closed → LF-011 |
 | LEAD-014 | LOW? | SRE / Operator | Actuator health on app port 404s (management port required) | Closed: prod config binds actuator to management port; app-port 404 expected |
-| LEAD-015 | MED? | Operator / Auditor | Production log detail endpoint 500s (lazy load) | Repro GET `/api/v1/factory/production/logs`; capture logs + add fetch/transaction probe |
+| LEAD-015 | MED? | Operator / Auditor | Production log detail endpoint 500s (lazy load) | Closed → LF-015 |
 | LEAD-016 | LOW? | Auditor / Operator | Admin override does not bypass locked period posting | Closed: period lock requires reopen; admin override only affects date constraints |
+| LEAD-017 | MED? | Operator / Auditor | Unpacked batches endpoint 500s (lazy load) | Repro GET `/api/v1/factory/unpacked-batches`; capture logs + add transactional/fetch probe |
 
 ---
 
@@ -326,13 +327,13 @@ Rules:
 - Why this matters (ERP expectation):
   - Operators need to retrieve production logs for audit; 500s block reconciliation and packing audits.
 - Evidence:
-  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-04/OUTPUTS/20260113T073100Z_production_gets.txt` (internal error on list).
-  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-04/OUTPUTS/20260113T072447Z_app_logs_after_get_log.txt` (LazyInitializationException).
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-015/OUTPUTS/20260113T095856Z_production_logs_list.txt` (HTTP 500).
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-015/OUTPUTS/20260113T095920Z_production_logs_detail.txt` (HTTP 500).
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-015/OUTPUTS/20260113T095904Z_erp_domain_app_logs.txt` (LazyInitializationException on ProductionBrand).
 - Code anchors:
-  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/service/ProductionLogService.java:264`
-  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/service/ProductionLogService.java:530`
-- Next probes:
-  - Fetch join brand/product in repository or wrap `getLog` in a transactional boundary and retry GETs.
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/service/ProductionLogService.java` (`recentLogs`, `getLog`).
+- Disposition:
+  - **CONFIRMED → LF-015** — fixed with transactional boundary + regression test.
 
 ---
 
@@ -355,3 +356,17 @@ Rules:
     - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-016/OUTPUTS/20260113T092631Z_accounting_period_require_open.txt`
 - Disposition:
   - **CLOSED** — Expected control: locked periods require reopen; admin override only relaxes entry-date constraints, not period lock enforcement.
+
+## LEAD-017 — Unpacked batches endpoint fails with lazy-load error
+
+- Hypothesis:
+  - `GET /api/v1/factory/unpacked-batches` can fail with `LazyInitializationException` when `PackingService.listUnpackedBatches` accesses `ProductionProduct` outside a session.
+- Why this matters (ERP expectation):
+  - Operators rely on the unpacked-batches queue for packing workflows; 500s block packing and downstream stock updates.
+- Evidence:
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lf-013/OUTPUTS/20260113T103946Z_unpacked_batches_after_pack.txt` (HTTP 500).
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lf-013/OUTPUTS/20260113T104028Z_app_logs_tail.txt` (LazyInitializationException on ProductionProduct).
+- Code anchors:
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/service/PackingService.java:190`
+- Next probes:
+  - Wrap `listUnpackedBatches` in a transactional boundary or fetch-join product/brand, then re-run the GET.

@@ -17,14 +17,17 @@
 
 ## Repo / Worktree State
 - Worktree: `/home/realnigga/Desktop/CLI_BACKEND_epic04`
-- Branch: `audit-inv-09-06-ops-close`
-- Tip: `52b60d91ead0dc65a6b18025d97e281ea7a59d79`
+- Branch: `fix-phase5-lead015-and-lf011-014`
+- Tip: `229354a2c0565128341936ee6315d8fb8b59c5de`
 - Dirty: untracked logs present under `docs/ops_and_debug/LOGS` + `interview/` (pre-existing).
 
 ## Environment Setup
 - No new installs; Docker/Testcontainers working.
 
 ## Commands Run (Latest)
+- `mvn -f erp-domain/pom.xml -DskipTests compile` (PASS; Phase 5 verification).
+- `mvn -f erp-domain/pom.xml checkstyle:check` (FAIL; 29479 violations reported; baseline).
+- `mvn -f erp-domain/pom.xml test` (PASS; Tests run 219, Failures 0, Errors 0, Skipped 4).
 - `mvn -f erp-domain/pom.xml -DskipTests compile` (PASS; task-09/06 verification; `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-06/OUTPUTS/20260113T085735Z_mvn_compile.txt`).
 - `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check` (PASS; 29454 violations reported; `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-06/OUTPUTS/20260113T085741Z_mvn_checkstyle.txt`).
 - `mvn -f erp-domain/pom.xml test` (PASS; Tests run 213, Failures 0, Errors 0, Skipped 4; `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-06/OUTPUTS/20260113T085754Z_mvn_test.txt`).
@@ -59,23 +62,24 @@
 - `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check` (PASS; 29454 violations reported; audit task 02).
 
 ## Evidence Paths (Latest)
+- Phase 5 evidence: `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-015/OUTPUTS/`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/lf-011/OUTPUTS/`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/lf-012/OUTPUTS/`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/lf-013/OUTPUTS/`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/lf-014/OUTPUTS/`.
 - Task-09 outputs: `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-09/OUTPUTS/20260113T082939Z_actuator_health.json`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-09/OUTPUTS/20260113T082949Z_health_gets_app_port.txt`.
 - Task-06 outputs: `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-06/OUTPUTS/20260113T084648Z_period_lock_response.json`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-06/OUTPUTS/20260113T084715Z_journal_locked_override_response.json`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-06/OUTPUTS/20260113T084854Z_period_close_response.json`.
 - Verification gates: `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-06/OUTPUTS/20260113T085735Z_mvn_compile.txt`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-06/OUTPUTS/20260113T085741Z_mvn_checkstyle.txt`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-06/OUTPUTS/20260113T085754Z_mvn_test.txt`.
 
 ## Warnings / Notes
-- Checkstyle baseline warnings (29454) persisted with failOnViolation=false.
+- Checkstyle baseline violations remain (29479); `checkstyle:check` fails as expected.
 - Testcontainers auth config warnings and dynamic agent loading notices persisted.
 - Test logs include expected warnings (invalid company IDs, negative balances, dispatch mapping, sequence contention/duplicate key retries, HTML-to-PDF CSS parsing); no failures.
 - Outbox queries returned zero pending/retrying/dead-letter events on seeded dataset; stuck retry count 0.
 - Task-09: app-port actuator health returns 404; management port health is UP (LEAD-014).
 - Task-06: admin override did not bypass locked period posting; reopen required (LEAD-016).
-- Task-04 production/WIP probes confirmed LF-012 (WIP over-credit), LF-013 (packing status stale), LF-014 (FG creation 500 when discount default missing); LEAD-015 logged for production log API 500s.
+- Task-04 production/WIP probes confirmed LF-012 (WIP over-credit), LF-013 (packing status stale), LF-014 (FG creation 500 when discount default missing); LEAD-015 promoted to LF-015 and fixed; LEAD-017 logged for unpacked-batches 500.
 - Task-05 GST return failed with GST accounts unset while config health reported healthy → LF-011.
 
 ## Current Task
-- ERP logic audit program: task-09 + task-06 evidence complete on `audit-inv-09-06-ops-close`.
-- Next recommended step: move to Phase 4 triage or fix taskpacks for confirmed LFs.
+- ERP logic audit program: Phase 5 fixes applied for LF-011..LF-015 on `fix-phase5-lead015-and-lf011-014`.
+- Next recommended step: review LEAD-017 (unpacked-batches lazy-load) and decide fix/triage.
 
 ## Commands Run (Audit)
 - `sed -n ... SCOPE.md` and `.codex/AGENTS.md` (scope + execution rules).
@@ -113,10 +117,10 @@
 - `docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'` (container status).
 
 ## Resume Instructions (ERP logic audit)
-1. Stay on branch `audit-inv-09-06-ops-close` (no worktrees).
-2. Review `tasks/erp_logic_audit/README.md` and `tasks/erp_logic_audit/HUNT_NOTEBOOK.md` for LEAD-014/016 context.
-3. If continuing, decide whether to promote LEAD-014/016 or close them with additional probes.
-4. Start Phase 4/5 follow-ups under `tasks/erp_logic_audit/taskpack_fixes/` if fixes are approved.
+1. Stay on branch `fix-phase5-lead015-and-lf011-014` (no worktrees).
+2. Review `tasks/erp_logic_audit/README.md`, `tasks/erp_logic_audit/LOGIC_FLAWS.md`, and `tasks/erp_logic_audit/HUNT_NOTEBOOK.md` for LF-015/LEAD-017 updates.
+3. Decide whether to fix LEAD-017 (unpacked-batches lazy-load) or keep as a lead with additional probes.
+4. Keep untracked logs under `docs/ops_and_debug/LOGS` and `interview/` untouched.
 ## 2026-01-13 lead resolution (LEAD-014/016)
 - Branch: audit-inv-leads-014-016
 - Tip SHA: 59d9ad6b48e6ec3d28f1c330fb335fbad6772436

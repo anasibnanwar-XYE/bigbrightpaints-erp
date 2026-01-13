@@ -322,6 +322,15 @@ Policy:
 - Fix direction (no implementation):
   - Add GST account validation to configuration health.
   - Return a specific validation error when GST accounts are missing (avoid generic state error).
+- Fix implemented (Phase 5):
+  - `ConfigurationHealthService.checkTaxAccounts` now emits `TAX_ACCOUNT` issues for GST_INPUT/GST_OUTPUT.
+  - `CompanyAccountingSettingsService.requireTaxAccounts` throws `VALIDATION_MISSING_REQUIRED_FIELD` with missing fields.
+- Regression test:
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/regression/GstConfigurationRegressionIT.java`
+- Fix evidence (Phase 5):
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lf-011/OUTPUTS/20260113T103754Z_company_tax_accounts_after_null.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lf-011/OUTPUTS/20260113T103803Z_config_health_after_null.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lf-011/OUTPUTS/20260113T103812Z_gst_return_after_null.txt`
 - Future-proof test suggestion:
   - Integration test: missing GST accounts should make config health unhealthy and GST return should return a clear configuration error.
 
@@ -351,6 +360,13 @@ Policy:
   - Option A: Post labor/overhead allocation at log creation (Dr WIP, Cr labor/overhead expense).
   - Option B: Exclude labor/overhead from `-SEMIFG` journal until cost allocation runs.
   - Keep unit cost and postings aligned to the chosen policy.
+- Fix implemented (Phase 5):
+  - `ProductionLogService.createLog` uses material cost for unit cost and semi-finished postings (`postingCost = materialCost`).
+- Regression test:
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/regression/ProductionLogWipPostingRegressionIT.java`
+- Fix evidence (Phase 5):
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lf-012/OUTPUTS/20260113T104209Z_production_log_create_after_fix.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lf-012/OUTPUTS/20260113T104233Z_wip_delta_for_log_after_fix.txt`
 - Future-proof test suggestion:
   - Integration test: production log with labor/overhead yields balanced WIP debits/credits.
 
@@ -376,6 +392,13 @@ Policy:
 - Fix direction (no implementation):
   - Refresh or reload the entity after the atomic update, or update status in the same update query.
   - Ensure `recordPacking` returns the updated status and packed quantity.
+- Fix implemented (Phase 5):
+  - `ProductionLogRepository.incrementPackedQuantityAtomic` now clears/flushes so refreshed reads see updated totals.
+- Regression test:
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/regression/ProductionLogPackingStatusRegressionIT.java`
+- Fix evidence (Phase 5):
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lf-013/OUTPUTS/20260113T103940Z_production_log_detail_after_pack.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lf-013/OUTPUTS/20260113T103953Z_production_log_status_after_packing.txt`
 - Future-proof test suggestion:
   - Integration test: full packing sets status `FULLY_PACKED` and removes the log from unpacked list.
 
@@ -401,5 +424,40 @@ Policy:
 - Fix direction (no implementation):
   - Build the defaults map without null values, or guard `discountAccountId` before `Map.of`.
   - Return a clear validation error if discount is required in the flow.
+- Fix implemented (Phase 5):
+  - `ProductionCatalogService.ensureFinishedGoodAccounts` now builds a mutable defaults map so null discount does not throw.
+- Regression test:
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/regression/ProductionCatalogDiscountDefaultRegressionIT.java`
+- Fix evidence (Phase 5):
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lf-014/OUTPUTS/20260113T103705Z_company_default_accounts_after_null.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lf-014/OUTPUTS/20260113T103726Z_create_product_after_fix.txt`
 - Future-proof test suggestion:
   - Integration test: finished-good creation with null default discount returns a 4xx validation error (not 500).
+
+---
+
+## LF-015 — Production log list/detail endpoints 500 due to lazy-loaded brand/product
+
+- Workflow + modules + portal: Production logs (`factory`) — Factory/Accounting portals
+- ERP expectation:
+  - Production log list/detail should return without 500s; DTO mapping should not fail due to lazy-loading.
+- As-built behavior:
+  - `ProductionLogService.recentLogs` and `getLog` map to DTOs outside a transaction, so lazy-loaded `ProductionBrand` access throws `LazyInitializationException` when open-in-view is disabled.
+- Evidence:
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/service/ProductionLogService.java:258`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-015/OUTPUTS/20260113T095856Z_production_logs_list.txt` (HTTP 500)
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-015/OUTPUTS/20260113T095920Z_production_logs_detail.txt` (HTTP 500)
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-015/OUTPUTS/20260113T095904Z_erp_domain_app_logs.txt` (LazyInitializationException on ProductionBrand)
+- Severity: **MED** (production log visibility broken; audit workflows blocked)
+- Repro steps (dev):
+  1) GET `/api/v1/factory/production/logs` with open-in-view disabled.
+  2) GET `/api/v1/factory/production/logs/{id}`.
+  3) Observe HTTP 500 and LazyInitializationException in logs.
+- Fix implemented (Phase 5):
+  - Added `@Transactional` to `ProductionLogService.recentLogs` and `getLog` to keep the session open during DTO mapping.
+- Regression test:
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/regression/ProductionLogEndpointLazyLoadingIT.java`
+- Fix evidence (Phase 5):
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-015/OUTPUTS/20260113T103611Z_production_logs_list_after_fix.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-015/OUTPUTS/20260113T103622Z_production_logs_detail_after_fix.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-015/OUTPUTS/20260113T103637Z_erp_domain_app_logs_after_fix.txt`
