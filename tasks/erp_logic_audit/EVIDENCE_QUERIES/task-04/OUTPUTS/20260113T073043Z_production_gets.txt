@@ -1,0 +1,20 @@
+== GET /api/v1/factory/production/logs
+{
+  "success": false,
+  "message": "Internal error",
+  "data": {
+    "traceId": "7148bb41-1ae0-45ad-9c40-475b987d7027",
+    "code": "SYS_001",
+    "message": "An internal error occurred. Please try again later.",
+    "timestamp": [
+      2026,
+      1,
+      13,
+      7,
+      30,
+      44,
+      556121626
+    ]
+  },
+  "timestamp": 1768289444.556158852
+}

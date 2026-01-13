@@ -1,0 +1,6 @@
+  id  |   code   |       name       | type  
+------+----------+------------------+-------
+ 7007 | 1200     | Inventory        | ASSET
+ 7016 | WIP-PROD | Work In Progress | ASSET
+(2 rows)
+

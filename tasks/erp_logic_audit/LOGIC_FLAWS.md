@@ -297,3 +297,82 @@ Policy:
   - Store and replay idempotency keys at the service boundary to return existing journals on retries.
 - Future-proof test suggestion:
   - Integration test: submit a purchase return twice without a reference and assert only one journal and movement set is created.
+
+---
+
+## LF-012 — WIP is over-credited when labor/overhead are supplied on production logs
+
+- Workflow + modules + portal: Production/WIP (`factory`, `inventory`, `accounting`) — Factory/Accounting portals
+- ERP expectation:
+  - WIP postings should remain balanced: labor/overhead should either be debited to WIP with an offsetting credit (labor/overhead expense) or excluded from WIP credit until cost allocation.
+- As-built behavior:
+  - `ProductionLogService.createLog` adds labor + overhead into `totalCost`, then `registerSemiFinishedBatch` posts a `-SEMIFG` journal that **credits WIP for the full total cost**.
+  - `postMaterialJournal` only debits WIP for **material** cost (`-RM` journal). No offsetting journal debits WIP for labor/overhead at log creation.
+  - Net effect: WIP is credited by labor/overhead amounts (negative WIP delta).
+- Evidence:
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/service/ProductionLogService.java:129`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/service/ProductionLogService.java:186`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingFacade.java:449`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-04/OUTPUTS/20260113T072603Z_02_production_wip_debit_credit_delta.txt` (WIP debit 25 vs credit 28; delta -3)
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-04/OUTPUTS/20260113T072933Z_11_production_journal_lines.txt` (only `-RM` and `-SEMIFG` entries)
+- Severity: **MED** (WIP balance misstatement when labor/overhead included)
+- Repro steps (dev):
+  1) Create a production log with non-zero labor/overhead costs.
+  2) Run `02_production_wip_debit_credit_delta.sql` and `11_production_journal_lines.sql`.
+  3) Observe WIP credit exceeds WIP debit by labor+overhead amount.
+- Fix direction (no implementation):
+  - Option A: Post labor/overhead allocation at log creation (Dr WIP, Cr labor/overhead expense).
+  - Option B: Exclude labor/overhead from `-SEMIFG` journal until cost allocation runs.
+  - Keep unit cost and postings aligned to the chosen policy.
+- Future-proof test suggestion:
+  - Integration test: production log with labor/overhead yields balanced WIP debits/credits.
+
+---
+
+## LF-013 — Production logs remain READY_TO_PACK after full packing (status not updated)
+
+- Workflow + modules + portal: Production packing (`factory`) — Factory/Accounting portals
+- ERP expectation:
+  - When `total_packed_quantity >= mixed_quantity`, status must be `FULLY_PACKED`, and the log should drop out of `unpacked-batches`.
+- As-built behavior:
+  - `PackingService.recordPacking` uses `incrementPackedQuantityAtomic` but immediately re-reads the log without a refresh, so `updateStatus` can evaluate a stale `totalPackedQuantity`.
+  - Result: status remains `READY_TO_PACK` even when packed quantity equals mixed quantity.
+- Evidence:
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/service/PackingService.java:171`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/domain/ProductionLogRepository.java:22`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-04/OUTPUTS/20260113T072933Z_10_production_log_status.txt` (mixed=5, packed=5, status=READY_TO_PACK)
+- Severity: **MED** (workflow state inconsistent; unpacked list + downstream workflows can be wrong)
+- Repro steps (dev):
+  1) Record packing equal to `mixed_quantity`.
+  2) Query `production_logs` or `GET /api/v1/factory/unpacked-batches`.
+  3) Observe status still `READY_TO_PACK`.
+- Fix direction (no implementation):
+  - Refresh or reload the entity after the atomic update, or update status in the same update query.
+  - Ensure `recordPacking` returns the updated status and packed quantity.
+- Future-proof test suggestion:
+  - Integration test: full packing sets status `FULLY_PACKED` and removes the log from unpacked list.
+
+---
+
+## LF-014 — Finished-good catalog creation throws 500 when default discount account is unset
+
+- Workflow + modules + portal: Production catalog setup (`production`, `accounting`) — Admin/Factory portals
+- ERP expectation:
+  - Missing optional discount defaults should not crash catalog creation; system should allow creation or return a clear validation error.
+- As-built behavior:
+  - `ProductionCatalogService.ensureFinishedGoodAccounts` uses `Map.of` with `defaults.discountAccountId()`. If the discount default is null, `Map.of` throws `NullPointerException`, returning a 500 error instead of a validation response.
+- Evidence:
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/production/service/ProductionCatalogService.java:619`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-04/OUTPUTS/20260113T071615Z_create_production_product_response.json` (500 response)
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-04/OUTPUTS/20260113T071622Z_app_logs_tail_after_product_create.txt` (NPE in `ensureFinishedGoodAccounts`)
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-04/OUTPUTS/20260113T072133Z_default_accounts_before.json` (discountAccountId null)
+- Severity: **MED** (blocks finished-good setup in default configs)
+- Repro steps (dev):
+  1) Ensure company default discount account is null.
+  2) POST `/api/v1/accounting/catalog/products` for a finished good.
+  3) Observe 500 response and NPE in logs.
+- Fix direction (no implementation):
+  - Build the defaults map without null values, or guard `discountAccountId` before `Map.of`.
+  - Return a clear validation error if discount is required in the flow.
+- Future-proof test suggestion:
+  - Integration test: finished-good creation with null default discount returns a 4xx validation error (not 500).

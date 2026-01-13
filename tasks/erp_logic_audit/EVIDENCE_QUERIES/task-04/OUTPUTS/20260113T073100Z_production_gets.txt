@@ -1,0 +1,21 @@
+== GET /api/v1/factory/production/logs
+{
+  "success": false,
+  "message": "Internal error",
+  "data": {
+    "traceId": "30aeaa86-2c97-451c-9953-82978252211d",
+    "code": "SYS_001",
+    "message": "An internal error occurred. Please try again later.",
+    "timestamp": [
+      2026,
+      1,
+      13,
+      7,
+      31,
+      0,
+      567569700
+    ]
+  },
+  "timestamp": 1768289460.567587276
+}
+jq: error (at <stdin>:1): Cannot index object with number

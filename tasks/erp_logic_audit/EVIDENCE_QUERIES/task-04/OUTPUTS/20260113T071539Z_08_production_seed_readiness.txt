@@ -1,0 +1,5 @@
+ id | brand_id |  brand_name   |          sku_code          |       product_name        |   category   | is_active | wip_account_id | semi_finished_account_id | fg_valuation_account_id 
+----+----------+---------------+----------------------------+---------------------------+--------------+-----------+----------------+--------------------------+-------------------------
+  2 |        2 | Raw Materials | AUDIT-SKU-20260112T130652Z | Audit RM 20260112T130652Z | RAW_MATERIAL | t         |                |                          | 
+(1 row)
+

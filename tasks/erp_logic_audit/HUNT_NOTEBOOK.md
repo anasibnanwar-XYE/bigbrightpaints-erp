@@ -21,8 +21,9 @@ Rules:
 | LEAD-009 | MED? | Operator / Auditor | AR/AP reconciliation depends on account code substrings | Change COA codes; verify recon returns false positives/negatives |
 | LEAD-010 | HIGH? | Backend / Operator | Sales order idempotency key not enforced at DB | Closed: duplicate attempt rejected; unique index present (see evidence) |
 | LEAD-011 | MED? | Backend / Operator | Purchase return idempotency relies on optional reference | Confirmed → LF-010 (duplicate returns created without reference) |
-| LEAD-012 | MED? | Auditor / Operator | Production WIP postings unverified (no production logs) | Seed production log with labor/overhead + packing; rerun task-04 SQL |
+| LEAD-012 | MED? | Auditor / Operator | Production WIP postings unverified (no production logs) | Closed → LF-012 |
 | LEAD-013 | MED? | Auditor / Operator | GST return blocked by missing tax account config | Configure GST input/output accounts; re-run return + tax SQL |
+| LEAD-015 | MED? | Operator / Auditor | Production log detail endpoint 500s (lazy load) | Repro GET `/api/v1/factory/production/logs`; capture logs + add fetch/transaction probe |
 
 ---
 
@@ -252,6 +253,8 @@ Rules:
 
 ## LEAD-012 — Production WIP postings unverified (no production logs)
 
+- Status: **CLOSED → LF-012**
+
 - Hypothesis:
   - WIP postings for production logs may drift (especially when labor/overhead are present), but the BBP dataset has no production logs to validate the posting chain.
 - Why this matters (ERP expectation):
@@ -266,6 +269,10 @@ Rules:
 - Next probes:
   - Seed a production log with non-zero labor/overhead and at least one packing record.
   - Re-run task-04 SQL probes to confirm WIP debit/credit alignment and journal linkage.
+
+- Closure evidence:
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-04/OUTPUTS/20260113T072603Z_02_production_wip_debit_credit_delta.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-04/OUTPUTS/20260113T072933Z_11_production_journal_lines.txt`
 
 ---
 
@@ -284,3 +291,18 @@ Rules:
 - Next probes:
   - Configure GST input/output accounts for BBP and rerun task-05 SQL + `/api/v1/accounting/gst/return`.
   - Compare GST return output to journal lines for the same period.
+
+## LEAD-015 — Production log detail endpoint fails with lazy-load error
+
+- Hypothesis:
+  - `GET /api/v1/factory/production/logs` and log detail can fail with `LazyInitializationException` when `ProductionLogService.toDetailDto` accesses `ProductionBrand` outside a session.
+- Why this matters (ERP expectation):
+  - Operators need to retrieve production logs for audit; 500s block reconciliation and packing audits.
+- Evidence:
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-04/OUTPUTS/20260113T073100Z_production_gets.txt` (internal error on list).
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-04/OUTPUTS/20260113T072447Z_app_logs_after_get_log.txt` (LazyInitializationException).
+- Code anchors:
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/service/ProductionLogService.java:264`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/service/ProductionLogService.java:530`
+- Next probes:
+  - Fetch join brand/product in repository or wrap `getLog` in a transactional boundary and retry GETs.

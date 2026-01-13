@@ -1,0 +1,19 @@
+{
+  "success": false,
+  "message": "Internal error",
+  "data": {
+    "traceId": "e7c633c8-e0a6-4421-a11a-ded9e1cb7b7e",
+    "code": "SYS_001",
+    "message": "An internal error occurred. Please try again later.",
+    "timestamp": [
+      2026,
+      1,
+      13,
+      7,
+      16,
+      15,
+      878805905
+    ]
+  },
+  "timestamp": 1768288575.878853280
+}

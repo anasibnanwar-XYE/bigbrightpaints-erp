@@ -1,0 +1,10 @@
+  production_code  |     reference_number     | account_id | account_code |   account_name   | debit | credit 
+-------------------+--------------------------+------------+--------------+------------------+-------+--------
+ PROD-20260113-001 | PROD-20260113-001-PACK-7 |       7007 | 1200         | Inventory        | 25.00 |   0.00
+ PROD-20260113-001 | PROD-20260113-001-PACK-7 |       7007 | 1200         | Inventory        |  0.00 |  25.00
+ PROD-20260113-001 | PROD-20260113-001-RM     |       7016 | WIP-PROD     | Work In Progress | 25.00 |   0.00
+ PROD-20260113-001 | PROD-20260113-001-RM     |       7007 | 1200         | Inventory        |  0.00 |  25.00
+ PROD-20260113-001 | PROD-20260113-001-SEMIFG |       7007 | 1200         | Inventory        | 28.00 |   0.00
+ PROD-20260113-001 | PROD-20260113-001-SEMIFG |       7016 | WIP-PROD     | Work In Progress |  0.00 |  28.00
+(6 rows)
+

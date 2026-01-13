@@ -1,0 +1,13 @@
+{
+  "success": true,
+  "message": "Account created",
+  "data": {
+    "id": 7016,
+    "publicId": "ed183c35-373d-4cde-8d10-5445086e1dbd",
+    "code": "WIP-PROD",
+    "name": "Work In Progress",
+    "type": "ASSET",
+    "balance": 0
+  },
+  "timestamp": 1768288554.843065295
+}

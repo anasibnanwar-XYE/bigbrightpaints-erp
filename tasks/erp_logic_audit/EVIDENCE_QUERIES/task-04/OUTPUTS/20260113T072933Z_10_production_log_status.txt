@@ -1,0 +1,5 @@
+ id |  production_code  |    status     | mixed_quantity | total_packed_quantity | wastage_quantity | material_cost_total | labor_cost_total | overhead_cost_total | unit_cost 
+----+-------------------+---------------+----------------+-----------------------+------------------+---------------------+------------------+---------------------+-----------
+  2 | PROD-20260113-001 | READY_TO_PACK |           5.00 |                  5.00 |             0.00 |               25.00 |             2.00 |                1.00 |    5.6000
+(1 row)
+

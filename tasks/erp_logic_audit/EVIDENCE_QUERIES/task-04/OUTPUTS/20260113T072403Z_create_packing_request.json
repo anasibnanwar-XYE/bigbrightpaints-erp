@@ -1,0 +1,12 @@
+{
+  "productionLogId": 2,
+  "packedDate": "2026-01-13",
+  "packedBy": "audit",
+  "lines": [
+    {
+      "packagingSize": "1L",
+      "quantityLiters": 5,
+      "piecesCount": 5
+    }
+  ]
+}

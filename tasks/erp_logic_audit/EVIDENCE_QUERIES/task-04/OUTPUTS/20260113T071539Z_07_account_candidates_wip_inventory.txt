@@ -1,0 +1,5 @@
+  id  | code |   name    | type  
+------+------+-----------+-------
+ 7007 | 1200 | Inventory | ASSET
+(1 row)
+

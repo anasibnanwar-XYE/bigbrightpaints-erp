@@ -1,0 +1,13 @@
+{
+  "brandId": 2,
+  "productName": "Audit FG 20260113T071615Z",
+  "category": "FINISHED_GOOD",
+  "unitOfMeasure": "KG",
+  "customSkuCode": "AUDIT-FG-20260113T071615Z",
+  "basePrice": 100,
+  "gstRate": 18,
+  "metadata": {
+    "wipAccountId": 7016,
+    "semiFinishedAccountId": 7007
+  }
+}

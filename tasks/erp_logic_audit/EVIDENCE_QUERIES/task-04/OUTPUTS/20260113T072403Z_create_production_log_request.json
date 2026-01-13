@@ -1,0 +1,16 @@
+{
+  "brandId": 2,
+  "productId": 3,
+  "batchSize": 5,
+  "mixedQuantity": 5,
+  "unitOfMeasure": "KG",
+  "laborCost": 2,
+  "overheadCost": 1,
+  "materials": [
+    {
+      "rawMaterialId": 1,
+      "quantity": 5,
+      "unitOfMeasure": "KG"
+    }
+  ]
+}

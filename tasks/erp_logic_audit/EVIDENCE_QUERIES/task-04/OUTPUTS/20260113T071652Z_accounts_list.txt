@@ -1,0 +1,16 @@
+  id  |              code              |                   name                   |   type    
+------+--------------------------------+------------------------------------------+-----------
+ 7005 | 1000                           | Cash                                     | ASSET
+ 7006 | 1100                           | Accounts Receivable                      | ASSET
+ 7007 | 1200                           | Inventory                                | ASSET
+ 7008 | 2000                           | Accounts Payable                         | LIABILITY
+ 7009 | 4000                           | Revenue                                  | REVENUE
+ 7010 | 5000                           | Cost of Goods Sold                       | COGS
+ 7011 | 6000                           | Operating Expenses                       | EXPENSE
+ 7012 | AR-AUDITDEALER20260112T180925  | Audit Dealer 20260112T180925 Receivable  | ASSET
+ 7013 | AR-AUDITDEALER20260112T124716Z | Audit Dealer 20260112T124716Z Receivable | ASSET
+ 7014 | AR-AUDITDEALER20260112T130259Z | Audit Dealer 20260112T130259Z Receivable | ASSET
+ 7015 | AP-AUDSUP-20260112T130652Z     | Audit Supplier 20260112T130652Z Payable  | LIABILITY
+ 7016 | WIP-PROD                       | Work In Progress                         | ASSET
+(12 rows)
+
