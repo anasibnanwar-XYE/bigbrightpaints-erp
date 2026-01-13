@@ -117,3 +117,9 @@
 2. Review `tasks/erp_logic_audit/README.md` and `tasks/erp_logic_audit/HUNT_NOTEBOOK.md` for LEAD-014/016 context.
 3. If continuing, decide whether to promote LEAD-014/016 or close them with additional probes.
 4. Start Phase 4/5 follow-ups under `tasks/erp_logic_audit/taskpack_fixes/` if fixes are approved.
+## 2026-01-13 lead resolution (LEAD-014/016)
+- Branch: audit-inv-leads-014-016
+- Tip SHA: 59d9ad6b48e6ec3d28f1c330fb335fbad6772436
+- Commands executed (detail in RUN.md): docker compose up -d; curl/psql probes in `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-014` and `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-016`; git add/commit for lead dispositions
+- Evidence paths: `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-014/OUTPUTS/`; `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-016/OUTPUTS/`
+- Resume steps: from repo root, run `docker compose up -d` with required env vars; rerun lead scripts if repro needed; continue from `tasks/erp_logic_audit/HUNT_NOTEBOOK.md`

@@ -104,3 +104,7 @@ Source: `tasks/erp_logic_audit/HUNT_NOTEBOOK.md`
 - Movement↔journal linkage policy: decide which journal a movement must link to (COGS vs AR vs both) and backfill expectations (LF-003).
 - Opening balances policy: define the GL counterpart of opening stock (equity vs suspense/clearing) and whether import must fail-closed without it (LF-005).
 - Multi-company uniqueness guidelines: confirm the standard for idempotency keys and reference numbers across companies (LF-007 and broader).
+## Latest audit tip
+- Branch: audit-inv-leads-014-016
+- Tip SHA: 59d9ad6b48e6ec3d28f1c330fb335fbad6772436
+- Lead dispositions: LEAD-014 closed (expected config), LEAD-016 closed (expected control)
