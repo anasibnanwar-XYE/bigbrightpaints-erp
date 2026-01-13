@@ -1,0 +1,2 @@
+{"success":false,"message":"Internal error","data":{"traceId":"84734ef1-292a-463f-98de-c7f2cbd6e77e","code":"SYS_001","message":"An internal error occurred. Please try again later.","timestamp":[2026,1,13,10,32,53,119411481]},"timestamp":1768300373.119421600}
+HTTP_STATUS:500

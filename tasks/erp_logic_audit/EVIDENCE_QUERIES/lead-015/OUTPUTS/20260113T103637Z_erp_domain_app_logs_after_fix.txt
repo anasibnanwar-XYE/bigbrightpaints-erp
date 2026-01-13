@@ -1,0 +1,200 @@
+2026-01-13 10:34:11 - Bean 'batchDataSourceInitializer' of type [org.springframework.boot.autoconfigure.batch.BatchDataSourceScriptDatabaseInitializer] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:34:11 - Bean 'jpaVendorAdapter' of type [org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:34:11 - Bean 'entityManagerFactoryBuilder' of type [org.springframework.boot.orm.jpa.EntityManagerFactoryBuilder] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:34:11 - Bean 'persistenceManagedTypes' of type [org.springframework.orm.jpa.persistenceunit.SimplePersistenceManagedTypes] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:34:11 - HHH000204: Processing PersistenceUnitInfo [name: default]
+2026-01-13 10:34:11 - HHH000412: Hibernate ORM core version 6.5.3.Final
+2026-01-13 10:34:11 - HHH000026: Second-level cache disabled
+2026-01-13 10:34:11 - No LoadTimeWeaver setup: ignoring JPA class transformer
+2026-01-13 10:34:12 - HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+2026-01-13 10:34:12 - Initialized JPA EntityManagerFactory for persistence unit 'default'
+2026-01-13 10:34:12 - Bean 'entityManagerFactory' of type [org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:34:12 - Bean 'entityManagerFactory' of type [jdk.proxy2.$Proxy189] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:34:12 - Bean 'transactionManager' of type [org.springframework.orm.jpa.JpaTransactionManager] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:34:12 - Bean 'org.springframework.boot.autoconfigure.batch.BatchAutoConfiguration$SpringBootBatchConfiguration' of type [org.springframework.boot.autoconfigure.batch.BatchAutoConfiguration$SpringBootBatchConfiguration] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). The currently created BeanPostProcessor [jobRegistryBeanPostProcessor] is declared through a non-static factory method on that class; consider declaring it as static instead.
+2026-01-13 10:34:12 - Tomcat initialized with port 8081 (http)
+2026-01-13 10:34:12 - Starting service [Tomcat]
+2026-01-13 10:34:12 - Starting Servlet engine: [Apache Tomcat/10.1.30]
+2026-01-13 10:34:12 - Initializing Spring embedded WebApplicationContext
+2026-01-13 10:34:12 - Root WebApplicationContext: initialization completed in 3522 ms
+2026-01-13 10:34:13 - Hibernate is in classpath; If applicable, HQL parser will be used.
+2026-01-13 10:34:15 - SMTP username is empty; verify spring.mail.username is set
+2026-01-13 10:34:15 - Dispatch debit/credit accounts not configured; COGS postings for dispatch mapping will be skipped. Set erp.dispatch.debit-account-id and erp.dispatch.credit-account-id to enable dispatch journals.
+2026-01-13 10:34:15 - Order auto-approval enabled=true
+2026-01-13 10:34:15 - Registered job outbox-publisher with cron 0/30 * * * * *
+2026-01-13 10:34:16 - Using default implementation for ThreadExecutor
+2026-01-13 10:34:16 - Initialized Scheduler Signaller of type: class org.quartz.core.SchedulerSignalerImpl
+2026-01-13 10:34:16 - Quartz Scheduler v.2.3.2 created.
+2026-01-13 10:34:16 - RAMJobStore initialized.
+2026-01-13 10:34:16 - Scheduler meta-data: Quartz Scheduler (v2.3.2) 'quartzScheduler' with instanceId 'NON_CLUSTERED'
+  Scheduler class: 'org.quartz.core.QuartzScheduler' - running locally.
+  NOT STARTED.
+  Currently in standby mode.
+  Number of jobs executed: 0
+  Using thread pool 'org.quartz.simpl.SimpleThreadPool' - with 10 threads.
+  Using job-store 'org.quartz.simpl.RAMJobStore' - which does not support persistence. and is not clustered.
+
+2026-01-13 10:34:16 - Quartz scheduler 'quartzScheduler' initialized from an externally provided properties instance.
+2026-01-13 10:34:16 - Quartz scheduler version: 2.3.2
+2026-01-13 10:34:16 - JobFactory set to: org.springframework.scheduling.quartz.SpringBeanJobFactory@3d473fa8
+2026-01-13 10:34:16 - Tomcat started on port 8081 (http) with context path '/'
+2026-01-13 10:34:16 - Tomcat initialized with port 9090 (http)
+2026-01-13 10:34:16 - Starting service [Tomcat]
+2026-01-13 10:34:16 - Starting Servlet engine: [Apache Tomcat/10.1.30]
+2026-01-13 10:34:16 - Initializing Spring embedded WebApplicationContext
+2026-01-13 10:34:16 - Root WebApplicationContext: initialization completed in 42 ms
+2026-01-13 10:34:16 - Exposing 2 endpoints beneath base path '/actuator'
+2026-01-13 10:34:16 - Tomcat started on port 9090 (http) with context path '/'
+2026-01-13 10:34:16 - Starting Quartz Scheduler now
+2026-01-13 10:34:16 - Scheduler quartzScheduler_$_NON_CLUSTERED started.
+2026-01-13 10:34:16 - Started ErpDomainApplication in 7.297 seconds (process running for 7.597)
+2026-01-13 10:34:16 - Security trend analysis - Failed logins: 0, Security alerts: 0
+2026-01-13 10:34:16 - Running default command line with: []
+2026-01-13 10:34:16 - 
+
+Error starting ApplicationContext. To display the condition evaluation report re-run your application with 'debug' enabled.
+2026-01-13 10:34:16 - Application run failed
+java.lang.IllegalStateException: Configuration validation failed: BBP:TAX_ACCOUNT:GST_INPUT - GST input tax account is not configured; BBP:TAX_ACCOUNT:GST_OUTPUT - GST output tax account is not configured
+	at com.bigbrightpaints.erp.core.health.ConfigurationHealthService.assertHealthy(ConfigurationHealthService.java:62)
+	at com.bigbrightpaints.erp.modules.sales.config.SalesAccountConfigurationValidator.run(SalesAccountConfigurationValidator.java:31)
+	at org.springframework.boot.SpringApplication.lambda$callRunner$4(SpringApplication.java:786)
+	at org.springframework.util.function.ThrowingConsumer$1.acceptWithException(ThrowingConsumer.java:83)
+	at org.springframework.util.function.ThrowingConsumer.accept(ThrowingConsumer.java:60)
+	at org.springframework.util.function.ThrowingConsumer$1.accept(ThrowingConsumer.java:88)
+	at org.springframework.boot.SpringApplication.callRunner(SpringApplication.java:798)
+	at org.springframework.boot.SpringApplication.callRunner(SpringApplication.java:786)
+	at org.springframework.boot.SpringApplication.lambda$callRunners$3(SpringApplication.java:774)
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.accept(Unknown Source)
+	at java.base/java.util.stream.SortedOps$SizedRefSortingSink.end(Unknown Source)
+	at java.base/java.util.stream.AbstractPipeline.copyInto(Unknown Source)
+	at java.base/java.util.stream.AbstractPipeline.wrapAndCopyInto(Unknown Source)
+	at java.base/java.util.stream.ForEachOps$ForEachOp.evaluateSequential(Unknown Source)
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.evaluateSequential(Unknown Source)
+	at java.base/java.util.stream.AbstractPipeline.evaluate(Unknown Source)
+	at java.base/java.util.stream.ReferencePipeline.forEach(Unknown Source)
+	at org.springframework.boot.SpringApplication.callRunners(SpringApplication.java:774)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:342)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:1363)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:1352)
+	at com.bigbrightpaints.erp.ErpDomainApplication.main(ErpDomainApplication.java:32)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(Unknown Source)
+	at java.base/java.lang.reflect.Method.invoke(Unknown Source)
+	at org.springframework.boot.loader.launch.Launcher.launch(Launcher.java:102)
+	at org.springframework.boot.loader.launch.Launcher.launch(Launcher.java:64)
+	at org.springframework.boot.loader.launch.JarLauncher.main(JarLauncher.java:40)
+2026-01-13 10:34:16 - Scheduler quartzScheduler_$_NON_CLUSTERED paused.
+2026-01-13 10:34:16 - Shutting down Quartz Scheduler
+2026-01-13 10:34:16 - Scheduler quartzScheduler_$_NON_CLUSTERED shutting down.
+2026-01-13 10:34:16 - Scheduler quartzScheduler_$_NON_CLUSTERED paused.
+2026-01-13 10:34:16 - Scheduler quartzScheduler_$_NON_CLUSTERED shutdown complete.
+2026-01-13 10:34:16 - Closing JPA EntityManagerFactory for persistence unit 'default'
+2026-01-13 10:34:16 - HikariPool-1 - Shutdown initiated...
+2026-01-13 10:34:16 - HikariPool-1 - Shutdown completed.
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+
+ :: Spring Boot ::                (v3.3.4)
+
+2026-01-13 10:35:50 - Starting ErpDomainApplication v0.1.0-SNAPSHOT using Java 21.0.9 with PID 7 (/app/app.jar started by root in /app)
+2026-01-13 10:35:50 - The following 1 profile is active: "prod"
+2026-01-13 10:35:51 - Bootstrapping Spring Data JPA repositories in DEFAULT mode.
+2026-01-13 10:35:51 - Finished Spring Data repository scanning in 102 ms. Found 60 JPA repository interfaces.
+2026-01-13 10:35:51 - Bean 'org.springframework.boot.autoconfigure.jdbc.DataSourceConfiguration$Hikari' of type [org.springframework.boot.autoconfigure.jdbc.DataSourceConfiguration$Hikari] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:35:51 - Bean 'org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration' of type [org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:35:51 - Bean 'stringOrNumberMigrationVersionConverter' of type [org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration$StringOrNumberToMigrationVersionConverter] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:35:51 - Bean 'spring.datasource-org.springframework.boot.autoconfigure.jdbc.DataSourceProperties' of type [org.springframework.boot.autoconfigure.jdbc.DataSourceProperties] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:35:51 - Bean 'org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration$PooledDataSourceConfiguration' of type [org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration$PooledDataSourceConfiguration] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:35:51 - Bean 'jdbcConnectionDetails' of type [org.springframework.boot.autoconfigure.jdbc.PropertiesJdbcConnectionDetails] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:35:51 - Bean 'dataSource' of type [com.zaxxer.hikari.HikariDataSource] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:35:51 - Bean 'spring.jpa-org.springframework.boot.autoconfigure.orm.jpa.JpaProperties' of type [org.springframework.boot.autoconfigure.orm.jpa.JpaProperties] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:35:51 - Bean 'spring.jpa.hibernate-org.springframework.boot.autoconfigure.orm.jpa.HibernateProperties' of type [org.springframework.boot.autoconfigure.orm.jpa.HibernateProperties] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:35:51 - Bean 'org.springframework.boot.autoconfigure.jdbc.metadata.DataSourcePoolMetadataProvidersConfiguration$HikariPoolDataSourceMetadataProviderConfiguration' of type [org.springframework.boot.autoconfigure.jdbc.metadata.DataSourcePoolMetadataProvidersConfiguration$HikariPoolDataSourceMetadataProviderConfiguration] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:35:51 - Bean 'hikariPoolDataSourceMetadataProvider' of type [org.springframework.boot.autoconfigure.jdbc.metadata.DataSourcePoolMetadataProvidersConfiguration$HikariPoolDataSourceMetadataProviderConfiguration$$Lambda/0x0000784b884f5578] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:35:51 - Bean 'org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaConfiguration' of type [org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaConfiguration] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:35:51 - Bean 'org.springframework.boot.autoconfigure.transaction.TransactionManagerCustomizationAutoConfiguration' of type [org.springframework.boot.autoconfigure.transaction.TransactionManagerCustomizationAutoConfiguration] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:35:51 - Bean 'transactionExecutionListeners' of type [org.springframework.boot.autoconfigure.transaction.ExecutionListenersTransactionManagerCustomizer] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:35:51 - Bean 'spring.transaction-org.springframework.boot.autoconfigure.transaction.TransactionProperties' of type [org.springframework.boot.autoconfigure.transaction.TransactionProperties] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:35:51 - Bean 'platformTransactionManagerCustomizers' of type [org.springframework.boot.autoconfigure.transaction.TransactionManagerCustomizers] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:35:51 - Bean 'spring.flyway-org.springframework.boot.autoconfigure.flyway.FlywayProperties' of type [org.springframework.boot.autoconfigure.flyway.FlywayProperties] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:35:51 - Bean 'org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration$FlywayConfiguration' of type [org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration$FlywayConfiguration] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:35:51 - Bean 'flywayConnectionDetails' of type [org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration$PropertiesFlywayConnectionDetails] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:35:51 - Bean 'resourceProviderCustomizer' of type [org.springframework.boot.autoconfigure.flyway.ResourceProviderCustomizer] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:35:51 - Bean 'postgresqlFlywayConfigurationCustomizer' of type [org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration$PostgresqlFlywayConfigurationCustomizer] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:35:51 - Bean 'flyway' of type [org.flywaydb.core.Flyway] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:35:51 - HikariPool-1 - Starting...
+2026-01-13 10:35:52 - HikariPool-1 - Added connection org.postgresql.jdbc.PgConnection@7aab98b6
+2026-01-13 10:35:52 - HikariPool-1 - Start completed.
+2026-01-13 10:35:52 - Database: jdbc:postgresql://db:5432/erp_domain (PostgreSQL 16.11)
+2026-01-13 10:35:52 - Successfully validated 100 migrations (execution time 00:00.033s)
+2026-01-13 10:35:52 - Current version of schema "public": 100
+2026-01-13 10:35:52 - Schema "public" has a version (100) that is newer than the latest available migration (98) !
+2026-01-13 10:35:52 - Schema "public" is up to date. No migration necessary.
+2026-01-13 10:35:52 - Bean 'flywayInitializer' of type [org.springframework.boot.autoconfigure.flyway.FlywayMigrationInitializer] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:35:52 - Bean 'org.springframework.boot.autoconfigure.sql.init.DataSourceInitializationConfiguration' of type [org.springframework.boot.autoconfigure.sql.init.DataSourceInitializationConfiguration] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:35:52 - Bean 'spring.sql.init-org.springframework.boot.autoconfigure.sql.init.SqlInitializationProperties' of type [org.springframework.boot.autoconfigure.sql.init.SqlInitializationProperties] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:35:52 - Bean 'dataSourceScriptDatabaseInitializer' of type [org.springframework.boot.autoconfigure.sql.init.SqlDataSourceScriptDatabaseInitializer] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:35:52 - Bean 'org.springframework.boot.autoconfigure.batch.BatchAutoConfiguration$DataSourceInitializerConfiguration' of type [org.springframework.boot.autoconfigure.batch.BatchAutoConfiguration$DataSourceInitializerConfiguration] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:35:52 - Bean 'spring.batch-org.springframework.boot.autoconfigure.batch.BatchProperties' of type [org.springframework.boot.autoconfigure.batch.BatchProperties] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:35:52 - Bean 'batchDataSourceInitializer' of type [org.springframework.boot.autoconfigure.batch.BatchDataSourceScriptDatabaseInitializer] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:35:52 - Bean 'jpaVendorAdapter' of type [org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:35:52 - Bean 'entityManagerFactoryBuilder' of type [org.springframework.boot.orm.jpa.EntityManagerFactoryBuilder] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:35:52 - Bean 'persistenceManagedTypes' of type [org.springframework.orm.jpa.persistenceunit.SimplePersistenceManagedTypes] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:35:52 - HHH000204: Processing PersistenceUnitInfo [name: default]
+2026-01-13 10:35:52 - HHH000412: Hibernate ORM core version 6.5.3.Final
+2026-01-13 10:35:52 - HHH000026: Second-level cache disabled
+2026-01-13 10:35:52 - No LoadTimeWeaver setup: ignoring JPA class transformer
+2026-01-13 10:35:53 - HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+2026-01-13 10:35:53 - Initialized JPA EntityManagerFactory for persistence unit 'default'
+2026-01-13 10:35:53 - Bean 'entityManagerFactory' of type [org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:35:53 - Bean 'entityManagerFactory' of type [jdk.proxy2.$Proxy189] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:35:53 - Bean 'transactionManager' of type [org.springframework.orm.jpa.JpaTransactionManager] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). Is this bean getting eagerly injected into a currently created BeanPostProcessor [jobRegistryBeanPostProcessor]? Check the corresponding BeanPostProcessor declaration and its dependencies.
+2026-01-13 10:35:53 - Bean 'org.springframework.boot.autoconfigure.batch.BatchAutoConfiguration$SpringBootBatchConfiguration' of type [org.springframework.boot.autoconfigure.batch.BatchAutoConfiguration$SpringBootBatchConfiguration] is not eligible for getting processed by all BeanPostProcessors (for example: not eligible for auto-proxying). The currently created BeanPostProcessor [jobRegistryBeanPostProcessor] is declared through a non-static factory method on that class; consider declaring it as static instead.
+2026-01-13 10:35:53 - Tomcat initialized with port 8081 (http)
+2026-01-13 10:35:53 - Starting service [Tomcat]
+2026-01-13 10:35:53 - Starting Servlet engine: [Apache Tomcat/10.1.30]
+2026-01-13 10:35:53 - Initializing Spring embedded WebApplicationContext
+2026-01-13 10:35:53 - Root WebApplicationContext: initialization completed in 3589 ms
+2026-01-13 10:35:54 - Hibernate is in classpath; If applicable, HQL parser will be used.
+2026-01-13 10:35:56 - SMTP username is empty; verify spring.mail.username is set
+2026-01-13 10:35:56 - Dispatch debit/credit accounts not configured; COGS postings for dispatch mapping will be skipped. Set erp.dispatch.debit-account-id and erp.dispatch.credit-account-id to enable dispatch journals.
+2026-01-13 10:35:56 - Order auto-approval enabled=true
+2026-01-13 10:35:56 - Registered job outbox-publisher with cron 0/30 * * * * *
+2026-01-13 10:35:56 - Using default implementation for ThreadExecutor
+2026-01-13 10:35:56 - Initialized Scheduler Signaller of type: class org.quartz.core.SchedulerSignalerImpl
+2026-01-13 10:35:56 - Quartz Scheduler v.2.3.2 created.
+2026-01-13 10:35:56 - RAMJobStore initialized.
+2026-01-13 10:35:56 - Scheduler meta-data: Quartz Scheduler (v2.3.2) 'quartzScheduler' with instanceId 'NON_CLUSTERED'
+  Scheduler class: 'org.quartz.core.QuartzScheduler' - running locally.
+  NOT STARTED.
+  Currently in standby mode.
+  Number of jobs executed: 0
+  Using thread pool 'org.quartz.simpl.SimpleThreadPool' - with 10 threads.
+  Using job-store 'org.quartz.simpl.RAMJobStore' - which does not support persistence. and is not clustered.
+
+2026-01-13 10:35:56 - Quartz scheduler 'quartzScheduler' initialized from an externally provided properties instance.
+2026-01-13 10:35:56 - Quartz scheduler version: 2.3.2
+2026-01-13 10:35:56 - JobFactory set to: org.springframework.scheduling.quartz.SpringBeanJobFactory@598ed708
+2026-01-13 10:35:57 - Tomcat started on port 8081 (http) with context path '/'
+2026-01-13 10:35:57 - Tomcat initialized with port 9090 (http)
+2026-01-13 10:35:57 - Starting service [Tomcat]
+2026-01-13 10:35:57 - Starting Servlet engine: [Apache Tomcat/10.1.30]
+2026-01-13 10:35:57 - Initializing Spring embedded WebApplicationContext
+2026-01-13 10:35:57 - Root WebApplicationContext: initialization completed in 42 ms
+2026-01-13 10:35:57 - Exposing 2 endpoints beneath base path '/actuator'
+2026-01-13 10:35:57 - Tomcat started on port 9090 (http) with context path '/'
+2026-01-13 10:35:57 - Starting Quartz Scheduler now
+2026-01-13 10:35:57 - Scheduler quartzScheduler_$_NON_CLUSTERED started.
+2026-01-13 10:35:57 - Started ErpDomainApplication in 7.291 seconds (process running for 7.582)
+2026-01-13 10:35:57 - Security trend analysis - Failed logins: 0, Security alerts: 0
+2026-01-13 10:35:57 - Running default command line with: []
+2026-01-13 10:35:57 - Configuration health checks completed successfully
+2026-01-13 10:35:57 - CryptoLens licensing enforcement disabled (erp.licensing.enforce=false). Set ERP_LICENSE_ENFORCE=true in secured environments.
+2026-01-13 10:35:58 - Initializing Spring DispatcherServlet 'dispatcherServletRegistration'
+2026-01-13 10:35:58 - Attempting to connect to: [rabbitmq:5672]
+2026-01-13 10:35:58 - Created new connection: rabbitConnectionFactory#3259f22d:0/SimpleConnection@76f979a1 [delegate=amqp://guest@172.18.0.4:5672/, localPort=37846]
+2026-01-13 10:36:05 - Initializing Spring DispatcherServlet 'dispatcherServlet'
