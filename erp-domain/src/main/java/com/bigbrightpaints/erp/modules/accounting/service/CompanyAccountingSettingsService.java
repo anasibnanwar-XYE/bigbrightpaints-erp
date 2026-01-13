@@ -1,5 +1,7 @@
 package com.bigbrightpaints.erp.modules.accounting.service;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -7,6 +9,9 @@ import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
+
+import java.util.ArrayList;
+import java.util.List;
 
 @Service
 public class CompanyAccountingSettingsService {
@@ -51,8 +56,17 @@ public class CompanyAccountingSettingsService {
 
     public TaxAccountConfiguration requireTaxAccounts() {
         Company company = companyContextService.requireCurrentCompany();
-        if (company.getGstInputTaxAccountId() == null || company.getGstOutputTaxAccountId() == null) {
-            throw new IllegalStateException("GST tax accounts not configured for company " + company.getCode());
+        List<String> missing = new ArrayList<>();
+        if (company.getGstInputTaxAccountId() == null) {
+            missing.add("gstInputTaxAccountId");
+        }
+        if (company.getGstOutputTaxAccountId() == null) {
+            missing.add("gstOutputTaxAccountId");
+        }
+        if (!missing.isEmpty()) {
+            throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
+                    "GST tax accounts are not configured for company " + company.getCode())
+                    .withDetail("missing", missing);
         }
         return new TaxAccountConfiguration(
                 company.getGstInputTaxAccountId(),
