@@ -1,0 +1,12 @@
+{
+  "productionLogId": 3,
+  "packedDate": "2026-01-13",
+  "packedBy": "Evidence",
+  "lines": [
+    {
+      "packagingSize": "5L",
+      "quantityLiters": 5,
+      "piecesCount": 1
+    }
+  ]
+}

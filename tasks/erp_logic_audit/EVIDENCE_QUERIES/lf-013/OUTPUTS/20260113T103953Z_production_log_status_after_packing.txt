@@ -1,0 +1,6 @@
+ id |  production_code  |    status     | mixed_quantity | total_packed_quantity | wastage_quantity 
+----+-------------------+---------------+----------------+-----------------------+------------------
+  3 | PROD-20260113-002 | FULLY_PACKED  |           5.00 |                  5.00 |             0.00
+  2 | PROD-20260113-001 | READY_TO_PACK |           5.00 |                  5.00 |             0.00
+(2 rows)
+
