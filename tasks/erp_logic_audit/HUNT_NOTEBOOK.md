@@ -25,7 +25,7 @@ Rules:
 | LEAD-013 | MED? | Auditor / Operator | GST return blocked by missing tax account config | Closed → LF-011 |
 | LEAD-014 | LOW? | SRE / Operator | Actuator health on app port 404s (management port required) | Repro with `BASE_URL=8081` and `/actuator/health` 404; validate management port and update ops probes |
 | LEAD-015 | MED? | Operator / Auditor | Production log detail endpoint 500s (lazy load) | Repro GET `/api/v1/factory/production/logs`; capture logs + add fetch/transaction probe |
-| LEAD-016 | LOW? | Auditor / Operator | Admin override does not bypass locked period posting | Confirm policy for admin override vs period lock; decide if reopen is required |
+| LEAD-016 | LOW? | Auditor / Operator | Admin override does not bypass locked period posting | Closed: period lock requires reopen; admin override only affects date constraints |
 
 ---
 
@@ -341,12 +341,15 @@ Rules:
 - Why this matters (ERP expectation):
   - If policy requires an authorized override path (auditable), the current behavior may be stricter than expected and block emergency adjustments.
 - Evidence:
-  - Locked period rejects posting without override:
-    - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-06/OUTPUTS/20260113T084702Z_journal_locked_response.json`
   - Locked period rejects posting with `adminOverride=true`:
-    - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-06/OUTPUTS/20260113T084715Z_journal_locked_override_response.json`
-  - Lock action response:
-    - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-06/OUTPUTS/20260113T084648Z_period_lock_response.json`
-- Next probes:
-  - Confirm policy: should admin override allow posting into locked periods, or must periods be reopened first?
-  - If override is required, trace how audit approval should be captured in API payload.
+    - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-016/OUTPUTS/20260113T092350Z_journal_locked_override_response.json`
+  - Open period accepts posting with `adminOverride=true` (control):
+    - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-016/OUTPUTS/20260113T092356Z_journal_open_override_response.json`
+  - Lock/reopen actions:
+    - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-016/OUTPUTS/20260113T092343Z_period_lock_response.json`
+    - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-016/OUTPUTS/20260113T092403Z_period_reopen_response.json`
+  - Code anchors show `requireOpenPeriod` enforces OPEN regardless of override:
+    - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-016/OUTPUTS/20260113T092627Z_accounting_service_period_check.txt`
+    - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-016/OUTPUTS/20260113T092631Z_accounting_period_require_open.txt`
+- Disposition:
+  - **CLOSED** — Expected control: locked periods require reopen; admin override only relaxes entry-date constraints, not period lock enforcement.

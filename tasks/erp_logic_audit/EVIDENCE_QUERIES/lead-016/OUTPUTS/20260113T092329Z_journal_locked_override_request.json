@@ -1,0 +1,20 @@
+{
+  "referenceNumber": "LEAD-016-LOCK-OVR-20260113T092329Z",
+  "entryDate": "2026-01-12",
+  "memo": "lead-016 locked period override probe",
+  "adminOverride": true,
+  "lines": [
+    {
+      "accountId": 7005,
+      "description": "Lead-016 debit",
+      "debit": 10.00,
+      "credit": 0.00
+    },
+    {
+      "accountId": 7009,
+      "description": "Lead-016 credit",
+      "debit": 0.00,
+      "credit": 10.00
+    }
+  ]
+}

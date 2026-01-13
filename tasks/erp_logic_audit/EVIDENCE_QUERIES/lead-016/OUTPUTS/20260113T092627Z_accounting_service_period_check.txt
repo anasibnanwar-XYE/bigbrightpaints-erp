@@ -1,0 +1,26 @@
+
+        Optional<JournalEntry> duplicate = journalEntryRepository.findByCompanyAndReferenceNumber(company, entry.getReferenceNumber());
+
+        LocalDate entryDate = request.entryDate();
+        if (entryDate == null) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Entry date is required");
+        }
+        boolean overrideRequested = Boolean.TRUE.equals(request.adminOverride());
+        boolean overrideAuthorized = overrideRequested && hasEntryDateOverrideAuthority();
+        if (duplicate.isEmpty()) {
+            validateEntryDate(company, entryDate, overrideRequested, overrideAuthorized);
+            AccountingPeriod postingPeriod = systemSettingsService.isPeriodLockEnforced()
+                    ? accountingPeriodService.requireOpenPeriod(company, entryDate)
+                    : accountingPeriodService.ensurePeriod(company, entryDate);
+            if (postingPeriod == null) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Accounting period is required for journal posting");
+            }
+            entry.setAccountingPeriod(postingPeriod);
+        }
+        entry.setEntryDate(entryDate);
+        entry.setMemo(request.memo());
+        entry.setStatus("POSTED");
+        Dealer dealer = null;
+        Account dealerReceivableAccount = null;
+        Supplier supplier = null;
+        Account supplierPayableAccount = null;

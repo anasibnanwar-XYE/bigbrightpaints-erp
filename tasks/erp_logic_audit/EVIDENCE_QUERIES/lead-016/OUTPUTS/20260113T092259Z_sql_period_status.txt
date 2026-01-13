@@ -1,0 +1,7 @@
+ id | year | month | start_date |  end_date  | status |           locked_at           |   locked_by   |       lock_reason        |          reopened_at          |  reopened_by  |       reopen_reason        | closed_at | closed_by 
+----+------+-------+------------+------------+--------+-------------------------------+---------------+--------------------------+-------------------------------+---------------+----------------------------+-----------+-----------
+  7 | 2025 |    12 | 2025-12-01 | 2025-12-31 | OPEN   |                               |               |                          |                               |               |                            |           | 
+  6 | 2026 |     1 | 2026-01-01 | 2026-01-31 | OPEN   | 2026-01-13 08:46:48.629102+00 | admin@bbp.dev | task-06 audit lock probe | 2026-01-13 08:47:43.063534+00 | admin@bbp.dev | task-06 reopen after probe |           | 
+  8 | 2026 |     2 | 2026-02-01 | 2026-02-28 | OPEN   | 2026-01-12 16:12:41.036299+00 | admin@bbp.dev | audit lock test          | 2026-01-12 16:12:41.111591+00 | admin@bbp.dev | audit reopen test          |           | 
+(3 rows)
+

@@ -1,0 +1,21 @@
+        return buildChecklist(company, saved);
+    }
+
+    public AccountingPeriod requireOpenPeriod(Company company, LocalDate referenceDate) {
+        AccountingPeriod period = ensurePeriod(company, referenceDate);
+        if (period.getStatus() != AccountingPeriodStatus.OPEN) {
+            throw new ApplicationException(
+                    ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Accounting period " + period.getLabel() + " is locked/closed");
+        }
+        return period;
+    }
+
+    /**
+     * Computes net income for a period using double-entry accounting principles.
+     * 
+     * Net Income = (Revenue + Other Income) - COGS - Operating Expenses - Other Expenses
+     * 
+     * For each account type:
+     * - REVENUE: Normal credit balance. Net = Credits - Debits (positive = income)
+     *   Contra accounts (returns, discounts) have debit balances, reducing revenue.

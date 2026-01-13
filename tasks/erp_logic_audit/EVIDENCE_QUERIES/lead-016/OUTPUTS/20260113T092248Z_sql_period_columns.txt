@@ -1,0 +1,29 @@
+       column_name        
+--------------------------
+ id
+ public_id
+ company_id
+ year
+ month
+ start_date
+ end_date
+ status
+ bank_reconciled
+ bank_reconciled_at
+ bank_reconciled_by
+ inventory_counted
+ inventory_counted_at
+ inventory_counted_by
+ checklist_notes
+ closed_at
+ closed_by
+ version
+ locked_at
+ locked_by
+ lock_reason
+ reopened_at
+ reopened_by
+ reopen_reason
+ closing_journal_entry_id
+(25 rows)
+
