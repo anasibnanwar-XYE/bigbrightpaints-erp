@@ -129,6 +129,8 @@ Top “HIGH” list: currently 7 items (LF-001..LF-006, LF-019); LF-016..LF-017 
 ## Leads pending confirmation (not yet LF items)
 Source: `tasks/erp_logic_audit/HUNT_NOTEBOOK.md`
 - LEAD-018 (inventory reconciliation variance: valuation vs ledger).
+- LEAD-019 (purchase return reference reuse duplicates RM movements).
+- LEAD-020 (idempotency key conflict accepted for sales order + payroll).
 
 ## Investigation taskpack (Phase 3)
 - Count: **9** tasks under `tasks/erp_logic_audit/taskpack_investigation/`.
@@ -163,5 +165,5 @@ Source: `tasks/erp_logic_audit/HUNT_NOTEBOOK.md`
 - Multi-company uniqueness guidelines: confirm the standard for idempotency keys and reference numbers across companies (LF-007 and broader).
 ## Latest audit tip
 - Branch: fix-phase5-lead015-and-lf011-014
-- Tip SHA: 7b64620df027e62aee650d7163daa67762130333
+- Tip SHA: 0a5eea9efd6dec594fb533e631d9d42676f4d5cb
 - Lead dispositions: LEAD-015 promoted to LF-015 (fixed), LEAD-017 opened (unpacked-batches lazy-load)

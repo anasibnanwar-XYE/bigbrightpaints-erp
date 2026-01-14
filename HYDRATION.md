@@ -18,7 +18,7 @@
 ## Repo / Worktree State
 - Worktree: `/home/realnigga/Desktop/CLI_BACKEND_epic04`
 - Branch: `fix-phase5-lead015-and-lf011-014`
-- Tip: `229354a2c0565128341936ee6315d8fb8b59c5de`
+- Tip: `0a5eea9efd6dec594fb533e631d9d42676f4d5cb`
 - Dirty: untracked logs present under `docs/ops_and_debug/LOGS` + `interview/` (pre-existing).
 
 ## Environment Setup
@@ -195,7 +195,7 @@
 
 ## 2026-01-14 lead closure sweep (LEAD-001..009, LEAD-017)
 - Branch: `fix-phase5-lead015-and-lf011-014`
-- Tip SHA: `TBD`
+- Tip SHA: `35340b7d31733cc9d58146409cfa0ab695e91fad`
 - Scope: evidence-only lead closure; no production code changes.
 - Changes:
   - LEAD-001/002/003/005/006/008/009 closed with evidence.
