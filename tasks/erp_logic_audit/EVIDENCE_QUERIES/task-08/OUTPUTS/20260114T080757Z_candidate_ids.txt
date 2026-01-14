@@ -1,0 +1,37 @@
+ id |    code    |      name       
+----+------------+-----------------
+  7 | GST-DEALER | Mock GST Dealer
+  8 | FIX-DEALER | Fixture Dealer
+(2 rows)
+
+ id |  code   |       name        
+----+---------+-------------------
+  4 | SUP-RAW | Mock Raw Supplier
+  5 | FIX-SUP | Fixture Supplier
+(2 rows)
+
+ id |   sku    |    name     
+----+----------+-------------
+  6 | RM-RESIN | Resin Base
+  7 | RM-PIG   | Pigment Red
+  8 | RM-CAN   | Metal Can
+(3 rows)
+
+ id | product_code |         name          
+----+--------------+-----------------------
+  9 | FG-GST       | Mock FG-GST
+ 10 | FG-LIFO      | Mock FG-LIFO
+ 11 | FG-KIT       | Mock FG-KIT
+ 12 | FG-FIXTURE   | Fixture Finished Good
+(4 rows)
+
+ batch_id | batch_code  | quantity_available | is_bulk | parent_batch_id | finished_good_id | product_code 
+----------+-------------+--------------------+---------+-----------------+------------------+--------------
+       21 | FIX-BATCH-1 |            150.000 | f       |                 |               12 | FG-FIXTURE
+       20 | B-KIT-1     |            200.000 | f       |                 |               11 | FG-KIT
+       19 | B-LIFO-2    |            140.000 | f       |                 |               10 | FG-LIFO
+       18 | B-LIFO-1    |             60.000 | f       |                 |               10 | FG-LIFO
+       17 | B-FIFO-2    |            120.000 | f       |                 |                9 | FG-GST
+       16 | B-FIFO-1    |             80.000 | f       |                 |                9 | FG-GST
+(6 rows)
+

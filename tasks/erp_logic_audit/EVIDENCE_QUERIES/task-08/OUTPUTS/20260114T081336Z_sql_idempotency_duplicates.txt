@@ -1,0 +1,12 @@
+ finding_type | idempotency_key | order_count | min_order_id | max_order_id 
+--------------+-----------------+-------------+--------------+--------------
+(0 rows)
+
+ finding_type | idempotency_key | allocation_rows | min_id | max_id 
+--------------+-----------------+-----------------+--------+--------
+(0 rows)
+
+ finding_type | legacy_reference | row_count 
+--------------+------------------+-----------
+(0 rows)
+

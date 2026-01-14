@@ -25,6 +25,11 @@
 - No new installs; Docker/Testcontainers working.
 
 ## Commands Run (Latest)
+- `DB_PORT=55432 APP_PORT=8081 MANAGEMENT_PORT=19090 JWT_SECRET=... ERP_SECURITY_ENCRYPTION_KEY=... SPRING_PROFILES_ACTIVE=prod,seed,mock docker compose up -d` (failed config validation; task-08).
+- `DB_PORT=55432 APP_PORT=8081 MANAGEMENT_PORT=19090 JWT_SECRET=... ERP_SECURITY_ENCRYPTION_KEY=... SPRING_PROFILES_ACTIVE=prod,seed,mock docker compose run -d --service-ports -e ERP_ENVIRONMENT_VALIDATION_ENABLED=false app` (task-08 runtime).
+- `curl -X POST http://localhost:8081/api/v1/auth/login` (mock admin; token captured in task-08 OUTPUTS).
+- `bash tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/curl/02_parallel_post.sh` (sales order, payroll run, purchase return, bulk pack parallel probes).
+- `psql -h localhost -p 55432 -U erp -d erp_domain -f tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/SQL/{05_sales_order_idempotency_check,06_payroll_run_idempotency_check,07_purchase_return_reference_check,08_packaging_movement_check,01_idempotency_duplicates,02_outbox_backlog_and_duplicates,03_partner_settlement_idempotency_index}.sql` (task-08 SQL probes).
 - `DB_PORT=55432 APP_PORT=8081 MANAGEMENT_PORT=19090 JWT_SECRET=... ERP_SECURITY_ENCRYPTION_KEY=... SPRING_PROFILES_ACTIVE=prod,seed docker compose up -d --build` (app failed config validation; restarted with dev profile).
 - `DB_PORT=55432 APP_PORT=8081 MANAGEMENT_PORT=19090 JWT_SECRET=... ERP_SECURITY_ENCRYPTION_KEY=... SPRING_PROFILES_ACTIVE=dev docker compose up -d --no-deps --force-recreate app` (task-03/task-06 runtime).
 - `psql -h localhost -p 55432 -U erp -d erp_domain -v company_id=5 -f tasks/erp_logic_audit/EVIDENCE_QUERIES/SQL/{06_inventory_valuation_fifo,07_inventory_control_vs_valuation,02_orphans_movements_without_journal,12_orphan_reservations,03_dispatch_slips_without_cogs_journal}.sql` (task-03 large-data rerun).
@@ -68,6 +73,7 @@
 - `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check` (PASS; 29454 violations reported; audit task 02).
 
 ## Evidence Paths (Latest)
+- Task-08 outputs: `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T081157Z_sales_order_conflict_response.json`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T081225Z_payroll_run_conflict_response.json`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T081253Z_sql_purchase_return_reference.txt`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T081326Z_sql_packaging_movements.txt`.
 - Task-03 outputs: `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-03/OUTPUTS/20260114T075752Z_06_inventory_valuation_fifo.txt`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-03/OUTPUTS/20260114T075752Z_07_inventory_control_vs_valuation.txt`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-03/OUTPUTS/20260114T075408Z_01_accounting_reports_gets.txt`.
 - Task-06 outputs: `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-06/OUTPUTS/20260114T075416Z_sql_orphans_documents_without_journal.txt`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-06/OUTPUTS/20260114T075416Z_sql_period_integrity.txt`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-06/OUTPUTS/20260114T075425Z_accounting_reports_gets.json`.
 - Phase 5 evidence: `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-015/OUTPUTS/`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/lf-011/OUTPUTS/`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/lf-012/OUTPUTS/`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/lf-013/OUTPUTS/`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/lf-014/OUTPUTS/`.
@@ -76,6 +82,9 @@
 - Verification gates: `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-06/OUTPUTS/20260113T085735Z_mvn_compile.txt`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-06/OUTPUTS/20260113T085741Z_mvn_checkstyle.txt`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-06/OUTPUTS/20260113T085754Z_mvn_test.txt`.
 
 ## Warnings / Notes
+- Task-08: prod+seed+mock boot failed config validation; used `ERP_ENVIRONMENT_VALIDATION_ENABLED=false` with `docker compose run` to start app.
+- Task-08: purchase return retries with same reference duplicated RM movements (4x) → LEAD-019.
+- Task-08: conflicting payloads with same `idempotencyKey` returned existing records (sales order + payroll) → LEAD-020.
 - App boot under `SPRING_PROFILES_ACTIVE=prod,seed` failed config validation (GST accounts + production metadata); ran reconciliation probes on `SPRING_PROFILES_ACTIVE=dev` runtime.
 - Task-03 inventory reconciliation variance is 9130 (valuation 9183 vs ledger 53) → LEAD-018 logged.
 - Checkstyle baseline violations remain (29479); `checkstyle:check` fails as expected.
@@ -84,12 +93,12 @@
 - Outbox queries returned zero pending/retrying/dead-letter events on seeded dataset; stuck retry count 0.
 - Task-09: app-port actuator health returns 404; management port health is UP (LEAD-014).
 - Task-06: admin override did not bypass locked period posting; reopen required (LEAD-016).
-- Task-04 production/WIP probes confirmed LF-012 (WIP over-credit), LF-013 (packing status stale), LF-014 (FG creation 500 when discount default missing); LEAD-015 promoted to LF-015 and fixed; LEAD-017 logged for unpacked-batches 500.
+- Task-04 production/WIP probes confirmed LF-012 (WIP over-credit), LF-013 (packing status stale), LF-014 (FG creation 500 when discount default missing); LEAD-015 promoted to LF-015 and fixed; LEAD-017 later confirmed → LF-018 (unpacked-batches lazy-load).
 - Task-05 GST return failed with GST accounts unset while config health reported healthy → LF-011.
 
 ## Current Task
-- ERP logic audit program: Phase 5 fixes applied for LF-011..LF-015 on `fix-phase5-lead015-and-lf011-014`; large-data reconciliation probes captured.
-- Next recommended step: review LEAD-018 inventory reconciliation variance (valuation vs ledger) and decide probe/fix path.
+- ERP logic audit program: Task-08 idempotency stress run completed on `fix-phase5-lead015-and-lf011-014`; new leads LEAD-019/LEAD-020 logged.
+- Next recommended step: validate LEAD-019 (purchase return movement duplication) and LEAD-020 (idempotency conflict rejection policy) or promote if confirmed.
 
 ## Commands Run (Audit)
 - `sed -n ... SCOPE.md` and `.codex/AGENTS.md` (scope + execution rules).
@@ -128,8 +137,8 @@
 
 ## Resume Instructions (ERP logic audit)
 1. Stay on branch `fix-phase5-lead015-and-lf011-014` (no worktrees).
-2. Review `tasks/erp_logic_audit/README.md`, `tasks/erp_logic_audit/LOGIC_FLAWS.md`, and `tasks/erp_logic_audit/HUNT_NOTEBOOK.md` for LF-015/LEAD-017 updates.
-3. Decide whether to fix LEAD-017 (unpacked-batches lazy-load) or keep as a lead with additional probes.
+2. Review `tasks/erp_logic_audit/README.md`, `tasks/erp_logic_audit/LOGIC_FLAWS.md`, and `tasks/erp_logic_audit/HUNT_NOTEBOOK.md` for Task-08 updates (LEAD-019/LEAD-020).
+3. Decide follow-up for LEAD-019 (purchase return movement duplication) and LEAD-020 (idempotency conflict rejection policy).
 4. Keep untracked logs under `docs/ops_and_debug/LOGS` and `interview/` untouched.
 ## 2026-01-13 lead resolution (LEAD-014/016)
 - Branch: audit-inv-leads-014-016
@@ -183,3 +192,34 @@
   - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T120827Z_sql_04_bulk_pack_movements_vs_journals_linkage_after_fix.txt`
   - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T120827Z_sql_07_bulk_pack_recent_journals_after_fix.txt`
   - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T120827Z_sql_08_bulk_pack_movements_by_type_after_fix.txt`
+
+## 2026-01-14 lead closure sweep (LEAD-001..009, LEAD-017)
+- Branch: `fix-phase5-lead015-and-lf011-014`
+- Tip SHA: `TBD`
+- Scope: evidence-only lead closure; no production code changes.
+- Changes:
+  - LEAD-001/002/003/005/006/008/009 closed with evidence.
+  - LEAD-004 confirmed → LF-019.
+  - LEAD-007 confirmed → LF-020.
+  - LEAD-017 confirmed → LF-018.
+- Commands executed (detail in RUN.md per lead):
+  - `docker compose up -d` with `DB_PORT=55432`, `APP_PORT=8081`, `MANAGEMENT_PORT=19090` (runtime).
+  - `curl -X POST http://localhost:8081/api/v1/auth/login` (token for lead probes).
+  - `curl` probes for `/api/v1/factory/unpacked-batches`, `/api/v1/factory/production/logs`, `/api/v1/raw-material-batches/{id}`, `/api/v1/payroll/summary/monthly`, `/api/v1/payroll/runs/*`.
+  - `psql -h localhost -p 55432 -U erp -d erp_domain -f tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-0xx/SQL/*.sql`.
+  - `rg -n` and `sed -n` for code anchor excerpts.
+  - `docker logs erp_domain_app --since 10m` (lazy-load error capture).
+- Evidence outputs:
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-001/OUTPUTS/20260114T080457Z_invoice_controller_excerpt.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-002/OUTPUTS/20260114T075548Z_production_log_over_issue_response.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-003/OUTPUTS/20260114T080510Z_dispatch_controller_confirm_excerpt.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-004/OUTPUTS/20260114T080023Z_monthly_summary.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-004/OUTPUTS/20260114T080049Z_monthly_run_lines.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-005/OUTPUTS/20260114T080314Z_journal_line_account_company_mismatch.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-006/OUTPUTS/20260114T080351Z_inventory_movement_event_search.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-007/OUTPUTS/20260114T080250Z_duplicate_batch_codes.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-008/OUTPUTS/20260114T080355Z_inventory_reval_event_search.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-009/OUTPUTS/20260114T080530Z_ar_ap_accounts.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-017/OUTPUTS/20260114T075446Z_unpacked_batches_get.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-017/OUTPUTS/20260114T075453Z_app_logs.txt`
+- Tests: none (evidence-only run).

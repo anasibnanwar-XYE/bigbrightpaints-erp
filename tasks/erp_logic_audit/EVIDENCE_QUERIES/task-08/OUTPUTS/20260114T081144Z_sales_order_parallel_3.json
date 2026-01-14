@@ -1,0 +1,2 @@
+{"success":false,"message":"Operation failed","data":{"traceId":"48e5a26c-bc7a-4b2b-815b-430ea29f03dc","code":"BUS_002","message":"Duplicate entry found"},"timestamp":1768378304.939154671}
+HTTP_STATUS:409

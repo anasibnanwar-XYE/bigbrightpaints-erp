@@ -1,0 +1,6 @@
+{
+  "runDate": "2026-01-14",
+  "totalAmount": 1500.00,
+  "notes": "Task-08 payroll idempotency probe (conflict)",
+  "idempotencyKey": "TASK08-PAYROLL-20260114T081023Z"
+}

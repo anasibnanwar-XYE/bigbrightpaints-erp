@@ -1,0 +1,6 @@
+== GET /api/v1/orchestrator/health/events
+{
+  "retryingEvents": 0,
+  "deadLetters": 0,
+  "pendingEvents": 0
+}

@@ -10,15 +10,15 @@ Rules:
 
 | ID | Potential severity | Perspective(s) | Short title | Next probe(s) |
 |---:|--------------------|----------------|-------------|---------------|
-| LEAD-001 | HIGH? | Auditor / Operator | Invoice/purchase outstanding overwritten on create | Add focused test or manual persist + inspect `outstanding_amount` |
-| LEAD-002 | HIGH? | Operator / Backend | Raw material stock clamps to zero (silent negative) | Create over-issue RM flow; verify stock/ledger outcomes |
-| LEAD-003 | HIGH? | Backend / SRE | Dispatch confirm double-invokes confirmation | Call `/api/v1/dispatch/confirm` once; inspect movements/journals created |
-| LEAD-004 | HIGH? | Operator / Auditor | Payroll PF deduction inconsistencies (preview/run/posting) | Compare preview vs run totals; inspect payroll journal lines |
-| LEAD-005 | HIGH? | Security / Backend | Inventory accounting events accept non-scoped account IDs | Attempt cross-company accountId injection (dev-only) |
-| LEAD-006 | HIGH? | SRE / Backend | AFTER_COMMIT inventory posting drift on failure | Force JE creation failure; verify inventory changed but JE missing |
-| LEAD-007 | MED? | Operator | Raw material batch codes not enforced unique | Try create duplicate batch_code; check FIFO/traceability impact |
-| LEAD-008 | MED? | Auditor / Close | Inventory revaluation journals use `LocalDate.now()` | Revalue dated into closed period; inspect JE entry_date |
-| LEAD-009 | MED? | Operator / Auditor | AR/AP reconciliation depends on account code substrings | Change COA codes; verify recon returns false positives/negatives |
+| LEAD-001 | HIGH? | Auditor / Operator | Invoice/purchase outstanding overwritten on create | Closed (creation always sets outstanding to total) |
+| LEAD-002 | HIGH? | Operator / Backend | Raw material stock clamps to zero (silent negative) | Closed (over-issue returns 400; stock unchanged) |
+| LEAD-003 | HIGH? | Backend / SRE | Dispatch confirm double-invokes confirmation | Closed (guarded by DISPATCHED status) |
+| LEAD-004 | HIGH? | Operator / Auditor | Payroll PF deduction inconsistencies (preview/run/posting) | Confirmed → LF-019 |
+| LEAD-005 | HIGH? | Security / Backend | Inventory accounting events accept non-scoped account IDs | Closed (no cross-company journal-line mismatches) |
+| LEAD-006 | HIGH? | SRE / Backend | AFTER_COMMIT inventory posting drift on failure | Closed (no event publishers; no repro) |
+| LEAD-007 | MED? | Operator | Raw material batch codes not enforced unique | Confirmed → LF-020 |
+| LEAD-008 | MED? | Auditor / Close | Inventory revaluation journals use `LocalDate.now()` | Closed (no event publishers) |
+| LEAD-009 | MED? | Operator / Auditor | AR/AP reconciliation depends on account code substrings | Closed (COA uses AR/AP codes) |
 | LEAD-010 | HIGH? | Backend / Operator | Sales order idempotency key not enforced at DB | Closed: duplicate attempt rejected; unique index present (see evidence) |
 | LEAD-011 | MED? | Backend / Operator | Purchase return idempotency relies on optional reference | Confirmed → LF-010 (duplicate returns created without reference) |
 | LEAD-012 | MED? | Auditor / Operator | Production WIP postings unverified (no production logs) | Closed → LF-012 |
@@ -26,8 +26,10 @@ Rules:
 | LEAD-014 | LOW? | SRE / Operator | Actuator health on app port 404s (management port required) | Closed: prod config binds actuator to management port; app-port 404 expected |
 | LEAD-015 | MED? | Operator / Auditor | Production log detail endpoint 500s (lazy load) | Closed → LF-015 |
 | LEAD-016 | LOW? | Auditor / Operator | Admin override does not bypass locked period posting | Closed: period lock requires reopen; admin override only affects date constraints |
-| LEAD-017 | MED? | Operator / Auditor | Unpacked batches endpoint 500s (lazy load) | Repro GET `/api/v1/factory/unpacked-batches`; capture logs + add transactional/fetch probe |
+| LEAD-017 | MED? | Operator / Auditor | Unpacked batches endpoint 500s (lazy load) | Confirmed → LF-018 |
 | LEAD-018 | HIGH? | Auditor / Accounting | Inventory reconciliation variance (ledger vs valuation) | Trace inventory control balance vs valuation inputs; verify opening + movement JE coverage |
+| LEAD-019 | MED? | Accounting / Inventory | Purchase return reference reuse duplicates RM movements | Re-run parallel return with same reference; compare `raw_material_movements` counts (task-08 OUTPUTS) |
+| LEAD-020 | MED? | Sales / HR | Idempotency key conflict accepted (sales order + payroll run) | Re-send conflicting payloads; confirm reject policy vs acceptance |
 | LEAD-COST-001 | HIGH | Auditor / Backend | Bulk packing: missing bulk ISSUE + movement↔journal link | Confirmed → LF-016 (see `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T105920Z_sql_01_bulk_pack_child_receipts_missing_journal.txt`; `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T105920Z_sql_02_bulk_pack_missing_bulk_issue_movement.txt`) |
 | LEAD-COST-002 | HIGH | Backend / Auditor | Bulk packing journal reference non-idempotent (duplicates on retry) | Confirmed → LF-017 (see `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T110014Z_sql_07_bulk_pack_recent_journals.txt`) |
 | LEAD-COST-005 | MED? | Auditor / Accounting | Wastage journal uses material-only valuation (labor/overhead excluded) | Closed (as-built: production unit_cost is material-only; see `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T105157Z_sql_05_wastage_journal_value_vs_cost_components.txt`) |
@@ -441,6 +443,38 @@ Rules:
 - Next probes:
   - Inspect inventory control account balance source (`companies.default_inventory_account_id`) and list journals impacting it for the period.
   - Cross-check opening stock imports and movement↔journal links for any inventory value not posted to GL.
+
+---
+
+## LEAD-019 — Purchase return reference reuse duplicates RM movements
+
+- Hypothesis:
+  - Replaying a purchase return with the same `referenceNumber` reuses the journal entry but still posts new `raw_material_movements`, deducting inventory multiple times.
+- Why this matters (ERP expectation):
+  - Retries must be idempotent across journals *and* inventory movements; duplicate movements create inventory drift without matching financial duplication.
+- Evidence:
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T081243Z_purchase_return_parallel_*.json` (all 200, same journal entry id 67).
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T081253Z_sql_purchase_return_reference.txt` (movement_count 4 for the same reference).
+- Code anchors:
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/purchasing/service/PurchasingService.java` (`recordPurchaseReturn` still issues movements after journal dedup).
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingFacade.java` (`postPurchaseReturn` dedups on reference only).
+- Next probes:
+  - Capture `raw_materials.current_stock` before/after a replay to quantify inventory drift.
+
+---
+
+## LEAD-020 — Idempotency key conflict accepted (sales order + payroll run)
+
+- Hypothesis:
+  - Reusing `idempotencyKey` with a conflicting payload returns the existing record instead of rejecting the request, violating fail-closed replay expectations.
+- Evidence:
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T081157Z_sales_order_conflict_response.json` (HTTP 200 with original totals after conflicting payload).
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T081225Z_payroll_run_conflict_response.json` (HTTP 200 with original totals after conflicting payload).
+- Code anchors:
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/service/SalesService.java` (`createOrder` returns existing by key without signature check).
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/service/HrService.java` (`createPayrollRun` returns existing by key without signature check).
+- Next probes:
+  - Confirm expected behavior with product; extend conflict replay tests to settlements and dispatch confirmations.
 
 ---
 

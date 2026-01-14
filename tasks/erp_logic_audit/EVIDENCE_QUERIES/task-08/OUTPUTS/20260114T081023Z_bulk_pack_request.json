@@ -1,0 +1,15 @@
+{
+  "bulkBatchId": 21,
+  "packs": [
+    {
+      "childSkuId": 9,
+      "quantity": 2,
+      "sizeLabel": "1L",
+      "unit": "UNIT"
+    }
+  ],
+  "packagingMaterials": [],
+  "packDate": "2026-01-14",
+  "packedBy": "task-08",
+  "notes": "Task-08 bulk pack idempotency probe"
+}

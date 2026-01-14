@@ -42,6 +42,13 @@ This folder contains **discovery + planning artifacts only** (no behavioral chan
 - Task-06: period lock/close probes executed (SQL + checklist + controlled POSTs). Posting into locked period blocked with/without override; close without force blocked by checklist. LEAD-016 added to confirm policy on admin override vs reopen.
 - Evidence: `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-09/OUTPUTS/20260113T082939Z_actuator_health.json`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-06/OUTPUTS/20260113T084648Z_period_lock_response.json`.
 
+## Investigation run report (Task-08 idempotency stress)
+- Parallel idempotency probes executed for sales orders, payroll runs, purchase returns, and bulk pack (MOCK company).
+- Sales order + payroll run duplicate posts returned 409; conflicting payloads returned existing records (no rejection) → LEAD-020.
+- Purchase return retries with same reference reused journal entry but created 4 raw material movements → LEAD-019.
+- Bulk pack idempotency OK (single ISSUE/RECEIPT in movement check).
+- Evidence: `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T081157Z_sales_order_conflict_response.json`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T081225Z_payroll_run_conflict_response.json`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T081253Z_sql_purchase_return_reference.txt`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T081326Z_sql_packaging_movements.txt`.
+
 ## Phase 5 fix run report (LEAD-015 + LF-011..LF-014)
 - LEAD-015 confirmed and promoted to **LF-015**; list/detail endpoints fixed with transactional boundaries + regression test.
 - LF-011..LF-014 fixes implemented with regression tests and evidence harnesses under `tasks/erp_logic_audit/EVIDENCE_QUERIES/lf-0xx/`.
@@ -70,6 +77,19 @@ This folder contains **discovery + planning artifacts only** (no behavioral chan
   - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T120827Z_sql_08_bulk_pack_movements_by_type_after_fix.txt`
 - Verification gates: `mvn -f erp-domain/pom.xml -DskipTests compile` (pass), `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check` (pass; 29651 warnings), `mvn -f erp-domain/pom.xml test` (pass; 220 tests, 4 skipped).
 
+## Lead closure sweep (LEAD-001..009, LEAD-017)
+- LEAD-001 closed (invoice/purchase creation paths always set outstanding to total).
+- LEAD-002 closed (over-issue rejected; stock unchanged).
+- LEAD-003 closed (dispatch confirm guarded once slip is DISPATCHED).
+- LEAD-004 confirmed → **LF-019** (payroll PF deduction ignored in run/posting).
+- LEAD-005 closed (no cross-company journal-line mismatches).
+- LEAD-006 closed (no inventory movement event publishers; orphans trace to packaging scope).
+- LEAD-007 confirmed → **LF-020** (duplicate raw material batch codes allowed).
+- LEAD-008 closed (no inventory revaluation event publishers).
+- LEAD-009 closed (COA code convention matches reconciliation substring filters).
+- LEAD-017 confirmed → **LF-018** (unpacked-batches endpoint lazy-load 500).
+- Evidence: `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-001/` ... `lead-009/`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-017/`.
+
 ## AS-BUILT coverage summary (Phase 0 gate)
 - Portals/actors mapped: Admin, Accounting, Sales, Manufacturing/Factory, Dealer.
 - Core objects/IDs mapped: COA/accounts, journals/lines, dealer/supplier ledgers, inventory masters/batches/movements, orders/slips/invoices, purchases, production logs/packing, payroll runs, periods/checklist/reconciliation.
@@ -87,6 +107,7 @@ Source: `tasks/erp_logic_audit/LOGIC_FLAWS.md`
 - LF-004 — FG valuation mixes `current_stock` with FIFO slices of `quantity_available` (reserved stock misvaluation).
 - LF-005 — Opening stock import updates inventory without a GL opening entry (systematic inventory↔GL drift).
 - LF-006 — AP reconciliation compares signed GL liabilities vs positive supplier ledger (sign mismatch).
+- LF-019 — Payroll PF deduction ignored in payroll run/posting.
 - LF-016 — Bulk-to-size packing missing bulk ISSUE movement + movement↔journal linkage (fixed Phase 5).
 - LF-017 — Bulk-to-size packing journals duplicate on retry (timestamp-based reference) (fixed Phase 5).
 
@@ -100,15 +121,13 @@ Source: `tasks/erp_logic_audit/LOGIC_FLAWS.md`
 - LF-013 — Production log status remains READY_TO_PACK after full packing.
 - LF-014 — Finished-good creation 500s when default discount account unset.
 - LF-015 — Production log list/detail 500s due to lazy-load on brand/product.
+- LF-018 — Unpacked-batches endpoint 500 due to lazy-load.
+- LF-020 — Raw material batch codes not enforced unique.
 
-Top “HIGH” list: currently 6 items (LF-001..LF-006); LF-016..LF-017 fixed in Phase 5.
+Top “HIGH” list: currently 7 items (LF-001..LF-006, LF-019); LF-016..LF-017 fixed in Phase 5.
 
 ## Leads pending confirmation (not yet LF items)
 Source: `tasks/erp_logic_audit/HUNT_NOTEBOOK.md`
-- LEAD-001..LEAD-009 (outstanding overwrite on create; RM stock clamp; double-dispatch confirm; payroll PF drift; inventory event posting risks; batch code uniqueness; revaluation date; recon code-substring footgun).
-- LEAD-014 (actuator health app-port 404; management port required).
-- LEAD-016 (admin override does not bypass locked period posting).
-- LEAD-017 (unpacked-batches 500 due to lazy-load).
 - LEAD-018 (inventory reconciliation variance: valuation vs ledger).
 
 ## Investigation taskpack (Phase 3)

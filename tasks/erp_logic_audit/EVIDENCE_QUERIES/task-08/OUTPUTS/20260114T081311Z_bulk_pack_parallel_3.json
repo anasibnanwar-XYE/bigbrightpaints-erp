@@ -1,0 +1,2 @@
+{"success":true,"message":"Bulk packed into sizes","data":{"bulkBatchId":21,"bulkBatchCode":"FIX-BATCH-1","volumeDeducted":2,"remainingBulkQuantity":148.000,"packagingCost":0,"childBatches":[{"id":22,"publicId":"cebc763c-1e87-4939-ac55-92cde5e766c7","batchCode":"MOCK-FG-FGGST-202601-001","finishedGoodId":9,"finishedGoodCode":"FG-GST","finishedGoodName":"Mock FG-GST","sizeLabel":"1L","quantity":2,"unitCost":12.5000,"totalValue":25.0000}],"journalEntryId":68,"packedAt":1768378392.047083298},"timestamp":1768378392.067830345}
+HTTP_STATUS:200
