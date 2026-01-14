@@ -18,13 +18,24 @@
 ## Repo / Worktree State
 - Worktree: `/home/realnigga/Desktop/CLI_BACKEND_epic04`
 - Branch: `fix-phase5-lead015-and-lf011-014`
-- Tip: `0a5eea9efd6dec594fb533e631d9d42676f4d5cb`
-- Dirty: untracked logs present under `docs/ops_and_debug/LOGS` + `interview/` (pre-existing).
+- Tip: `6a98027b209b260c9021be2cab3306122631a4ed`
+- Dirty: untracked logs under `docs/ops_and_debug/LOGS`, `interview/`, plus uncommitted task-08/task-03 OUTPUTS not referenced in docs.
 
 ## Environment Setup
 - No new installs; Docker/Testcontainers working.
 
 ## Commands Run (Latest)
+- `docker stop cli_backend_epic04-app-run-e803288ee81e` (freed port 8081).
+- `DB_PORT=55432 APP_PORT=8081 MANAGEMENT_PORT=19090 JWT_SECRET=... ERP_SECURITY_ENCRYPTION_KEY=... SPRING_PROFILES_ACTIVE=prod,seed,mock docker compose up -d --build` (failed until V99/V100 restored; config validation still blocked app).
+- `DB_PORT=55432 APP_PORT=8081 MANAGEMENT_PORT=19090 JWT_SECRET=... ERP_SECURITY_ENCRYPTION_KEY=... SPRING_PROFILES_ACTIVE=prod,seed,mock docker compose run -d --service-ports -e ERP_ENVIRONMENT_VALIDATION_ENABLED=false app` (task-03/08 runtime; container `cli_backend_epic04-app-run-8b049d6737c1`).
+- `curl -X POST http://localhost:8081/api/v1/auth/login` (BBP + MOCK tokens captured in task-03/task-08 OUTPUTS).
+- `psql -v company_id=5 -f tasks/erp_logic_audit/EVIDENCE_QUERIES/SQL/{06_inventory_valuation_fifo,07_inventory_control_vs_valuation,02_orphans_movements_without_journal,12_orphan_reservations,03_dispatch_slips_without_cogs_journal}.sql`
+- `psql -v company_id=6 -f tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/SQL/{04_candidate_ids,05_sales_order_idempotency_check,06_payroll_run_idempotency_check,07_purchase_return_reference_check,08_packaging_movement_check,01_idempotency_duplicates,02_outbox_backlog_and_duplicates,03_partner_settlement_idempotency_index}.sql`
+- `bash tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/curl/02_parallel_post.sh` (sales order, payroll run, purchase return, bulk pack).
+- `mvn -f erp-domain/pom.xml clean`
+- `mvn -f erp-domain/pom.xml -DskipTests compile` (pass; javax.annotation.meta.When warnings).
+- `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check` (pass; 29910 warnings).
+- `mvn -f erp-domain/pom.xml test` (pass; 224 tests, 4 skipped).
 - `DB_PORT=55432 APP_PORT=8081 MANAGEMENT_PORT=19090 JWT_SECRET=... ERP_SECURITY_ENCRYPTION_KEY=... SPRING_PROFILES_ACTIVE=prod,seed,mock docker compose up -d` (failed config validation; task-08).
 - `DB_PORT=55432 APP_PORT=8081 MANAGEMENT_PORT=19090 JWT_SECRET=... ERP_SECURITY_ENCRYPTION_KEY=... SPRING_PROFILES_ACTIVE=prod,seed,mock docker compose run -d --service-ports -e ERP_ENVIRONMENT_VALIDATION_ENABLED=false app` (task-08 runtime).
 - `curl -X POST http://localhost:8081/api/v1/auth/login` (mock admin; token captured in task-08 OUTPUTS).
@@ -300,3 +311,24 @@
   - `erp-domain/src/test/java/com/bigbrightpaints/erp/regression/ProductionLogPackingStatusRegressionIT.java`
   - `erp-domain/src/test/java/com/bigbrightpaints/erp/regression/ProductionCatalogDiscountDefaultRegressionIT.java`
   - `erp-domain/src/test/java/com/bigbrightpaints/erp/regression/ProductionLogEndpointLazyLoadingIT.java`
+
+## 2026-01-14 Phase 5 fixes (LF-021/LF-022/LF-023)
+- Branch: `fix-phase5-lead015-and-lf011-014`
+- Tip SHA: `6a98027b209b260c9021be2cab3306122631a4ed`
+- Commits:
+  - LF-021: `b74e8ff5a3395e2d56029df26a6843c65f611b42`
+  - LF-022: `0c2e3b49f5e52dc4f5e8c7fd52d3445fd6c1922d`
+  - LF-023: `6a98027b209b260c9021be2cab3306122631a4ed`
+- Evidence outputs:
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-03/OUTPUTS/20260114T105316Z_sql_07_inventory_control_vs_valuation.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-03/OUTPUTS/20260114T105325Z_accounting_reports_gets.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T105215Z_sql_purchase_return_reference.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T105208Z_sql_raw_material_stock_after_return_2.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T105052Z_sales_order_conflict_response.json`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T105110Z_payroll_run_conflict_response.json`
+- Notes:
+  - BBP seed variance still 9135; backfill required for existing opening stock.
+  - App boot for evidence required `ERP_ENVIRONMENT_VALIDATION_ENABLED=false` via `docker compose run`.
+  - Initial `mvn test` failed due to stale V99 migration artifact; resolved by `mvn clean` and rerun.
+- Current epic: Phase 5 LF-021/022/023 fixes complete.
+- Next milestone: update/commit HYDRATION + README metadata and address any remaining untracked evidence outputs if desired.
