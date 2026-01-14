@@ -223,3 +223,30 @@
   - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-017/OUTPUTS/20260114T075446Z_unpacked_batches_get.txt`
   - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-017/OUTPUTS/20260114T075453Z_app_logs.txt`
 - Tests: none (evidence-only run).
+
+## 2026-01-14 LF-016/LF-017 verification rerun (bulk pack idempotency + movement linkage)
+- Branch: `fix-phase5-lead015-and-lf011-014`
+- Tip SHA: `f207e5f0c8dee1ce6c0be3b0910288e5c4ed76d2`
+- Design fork reminder: deterministic pack reference + `lockById` (PESSIMISTIC_WRITE) for idempotency/concurrency; no DB unique constraint.
+- Commands executed:
+  - `curl -X POST http://localhost:8081/api/v1/auth/login`
+  - `curl -X POST http://localhost:8081/api/v1/factory/production/logs` (seed bulk batch)
+  - `curl -X POST http://localhost:8081/api/v1/factory/pack` (twice, same request)
+  - `psql -v company_id=5 -v pack_reference=... -f tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/SQL/*.sql`
+- Tests executed:
+  - `mvn -f erp-domain/pom.xml -DskipTests compile` (pass)
+  - `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check` (pass; 29651 warnings)
+  - `mvn -f erp-domain/pom.xml test` (pass; 220 tests, 4 skipped)
+- Regression test:
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/regression/BulkPackMovementIdempotencyRegressionIT.java`
+- Evidence outputs:
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260114T084710Z_production_log_create_for_bulk.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260114T084750Z_bulk_pack_after_fix_response_1.json`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260114T084750Z_bulk_pack_after_fix_response_2.json`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260114T084816Z_sql_08_bulk_pack_reference_lookup_after_fix.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260114T084831Z_sql_01_bulk_pack_child_receipts_missing_journal_after_fix.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260114T084832Z_sql_02_bulk_pack_missing_bulk_issue_movement_after_fix.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260114T084832Z_sql_03_bulk_pack_journal_duplicates_by_semantic_reference_after_fix.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260114T084832Z_sql_04_bulk_pack_movements_vs_journals_linkage_after_fix.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260114T084832Z_sql_07_bulk_pack_recent_journals_after_fix.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260114T084832Z_sql_08_bulk_pack_movements_by_type_after_fix.txt`
