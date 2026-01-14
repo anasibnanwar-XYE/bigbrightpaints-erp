@@ -250,3 +250,18 @@
   - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260114T084832Z_sql_04_bulk_pack_movements_vs_journals_linkage_after_fix.txt`
   - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260114T084832Z_sql_07_bulk_pack_recent_journals_after_fix.txt`
   - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260114T084832Z_sql_08_bulk_pack_movements_by_type_after_fix.txt`
+
+## 2026-01-14 LEAD-018 confirmation (inventory reconciliation variance)
+- Branch: `fix-phase5-lead015-and-lf011-014`
+- Tip SHA: `979a0fefe451ebc94c80c7e0c0940d9f164cecc8`
+- Outcome: LEAD-018 confirmed → LF-021 (inventory valuation vs ledger variance 9135).
+- Commands executed:
+  - `curl -X POST http://localhost:8081/api/v1/auth/login`
+  - `psql -v company_id=5 -f tasks/erp_logic_audit/EVIDENCE_QUERIES/SQL/{06_inventory_valuation_fifo,07_inventory_control_vs_valuation,02_orphans_movements_without_journal,12_orphan_reservations,03_dispatch_slips_without_cogs_journal}.sql`
+  - `psql -c "select ... from companies c left join accounts a ..."` (inventory control account balance)
+  - `bash tasks/erp_logic_audit/EVIDENCE_QUERIES/curl/01_accounting_reports_gets.sh`
+- Evidence outputs:
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-03/OUTPUTS/20260114T090230Z_sql_06_inventory_valuation_fifo.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-03/OUTPUTS/20260114T090230Z_sql_07_inventory_control_vs_valuation.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-03/OUTPUTS/20260114T090237Z_accounting_reports_gets.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-03/OUTPUTS/20260114T090337Z_sql_inventory_account_balance.txt`
