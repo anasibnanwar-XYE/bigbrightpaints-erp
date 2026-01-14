@@ -654,9 +654,16 @@ Policy:
   1) Run `psql -v company_id=5 -f tasks/erp_logic_audit/EVIDENCE_QUERIES/SQL/06_inventory_valuation_fifo.sql`.
   2) Run `psql -v company_id=5 -f tasks/erp_logic_audit/EVIDENCE_QUERIES/SQL/07_inventory_control_vs_valuation.sql`.
   3) GET `/api/v1/reports/inventory-reconciliation` and verify variance exceeds tolerance.
-- Fix direction (no implementation):
-  - Ensure all inventory-affecting events post to the inventory control account (including opening stock and adjustments).
-  - Backfill missing GL impact for existing inventory and reconcile movement↔journal linkage.
+- Fix implemented (Phase 5):
+  - Opening stock import now posts a single OPEN-STOCK journal (Dr inventory by account, Cr OPEN-BAL equity) and links journal_entry_id on raw + finished movements.
+  - OPEN-BAL equity account is created on demand when missing.
+- Regression test:
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/regression/OpeningStockPostingRegressionIT.java`
+- Fix evidence (Phase 5):
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-03/OUTPUTS/20260114T105316Z_sql_07_inventory_control_vs_valuation.txt` (BBP seed variance persists; backfill required).
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-03/OUTPUTS/20260114T105325Z_accounting_reports_gets.txt`
+- Backfill note:
+  - Seeded BBP inventory remains unreconciled until opening stock movements are backfilled to GL.
 
 ---
 
@@ -682,8 +689,15 @@ Policy:
   1) POST `/api/v1/purchasing/raw-material-purchases/returns` with a fixed `referenceNumber`.
   2) Replay the same payload with the same reference.
   3) Query `raw_material_movements` for the reference and `raw_materials.current_stock`.
-- Fix direction (no implementation):
-  - Guard `recordPurchaseReturn` by reference for movements (return existing movement set), or enforce idempotency at the movement layer with a unique constraint.
+- Fix implemented (Phase 5):
+  - `PurchasingService.recordPurchaseReturn` now reuses movements by (company, reference) and rejects replay payload mismatches.
+  - Existing movements are linked to the return journal entry when reusing a reference.
+- Regression test:
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/regression/PurchaseReturnIdempotencyRegressionIT.java`
+- Fix evidence (Phase 5):
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T105141Z_sql_raw_material_stock_before_return.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T105208Z_sql_raw_material_stock_after_return_2.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T105215Z_sql_purchase_return_reference.txt`
 
 ---
 
@@ -702,5 +716,10 @@ Policy:
   1) POST `/api/v1/sales/orders` with `idempotencyKey=K1` and total A.
   2) Replay with the same key but a different total B.
   3) Observe HTTP 200 with the original order, not a rejection.
-- Fix direction (no implementation):
-  - Store a request signature/hash alongside idempotency key and reject mismatches.
+- Fix implemented (Phase 5):
+  - Added idempotency_hash to sales orders and payroll runs; create signatures from payloads and reject conflicting replays (HTTP 409).
+- Regression test:
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/regression/IdempotencyConflictRegressionIT.java`
+- Fix evidence (Phase 5):
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T105052Z_sales_order_conflict_response.json`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T105110Z_payroll_run_conflict_response.json`

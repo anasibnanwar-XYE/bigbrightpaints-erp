@@ -164,3 +164,18 @@
   - `docs/ops_and_debug/LOGS/20260112T073604Z_task07_final_checkstyle.txt`
   - `docs/ops_and_debug/LOGS/20260112T073645Z_task07_final_test.txt`
   - `docs/ops_and_debug/LOGS/20260112T074052Z_task07_final_focus.txt`
+
+## 2026-01-14 LF-021/LF-022/LF-023 — Opening stock posting + idempotency guards
+- Changes:
+  - Opening stock import posts OPEN-STOCK journal (Dr inventory, Cr OPEN-BAL) and links movement journal_entry_id.
+  - Purchase returns reuse movements by reference and reject conflicting replays.
+  - Sales order + payroll run idempotency conflicts rejected via request hash.
+- Evidence:
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-03/OUTPUTS/20260114T105316Z_sql_07_inventory_control_vs_valuation.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-03/OUTPUTS/20260114T105325Z_accounting_reports_gets.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T105215Z_sql_purchase_return_reference.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T105208Z_sql_raw_material_stock_after_return_2.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T105052Z_sales_order_conflict_response.json`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T105110Z_payroll_run_conflict_response.json`
+- Notes:
+  - BBP seeded variance remains until opening stock entries are backfilled to GL.

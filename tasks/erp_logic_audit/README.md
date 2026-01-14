@@ -84,6 +84,19 @@ This folder contains **discovery + planning artifacts only** (no behavioral chan
   - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260114T084832Z_sql_04_bulk_pack_movements_vs_journals_linkage_after_fix.txt`
   - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260114T084832Z_sql_07_bulk_pack_recent_journals_after_fix.txt`
   - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260114T084832Z_sql_08_bulk_pack_movements_by_type_after_fix.txt`
+
+## Phase 5 fix run report (LF-021/LF-022/LF-023)
+- LF-021: opening stock import now posts OPEN-STOCK journal + links movement journal_entry_id; OPEN-BAL created if missing.
+- LF-022: purchase return reference reuse now reuses movements + rejects conflicting payloads; movements link to journal.
+- LF-023: sales order + payroll run now hash idempotency payloads and reject conflicts (HTTP 409).
+- Evidence outputs:
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-03/OUTPUTS/20260114T105316Z_sql_07_inventory_control_vs_valuation.txt` (BBP seed variance persists; backfill needed).
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-03/OUTPUTS/20260114T105325Z_accounting_reports_gets.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T105215Z_sql_purchase_return_reference.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T105208Z_sql_raw_material_stock_after_return_2.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T105052Z_sales_order_conflict_response.json`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T105110Z_payroll_run_conflict_response.json`
+- Verification gates: `mvn -f erp-domain/pom.xml -DskipTests compile` (pass; javax.annotation.meta.When warnings), `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check` (pass; 29910 warnings), `mvn -f erp-domain/pom.xml test` (pass; 224 tests, 4 skipped).
 - Verification gates rerun (2026-01-14): `mvn -f erp-domain/pom.xml -DskipTests compile` (pass), `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check` (pass; 29651 warnings), `mvn -f erp-domain/pom.xml test` (pass; 220 tests, 4 skipped).
 
 ## Lead closure sweep (LEAD-001..009, LEAD-017)
@@ -119,7 +132,7 @@ Source: `tasks/erp_logic_audit/LOGIC_FLAWS.md`
 - LF-019 — Payroll PF deduction ignored in payroll run/posting.
 - LF-016 — Bulk-to-size packing missing bulk ISSUE movement + movement↔journal linkage (fixed Phase 5).
 - LF-017 — Bulk-to-size packing journals duplicate on retry (timestamp-based reference) (fixed Phase 5).
-- LF-021 — Inventory control ledger does not reconcile to inventory valuation.
+- LF-021 — Inventory control ledger does not reconcile to inventory valuation (fixed Phase 5; backfill pending).
 
 **MED severity**
 - LF-007 — Payroll run `idempotency_key` is globally unique (cross-company collision risk).
@@ -133,10 +146,10 @@ Source: `tasks/erp_logic_audit/LOGIC_FLAWS.md`
 - LF-015 — Production log list/detail 500s due to lazy-load on brand/product (fixed Phase 5).
 - LF-018 — Unpacked-batches endpoint 500 due to lazy-load.
 - LF-020 — Raw material batch codes not enforced unique.
-- LF-022 — Purchase return reference reuse duplicates RM movements.
-- LF-023 — Idempotency key conflict accepted (sales order + payroll).
+- LF-022 — Purchase return reference reuse duplicates RM movements (fixed Phase 5).
+- LF-023 — Idempotency key conflict accepted (sales order + payroll) (fixed Phase 5).
 
-Top “HIGH” list: currently 8 items (LF-001..LF-006, LF-019, LF-021); LF-016..LF-017 fixed in Phase 5.
+Top “HIGH” list: currently 7 items (LF-001..LF-006, LF-019); LF-016..LF-017, LF-021 fixed in Phase 5.
 
 ## Leads pending confirmation (not yet LF items)
 Source: `tasks/erp_logic_audit/HUNT_NOTEBOOK.md`

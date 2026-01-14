@@ -1,0 +1,5 @@
+ id |   sku    |    name    | current_stock 
+----+----------+------------+---------------
+  6 | RM-RESIN | Resin Base |     2493.0000
+(1 row)
+
