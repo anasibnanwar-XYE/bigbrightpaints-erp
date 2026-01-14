@@ -18,7 +18,7 @@
 ## Repo / Worktree State
 - Worktree: `/home/realnigga/Desktop/CLI_BACKEND_epic04`
 - Branch: `fix-phase5-lead015-and-lf011-014`
-- Tip: `6a98027b209b260c9021be2cab3306122631a4ed`
+- Tip: `15a738082a3430b31c44560c1cb47f87bf98ed4d`
 - Dirty: untracked logs under `docs/ops_and_debug/LOGS`, `interview/`, plus uncommitted task-08/task-03 OUTPUTS not referenced in docs.
 
 ## Environment Setup
@@ -314,7 +314,7 @@
 
 ## 2026-01-14 Phase 5 fixes (LF-021/LF-022/LF-023)
 - Branch: `fix-phase5-lead015-and-lf011-014`
-- Tip SHA: `6a98027b209b260c9021be2cab3306122631a4ed`
+- Tip SHA: `15a738082a3430b31c44560c1cb47f87bf98ed4d`
 - Commits:
   - LF-021: `b74e8ff5a3395e2d56029df26a6843c65f611b42`
   - LF-022: `0c2e3b49f5e52dc4f5e8c7fd52d3445fd6c1922d`

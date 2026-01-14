@@ -15,7 +15,7 @@ This folder contains **discovery + planning artifacts only** (no behavioral chan
 ## Run metadata (this audit run)
 - Repo: `CLI_BACKEND_epic04`
 - Branch: `fix-phase5-lead015-and-lf011-014`
-- HEAD SHA: `6a98027`
+- HEAD SHA: `15a7380`
 - Git status: **DIRTY** (untracked logs under `docs/ops_and_debug/LOGS/` + workspace artifacts like `interview/`; do not delete)
 
 ## Investigation run report (Task-03/06 large-data reconciliation)
@@ -188,5 +188,5 @@ Source: `tasks/erp_logic_audit/HUNT_NOTEBOOK.md`
 - Multi-company uniqueness guidelines: confirm the standard for idempotency keys and reference numbers across companies (LF-007 and broader).
 ## Latest audit tip
 - Branch: fix-phase5-lead015-and-lf011-014
-- Tip SHA: 6a98027
+- Tip SHA: 15a7380
 - Lead dispositions: LF-021/LF-022/LF-023 fixed (Phase 5); LEAD-017 remains open (unpacked-batches lazy-load)
