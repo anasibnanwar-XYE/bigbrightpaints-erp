@@ -19,10 +19,10 @@ This folder contains **discovery + planning artifacts only** (no behavioral chan
 - Git status: **DIRTY** (untracked logs under `docs/ops_and_debug/LOGS/` + workspace artifacts like `interview/`; do not delete)
 
 ## Investigation run report (Task-03/06 large-data reconciliation)
-- Task-03 SQL + accounting reports GETs re-run after dev-profile seed; inventory valuation totals 9183 while inventory control ledger balance is 53 (variance 9130) → **LEAD-018** logged.
+- Task-03 SQL + accounting reports GETs re-run after dev-profile seed; inventory valuation totals 9203 while inventory control ledger balance is 68 (variance 9135) → **LEAD-018 confirmed → LF-021**.
 - Orphan movement check returned FG RECEIPT movements missing `journal_entry_id` for PACKAGING references (consistent with LF-003 / prior bulk-pack linkage gap).
 - Task-06 SQL probes returned no orphan documents or period integrity violations; month-end checklist + periods remain OPEN.
-- Evidence: `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-03/OUTPUTS/20260114T075752Z_07_inventory_control_vs_valuation.txt`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-03/OUTPUTS/20260114T075408Z_01_accounting_reports_gets.txt`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-06/OUTPUTS/20260114T075416Z_sql_period_integrity.txt`.
+- Evidence: `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-03/OUTPUTS/20260114T090230Z_sql_07_inventory_control_vs_valuation.txt`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-03/OUTPUTS/20260114T090237Z_accounting_reports_gets.txt`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-06/OUTPUTS/20260114T075416Z_sql_period_integrity.txt`.
 
 ## Investigation run report (LEAD-010/011 evidence + Task-03)
 - Executed Task-01/02 RUN.md probes for BBP (company_id=5), plus targeted retries for LEAD-010/011.
@@ -119,6 +119,7 @@ Source: `tasks/erp_logic_audit/LOGIC_FLAWS.md`
 - LF-019 — Payroll PF deduction ignored in payroll run/posting.
 - LF-016 — Bulk-to-size packing missing bulk ISSUE movement + movement↔journal linkage (fixed Phase 5).
 - LF-017 — Bulk-to-size packing journals duplicate on retry (timestamp-based reference) (fixed Phase 5).
+- LF-021 — Inventory control ledger does not reconcile to inventory valuation.
 
 **MED severity**
 - LF-007 — Payroll run `idempotency_key` is globally unique (cross-company collision risk).
@@ -133,11 +134,10 @@ Source: `tasks/erp_logic_audit/LOGIC_FLAWS.md`
 - LF-018 — Unpacked-batches endpoint 500 due to lazy-load.
 - LF-020 — Raw material batch codes not enforced unique.
 
-Top “HIGH” list: currently 7 items (LF-001..LF-006, LF-019); LF-016..LF-017 fixed in Phase 5.
+Top “HIGH” list: currently 8 items (LF-001..LF-006, LF-019, LF-021); LF-016..LF-017 fixed in Phase 5.
 
 ## Leads pending confirmation (not yet LF items)
 Source: `tasks/erp_logic_audit/HUNT_NOTEBOOK.md`
-- LEAD-018 (inventory reconciliation variance: valuation vs ledger).
 - LEAD-019 (purchase return reference reuse duplicates RM movements).
 - LEAD-020 (idempotency key conflict accepted for sales order + payroll).
 

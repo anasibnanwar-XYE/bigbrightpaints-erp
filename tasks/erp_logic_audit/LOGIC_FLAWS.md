@@ -632,3 +632,28 @@ Policy:
   3) Query `raw_material_batches` by batch_code; observe duplicates.
 - Fix direction (no implementation):
   - Enforce uniqueness at DB level (company_id + raw_material_id + batch_code) and add service validation.
+
+---
+
+## LF-021 — Inventory control ledger does not reconcile to inventory valuation
+
+- Workflow + modules + portal: Inventory reconciliation (`inventory`, `accounting`, `reports`) — Accounting portal
+- ERP expectation:
+  - Inventory valuation (FIFO) should reconcile to the inventory control account within tolerance; reconciliation report should be green at close.
+- As-built behavior:
+  - Inventory valuation (RM + FG) totals 9203, while the inventory control account balance is 68; reconciliation variance is 9135 and fails the checklist tolerance.
+- Evidence:
+  - SQL probes (BBP company_id=5):
+    - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-03/OUTPUTS/20260114T090230Z_sql_06_inventory_valuation_fifo.txt`
+    - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-03/OUTPUTS/20260114T090230Z_sql_07_inventory_control_vs_valuation.txt`
+    - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-03/OUTPUTS/20260114T090337Z_sql_inventory_account_balance.txt`
+  - Report probe:
+    - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-03/OUTPUTS/20260114T090237Z_accounting_reports_gets.txt` (inventory reconciliation variance 9135).
+- Severity: **HIGH** (period close blocked; GL vs stock totals unreliable)
+- Repro steps (dev):
+  1) Run `psql -v company_id=5 -f tasks/erp_logic_audit/EVIDENCE_QUERIES/SQL/06_inventory_valuation_fifo.sql`.
+  2) Run `psql -v company_id=5 -f tasks/erp_logic_audit/EVIDENCE_QUERIES/SQL/07_inventory_control_vs_valuation.sql`.
+  3) GET `/api/v1/reports/inventory-reconciliation` and verify variance exceeds tolerance.
+- Fix direction (no implementation):
+  - Ensure all inventory-affecting events post to the inventory control account (including opening stock and adjustments).
+  - Backfill missing GL impact for existing inventory and reconcile movement↔journal linkage.

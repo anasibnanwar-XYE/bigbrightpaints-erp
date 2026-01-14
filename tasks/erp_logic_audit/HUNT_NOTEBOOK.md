@@ -27,7 +27,7 @@ Rules:
 | LEAD-015 | MED? | Operator / Auditor | Production log detail endpoint 500s (lazy load) | Closed → LF-015 |
 | LEAD-016 | LOW? | Auditor / Operator | Admin override does not bypass locked period posting | Closed: period lock requires reopen; admin override only affects date constraints |
 | LEAD-017 | MED? | Operator / Auditor | Unpacked batches endpoint 500s (lazy load) | Confirmed → LF-018 |
-| LEAD-018 | HIGH? | Auditor / Accounting | Inventory reconciliation variance (ledger vs valuation) | Trace inventory control balance vs valuation inputs; verify opening + movement JE coverage |
+| LEAD-018 | HIGH | Auditor / Accounting | Inventory reconciliation variance (ledger vs valuation) | Confirmed → LF-021 (see `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-03/OUTPUTS/20260114T090230Z_sql_07_inventory_control_vs_valuation.txt`; `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-03/OUTPUTS/20260114T090237Z_accounting_reports_gets.txt`) |
 | LEAD-019 | MED? | Accounting / Inventory | Purchase return reference reuse duplicates RM movements | Re-run parallel return with same reference; compare `raw_material_movements` counts (task-08 OUTPUTS) |
 | LEAD-020 | MED? | Sales / HR | Idempotency key conflict accepted (sales order + payroll run) | Re-send conflicting payloads; confirm reject policy vs acceptance |
 | LEAD-COST-001 | HIGH | Auditor / Backend | Bulk packing: missing bulk ISSUE + movement↔journal link | Confirmed → LF-016 (see `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T105920Z_sql_01_bulk_pack_child_receipts_missing_journal.txt`; `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T105920Z_sql_02_bulk_pack_missing_bulk_issue_movement.txt`) |
@@ -432,17 +432,16 @@ Rules:
 
 ## LEAD-018 — Inventory reconciliation variance (ledger vs valuation)
 
+- Status: **CONFIRMED → LF-021**
 - Hypothesis:
   - Inventory reconciliation is materially out of balance because the inventory control account is not being updated for seeded/opening inventory or because movements are not linked to journals (ledger balance far below valuation).
 - Why this matters (ERP expectation):
   - Month-end close expects inventory valuation to reconcile to the inventory control account within tolerance; a large variance blocks close and erodes auditability.
 - Evidence:
-  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-03/OUTPUTS/20260114T075752Z_07_inventory_control_vs_valuation.txt` (inventory value 9183 vs ledger 53; variance 9130).
-  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-03/OUTPUTS/20260114T075408Z_01_accounting_reports_gets.txt` (inventory reconciliation report variance 9130).
-  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-03/OUTPUTS/20260114T075752Z_06_inventory_valuation_fifo.txt` (FIFO valuation total 9183, matches report).
-- Next probes:
-  - Inspect inventory control account balance source (`companies.default_inventory_account_id`) and list journals impacting it for the period.
-  - Cross-check opening stock imports and movement↔journal links for any inventory value not posted to GL.
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-03/OUTPUTS/20260114T090230Z_sql_07_inventory_control_vs_valuation.txt` (inventory value 9203 vs ledger 68; variance 9135).
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-03/OUTPUTS/20260114T090237Z_accounting_reports_gets.txt` (inventory reconciliation report variance 9135).
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-03/OUTPUTS/20260114T090230Z_sql_06_inventory_valuation_fifo.txt` (FIFO valuation total 9203, matches report).
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-03/OUTPUTS/20260114T090337Z_sql_inventory_account_balance.txt` (inventory control account balance 68).
 
 ---
 
