@@ -1,0 +1,32 @@
+                                           Table "public.suppliers"
+       Column        |           Type           | Collation | Nullable |                Default                
+---------------------+--------------------------+-----------+----------+---------------------------------------
+ id                  | bigint                   |           | not null | nextval('suppliers_id_seq'::regclass)
+ public_id           | uuid                     |           | not null | gen_random_uuid()
+ company_id          | bigint                   |           | not null | 
+ code                | character varying(64)    |           | not null | 
+ name                | character varying(255)   |           | not null | 
+ status              | character varying(32)    |           | not null | 'ACTIVE'::character varying
+ email               | character varying(255)   |           |          | 
+ phone               | character varying(64)    |           |          | 
+ address             | text                     |           |          | 
+ credit_limit        | numeric(18,2)            |           | not null | 0
+ outstanding_balance | numeric(18,2)            |           | not null | 0
+ payable_account_id  | bigint                   |           |          | 
+ created_at          | timestamp with time zone |           | not null | now()
+ version             | bigint                   |           | not null | 0
+Indexes:
+    "suppliers_pkey" PRIMARY KEY, btree (id)
+    "idx_suppliers_company" btree (company_id)
+    "idx_suppliers_company_name" btree (company_id, name)
+    "suppliers_company_id_code_key" UNIQUE CONSTRAINT, btree (company_id, code)
+Foreign-key constraints:
+    "suppliers_company_id_fkey" FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+    "suppliers_payable_account_id_fkey" FOREIGN KEY (payable_account_id) REFERENCES accounts(id) ON DELETE SET NULL
+Referenced by:
+    TABLE "journal_entries" CONSTRAINT "journal_entries_supplier_id_fkey" FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE SET NULL
+    TABLE "partner_settlement_allocations" CONSTRAINT "partner_settlement_allocations_supplier_id_fkey" FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE CASCADE
+    TABLE "raw_material_batches" CONSTRAINT "raw_material_batches_supplier_id_fkey" FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE SET NULL
+    TABLE "raw_material_purchases" CONSTRAINT "raw_material_purchases_supplier_id_fkey" FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE RESTRICT
+    TABLE "supplier_ledger_entries" CONSTRAINT "supplier_ledger_entries_supplier_id_fkey" FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE CASCADE
+

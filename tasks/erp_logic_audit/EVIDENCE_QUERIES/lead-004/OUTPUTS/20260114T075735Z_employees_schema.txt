@@ -1,0 +1,36 @@
+                                             Table "public.employees"
+          Column           |          Type          | Collation | Nullable |                Default                
+---------------------------+------------------------+-----------+----------+---------------------------------------
+ id                        | bigint                 |           | not null | nextval('employees_id_seq'::regclass)
+ public_id                 | uuid                   |           | not null | gen_random_uuid()
+ company_id                | bigint                 |           | not null | 
+ first_name                | character varying(128) |           | not null | 
+ last_name                 | character varying(128) |           | not null | 
+ email                     | character varying(255) |           | not null | 
+ role                      | character varying(128) |           |          | 
+ status                    | character varying(32)  |           | not null | 'ACTIVE'::character varying
+ hired_date                | date                   |           |          | 
+ version                   | bigint                 |           | not null | 0
+ phone                     | character varying(20)  |           |          | 
+ employee_type             | character varying(20)  |           |          | 'STAFF'::character varying
+ monthly_salary            | numeric(19,2)          |           |          | 
+ daily_wage                | numeric(19,2)          |           |          | 
+ payment_schedule          | character varying(20)  |           |          | 'MONTHLY'::character varying
+ working_days_per_month    | integer                |           |          | 26
+ weekly_off_days           | integer                |           |          | 1
+ bank_account_number       | character varying(50)  |           |          | 
+ bank_name                 | character varying(100) |           |          | 
+ ifsc_code                 | character varying(20)  |           |          | 
+ advance_balance           | numeric(19,2)          |           |          | 0
+ overtime_rate_multiplier  | numeric(5,2)           |           |          | 1.5
+ double_ot_rate_multiplier | numeric(5,2)           |           |          | 2.0
+ standard_hours_per_day    | numeric(5,2)           |           |          | 8
+Indexes:
+    "employees_pkey" PRIMARY KEY, btree (id)
+    "employees_company_id_email_key" UNIQUE CONSTRAINT, btree (company_id, email)
+Foreign-key constraints:
+    "employees_company_id_fkey" FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
+Referenced by:
+    TABLE "attendance" CONSTRAINT "attendance_employee_id_fkey" FOREIGN KEY (employee_id) REFERENCES employees(id)
+    TABLE "leave_requests" CONSTRAINT "leave_requests_employee_id_fkey" FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE SET NULL
+

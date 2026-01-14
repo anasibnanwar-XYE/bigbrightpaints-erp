@@ -1,0 +1,9 @@
+ id |            sku             |           name            | inventory_account_id 
+----+----------------------------+---------------------------+----------------------
+  1 | AUDIT-SKU-20260112T130652Z | Audit RM 20260112T130652Z |                 7007
+  2 | RM-RESIN                   | Acrylic Resin             |                     
+  3 | RM-TIO2                    | Titanium Dioxide          |                     
+  4 | RM-SOLV                    | Solvent Mix               |                     
+  5 | RM-CAN                     | Metal Can 1L              |                     
+(5 rows)
+

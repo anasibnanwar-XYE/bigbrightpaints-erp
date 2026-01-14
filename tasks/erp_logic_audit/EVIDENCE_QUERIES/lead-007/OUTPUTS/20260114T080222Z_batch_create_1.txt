@@ -1,0 +1,2 @@
+{"success":true,"message":"Batch recorded","data":{"id":7,"publicId":"37b0481b-f72c-4b4d-8f79-7f09df2bfc36","batchCode":"LEAD-007-DUP","quantity":1,"unit":"KG","costPerUnit":10,"supplierId":1,"supplierName":"Audit Supplier 20260112T130652Z","receivedAt":1768377742.383548757,"notes":"Lead-007 duplicate batch code probe"},"timestamp":1768377742.708692983}
+HTTP_STATUS:200

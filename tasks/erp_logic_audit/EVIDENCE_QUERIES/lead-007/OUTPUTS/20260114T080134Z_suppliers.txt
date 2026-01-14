@@ -1,0 +1,6 @@
+ id |          code           |              name               | payable_account_id 
+----+-------------------------+---------------------------------+--------------------
+  1 | AUDSUP-20260112T130652Z | Audit Supplier 20260112T130652Z |               7015
+  3 | FIX-SUP                 | Fixture Supplier                |               7030
+(2 rows)
+

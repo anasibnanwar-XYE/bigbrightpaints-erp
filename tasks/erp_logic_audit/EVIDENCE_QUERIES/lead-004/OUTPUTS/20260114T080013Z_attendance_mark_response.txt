@@ -1,0 +1,2 @@
+{"success":true,"message":"Attendance marked","data":{"id":1,"employeeId":1,"employeeName":"Audit PFLead004","employeeType":"STAFF","date":[2026,1,10],"status":"PRESENT","checkInTime":null,"checkOutTime":null,"regularHours":8,"overtimeHours":0,"doubleOvertimeHours":0,"holiday":false,"weekend":false,"remarks":"Lead-004 evidence","markedBy":"admin@bbp.dev","markedAt":1768377613.940828951},"timestamp":1768377613.955064018}
+HTTP_STATUS:200

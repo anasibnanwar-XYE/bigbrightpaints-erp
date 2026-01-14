@@ -1,0 +1,2 @@
+{"success":true,"message":"Employee created","data":{"id":1,"publicId":"194f17f8-8434-462e-b72f-6d0129273723","firstName":"Audit","lastName":"PFLead004","email":"audit.pf.lead004@bbp.dev","role":"ACCOUNTING","status":"ACTIVE","hiredDate":[2026,1,1]},"timestamp":1768377597.032836315}
+HTTP_STATUS:200

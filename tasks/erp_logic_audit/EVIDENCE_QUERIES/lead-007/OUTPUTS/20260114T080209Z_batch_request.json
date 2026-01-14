@@ -1,0 +1,8 @@
+{
+  "batchCode": "LEAD-007-DUP",
+  "quantity": 1,
+  "unit": "KG",
+  "costPerUnit": 10,
+  "supplierId": 1,
+  "notes": "Lead-007 duplicate batch code probe"
+}

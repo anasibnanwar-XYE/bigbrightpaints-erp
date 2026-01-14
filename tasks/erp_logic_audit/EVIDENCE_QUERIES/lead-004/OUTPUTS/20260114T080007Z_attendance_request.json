@@ -1,0 +1,10 @@
+{
+  "date": "2026-01-10",
+  "status": "PRESENT",
+  "regularHours": 8,
+  "overtimeHours": 0,
+  "doubleOvertimeHours": 0,
+  "holiday": false,
+  "weekend": false,
+  "remarks": "Lead-004 evidence"
+}

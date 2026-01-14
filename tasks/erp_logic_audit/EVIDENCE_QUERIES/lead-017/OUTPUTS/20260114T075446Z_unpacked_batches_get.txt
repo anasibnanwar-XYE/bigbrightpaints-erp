@@ -1,0 +1,2 @@
+{"success":false,"message":"Internal error","data":{"traceId":"95cae794-5cba-44c2-9739-27ebdb779205","code":"SYS_001","message":"could not initialize proxy [com.bigbrightpaints.erp.modules.production.domain.ProductionProduct#3] - no Session","timestamp":[2026,1,14,7,54,46,897096430]},"timestamp":1768377286.897165389}
+HTTP_STATUS:500

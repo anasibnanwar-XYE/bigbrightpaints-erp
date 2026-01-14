@@ -1,0 +1,2 @@
+{"success":true,"message":"Monthly pay summary","data":{"year":2026,"month":1,"totalStaff":1,"totalGrossPay":20000.00,"totalDeductions":2400,"totalNetPay":17600.00,"employees":[{"employeeId":1,"name":"Audit PFLead004","monthlySalary":20000.00,"presentDays":1,"absentDays":0,"grossPay":20000.00,"pfDeduction":2400,"netPay":17600.00}]},"timestamp":1768377623.320129839}
+HTTP_STATUS:200

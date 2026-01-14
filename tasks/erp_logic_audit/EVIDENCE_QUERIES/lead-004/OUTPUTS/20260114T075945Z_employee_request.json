@@ -1,0 +1,20 @@
+{
+  "firstName": "Audit",
+  "lastName": "PFLead004",
+  "email": "audit.pf.lead004@bbp.dev",
+  "phone": "9999999999",
+  "role": "ACCOUNTING",
+  "hiredDate": "2026-01-01",
+  "employeeType": "STAFF",
+  "paymentSchedule": "MONTHLY",
+  "monthlySalary": 20000,
+  "dailyWage": null,
+  "workingDaysPerMonth": 1,
+  "weeklyOffDays": 1,
+  "standardHoursPerDay": 8,
+  "overtimeRateMultiplier": 1.5,
+  "doubleOtRateMultiplier": 2.0,
+  "bankAccountNumber": "000111222333",
+  "bankName": "AuditBank",
+  "ifscCode": "AUDIT0001"
+}

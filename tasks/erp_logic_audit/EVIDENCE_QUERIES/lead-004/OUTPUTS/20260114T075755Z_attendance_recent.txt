@@ -1,0 +1,4 @@
+ employee_id | attendance_date | status | regular_hours | overtime_hours 
+-------------+-----------------+--------+---------------+----------------
+(0 rows)
+

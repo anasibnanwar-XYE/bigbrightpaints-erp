@@ -1,0 +1,5 @@
+  batch_code  | duplicate_count | first_batch_id | last_batch_id 
+--------------+-----------------+----------------+---------------
+ LEAD-007-DUP |               2 |              7 |             8
+(1 row)
+

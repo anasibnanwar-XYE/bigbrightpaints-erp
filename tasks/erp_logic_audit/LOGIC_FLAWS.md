@@ -548,3 +548,76 @@ Policy:
   - `tasks/erp_logic_audit/EVIDENCE_QUERIES/costing/OUTPUTS/20260113T120827Z_sql_07_bulk_pack_recent_journals_after_fix.txt`
 - Future-proof test suggestion:
   - Integration test: repeated bulk pack request is idempotent (no extra journal entries, no extra movements).
+
+---
+
+## LF-018 — Unpacked batches endpoint 500 due to lazy-loaded product
+
+- Workflow + modules + portal: Packing queue (`factory`) — Factory portal
+- ERP expectation:
+  - Unpacked-batches list should return reliably; queue visibility must not 500.
+- As-built behavior:
+  - `PackingService.listUnpackedBatches` accesses `ProductionProduct` outside a transactional session, triggering `LazyInitializationException` when open-in-view is disabled.
+- Evidence:
+  - API probe (BBP):
+    - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-017/OUTPUTS/20260114T075446Z_unpacked_batches_get.txt` (HTTP 500)
+    - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-017/OUTPUTS/20260114T075453Z_app_logs.txt` (LazyInitializationException on ProductionProduct)
+  - Code anchor:
+    - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/service/PackingService.java:190`
+- Severity: **MED** (packing workflow blocked; queue visibility broken)
+- Repro steps (dev):
+  1) GET `/api/v1/factory/unpacked-batches`.
+  2) Observe HTTP 500 and LazyInitializationException in app logs.
+- Fix direction (no implementation):
+  - Wrap `listUnpackedBatches` in a transactional boundary or fetch-join product/brand to avoid lazy-load failures.
+
+---
+
+## LF-019 — Payroll PF deduction ignored in payroll run + posting
+
+- Workflow + modules + portal: Payroll (`hr`, `accounting`) — HR/Accounting portals
+- ERP expectation:
+  - Payroll preview/run lines and posted journals must reflect statutory PF deductions; net payable should be gross minus all deductions.
+- As-built behavior:
+  - Monthly pay summary computes PF deductions, but payroll run lines set `pfDeduction=0`, and posting credits salary payable using only gross minus advances.
+- Evidence:
+  - API probes (BBP):
+    - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-004/OUTPUTS/20260114T080023Z_monthly_summary.txt` (PF deducted)
+    - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-004/OUTPUTS/20260114T080049Z_monthly_run_lines.txt` (pfDeduction=0; net pay unchanged)
+  - Code anchors:
+    - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/service/PayrollService.java:260` (sets `pfDeduction` to zero)
+    - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/service/PayrollService.java:303` (posting credits salary payable without PF)
+- Severity: **HIGH** (payroll liabilities and statutory deductions misstated)
+- Repro steps (dev):
+  1) Create a STAFF employee with monthlySalary >= 15000 and workingDaysPerMonth=1.
+  2) Mark one PRESENT attendance day.
+  3) GET `/api/v1/payroll/summary/monthly?year=2026&month=1`.
+  4) Create + calculate monthly payroll run; GET `/api/v1/payroll/runs/{id}/lines`.
+  5) Compare PF deduction and net pay between summary and run lines.
+- Fix direction (no implementation):
+  - Compute PF in payroll run line calculation and include PF liability line in payroll posting (reduce salary payable accordingly).
+
+---
+
+## LF-020 — Raw material batch codes not enforced unique
+
+- Workflow + modules + portal: Inventory intake (`inventory`, `purchasing`) — Accounting/Factory portals
+- ERP expectation:
+  - Raw material batch codes should be unique per company/material to preserve FIFO traceability and audit trails.
+- As-built behavior:
+  - API allows creating multiple batches with the same `batch_code` for the same material; DB schema has no uniqueness constraint.
+- Evidence:
+  - API probes (BBP):
+    - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-007/OUTPUTS/20260114T080222Z_batch_create_1.txt`
+    - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-007/OUTPUTS/20260114T080228Z_batch_create_2.txt`
+  - SQL confirmation:
+    - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-007/OUTPUTS/20260114T080250Z_duplicate_batch_codes.txt`
+  - Code anchor:
+    - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/service/RawMaterialService.java:395` (accepts requested batch code without uniqueness check)
+- Severity: **MED** (traceability ambiguity; FIFO consumption audit gaps)
+- Repro steps (dev):
+  1) POST `/api/v1/raw-material-batches/{rawMaterialId}` with `batchCode=LEAD-007-DUP`.
+  2) Repeat the same request.
+  3) Query `raw_material_batches` by batch_code; observe duplicates.
+- Fix direction (no implementation):
+  - Enforce uniqueness at DB level (company_id + raw_material_id + batch_code) and add service validation.

@@ -122,6 +122,8 @@ Rules:
 
 ## LEAD-004 — Payroll PF deduction appears inconsistent across preview/run/posting (operator truth drift)
 
+- Status: **CONFIRMED → LF-019**
+
 - Hypothesis:
   - Payroll preview calculations omit PF (or other statutory) deductions, while payroll run lines include PF and payroll posting does not reduce salary payable by PF, creating multiple “truths” for the same run.
 - Why this matters (ERP expectation):
@@ -140,6 +142,9 @@ Rules:
   - Any reproducible mismatch between preview and run totals, or salary payable credit not equaling net payable after all deductions.
 - Why tests might still pass:
   - Existing tests may not assert payroll preview equality, PF policy, or posting line correctness beyond “journal balanced”.
+- Evidence:
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-004/OUTPUTS/20260114T080023Z_monthly_summary.txt` (PF deduction present)
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-004/OUTPUTS/20260114T080049Z_monthly_run_lines.txt` (pfDeduction=0)
 
 ---
 
@@ -188,6 +193,8 @@ Rules:
 
 ## LEAD-007 — Raw material batch codes appear non-unique (FIFO/traceability ambiguity)
 
+- Status: **CONFIRMED → LF-020**
+
 - Hypothesis:
   - The system allows multiple RM batches with the same `batch_code`, weakening auditability and potentially confusing FIFO consumption and operator workflows.
 - Why this matters (ERP expectation):
@@ -202,6 +209,10 @@ Rules:
   - Duplicate `batch_code` rows exist for the same company/material and downstream consumption/reporting becomes ambiguous.
 - Why tests might still pass:
   - Seed data likely generates unique codes and does not stress operator-entered duplicates.
+- Evidence:
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-007/OUTPUTS/20260114T080222Z_batch_create_1.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-007/OUTPUTS/20260114T080228Z_batch_create_2.txt`
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-007/OUTPUTS/20260114T080250Z_duplicate_batch_codes.txt`
 
 ---
 
@@ -384,17 +395,17 @@ Rules:
 
 ## LEAD-017 — Unpacked batches endpoint fails with lazy-load error
 
+- Status: **CONFIRMED → LF-018**
+
 - Hypothesis:
   - `GET /api/v1/factory/unpacked-batches` can fail with `LazyInitializationException` when `PackingService.listUnpackedBatches` accesses `ProductionProduct` outside a session.
 - Why this matters (ERP expectation):
   - Operators rely on the unpacked-batches queue for packing workflows; 500s block packing and downstream stock updates.
 - Evidence:
-  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lf-013/OUTPUTS/20260113T103946Z_unpacked_batches_after_pack.txt` (HTTP 500).
-  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lf-013/OUTPUTS/20260113T104028Z_app_logs_tail.txt` (LazyInitializationException on ProductionProduct).
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-017/OUTPUTS/20260114T075446Z_unpacked_batches_get.txt` (HTTP 500).
+  - `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-017/OUTPUTS/20260114T075453Z_app_logs.txt` (LazyInitializationException on ProductionProduct).
 - Code anchors:
   - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/service/PackingService.java:190`
-- Next probes:
-  - Wrap `listUnpackedBatches` in a transactional boundary or fetch-join product/brand, then re-run the GET.
 
 ---
 
