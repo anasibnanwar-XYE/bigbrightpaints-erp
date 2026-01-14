@@ -1,0 +1,17 @@
+{
+  "dealerId": 7,
+  "totalAmount": 120.00,
+  "currency": "INR",
+  "notes": "Task-08 sales order idempotency probe (conflict 20260114T090801Z)",
+  "items": [
+    {
+      "productCode": "FG-GST",
+      "description": "Task-08 probe (conflict)",
+      "quantity": 1,
+      "unitPrice": 120.00
+    }
+  ],
+  "gstTreatment": "NONE",
+  "gstInclusive": false,
+  "idempotencyKey": "TASK08-SO-20260114T090801Z"
+}

@@ -1,0 +1,2 @@
+{"success":true,"message":"Payroll run created","data":{"id":6,"publicId":"b9ceb77a-cd79-47d0-8e73-3f7dd2468289","runDate":[2026,1,14],"status":"DRAFT","processedBy":null,"notes":"Task-08 payroll idempotency probe 20260114T090801Z","totalAmount":1200.00,"journalEntryId":null,"idempotencyKey":"TASK08-PAYROLL-20260114T090801Z"},"timestamp":1768381735.977762307}
+HTTP_STATUS:200

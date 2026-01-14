@@ -1,0 +1,9 @@
+{
+  "supplierId": 4,
+  "rawMaterialId": 6,
+  "quantity": 1,
+  "unitCost": 5.50,
+  "referenceNumber": "TASK08-PR-20260114T090801Z",
+  "returnDate": "2026-01-14",
+  "reason": "Task-08 purchase return idempotency probe 20260114T090801Z"
+}

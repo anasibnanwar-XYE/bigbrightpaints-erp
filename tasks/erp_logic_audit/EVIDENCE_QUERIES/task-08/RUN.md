@@ -103,3 +103,78 @@ TS=$(date -u +"%Y%m%dT%H%M%SZ"); PGPASSWORD=erp psql -h localhost -p 55432 -U er
   - Conflict responses: `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T081157Z_sales_order_conflict_response.json`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T081225Z_payroll_run_conflict_response.json`.
   - SQL checks: `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T081206Z_sql_sales_order_idempotency.txt`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T081233Z_sql_payroll_run_idempotency.txt`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T081253Z_sql_purchase_return_reference.txt`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T081326Z_sql_packaging_movements.txt`.
   - Outbox/duplication probes: `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T081132Z_outbox_health_gets.json`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T081336Z_sql_idempotency_duplicates.txt`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T081344Z_sql_outbox_backlog_and_duplicates.txt`.
+
+## 2026-01-14 rerun (LEAD-019/LEAD-020 confirmation)
+
+```bash
+# Login (MOCK)
+RUN_TS=$(date -u +"%Y%m%dT%H%M%SZ"); curl -sS -X POST -H 'Content-Type: application/json' \
+  -d '{"email":"mock.admin@bbp.com","password":"Password123!","companyCode":"MOCK"}' \
+  http://localhost:8081/api/v1/auth/login \
+  > "tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/${RUN_TS}_login.json"
+jq -r '.accessToken' "tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/${RUN_TS}_login.json" \
+  > "tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/${RUN_TS}_token.txt"
+
+# Candidate IDs
+TS=$(date -u +"%Y%m%dT%H%M%SZ"); PGPASSWORD=erp psql -h localhost -p 55432 -U erp -d erp_domain \
+  -v company_id=6 -f tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/SQL/04_candidate_ids.sql \
+  > "tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/${TS}_candidate_ids.txt"
+
+# Sales order idempotency conflict (same key, different totals)
+TOKEN=$(cat tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T090801Z_token.txt)
+curl -sS -w "\nHTTP_STATUS:%{http_code}\n" -H "Authorization: Bearer ${TOKEN}" -H "X-Company-Id: MOCK" -H 'Content-Type: application/json' \
+  --data @"tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T090801Z_sales_order_request.json" \
+  http://localhost:8081/api/v1/sales/orders \
+  > tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T090831Z_sales_order_response.json
+curl -sS -w "\nHTTP_STATUS:%{http_code}\n" -H "Authorization: Bearer ${TOKEN}" -H "X-Company-Id: MOCK" -H 'Content-Type: application/json' \
+  --data @"tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T090801Z_sales_order_conflict_request.json" \
+  http://localhost:8081/api/v1/sales/orders \
+  > tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T090838Z_sales_order_conflict_response.json
+TS=$(date -u +"%Y%m%dT%H%M%SZ"); PGPASSWORD=erp psql -h localhost -p 55432 -U erp -d erp_domain \
+  -v company_id=6 -v idempotency_key='TASK08-SO-20260114T090801Z' \
+  -f tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/SQL/05_sales_order_idempotency_check.sql \
+  > "tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/${TS}_sql_sales_order_idempotency.txt"
+
+# Payroll run idempotency conflict (same key, different totals)
+curl -sS -w "\nHTTP_STATUS:%{http_code}\n" -H "Authorization: Bearer ${TOKEN}" -H "X-Company-Id: MOCK" -H 'Content-Type: application/json' \
+  --data @"tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T090801Z_payroll_run_request.json" \
+  http://localhost:8081/api/v1/hr/payroll-runs \
+  > tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T090849Z_payroll_run_response.json
+curl -sS -w "\nHTTP_STATUS:%{http_code}\n" -H "Authorization: Bearer ${TOKEN}" -H "X-Company-Id: MOCK" -H 'Content-Type: application/json' \
+  --data @"tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T090801Z_payroll_run_conflict_request.json" \
+  http://localhost:8081/api/v1/hr/payroll-runs \
+  > tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T090855Z_payroll_run_conflict_response.json
+TS=$(date -u +"%Y%m%dT%H%M%SZ"); PGPASSWORD=erp psql -h localhost -p 55432 -U erp -d erp_domain \
+  -v company_id=6 -v idempotency_key='TASK08-PAYROLL-20260114T090801Z' \
+  -f tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/SQL/06_payroll_run_idempotency_check.sql \
+  > "tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/${TS}_sql_payroll_run_idempotency.txt"
+
+# Purchase return idempotency (raw material stock drift + movement duplication)
+TS=$(date -u +"%Y%m%dT%H%M%SZ"); PGPASSWORD=erp psql -h localhost -p 55432 -U erp -d erp_domain \
+  -c "select id, sku, name, current_stock from raw_materials where company_id=6 and id=6;" \
+  > "tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/${TS}_sql_raw_material_stock_before_return.txt"
+curl -sS -w "\nHTTP_STATUS:%{http_code}\n" -H "Authorization: Bearer ${TOKEN}" -H "X-Company-Id: MOCK" -H 'Content-Type: application/json' \
+  --data @"tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T090801Z_purchase_return_request.json" \
+  http://localhost:8081/api/v1/purchasing/raw-material-purchases/returns \
+  > tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T090916Z_purchase_return_response_1.json
+TS=$(date -u +"%Y%m%dT%H%M%SZ"); PGPASSWORD=erp psql -h localhost -p 55432 -U erp -d erp_domain \
+  -c "select id, sku, name, current_stock from raw_materials where company_id=6 and id=6;" \
+  > "tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/${TS}_sql_raw_material_stock_after_return_1.txt"
+curl -sS -w "\nHTTP_STATUS:%{http_code}\n" -H "Authorization: Bearer ${TOKEN}" -H "X-Company-Id: MOCK" -H 'Content-Type: application/json' \
+  --data @"tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T090801Z_purchase_return_request.json" \
+  http://localhost:8081/api/v1/purchasing/raw-material-purchases/returns \
+  > tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T090930Z_purchase_return_response_2.json
+TS=$(date -u +"%Y%m%dT%H%M%SZ"); PGPASSWORD=erp psql -h localhost -p 55432 -U erp -d erp_domain \
+  -c "select id, sku, name, current_stock from raw_materials where company_id=6 and id=6;" \
+  > "tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/${TS}_sql_raw_material_stock_after_return_2.txt"
+TS=$(date -u +"%Y%m%dT%H%M%SZ"); PGPASSWORD=erp psql -h localhost -p 55432 -U erp -d erp_domain \
+  -v company_id=6 -v reference='TASK08-PR-20260114T090801Z' \
+  -f tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/SQL/07_purchase_return_reference_check.sql \
+  > "tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/${TS}_sql_purchase_return_reference.txt"
+```
+
+Outputs captured:
+- Requests: `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T090801Z_sales_order_request.json`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T090801Z_payroll_run_request.json`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T090801Z_purchase_return_request.json`.
+- Conflict responses: `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T090838Z_sales_order_conflict_response.json`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T090855Z_payroll_run_conflict_response.json`.
+- Stock drift evidence: `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T090908Z_sql_raw_material_stock_before_return.txt`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T090922Z_sql_raw_material_stock_after_return_1.txt`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T090938Z_sql_raw_material_stock_after_return_2.txt`.
+- Movement duplication: `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T090944Z_sql_purchase_return_reference.txt`.
