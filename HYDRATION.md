@@ -73,7 +73,7 @@
 - `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check` (PASS; 29454 violations reported; audit task 02).
 
 ## Evidence Paths (Latest)
-- Task-08 outputs: `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T081157Z_sales_order_conflict_response.json`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T081225Z_payroll_run_conflict_response.json`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T081253Z_sql_purchase_return_reference.txt`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T081326Z_sql_packaging_movements.txt`.
+- Task-08 outputs: `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T090838Z_sales_order_conflict_response.json`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T090855Z_payroll_run_conflict_response.json`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T090944Z_sql_purchase_return_reference.txt`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T090938Z_sql_raw_material_stock_after_return_2.txt`.
 - Task-03 outputs: `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-03/OUTPUTS/20260114T075752Z_06_inventory_valuation_fifo.txt`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-03/OUTPUTS/20260114T075752Z_07_inventory_control_vs_valuation.txt`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-03/OUTPUTS/20260114T075408Z_01_accounting_reports_gets.txt`.
 - Task-06 outputs: `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-06/OUTPUTS/20260114T075416Z_sql_orphans_documents_without_journal.txt`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-06/OUTPUTS/20260114T075416Z_sql_period_integrity.txt`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-06/OUTPUTS/20260114T075425Z_accounting_reports_gets.json`.
 - Phase 5 evidence: `tasks/erp_logic_audit/EVIDENCE_QUERIES/lead-015/OUTPUTS/`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/lf-011/OUTPUTS/`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/lf-012/OUTPUTS/`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/lf-013/OUTPUTS/`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/lf-014/OUTPUTS/`.
@@ -83,11 +83,11 @@
 
 ## Warnings / Notes
 - Task-08: prod+seed+mock boot failed config validation; used `ERP_ENVIRONMENT_VALIDATION_ENABLED=false` with `docker compose run` to start app.
-- Task-08: purchase return retries with same reference duplicated RM movements (4x) → LEAD-019.
-- Task-08: conflicting payloads with same `idempotencyKey` returned existing records (sales order + payroll) → LEAD-020.
+- Task-08: purchase return retries with same reference duplicated RM movements (4x) → LF-022 confirmed.
+- Task-08: conflicting payloads with same `idempotencyKey` returned existing records (sales order + payroll) → LF-023 confirmed.
 - App boot under `SPRING_PROFILES_ACTIVE=prod,seed` failed config validation (GST accounts + production metadata); ran reconciliation probes on `SPRING_PROFILES_ACTIVE=dev` runtime.
 - Task-03 inventory reconciliation variance is 9130 (valuation 9183 vs ledger 53) → LEAD-018 logged.
-- Checkstyle baseline violations remain (29479); `checkstyle:check` fails as expected.
+- Checkstyle baseline violations remain (29651); `checkstyle:check` reports warnings with failOnViolation=false.
 - Testcontainers auth config warnings and dynamic agent loading notices persisted.
 - Test logs include expected warnings (invalid company IDs, negative balances, dispatch mapping, sequence contention/duplicate key retries, HTML-to-PDF CSS parsing); no failures.
 - Outbox queries returned zero pending/retrying/dead-letter events on seeded dataset; stuck retry count 0.
@@ -97,8 +97,8 @@
 - Task-05 GST return failed with GST accounts unset while config health reported healthy → LF-011.
 
 ## Current Task
-- ERP logic audit program: Task-08 idempotency stress run completed on `fix-phase5-lead015-and-lf011-014`; new leads LEAD-019/LEAD-020 logged.
-- Next recommended step: validate LEAD-019 (purchase return movement duplication) and LEAD-020 (idempotency conflict rejection policy) or promote if confirmed.
+- ERP logic audit program: Task-08 rerun confirmed LF-022/LF-023; Phase 5 LF-011..LF-015 verified with gates.
+- Next recommended step: plan fixes for LF-021 (inventory reconciliation variance) and LF-022/LF-023 idempotency/movement drift.
 
 ## Commands Run (Audit)
 - `sed -n ... SCOPE.md` and `.codex/AGENTS.md` (scope + execution rules).
@@ -285,3 +285,18 @@
   - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T090922Z_sql_raw_material_stock_after_return_1.txt`
   - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T090938Z_sql_raw_material_stock_after_return_2.txt`
   - `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-08/OUTPUTS/20260114T090944Z_sql_purchase_return_reference.txt`
+
+## 2026-01-14 Phase 5 fix verification (LF-011..LF-015)
+- Branch: `fix-phase5-lead015-and-lf011-014`
+- Tip SHA: `TBD`
+- Outcome: verified Phase 5 fixes for LF-011..LF-015; regression tests executed.
+- Commands executed:
+  - `mvn -f erp-domain/pom.xml -DskipTests compile` (PASS)
+  - `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check` (PASS; 29651 warnings)
+  - `mvn -f erp-domain/pom.xml test` (PASS; 220 tests, 4 skipped)
+- Regression tests:
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/regression/GstConfigurationRegressionIT.java`
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/regression/ProductionLogWipPostingRegressionIT.java`
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/regression/ProductionLogPackingStatusRegressionIT.java`
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/regression/ProductionCatalogDiscountDefaultRegressionIT.java`
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/regression/ProductionLogEndpointLazyLoadingIT.java`
