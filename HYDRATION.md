@@ -376,6 +376,7 @@
 - Changes: PF deduction applied in payroll run lines/posting; company-level PF toggle; regression coverage; migration V104; auto-create payroll accounts with parent groups on posting; backfill PF toggle (V105) to off when no PF payable.
 - Commands executed:
   - `mvn -f erp-domain/pom.xml -DskipTests compile` (PASS; javax.annotation warnings).
+  - `mvn -f erp-domain/pom.xml -DskipTests compile` (PASS; javax.annotation warnings; rerun after payroll parent backfill tweak).
   - `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check` (PASS; ~30024 warnings).
   - `mvn -f erp-domain/pom.xml test` (PASS; 235 tests, 4 skipped).
   - `mvn -f erp-domain/pom.xml -Dtest=PayrollPfDeductionRegressionIT test` (PASS; 2 tests).

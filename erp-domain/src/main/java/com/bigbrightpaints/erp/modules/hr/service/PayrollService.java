@@ -689,7 +689,12 @@ public class PayrollService {
     private Account ensureAccountByCode(Company company, String code, String name, AccountType type, Account parent) {
         Optional<Account> existing = accountRepository.findByCompanyAndCodeIgnoreCase(company, code);
         if (existing.isPresent()) {
-            return existing.get();
+            Account account = existing.get();
+            if (parent != null && parent.getType() == type && account.getParent() == null) {
+                account.setParent(parent);
+                return accountRepository.save(account);
+            }
+            return account;
         }
         Account account = new Account();
         account.setCompany(company);
