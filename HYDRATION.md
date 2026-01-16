@@ -405,7 +405,7 @@
   - `mvn -f erp-domain/pom.xml -DskipTests compile` (PASS; javax.annotation warnings).
 
 ## 2026-01-16 LF-020 raw material batch code uniqueness
-- Branch: `fix-phase5-lead015-and-lf011-014`.
+- Branch: `fix-phase5-lead015-and-lf011-014` (commit `2042faa`).
 - Changes: enforce `(raw_material_id, batch_code)` uniqueness; migration now dedupes existing batch codes by suffixing `-DUP-<id>` before adding the constraint; service + import guards throw validation errors on duplicates; regression test coverage added.
 - Commands executed:
   - `mvn -f erp-domain/pom.xml test` (FAIL; Tests run 237, Failures 7, Errors 5, Skipped 4. Failures in `AccountingServiceTest` due to `Account not found`, `HighImpactRegressionIT.partnerSettlementIdempotency` constraint violation, `PurchaseReturnIdempotencyRegressionIT` transaction commit error).
