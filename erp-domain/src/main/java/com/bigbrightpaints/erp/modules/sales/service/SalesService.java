@@ -272,12 +272,6 @@ public class SalesService {
             SalesOrder order = existing.get();
             String storedSignature = order.getIdempotencyHash();
             if (!StringUtils.hasText(storedSignature)) {
-                String derivedSignature = buildSalesOrderSignature(order);
-                if (!derivedSignature.equals(requestSignature)) {
-                    throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
-                            "Idempotency key already used with different payload")
-                            .withDetail("idempotencyKey", idempotencyKey);
-                }
                 order.setIdempotencyHash(requestSignature);
                 salesOrderRepository.save(order);
                 return toDto(order);
