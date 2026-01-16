@@ -47,7 +47,8 @@ public class MultiCompanyController {
                         company.getName(),
                         company.getCode(),
                         company.getTimezone(),
-                        company.getDefaultGstRate())));
+                        company.getDefaultGstRate(),
+                        company.isPfEnabled())));
     }
 
     public record SwitchCompanyRequest(@NotBlank String companyCode) {}

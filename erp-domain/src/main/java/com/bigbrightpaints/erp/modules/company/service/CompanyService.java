@@ -36,6 +36,7 @@ public class CompanyService {
         company.setCode(request.code());
         company.setTimezone(request.timezone());
         company.setDefaultGstRate(request.defaultGstRate());
+        company.setPfEnabled(request.pfEnabled() == null || request.pfEnabled());
         return toDto(repository.save(company));
     }
 
@@ -47,6 +48,9 @@ public class CompanyService {
         company.setCode(request.code());
         company.setTimezone(request.timezone());
         company.setDefaultGstRate(request.defaultGstRate());
+        if (request.pfEnabled() != null) {
+            company.setPfEnabled(request.pfEnabled());
+        }
         return toDto(company);
     }
 
@@ -66,6 +70,7 @@ public class CompanyService {
                 company.getName(),
                 company.getCode(),
                 company.getTimezone(),
-                company.getDefaultGstRate());
+                company.getDefaultGstRate(),
+                company.isPfEnabled());
     }
 }

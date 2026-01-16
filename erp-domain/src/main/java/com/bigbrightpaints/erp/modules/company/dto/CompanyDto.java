@@ -8,4 +8,5 @@ public record CompanyDto(Long id,
                          String name,
                          String code,
                          String timezone,
-                         BigDecimal defaultGstRate) {}
+                         BigDecimal defaultGstRate,
+                         boolean pfEnabled) {}

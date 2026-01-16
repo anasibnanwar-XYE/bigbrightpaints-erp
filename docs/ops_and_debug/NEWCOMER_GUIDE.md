@@ -192,6 +192,9 @@ In each flow:
 - Payroll state progression must be linear (no skipping steps).
 - Posted payroll run must link to its journal (`payroll_runs.journal_entry_id` / `journal_entry_ref_id`).
 - Journal must balance and reflect advances clearing where configured (`EMP-ADV` behavior in docs/tests).
+- PF toggle: company-level `pfEnabled` (default true) controls PF withholding.
+  - On: monthly STAFF lines with gross >= 15000 deduct 12% PF (rounded to 0 decimals); posting credits `PF-PAYABLE` and reduces `SALARY-PAYABLE`.
+  - Off: PF deduction stays zero and no `PF-PAYABLE` line is posted.
 
 ---
 
@@ -325,4 +328,3 @@ From `docker-compose.yml`, `.env.example`, and `erp-domain/src/main/resources/ap
 ---
 
 If you are debugging a live issue, use `docs/ops_and_debug/DEBUGGING_PLAN.md` as the step-by-step checklist for “what to run and what evidence to collect”.
-

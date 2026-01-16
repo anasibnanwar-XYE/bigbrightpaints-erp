@@ -30,6 +30,8 @@ import java.util.*;
 public class PayrollService {
 
     private static final BigDecimal ADVANCE_DEDUCTION_CAP = new BigDecimal("0.20");
+    private static final BigDecimal PF_RATE = new BigDecimal("0.12");
+    private static final BigDecimal PF_THRESHOLD = new BigDecimal("15000");
 
     private final PayrollRunRepository payrollRunRepository;
     private final PayrollRunLineRepository payrollRunLineRepository;
@@ -149,8 +151,9 @@ public class PayrollService {
         BigDecimal totalPresentDays = BigDecimal.ZERO;
         BigDecimal totalOtHours = BigDecimal.ZERO;
 
+        boolean pfEnabled = company.isPfEnabled();
         for (Employee employee : employees) {
-            PayrollRunLine line = calculateEmployeePay(run, employee);
+            PayrollRunLine line = calculateEmployeePay(run, employee, pfEnabled);
             payrollRunLineRepository.save(line);
 
             totalBasePay = totalBasePay.add(line.getBasePay());
@@ -178,7 +181,7 @@ public class PayrollService {
     /**
      * Calculate pay for a single employee
      */
-    private PayrollRunLine calculateEmployeePay(PayrollRun run, Employee employee) {
+    private PayrollRunLine calculateEmployeePay(PayrollRun run, Employee employee, boolean pfEnabled) {
         PayrollRunLine line = new PayrollRunLine();
         line.setPayrollRun(run);
         line.setEmployee(employee);
@@ -265,9 +268,10 @@ public class PayrollService {
         line.setAdvanceDeduction(advanceDeduction);
         line.setAdvances(advanceDeduction);
 
-        line.setPfDeduction(BigDecimal.ZERO);
+        BigDecimal pfDeduction = calculatePfDeduction(run, employee, grossPay, pfEnabled);
+        line.setPfDeduction(pfDeduction);
 
-        BigDecimal totalDeductions = advanceDeduction;
+        BigDecimal totalDeductions = advanceDeduction.add(pfDeduction);
         line.setTotalDeductions(totalDeductions);
 
         // Calculate net pay
@@ -333,8 +337,18 @@ public class PayrollService {
             advanceAccount = findAccountByCode(company, "EMP-ADV");
         }
 
-        // Salary payable is net of advances (advances are cleared via the advance account)
-        BigDecimal salaryPayableAmount = totalGrossPay.subtract(totalAdvances);
+        BigDecimal totalPfDeduction = runLines.stream()
+            .map(PayrollRunLine::getPfDeduction)
+            .filter(Objects::nonNull)
+            .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        Account pfPayableAccount = null;
+        if (totalPfDeduction.compareTo(BigDecimal.ZERO) > 0) {
+            pfPayableAccount = findAccountByCode(company, "PF-PAYABLE");
+        }
+
+        // Salary payable is net of advances and PF (advances are cleared via the advance account).
+        BigDecimal salaryPayableAmount = totalGrossPay.subtract(totalAdvances).subtract(totalPfDeduction);
 
         // Build journal entry
         // Debit: Expense (gross pay)
@@ -349,6 +363,9 @@ public class PayrollService {
         lines.add(new JournalLineRequest(salaryPayableAccount.getId(), "Payroll payable", BigDecimal.ZERO, salaryPayableAmount));
         if (advanceAccount != null) {
             lines.add(new JournalLineRequest(advanceAccount.getId(), "Advance recovery", BigDecimal.ZERO, totalAdvances));
+        }
+        if (pfPayableAccount != null) {
+            lines.add(new JournalLineRequest(pfPayableAccount.getId(), "PF withholding", BigDecimal.ZERO, totalPfDeduction));
         }
 
         LocalDate postingDate = run.getPeriodEnd();
@@ -410,6 +427,7 @@ public class PayrollService {
         }
         auditMetadata.put("totalGrossPay", totalGrossPay.toPlainString());
         auditMetadata.put("totalAdvances", totalAdvances.toPlainString());
+        auditMetadata.put("totalPfDeduction", totalPfDeduction.toPlainString());
         auditMetadata.put("netPayable", salaryPayableAmount.toPlainString());
         auditService.logSuccess(AuditEvent.PAYROLL_POSTED, auditMetadata);
         return toDto(run);
@@ -487,6 +505,19 @@ public class PayrollService {
         }
         BigDecimal cap = grossPay.multiply(ADVANCE_DEDUCTION_CAP).setScale(2, RoundingMode.HALF_UP);
         return balance.min(cap);
+    }
+
+    private BigDecimal calculatePfDeduction(PayrollRun run, Employee employee, BigDecimal grossPay, boolean pfEnabled) {
+        if (!pfEnabled || run.getRunType() != PayrollRun.RunType.MONTHLY) {
+            return BigDecimal.ZERO;
+        }
+        if (employee.getEmployeeType() != Employee.EmployeeType.STAFF) {
+            return BigDecimal.ZERO;
+        }
+        if (grossPay.compareTo(PF_THRESHOLD) < 0) {
+            return BigDecimal.ZERO;
+        }
+        return grossPay.multiply(PF_RATE).setScale(0, RoundingMode.HALF_UP);
     }
 
     /**
@@ -582,6 +613,7 @@ public class PayrollService {
             }
         }
 
+        boolean pfEnabled = company.isPfEnabled();
         for (Employee emp : staff) {
             BigDecimal presentDays = presentDaysByEmployee.getOrDefault(
                     emp.getId(), BigDecimal.ZERO);
@@ -598,8 +630,8 @@ public class PayrollService {
             }
 
             // Calculate deductions
-            BigDecimal pfDeduction = grossPay.compareTo(new BigDecimal("15000")) >= 0
-                ? grossPay.multiply(new BigDecimal("0.12")).setScale(0, RoundingMode.HALF_UP)
+            BigDecimal pfDeduction = pfEnabled && grossPay.compareTo(PF_THRESHOLD) >= 0
+                ? grossPay.multiply(PF_RATE).setScale(0, RoundingMode.HALF_UP)
                 : BigDecimal.ZERO;
             BigDecimal totalDed = pfDeduction;
             BigDecimal netPay = grossPay.subtract(totalDed);

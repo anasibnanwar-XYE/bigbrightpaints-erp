@@ -43,6 +43,8 @@ public class PayrollCalculationService {
 
     private static final Logger log = LoggerFactory.getLogger(PayrollCalculationService.class);
     private static final BigDecimal ADVANCE_DEDUCTION_CAP = new BigDecimal("0.20");
+    private static final BigDecimal PF_RATE = new BigDecimal("0.12");
+    private static final BigDecimal PF_THRESHOLD = new BigDecimal("15000");
 
     private final EmployeeRepository employeeRepository;
     private final AttendanceRepository attendanceRepository;
@@ -96,7 +98,7 @@ public class PayrollCalculationService {
         
         List<PayrollLineItem> lineItems = new ArrayList<>();
         BigDecimal totalGross = BigDecimal.ZERO;
-        BigDecimal totalAdvances = BigDecimal.ZERO;
+        BigDecimal totalDeductions = BigDecimal.ZERO;
         BigDecimal totalNet = BigDecimal.ZERO;
         
         for (Employee labourer : labourers) {
@@ -106,14 +108,14 @@ public class PayrollCalculationService {
             }
             lineItems.add(item);
             totalGross = totalGross.add(item.grossPay());
-            totalAdvances = totalAdvances.add(item.advanceDeduction());
+            totalDeductions = totalDeductions.add(item.totalDeductions());
             totalNet = totalNet.add(item.netPay());
         }
         
         // Create payroll run
         String reference = "WEEKLY-" + weekEnd.format(DateTimeFormatter.ofPattern("yyyyMMdd"));
         PayrollRun run = createPayrollRun(company, reference, PayrollRun.RunType.WEEKLY,
-                weekStart, weekEnd, today, totalGross, totalAdvances, totalNet, lineItems);
+                weekStart, weekEnd, today, totalGross, totalDeductions, totalNet, lineItems);
         
         PayrollSummary summary = new PayrollSummary(
                 run.getId(),
@@ -152,7 +154,7 @@ public class PayrollCalculationService {
         
         List<PayrollLineItem> lineItems = new ArrayList<>();
         BigDecimal totalGross = BigDecimal.ZERO;
-        BigDecimal totalAdvances = BigDecimal.ZERO;
+        BigDecimal totalDeductions = BigDecimal.ZERO;
         BigDecimal totalNet = BigDecimal.ZERO;
         
         for (Employee employee : staff) {
@@ -162,14 +164,14 @@ public class PayrollCalculationService {
             }
             lineItems.add(item);
             totalGross = totalGross.add(item.grossPay());
-            totalAdvances = totalAdvances.add(item.advanceDeduction());
+            totalDeductions = totalDeductions.add(item.totalDeductions());
             totalNet = totalNet.add(item.netPay());
         }
         
         // Create payroll run
         String reference = "MONTHLY-" + monthEnd.format(DateTimeFormatter.ofPattern("yyyyMM"));
         PayrollRun run = createPayrollRun(company, reference, PayrollRun.RunType.MONTHLY,
-                monthStart, monthEnd, today, totalGross, totalAdvances, totalNet, lineItems);
+                monthStart, monthEnd, today, totalGross, totalDeductions, totalNet, lineItems);
         
         PayrollSummary summary = new PayrollSummary(
                 run.getId(),
@@ -237,7 +239,8 @@ public class PayrollCalculationService {
                 ? balance.min(grossPay.multiply(ADVANCE_DEDUCTION_CAP).setScale(2, RoundingMode.HALF_UP))
                 : BigDecimal.ZERO;
 
-        BigDecimal totalDeductions = advanceDeduction;
+        BigDecimal pfDeduction = calculatePfDeduction(company, employee, grossPay);
+        BigDecimal totalDeductions = advanceDeduction.add(pfDeduction);
         BigDecimal netPay = grossPay.subtract(totalDeductions);
 
         return new PayrollLineItem(
@@ -254,9 +257,23 @@ public class PayrollCalculationService {
                 holidayPay,
                 grossPay,
                 advanceDeduction,
+                pfDeduction,
                 totalDeductions,
                 netPay
         );
+    }
+
+    private BigDecimal calculatePfDeduction(Company company, Employee employee, BigDecimal grossPay) {
+        if (company == null || !company.isPfEnabled()) {
+            return BigDecimal.ZERO;
+        }
+        if (employee.getPaymentSchedule() != Employee.PaymentSchedule.MONTHLY) {
+            return BigDecimal.ZERO;
+        }
+        if (grossPay.compareTo(PF_THRESHOLD) < 0) {
+            return BigDecimal.ZERO;
+        }
+        return grossPay.multiply(PF_RATE).setScale(0, RoundingMode.HALF_UP);
     }
 
     /**
@@ -287,14 +304,13 @@ public class PayrollCalculationService {
         
         List<PayrollLineItem> lineItems = new ArrayList<>();
         BigDecimal totalGross = BigDecimal.ZERO;
-        BigDecimal totalAdvances = BigDecimal.ZERO;
+        BigDecimal totalDeductions = BigDecimal.ZERO;
         BigDecimal totalNet = BigDecimal.ZERO;
         
         for (Employee employee : employees) {
             PayrollLineItem item = calculateEmployeePay(company, employee, startDate, endDate);
             lineItems.add(item);
             totalGross = totalGross.add(item.grossPay());
-            totalAdvances = totalAdvances.add(item.advanceDeduction());
             totalNet = totalNet.add(item.netPay());
         }
         
@@ -329,7 +345,7 @@ public class PayrollCalculationService {
 
     private PayrollRun createPayrollRun(Company company, String reference, PayrollRun.RunType runType,
                                          LocalDate periodStart, LocalDate periodEnd, LocalDate runDate,
-                                         BigDecimal totalGross, BigDecimal totalAdvances, BigDecimal totalNet,
+                                         BigDecimal totalGross, BigDecimal totalDeductions, BigDecimal totalNet,
                                          List<PayrollLineItem> lineItems) {
         PayrollRun run = new PayrollRun();
         run.setCompany(company);
@@ -340,7 +356,7 @@ public class PayrollCalculationService {
         run.setRunNumber(reference);
         run.setTotalAmount(totalNet);
         run.setTotalNetPay(totalNet);
-        run.setTotalDeductions(totalAdvances);
+        run.setTotalDeductions(totalDeductions);
         run.setStatus(PayrollRun.PayrollStatus.DRAFT);
         run.setIdempotencyKey(reference);
         run.setNotes("Auto-calculated from attendance");
@@ -367,6 +383,7 @@ public class PayrollCalculationService {
             line.setGrossPay(item.grossPay());
             line.setAdvanceDeduction(item.advanceDeduction());
             line.setAdvances(item.advanceDeduction());
+            line.setPfDeduction(item.pfDeduction());
             line.setTotalDeductions(item.totalDeductions());
             line.setNetPay(item.netPay());
             line.setLineTotal(item.netPay());
@@ -479,6 +496,7 @@ public class PayrollCalculationService {
             BigDecimal holidayPay,
             BigDecimal grossPay,
             BigDecimal advanceDeduction,
+            BigDecimal pfDeduction,
             BigDecimal totalDeductions,
             BigDecimal netPay
     ) {}

@@ -42,6 +42,9 @@ public class Company extends VersionedEntity {
     @JoinColumn(name = "payroll_cash_account_id")
     private Account payrollCashAccount;
 
+    @Column(name = "pf_enabled", nullable = false)
+    private boolean pfEnabled = true;
+
     @Column(name = "gst_input_tax_account_id")
     private Long gstInputTaxAccountId;
 
@@ -132,6 +135,14 @@ public class Company extends VersionedEntity {
 
     public void setPayrollCashAccount(Account payrollCashAccount) {
         this.payrollCashAccount = payrollCashAccount;
+    }
+
+    public boolean isPfEnabled() {
+        return pfEnabled;
+    }
+
+    public void setPfEnabled(boolean pfEnabled) {
+        this.pfEnabled = pfEnabled;
     }
 
     public Long getGstInputTaxAccountId() {
