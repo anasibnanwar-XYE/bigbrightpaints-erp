@@ -366,5 +366,7 @@
 - Commands executed:
   - `JNA_TMPDIR=/home/realnigga/Desktop/CLI_BACKEND_epic04/.tmp JAVA_TOOL_OPTIONS='-Djava.io.tmpdir=/home/realnigga/Desktop/CLI_BACKEND_epic04/.tmp' mvn -f erp-domain/pom.xml -Dtest=OrchestratorTraceCompanyScopeRegressionIT test` (PASS)
   - `JNA_TMPDIR=/home/realnigga/Desktop/CLI_BACKEND_epic04/.tmp JAVA_TOOL_OPTIONS='-Djava.io.tmpdir=/home/realnigga/Desktop/CLI_BACKEND_epic04/.tmp' mvn -f erp-domain/pom.xml test` (PASS; 233 tests, 4 skipped)
+- Post-commit validation:
+  - `JNA_TMPDIR=/home/realnigga/Desktop/CLI_BACKEND_epic04/.tmp JAVA_TOOL_OPTIONS='-Djava.io.tmpdir=/home/realnigga/Desktop/CLI_BACKEND_epic04/.tmp' mvn -f erp-domain/pom.xml test` (PASS; 233 tests, 4 skipped)
 - Notes:
   - Prior full-suite failure due to `Unable to access lob stream` in `OrchestratorTraceCompanyScopeRegressionIT` resolved by mapping details as TEXT.
