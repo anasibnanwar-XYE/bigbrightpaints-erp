@@ -9,7 +9,8 @@ import java.util.UUID;
 import com.bigbrightpaints.erp.core.domain.VersionedEntity;
 
 @Entity
-@Table(name = "raw_material_batches")
+@Table(name = "raw_material_batches",
+       uniqueConstraints = @UniqueConstraint(columnNames = {"raw_material_id", "batch_code"}))
 public class RawMaterialBatch extends VersionedEntity {
 
     @Id

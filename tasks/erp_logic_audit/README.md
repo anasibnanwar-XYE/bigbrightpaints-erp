@@ -129,7 +129,7 @@ This folder contains **discovery + planning artifacts only** (no behavioral chan
 - LEAD-004 confirmed → **LF-019** (payroll PF deduction ignored in run/posting).
 - LEAD-005 closed (no cross-company journal-line mismatches).
 - LEAD-006 closed (no inventory movement event publishers; orphans trace to packaging scope).
-- LEAD-007 confirmed → **LF-020** (duplicate raw material batch codes allowed).
+- LEAD-007 confirmed → **LF-020** (duplicate raw material batch codes allowed; fixed Phase 5).
 - LEAD-008 closed (no inventory revaluation event publishers).
 - LEAD-009 closed (COA code convention matches reconciliation substring filters).
 - LEAD-017 confirmed → **LF-018** (unpacked-batches endpoint lazy-load 500).
@@ -168,7 +168,7 @@ Source: `tasks/erp_logic_audit/LOGIC_FLAWS.md`
 - LF-014 — Finished-good creation 500s when default discount account unset (fixed Phase 5).
 - LF-015 — Production log list/detail 500s due to lazy-load on brand/product (fixed Phase 5).
 - LF-018 — Unpacked-batches endpoint 500 due to lazy-load.
-- LF-020 — Raw material batch codes not enforced unique.
+- LF-020 — Raw material batch codes not enforced unique (fixed Phase 5).
 - LF-022 — Purchase return reference reuse duplicates RM movements (fixed Phase 5).
 - LF-023 — Idempotency key conflict accepted (sales order + payroll) (fixed Phase 5).
 

@@ -675,6 +675,11 @@ Policy:
   3) Query `raw_material_batches` by batch_code; observe duplicates.
 - Fix direction (no implementation):
   - Enforce uniqueness at DB level (company_id + raw_material_id + batch_code) and add service validation.
+- Fix implemented (Phase 5):
+  - Raw material batches now enforce `(raw_material_id, batch_code)` uniqueness at the DB layer and reject duplicates in service flows.
+  - Migration disambiguates any pre-existing duplicates by suffixing `-DUP-<id>` before applying the constraint.
+- Regression test:
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/regression/RawMaterialBatchCodeUniquenessRegressionIT.java`
 
 ---
 

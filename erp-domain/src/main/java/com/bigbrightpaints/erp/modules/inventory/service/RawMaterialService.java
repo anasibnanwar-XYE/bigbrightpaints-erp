@@ -1,5 +1,7 @@
 package com.bigbrightpaints.erp.modules.inventory.service;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.util.MoneyUtils;
@@ -22,6 +24,7 @@ import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProductRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
 import jakarta.transaction.Transactional;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -191,6 +194,7 @@ public class RawMaterialService {
         RawMaterialBatch batch = new RawMaterialBatch();
         batch.setRawMaterial(material);
         String batchCode = resolveBatchCode(material, request.batchCode());
+        ensureUniqueBatchCode(material, batchCode);
         batch.setBatchCode(batchCode);
         batch.setQuantity(quantity);
         batch.setUnit(request.unit());
@@ -201,7 +205,15 @@ public class RawMaterialService {
         BigDecimal currentStock = material.getCurrentStock() == null ? BigDecimal.ZERO : material.getCurrentStock();
         material.setCurrentStock(currentStock.add(quantity));
         rawMaterialRepository.save(material);
-        RawMaterialBatch savedBatch = batchRepository.save(batch);
+        RawMaterialBatch savedBatch;
+        try {
+            savedBatch = batchRepository.save(batch);
+        } catch (DataIntegrityViolationException ex) {
+            if (batchRepository.existsByRawMaterialAndBatchCode(material, batchCode)) {
+                throw duplicateBatchCode(material, batchCode, ex);
+            }
+            throw ex;
+        }
         ReceiptContext effectiveContext = context != null ? context : ReceiptContext.forBatch(batch.getBatchCode());
         RawMaterialMovement receiptMovement = recordReceiptMovement(material, savedBatch, quantity, costPerUnit, effectiveContext);
         Long journalEntryId = effectiveContext.postJournal()
@@ -402,6 +414,31 @@ public class RawMaterialService {
             return requested.trim();
         }
         return batchNumberService.nextRawMaterialBatchCode(material);
+    }
+
+    private void ensureUniqueBatchCode(RawMaterial material, String batchCode) {
+        if (batchRepository.existsByRawMaterialAndBatchCode(material, batchCode)) {
+            throw duplicateBatchCode(material, batchCode, null);
+        }
+    }
+
+    private ApplicationException duplicateBatchCode(RawMaterial material, String batchCode, Exception cause) {
+        ApplicationException ex = new ApplicationException(
+                ErrorCode.VALIDATION_INVALID_INPUT,
+                "Batch code already exists for this raw material",
+                cause);
+        if (material != null) {
+            if (material.getId() != null) {
+                ex.withDetail("rawMaterialId", material.getId());
+            }
+            if (material.getSku() != null) {
+                ex.withDetail("rawMaterialSku", material.getSku());
+            }
+        }
+        if (batchCode != null) {
+            ex.withDetail("batchCode", batchCode);
+        }
+        return ex;
     }
 
     private String resolveReferenceNumber(RawMaterial material, ReceiptContext context, RawMaterialBatch batch) {

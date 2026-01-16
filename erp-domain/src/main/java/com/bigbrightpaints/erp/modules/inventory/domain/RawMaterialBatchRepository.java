@@ -12,6 +12,7 @@ import java.util.List;
 
 public interface RawMaterialBatchRepository extends JpaRepository<RawMaterialBatch, Long> {
     List<RawMaterialBatch> findByRawMaterial(RawMaterial rawMaterial);
+    boolean existsByRawMaterialAndBatchCode(RawMaterial rawMaterial, String batchCode);
     List<RawMaterialBatch> findByRawMaterial_InventoryAccountId(Long inventoryAccountId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)

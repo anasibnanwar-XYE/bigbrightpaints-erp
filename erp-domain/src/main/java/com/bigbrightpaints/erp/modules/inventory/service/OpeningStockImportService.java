@@ -49,6 +49,7 @@ import java.util.Optional;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -209,6 +210,7 @@ public class OpeningStockImportService {
         String batchCode = StringUtils.hasText(row.batchCode)
                 ? row.batchCode.trim()
                 : batchNumberService.nextRawMaterialBatchCode(material);
+        ensureRawMaterialBatchCodeUnique(material, batchCode);
 
         RawMaterialBatch batch = new RawMaterialBatch();
         batch.setRawMaterial(material);
@@ -217,7 +219,13 @@ public class OpeningStockImportService {
         batch.setUnit(unit);
         batch.setCostPerUnit(unitCost);
         batch.setSupplierName(DEFAULT_BATCH_REF);
-        RawMaterialBatch savedBatch = rawMaterialBatchRepository.save(batch);
+        RawMaterialBatch savedBatch;
+        try {
+            savedBatch = rawMaterialBatchRepository.save(batch);
+        } catch (DataIntegrityViolationException ex) {
+            ensureRawMaterialBatchCodeUnique(material, batchCode);
+            throw ex;
+        }
 
         BigDecimal currentStock = Optional.ofNullable(material.getCurrentStock()).orElse(BigDecimal.ZERO);
         material.setCurrentStock(currentStock.add(quantity));
@@ -280,6 +288,13 @@ public class OpeningStockImportService {
                 MoneyUtils.safeMultiply(quantity, unitCost),
                 null,
                 savedMovement);
+    }
+
+    private void ensureRawMaterialBatchCodeUnique(RawMaterial material, String batchCode) {
+        if (rawMaterialBatchRepository.existsByRawMaterialAndBatchCode(material, batchCode)) {
+            throw new IllegalArgumentException("Batch code already exists for raw material " + material.getSku()
+                    + ": " + batchCode);
+        }
     }
 
     private RawMaterial resolveRawMaterial(Company company, OpeningRow row) {

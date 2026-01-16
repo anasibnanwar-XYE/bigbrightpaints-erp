@@ -403,3 +403,31 @@
 - Changes: BigDecimal for foreign totals; safer parsing; N+1 reductions for temporal balances and owner checks; company clock usage in statements/aging/event adjustment; PDF rendering for statements; negative balances preserved.
 - Commands executed:
   - `mvn -f erp-domain/pom.xml -DskipTests compile` (PASS; javax.annotation warnings).
+
+## 2026-01-16 LF-020 raw material batch code uniqueness
+- Branch: `fix-phase5-lead015-and-lf011-014`.
+- Changes: enforce `(raw_material_id, batch_code)` uniqueness; migration now dedupes existing batch codes by suffixing `-DUP-<id>` before adding the constraint; service + import guards throw validation errors on duplicates; regression test coverage added.
+- Commands executed:
+  - `mvn -f erp-domain/pom.xml test` (FAIL; Tests run 237, Failures 7, Errors 5, Skipped 4. Failures in `AccountingServiceTest` due to `Account not found`, `HighImpactRegressionIT.partnerSettlementIdempotency` constraint violation, `PurchaseReturnIdempotencyRegressionIT` transaction commit error).
+  - `mvn -f erp-domain/pom.xml -Dtest=ErpInvariantsSuiteIT,ReconciliationControlsIT,InventoryGlReconciliationIT,PeriodCloseLockIT test` (PASS; 16 tests).
+  - `mvn -f erp-domain/pom.xml -Dtest=RawMaterialBatchCodeUniquenessRegressionIT test` (PASS; 1 test).
+  - `PGPASSWORD=erp psql -h localhost -p 55432 -U erp -d erp_domain -c "select installed_rank, version, description, success from flyway_schema_history where version='106';"` (0 rows; no prior failed migration entry).
+  - `DB_PORT=55432 APP_PORT=8081 MANAGEMENT_PORT=19090 JWT_SECRET=... ERP_SECURITY_ENCRYPTION_KEY=... SPRING_PROFILES_ACTIVE=prod,seed docker compose up -d --build` (FAIL: port 8081 already allocated).
+  - `DB_PORT=55432 APP_PORT=18081 MANAGEMENT_PORT=19090 JWT_SECRET=... ERP_SECURITY_ENCRYPTION_KEY=... SPRING_PROFILES_ACTIVE=prod,seed docker compose up -d --build` (app exits due to configuration validation after applying V106).
+  - `DB_PORT=55432 APP_PORT=18081 MANAGEMENT_PORT=19090 JWT_SECRET=... ERP_SECURITY_ENCRYPTION_KEY=... SPRING_PROFILES_ACTIVE=prod,seed docker compose run -d --service-ports -e ERP_ENVIRONMENT_VALIDATION_ENABLED=false app` (app starts; readiness DOWN).
+  - `curl http://localhost:19090/actuator/health` (returns `{"status":"DOWN","groups":["liveness","readiness"]}`; readiness DOWN, liveness UP).
+- Current runtime:
+  - Containers up: `erp_db`, `erp_rabbit`, `erp_mailhog`, `cli_backend_epic04-app-run-29f0e82ee901`, `cli_backend_epic04-app-run-908ac469e23b`.
+  - Ports: app 8081 (old runtime), app 18081 (validation disabled), management 9090/19090.
+- Known warnings:
+  - Full test suite failing (pre-existing failures listed above).
+  - Readiness remains DOWN because prod config data is incomplete even with validation disabled.
+  - App boot with validation enabled fails due to missing required configuration data.
+- Next milestone:
+  - Address failing tests (AccountingServiceTest/HighImpactRegressionIT/PurchaseReturnIdempotencyRegressionIT), then re-run full `mvn test`.
+  - Seed required prod config data or provide mock config to get readiness UP with validation enabled.
+- Resume instructions:
+  1) Stay on branch `fix-phase5-lead015-and-lf011-014`.
+  2) For current runtime, manage `cli_backend_epic04-app-run-29f0e82ee901` (ports 18081/19090) and `cli_backend_epic04-app-run-908ac469e23b` (ports 8081/9090).
+  3) Re-run `DB_PORT=55432 APP_PORT=18081 MANAGEMENT_PORT=19090 JWT_SECRET=... ERP_SECURITY_ENCRYPTION_KEY=... SPRING_PROFILES_ACTIVE=prod,seed docker compose up -d --build` if retrying validation-enabled boot.
+  4) Re-run `mvn -f erp-domain/pom.xml test` after fixing the existing test failures.
