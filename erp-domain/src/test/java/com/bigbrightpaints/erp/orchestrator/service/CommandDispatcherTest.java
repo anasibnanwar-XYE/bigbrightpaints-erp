@@ -78,6 +78,7 @@ class CommandDispatcherTest {
         verify(traceService).record(
                 ArgumentMatchers.eq("trace-123"),
                 ArgumentMatchers.eq("ORDER_APPROVED"),
-                ArgumentMatchers.<Map<String, Object>>argThat(map -> "101".equals(map.get("orderId"))));
+                ArgumentMatchers.<Map<String, Object>>argThat(map -> "101".equals(map.get("orderId"))),
+                ArgumentMatchers.eq("COMP"));
     }
 }

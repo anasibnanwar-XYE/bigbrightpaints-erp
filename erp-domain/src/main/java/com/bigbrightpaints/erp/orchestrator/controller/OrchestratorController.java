@@ -95,7 +95,9 @@ public class OrchestratorController {
     }
 
     @GetMapping("/traces/{traceId}")
-    public ResponseEntity<Map<String, Object>> trace(@PathVariable String traceId) {
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_SALES','ROLE_FACTORY','ROLE_ACCOUNTING')")
+    public ResponseEntity<Map<String, Object>> trace(@PathVariable String traceId,
+                                                     @RequestHeader("X-Company-Id") String companyId) {
         return ResponseEntity.ok(Map.of("traceId", traceId, "events", traceService.getTrace(traceId)));
     }
 
