@@ -319,9 +319,12 @@ public class PayrollService {
         }
 
         // Find required accounts
-        Account salaryExpenseAccount = ensureAccountByCode(company, "SALARY-EXP", "Salary Expense", AccountType.EXPENSE);
-        Account wageExpenseAccount = ensureAccountByCode(company, "WAGE-EXP", "Wage Expense", AccountType.EXPENSE);
-        Account salaryPayableAccount = ensureAccountByCode(company, "SALARY-PAYABLE", "Salary Payable", AccountType.LIABILITY);
+        Account payrollExpenseParent = ensurePayrollParent(company, "PAYROLL-EXPENSES", "Payroll Expenses", AccountType.EXPENSE);
+        Account payrollLiabilityParent = ensurePayrollParent(company, "PAYROLL-LIABILITIES", "Payroll Liabilities", AccountType.LIABILITY);
+        Account payrollAdvancesParent = ensurePayrollParent(company, "PAYROLL-ADVANCES", "Payroll Advances", AccountType.ASSET);
+        Account salaryExpenseAccount = ensureAccountByCode(company, "SALARY-EXP", "Salary Expense", AccountType.EXPENSE, payrollExpenseParent);
+        Account wageExpenseAccount = ensureAccountByCode(company, "WAGE-EXP", "Wage Expense", AccountType.EXPENSE, payrollExpenseParent);
+        Account salaryPayableAccount = ensureAccountByCode(company, "SALARY-PAYABLE", "Salary Payable", AccountType.LIABILITY, payrollLiabilityParent);
 
         // Load payroll lines to calculate totals
         List<PayrollRunLine> runLines = payrollRunLineRepository.findByPayrollRun(run);
@@ -336,7 +339,7 @@ public class PayrollService {
             .reduce(BigDecimal.ZERO, BigDecimal::add);
         Account advanceAccount = null;
         if (totalAdvances.compareTo(BigDecimal.ZERO) > 0) {
-            advanceAccount = ensureAccountByCode(company, "EMP-ADV", "Employee Advances", AccountType.ASSET);
+            advanceAccount = ensureAccountByCode(company, "EMP-ADV", "Employee Advances", AccountType.ASSET, payrollAdvancesParent);
         }
 
         BigDecimal totalPfDeduction = runLines.stream()
@@ -346,7 +349,7 @@ public class PayrollService {
 
         Account pfPayableAccount = null;
         if (totalPfDeduction.compareTo(BigDecimal.ZERO) > 0) {
-            pfPayableAccount = ensureAccountByCode(company, "PF-PAYABLE", "Provident Fund Payable", AccountType.LIABILITY);
+            pfPayableAccount = ensureAccountByCode(company, "PF-PAYABLE", "Provident Fund Payable", AccountType.LIABILITY, payrollLiabilityParent);
         }
 
         // Salary payable is net of advances and PF (advances are cleared via the advance account).
@@ -667,7 +670,16 @@ public class PayrollService {
         }
     }
 
-    private Account ensureAccountByCode(Company company, String code, String name, AccountType type) {
+    private Account ensurePayrollParent(Company company, String code, String name, AccountType type) {
+        Optional<Account> existing = accountRepository.findByCompanyAndCodeIgnoreCase(company, code);
+        if (existing.isPresent()) {
+            Account candidate = existing.get();
+            return candidate.getType() == type ? candidate : null;
+        }
+        return ensureAccountByCode(company, code, name, type, null);
+    }
+
+    private Account ensureAccountByCode(Company company, String code, String name, AccountType type, Account parent) {
         Optional<Account> existing = accountRepository.findByCompanyAndCodeIgnoreCase(company, code);
         if (existing.isPresent()) {
             return existing.get();
@@ -677,6 +689,9 @@ public class PayrollService {
         account.setCode(code);
         account.setName(name);
         account.setType(type);
+        if (parent != null && parent.getType() == type) {
+            account.setParent(parent);
+        }
         try {
             return accountRepository.save(account);
         } catch (DataIntegrityViolationException ex) {
