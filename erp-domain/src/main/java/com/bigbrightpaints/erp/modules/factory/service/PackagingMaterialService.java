@@ -16,16 +16,22 @@ import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchReposito
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovement;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Service
 public class PackagingMaterialService {
+
+    @Value("${erp.benchmark.require-packaging:false}")
+    private boolean requirePackaging;
 
     private final CompanyContextService companyContextService;
     private final PackagingSizeMappingRepository mappingRepository;
@@ -64,11 +70,6 @@ public class PackagingMaterialService {
         Company company = companyContextService.requireCurrentCompany();
         String normalizedSize = normalizePackagingSize(request.packagingSize());
         
-        if (mappingRepository.existsByCompanyAndPackagingSizeIgnoreCase(company, normalizedSize)) {
-            throw new ApplicationException(ErrorCode.DUPLICATE_ENTITY,
-                    "Packaging size mapping already exists for: " + normalizedSize);
-        }
-
         RawMaterial rawMaterial = rawMaterialRepository.findById(request.rawMaterialId())
                 .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
                         "Raw material not found"));
@@ -76,6 +77,11 @@ public class PackagingMaterialService {
         if (!rawMaterial.getCompany().getId().equals(company.getId())) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
                     "Raw material does not belong to this company");
+        }
+
+        if (mappingRepository.existsByCompanyAndPackagingSizeIgnoreCaseAndRawMaterial(company, normalizedSize, rawMaterial)) {
+            throw new ApplicationException(ErrorCode.DUPLICATE_ENTITY,
+                    "Packaging size mapping already exists for: " + normalizedSize + " and " + rawMaterial.getSku());
         }
 
         PackagingSizeMapping mapping = new PackagingSizeMapping();
@@ -103,6 +109,12 @@ public class PackagingMaterialService {
             if (!rawMaterial.getCompany().getId().equals(company.getId())) {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
                         "Raw material does not belong to this company");
+            }
+            if (mappingRepository.existsByCompanyAndPackagingSizeIgnoreCaseAndRawMaterialAndIdNot(
+                    company, mapping.getPackagingSize(), rawMaterial, mapping.getId())) {
+                throw new ApplicationException(ErrorCode.DUPLICATE_ENTITY,
+                        "Packaging size mapping already exists for: " + mapping.getPackagingSize()
+                                + " and " + rawMaterial.getSku());
             }
             mapping.setRawMaterial(rawMaterial);
         }
@@ -146,43 +158,66 @@ public class PackagingMaterialService {
         Company company = companyContextService.requireCurrentCompany();
         String normalizedSize = normalizePackagingSize(packagingSize);
         
-        Optional<PackagingSizeMapping> mappingOpt = mappingRepository
-                .findByCompanyAndPackagingSizeIgnoreCase(company, normalizedSize);
-        
-        if (mappingOpt.isEmpty()) {
+        List<PackagingSizeMapping> mappings = mappingRepository
+                .findActiveByCompanyAndPackagingSizeIgnoreCase(company, normalizedSize);
+
+        if (mappings.isEmpty()) {
             // No mapping configured - return zero cost (packaging not tracked)
+            if (requirePackaging) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Packaging BOM is required for size: " + normalizedSize);
+            }
             return new PackagingConsumptionResult(
-                    null, null, BigDecimal.ZERO, BigDecimal.ZERO, null,
+                    false,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    Map.of(),
                     "No packaging material mapping configured for size: " + normalizedSize);
         }
 
-        PackagingSizeMapping mapping = mappingOpt.get();
-        RawMaterial bucket = rawMaterialRepository.lockByCompanyAndId(company, mapping.getRawMaterial().getId())
-                .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
-                        "Packaging material not found: " + mapping.getRawMaterial().getSku()));
+        BigDecimal totalCost = BigDecimal.ZERO;
+        BigDecimal totalQuantity = BigDecimal.ZERO;
+        Map<Long, BigDecimal> accountTotals = new HashMap<>();
 
-        BigDecimal requiredQty = BigDecimal.valueOf(piecesCount)
-                .multiply(BigDecimal.valueOf(mapping.getUnitsPerPack()));
-        
-        if (bucket.getCurrentStock().compareTo(requiredQty) < 0) {
-            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
-                    String.format("Insufficient %s buckets. Need: %s, Available: %s",
-                            normalizedSize, requiredQty, bucket.getCurrentStock()));
+        for (PackagingSizeMapping mapping : mappings) {
+            RawMaterial material = rawMaterialRepository.lockByCompanyAndId(company, mapping.getRawMaterial().getId())
+                    .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                            "Packaging material not found: " + mapping.getRawMaterial().getSku()));
+
+            if (material.getInventoryAccountId() == null) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                        "Packaging material " + material.getSku() + " missing inventory account");
+            }
+
+            int unitsPerPack = mapping.getUnitsPerPack() != null ? mapping.getUnitsPerPack() : 1;
+            BigDecimal requiredQty = BigDecimal.valueOf(piecesCount)
+                    .multiply(BigDecimal.valueOf(unitsPerPack));
+
+            if (material.getCurrentStock().compareTo(requiredQty) < 0) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        String.format("Insufficient %s. Need: %s, Available: %s",
+                                material.getSku(), requiredQty, material.getCurrentStock()));
+            }
+
+            BigDecimal consumedCost = issueFromBatches(material, requiredQty, referenceId);
+            material.setCurrentStock(material.getCurrentStock().subtract(requiredQty));
+            rawMaterialRepository.save(material);
+
+            totalCost = totalCost.add(consumedCost);
+            totalQuantity = totalQuantity.add(requiredQty);
+            accountTotals.merge(material.getInventoryAccountId(), consumedCost, BigDecimal::add);
         }
 
-        // Issue from batches (FIFO) and calculate cost
-        BigDecimal totalCost = issueFromBatches(bucket, requiredQty, referenceId);
-        
-        // Deduct from bucket stock
-        bucket.setCurrentStock(bucket.getCurrentStock().subtract(requiredQty));
-        rawMaterialRepository.save(bucket);
+        if (requirePackaging && totalCost.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Packaging consumption produced zero cost for size: " + normalizedSize);
+        }
 
         return new PackagingConsumptionResult(
-                bucket.getId(),
-                bucket.getInventoryAccountId(),
-                requiredQty,
+                true,
                 totalCost,
-                bucket.getSku(),
+                totalQuantity,
+                accountTotals,
                 null);
     }
 

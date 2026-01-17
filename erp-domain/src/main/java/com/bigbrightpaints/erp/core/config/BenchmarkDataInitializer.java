@@ -7,6 +7,8 @@ import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
+import com.bigbrightpaints.erp.modules.factory.domain.PackagingSizeMapping;
+import com.bigbrightpaints.erp.modules.factory.domain.PackagingSizeMappingRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
@@ -78,7 +80,8 @@ public class BenchmarkDataInitializer {
                                         ProductionBrandRepository brandRepository,
                                         ProductionProductRepository productRepository,
                                         FinishedGoodRepository finishedGoodRepository,
-                                        RawMaterialRepository rawMaterialRepository) {
+                                        RawMaterialRepository rawMaterialRepository,
+                                        PackagingSizeMappingRepository packagingSizeMappingRepository) {
         return args -> {
             System.out.println("=== Benchmark Data Initializer Starting ===");
             
@@ -109,7 +112,10 @@ public class BenchmarkDataInitializer {
             // 7. Create raw materials (no batches - benchmark will create via purchases)
             seedRawMaterials(company, rawMaterialRepository, accounts);
             System.out.println("Raw materials created");
-            
+
+            seedPackagingMappings(company, rawMaterialRepository, packagingSizeMappingRepository);
+            System.out.println("Packaging BOM mappings created");
+
             // 8. Create finished goods (no batches - benchmark will create via production)
             seedFinishedGoods(company, finishedGoodRepository, productRepository, accounts, brand);
             System.out.println("Finished goods created");
@@ -322,6 +328,44 @@ public class BenchmarkDataInitializer {
                         return rawMaterialRepository.save(rm);
                     });
         }
+    }
+
+    private void seedPackagingMappings(Company company,
+                                       RawMaterialRepository rawMaterialRepository,
+                                       PackagingSizeMappingRepository mappingRepository) {
+        RawMaterial can5 = rawMaterialRepository.findByCompanyAndSku(company, "PK-5L-CAN").orElse(null);
+        RawMaterial can10 = rawMaterialRepository.findByCompanyAndSku(company, "PK-10L-CAN").orElse(null);
+        RawMaterial label = rawMaterialRepository.findByCompanyAndSku(company, "PK-LABEL").orElse(null);
+
+        if (can5 != null) {
+            ensurePackagingMapping(company, mappingRepository, "5L", can5, new BigDecimal("5"));
+        }
+        if (can10 != null) {
+            ensurePackagingMapping(company, mappingRepository, "10L", can10, new BigDecimal("10"));
+        }
+        if (label != null) {
+            ensurePackagingMapping(company, mappingRepository, "5L", label, new BigDecimal("5"));
+            ensurePackagingMapping(company, mappingRepository, "10L", label, new BigDecimal("10"));
+        }
+    }
+
+    private void ensurePackagingMapping(Company company,
+                                        PackagingSizeMappingRepository mappingRepository,
+                                        String size,
+                                        RawMaterial material,
+                                        BigDecimal litersPerUnit) {
+        String normalizedSize = size.trim().toUpperCase();
+        if (mappingRepository.existsByCompanyAndPackagingSizeIgnoreCaseAndRawMaterial(company, normalizedSize, material)) {
+            return;
+        }
+        PackagingSizeMapping mapping = new PackagingSizeMapping();
+        mapping.setCompany(company);
+        mapping.setPackagingSize(normalizedSize);
+        mapping.setRawMaterial(material);
+        mapping.setUnitsPerPack(1);
+        mapping.setLitersPerUnit(litersPerUnit);
+        mapping.setActive(true);
+        mappingRepository.save(mapping);
     }
 
     private void seedFinishedGoods(Company company,

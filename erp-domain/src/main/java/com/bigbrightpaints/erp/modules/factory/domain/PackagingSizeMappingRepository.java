@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.factory.domain;
 
 import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -11,7 +12,7 @@ import java.util.Optional;
 public interface PackagingSizeMappingRepository extends JpaRepository<PackagingSizeMapping, Long> {
 
     @Query("SELECT m FROM PackagingSizeMapping m WHERE m.company = :company AND UPPER(m.packagingSize) = UPPER(:size) AND m.active = true")
-    Optional<PackagingSizeMapping> findByCompanyAndPackagingSizeIgnoreCase(
+    List<PackagingSizeMapping> findActiveByCompanyAndPackagingSizeIgnoreCase(
             @Param("company") Company company,
             @Param("size") String packagingSize);
 
@@ -21,5 +22,12 @@ public interface PackagingSizeMappingRepository extends JpaRepository<PackagingS
 
     Optional<PackagingSizeMapping> findByCompanyAndId(Company company, Long id);
 
-    boolean existsByCompanyAndPackagingSizeIgnoreCase(Company company, String packagingSize);
+    boolean existsByCompanyAndPackagingSizeIgnoreCaseAndRawMaterial(Company company,
+                                                                     String packagingSize,
+                                                                     RawMaterial rawMaterial);
+
+    boolean existsByCompanyAndPackagingSizeIgnoreCaseAndRawMaterialAndIdNot(Company company,
+                                                                            String packagingSize,
+                                                                            RawMaterial rawMaterial,
+                                                                            Long id);
 }

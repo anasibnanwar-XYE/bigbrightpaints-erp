@@ -15,8 +15,8 @@ import java.util.UUID;
 @Entity
 @Table(name = "packaging_size_mappings",
         uniqueConstraints = @UniqueConstraint(
-                name = "uq_packaging_size_company",
-                columnNames = {"company_id", "packaging_size"}))
+                name = "uq_packaging_size_material",
+                columnNames = {"company_id", "packaging_size", "raw_material_id"}))
 public class PackagingSizeMapping extends VersionedEntity {
 
     @Id

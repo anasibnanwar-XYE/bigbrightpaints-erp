@@ -10,10 +10,12 @@ import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.factory.dto.BulkPackRequest;
 import com.bigbrightpaints.erp.modules.factory.dto.BulkPackResponse;
+import com.bigbrightpaints.erp.modules.factory.dto.PackagingConsumptionResult;
 import com.bigbrightpaints.erp.modules.inventory.domain.*;
 import com.bigbrightpaints.erp.modules.inventory.service.BatchNumberService;
 import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -44,8 +46,10 @@ public class BulkPackingService {
     private final RawMaterialRepository rawMaterialRepository;
     private final RawMaterialBatchRepository rawMaterialBatchRepository;
     private final InventoryMovementRepository inventoryMovementRepository;
+    private final RawMaterialMovementRepository rawMaterialMovementRepository;
     private final AccountingService accountingService;
     private final BatchNumberService batchNumberService;
+    private final PackagingMaterialService packagingMaterialService;
 
     public BulkPackingService(CompanyContextService companyContextService,
                               FinishedGoodRepository finishedGoodRepository,
@@ -53,19 +57,25 @@ public class BulkPackingService {
                               RawMaterialRepository rawMaterialRepository,
                               RawMaterialBatchRepository rawMaterialBatchRepository,
                               InventoryMovementRepository inventoryMovementRepository,
+                              RawMaterialMovementRepository rawMaterialMovementRepository,
                               AccountingService accountingService,
-                              BatchNumberService batchNumberService) {
+                              BatchNumberService batchNumberService,
+                              PackagingMaterialService packagingMaterialService) {
         this.companyContextService = companyContextService;
         this.finishedGoodRepository = finishedGoodRepository;
         this.finishedGoodBatchRepository = finishedGoodBatchRepository;
         this.rawMaterialRepository = rawMaterialRepository;
         this.rawMaterialBatchRepository = rawMaterialBatchRepository;
         this.inventoryMovementRepository = inventoryMovementRepository;
+        this.rawMaterialMovementRepository = rawMaterialMovementRepository;
         this.accountingService = accountingService;
         this.batchNumberService = batchNumberService;
+        this.packagingMaterialService = packagingMaterialService;
     }
 
-    private record PackagingCostSummary(BigDecimal totalCost, Map<Long, BigDecimal> accountTotals) {}
+    private record PackagingCostSummary(BigDecimal totalCost,
+                                        Map<Long, BigDecimal> accountTotals,
+                                        Map<Integer, BigDecimal> lineCosts) {}
 
     /**
      * Pack a bulk FG batch into sized child batches.
@@ -89,11 +99,13 @@ public class BulkPackingService {
                             bulkBatch.getQuantityAvailable(), totalVolume));
         }
 
-        // 3. Consume packaging materials (optional)
-        PackagingCostSummary packagingCostSummary = new PackagingCostSummary(BigDecimal.ZERO, Map.of());
+        // 3. Consume packaging materials (optional/manual override or BOM-based)
+        String packagingReference = "BULK-PACK-" + bulkBatch.getBatchCode();
+        PackagingCostSummary packagingCostSummary = new PackagingCostSummary(BigDecimal.ZERO, Map.of(), Map.of());
         if (request.packagingMaterials() != null && !request.packagingMaterials().isEmpty()) {
-            packagingCostSummary = consumePackagingMaterials(company, request.packagingMaterials(),
-                    "BULK-PACK-" + bulkBatch.getBatchCode());
+            packagingCostSummary = consumePackagingMaterials(company, request.packagingMaterials(), packagingReference);
+        } else {
+            packagingCostSummary = consumePackagingFromMappings(company, request.packs(), packagingReference);
         }
         BigDecimal packagingCost = packagingCostSummary.totalCost();
 
@@ -102,7 +114,7 @@ public class BulkPackingService {
         int totalPacks = request.packs().stream()
                 .mapToInt(p -> p.quantity().intValue())
                 .sum();
-        BigDecimal packagingCostPerUnit = totalPacks > 0 
+        BigDecimal fallbackPackagingCostPerUnit = totalPacks > 0 
                 ? packagingCost.divide(BigDecimal.valueOf(totalPacks), 6, COST_ROUNDING)
                 : BigDecimal.ZERO;
 
@@ -111,12 +123,28 @@ public class BulkPackingService {
         List<FinishedGoodBatch> childBatches = new ArrayList<>();
         BigDecimal totalChildValue = BigDecimal.ZERO;
 
+        Map<Integer, BigDecimal> lineCosts = packagingCostSummary.lineCosts();
+        boolean hasLineCosts = lineCosts != null && !lineCosts.isEmpty();
+        int lineIndex = 0;
         for (BulkPackRequest.PackLine line : request.packs()) {
+            BigDecimal linePackagingCostPerUnit;
+            if (hasLineCosts) {
+                BigDecimal linePackagingTotal = lineCosts.get(lineIndex);
+                if (linePackagingTotal != null && line.quantity().compareTo(BigDecimal.ZERO) > 0) {
+                    linePackagingCostPerUnit = linePackagingTotal
+                            .divide(line.quantity(), 6, COST_ROUNDING);
+                } else {
+                    linePackagingCostPerUnit = BigDecimal.ZERO;
+                }
+            } else {
+                linePackagingCostPerUnit = fallbackPackagingCostPerUnit;
+            }
             FinishedGoodBatch childBatch = createChildBatch(company, bulkBatch, line, 
-                    bulkUnitCost, packagingCostPerUnit, packDate);
+                    bulkUnitCost, linePackagingCostPerUnit, packDate);
             childBatches.add(childBatch);
             totalChildValue = totalChildValue.add(childBatch.getUnitCost()
                     .multiply(childBatch.getQuantityTotal()));
+            lineIndex++;
         }
 
         // 6. Deduct from bulk batch
@@ -131,6 +159,9 @@ public class BulkPackingService {
         // 7. Post packaging journal
         Long journalEntryId = postPackagingJournal(company, bulkBatch, childBatches,
                 totalVolume, packagingCostSummary, packDate, request.notes());
+        if (journalEntryId != null) {
+            linkPackagingMovementsToJournal(packagingReference, journalEntryId);
+        }
 
         // 8. Build response
         List<BulkPackResponse.ChildBatchDto> childDtos = childBatches.stream()
@@ -259,22 +290,97 @@ public class BulkPackingService {
                 
                 BigDecimal available = batch.getQuantity();
                 BigDecimal toConsume = remaining.min(available);
-                batch.setQuantity(available.subtract(toConsume));
-                rawMaterialBatchRepository.save(batch);
-                
-                consumedCost = consumedCost.add(toConsume.multiply(batch.getCostPerUnit()));
+                int updated = rawMaterialBatchRepository.deductQuantityIfSufficient(batch.getId(), toConsume);
+                if (updated == 0) {
+                    throw new ApplicationException(ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
+                            "Concurrent modification detected for packaging batch " + batch.getBatchCode());
+                }
+
+                RawMaterialMovement movement = new RawMaterialMovement();
+                movement.setRawMaterial(rm);
+                movement.setRawMaterialBatch(batch);
+                movement.setReferenceType(InventoryReference.PACKING_RECORD);
+                movement.setReferenceId(reference);
+                movement.setMovementType("ISSUE");
+                movement.setQuantity(toConsume);
+                movement.setUnitCost(batch.getCostPerUnit());
+                rawMaterialMovementRepository.save(movement);
+
+                BigDecimal unitCost = batch.getCostPerUnit() != null ? batch.getCostPerUnit() : BigDecimal.ZERO;
+                consumedCost = consumedCost.add(toConsume.multiply(unitCost));
                 remaining = remaining.subtract(toConsume);
+            }
+
+            if (remaining.compareTo(BigDecimal.ZERO) > 0) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Insufficient batch availability for packaging material " + rm.getSku());
             }
             
             // Update RM stock
             rm.setCurrentStock(rm.getCurrentStock().subtract(material.quantity()));
             rawMaterialRepository.save(rm);
             
+            consumedCost = consumedCost.setScale(2, COST_ROUNDING);
             totalCost = totalCost.add(consumedCost);
             accountTotals.merge(rm.getInventoryAccountId(), consumedCost, BigDecimal::add);
         }
 
-        return new PackagingCostSummary(totalCost, accountTotals);
+        return new PackagingCostSummary(totalCost, accountTotals, Map.of());
+    }
+
+    private PackagingCostSummary consumePackagingFromMappings(Company company,
+                                                              List<BulkPackRequest.PackLine> packs,
+                                                              String reference) {
+        BigDecimal totalCost = BigDecimal.ZERO;
+        Map<Long, BigDecimal> accountTotals = new HashMap<>();
+        Map<Integer, BigDecimal> lineCosts = new HashMap<>();
+
+        int lineIndex = 0;
+        for (BulkPackRequest.PackLine line : packs) {
+            int currentIndex = lineIndex++;
+            int piecesCount = line.quantity().intValue();
+            if (piecesCount <= 0) {
+                continue;
+            }
+            String sizeLabel = resolvePackagingSizeLabel(line);
+            PackagingConsumptionResult result = packagingMaterialService.consumePackagingMaterial(
+                    sizeLabel,
+                    piecesCount,
+                    reference
+            );
+
+            if (!result.isConsumed()) {
+                continue;
+            }
+
+            totalCost = totalCost.add(result.totalCost());
+            lineCosts.put(currentIndex, result.totalCost());
+            result.accountTotalsOrEmpty().forEach(
+                    (accountId, amount) -> accountTotals.merge(accountId, amount, BigDecimal::add));
+        }
+
+        return new PackagingCostSummary(totalCost, accountTotals, lineCosts);
+    }
+
+    private String resolvePackagingSizeLabel(BulkPackRequest.PackLine line) {
+        if (StringUtils.hasText(line.sizeLabel())) {
+            return line.sizeLabel().trim();
+        }
+        BigDecimal sizeInLiters = extractSizeInLiters(line.sizeLabel(), line.unit());
+        return sizeInLiters.stripTrailingZeros().toPlainString() + "L";
+    }
+
+    private void linkPackagingMovementsToJournal(String referenceId, Long journalEntryId) {
+        if (journalEntryId == null) {
+            return;
+        }
+        List<RawMaterialMovement> movements = rawMaterialMovementRepository
+                .findByReferenceTypeAndReferenceId(InventoryReference.PACKING_RECORD, referenceId);
+        if (movements.isEmpty()) {
+            return;
+        }
+        movements.forEach(movement -> movement.setJournalEntryId(journalEntryId));
+        rawMaterialMovementRepository.saveAll(movements);
     }
 
     private FinishedGoodBatch createChildBatch(Company company,

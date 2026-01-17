@@ -40,6 +40,7 @@ import java.time.ZoneOffset;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 
 @Service
@@ -147,7 +148,8 @@ public class PackingService {
                 sessionPackagingCost = sessionPackagingCost.add(packagingResult.totalCost());
             }
             
-            if (packagingResult.isConsumed() && packagingResult.inventoryAccountId() != null
+            if (packagingResult.isConsumed()
+                    && !packagingResult.accountTotalsOrEmpty().isEmpty()
                     && packagingResult.totalCost().compareTo(BigDecimal.ZERO) > 0) {
                 String packagingReference = log.getProductionCode() + "-PACK-" + lineIndex;
                 postPackagingMaterialJournal(log, packagingResult, packedDate, packagingReference);
@@ -277,7 +279,6 @@ public class PackingService {
         BigDecimal baseUnitCost = semiFinished != null && semiFinished.unitCost() != null
                 ? semiFinished.unitCost()
                 : Optional.ofNullable(log.getUnitCost()).orElse(BigDecimal.ZERO);
-        BigDecimal materialUnitCost = calculateUnitCost(log.getMaterialCostTotal(), log.getMixedQuantity());
         
         // Add packaging cost per unit (bucket cost / liters in this line)
         BigDecimal packagingCostPerUnit = BigDecimal.ZERO;
@@ -316,7 +317,7 @@ public class PackingService {
 
         // Post WIP->FG journal immediately to prevent desync on crash
         // Include packaging cost in the journal value
-        postPackingSessionJournal(log, finishedGood, quantity, materialUnitCost, packagingCostPerUnit, packedDate, savedMovement, semiFinished);
+        postPackingSessionJournal(log, finishedGood, quantity, baseUnitCost, packagingCostPerUnit, packedDate, savedMovement, semiFinished);
 
         return savedBatch;
     }
@@ -335,7 +336,7 @@ public class PackingService {
     private void postPackingSessionJournal(ProductionLog log,
                                            FinishedGood finishedGood,
                                            BigDecimal quantity,
-                                           BigDecimal materialUnitCost,
+                                           BigDecimal productionUnitCost,
                                            BigDecimal packagingCostPerUnit,
                                            LocalDate packedDate,
                                            InventoryMovement movement,
@@ -352,7 +353,7 @@ public class PackingService {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
                     "Finished good " + finishedGood.getProductCode() + " missing valuation account");
         }
-        BigDecimal productionValue = MoneyUtils.safeMultiply(materialUnitCost, quantity).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal productionValue = MoneyUtils.safeMultiply(productionUnitCost, quantity).setScale(2, RoundingMode.HALF_UP);
         BigDecimal packagingValue = MoneyUtils.safeMultiply(packagingCostPerUnit, quantity).setScale(2, RoundingMode.HALF_UP);
         BigDecimal totalValue = productionValue.add(packagingValue);
         if (totalValue.compareTo(BigDecimal.ZERO) <= 0) {
@@ -458,27 +459,60 @@ public class PackingService {
                                               PackagingConsumptionResult packagingResult,
                                               LocalDate packedDate,
                                               String referenceId) {
-        if (packagingResult == null
-                || packagingResult.totalCost() == null
-                || packagingResult.totalCost().compareTo(BigDecimal.ZERO) <= 0) {
+        if (packagingResult == null || packagingResult.totalCost().compareTo(BigDecimal.ZERO) <= 0) {
             return;
         }
-        Long packagingInventoryAccountId = packagingResult.inventoryAccountId();
-        if (packagingInventoryAccountId == null) {
+        Map<Long, BigDecimal> accountTotals = packagingResult.accountTotalsOrEmpty();
+        if (accountTotals.isEmpty()) {
             return;
         }
         Long wipAccountId = requireWipAccountId(log.getProduct());
-        BigDecimal amount = packagingResult.totalCost().setScale(2, RoundingMode.HALF_UP);
+        BigDecimal totalCost = accountTotals.values().stream()
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, RoundingMode.HALF_UP);
+        if (totalCost.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
 
-        JournalEntryDto entry = accountingFacade.postSimpleJournal(
-                referenceId + "-PACKMAT",
+        String reference = referenceId + "-PACKMAT";
+        String memo = "Packaging material consumption for " + log.getProductionCode();
+        List<JournalEntryRequest.JournalLineRequest> lines = new java.util.ArrayList<>();
+        lines.add(new JournalEntryRequest.JournalLineRequest(wipAccountId, memo, totalCost, BigDecimal.ZERO));
+        for (Map.Entry<Long, BigDecimal> entry : accountTotals.entrySet()) {
+            BigDecimal amount = entry.getValue().setScale(2, RoundingMode.HALF_UP);
+            if (amount.compareTo(BigDecimal.ZERO) > 0) {
+                lines.add(new JournalEntryRequest.JournalLineRequest(
+                        entry.getKey(), memo, BigDecimal.ZERO, amount));
+            }
+        }
+
+        BigDecimal totalDebit = lines.stream()
+                .map(JournalEntryRequest.JournalLineRequest::debit)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal totalCredit = lines.stream()
+                .map(JournalEntryRequest.JournalLineRequest::credit)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (totalDebit.compareTo(totalCredit) != 0 && !lines.isEmpty()) {
+            BigDecimal variance = totalCredit.subtract(totalDebit);
+            JournalEntryRequest.JournalLineRequest debitLine = lines.get(0);
+            lines.set(0, new JournalEntryRequest.JournalLineRequest(
+                    debitLine.accountId(),
+                    debitLine.description(),
+                    debitLine.debit().add(variance),
+                    debitLine.credit()));
+        }
+
+        JournalEntryRequest request = new JournalEntryRequest(
+                reference,
                 packedDate,
-                "Packaging material consumption for " + log.getProductionCode(),
-                wipAccountId,
-                packagingInventoryAccountId,
-                amount,
-                false
+                memo,
+                null,
+                null,
+                false,
+                lines
         );
+
+        JournalEntryDto entry = accountingService.createJournalEntry(request);
         if (entry != null) {
             linkPackagingMovementsToJournal(referenceId, entry.id());
         }
@@ -506,9 +540,10 @@ public class PackingService {
         // Only wastage journal is posted during completion
         if (wastageQty.compareTo(BigDecimal.ZERO) > 0) {
             BigDecimal materialUnitCost = calculateUnitCost(log.getMaterialCostTotal(), log.getMixedQuantity());
+            BigDecimal baseUnitCost = Optional.ofNullable(log.getUnitCost()).orElse(materialUnitCost);
             Long wipAccountId = requireWipAccountId(log.getProduct());
             LocalDate entryDate = resolveJournalDate(company, log);
-            BigDecimal wastageValue = MoneyUtils.safeMultiply(materialUnitCost, wastageQty).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal wastageValue = MoneyUtils.safeMultiply(baseUnitCost, wastageQty).setScale(2, RoundingMode.HALF_UP);
             Long wastageAccountId = metadataLong(log.getProduct(), "wastageAccountId");
             if (wastageAccountId == null) {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
