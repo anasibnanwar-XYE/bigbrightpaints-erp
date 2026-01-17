@@ -9,26 +9,23 @@
 - Epic 08: branch `epic-08-reconciliation-controls`, tip `afe04b5561d9d6510d61bce58640da2dfbec5010`.
 - Epic 09: branch `epic-09-operational-readiness`, tip `ca3851aea88ca5b791e65b896a1419a741283c49`.
 - Epic 10: branch `epic-10-cross-module-traceability`, tip `c94755d70bcb5ba452ae64ddd7d8a6b96b50d392`.
+- LF-19: branch `pr-coverage-lf-clean`, tip `81f92dd1a0c2aee6bca390063da5fd1a52e51b08`.
 
 ## Repo / Worktree State
 - Worktree: `/home/realnigga/Desktop/CLI_BACKEND_epic04`
-- Branch: `epic-10-cross-module-traceability`
-- Dirty: clean
+- Branch: `pr-coverage-lf-clean`
+- Dirty: untracked `.idea/`, `docs/`, `interview/`, `tasks/erp_logic_audit/`, and IDE metadata under `erp-domain/`
 
 ## Environment Setup
 - No new installs; Docker/Testcontainers working.
 
 ## Commands Run (Latest)
-- `mvn -f erp-domain/pom.xml -DskipTests compile` (PASS).
-- `mvn -f erp-domain/pom.xml -Dcheckstyle.failOnViolation=false checkstyle:check` (PASS; 29446 violations reported).
-- `mvn -f erp-domain/pom.xml test` (PASS; Tests run 202, Failures 0, Errors 0, Skipped 4).
-- `mvn -f erp-domain/pom.xml -Dtest=*FullCycle* test` (PASS; Tests run 2, Failures 0, Errors 0, Skipped 2).
+- `mvn -Dtest=BulkPackingBomCostingIT,ProductionLaborOverheadWipIT,CostAllocationVariancePolicyIT test` (PASS).
 
 ## Warnings / Notes
-- Checkstyle baseline warnings (29446) persisted with failOnViolation=false.
 - Testcontainers auth config warnings and dynamic agent loading notices persisted.
-- Test logs include expected warnings (invalid company IDs, negative balances, dispatch mapping, sequence contention/duplicate key retries, HTML-to-PDF CSS parsing); no failures.
+- Test logs include expected warnings (invalid company IDs, negative balances, dispatch mapping); no failures.
 
 ## Resume Instructions (Post Epic 10)
-1. Epic 10 complete; no remaining milestones in scope.
-2. If new work is requested, branch from `epic-10-cross-module-traceability` at `c94755d70bcb5ba452ae64ddd7d8a6b96b50d392` and re-run hydration.
+1. LF-19 complete on `pr-coverage-lf-clean` at `81f92dd1a0c2aee6bca390063da5fd1a52e51b08`.
+2. If new work is requested, branch from `pr-coverage-lf-clean` and re-run hydration.
