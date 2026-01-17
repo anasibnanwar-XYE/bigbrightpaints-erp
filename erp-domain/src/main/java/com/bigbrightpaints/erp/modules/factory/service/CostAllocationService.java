@@ -15,6 +15,8 @@ import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatch;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatchRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -25,10 +27,13 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 @Service
 public class CostAllocationService {
+
+    private static final Logger log = LoggerFactory.getLogger(CostAllocationService.class);
 
     private final CompanyContextService companyContextService;
     private final ProductionLogRepository productionLogRepository;
@@ -100,6 +105,30 @@ public class CostAllocationService {
             );
         }
 
+        String periodKey = String.format("%04d%02d", request.year(), request.month());
+        for (ProductionLog batch : batches) {
+            if (batch.getProductionCode() == null) {
+                continue;
+            }
+            Optional<String> existingRef = accountingFacade
+                    .findExistingCostVarianceReference(batch.getProductionCode(), periodKey);
+            if (existingRef.isPresent()) {
+                log.info("Cost allocation skipped for period {} due to existing variance journal {}",
+                        periodKey, existingRef.get());
+                return new CostAllocationResponse(
+                        request.year(),
+                        request.month(),
+                        batches.size(),
+                        totalLitersProduced,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        List.of(),
+                        "Cost variance allocation skipped; existing journal " + existingRef.get()
+                );
+            }
+        }
+
         BigDecimal appliedLabor = batches.stream()
                 .map(ProductionLog::getLaborCostTotal)
                 .map(value -> value == null ? BigDecimal.ZERO : value)
@@ -142,7 +171,6 @@ public class CostAllocationService {
         List<ProductionLog> allocatable = batches.stream()
                 .filter(batch -> batch.getMixedQuantity() != null && batch.getMixedQuantity().compareTo(BigDecimal.ZERO) > 0)
                 .toList();
-        String periodKey = String.format("%04d%02d", request.year(), request.month());
 
         // Allocate variance to each batch
         for (int i = 0; i < allocatable.size(); i++) {

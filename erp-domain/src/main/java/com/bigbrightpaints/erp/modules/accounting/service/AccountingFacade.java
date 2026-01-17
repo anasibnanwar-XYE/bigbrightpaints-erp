@@ -906,6 +906,16 @@ public class AccountingFacade {
         return accountingService.createJournalEntry(request);
     }
 
+    @Transactional(readOnly = true)
+    public Optional<String> findExistingCostVarianceReference(String batchCode, String periodKey) {
+        Objects.requireNonNull(batchCode, "Batch code is required");
+        Objects.requireNonNull(periodKey, "Period key is required");
+        Company company = companyContextService.requireCurrentCompany();
+        String reference = "CVAR-" + sanitize(batchCode) + "-" + periodKey;
+        return journalEntryRepository.findByCompanyAndReferenceNumber(company, reference)
+                .map(JournalEntry::getReferenceNumber);
+    }
+
     public JournalEntryDto postCOGS(String referenceId,
                                     Long cogsAccountId,
                                     Long inventoryAcctId,

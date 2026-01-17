@@ -4,8 +4,13 @@ import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
+import com.bigbrightpaints.erp.modules.factory.domain.ProductionLog;
+import com.bigbrightpaints.erp.modules.factory.domain.ProductionLogRepository;
+import com.bigbrightpaints.erp.modules.factory.domain.ProductionLogStatus;
 import com.bigbrightpaints.erp.modules.factory.domain.PackagingSizeMapping;
 import com.bigbrightpaints.erp.modules.factory.domain.PackagingSizeMappingRepository;
 import com.bigbrightpaints.erp.modules.factory.dto.CostAllocationRequest;
@@ -48,7 +53,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @DisplayName("E2E: Cost allocation variance policy")
 public class CostAllocationVariancePolicyIT extends AbstractIntegrationTest {
 
-    private static final String COMPANY_CODE = "WE-VAR";
+    private static final String COMPANY_CODE_PREFIX = "WE-VAR";
 
     @Autowired private CompanyRepository companyRepository;
     @Autowired private AccountRepository accountRepository;
@@ -62,8 +67,11 @@ public class CostAllocationVariancePolicyIT extends AbstractIntegrationTest {
     @Autowired private CostAllocationService costAllocationService;
     @Autowired private FinishedGoodRepository finishedGoodRepository;
     @Autowired private FinishedGoodBatchRepository finishedGoodBatchRepository;
+    @Autowired private JournalEntryRepository journalEntryRepository;
+    @Autowired private ProductionLogRepository productionLogRepository;
 
     private Company company;
+    private String companyCode;
     private Account wip;
     private Account rmInventory;
     private Account packagingInventory;
@@ -77,8 +85,9 @@ public class CostAllocationVariancePolicyIT extends AbstractIntegrationTest {
 
     @BeforeEach
     void init() {
-        company = dataSeeder.ensureCompany(COMPANY_CODE, COMPANY_CODE + " Ltd");
-        CompanyContextHolder.setCompanyId(COMPANY_CODE);
+        companyCode = COMPANY_CODE_PREFIX + "-" + System.nanoTime();
+        company = dataSeeder.ensureCompany(companyCode, companyCode + " Ltd");
+        CompanyContextHolder.setCompanyId(companyCode);
         wip = ensureAccount("WIP", AccountType.ASSET);
         rmInventory = ensureAccount("INV-RM", AccountType.ASSET);
         packagingInventory = ensureAccount("INV-PACK", AccountType.ASSET);
@@ -108,6 +117,8 @@ public class CostAllocationVariancePolicyIT extends AbstractIntegrationTest {
         addBatch(bucket, new BigDecimal("10"), new BigDecimal("5"));
         mapPackagingSize("5L", bucket);
 
+        LocalDate periodDate = resolveClosedPeriodDate();
+
         ProductionLogDetailDto log = productionLogService.createLog(new ProductionLogRequest(
                 brand.getId(),
                 product.getId(),
@@ -115,7 +126,7 @@ public class CostAllocationVariancePolicyIT extends AbstractIntegrationTest {
                 new BigDecimal("10"),
                 "L",
                 new BigDecimal("10"),
-                LocalDate.now().toString(),
+                periodDate.toString(),
                 "VAR-TEST",
                 "Supervisor",
                 true,
@@ -131,10 +142,11 @@ public class CostAllocationVariancePolicyIT extends AbstractIntegrationTest {
 
         packingService.recordPacking(new PackingRequest(
                 log.id(),
-                LocalDate.now(),
+                periodDate,
                 "Packer",
                 List.of(new PackingLineRequest("5L", new BigDecimal("10"), 2, null, null))
         ));
+        ensureFullyPackedForPeriod(log.id(), periodDate);
 
         FinishedGood fg = finishedGoodRepository.findByCompanyAndProductCode(company, product.getSkuCode()).orElseThrow();
         FinishedGoodBatch fgBatch = finishedGoodBatchRepository.findAll().stream()
@@ -143,10 +155,9 @@ public class CostAllocationVariancePolicyIT extends AbstractIntegrationTest {
                 .orElseThrow();
         BigDecimal unitCostBefore = fgBatch.getUnitCost();
 
-        LocalDate today = LocalDate.now();
         CostAllocationResponse response = costAllocationService.allocateCosts(new CostAllocationRequest(
-                today.getYear(),
-                today.getMonthValue(),
+                periodDate.getYear(),
+                periodDate.getMonthValue(),
                 new BigDecimal("100.00"),
                 new BigDecimal("50.00"),
                 fgInventory.getId(),
@@ -161,6 +172,102 @@ public class CostAllocationVariancePolicyIT extends AbstractIntegrationTest {
 
         FinishedGoodBatch refreshed = finishedGoodBatchRepository.findById(fgBatch.getId()).orElseThrow();
         assertThat(refreshed.getUnitCost()).isEqualByComparingTo(unitCostBefore);
+    }
+
+    @Test
+    @DisplayName("Second allocation run is a no-op when CVAR exists")
+    void allocationNoOpWhenCvarExists() {
+        ProductionBrand brand = createBrand("VAR-BRAND-2");
+        ProductionProduct product = createProduct("VAR-PROD-2", "Variance Product 2", brand);
+
+        RawMaterial base = createRawMaterial("RM-BASE-2", rmInventory, new BigDecimal("100"));
+        RawMaterial bucket = createRawMaterial("RM-BUCKET-5L-2", packagingInventory, new BigDecimal("10"));
+        addBatch(base, new BigDecimal("100"), new BigDecimal("10"));
+        addBatch(bucket, new BigDecimal("10"), new BigDecimal("5"));
+        mapPackagingSize("5L", bucket);
+
+        LocalDate periodDate = resolveClosedPeriodDate();
+
+        ProductionLogDetailDto log = productionLogService.createLog(new ProductionLogRequest(
+                brand.getId(),
+                product.getId(),
+                "WHITE",
+                new BigDecimal("10"),
+                "L",
+                new BigDecimal("10"),
+                periodDate.toString(),
+                "VAR-TEST-2",
+                "Supervisor",
+                true,
+                null,
+                new BigDecimal("100.00"),
+                new BigDecimal("50.00"),
+                List.of(new ProductionLogRequest.MaterialUsageRequest(
+                        base.getId(),
+                        new BigDecimal("10"),
+                        "KG"
+                ))
+        ));
+
+        packingService.recordPacking(new PackingRequest(
+                log.id(),
+                periodDate,
+                "Packer",
+                List.of(new PackingLineRequest("5L", new BigDecimal("10"), 2, null, null))
+        ));
+        ensureFullyPackedForPeriod(log.id(), periodDate);
+
+        String periodKey = String.format("%04d%02d", periodDate.getYear(), periodDate.getMonthValue());
+        String reference = "CVAR-" + log.productionCode() + "-" + periodKey;
+
+        CostAllocationResponse first = costAllocationService.allocateCosts(new CostAllocationRequest(
+                periodDate.getYear(),
+                periodDate.getMonthValue(),
+                new BigDecimal("200.00"),
+                new BigDecimal("80.00"),
+                fgInventory.getId(),
+                laborApplied.getId(),
+                overheadApplied.getId(),
+                "Variance allocation"
+        ));
+        assertThat(first.journalEntryIds())
+                .as("Expected CVAR journal; response summary: %s", first.summary())
+                .isNotEmpty();
+
+        JournalEntry firstJournal = journalEntryRepository.findByCompanyAndReferenceNumber(company, reference)
+                .orElseThrow();
+        ProductionLog afterFirst = productionLogRepository.findById(log.id()).orElseThrow();
+
+        FinishedGood fg = finishedGoodRepository.findByCompanyAndProductCode(company, product.getSkuCode()).orElseThrow();
+        FinishedGoodBatch fgBatch = finishedGoodBatchRepository.findAll().stream()
+                .filter(batch -> batch.getFinishedGood().getId().equals(fg.getId()))
+                .findFirst()
+                .orElseThrow();
+        BigDecimal unitCostAfterFirst = fgBatch.getUnitCost();
+
+        CostAllocationResponse second = costAllocationService.allocateCosts(new CostAllocationRequest(
+                periodDate.getYear(),
+                periodDate.getMonthValue(),
+                new BigDecimal("250.00"),
+                new BigDecimal("90.00"),
+                fgInventory.getId(),
+                laborApplied.getId(),
+                overheadApplied.getId(),
+                "Variance allocation rerun"
+        ));
+
+        JournalEntry secondJournal = journalEntryRepository.findByCompanyAndReferenceNumber(company, reference)
+                .orElseThrow();
+        assertThat(secondJournal.getId()).isEqualTo(firstJournal.getId());
+        assertThat(second.summary()).contains("skipped");
+
+        ProductionLog afterSecond = productionLogRepository.findById(log.id()).orElseThrow();
+        assertThat(afterSecond.getLaborCostTotal()).isEqualByComparingTo(afterFirst.getLaborCostTotal());
+        assertThat(afterSecond.getOverheadCostTotal()).isEqualByComparingTo(afterFirst.getOverheadCostTotal());
+        assertThat(afterSecond.getUnitCost()).isEqualByComparingTo(afterFirst.getUnitCost());
+
+        FinishedGoodBatch refreshed = finishedGoodBatchRepository.findById(fgBatch.getId()).orElseThrow();
+        assertThat(refreshed.getUnitCost()).isEqualByComparingTo(unitCostAfterFirst);
     }
 
     private Account ensureAccount(String code, AccountType type) {
@@ -238,5 +345,22 @@ public class CostAllocationVariancePolicyIT extends AbstractIntegrationTest {
         mapping.setLitersPerUnit(new BigDecimal(size.replace("L", "")));
         mapping.setActive(true);
         packagingSizeMappingRepository.save(mapping);
+    }
+
+    private void ensureFullyPackedForPeriod(Long logId, LocalDate periodDate) {
+        ProductionLog stored = productionLogRepository.findById(logId).orElseThrow();
+        stored.setProducedAt(periodDate.atStartOfDay().toInstant(java.time.ZoneOffset.UTC));
+        stored.setStatus(ProductionLogStatus.FULLY_PACKED);
+        productionLogRepository.save(stored);
+    }
+
+    private LocalDate resolveClosedPeriodDate() {
+        LocalDate today = LocalDate.now();
+        java.time.YearMonth currentPeriod = java.time.YearMonth.from(today);
+        LocalDate currentPeriodEnd = currentPeriod.atEndOfMonth();
+        if (!currentPeriodEnd.isAfter(today)) {
+            return today;
+        }
+        return today.withDayOfMonth(1).minusDays(1);
     }
 }
