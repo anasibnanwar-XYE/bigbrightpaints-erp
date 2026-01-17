@@ -25,6 +25,12 @@
 - No new installs; Docker/Testcontainers working.
 
 ## Commands Run (Latest)
+- `JWT_SECRET=... ERP_SECURITY_ENCRYPTION_KEY=... SPRING_PROFILES_ACTIVE=prod,seed ERP_ENVIRONMENT_VALIDATION_ENABLED=true ERP_ENVIRONMENT_VALIDATION_HEALTH_INDICATOR_ENABLED=true DB_PORT=55432 docker compose up -d --build` (prod+seed boot after config backfill; validation OK).
+- `curl http://localhost:9090/actuator/health` (UP).
+- `curl http://localhost:9090/actuator/health/readiness` (UP).
+- `JWT_SECRET=... ERP_SECURITY_ENCRYPTION_KEY=... SPRING_PROFILES_ACTIVE=prod,seed DB_PORT=55432 docker compose run -d --service-ports -e ERP_ENVIRONMENT_VALIDATION_ENABLED=false app` (validation disabled; health checks skipped).
+- `JWT_SECRET=... ERP_SECURITY_ENCRYPTION_KEY=... SPRING_PROFILES_ACTIVE=prod,seed DB_PORT=55432 docker compose run -d --service-ports -e ERP_ENVIRONMENT_VALIDATION_ENABLED=false -e ERP_ENVIRONMENT_VALIDATION_HEALTH_INDICATOR_ENABLED=false app` (failed: `requiredConfig` missing in readiness group).
+- `JWT_SECRET=... ERP_SECURITY_ENCRYPTION_KEY=... SPRING_PROFILES_ACTIVE=prod,seed DB_PORT=55432 docker compose up -d app` (restore app).
 - `docker stop cli_backend_epic04-app-run-e803288ee81e` (freed port 8081).
 - `DB_PORT=55432 APP_PORT=8081 MANAGEMENT_PORT=19090 JWT_SECRET=... ERP_SECURITY_ENCRYPTION_KEY=... SPRING_PROFILES_ACTIVE=prod,seed,mock docker compose up -d --build` (failed until V99/V100 restored; config validation still blocked app).
 - `DB_PORT=55432 APP_PORT=8081 MANAGEMENT_PORT=19090 JWT_SECRET=... ERP_SECURITY_ENCRYPTION_KEY=... SPRING_PROFILES_ACTIVE=prod,seed,mock docker compose run -d --service-ports -e ERP_ENVIRONMENT_VALIDATION_ENABLED=false app` (task-03/08 runtime; container `cli_backend_epic04-app-run-8b049d6737c1`).
@@ -93,6 +99,8 @@
 - Verification gates: `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-06/OUTPUTS/20260113T085735Z_mvn_compile.txt`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-06/OUTPUTS/20260113T085741Z_mvn_checkstyle.txt`, `tasks/erp_logic_audit/EVIDENCE_QUERIES/task-06/OUTPUTS/20260113T085754Z_mvn_test.txt`.
 
 ## Warnings / Notes
+- `ERP_ENVIRONMENT_VALIDATION_HEALTH_INDICATOR_ENABLED=false` breaks readiness group (requiredConfig missing); keep health indicator enabled when disabling validation.
+- Docker build may transiently fail on Maven repo DNS; retry succeeded.
 - Task-08: prod+seed+mock boot failed config validation; used `ERP_ENVIRONMENT_VALIDATION_ENABLED=false` with `docker compose run` to start app.
 - Task-08: purchase return retries with same reference duplicated RM movements (4x) → LF-022 confirmed.
 - Task-08: conflicting payloads with same `idempotencyKey` returned existing records (sales order + payroll) → LF-023 confirmed.

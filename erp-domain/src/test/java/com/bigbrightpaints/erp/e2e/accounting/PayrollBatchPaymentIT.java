@@ -89,7 +89,7 @@ public class PayrollBatchPaymentIT extends AbstractIntegrationTest {
         assertThat(run.getJournalEntryId()).isNotNull();
         assertThat(run.getTotalAmount()).isEqualByComparingTo(new BigDecimal("21700.00")); // Gross is stored
 
-        List<PayrollRunLine> lines = payrollRunLineRepository.findAll();
+        List<PayrollRunLine> lines = payrollRunLineRepository.findByPayrollRun(run);
         assertThat(lines).hasSize(3);
         assertThat(lines.stream().map(PayrollRunLine::getLineTotal).reduce(BigDecimal.ZERO, BigDecimal::add))
                 .isEqualByComparingTo(new BigDecimal("21200.00")); // Net pay stored in line totals

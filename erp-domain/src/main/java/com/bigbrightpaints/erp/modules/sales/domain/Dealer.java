@@ -46,7 +46,6 @@ public class Dealer extends VersionedEntity {
     private BigDecimal creditLimit = BigDecimal.ZERO;
 
     @Column(name = "outstanding_balance", nullable = false)
-    @PositiveOrZero
     private BigDecimal outstandingBalance = BigDecimal.ZERO;
 
     @ManyToOne(fetch = FetchType.LAZY)

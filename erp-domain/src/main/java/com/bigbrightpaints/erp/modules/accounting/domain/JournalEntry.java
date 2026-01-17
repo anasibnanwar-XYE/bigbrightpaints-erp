@@ -94,7 +94,7 @@ public class JournalEntry extends VersionedEntity {
     @Column(name = "fx_rate", precision = 19, scale = 6)
     private BigDecimal fxRate = BigDecimal.ONE;
 
-    @Column(name = "foreign_amount_total", precision = 18, scale = 2)
+    @Column(name = "foreign_amount_total", precision = 19, scale = 2)
     private BigDecimal foreignAmountTotal;
 
     @OneToMany(mappedBy = "journalEntry", cascade = CascadeType.ALL, orphanRemoval = true)

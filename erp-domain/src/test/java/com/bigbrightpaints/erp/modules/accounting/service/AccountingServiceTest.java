@@ -297,8 +297,8 @@ class AccountingServiceTest {
         ReflectionTestUtils.setField(creditAccount, "id", 2L);
         creditAccount.setCompany(company);
         creditAccount.setCode("ACC-2");
-        when(accountRepository.lockByCompanyAndId(eq(company), eq(1L))).thenReturn(Optional.of(debitAccount));
-        when(accountRepository.lockByCompanyAndId(eq(company), eq(2L))).thenReturn(Optional.of(creditAccount));
+        when(accountRepository.lockByCompanyAndIdIn(eq(company), eq(List.of(1L, 2L))))
+                .thenReturn(List.of(debitAccount, creditAccount));
 
         var debitLine = new com.bigbrightpaints.erp.modules.accounting.domain.JournalLine();
         debitLine.setJournalEntry(existingEntry);
@@ -355,8 +355,8 @@ class AccountingServiceTest {
         creditAccount.setCompany(company);
         creditAccount.setBalance(BigDecimal.ZERO);
         creditAccount.setCode("CREDIT-ACC");
-        when(accountRepository.lockByCompanyAndId(eq(company), eq(1L))).thenReturn(Optional.of(debitAccount));
-        when(accountRepository.lockByCompanyAndId(eq(company), eq(2L))).thenReturn(Optional.of(creditAccount));
+        when(accountRepository.lockByCompanyAndIdIn(eq(company), eq(List.of(1L, 2L))))
+                .thenReturn(List.of(debitAccount, creditAccount));
         when(journalEntryRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         // Force atomic updater to report no rows updated (for any account)
         when(accountRepository.updateBalanceAtomic(eq(company), any(), any())).thenReturn(0);
@@ -401,8 +401,8 @@ class AccountingServiceTest {
         creditAccount.setCompany(company);
         creditAccount.setCode("CREDIT");
 
-        when(accountRepository.lockByCompanyAndId(eq(company), eq(1L))).thenReturn(Optional.of(debitAccount));
-        when(accountRepository.lockByCompanyAndId(eq(company), eq(2L))).thenReturn(Optional.of(creditAccount));
+        when(accountRepository.lockByCompanyAndIdIn(eq(company), eq(List.of(1L, 2L))))
+                .thenReturn(List.of(debitAccount, creditAccount));
         when(journalEntryRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(accountRepository.updateBalanceAtomic(eq(company), any(), any())).thenReturn(1);
 
@@ -479,7 +479,8 @@ class AccountingServiceTest {
         ReflectionTestUtils.setField(account, "id", 1L);
         account.setCompany(company);
         account.setCode("ACC-1");
-        when(accountRepository.lockByCompanyAndId(eq(company), eq(1L))).thenReturn(Optional.of(account));
+        when(accountRepository.lockByCompanyAndIdIn(eq(company), eq(List.of(1L))))
+                .thenReturn(List.of(account));
 
         JournalEntryRequest request = new JournalEntryRequest(
                 "BOTH-DC",
@@ -505,7 +506,8 @@ class AccountingServiceTest {
         ReflectionTestUtils.setField(account, "id", 1L);
         account.setCompany(company);
         account.setCode("ACC-1");
-        when(accountRepository.lockByCompanyAndId(eq(company), eq(1L))).thenReturn(Optional.of(account));
+        when(accountRepository.lockByCompanyAndIdIn(eq(company), eq(List.of(1L))))
+                .thenReturn(List.of(account));
 
         JournalEntryRequest request = new JournalEntryRequest(
                 "NEG-AMT",
@@ -536,8 +538,8 @@ class AccountingServiceTest {
         creditAccount.setCompany(company);
         creditAccount.setCode("CREDIT");
 
-        when(accountRepository.lockByCompanyAndId(eq(company), eq(1L))).thenReturn(Optional.of(debitAccount));
-        when(accountRepository.lockByCompanyAndId(eq(company), eq(2L))).thenReturn(Optional.of(creditAccount));
+        when(accountRepository.lockByCompanyAndIdIn(eq(company), eq(List.of(1L, 2L))))
+                .thenReturn(List.of(debitAccount, creditAccount));
 
         JournalEntryRequest request = new JournalEntryRequest(
                 "UNBAL",
@@ -583,9 +585,8 @@ class AccountingServiceTest {
         creditAccount2.setCompany(company);
         creditAccount2.setCode("CREDIT-2");
 
-        when(accountRepository.lockByCompanyAndId(eq(company), eq(1L))).thenReturn(Optional.of(debitAccount));
-        when(accountRepository.lockByCompanyAndId(eq(company), eq(2L))).thenReturn(Optional.of(creditAccount1));
-        when(accountRepository.lockByCompanyAndId(eq(company), eq(3L))).thenReturn(Optional.of(creditAccount2));
+        when(accountRepository.lockByCompanyAndIdIn(eq(company), eq(List.of(1L, 2L, 3L))))
+                .thenReturn(List.of(debitAccount, creditAccount1, creditAccount2));
 
         JournalEntryRequest request = new JournalEntryRequest(
                 "FX-ROUND",

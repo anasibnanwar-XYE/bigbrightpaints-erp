@@ -213,7 +213,7 @@ class HighImpactRegressionIT extends AbstractIntegrationTest {
         // Verify foreignAmountTotal = sum of foreign debits (not net zero)
         assertThat(entry.getForeignAmountTotal())
                 .as("foreignAmountTotal should reflect total foreign debits")
-                .isEqualTo(usdDebit1.add(usdDebit2).doubleValue());
+                .isEqualByComparingTo(usdDebit1.add(usdDebit2));
 
         // Verify AR account balance reflects base conversion
         Account arAccount = accountRepository.findById(accountsA.get("AR").getId()).orElseThrow();

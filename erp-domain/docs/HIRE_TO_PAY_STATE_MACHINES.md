@@ -35,7 +35,8 @@ Source: `PayrollRun.RunType`.
 - Present/half/absent/leave/holiday days drive base pay days and holiday pay.
 - Hours (regular/OT/double OT) drive hourly-based overtime pay.
 - Rates: `dailyRate`, `dailyWage`, `hourlyRate` derived from employee; OT multipliers from employee.
-- Deductions: advance deduction capped at 20% of gross pay, limited to employee `advanceBalance`; PF currently zero in calculation service.
+- Deductions: advance deduction capped at 20% of gross pay, limited to employee `advanceBalance`.
+- PF withholding: controlled by company `pfEnabled` (default true); monthly STAFF with gross >= 15000 deduct 12% (rounded to 0 decimals).
 - Gross pay = base pay (daily rate * (present + 0.5 * half)) + overtime pay + holiday pay.
 - Net pay = gross pay - total deductions (advance deduction only, today).
 - Net pay = gross (base + OT + holiday) − deductions; run totals aggregate line values.
@@ -43,6 +44,7 @@ Source: `PayrollRun.RunType`.
 # Posting Semantics (current)
 - Expense account: `SALARY-EXP` for monthly runs; `WAGE-EXP` for weekly runs.
 - Liability: `SALARY-PAYABLE` credited for net pay.
+- PF payable: if PF deductions exist, credit `PF-PAYABLE` and reduce salary payable by the same amount.
 - Asset: `EMP-ADV` credited to clear employee advances.
 - Journal is balanced; reference/memo prefixed with payroll run number.
 - Posting date uses run period end; if in the future, clamped to company `today`.
