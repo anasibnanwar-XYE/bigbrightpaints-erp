@@ -22,6 +22,25 @@
         <testcontainers.version>1.20.2</testcontainers.version>
         <skipTests>false</skipTests>
         <jacoco.skip>false</jacoco.skip>
+
+        <!-- Coverage gates (ratchet upward over time). -->
+        <!-- Baseline + ratchet plan (keep it realistic, push hard weekly):
+             Week 0: Tier A ~0.38 line / ~0.31 branch, Bundle ~0.58 line / ~0.39 branch (no backsliding)
+             Week 1: Tier A 0.55/0.40, Bundle 0.65/0.45
+             Week 2: Tier A 0.70/0.55, Bundle 0.75/0.55
+             Week 3+: Tier A 0.90-0.95 / 0.85-0.90, Bundle 0.85-0.90 / 0.70-0.80
+        -->
+        <!-- Tier A gate is intentionally "tight but achievable" from day 0.
+             We ratchet these up (weekly) until Tier A is 0.90-0.95 line / 0.85-0.90 branch.
+        -->
+        <jacoco.tierA.line.minimum>0.38</jacoco.tierA.line.minimum>
+        <jacoco.tierA.branch.minimum>0.31</jacoco.tierA.branch.minimum>
+
+        <!-- Bundle gate is a "no backsliding" safety rail.
+             Ratchet upward as Tier A grows.
+        -->
+        <jacoco.bundle.line.minimum>0.58</jacoco.bundle.line.minimum>
+        <jacoco.bundle.branch.minimum>0.39</jacoco.bundle.branch.minimum>
     </properties>
 
     <dependencyManagement>
@@ -260,6 +279,15 @@
                 <configuration>
                     <skip>${jacoco.skip}</skip>
                     <append>false</append>
+                    <excludes>
+                        <exclude>**/dto/**</exclude>
+                        <exclude>**/config/**</exclude>
+                        <exclude>**/*Application*</exclude>
+                        <exclude>**/*Config*</exclude>
+                        <exclude>**/*MapperImpl*</exclude>
+                        <!-- Optional: exclude only if exceptions are truly trivial in this repo. -->
+                        <!-- <exclude>**/*Exception*</exclude> -->
+                    </excludes>
                 </configuration>
                 <executions>
                     <execution>
@@ -275,7 +303,8 @@
                         </goals>
                     </execution>
                     <execution>
-                        <id>jacoco-check</id>
+                        <id>check</id>
+                        <phase>verify</phase>
                         <goals>
                             <goal>check</goal>
                         </goals>
@@ -283,11 +312,46 @@
                             <rules>
                                 <rule>
                                     <element>PACKAGE</element>
+                                    <includes>
+                                        <include>com.bigbrightpaints.erp.modules.accounting.domain*</include>
+                                        <include>com.bigbrightpaints.erp.modules.accounting.service*</include>
+
+                                        <include>com.bigbrightpaints.erp.modules.inventory.domain*</include>
+                                        <include>com.bigbrightpaints.erp.modules.inventory.service*</include>
+
+                                        <include>com.bigbrightpaints.erp.modules.invoice.domain*</include>
+                                        <include>com.bigbrightpaints.erp.modules.invoice.service*</include>
+
+                                        <include>com.bigbrightpaints.erp.orchestrator.policy*</include>
+                                        <include>com.bigbrightpaints.erp.orchestrator.service*</include>
+                                        <include>com.bigbrightpaints.erp.orchestrator.workflow*</include>
+                                    </includes>
                                     <limits>
                                         <limit>
                                             <counter>LINE</counter>
                                             <value>COVEREDRATIO</value>
-                                            <minimum>0.20</minimum>
+                                            <minimum>${jacoco.tierA.line.minimum}</minimum>
+                                        </limit>
+                                        <limit>
+                                            <counter>BRANCH</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>${jacoco.tierA.branch.minimum}</minimum>
+                                        </limit>
+                                    </limits>
+                                </rule>
+
+                                <rule>
+                                    <element>BUNDLE</element>
+                                    <limits>
+                                        <limit>
+                                            <counter>LINE</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>${jacoco.bundle.line.minimum}</minimum>
+                                        </limit>
+                                        <limit>
+                                            <counter>BRANCH</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>${jacoco.bundle.branch.minimum}</minimum>
                                         </limit>
                                     </limits>
                                 </rule>
