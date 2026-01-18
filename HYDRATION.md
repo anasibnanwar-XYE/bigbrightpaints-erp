@@ -11,6 +11,7 @@
 - Epic 10: branch `epic-10-cross-module-traceability`, tip `c94755d70bcb5ba452ae64ddd7d8a6b96b50d392`.
 - LF-19: branch `pr-coverage-lf-clean`, tip `b6da95f3e637677564b06f9633807f19af8dfab4`.
 - LF-001/LF-007: branch `pr-coverage-lf-clean`, tip `a87918f33cb57a2b4f8b0ab1ba2bd3d69b6f40c8`.
+- LF-008/LF-009: branch `pr-coverage-lf-clean`, tip `61f699c04841df291f68ce606a9a4004d396c664`.
 
 ## Repo / Worktree State
 - Worktree: `/home/realnigga/Desktop/CLI_BACKEND_epic04`
@@ -21,7 +22,7 @@
 - No new installs; Docker/Testcontainers working.
 
 ## Commands Run (Latest)
-- `mvn -Dtest=PayrollRunIdempotencyIT,AuthAuditIT test` (PASS).
+- `mvn -Dtest=TraceServiceIT,SettlementE2ETest test` (PASS).
 
 ## Warnings / Notes
 - Testcontainers auth config warnings and dynamic agent loading notices persisted.
@@ -31,4 +32,5 @@
 ## Resume Instructions (Post Epic 10)
 1. LF-19 complete on `pr-coverage-lf-clean` at `b6da95f3e637677564b06f9633807f19af8dfab4`.
 2. LF-001/LF-007 complete on `pr-coverage-lf-clean` at `a87918f33cb57a2b4f8b0ab1ba2bd3d69b6f40c8`.
-3. If new work is requested, branch from `pr-coverage-lf-clean` and re-run hydration.
+3. LF-008/LF-009 complete on `pr-coverage-lf-clean` at `61f699c04841df291f68ce606a9a4004d396c664`.
+4. If new work is requested, branch from `pr-coverage-lf-clean` and re-run hydration.
