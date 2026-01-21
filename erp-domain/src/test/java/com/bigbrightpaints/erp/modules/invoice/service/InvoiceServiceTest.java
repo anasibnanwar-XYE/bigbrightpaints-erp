@@ -9,9 +9,11 @@ import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
 import com.bigbrightpaints.erp.modules.invoice.dto.InvoiceDto;
+import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderItem;
+import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderRepository;
 import com.bigbrightpaints.erp.modules.sales.service.SalesJournalService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesService;
 import java.math.BigDecimal;
@@ -40,6 +42,8 @@ class InvoiceServiceTest {
     @Mock
     private SalesService salesService;
     @Mock
+    private SalesOrderRepository salesOrderRepository;
+    @Mock
     private InvoiceNumberService invoiceNumberService;
     @Mock
     private SalesJournalService salesJournalService;
@@ -49,6 +53,8 @@ class InvoiceServiceTest {
     private JournalReferenceResolver journalReferenceResolver;
     @Mock
     private DealerLedgerService dealerLedgerService;
+    @Mock
+    private PackagingSlipRepository packagingSlipRepository;
 
     private InvoiceService invoiceService;
     private Company company;
@@ -59,11 +65,13 @@ class InvoiceServiceTest {
                 companyContextService,
                 invoiceRepository,
                 salesService,
+                salesOrderRepository,
                 invoiceNumberService,
                 salesJournalService,
                 companyEntityLookup,
                 journalReferenceResolver,
-                dealerLedgerService
+                dealerLedgerService,
+                packagingSlipRepository
         );
         company = new Company();
         company.setTimezone("UTC");

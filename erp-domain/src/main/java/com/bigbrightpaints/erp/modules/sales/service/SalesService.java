@@ -11,6 +11,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalLine;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.DealerLedgerService;
@@ -57,6 +58,7 @@ import java.util.stream.Collectors;
 @Service
 public class SalesService {
     private static final BigDecimal MAX_GST_RATE = new BigDecimal("28.00");
+    private static final BigDecimal DISPATCH_TOTAL_TOLERANCE = new BigDecimal("0.01");
 
     private final CompanyContextService companyContextService;
     private final DealerRepository dealerRepository;
@@ -1122,6 +1124,18 @@ public class SalesService {
         Map<Long, BigDecimal> shipQtyByLineId = new HashMap<>();
 
         SalesOrder order = requireOrder(salesOrderId);
+        if (existingInvoice == null && order.getFulfillmentInvoiceId() != null) {
+            existingInvoice = invoiceRepository.findByCompanyAndId(company, order.getFulfillmentInvoiceId()).orElse(null);
+        }
+        if (existingInvoice == null) {
+            List<Invoice> orderInvoices = invoiceRepository.findAllByCompanyAndSalesOrderId(company, order.getId());
+            if (orderInvoices.size() == 1) {
+                existingInvoice = orderInvoices.getFirst();
+            } else if (orderInvoices.size() > 1) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                        "Multiple invoices exist for order; dispatch requires explicit invoice selection");
+            }
+        }
         boolean alreadyDispatched = "DISPATCHED".equalsIgnoreCase(slip.getStatus());
         if (alreadyDispatched) {
             Long existingInvoiceId = existingInvoice != null ? existingInvoice.getId() : slip.getInvoiceId();
@@ -1363,6 +1377,18 @@ public class SalesService {
             enforceDispatchCreditLimit(company, dealer, slip, order, totalAmount, request.overrideRequestId());
         }
 
+        if (existingInvoice != null && existingInvoice.getTotalAmount() != null
+                && !MoneyUtils.withinTolerance(existingInvoice.getTotalAmount(), totalAmount, DISPATCH_TOTAL_TOLERANCE)) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Existing invoice total does not match dispatch total; void invoice or reissue via dispatch")
+                    .withDetail("invoiceTotal", existingInvoice.getTotalAmount())
+                    .withDetail("dispatchTotal", totalAmount);
+        }
+        Long preexistingJournalId = order.getSalesJournalEntryId();
+        if (preexistingJournalId != null) {
+            validateExistingReceivableJournal(company, preexistingJournalId, dealer, totalAmount);
+        }
+
         if (!alreadyDispatched) {
             List<com.bigbrightpaints.erp.modules.inventory.dto.DispatchConfirmationRequest.LineConfirmation> confirmations =
                     slip.getLines().stream()
@@ -1483,6 +1509,9 @@ public class SalesService {
         Long arJournalEntryId = existingInvoice != null && existingInvoice.getJournalEntry() != null
                 ? existingInvoice.getJournalEntry().getId()
                 : null;
+        if (arJournalEntryId == null && preexistingJournalId != null) {
+            arJournalEntryId = preexistingJournalId;
+        }
         List<DispatchConfirmResponse.AccountPostingDto> arPostings = new ArrayList<>();
         if (arJournalEntryId == null && totalAmount.compareTo(BigDecimal.ZERO) > 0) {
             if (revenueByAccount.isEmpty()) {
@@ -1574,6 +1603,33 @@ public class SalesService {
                 true,
                 arPostings
         );
+    }
+
+    private void validateExistingReceivableJournal(Company company,
+                                                   Long journalEntryId,
+                                                   Dealer dealer,
+                                                   BigDecimal expectedTotal) {
+        if (journalEntryId == null || dealer == null || dealer.getReceivableAccount() == null) {
+            return;
+        }
+        JournalEntry entry = companyEntityLookup.requireJournalEntry(company, journalEntryId);
+        Long receivableAccountId = dealer.getReceivableAccount().getId();
+        if (receivableAccountId == null || entry.getLines() == null || entry.getLines().isEmpty()) {
+            return;
+        }
+        BigDecimal receivableTotal = BigDecimal.ZERO;
+        for (JournalLine line : entry.getLines()) {
+            if (line.getAccount() != null && receivableAccountId.equals(line.getAccount().getId())) {
+                receivableTotal = receivableTotal.add(line.getDebit().subtract(line.getCredit()));
+            }
+        }
+        if (!MoneyUtils.withinTolerance(receivableTotal.abs(), expectedTotal.abs(), DISPATCH_TOTAL_TOLERANCE)) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Existing AR journal total does not match dispatch total; void entry or reissue via dispatch")
+                    .withDetail("journalEntryId", journalEntryId)
+                    .withDetail("journalTotal", receivableTotal)
+                    .withDetail("dispatchTotal", expectedTotal);
+        }
     }
 
     private void logDispatchAudit(PackagingSlip slip,

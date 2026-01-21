@@ -14,9 +14,12 @@ import com.bigbrightpaints.erp.modules.invoice.dto.InvoiceDto;
 import com.bigbrightpaints.erp.modules.invoice.dto.InvoiceLineDto;
 import com.bigbrightpaints.erp.modules.accounting.service.JournalReferenceResolver;
 import com.bigbrightpaints.erp.modules.accounting.service.DealerLedgerService;
+import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlip;
+import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderItem;
+import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderRepository;
 import com.bigbrightpaints.erp.modules.sales.service.SalesJournalService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesService;
 import com.bigbrightpaints.erp.modules.sales.util.SalesOrderReference;
@@ -37,28 +40,34 @@ public class InvoiceService {
     private final CompanyContextService companyContextService;
     private final InvoiceRepository invoiceRepository;
     private final SalesService salesService;
+    private final SalesOrderRepository salesOrderRepository;
     private final InvoiceNumberService invoiceNumberService;
     private final SalesJournalService salesJournalService;
     private final CompanyEntityLookup companyEntityLookup;
     private final JournalReferenceResolver journalReferenceResolver;
     private final DealerLedgerService dealerLedgerService;
+    private final PackagingSlipRepository packagingSlipRepository;
 
     public InvoiceService(CompanyContextService companyContextService,
                           InvoiceRepository invoiceRepository,
                           SalesService salesService,
+                          SalesOrderRepository salesOrderRepository,
                           InvoiceNumberService invoiceNumberService,
                           SalesJournalService salesJournalService,
                           CompanyEntityLookup companyEntityLookup,
                           JournalReferenceResolver journalReferenceResolver,
-                          DealerLedgerService dealerLedgerService) {
+                          DealerLedgerService dealerLedgerService,
+                          PackagingSlipRepository packagingSlipRepository) {
         this.companyContextService = companyContextService;
         this.invoiceRepository = invoiceRepository;
         this.salesService = salesService;
+        this.salesOrderRepository = salesOrderRepository;
         this.invoiceNumberService = invoiceNumberService;
         this.salesJournalService = salesJournalService;
         this.companyEntityLookup = companyEntityLookup;
         this.journalReferenceResolver = journalReferenceResolver;
         this.dealerLedgerService = dealerLedgerService;
+        this.packagingSlipRepository = packagingSlipRepository;
     }
 
     @Transactional
@@ -67,7 +76,14 @@ public class InvoiceService {
         List<Invoice> existingInvoices = invoiceRepository.findAllByCompanyAndSalesOrderId(company, salesOrderId);
         if (!existingInvoices.isEmpty()) {
             if (existingInvoices.size() == 1) {
-                return toDto(existingInvoices.get(0));
+                Invoice existing = existingInvoices.get(0);
+                SalesOrder existingOrder = salesService.getOrderWithItems(salesOrderId);
+                if (existingOrder.getFulfillmentInvoiceId() == null && existing.getId() != null) {
+                    existingOrder.setFulfillmentInvoiceId(existing.getId());
+                    salesOrderRepository.save(existingOrder);
+                }
+                linkInvoiceToPackagingSlip(existingOrder, existing);
+                return toDto(existing);
             }
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
                     "Multiple invoices exist for order; issue invoices per dispatch");
@@ -125,9 +141,32 @@ public class InvoiceService {
             }
         }
         Invoice saved = invoiceRepository.save(invoice);
+        if (saved.getId() != null && order.getFulfillmentInvoiceId() == null) {
+            order.setFulfillmentInvoiceId(saved.getId());
+            salesOrderRepository.save(order);
+        }
+        linkInvoiceToPackagingSlip(order, saved);
         dealerLedgerService.syncInvoiceLedger(saved, null);
 
         return toDto(saved);
+    }
+
+    private void linkInvoiceToPackagingSlip(SalesOrder order, Invoice invoice) {
+        if (order == null || invoice == null || invoice.getId() == null) {
+            return;
+        }
+        Company company = order.getCompany();
+        if (company == null || order.getId() == null) {
+            return;
+        }
+        List<PackagingSlip> slips = packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, order.getId());
+        if (slips.size() == 1) {
+            PackagingSlip slip = slips.get(0);
+            if (slip.getInvoiceId() == null) {
+                slip.setInvoiceId(invoice.getId());
+                packagingSlipRepository.save(slip);
+            }
+        }
     }
 
     @Transactional

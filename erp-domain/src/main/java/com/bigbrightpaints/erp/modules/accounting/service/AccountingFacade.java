@@ -146,13 +146,16 @@ public class AccountingFacade {
                     .withDetail("dealerName", dealer.getName());
         }
 
-        // Generate canonical reference number
+        String canonicalReference = SalesOrderReference.invoiceReference(orderNumber);
         String reference = StringUtils.hasText(referenceNumber)
                 ? referenceNumber.trim()
-                : SalesOrderReference.invoiceReference(orderNumber);
+                : canonicalReference;
 
         // Check for duplicate (canonical reference first, then legacy SALE- prefix)
         Optional<JournalEntry> existing = journalReferenceResolver.findExistingEntry(company, reference);
+        if (existing.isEmpty() && !reference.equalsIgnoreCase(canonicalReference)) {
+            existing = journalReferenceResolver.findExistingEntry(company, canonicalReference);
+        }
         if (existing.isPresent()) {
             log.info("Sales journal already exists for reference: {}", reference);
             return toSimpleDto(existing.get());
