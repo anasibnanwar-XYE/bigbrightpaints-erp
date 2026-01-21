@@ -3,6 +3,8 @@ package com.bigbrightpaints.erp.e2e.accounting;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReference;
@@ -50,6 +52,7 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
     @Autowired private RawMaterialRepository rawMaterialRepository;
     @Autowired private RawMaterialBatchRepository rawMaterialBatchRepository;
     @Autowired private RawMaterialMovementRepository rawMaterialMovementRepository;
+    @Autowired private JournalEntryRepository journalEntryRepository;
     @Autowired private RawMaterialPurchaseRepository purchaseRepository;
 
     private HttpHeaders headers;
@@ -202,6 +205,67 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
                 new HttpEntity<>(duplicateReq, headers),
                 Map.class);
         assertThat(duplicateResp.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    @DisplayName("Debit note is idempotent by reference for the same purchase")
+    void purchaseDebitNoteIdempotentByReference() {
+        LocalDate entryDate = TestDateUtils.safeDate(company);
+        Long supplierId = createSupplier("P2P Idempotent Supplier", "DN-IDEMP-" + shortSuffix());
+        Long rawMaterialId = createRawMaterial("Idempotent Debit Material", "RM-DN-IDEMP-" + shortSuffix(), inventory.getId());
+
+        BigDecimal quantity = new BigDecimal("3");
+        BigDecimal costPerUnit = new BigDecimal("30.00");
+
+        Map<String, Object> line = new HashMap<>();
+        line.put("rawMaterialId", rawMaterialId);
+        line.put("quantity", quantity);
+        line.put("costPerUnit", costPerUnit);
+
+        String invoiceNumber = "INV-IDEMP-" + shortSuffix();
+        Map<String, Object> purchaseReq = new HashMap<>();
+        purchaseReq.put("supplierId", supplierId);
+        purchaseReq.put("invoiceNumber", invoiceNumber);
+        purchaseReq.put("invoiceDate", entryDate);
+        purchaseReq.put("lines", List.of(line));
+
+        ResponseEntity<Map> purchaseResp = rest.exchange(
+                "/api/v1/purchasing/raw-material-purchases",
+                HttpMethod.POST,
+                new HttpEntity<>(purchaseReq, headers),
+                Map.class);
+        assertThat(purchaseResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> purchaseData = (Map<String, Object>) purchaseResp.getBody().get("data");
+        Long purchaseId = ((Number) purchaseData.get("id")).longValue();
+
+        String reference = "DN-IDEMP-" + shortSuffix();
+        Map<String, Object> debitNoteReq = new HashMap<>();
+        debitNoteReq.put("purchaseId", purchaseId);
+        debitNoteReq.put("referenceNumber", reference);
+        debitNoteReq.put("memo", "Debit note idempotency test");
+
+        ResponseEntity<Map> first = rest.exchange(
+                "/api/v1/accounting/debit-notes",
+                HttpMethod.POST,
+                new HttpEntity<>(debitNoteReq, headers),
+                Map.class);
+        assertThat(first.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        ResponseEntity<Map> second = rest.exchange(
+                "/api/v1/accounting/debit-notes",
+                HttpMethod.POST,
+                new HttpEntity<>(debitNoteReq, headers),
+                Map.class);
+        assertThat(second.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        List<JournalEntry> entries = journalEntryRepository.findAll().stream()
+                .filter(entry -> reference.equals(entry.getReferenceNumber()))
+                .toList();
+        assertThat(entries).hasSize(1);
+
+        RawMaterialPurchase purchase = purchaseRepository.findById(purchaseId).orElseThrow();
+        assertThat(purchase.getOutstandingAmount()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(purchase.getStatus()).isEqualTo("VOID");
     }
 
     @Test

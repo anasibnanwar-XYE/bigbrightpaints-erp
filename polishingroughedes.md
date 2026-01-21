@@ -377,6 +377,14 @@ Add entries here as work progresses:
 - **Test Results:** `cd erp-domain && mvn -B -ntp clean verify` (pass; 247 tests, 4 skipped).
 - **Next Actions:** Push branch and re-review for any remaining findings.
 
+### Step 9: Add API credit-balance coverage + debit-note idempotency
+- **Timestamp:** 2026-01-21 22:56
+- **Context:** additional verification, review hardening
+- **Description:** Added invoice API coverage to ensure over-credit balances are visible to the UI, and made debit notes idempotent by reference while still blocking new debit notes after reversal.
+- **Changes Made:** Updated `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingService.java`; added tests in `erp-domain/src/test/java/com/bigbrightpaints/erp/e2e/accounting/CreditDebitNoteIT.java` and `erp-domain/src/test/java/com/bigbrightpaints/erp/e2e/accounting/ProcureToPayE2ETest.java`.
+- **Test Results:** `cd erp-domain && mvn -B -ntp -Dtest=CreditDebitNoteIT,ProcureToPayE2ETest test` (pass); `cd erp-domain && mvn -B -ntp clean verify` (pass; 249 tests, 4 skipped). Async `nohup` background runs did not persist in this environment, so the full verify was tracked in a live PTY session.
+- **Next Actions:** Commit and push updates; re-review for any new findings.
+
 - Date:
 - What changed:
 - Tests added/updated:

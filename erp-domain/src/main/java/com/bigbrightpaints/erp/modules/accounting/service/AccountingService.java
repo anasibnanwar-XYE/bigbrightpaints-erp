@@ -2271,30 +2271,30 @@ public class AccountingService {
         Company company = companyContextService.requireCurrentCompany();
         RawMaterialPurchase purchase = rawMaterialPurchaseRepository.lockByCompanyAndId(company, request.purchaseId())
                 .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Raw material purchase not found"));
-        if ("VOID".equalsIgnoreCase(purchase.getStatus()) || "REVERSED".equalsIgnoreCase(purchase.getStatus())) {
-            throw new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE,
-                    "Purchase " + purchase.getInvoiceNumber() + " is void; cannot apply debit note");
-        }
         JournalEntry source = purchase.getJournalEntry();
         if (source == null) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
                     "Purchase " + purchase.getInvoiceNumber() + " has no posted journal to reverse");
         }
-        if (source.getReversalEntry() != null) {
-            throw new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE,
-                    "Purchase " + purchase.getInvoiceNumber() + " already has a debit note reversal");
-        }
         String reference = resolveJournalReference(company,
                 StringUtils.hasText(request.idempotencyKey()) ? request.idempotencyKey() : request.referenceNumber());
-        LocalDate entryDate = request.entryDate() != null ? request.entryDate() : currentDate(company);
-        BigDecimal debitAmount = MoneyUtils.zeroIfNull(purchase.getTotalAmount());
-        if (debitAmount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Debit note amount must be positive");
-        }
         Optional<JournalEntry> existing = journalEntryRepository.findByCompanyAndReferenceNumber(company, reference);
         if (existing.isPresent()) {
             applyDebitNoteToPurchase(purchase);
             return toDto(existing.get());
+        }
+        if ("VOID".equalsIgnoreCase(purchase.getStatus()) || "REVERSED".equalsIgnoreCase(purchase.getStatus())) {
+            throw new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE,
+                    "Purchase " + purchase.getInvoiceNumber() + " is void; cannot apply debit note");
+        }
+        if (source.getReversalEntry() != null) {
+            throw new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE,
+                    "Purchase " + purchase.getInvoiceNumber() + " already has a debit note reversal");
+        }
+        LocalDate entryDate = request.entryDate() != null ? request.entryDate() : currentDate(company);
+        BigDecimal debitAmount = MoneyUtils.zeroIfNull(purchase.getTotalAmount());
+        if (debitAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Debit note amount must be positive");
         }
         String memo = StringUtils.hasText(request.memo())
                 ? request.memo().trim()

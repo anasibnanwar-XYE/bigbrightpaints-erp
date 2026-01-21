@@ -214,6 +214,59 @@ public class CreditDebitNoteIT extends AbstractIntegrationTest {
     }
 
     @Test
+    @DisplayName("Invoice API exposes credit balance after over-credit")
+    void creditNote_overCreditShowsNegativeOutstandingInApi() {
+        Account cash = ensureAccount("CASH-CDN", "Credit Note Cash", AccountType.ASSET);
+        BigDecimal appliedAmount = new BigDecimal("800.00");
+        Map<String, Object> allocation = Map.of(
+                "invoiceId", invoice.getId(),
+                "appliedAmount", appliedAmount,
+                "discountAmount", BigDecimal.ZERO,
+                "writeOffAmount", BigDecimal.ZERO,
+                "memo", "Partial settlement before credit note"
+        );
+        String settlementRef = "SET-CN-" + System.currentTimeMillis();
+        Map<String, Object> settlementReq = new java.util.HashMap<>();
+        settlementReq.put("dealerId", dealer.getId());
+        settlementReq.put("cashAccountId", cash.getId());
+        settlementReq.put("settlementDate", LocalDate.now());
+        settlementReq.put("referenceNumber", settlementRef);
+        settlementReq.put("idempotencyKey", settlementRef);
+        settlementReq.put("allocations", List.of(allocation));
+
+        ResponseEntity<Map> settleResp = rest.exchange(
+                "/api/v1/accounting/settlements/dealers",
+                HttpMethod.POST,
+                new HttpEntity<>(settlementReq, headers),
+                Map.class);
+        assertThat(settleResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        String ref = "CN-OVER-" + System.currentTimeMillis();
+        Map<String, Object> creditReq = Map.of(
+                "invoiceId", invoice.getId(),
+                "referenceNumber", ref,
+                "memo", "Over-credit after partial payment"
+        );
+        ResponseEntity<Map> creditResp = rest.exchange(
+                "/api/v1/accounting/credit-notes",
+                HttpMethod.POST,
+                new HttpEntity<>(creditReq, headers),
+                Map.class);
+        assertThat(creditResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        ResponseEntity<Map> invoiceResp = rest.exchange(
+                "/api/v1/invoices/" + invoice.getId(),
+                HttpMethod.GET,
+                new HttpEntity<>(headers),
+                Map.class);
+        assertThat(invoiceResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<?, ?> data = (Map<?, ?>) invoiceResp.getBody().get("data");
+        BigDecimal outstanding = new BigDecimal(data.get("outstandingAmount").toString());
+        assertThat(outstanding).isEqualByComparingTo(appliedAmount.negate());
+        assertThat(data.get("status")).isEqualTo("VOID");
+    }
+
+    @Test
     @DisplayName("Journal entry with AR account requires dealer context")
     void journalEntry_requiresDealerForAr() {
         Map<String, Object> arLine = Map.of(
