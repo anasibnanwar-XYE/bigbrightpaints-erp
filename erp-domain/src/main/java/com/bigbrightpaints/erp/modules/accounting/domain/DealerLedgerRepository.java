@@ -20,6 +20,14 @@ public interface DealerLedgerRepository extends JpaRepository<DealerLedgerEntry,
                                               @Param("dealerIds") Collection<Long> dealerIds);
 
     @Query("select new com.bigbrightpaints.erp.modules.accounting.dto.DealerBalanceView(e.dealer.id, coalesce(sum(e.debit - e.credit), 0)) " +
+            "from DealerLedgerEntry e where e.company = :company and e.dealer.id in :dealerIds " +
+            "and e.entryDate between :start and :end group by e.dealer.id")
+    List<DealerBalanceView> aggregateBalancesBetween(@Param("company") Company company,
+                                                     @Param("dealerIds") Collection<Long> dealerIds,
+                                                     @Param("start") java.time.LocalDate start,
+                                                     @Param("end") java.time.LocalDate end);
+
+    @Query("select new com.bigbrightpaints.erp.modules.accounting.dto.DealerBalanceView(e.dealer.id, coalesce(sum(e.debit - e.credit), 0)) " +
             "from DealerLedgerEntry e where e.company = :company and e.dealer = :dealer group by e.dealer.id")
     Optional<DealerBalanceView> aggregateBalance(@Param("company") Company company, @Param("dealer") Dealer dealer);
 

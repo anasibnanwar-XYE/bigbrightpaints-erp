@@ -7,6 +7,8 @@ import com.bigbrightpaints.erp.modules.accounting.domain.DealerLedgerRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.SupplierLedgerRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalLine;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerBalanceView;
 import com.bigbrightpaints.erp.modules.accounting.dto.SupplierBalanceView;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -30,7 +32,9 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -53,6 +57,7 @@ public class ReconciliationService {
     private final PackagingSlipRepository packagingSlipRepository;
     private final SalesOrderRepository salesOrderRepository;
     private final JournalEntryRepository journalEntryRepository;
+    private final JournalLineRepository journalLineRepository;
 
     public ReconciliationService(CompanyContextService companyContextService,
                                   AccountRepository accountRepository,
@@ -63,7 +68,8 @@ public class ReconciliationService {
                                   InventoryReservationRepository inventoryReservationRepository,
                                   PackagingSlipRepository packagingSlipRepository,
                                   SalesOrderRepository salesOrderRepository,
-                                  JournalEntryRepository journalEntryRepository) {
+                                  JournalEntryRepository journalEntryRepository,
+                                  JournalLineRepository journalLineRepository) {
         this.companyContextService = companyContextService;
         this.accountRepository = accountRepository;
         this.dealerRepository = dealerRepository;
@@ -74,6 +80,7 @@ public class ReconciliationService {
         this.packagingSlipRepository = packagingSlipRepository;
         this.salesOrderRepository = salesOrderRepository;
         this.journalEntryRepository = journalEntryRepository;
+        this.journalLineRepository = journalLineRepository;
     }
 
     /**
@@ -83,14 +90,9 @@ public class ReconciliationService {
     @Transactional(readOnly = true)
     public ReconciliationResult reconcileArWithDealerLedger() {
         Company company = companyContextService.requireCurrentCompany();
-        
-        // Get all AR accounts
-        List<Account> arAccounts = accountRepository.findByCompanyOrderByCodeAsc(company).stream()
-                .filter(a -> a.getType() == AccountType.ASSET)
-                .filter(a -> a.getCode() != null &&
-                        (a.getCode().toUpperCase().contains("AR") ||
-                                a.getCode().toUpperCase().contains("RECEIVABLE")))
-                .toList();
+        List<Account> allAccounts = accountRepository.findByCompanyOrderByCodeAsc(company);
+        List<Dealer> dealers = dealerRepository.findByCompanyOrderByNameAsc(company);
+        List<Account> arAccounts = resolveReceivableAccounts(allAccounts, dealers);
 
         BigDecimal totalArBalance = arAccounts.stream()
                 .map(Account::getBalance)
@@ -98,7 +100,6 @@ public class ReconciliationService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         // Get all dealers with their ledger balances
-        List<Dealer> dealers = dealerRepository.findByCompanyOrderByNameAsc(company);
         List<Long> dealerIds = dealers.stream().map(Dealer::getId).toList();
         
         Map<Long, BigDecimal> dealerBalances = dealerLedgerRepository
@@ -154,20 +155,15 @@ public class ReconciliationService {
     @Transactional(readOnly = true)
     public SupplierReconciliationResult reconcileApWithSupplierLedger() {
         Company company = companyContextService.requireCurrentCompany();
-
-        List<Account> apAccounts = accountRepository.findByCompanyOrderByCodeAsc(company).stream()
-                .filter(a -> a.getType() == AccountType.LIABILITY)
-                .filter(a -> a.getCode() != null &&
-                        (a.getCode().toUpperCase().contains("AP") ||
-                                a.getCode().toUpperCase().contains("PAYABLE")))
-                .toList();
+        List<Account> allAccounts = accountRepository.findByCompanyOrderByCodeAsc(company);
+        List<Supplier> suppliers = supplierRepository.findByCompanyOrderByNameAsc(company);
+        List<Account> apAccounts = resolvePayableAccounts(allAccounts, suppliers);
 
         BigDecimal totalApBalance = apAccounts.stream()
                 .map(Account::getBalance)
                 .filter(b -> b != null)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        List<Supplier> suppliers = supplierRepository.findByCompanyOrderByNameAsc(company);
         List<Long> supplierIds = suppliers.stream().map(Supplier::getId).toList();
 
         Map<Long, BigDecimal> supplierBalances = supplierLedgerRepository
@@ -214,6 +210,146 @@ public class ReconciliationService {
                 apAccounts.size(),
                 suppliers.size()
         );
+    }
+
+    @Transactional(readOnly = true)
+    public PeriodReconciliationResult reconcileSubledgersForPeriod(java.time.LocalDate start, java.time.LocalDate end) {
+        Company company = companyContextService.requireCurrentCompany();
+        if (start == null || end == null) {
+            throw new IllegalArgumentException("start and end dates are required");
+        }
+        if (start.isAfter(end)) {
+            throw new IllegalArgumentException("start date must be on or before end date");
+        }
+        List<Account> allAccounts = accountRepository.findByCompanyOrderByCodeAsc(company);
+        List<Dealer> dealers = dealerRepository.findByCompanyOrderByNameAsc(company);
+        List<Account> arAccounts = resolveReceivableAccounts(allAccounts, dealers);
+        List<Long> dealerIds = dealers.stream().map(Dealer::getId).toList();
+        BigDecimal dealerLedgerNet = dealerIds.isEmpty()
+                ? BigDecimal.ZERO
+                : dealerLedgerRepository.aggregateBalancesBetween(company, dealerIds, start, end)
+                        .stream()
+                        .map(DealerBalanceView::balance)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        List<Supplier> suppliers = supplierRepository.findByCompanyOrderByNameAsc(company);
+        List<Account> apAccounts = resolvePayableAccounts(allAccounts, suppliers);
+        List<Long> supplierIds = suppliers.stream().map(Supplier::getId).toList();
+        BigDecimal supplierLedgerNet = supplierIds.isEmpty()
+                ? BigDecimal.ZERO
+                : supplierLedgerRepository.aggregateBalancesBetween(company, supplierIds, start, end)
+                        .stream()
+                        .map(SupplierBalanceView::balance)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal glArNet = sumAccountNet(company, arAccounts, start, end, true);
+        BigDecimal glApNet = sumAccountNet(company, apAccounts, start, end, false);
+
+        BigDecimal arVariance = glArNet.subtract(dealerLedgerNet);
+        BigDecimal apVariance = glApNet.subtract(supplierLedgerNet);
+        boolean arReconciled = arVariance.abs().compareTo(TOLERANCE) <= 0;
+        boolean apReconciled = apVariance.abs().compareTo(TOLERANCE) <= 0;
+
+        return new PeriodReconciliationResult(
+                start,
+                end,
+                glArNet,
+                dealerLedgerNet,
+                arVariance,
+                arReconciled,
+                glApNet,
+                supplierLedgerNet,
+                apVariance,
+                apReconciled
+        );
+    }
+
+    private BigDecimal sumAccountNet(Company company,
+                                     List<Account> accounts,
+                                     java.time.LocalDate start,
+                                     java.time.LocalDate end,
+                                     boolean receivable) {
+        if (accounts == null || accounts.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal total = BigDecimal.ZERO;
+        for (Account account : accounts) {
+            if (account.getId() == null) {
+                continue;
+            }
+            List<JournalLine> lines = journalLineRepository.findLinesForAccountBetween(company, account.getId(), start, end);
+            for (JournalLine line : lines) {
+                BigDecimal debit = line.getDebit() != null ? line.getDebit() : BigDecimal.ZERO;
+                BigDecimal credit = line.getCredit() != null ? line.getCredit() : BigDecimal.ZERO;
+                BigDecimal delta = receivable ? debit.subtract(credit) : credit.subtract(debit);
+                total = total.add(delta);
+            }
+        }
+        return total;
+    }
+
+    private List<Account> resolveReceivableAccounts(List<Account> accounts, List<Dealer> dealers) {
+        if (accounts == null || accounts.isEmpty()) {
+            return List.of();
+        }
+        Set<Long> receivableIds = dealers == null
+                ? Set.of()
+                : dealers.stream()
+                        .map(Dealer::getReceivableAccount)
+                        .filter(Objects::nonNull)
+                        .map(Account::getId)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toSet());
+        if (!receivableIds.isEmpty()) {
+            return accounts.stream()
+                    .filter(account -> account.getId() != null && receivableIds.contains(account.getId()))
+                    .toList();
+        }
+        return accounts.stream()
+                .filter(account -> account.getType() == AccountType.ASSET)
+                .filter(this::isReceivableCandidate)
+                .toList();
+    }
+
+    private List<Account> resolvePayableAccounts(List<Account> accounts, List<Supplier> suppliers) {
+        if (accounts == null || accounts.isEmpty()) {
+            return List.of();
+        }
+        Set<Long> payableIds = suppliers == null
+                ? Set.of()
+                : suppliers.stream()
+                        .map(Supplier::getPayableAccount)
+                        .filter(Objects::nonNull)
+                        .map(Account::getId)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toSet());
+        if (!payableIds.isEmpty()) {
+            return accounts.stream()
+                    .filter(account -> account.getId() != null && payableIds.contains(account.getId()))
+                    .toList();
+        }
+        return accounts.stream()
+                .filter(account -> account.getType() == AccountType.LIABILITY)
+                .filter(this::isPayableCandidate)
+                .toList();
+    }
+
+    private boolean isReceivableCandidate(Account account) {
+        if (account == null || account.getCode() == null) {
+            return false;
+        }
+        String code = account.getCode().toUpperCase();
+        String name = account.getName() == null ? "" : account.getName().toUpperCase();
+        return code.contains("AR") || name.contains("ACCOUNTS RECEIVABLE");
+    }
+
+    private boolean isPayableCandidate(Account account) {
+        if (account == null || account.getCode() == null) {
+            return false;
+        }
+        String code = account.getCode().toUpperCase();
+        String name = account.getName() == null ? "" : account.getName().toUpperCase();
+        return code.contains("AP") || name.contains("ACCOUNTS PAYABLE");
     }
 
     /**
@@ -381,5 +517,18 @@ public class ReconciliationService {
             BigDecimal outstandingBalance,
             BigDecimal ledgerBalance,
             BigDecimal variance
+    ) {}
+
+    public record PeriodReconciliationResult(
+            java.time.LocalDate startDate,
+            java.time.LocalDate endDate,
+            BigDecimal glArNet,
+            BigDecimal dealerLedgerNet,
+            BigDecimal arVariance,
+            boolean arReconciled,
+            BigDecimal glApNet,
+            BigDecimal supplierLedgerNet,
+            BigDecimal apVariance,
+            boolean apReconciled
     ) {}
 }

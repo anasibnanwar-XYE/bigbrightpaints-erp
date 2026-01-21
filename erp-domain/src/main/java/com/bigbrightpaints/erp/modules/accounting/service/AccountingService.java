@@ -6,6 +6,7 @@ import com.bigbrightpaints.erp.core.config.SystemSettingsService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
+import java.util.Locale;
 import java.util.Optional;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.util.MoneyUtils;
@@ -318,6 +319,16 @@ public class AccountingService {
                 if (supplierOwners.stream().noneMatch(owner -> owner.getId().equals(supplierContext.getId()))) {
                     throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
                             "Supplier payable account " + account.getCode() + " requires matching supplier context");
+                }
+            }
+        }
+        if (dealerContext == null || supplierContext == null) {
+            for (Account account : lockedAccounts.values()) {
+                if (dealerContext == null && isReceivableAccount(account)) {
+                    requireGenericSubledgerOverride("AR", request);
+                }
+                if (supplierContext == null && isPayableAccount(account)) {
+                    requireGenericSubledgerOverride("AP", request);
                 }
             }
         }
@@ -2033,6 +2044,52 @@ public class AccountingService {
                     "Supplier " + (supplier != null ? supplier.getName() : "unknown") + " is missing a payable account");
         }
         return supplier.getPayableAccount();
+    }
+
+    private boolean isReceivableAccount(Account account) {
+        if (account == null || account.getType() != AccountType.ASSET) {
+            return false;
+        }
+        String code = normalizeToken(account.getCode());
+        String name = normalizeToken(account.getName());
+        return isTokenMatch(code, "AR") || name.contains("ACCOUNTS RECEIVABLE");
+    }
+
+    private boolean isPayableAccount(Account account) {
+        if (account == null || account.getType() != AccountType.LIABILITY) {
+            return false;
+        }
+        String code = normalizeToken(account.getCode());
+        String name = normalizeToken(account.getName());
+        return isTokenMatch(code, "AP") || name.contains("ACCOUNTS PAYABLE");
+    }
+
+    private void requireGenericSubledgerOverride(String label, JournalEntryRequest request) {
+        if (!Boolean.TRUE.equals(request.adminOverride())) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Posting to " + label + " requires dealer/supplier context or admin override");
+        }
+        String memo = request.memo();
+        String normalized = normalizeToken(memo);
+        String token = "GENERIC " + label + ":";
+        if (!normalized.contains(token)) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Generic " + label + " postings require memo to include '" + token + " <reason>'");
+        }
+    }
+
+    private boolean isTokenMatch(String value, String token) {
+        if (!StringUtils.hasText(value)) {
+            return false;
+        }
+        return value.equals(token) || value.startsWith(token + "-") || value.endsWith("-" + token) || value.contains("-" + token + "-");
+    }
+
+    private String normalizeToken(String value) {
+        if (!StringUtils.hasText(value)) {
+            return "";
+        }
+        return value.trim().toUpperCase(Locale.ROOT);
     }
 
     private String resolveJournalReference(Company company, String provided) {

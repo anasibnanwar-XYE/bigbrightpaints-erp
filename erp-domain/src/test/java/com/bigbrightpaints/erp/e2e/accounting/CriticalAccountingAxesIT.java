@@ -20,6 +20,7 @@ import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryReversalReques
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
 import com.bigbrightpaints.erp.modules.accounting.service.TaxService;
+import com.bigbrightpaints.erp.modules.accounting.service.ReconciliationService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
@@ -104,6 +105,7 @@ class CriticalAccountingAxesIT extends AbstractIntegrationTest {
     @Autowired private SalesService salesService;
     @Autowired private SalesOrderRepository salesOrderRepository;
     @Autowired private TaxService taxService;
+    @Autowired private ReconciliationService reconciliationService;
     @Autowired private ReportService reportService;
     @Autowired private TestRestTemplate restTemplate;
 
@@ -226,6 +228,7 @@ class CriticalAccountingAxesIT extends AbstractIntegrationTest {
 
     @Test
     @DisplayName("GST per-item vs exempt lines post correct tax and rounding")
+    @Transactional
     void gstEdgeCasesAndReturns() {
         FinishedGood taxable = createFinishedGood("FG-TAX-" + UUID.randomUUID(), "FIFO");
         FinishedGood exempt = createFinishedGood("FG-EXEMPT-" + UUID.randomUUID(), "FIFO");
@@ -259,6 +262,122 @@ class CriticalAccountingAxesIT extends AbstractIntegrationTest {
         var gstReturnAfter = taxService.generateGstReturn(YearMonth.from(LocalDate.now()));
         assertThat(gstReturnAfter.getOutputTax().abs()).isLessThanOrEqualTo(gstReturn.getOutputTax().abs());
         assertThat(order.getGstRoundingAdjustment().abs()).isLessThanOrEqualTo(new BigDecimal("0.05"));
+    }
+
+    @Test
+    @DisplayName("GST return includes input and output tax for the period")
+    @Transactional
+    void gstReturnIncludesInputAndOutputTax() {
+        LocalDate today = LocalDate.now();
+        YearMonth period = YearMonth.from(today);
+        var before = taxService.generateGstReturn(period);
+
+        BigDecimal saleBase = new BigDecimal("1000.00");
+        BigDecimal saleTax = new BigDecimal("180.00");
+        accountingFacade.postSalesJournal(
+                dealer.getId(),
+                "GST-OUT-" + UUID.randomUUID(),
+                today,
+                "GST sale",
+                Map.of(accounts.get("REV").getId(), saleBase),
+                Map.of(accounts.get("GST_OUT").getId(), saleTax),
+                saleBase.add(saleTax),
+                null);
+
+        BigDecimal purchaseBase = new BigDecimal("500.00");
+        BigDecimal purchaseTax = new BigDecimal("90.00");
+        accountingFacade.postPurchaseJournal(
+                supplier.getId(),
+                "GST-IN-" + UUID.randomUUID(),
+                today,
+                "GST purchase",
+                Map.of(accounts.get("INV").getId(), purchaseBase),
+                Map.of(accounts.get("GST_IN").getId(), purchaseTax),
+                purchaseBase.add(purchaseTax),
+                null);
+
+        var after = taxService.generateGstReturn(period);
+
+        assertThat(after.getOutputTax().subtract(before.getOutputTax())).isEqualByComparingTo(saleTax);
+        assertThat(after.getInputTax().subtract(before.getInputTax())).isEqualByComparingTo(purchaseTax);
+        assertThat(after.getNetPayable().subtract(before.getNetPayable()))
+                .isEqualByComparingTo(saleTax.subtract(purchaseTax));
+    }
+
+    @Test
+    @DisplayName("Subledger reconciliation aligns for AR/AP within period")
+    @Transactional
+    void subledgerReconciliationAlignsWithinPeriod() {
+        LocalDate today = LocalDate.now();
+        var before = reconciliationService.reconcileSubledgersForPeriod(today, today);
+
+        BigDecimal saleBase = new BigDecimal("600.00");
+        BigDecimal saleTax = new BigDecimal("108.00");
+        BigDecimal saleTotal = saleBase.add(saleTax);
+        accountingFacade.postSalesJournal(
+                dealer.getId(),
+                "RECON-SALE-" + UUID.randomUUID(),
+                today,
+                "Recon sale",
+                Map.of(accounts.get("REV").getId(), saleBase),
+                Map.of(accounts.get("GST_OUT").getId(), saleTax),
+                saleTotal,
+                null);
+
+        BigDecimal purchaseBase = new BigDecimal("400.00");
+        BigDecimal purchaseTax = new BigDecimal("72.00");
+        BigDecimal purchaseTotal = purchaseBase.add(purchaseTax);
+        accountingFacade.postPurchaseJournal(
+                supplier.getId(),
+                "RECON-BUY-" + UUID.randomUUID(),
+                today,
+                "Recon purchase",
+                Map.of(accounts.get("INV").getId(), purchaseBase),
+                Map.of(accounts.get("GST_IN").getId(), purchaseTax),
+                purchaseTotal,
+                null);
+
+        var after = reconciliationService.reconcileSubledgersForPeriod(today, today);
+
+        assertThat(after.glArNet().subtract(before.glArNet())).isEqualByComparingTo(saleTotal);
+        assertThat(after.dealerLedgerNet().subtract(before.dealerLedgerNet())).isEqualByComparingTo(saleTotal);
+        assertThat(after.glApNet().subtract(before.glApNet())).isEqualByComparingTo(purchaseTotal);
+        assertThat(after.supplierLedgerNet().subtract(before.supplierLedgerNet())).isEqualByComparingTo(purchaseTotal);
+        assertThat(after.arReconciled()).isTrue();
+        assertThat(after.apReconciled()).isTrue();
+    }
+
+    @Test
+    @DisplayName("Sales journal remains idempotent across canonical and invoice references")
+    @Transactional
+    void salesJournalIdempotentAcrossReferenceVariants() {
+        LocalDate today = LocalDate.now();
+        String orderNumber = "SO-IDEMP-" + UUID.randomUUID();
+        BigDecimal base = new BigDecimal("250.00");
+        BigDecimal tax = new BigDecimal("45.00");
+        BigDecimal total = base.add(tax);
+
+        JournalEntryDto first = accountingFacade.postSalesJournal(
+                dealer.getId(),
+                orderNumber,
+                today,
+                "Idempotent sale",
+                Map.of(accounts.get("REV").getId(), base),
+                Map.of(accounts.get("GST_OUT").getId(), tax),
+                total,
+                null);
+
+        JournalEntryDto second = accountingFacade.postSalesJournal(
+                dealer.getId(),
+                orderNumber,
+                today,
+                "Idempotent sale",
+                Map.of(accounts.get("REV").getId(), base),
+                Map.of(accounts.get("GST_OUT").getId(), tax),
+                total,
+                "INV-" + UUID.randomUUID());
+
+        assertThat(second.id()).isEqualTo(first.id());
     }
 
     @Test
@@ -370,6 +489,7 @@ class CriticalAccountingAxesIT extends AbstractIntegrationTest {
 
     @Test
     @DisplayName("Fuzzed transactions keep trial balance and P&L consistent with journals")
+    @Transactional
     void fuzzedTransactionsKeepStatementsBalanced() {
         int txnCount = Integer.getInteger("fuzz.txn.count", 1024);
         Random random = new Random(42);
