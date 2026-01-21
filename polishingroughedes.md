@@ -341,6 +341,14 @@ Add entries here as work progresses:
 - **Test Results:** `mvn -B -ntp verify` (pass; 247 tests, 4 skipped).
 - **Next Actions:** Review diffs for merge readiness and confirm prod config checklist with ops.
 
+### Step 5: Coverage gate resolution + final verification
+- **Timestamp:** 2026-01-21 20:59
+- **Context:** verification, coverage gate
+- **Description:** Parked unrelated local mods, hit JaCoCo branch coverage gate for `com.bigbrightpaints.erp.orchestrator.service`, then restored the minimal test change to satisfy coverage and re-verified. Confirmed decision points: full credit note -> `VOID`, mixed AR/AP journal entries rejected, config health checks include base currency + default accounts.
+- **Changes Made:** Stashed unrelated local mods via `git stash push -m "wip unrelated local mods" -- erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/service/SalesService.java erp-domain/src/test/java/com/bigbrightpaints/erp/modules/sales/service/SalesServiceTest.java erp-domain/src/test/java/com/bigbrightpaints/erp/orchestrator/service/IntegrationCoordinatorTest.java erp-domain/src/test/java/com/bigbrightpaints/erp/e2e/accounting/CriticalAccountingAxesIT.java`; restored `erp-domain/src/test/java/com/bigbrightpaints/erp/orchestrator/service/IntegrationCoordinatorTest.java` via `git checkout stash@{0} -- erp-domain/src/test/java/com/bigbrightpaints/erp/orchestrator/service/IntegrationCoordinatorTest.java`; committed hardening changes as `414a47a`.
+- **Test Results:** `mvn -B -ntp clean verify` (fail: JaCoCo branch coverage 0.30 < 0.31 for `com.bigbrightpaints.erp.orchestrator.service`); re-run `mvn -B -ntp clean verify` (pass; 245 tests, 4 skipped).
+- **Next Actions:** None pending; ready for review.
+
 - Date:
 - What changed:
 - Tests added/updated:
