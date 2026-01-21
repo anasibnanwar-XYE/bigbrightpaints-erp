@@ -28,14 +28,17 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -132,6 +135,7 @@ class PurchasingServiceTest {
                 "INV-001",
                 LocalDate.now(),
                 "Test memo",
+                BigDecimal.ZERO,
                 List.of(new RawMaterialPurchaseLineRequest(20L, null, BigDecimal.TEN, "KG", BigDecimal.valueOf(5), null))
         );
 
@@ -254,6 +258,7 @@ class PurchasingServiceTest {
                 "INV-002",
                 LocalDate.now(),
                 "Test memo",
+                BigDecimal.ZERO,
                 List.of(new RawMaterialPurchaseLineRequest(20L, null, BigDecimal.TEN, "KG", BigDecimal.valueOf(5), null))
         );
 
@@ -263,6 +268,57 @@ class PurchasingServiceTest {
         var inOrder = inOrder(accountingFacade, purchaseRepository);
         inOrder.verify(accountingFacade).postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any());
         inOrder.verify(purchaseRepository).save(any());
+    }
+
+    @Test
+    @DisplayName("createPurchase posts input tax lines when taxAmount provided")
+    void createPurchase_postsTaxLines() {
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(companyEntityLookup.requireSupplier(company, 10L)).thenReturn(supplier);
+        when(purchaseRepository.lockByCompanyAndInvoiceNumberIgnoreCase(company, "INV-003"))
+                .thenReturn(Optional.empty());
+        when(rawMaterialRepository.lockByCompanyAndId(company, 20L)).thenReturn(Optional.of(rawMaterial));
+
+        JournalEntryDto journalDto = dummyJournal("RMP-SUP001-INV003", 999L);
+        when(accountingFacade.postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(journalDto);
+
+        RawMaterialService.ReceiptResult receiptResult = new RawMaterialService.ReceiptResult(
+                new com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch(),
+                null,
+                null
+        );
+        when(rawMaterialService.recordReceipt(any(), any(), any())).thenReturn(receiptResult);
+        when(purchaseRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        BigDecimal taxAmount = new BigDecimal("9.00");
+        RawMaterialPurchaseRequest request = new RawMaterialPurchaseRequest(
+                10L,
+                "INV-003",
+                LocalDate.now(),
+                "Taxed purchase",
+                taxAmount,
+                List.of(new RawMaterialPurchaseLineRequest(20L, null, BigDecimal.TEN, "KG", BigDecimal.valueOf(5), null))
+        );
+
+        purchasingService.createPurchase(request);
+
+        ArgumentCaptor<Map<Long, BigDecimal>> taxLinesCaptor = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<BigDecimal> totalAmountCaptor = ArgumentCaptor.forClass(BigDecimal.class);
+        verify(accountingFacade).postPurchaseJournal(
+                eq(10L),
+                eq("INV-003"),
+                any(),
+                any(),
+                any(),
+                taxLinesCaptor.capture(),
+                totalAmountCaptor.capture(),
+                any());
+
+        Map<Long, BigDecimal> taxLines = taxLinesCaptor.getValue();
+        assertThat(taxLines).isNotNull();
+        assertThat(taxLines.get(null)).isEqualByComparingTo(taxAmount);
+        assertThat(totalAmountCaptor.getValue()).isEqualByComparingTo(new BigDecimal("59.00"));
     }
 
     private JournalEntryDto dummyJournal(String reference) {

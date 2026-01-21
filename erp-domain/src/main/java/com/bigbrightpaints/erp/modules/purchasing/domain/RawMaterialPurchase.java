@@ -45,6 +45,9 @@ public class RawMaterialPurchase extends VersionedEntity {
     @Column(nullable = false)
     private BigDecimal totalAmount = BigDecimal.ZERO;
 
+    @Column(name = "tax_amount", nullable = false)
+    private BigDecimal taxAmount = BigDecimal.ZERO;
+
     @Column(name = "outstanding_amount", nullable = false)
     private BigDecimal outstandingAmount = BigDecimal.ZERO;
 
@@ -96,6 +99,8 @@ public class RawMaterialPurchase extends VersionedEntity {
     public void setInvoiceDate(LocalDate invoiceDate) { this.invoiceDate = invoiceDate; }
     public BigDecimal getTotalAmount() { return totalAmount; }
     public void setTotalAmount(BigDecimal totalAmount) { this.totalAmount = totalAmount; }
+    public BigDecimal getTaxAmount() { return taxAmount; }
+    public void setTaxAmount(BigDecimal taxAmount) { this.taxAmount = taxAmount; }
     public BigDecimal getOutstandingAmount() { return outstandingAmount; }
     public void setOutstandingAmount(BigDecimal outstandingAmount) { this.outstandingAmount = outstandingAmount; }
     public String getStatus() { return status; }

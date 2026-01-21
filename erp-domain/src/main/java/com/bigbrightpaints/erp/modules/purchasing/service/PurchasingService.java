@@ -117,7 +117,7 @@ public class PurchasingService {
 
         // Pre-validate and lock all materials in consistent order before any mutations
         Map<Long, RawMaterial> lockedMaterials = new HashMap<>();
-        BigDecimal totalAmount = BigDecimal.ZERO;
+        BigDecimal inventoryTotal = BigDecimal.ZERO;
         Map<Long, BigDecimal> inventoryDebits = new HashMap<>();
 
         for (RawMaterialPurchaseLineRequest lineRequest : sortedLines) {
@@ -126,7 +126,7 @@ public class PurchasingService {
             BigDecimal quantity = positive(lineRequest.quantity(), "quantity");
             BigDecimal costPerUnit = positive(lineRequest.costPerUnit(), "costPerUnit");
             BigDecimal lineTotal = MoneyUtils.safeMultiply(quantity, costPerUnit);
-            totalAmount = totalAmount.add(lineTotal);
+            inventoryTotal = inventoryTotal.add(lineTotal);
             Long inventoryAccountId = rawMaterial.getInventoryAccountId();
             if (inventoryAccountId == null) {
                 throw new IllegalStateException("Raw material " + rawMaterial.getName() + " is missing an inventory account");
@@ -134,9 +134,12 @@ public class PurchasingService {
             inventoryDebits.merge(inventoryAccountId, lineTotal, BigDecimal::add);
         }
 
+        BigDecimal taxAmount = nonNegative(request.taxAmount(), "taxAmount");
+        BigDecimal totalAmount = inventoryTotal.add(taxAmount);
+
         // Post journal FIRST to avoid orphan purchases if journal fails
         String referenceNumber = referenceNumberService.purchaseReference(company, supplier, invoiceNumber);
-        JournalEntryDto entry = postPurchaseEntry(request, supplier, inventoryDebits, totalAmount, referenceNumber);
+        JournalEntryDto entry = postPurchaseEntry(request, supplier, inventoryDebits, taxAmount, totalAmount, referenceNumber);
         JournalEntry linkedJournal = null;
         if (entry != null) {
             linkedJournal = companyEntityLookup.requireJournalEntry(company, entry.id());
@@ -150,6 +153,7 @@ public class PurchasingService {
         purchase.setInvoiceDate(request.invoiceDate());
         purchase.setMemo(clean(request.memo()));
         purchase.setTotalAmount(totalAmount);
+        purchase.setTaxAmount(taxAmount);
         purchase.setOutstandingAmount(totalAmount);
         purchase.setJournalEntry(linkedJournal);
 
@@ -387,6 +391,7 @@ public class PurchasingService {
     private JournalEntryDto postPurchaseEntry(RawMaterialPurchaseRequest request,
                                               Supplier supplier,
                                               Map<Long, BigDecimal> inventoryDebits,
+                                              BigDecimal taxAmount,
                                               BigDecimal totalAmount,
                                               String referenceNumber) {
         if (inventoryDebits.isEmpty() || totalAmount.compareTo(BigDecimal.ZERO) <= 0) {
@@ -396,6 +401,12 @@ public class PurchasingService {
         String memo = purchaseMemo(request.memo(), request.invoiceNumber(), null);
         LocalDate entryDate = request.invoiceDate() != null ? request.invoiceDate() : companyClock.today(company);
 
+        Map<Long, BigDecimal> taxLines = null;
+        if (taxAmount != null && taxAmount.compareTo(BigDecimal.ZERO) > 0) {
+            taxLines = new HashMap<>();
+            taxLines.put(null, taxAmount);
+        }
+
         // Delegate to AccountingFacade for purchase journal posting
         return accountingFacade.postPurchaseJournal(
                 supplier.getId(),
@@ -403,7 +414,7 @@ public class PurchasingService {
                 entryDate,
                 memo,
                 inventoryDebits,
-                null,
+                taxLines,
                 totalAmount,
                 referenceNumber
         );
@@ -421,6 +432,7 @@ public class PurchasingService {
                 purchase.getInvoiceNumber(),
                 purchase.getInvoiceDate(),
                 purchase.getTotalAmount(),
+                purchase.getTaxAmount(),
                 purchase.getOutstandingAmount(),
                 purchase.getStatus(),
                 purchase.getMemo(),
@@ -456,6 +468,16 @@ public class PurchasingService {
     private BigDecimal positive(BigDecimal value, String field) {
         if (value == null || value.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("Value for " + field + " must be greater than zero");
+        }
+        return value;
+    }
+
+    private BigDecimal nonNegative(BigDecimal value, String field) {
+        if (value == null) {
+            return BigDecimal.ZERO;
+        }
+        if (value.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("Value for " + field + " must be zero or greater");
         }
         return value;
     }
