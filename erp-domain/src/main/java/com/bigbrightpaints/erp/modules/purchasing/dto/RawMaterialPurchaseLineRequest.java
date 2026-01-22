@@ -11,5 +11,7 @@ public record RawMaterialPurchaseLineRequest(
         @NotNull @Positive BigDecimal quantity,
         String unit,
         @NotNull @Positive BigDecimal costPerUnit,
+        BigDecimal taxRate,
+        Boolean taxInclusive,
         String notes
 ) {}

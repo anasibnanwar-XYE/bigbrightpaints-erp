@@ -824,6 +824,47 @@ class AccountingServiceTest {
     }
 
     @Test
+    void createJournalEntry_adjustsMinorBaseRoundingDeltaWithinTolerance() {
+        LocalDate today = LocalDate.of(2024, 4, 8);
+        when(companyClock.today(company)).thenReturn(today);
+        AccountingPeriod period = new AccountingPeriod();
+        period.setYear(today.getYear());
+        period.setMonth(today.getMonthValue());
+        period.setStartDate(today.withDayOfMonth(1));
+        period.setEndDate(today.withDayOfMonth(today.lengthOfMonth()));
+        when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(period);
+        when(journalEntryRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(accountRepository.updateBalanceAtomic(eq(company), any(), any())).thenReturn(1);
+
+        var debitAccount = new com.bigbrightpaints.erp.modules.accounting.domain.Account();
+        ReflectionTestUtils.setField(debitAccount, "id", 1L);
+        debitAccount.setCompany(company);
+        debitAccount.setCode("DEBIT");
+        var creditAccount = new com.bigbrightpaints.erp.modules.accounting.domain.Account();
+        ReflectionTestUtils.setField(creditAccount, "id", 2L);
+        creditAccount.setCompany(company);
+        creditAccount.setCode("CREDIT");
+
+        when(accountRepository.lockByCompanyAndId(eq(company), eq(1L))).thenReturn(Optional.of(debitAccount));
+        when(accountRepository.lockByCompanyAndId(eq(company), eq(2L))).thenReturn(Optional.of(creditAccount));
+
+        JournalEntryRequest request = new JournalEntryRequest(
+                "BASE-ROUND",
+                today,
+                "Base rounding",
+                null,
+                null,
+                Boolean.FALSE,
+                List.of(
+                        new JournalEntryRequest.JournalLineRequest(1L, "Debit", new BigDecimal("10.005"), BigDecimal.ZERO),
+                        new JournalEntryRequest.JournalLineRequest(2L, "Credit", BigDecimal.ZERO, new BigDecimal("10.00"))
+                )
+        );
+
+        accountingService.createJournalEntry(request);
+    }
+
+    @Test
     void settleDealerInvoices_requiresPaymentsToMatchCash() {
         // Setup company/dealer/invoice
         Dealer dealer = new Dealer();

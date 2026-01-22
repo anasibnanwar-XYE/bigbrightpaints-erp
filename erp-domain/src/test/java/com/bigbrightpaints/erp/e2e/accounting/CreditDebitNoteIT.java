@@ -190,6 +190,26 @@ public class CreditDebitNoteIT extends AbstractIntegrationTest {
     }
 
     @Test
+    @DisplayName("Partial credit note reduces outstanding and sets status to PARTIAL")
+    void creditNote_partialAmountUpdatesOutstanding() {
+        String ref = "CN-PART-" + System.currentTimeMillis();
+        Map<String, Object> payload = Map.of(
+                "invoiceId", invoice.getId(),
+                "amount", new BigDecimal("250.00"),
+                "referenceNumber", ref,
+                "memo", "Partial credit note"
+        );
+
+        ResponseEntity<Map> resp = rest.exchange("/api/v1/accounting/credit-notes",
+                HttpMethod.POST, new HttpEntity<>(payload, headers), Map.class);
+        assertThat(resp.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        Invoice refreshed = invoiceRepository.findById(invoice.getId()).orElseThrow();
+        assertThat(refreshed.getOutstandingAmount()).isEqualByComparingTo(new BigDecimal("750.00"));
+        assertThat(refreshed.getStatus()).isEqualTo("PARTIAL");
+    }
+
+    @Test
     @DisplayName("Credit note on fully paid invoice records credit balance")
     void creditNote_allowsPaidInvoice() {
         Invoice paidInvoice = invoiceRepository.findById(invoice.getId()).orElseThrow();

@@ -35,6 +35,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -45,6 +46,8 @@ import java.util.Objects;
 
 @Service
 public class PurchasingService {
+
+    private static final BigDecimal MAX_GST_RATE = new BigDecimal("28.00");
 
     private final CompanyContextService companyContextService;
     private final RawMaterialPurchaseRepository purchaseRepository;
@@ -110,6 +113,8 @@ public class PurchasingService {
                     throw new IllegalArgumentException("Invoice number already used for this company");
                 });
 
+        boolean taxProvided = request.taxAmount() != null;
+
         // Sort lines by rawMaterialId to maintain consistent lock ordering and avoid deadlocks
         List<RawMaterialPurchaseLineRequest> sortedLines = request.lines().stream()
                 .sorted(Comparator.comparing(RawMaterialPurchaseLineRequest::rawMaterialId))
@@ -117,24 +122,70 @@ public class PurchasingService {
 
         // Pre-validate and lock all materials in consistent order before any mutations
         Map<Long, RawMaterial> lockedMaterials = new HashMap<>();
-        BigDecimal inventoryTotal = BigDecimal.ZERO;
-        Map<Long, BigDecimal> inventoryDebits = new HashMap<>();
-
         for (RawMaterialPurchaseLineRequest lineRequest : sortedLines) {
             RawMaterial rawMaterial = requireMaterial(company, lineRequest.rawMaterialId());
             lockedMaterials.put(rawMaterial.getId(), rawMaterial);
+        }
+
+        BigDecimal inventoryTotal = BigDecimal.ZERO;
+        BigDecimal taxTotal = BigDecimal.ZERO;
+        Map<Long, BigDecimal> inventoryDebits = new HashMap<>();
+        List<PurchaseLineCalc> computedLines = new ArrayList<>();
+
+        for (RawMaterialPurchaseLineRequest lineRequest : request.lines()) {
+            RawMaterial rawMaterial = lockedMaterials.get(lineRequest.rawMaterialId());
+            if (rawMaterial == null) {
+                throw new IllegalArgumentException("Raw material not found");
+            }
             BigDecimal quantity = positive(lineRequest.quantity(), "quantity");
             BigDecimal costPerUnit = positive(lineRequest.costPerUnit(), "costPerUnit");
-            BigDecimal lineTotal = MoneyUtils.safeMultiply(quantity, costPerUnit);
-            inventoryTotal = inventoryTotal.add(lineTotal);
+            String unit = StringUtils.hasText(lineRequest.unit())
+                    ? lineRequest.unit().trim()
+                    : rawMaterial.getUnitType();
+            String batchCode = StringUtils.hasText(lineRequest.batchCode())
+                    ? lineRequest.batchCode().trim()
+                    : null;
+            BigDecimal lineGrossRaw = MoneyUtils.safeMultiply(quantity, costPerUnit);
+            BigDecimal lineGross = taxProvided ? lineGrossRaw : currency(lineGrossRaw);
+            BigDecimal lineNet = lineGross;
+            BigDecimal lineTax = currency(BigDecimal.ZERO);
+            BigDecimal netUnitCost = costPerUnit;
+
+            if (!taxProvided) {
+                BigDecimal taxRate = resolveLineTaxRate(lineRequest, rawMaterial, company);
+                boolean taxInclusive = Boolean.TRUE.equals(lineRequest.taxInclusive());
+                if (taxRate.compareTo(BigDecimal.ZERO) > 0) {
+                    if (taxInclusive) {
+                        BigDecimal divisor = BigDecimal.ONE.add(
+                                taxRate.divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP));
+                        if (divisor.signum() > 0) {
+                            BigDecimal net = lineGross.divide(divisor, 6, RoundingMode.HALF_UP);
+                            lineNet = currency(net);
+                            lineTax = currency(lineGross.subtract(lineNet));
+                            netUnitCost = lineNet.divide(quantity, 6, RoundingMode.HALF_UP);
+                        }
+                    } else {
+                        lineNet = lineGross;
+                        lineTax = currency(lineNet.multiply(taxRate)
+                                .divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP));
+                    }
+                }
+            }
+
             Long inventoryAccountId = rawMaterial.getInventoryAccountId();
             if (inventoryAccountId == null) {
                 throw new IllegalStateException("Raw material " + rawMaterial.getName() + " is missing an inventory account");
             }
-            inventoryDebits.merge(inventoryAccountId, lineTotal, BigDecimal::add);
+
+            inventoryTotal = inventoryTotal.add(lineNet);
+            taxTotal = taxTotal.add(lineTax);
+            inventoryDebits.merge(inventoryAccountId, lineNet, BigDecimal::add);
+            computedLines.add(new PurchaseLineCalc(rawMaterial, quantity, unit, batchCode, netUnitCost, lineNet, lineRequest.notes()));
         }
 
-        BigDecimal taxAmount = nonNegative(request.taxAmount(), "taxAmount");
+        BigDecimal taxAmount = taxProvided
+                ? currency(nonNegative(request.taxAmount(), "taxAmount"))
+                : currency(taxTotal);
         BigDecimal totalAmount = inventoryTotal.add(taxAmount);
 
         // Post journal FIRST to avoid orphan purchases if journal fails
@@ -160,17 +211,13 @@ public class PurchasingService {
         // Process lines using already-locked materials
         List<RawMaterialService.ReceiptResult> receipts = new ArrayList<>();
         int lineIndex = 1;
-        for (RawMaterialPurchaseLineRequest lineRequest : request.lines()) {
-            RawMaterial rawMaterial = lockedMaterials.get(lineRequest.rawMaterialId());
-            BigDecimal quantity = positive(lineRequest.quantity(), "quantity");
-            BigDecimal costPerUnit = positive(lineRequest.costPerUnit(), "costPerUnit");
-            String unit = StringUtils.hasText(lineRequest.unit())
-                    ? lineRequest.unit().trim()
-                    : rawMaterial.getUnitType();
-            String batchCode = StringUtils.hasText(lineRequest.batchCode())
-                    ? lineRequest.batchCode().trim()
-                    : null;
-            BigDecimal lineTotal = MoneyUtils.safeMultiply(quantity, costPerUnit);
+        for (PurchaseLineCalc lineCalc : computedLines) {
+            RawMaterial rawMaterial = lineCalc.rawMaterial();
+            BigDecimal quantity = lineCalc.quantity();
+            BigDecimal costPerUnit = lineCalc.netUnitCost();
+            String unit = lineCalc.unit();
+            String batchCode = lineCalc.batchCode();
+            BigDecimal lineTotal = lineCalc.lineNet();
 
             RawMaterialBatchRequest batchRequest = new RawMaterialBatchRequest(
                     batchCode,
@@ -178,7 +225,7 @@ public class PurchasingService {
                     unit,
                     costPerUnit,
                     supplier.getId(),
-                    lineRequest.notes()
+                    lineCalc.notes()
             );
             RawMaterialService.ReceiptContext context = new RawMaterialService.ReceiptContext(
                     InventoryReference.RAW_MATERIAL_PURCHASE,
@@ -198,7 +245,7 @@ public class PurchasingService {
             line.setUnit(unit);
             line.setCostPerUnit(costPerUnit);
             line.setLineTotal(lineTotal);
-            line.setNotes(lineRequest.notes());
+            line.setNotes(lineCalc.notes());
             purchase.getLines().add(line);
         }
 
@@ -225,8 +272,19 @@ public class PurchasingService {
         if (supplier.getPayableAccount() == null) {
             throw new IllegalStateException("Supplier " + supplier.getName() + " is missing a payable account");
         }
+        RawMaterialPurchase purchase = purchaseRepository.lockByCompanyAndId(company, request.purchaseId())
+                .orElseThrow(() -> new IllegalArgumentException("Raw material purchase not found"));
+        if (purchase.getSupplier() == null || !purchase.getSupplier().getId().equals(supplier.getId())) {
+            throw new IllegalArgumentException("Purchase does not belong to the supplier");
+        }
         RawMaterial material = rawMaterialRepository.lockByCompanyAndId(company, request.rawMaterialId())
                 .orElseThrow(() -> new IllegalArgumentException("Raw material not found"));
+        boolean materialInPurchase = purchase.getLines().stream()
+                .anyMatch(line -> line.getRawMaterial() != null
+                        && line.getRawMaterial().getId().equals(material.getId()));
+        if (!materialInPurchase) {
+            throw new IllegalArgumentException("Purchase does not include raw material " + material.getName());
+        }
         if (material.getInventoryAccountId() == null) {
             throw new IllegalStateException("Raw material " + material.getName() + " is missing an inventory account mapping");
         }
@@ -265,6 +323,7 @@ public class PurchasingService {
 
         List<RawMaterialMovement> movements = issueReturnFromBatches(material, quantity, unitCost, reference, entry.id());
         movementRepository.saveAll(movements);
+        applyPurchaseReturnToOutstanding(purchase, totalAmount);
         return entry;
     }
 
@@ -388,6 +447,25 @@ public class PurchasingService {
         return movements;
     }
 
+    private void applyPurchaseReturnToOutstanding(RawMaterialPurchase purchase, BigDecimal totalAmount) {
+        if (purchase == null) {
+            return;
+        }
+        BigDecimal amount = totalAmount != null ? totalAmount : BigDecimal.ZERO;
+        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+        BigDecimal currentOutstanding = MoneyUtils.zeroIfNull(purchase.getOutstandingAmount());
+        BigDecimal newOutstanding = currentOutstanding.subtract(amount);
+        purchase.setOutstandingAmount(newOutstanding);
+        if (amount.compareTo(MoneyUtils.zeroIfNull(purchase.getTotalAmount())) >= 0
+                && newOutstanding.compareTo(BigDecimal.ZERO) <= 0) {
+            purchase.setStatus("VOID");
+        } else {
+            updatePurchaseStatus(purchase);
+        }
+    }
+
     private JournalEntryDto postPurchaseEntry(RawMaterialPurchaseRequest request,
                                               Supplier supplier,
                                               Map<Long, BigDecimal> inventoryDebits,
@@ -482,6 +560,61 @@ public class PurchasingService {
         return value;
     }
 
+    private BigDecimal resolveLineTaxRate(RawMaterialPurchaseLineRequest lineRequest,
+                                          RawMaterial rawMaterial,
+                                          Company company) {
+        if (lineRequest != null && lineRequest.taxRate() != null) {
+            return normalizePercent(lineRequest.taxRate());
+        }
+        if (rawMaterial != null && rawMaterial.getGstRate() != null) {
+            return normalizePercent(rawMaterial.getGstRate());
+        }
+        if (company != null && company.getDefaultGstRate() != null) {
+            return normalizePercent(company.getDefaultGstRate());
+        }
+        return BigDecimal.ZERO;
+    }
+
+    private BigDecimal normalizePercent(BigDecimal rate) {
+        if (rate == null) {
+            return BigDecimal.ZERO;
+        }
+        if (rate.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("GST rate must be zero or positive");
+        }
+        BigDecimal sanitized = rate.setScale(2, RoundingMode.HALF_UP);
+        if (sanitized.compareTo(MAX_GST_RATE) > 0) {
+            throw new IllegalArgumentException("Unsupported GST rate " + sanitized + "%. Max allowed is " + MAX_GST_RATE);
+        }
+        return sanitized.setScale(4, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal currency(BigDecimal value) {
+        if (value == null) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+        return value.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private void updatePurchaseStatus(RawMaterialPurchase purchase) {
+        if (purchase == null) {
+            return;
+        }
+        String status = purchase.getStatus();
+        if (status != null && ("VOID".equalsIgnoreCase(status) || "REVERSED".equalsIgnoreCase(status))) {
+            return;
+        }
+        BigDecimal total = MoneyUtils.zeroIfNull(purchase.getTotalAmount());
+        BigDecimal outstanding = MoneyUtils.zeroIfNull(purchase.getOutstandingAmount());
+        if (outstanding.compareTo(BigDecimal.ZERO) <= 0) {
+            purchase.setStatus("PAID");
+        } else if (total.compareTo(BigDecimal.ZERO) > 0 && outstanding.compareTo(total) < 0) {
+            purchase.setStatus("PARTIAL");
+        } else {
+            purchase.setStatus("POSTED");
+        }
+    }
+
     private String invoiceReference(String invoiceNumber, int lineIndex) {
         String normalized = invoiceNumber == null ? "" : invoiceNumber.replaceAll("\\s+", "-");
         return normalized + "-" + lineIndex;
@@ -502,5 +635,16 @@ public class PurchasingService {
 
     private String clean(String value) {
         return StringUtils.hasText(value) ? value.trim() : null;
+    }
+
+    private record PurchaseLineCalc(
+            RawMaterial rawMaterial,
+            BigDecimal quantity,
+            String unit,
+            String batchCode,
+            BigDecimal netUnitCost,
+            BigDecimal lineNet,
+            String notes
+    ) {
     }
 }

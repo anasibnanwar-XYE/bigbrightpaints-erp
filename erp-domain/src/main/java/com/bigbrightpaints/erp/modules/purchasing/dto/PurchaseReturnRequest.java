@@ -8,6 +8,7 @@ import java.time.LocalDate;
 
 public record PurchaseReturnRequest(
         @NotNull Long supplierId,
+        @NotNull Long purchaseId,
         @NotNull Long rawMaterialId,
         @NotNull @Positive BigDecimal quantity,
         @NotNull @Positive BigDecimal unitCost,

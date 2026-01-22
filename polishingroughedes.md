@@ -385,6 +385,30 @@ Add entries here as work progresses:
 - **Test Results:** `cd erp-domain && mvn -B -ntp -Dtest=CreditDebitNoteIT,ProcureToPayE2ETest test` (pass); `cd erp-domain && mvn -B -ntp clean verify` (pass; 249 tests, 4 skipped). Async `nohup` background runs did not persist in this environment, so the full verify was tracked in a live PTY session.
 - **Next Actions:** Commit and push updates; re-review for any new findings.
 
+### Step 10: Allow negative purchase credits, then restore partner balance clamp
+- **Timestamp:** 2026-01-22 14:04
+- **Context:** review feedback, credit memo handling, test fix
+- **Description:** Allowed debit notes and purchase returns to drive negative outstanding amounts for credit balances; updated paid-purchase debit note expectations; attempted to surface credit balances on partner summaries but reverted due to `@PositiveOrZero` constraints after a 500 in `JournalEntryE2ETest`.
+- **Changes Made:** Updated `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingService.java` (purchase debit notes allow negative outstanding and VOID on full credit), `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/purchasing/service/PurchasingService.java` (returns allow negative outstanding), `erp-domain/src/test/java/com/bigbrightpaints/erp/e2e/accounting/ProcureToPayE2ETest.java` (paid purchase debit note expects negative outstanding; idempotency case updated), reverted `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/DealerLedgerService.java` and `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/SupplierLedgerService.java` to keep `outstandingBalance` non-negative.
+- **Test Results:** `cd erp-domain && mvn -B -ntp -Dtest=ProcureToPayE2ETest,CreditDebitNoteIT test` (pass); `cd erp-domain && mvn -B -ntp -Dtest=JournalEntryE2ETest test` (pass). Earlier `mvn -B -ntp clean verify` run failed on `JournalEntryE2ETest` (dealer outstanding balance constraint) and was terminated after code changes.
+- **Next Actions:** Run full suite after fixes and capture final results.
+
+### Step 11: Full verification run (post-fixes)
+- **Timestamp:** 2026-01-22 14:09
+- **Context:** verification, CI parity
+- **Description:** Re-ran the full CI entrypoint after credit-balance adjustments and test fixes.
+- **Changes Made:** None (verification only).
+- **Test Results:** `cd erp-domain && mvn -B -ntp clean verify` (pass; 257 tests, 4 skipped).
+- **Next Actions:** Commit changes, push branch, and perform final review sweep.
+
+### Step 12: Allocation-required validation docs + full verify
+- **Timestamp:** 2026-01-22 14:35
+- **Context:** doc alignment, validation hardening, full-suite verification
+- **Description:** Marked dealer receipt and supplier payment allocations as required in DTO validation and OpenAPI, then re-ran full verification. Attempted async `nohup` per runbook but it exited without output; executed the full suite in a tracked interactive session instead.
+- **Changes Made:** Added `@NotEmpty` validation for `allocations` in `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/dto/DealerReceiptRequest.java` and `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/dto/SupplierPaymentRequest.java`; updated `openapi.json` required fields accordingly.
+- **Test Results:** `cd erp-domain && mvn -B -ntp clean verify` (pass; 257 tests, 4 skipped; BUILD SUCCESS).
+- **Next Actions:** Stage changes, commit, push branch, and perform final review sweep.
+
 - Date:
 - What changed:
 - Tests added/updated:

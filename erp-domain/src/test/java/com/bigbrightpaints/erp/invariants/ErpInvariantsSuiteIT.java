@@ -666,7 +666,8 @@ public class ErpInvariantsSuiteIT extends AbstractIntegrationTest {
 
         ResponseEntity<Map> purchaseResp = rest.exchange("/api/v1/purchasing/raw-material-purchases",
                 HttpMethod.POST, new HttpEntity<>(purchaseReq, headers), Map.class);
-        requireData(purchaseResp, "create purchase for return");
+        Map<?, ?> purchaseData = requireData(purchaseResp, "create purchase for return");
+        Long purchaseId = ((Number) purchaseData.get("id")).longValue();
 
         RawMaterial afterPurchase = rawMaterialRepository.findById(material.getId())
                 .orElseThrow(() -> new AssertionError("Raw material missing after purchase"));
@@ -675,6 +676,7 @@ public class ErpInvariantsSuiteIT extends AbstractIntegrationTest {
         String returnRef = "P2P-RET-" + System.nanoTime();
         Map<String, Object> returnReq = new HashMap<>();
         returnReq.put("supplierId", returnDataset.supplier().getId());
+        returnReq.put("purchaseId", purchaseId);
         returnReq.put("rawMaterialId", material.getId());
         returnReq.put("quantity", new BigDecimal("4"));
         returnReq.put("unitCost", new BigDecimal("15.00"));

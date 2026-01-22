@@ -15,6 +15,9 @@ import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepos
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
 import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
+import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchase;
+import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseLine;
+import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
 import com.bigbrightpaints.erp.modules.purchasing.dto.PurchaseReturnRequest;
 import com.bigbrightpaints.erp.modules.purchasing.service.PurchasingService;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
@@ -52,9 +55,13 @@ class PurchaseReturnIdempotencyRegressionIT extends AbstractIntegrationTest {
     @Autowired
     private PurchasingService purchasingService;
 
+    @Autowired
+    private RawMaterialPurchaseRepository purchaseRepository;
+
     private Company company;
     private Supplier supplier;
     private RawMaterial material;
+    private RawMaterialPurchase purchase;
 
     @BeforeEach
     void setUp() {
@@ -91,6 +98,27 @@ class PurchaseReturnIdempotencyRegressionIT extends AbstractIntegrationTest {
         batch.setUnit("KG");
         batch.setCostPerUnit(new BigDecimal("5.00"));
         rawMaterialBatchRepository.save(batch);
+
+        RawMaterialPurchase seeded = new RawMaterialPurchase();
+        seeded.setCompany(company);
+        seeded.setSupplier(supplier);
+        seeded.setInvoiceNumber("PR-LF022-INV-001");
+        seeded.setInvoiceDate(LocalDate.of(2026, 1, 10));
+        seeded.setTotalAmount(new BigDecimal("20.00"));
+        seeded.setOutstandingAmount(new BigDecimal("20.00"));
+        seeded.setStatus("POSTED");
+
+        RawMaterialPurchaseLine line = new RawMaterialPurchaseLine();
+        line.setPurchase(seeded);
+        line.setRawMaterial(material);
+        line.setBatchCode("RM-LF022-B1");
+        line.setQuantity(new BigDecimal("4.00"));
+        line.setUnit("KG");
+        line.setCostPerUnit(new BigDecimal("5.00"));
+        line.setLineTotal(new BigDecimal("20.00"));
+        seeded.getLines().add(line);
+
+        purchase = purchaseRepository.save(seeded);
     }
 
     @AfterEach
@@ -102,6 +130,7 @@ class PurchaseReturnIdempotencyRegressionIT extends AbstractIntegrationTest {
     void purchaseReturnReplayDoesNotDuplicateMovements() {
         PurchaseReturnRequest request = new PurchaseReturnRequest(
                 supplier.getId(),
+                purchase.getId(),
                 material.getId(),
                 new BigDecimal("4.00"),
                 new BigDecimal("5.00"),

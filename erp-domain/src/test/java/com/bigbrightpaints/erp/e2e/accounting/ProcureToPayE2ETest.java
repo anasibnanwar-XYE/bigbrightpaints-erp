@@ -148,6 +148,61 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
     }
 
     @Test
+    @DisplayName("Supplier payment with allocations updates purchase outstanding")
+    void supplierPaymentAllocatesToPurchase() {
+        LocalDate entryDate = TestDateUtils.safeDate(company);
+        Long supplierId = createSupplier("P2P Payment Supplier", "PAY-" + shortSuffix());
+        Long rawMaterialId = createRawMaterial("Payment Material", "RM-PAY-" + shortSuffix(), inventory.getId());
+
+        BigDecimal quantity = new BigDecimal("5");
+        BigDecimal costPerUnit = new BigDecimal("10.00");
+        BigDecimal totalAmount = quantity.multiply(costPerUnit);
+
+        Map<String, Object> line = new HashMap<>();
+        line.put("rawMaterialId", rawMaterialId);
+        line.put("quantity", quantity);
+        line.put("costPerUnit", costPerUnit);
+
+        Map<String, Object> purchaseReq = new HashMap<>();
+        purchaseReq.put("supplierId", supplierId);
+        purchaseReq.put("invoiceNumber", "INV-PAY-" + shortSuffix());
+        purchaseReq.put("invoiceDate", entryDate);
+        purchaseReq.put("lines", List.of(line));
+
+        ResponseEntity<Map> purchaseResp = rest.exchange(
+                "/api/v1/purchasing/raw-material-purchases",
+                HttpMethod.POST,
+                new HttpEntity<>(purchaseReq, headers),
+                Map.class);
+        assertThat(purchaseResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> purchaseData = (Map<String, Object>) purchaseResp.getBody().get("data");
+        Long purchaseId = ((Number) purchaseData.get("id")).longValue();
+
+        Map<String, Object> allocation = Map.of(
+                "purchaseId", purchaseId,
+                "appliedAmount", totalAmount
+        );
+        Map<String, Object> paymentReq = new HashMap<>();
+        paymentReq.put("supplierId", supplierId);
+        paymentReq.put("cashAccountId", cash.getId());
+        paymentReq.put("amount", totalAmount);
+        paymentReq.put("referenceNumber", "PAY-" + shortSuffix());
+        paymentReq.put("memo", "Supplier payment allocation");
+        paymentReq.put("allocations", List.of(allocation));
+
+        ResponseEntity<Map> paymentResp = rest.exchange(
+                "/api/v1/accounting/suppliers/payments",
+                HttpMethod.POST,
+                new HttpEntity<>(paymentReq, headers),
+                Map.class);
+        assertThat(paymentResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        RawMaterialPurchase purchase = purchaseRepository.findById(purchaseId).orElseThrow();
+        assertThat(purchase.getOutstandingAmount()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(purchase.getStatus()).isEqualTo("PAID");
+    }
+
+    @Test
     @DisplayName("Debit note clears purchase outstanding and sets status to VOID")
     void purchaseDebitNoteClearsOutstanding() {
         LocalDate entryDate = TestDateUtils.safeDate(company);
@@ -208,6 +263,57 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
     }
 
     @Test
+    @DisplayName("Partial debit note reduces outstanding and sets status PARTIAL")
+    void purchasePartialDebitNoteReducesOutstanding() {
+        LocalDate entryDate = TestDateUtils.safeDate(company);
+        Long supplierId = createSupplier("P2P Partial Debit Supplier", "DN-PART-" + shortSuffix());
+        Long rawMaterialId = createRawMaterial("Partial Debit Material", "RM-DN-PART-" + shortSuffix(), inventory.getId());
+
+        BigDecimal quantity = new BigDecimal("5");
+        BigDecimal costPerUnit = new BigDecimal("20.00");
+        BigDecimal totalAmount = quantity.multiply(costPerUnit);
+
+        Map<String, Object> line = new HashMap<>();
+        line.put("rawMaterialId", rawMaterialId);
+        line.put("quantity", quantity);
+        line.put("costPerUnit", costPerUnit);
+
+        String invoiceNumber = "INV-DN-PART-" + shortSuffix();
+        Map<String, Object> purchaseReq = new HashMap<>();
+        purchaseReq.put("supplierId", supplierId);
+        purchaseReq.put("invoiceNumber", invoiceNumber);
+        purchaseReq.put("invoiceDate", entryDate);
+        purchaseReq.put("lines", List.of(line));
+
+        ResponseEntity<Map> purchaseResp = rest.exchange(
+                "/api/v1/purchasing/raw-material-purchases",
+                HttpMethod.POST,
+                new HttpEntity<>(purchaseReq, headers),
+                Map.class);
+        assertThat(purchaseResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> purchaseData = (Map<String, Object>) purchaseResp.getBody().get("data");
+        Long purchaseId = ((Number) purchaseData.get("id")).longValue();
+
+        BigDecimal debitAmount = new BigDecimal("40.00");
+        Map<String, Object> debitNoteReq = new HashMap<>();
+        debitNoteReq.put("purchaseId", purchaseId);
+        debitNoteReq.put("amount", debitAmount);
+        debitNoteReq.put("referenceNumber", "DN-PART-" + shortSuffix());
+        debitNoteReq.put("memo", "Partial debit note");
+
+        ResponseEntity<Map> debitResp = rest.exchange(
+                "/api/v1/accounting/debit-notes",
+                HttpMethod.POST,
+                new HttpEntity<>(debitNoteReq, headers),
+                Map.class);
+        assertThat(debitResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        RawMaterialPurchase purchase = purchaseRepository.findById(purchaseId).orElseThrow();
+        assertThat(purchase.getOutstandingAmount()).isEqualByComparingTo(totalAmount.subtract(debitAmount));
+        assertThat(purchase.getStatus()).isEqualTo("PARTIAL");
+    }
+
+    @Test
     @DisplayName("Debit note is idempotent by reference for the same purchase")
     void purchaseDebitNoteIdempotentByReference() {
         LocalDate entryDate = TestDateUtils.safeDate(company);
@@ -216,6 +322,7 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
 
         BigDecimal quantity = new BigDecimal("3");
         BigDecimal costPerUnit = new BigDecimal("30.00");
+        BigDecimal totalAmount = quantity.multiply(costPerUnit);
 
         Map<String, Object> line = new HashMap<>();
         line.put("rawMaterialId", rawMaterialId);
@@ -264,7 +371,7 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
         assertThat(entries).hasSize(1);
 
         RawMaterialPurchase purchase = purchaseRepository.findById(purchaseId).orElseThrow();
-        assertThat(purchase.getOutstandingAmount()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(purchase.getOutstandingAmount()).isEqualByComparingTo(totalAmount.negate());
         assertThat(purchase.getStatus()).isEqualTo("VOID");
     }
 
@@ -337,7 +444,7 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
         assertThat(debitResp.getStatusCode()).isEqualTo(HttpStatus.OK);
 
         RawMaterialPurchase refreshed = purchaseRepository.findById(purchaseId).orElseThrow();
-        assertThat(refreshed.getOutstandingAmount()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(refreshed.getOutstandingAmount()).isEqualByComparingTo(totalAmount.negate());
         assertThat(refreshed.getStatus()).isEqualTo("VOID");
     }
 
@@ -368,6 +475,8 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
                 new HttpEntity<>(purchaseReq, headers),
                 Map.class);
         assertThat(purchaseResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> purchaseData = (Map<String, Object>) purchaseResp.getBody().get("data");
+        Long purchaseId = ((Number) purchaseData.get("id")).longValue();
 
         RawMaterial afterPurchase = rawMaterialRepository.findById(rawMaterialId).orElseThrow();
         assertThat(afterPurchase.getCurrentStock()).isEqualByComparingTo(purchaseQty);
@@ -375,6 +484,7 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
         String returnRef = "RET-" + shortSuffix();
         Map<String, Object> returnReq = new HashMap<>();
         returnReq.put("supplierId", supplierId);
+        returnReq.put("purchaseId", purchaseId);
         returnReq.put("rawMaterialId", rawMaterialId);
         returnReq.put("quantity", new BigDecimal("4"));
         returnReq.put("unitCost", unitCost);
@@ -391,6 +501,10 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
 
         RawMaterial afterReturn = rawMaterialRepository.findById(rawMaterialId).orElseThrow();
         assertThat(afterReturn.getCurrentStock()).isEqualByComparingTo(new BigDecimal("6"));
+
+        RawMaterialPurchase updatedPurchase = purchaseRepository.findById(purchaseId).orElseThrow();
+        assertThat(updatedPurchase.getOutstandingAmount()).isEqualByComparingTo(new BigDecimal("48.00"));
+        assertThat(updatedPurchase.getStatus()).isEqualTo("PARTIAL");
 
         List<RawMaterialMovement> movements = rawMaterialMovementRepository
                 .findByReferenceTypeAndReferenceId(InventoryReference.PURCHASE_RETURN, returnRef);

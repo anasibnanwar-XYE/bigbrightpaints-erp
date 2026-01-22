@@ -16,6 +16,7 @@ import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepos
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
 import com.bigbrightpaints.erp.modules.inventory.service.RawMaterialService;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchase;
+import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseLine;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
 import com.bigbrightpaints.erp.modules.purchasing.dto.PurchaseReturnRequest;
@@ -136,7 +137,7 @@ class PurchasingServiceTest {
                 LocalDate.now(),
                 "Test memo",
                 BigDecimal.ZERO,
-                List.of(new RawMaterialPurchaseLineRequest(20L, null, BigDecimal.TEN, "KG", BigDecimal.valueOf(5), null))
+                List.of(new RawMaterialPurchaseLineRequest(20L, null, BigDecimal.TEN, "KG", BigDecimal.valueOf(5), null, null, null))
         );
 
         assertThatThrownBy(() -> purchasingService.createPurchase(request))
@@ -152,6 +153,14 @@ class PurchasingServiceTest {
     void recordPurchaseReturn_insufficientStock_throws() {
         when(companyContextService.requireCurrentCompany()).thenReturn(company);
         when(companyEntityLookup.requireSupplier(company, 10L)).thenReturn(supplier);
+        RawMaterialPurchase purchase = new RawMaterialPurchase();
+        ReflectionTestUtils.setField(purchase, "id", 30L);
+        purchase.setSupplier(supplier);
+        RawMaterialPurchaseLine purchaseLine = new RawMaterialPurchaseLine();
+        purchaseLine.setPurchase(purchase);
+        purchaseLine.setRawMaterial(rawMaterial);
+        purchase.getLines().add(purchaseLine);
+        when(purchaseRepository.lockByCompanyAndId(company, 30L)).thenReturn(Optional.of(purchase));
         when(rawMaterialRepository.lockByCompanyAndId(company, 20L)).thenReturn(Optional.of(rawMaterial));
         when(companyClock.today(company)).thenReturn(LocalDate.now());
         when(accountingFacade.postPurchaseReturn(any(), any(), any(), any(), any(), any()))
@@ -162,12 +171,13 @@ class PurchasingServiceTest {
 
         PurchaseReturnRequest request = new PurchaseReturnRequest(
                 10L,
+                30L,
                 20L,
                 BigDecimal.valueOf(150), // More than available stock
                 BigDecimal.valueOf(5),
-                "Defective",
                 null,
-                null
+                null,
+                "Defective"
         );
 
         assertThatThrownBy(() -> purchasingService.recordPurchaseReturn(request))
@@ -182,6 +192,14 @@ class PurchasingServiceTest {
     void recordPurchaseReturn_sufficientStock_succeeds() {
         when(companyContextService.requireCurrentCompany()).thenReturn(company);
         when(companyEntityLookup.requireSupplier(company, 10L)).thenReturn(supplier);
+        RawMaterialPurchase purchase = new RawMaterialPurchase();
+        ReflectionTestUtils.setField(purchase, "id", 40L);
+        purchase.setSupplier(supplier);
+        RawMaterialPurchaseLine purchaseLine = new RawMaterialPurchaseLine();
+        purchaseLine.setPurchase(purchase);
+        purchaseLine.setRawMaterial(rawMaterial);
+        purchase.getLines().add(purchaseLine);
+        when(purchaseRepository.lockByCompanyAndId(company, 40L)).thenReturn(Optional.of(purchase));
         when(rawMaterialRepository.lockByCompanyAndId(company, 20L)).thenReturn(Optional.of(rawMaterial));
         when(companyClock.today(company)).thenReturn(LocalDate.now());
 
@@ -206,12 +224,13 @@ class PurchasingServiceTest {
 
         PurchaseReturnRequest request = new PurchaseReturnRequest(
                 10L,
+                40L,
                 20L,
                 BigDecimal.valueOf(5),
                 BigDecimal.valueOf(5),
-                "Defective",
                 null,
-                null
+                null,
+                "Defective"
         );
 
         JournalEntryDto result = purchasingService.recordPurchaseReturn(request);
@@ -259,7 +278,7 @@ class PurchasingServiceTest {
                 LocalDate.now(),
                 "Test memo",
                 BigDecimal.ZERO,
-                List.of(new RawMaterialPurchaseLineRequest(20L, null, BigDecimal.TEN, "KG", BigDecimal.valueOf(5), null))
+                List.of(new RawMaterialPurchaseLineRequest(20L, null, BigDecimal.TEN, "KG", BigDecimal.valueOf(5), null, null, null))
         );
 
         purchasingService.createPurchase(request);
@@ -298,7 +317,7 @@ class PurchasingServiceTest {
                 LocalDate.now(),
                 "Taxed purchase",
                 taxAmount,
-                List.of(new RawMaterialPurchaseLineRequest(20L, null, BigDecimal.TEN, "KG", BigDecimal.valueOf(5), null))
+                List.of(new RawMaterialPurchaseLineRequest(20L, null, BigDecimal.TEN, "KG", BigDecimal.valueOf(5), null, null, null))
         );
 
         purchasingService.createPurchase(request);
@@ -319,6 +338,162 @@ class PurchasingServiceTest {
         assertThat(taxLines).isNotNull();
         assertThat(taxLines.get(null)).isEqualByComparingTo(taxAmount);
         assertThat(totalAmountCaptor.getValue()).isEqualByComparingTo(new BigDecimal("59.00"));
+    }
+
+    @Test
+    @DisplayName("createPurchase auto-computes tax when taxAmount omitted (exclusive)")
+    void createPurchase_autoComputesTaxExclusive() {
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(companyEntityLookup.requireSupplier(company, 10L)).thenReturn(supplier);
+        when(purchaseRepository.lockByCompanyAndInvoiceNumberIgnoreCase(company, "INV-004"))
+                .thenReturn(Optional.empty());
+        when(rawMaterialRepository.lockByCompanyAndId(company, 20L)).thenReturn(Optional.of(rawMaterial));
+
+        JournalEntryDto journalDto = dummyJournal("RMP-SUP001-INV004", 1001L);
+        when(accountingFacade.postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(journalDto);
+        RawMaterialService.ReceiptResult receiptResult = new RawMaterialService.ReceiptResult(
+                new com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch(),
+                null,
+                null
+        );
+        when(rawMaterialService.recordReceipt(any(), any(), any())).thenReturn(receiptResult);
+        when(purchaseRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        RawMaterialPurchaseRequest request = new RawMaterialPurchaseRequest(
+                10L,
+                "INV-004",
+                LocalDate.now(),
+                "Auto tax exclusive",
+                null,
+                List.of(new RawMaterialPurchaseLineRequest(
+                        20L, null, new BigDecimal("10"), "KG", new BigDecimal("5.00"),
+                        new BigDecimal("18.00"), Boolean.FALSE, null))
+        );
+
+        purchasingService.createPurchase(request);
+
+        ArgumentCaptor<Map<Long, BigDecimal>> taxLinesCaptor = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<Map<Long, BigDecimal>> inventoryCaptor = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<BigDecimal> totalAmountCaptor = ArgumentCaptor.forClass(BigDecimal.class);
+        verify(accountingFacade).postPurchaseJournal(
+                eq(10L),
+                eq("INV-004"),
+                any(),
+                any(),
+                inventoryCaptor.capture(),
+                taxLinesCaptor.capture(),
+                totalAmountCaptor.capture(),
+                any());
+
+        Map<Long, BigDecimal> inventoryLines = inventoryCaptor.getValue();
+        Map<Long, BigDecimal> taxLines = taxLinesCaptor.getValue();
+        assertThat(inventoryLines.get(200L)).isEqualByComparingTo(new BigDecimal("50.00"));
+        assertThat(taxLines.get(null)).isEqualByComparingTo(new BigDecimal("9.00"));
+        assertThat(totalAmountCaptor.getValue()).isEqualByComparingTo(new BigDecimal("59.00"));
+    }
+
+    @Test
+    @DisplayName("createPurchase auto-computes tax when prices are tax-inclusive")
+    void createPurchase_autoComputesTaxInclusive() {
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(companyEntityLookup.requireSupplier(company, 10L)).thenReturn(supplier);
+        when(purchaseRepository.lockByCompanyAndInvoiceNumberIgnoreCase(company, "INV-005"))
+                .thenReturn(Optional.empty());
+        when(rawMaterialRepository.lockByCompanyAndId(company, 20L)).thenReturn(Optional.of(rawMaterial));
+
+        JournalEntryDto journalDto = dummyJournal("RMP-SUP001-INV005", 1002L);
+        when(accountingFacade.postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(journalDto);
+        RawMaterialService.ReceiptResult receiptResult = new RawMaterialService.ReceiptResult(
+                new com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch(),
+                null,
+                null
+        );
+        when(rawMaterialService.recordReceipt(any(), any(), any())).thenReturn(receiptResult);
+        when(purchaseRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        RawMaterialPurchaseRequest request = new RawMaterialPurchaseRequest(
+                10L,
+                "INV-005",
+                LocalDate.now(),
+                "Auto tax inclusive",
+                null,
+                List.of(new RawMaterialPurchaseLineRequest(
+                        20L, null, new BigDecimal("10"), "KG", new BigDecimal("5.90"),
+                        new BigDecimal("18.00"), Boolean.TRUE, null))
+        );
+
+        purchasingService.createPurchase(request);
+
+        ArgumentCaptor<Map<Long, BigDecimal>> taxLinesCaptor = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<Map<Long, BigDecimal>> inventoryCaptor = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<BigDecimal> totalAmountCaptor = ArgumentCaptor.forClass(BigDecimal.class);
+        verify(accountingFacade).postPurchaseJournal(
+                eq(10L),
+                eq("INV-005"),
+                any(),
+                any(),
+                inventoryCaptor.capture(),
+                taxLinesCaptor.capture(),
+                totalAmountCaptor.capture(),
+                any());
+
+        Map<Long, BigDecimal> inventoryLines = inventoryCaptor.getValue();
+        Map<Long, BigDecimal> taxLines = taxLinesCaptor.getValue();
+        assertThat(inventoryLines.get(200L)).isEqualByComparingTo(new BigDecimal("50.00"));
+        assertThat(taxLines.get(null)).isEqualByComparingTo(new BigDecimal("9.00"));
+        assertThat(totalAmountCaptor.getValue()).isEqualByComparingTo(new BigDecimal("59.00"));
+    }
+
+    @Test
+    @DisplayName("createPurchase rounds GST to paise for exclusive rates")
+    void createPurchase_roundsTaxToPaise() {
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(companyEntityLookup.requireSupplier(company, 10L)).thenReturn(supplier);
+        when(purchaseRepository.lockByCompanyAndInvoiceNumberIgnoreCase(company, "INV-006"))
+                .thenReturn(Optional.empty());
+        when(rawMaterialRepository.lockByCompanyAndId(company, 20L)).thenReturn(Optional.of(rawMaterial));
+
+        JournalEntryDto journalDto = dummyJournal("RMP-SUP001-INV006", 1003L);
+        when(accountingFacade.postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(journalDto);
+        RawMaterialService.ReceiptResult receiptResult = new RawMaterialService.ReceiptResult(
+                new com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch(),
+                null,
+                null
+        );
+        when(rawMaterialService.recordReceipt(any(), any(), any())).thenReturn(receiptResult);
+        when(purchaseRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        RawMaterialPurchaseRequest request = new RawMaterialPurchaseRequest(
+                10L,
+                "INV-006",
+                LocalDate.now(),
+                "Auto tax rounding",
+                null,
+                List.of(new RawMaterialPurchaseLineRequest(
+                        20L, null, new BigDecimal("3"), "KG", new BigDecimal("1.99"),
+                        new BigDecimal("18.00"), Boolean.FALSE, null))
+        );
+
+        purchasingService.createPurchase(request);
+
+        ArgumentCaptor<Map<Long, BigDecimal>> taxLinesCaptor = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<BigDecimal> totalAmountCaptor = ArgumentCaptor.forClass(BigDecimal.class);
+        verify(accountingFacade).postPurchaseJournal(
+                eq(10L),
+                eq("INV-006"),
+                any(),
+                any(),
+                any(),
+                taxLinesCaptor.capture(),
+                totalAmountCaptor.capture(),
+                any());
+
+        Map<Long, BigDecimal> taxLines = taxLinesCaptor.getValue();
+        assertThat(taxLines.get(null)).isEqualByComparingTo(new BigDecimal("1.07"));
+        assertThat(totalAmountCaptor.getValue()).isEqualByComparingTo(new BigDecimal("7.04"));
     }
 
     private JournalEntryDto dummyJournal(String reference) {

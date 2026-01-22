@@ -234,6 +234,39 @@ public class SettlementE2ETest extends AbstractIntegrationTest {
     }
 
     @Test
+    @DisplayName("Dealer receipt allocations update invoice outstanding")
+    void dealerReceiptAllocatesOutstanding() {
+        String reference = "REC-" + UUID.randomUUID();
+        Map<String, Object> allocation = Map.of(
+                "invoiceId", invoice.getId(),
+                "appliedAmount", new BigDecimal("800.00")
+        );
+        Map<String, Object> payload = Map.of(
+                "dealerId", dealer.getId(),
+                "cashAccountId", cash.getId(),
+                "amount", new BigDecimal("800.00"),
+                "referenceNumber", reference,
+                "memo", "Dealer receipt allocation",
+                "allocations", List.of(allocation)
+        );
+
+        ResponseEntity<Map> response = rest.exchange(
+                "/api/v1/accounting/receipts/dealer",
+                HttpMethod.POST,
+                new HttpEntity<>(payload, headers),
+                Map.class);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        Invoice refreshed = invoiceRepository.findById(invoice.getId()).orElseThrow();
+        assertThat(refreshed.getOutstandingAmount()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(refreshed.getStatus()).isEqualTo("PAID");
+
+        List<PartnerSettlementAllocation> allocations = allocationRepository
+                .findByCompanyAndIdempotencyKey(company, reference);
+        assertThat(allocations).hasSize(1);
+    }
+
+    @Test
     @DisplayName("Dealer settlement rejects discount without discount account")
     void dealerSettlement_MissingDiscountAccount_ValidationFails() {
         Map<String, Object> allocation = Map.of(
