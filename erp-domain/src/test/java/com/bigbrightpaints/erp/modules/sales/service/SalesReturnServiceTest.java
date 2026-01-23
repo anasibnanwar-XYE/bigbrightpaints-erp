@@ -122,6 +122,7 @@ class SalesReturnServiceTest {
         fg.setProductCode("FG-1");
         fg.setValuationAccountId(500L);
         fg.setCogsAccountId(600L);
+        fg.setRevenueAccountId(710L);
         fg.setDiscountAccountId(700L);
         fg.setTaxAccountId(800L);
         setField(fg, "id", 21L);
@@ -184,7 +185,7 @@ class SalesReturnServiceTest {
                 eq("Damaged goods")
         );
         Map<Long, BigDecimal> capturedReturnLines = returnLinesCaptor.getValue();
-        assertThat(capturedReturnLines.get(700L)).isEqualByComparingTo("100");
+        assertThat(capturedReturnLines.get(710L)).isEqualByComparingTo("100");
         assertThat(capturedReturnLines.get(800L)).isEqualByComparingTo("10");
 
         verify(accountingFacade).postInventoryAdjustment(

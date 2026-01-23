@@ -125,9 +125,9 @@ public class SalesReturnService {
             BigDecimal quantity = requirePositive(lineRequest.quantity(), "lines.quantity");
             FinishedGood finishedGood = lockFinishedGood(company, invoiceLine.getProductCode());
 
-            Long revenueAccountId = finishedGood.getDiscountAccountId() != null
-                    ? finishedGood.getDiscountAccountId()
-                    : finishedGood.getRevenueAccountId();
+            Long revenueAccountId = finishedGood.getRevenueAccountId() != null
+                    ? finishedGood.getRevenueAccountId()
+                    : finishedGood.getDiscountAccountId();
             if (revenueAccountId != null) {
                 BigDecimal baseAmount = currency(MoneyUtils.safeMultiply(perUnitBase(invoiceLine), quantity));
                 if (baseAmount.compareTo(BigDecimal.ZERO) > 0) {

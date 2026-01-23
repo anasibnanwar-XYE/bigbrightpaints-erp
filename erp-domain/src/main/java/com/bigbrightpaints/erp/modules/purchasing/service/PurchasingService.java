@@ -1054,10 +1054,10 @@ public class PurchasingService {
         if (materialLineTotal.compareTo(BigDecimal.ZERO) <= 0 || materialLineQty.compareTo(BigDecimal.ZERO) <= 0) {
             return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
         }
-        boolean hasLineTaxData = purchase.getLines().stream()
+        boolean hasCompleteLineTaxData = purchase.getLines().stream()
                 .map(RawMaterialPurchaseLine::getTaxAmount)
-                .anyMatch(Objects::nonNull);
-        if (hasLineTaxData) {
+                .allMatch(Objects::nonNull);
+        if (hasCompleteLineTaxData) {
             BigDecimal materialLineTax = purchase.getLines().stream()
                     .filter(line -> line.getRawMaterial() != null
                             && line.getRawMaterial().getId().equals(material.getId()))
