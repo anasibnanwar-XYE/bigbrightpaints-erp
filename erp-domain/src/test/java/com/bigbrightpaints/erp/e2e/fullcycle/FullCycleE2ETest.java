@@ -168,16 +168,20 @@ public class FullCycleE2ETest extends AbstractIntegrationTest {
         // 1. Create supplier and raw material
         var supplier = createSupplier("P2P-SUPPLIER");
         var rm = createRawMaterial("P2P-RM001");
+        var workflow = createPurchaseOrderAndReceipt(supplier.getId(), rm.getId(),
+                new BigDecimal("10"), new BigDecimal("50"), LocalDate.now());
 
         // 2. Create raw material purchase
         Map<String, Object> purchaseReq = Map.of(
                 "supplierId", supplier.getId(),
                 "invoiceNumber", "PURCH-INV-001",
-                "purchaseDate", LocalDate.now().toString(),
+                "invoiceDate", LocalDate.now().toString(),
+                "purchaseOrderId", workflow.purchaseOrderId(),
+                "goodsReceiptId", workflow.goodsReceiptId(),
                 "lines", List.of(Map.of(
                         "rawMaterialId", rm.getId(),
                         "quantity", new BigDecimal("10"),
-                        "unitPrice", new BigDecimal("50")
+                        "costPerUnit", new BigDecimal("50")
                 ))
         );
         ResponseEntity<Map> purchaseResp = rest.exchange("/api/v1/purchasing/raw-material-purchases", HttpMethod.POST,
@@ -217,6 +221,63 @@ public class FullCycleE2ETest extends AbstractIntegrationTest {
         rm.setUnitType("KG");
         rm.setCurrentStock(BigDecimal.valueOf(1000));
         return rawMaterialRepository.save(rm);
+    }
+
+    private PurchaseWorkflowIds createPurchaseOrderAndReceipt(Long supplierId,
+                                                              Long rawMaterialId,
+                                                              BigDecimal quantity,
+                                                              BigDecimal costPerUnit,
+                                                              LocalDate entryDate) {
+        Map<String, Object> line = Map.of(
+                "rawMaterialId", rawMaterialId,
+                "quantity", quantity,
+                "costPerUnit", costPerUnit,
+                "unit", "KG"
+        );
+
+        Map<String, Object> poReq = Map.of(
+                "supplierId", supplierId,
+                "orderNumber", "PO-" + shortSuffix(),
+                "orderDate", entryDate.toString(),
+                "lines", List.of(line)
+        );
+        ResponseEntity<Map> poResp = rest.exchange(
+                "/api/v1/purchasing/purchase-orders",
+                HttpMethod.POST,
+                new HttpEntity<>(poReq, headers),
+                Map.class);
+        assertThat(poResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Long purchaseOrderId = ((Number) requireData(poResp, "purchase order").get("id")).longValue();
+
+        Map<String, Object> grLine = Map.of(
+                "rawMaterialId", rawMaterialId,
+                "quantity", quantity,
+                "costPerUnit", costPerUnit,
+                "unit", "KG",
+                "batchCode", "GRN-" + shortSuffix()
+        );
+        Map<String, Object> grReq = Map.of(
+                "purchaseOrderId", purchaseOrderId,
+                "receiptNumber", "GRN-" + shortSuffix(),
+                "receiptDate", entryDate.toString(),
+                "lines", List.of(grLine)
+        );
+        ResponseEntity<Map> grResp = rest.exchange(
+                "/api/v1/purchasing/goods-receipts",
+                HttpMethod.POST,
+                new HttpEntity<>(grReq, headers),
+                Map.class);
+        assertThat(grResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Long goodsReceiptId = ((Number) requireData(grResp, "goods receipt").get("id")).longValue();
+
+        return new PurchaseWorkflowIds(purchaseOrderId, goodsReceiptId);
+    }
+
+    private record PurchaseWorkflowIds(Long purchaseOrderId, Long goodsReceiptId) {}
+
+    private String shortSuffix() {
+        String token = Long.toString(System.nanoTime());
+        return token.length() > 8 ? token.substring(token.length() - 8) : token;
     }
 
     private com.bigbrightpaints.erp.modules.purchasing.domain.Supplier createSupplier(String code) {

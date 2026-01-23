@@ -9,10 +9,10 @@
   - Canonical: `GET/POST /api/v1/payroll/runs` + extended payroll workflow endpoints under `/api/v1/payroll/*`
   - Legacy (deprecated): `GET/POST /api/v1/hr/payroll-runs`
   - Status: legacy endpoints marked deprecated; keep for backward compatibility.
-- Orchestrator dispatch
-  - Canonical: `POST /api/v1/orchestrator/dispatch`
-  - Alias (deprecated): `POST /api/v1/orchestrator/dispatch/{orderId}`
-  - Status: alias marked deprecated; both delegate to same handler.
+- Sales dispatch
+  - Canonical: `POST /api/v1/sales/dispatch/confirm` (factory alias: `POST /api/v1/dispatch/confirm`)
+  - Legacy (deprecated/internal): `POST /api/v1/orchestrator/dispatch`, `POST /api/v1/orchestrator/dispatch/{orderId}`
+  - Status: orchestrator dispatch disabled by default (feature flag `orchestrator.order-dispatch.enabled`); use sales dispatch for AR/COGS + inventory.
 
 ## DTOs
 - Payroll run DTOs exist in two shapes:

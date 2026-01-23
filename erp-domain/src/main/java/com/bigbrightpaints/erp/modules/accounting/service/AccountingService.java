@@ -1624,6 +1624,13 @@ public class AccountingService {
                     cleared = BigDecimal.ZERO;
                 }
                 BigDecimal currentOutstanding = MoneyUtils.zeroIfNull(purchase.getOutstandingAmount());
+                if (cleared.subtract(currentOutstanding).compareTo(ALLOCATION_TOLERANCE) > 0) {
+                    throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                            "Settlement allocation exceeds purchase outstanding amount")
+                            .withDetail("purchaseId", purchase.getId())
+                            .withDetail("outstandingAmount", currentOutstanding)
+                            .withDetail("clearedAmount", cleared);
+                }
                 purchase.setOutstandingAmount(currentOutstanding.subtract(cleared).max(BigDecimal.ZERO));
                 updatePurchaseStatus(purchase);
                 touchedPurchases.add(purchase);

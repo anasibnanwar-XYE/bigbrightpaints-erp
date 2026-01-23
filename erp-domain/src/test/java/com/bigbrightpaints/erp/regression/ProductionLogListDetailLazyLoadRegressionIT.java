@@ -29,10 +29,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.context.TestPropertySource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 @DisplayName("Regression: Production log list/detail load lazy fields safely")
+@TestPropertySource(properties = "erp.raw-material.intake.enabled=true")
 class ProductionLogListDetailLazyLoadRegressionIT extends AbstractIntegrationTest {
 
     private static final String COMPANY_CODE = "LF-015";

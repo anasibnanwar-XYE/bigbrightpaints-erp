@@ -41,8 +41,10 @@ import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.transaction.annotation.Transactional;
 
+@TestPropertySource(properties = "erp.raw-material.intake.enabled=true")
 @Transactional
 class AuditFixesIntegrationTest extends AbstractIntegrationTest {
 

@@ -15,12 +15,14 @@ import java.util.Optional;
 public interface RawMaterialPurchaseRepository extends JpaRepository<RawMaterialPurchase, Long> {
     List<RawMaterialPurchase> findByCompanyOrderByInvoiceDateDesc(Company company);
 
-    @EntityGraph(attributePaths = {"supplier", "journalEntry", "lines", "lines.rawMaterial", "lines.rawMaterialBatch"})
+    @EntityGraph(attributePaths = {"supplier", "journalEntry", "purchaseOrder", "goodsReceipt",
+            "lines", "lines.rawMaterial", "lines.rawMaterialBatch"})
     @Query("select p from RawMaterialPurchase p where p.company = :company order by p.invoiceDate desc")
     List<RawMaterialPurchase> findByCompanyWithLinesOrderByInvoiceDateDesc(@Param("company") Company company);
 
     Optional<RawMaterialPurchase> findByCompanyAndId(Company company, Long id);
     Optional<RawMaterialPurchase> findByCompanyAndInvoiceNumberIgnoreCase(Company company, String invoiceNumber);
+    Optional<RawMaterialPurchase> findByCompanyAndGoodsReceipt(Company company, GoodsReceipt goodsReceipt);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT p FROM RawMaterialPurchase p WHERE p.company = :company AND p.id = :id")

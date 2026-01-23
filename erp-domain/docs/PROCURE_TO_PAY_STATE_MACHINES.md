@@ -1,8 +1,24 @@
 # Procure-to-Pay State Machines and Invariants
 
 This document captures the current P2P (purchasing + AP) flows and invariants
-for traceability and ERP-grade correctness. It reflects existing behavior only;
-no new flows are introduced.
+for traceability and ERP-grade correctness. It reflects existing behavior only.
+
+## Purchase Order Statuses
+Source: `PurchaseOrder`, `PurchasingService`.
+
+States:
+- `OPEN`: default state on creation.
+- `PARTIAL`: one or more goods receipts are less than ordered quantities.
+- `RECEIVED`: goods receipt quantities match the purchase order.
+- `CLOSED`: a matching invoice has been posted for a fully received order.
+
+## Goods Receipt Statuses
+Source: `GoodsReceipt`, `PurchasingService`.
+
+States:
+- `RECEIVED`: default state on creation.
+- `PARTIAL`: receipt quantity is less than the purchase order for at least one line.
+- `INVOICED`: linked to a posted purchase invoice.
 
 ## Raw Material Purchase Statuses
 Source: `RawMaterialPurchase`, `PurchasingService`.
@@ -18,6 +34,12 @@ Transitions (current behavior):
   - outstanding == 0 -> `PAID`
   - 0 < outstanding < total -> `PARTIAL`
   - outstanding == total -> `POSTED`
+
+## Go-Live Limitations (current behavior)
+- Thin PO/GRN scaffolding is implemented for workflow visibility only; PO/GRN do not post journals or inventory.
+- Supplier invoices are still captured via `raw-material-purchases`, but now require a matching PO + GRN.
+- `raw-materials/intake` and manual batch creation are adjustment-only paths. They are disabled by default
+  (`erp.raw-material.intake.enabled=false`) and should not be used to bypass supplier invoices.
 
 ## Raw Material Movement Types
 Source: `RawMaterialService`, `PurchasingService`.
@@ -39,6 +61,10 @@ Flow:
 
 ## Cross-Module Invariants
 These invariants must hold for a canonical P2P flow:
+- Purchase Order → Goods Receipt:
+  - GRN raw material quantities must not exceed PO quantities.
+- Goods Receipt → Purchase Invoice:
+  - Invoice line quantities and unit costs must match the GRN.
 - Purchase → raw material batch created and linked to each line.
 - Purchase → raw material movement created per intake line (reference type `RAW_MATERIAL_PURCHASE`).
 - Purchase journal:

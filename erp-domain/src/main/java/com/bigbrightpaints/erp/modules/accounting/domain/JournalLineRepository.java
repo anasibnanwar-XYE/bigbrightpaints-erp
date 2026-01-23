@@ -15,6 +15,7 @@ public interface JournalLineRepository extends JpaRepository<JournalLine, Long> 
             join fetch line.journalEntry entry
             where entry.company = :company
               and line.account.id = :accountId
+              and entry.status = 'POSTED'
               and entry.entryDate between :start and :end
             order by entry.entryDate asc, entry.referenceNumber asc, line.id asc
             """)

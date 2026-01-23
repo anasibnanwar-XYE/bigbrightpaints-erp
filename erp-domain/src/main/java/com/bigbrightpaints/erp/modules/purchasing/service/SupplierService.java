@@ -79,7 +79,7 @@ public class SupplierService {
         Account payableAccount = createPayableAccount(company, supplier);
         supplier.setPayableAccount(payableAccount);
         supplier = supplierRepository.save(supplier);
-        return toResponse(supplier);
+        return toResponse(supplier, supplierLedgerService.currentBalance(supplier.getId()));
     }
 
     @Transactional
@@ -94,7 +94,7 @@ public class SupplierService {
         supplier.setPhone(normalize(request.contactPhone()));
         supplier.setAddress(normalize(request.address()));
         supplier.setCreditLimit(request.creditLimit() != null ? request.creditLimit() : BigDecimal.ZERO);
-        return toResponse(supplier);
+        return toResponse(supplier, supplierLedgerService.currentBalance(supplier.getId()));
     }
 
     private Supplier requireSupplier(Company company, Long id) {
@@ -117,7 +117,10 @@ public class SupplierService {
     }
 
     private SupplierResponse toResponse(Supplier supplier) {
-        return toResponse(supplier, supplier.getOutstandingBalance());
+        BigDecimal balance = supplier.getId() != null
+                ? supplierLedgerService.currentBalance(supplier.getId())
+                : BigDecimal.ZERO;
+        return toResponse(supplier, balance);
     }
 
     private SupplierResponse toResponse(Supplier supplier, BigDecimal outstandingBalance) {

@@ -5,6 +5,7 @@ import com.bigbrightpaints.erp.core.util.MoneyUtils;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.SalesReturnRequest;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
+import com.bigbrightpaints.erp.modules.accounting.service.CompanyAccountingSettingsService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
@@ -40,6 +41,7 @@ public class SalesReturnService {
     private final BatchNumberService batchNumberService;
     private final AccountingFacade accountingFacade;
     private final CompanyEntityLookup companyEntityLookup;
+    private final CompanyAccountingSettingsService companyAccountingSettingsService;
 
     public SalesReturnService(CompanyContextService companyContextService,
                               FinishedGoodRepository finishedGoodRepository,
@@ -47,7 +49,8 @@ public class SalesReturnService {
                               InventoryMovementRepository inventoryMovementRepository,
                               BatchNumberService batchNumberService,
                               AccountingFacade accountingFacade,
-                              CompanyEntityLookup companyEntityLookup) {
+                              CompanyEntityLookup companyEntityLookup,
+                              CompanyAccountingSettingsService companyAccountingSettingsService) {
         this.companyContextService = companyContextService;
         this.finishedGoodRepository = finishedGoodRepository;
         this.finishedGoodBatchRepository = finishedGoodBatchRepository;
@@ -55,6 +58,7 @@ public class SalesReturnService {
         this.batchNumberService = batchNumberService;
         this.accountingFacade = accountingFacade;
         this.companyEntityLookup = companyEntityLookup;
+        this.companyAccountingSettingsService = companyAccountingSettingsService;
     }
 
     @Transactional
@@ -77,6 +81,7 @@ public class SalesReturnService {
         Map<Long, java.util.List<InventoryMovement>> dispatchMovementsByFg = salesOrderId != null
                 ? loadDispatchMovements(salesOrderId)
                 : Map.of();
+        Long gstOutputAccountId = null;
 
         // Process returns and restock inventory
         for (SalesReturnRequest.ReturnLine lineRequest : request.lines()) {
@@ -90,9 +95,9 @@ public class SalesReturnService {
             }
             FinishedGood finishedGood = lockFinishedGood(company, invoiceLine.getProductCode());
 
-            BigDecimal baseAmount = MoneyUtils.safeMultiply(invoiceLine.getUnitPrice(), quantity);
+            BigDecimal baseAmount = currency(MoneyUtils.safeMultiply(invoiceLine.getUnitPrice(), quantity));
             BigDecimal taxPerUnit = perUnitTax(invoiceLine);
-            BigDecimal taxAmount = MoneyUtils.safeMultiply(taxPerUnit, quantity);
+            BigDecimal taxAmount = currency(MoneyUtils.safeMultiply(taxPerUnit, quantity));
             BigDecimal totalLineAmount = baseAmount.add(taxAmount);
             receivableCredit = receivableCredit.add(totalLineAmount);
             totalReturnQtyByFg.merge(finishedGood.getId(), quantity, BigDecimal::add);
@@ -124,19 +129,23 @@ public class SalesReturnService {
                     ? finishedGood.getDiscountAccountId()
                     : finishedGood.getRevenueAccountId();
             if (revenueAccountId != null) {
-                BigDecimal baseAmount = invoiceLine.getUnitPrice().multiply(quantity);
+                BigDecimal baseAmount = currency(invoiceLine.getUnitPrice().multiply(quantity));
                 if (baseAmount.compareTo(BigDecimal.ZERO) > 0) {
                     returnLines.merge(revenueAccountId, baseAmount, BigDecimal::add);
                 }
             }
 
-            Long taxAccountId = finishedGood.getTaxAccountId();
-            if (taxAccountId != null) {
-                BigDecimal taxPerUnit = perUnitTax(invoiceLine);
-                BigDecimal taxAmount = MoneyUtils.safeMultiply(taxPerUnit, quantity);
-                if (taxAmount.compareTo(BigDecimal.ZERO) > 0) {
-                    returnLines.merge(taxAccountId, taxAmount, BigDecimal::add);
+            BigDecimal taxPerUnit = perUnitTax(invoiceLine);
+            BigDecimal taxAmount = currency(MoneyUtils.safeMultiply(taxPerUnit, quantity));
+            if (taxAmount.compareTo(BigDecimal.ZERO) > 0) {
+                if (gstOutputAccountId == null) {
+                    gstOutputAccountId = companyAccountingSettingsService.requireTaxAccounts().outputTaxAccountId();
                 }
+                if (finishedGood.getTaxAccountId() != null && !finishedGood.getTaxAccountId().equals(gstOutputAccountId)) {
+                    throw new IllegalStateException("Finished good " + finishedGood.getProductCode()
+                            + " tax account must match GST output account");
+                }
+                returnLines.merge(gstOutputAccountId, taxAmount, BigDecimal::add);
             }
         }
 
@@ -190,6 +199,13 @@ public class SalesReturnService {
             return BigDecimal.ZERO;
         }
         return MoneyUtils.safeDivide(taxTotal, line.getQuantity(), 4, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal currency(BigDecimal value) {
+        if (value == null) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+        return value.setScale(2, RoundingMode.HALF_UP);
     }
 
     private void postCogsReversal(Invoice invoice,

@@ -1,5 +1,7 @@
 package com.bigbrightpaints.erp.modules.inventory.service;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.util.MoneyUtils;
@@ -22,6 +24,7 @@ import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProductRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
 import jakarta.transaction.Transactional;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -46,6 +49,7 @@ public class RawMaterialService {
     private final ReferenceNumberService referenceNumberService;
     private final CompanyClock companyClock;
     private final CompanyEntityLookup companyEntityLookup;
+    private final boolean rawMaterialIntakeEnabled;
 
     public RawMaterialService(RawMaterialRepository rawMaterialRepository,
                               RawMaterialBatchRepository batchRepository,
@@ -57,7 +61,8 @@ public class RawMaterialService {
                               BatchNumberService batchNumberService,
                               ReferenceNumberService referenceNumberService,
                               CompanyClock companyClock,
-                              CompanyEntityLookup companyEntityLookup) {
+                              CompanyEntityLookup companyEntityLookup,
+                              @Value("${erp.raw-material.intake.enabled:false}") boolean rawMaterialIntakeEnabled) {
         this.rawMaterialRepository = rawMaterialRepository;
         this.batchRepository = batchRepository;
         this.movementRepository = movementRepository;
@@ -69,6 +74,7 @@ public class RawMaterialService {
         this.referenceNumberService = referenceNumberService;
         this.companyClock = companyClock;
         this.companyEntityLookup = companyEntityLookup;
+        this.rawMaterialIntakeEnabled = rawMaterialIntakeEnabled;
     }
 
     public List<RawMaterialDto> listRawMaterials() {
@@ -179,6 +185,12 @@ public class RawMaterialService {
 
     @Transactional
     public RawMaterialBatchDto createBatch(Long rawMaterialId, RawMaterialBatchRequest request) {
+        if (!rawMaterialIntakeEnabled) {
+            throw new ApplicationException(ErrorCode.BUSINESS_CONSTRAINT_VIOLATION,
+                    "Manual raw material batch creation is disabled; use raw material purchases for supplier receipts.")
+                    .withDetail("endpoint", "/api/v1/purchasing/raw-material-purchases")
+                    .withDetail("setting", "erp.raw-material.intake.enabled");
+        }
         ReceiptResult receipt = recordReceipt(rawMaterialId, request, null);
         return toBatchDto(receipt.batch());
     }
@@ -220,6 +232,12 @@ public class RawMaterialService {
 
     @Transactional
     public RawMaterialBatchDto intake(RawMaterialIntakeRequest request) {
+        if (!rawMaterialIntakeEnabled) {
+            throw new ApplicationException(ErrorCode.BUSINESS_CONSTRAINT_VIOLATION,
+                    "Raw material intake is disabled; use raw material purchases for supplier invoices.")
+                    .withDetail("endpoint", "/api/v1/purchasing/raw-material-purchases")
+                    .withDetail("setting", "erp.raw-material.intake.enabled");
+        }
         return createBatch(request.rawMaterialId(), new RawMaterialBatchRequest(
                 request.batchCode(),
                 request.quantity(),

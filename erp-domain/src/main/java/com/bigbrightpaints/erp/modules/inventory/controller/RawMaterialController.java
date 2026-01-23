@@ -70,6 +70,7 @@ public class RawMaterialController {
     }
 
     @PostMapping("/raw-materials/intake")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
     public ResponseEntity<ApiResponse<RawMaterialBatchDto>> intake(@Valid @RequestBody RawMaterialIntakeRequest request) {
         return ResponseEntity.ok(ApiResponse.success("Intake recorded", rawMaterialService.intake(request)));
     }

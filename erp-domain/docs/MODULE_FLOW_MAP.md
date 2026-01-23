@@ -8,7 +8,9 @@
 
 ## ACCOUNTING (Reports, Purchasing, Inventory, HR)
 - Chart of accounts -> journal entries -> periods/close/lock -> statements/aging.
-- Purchasing: raw material purchases -> inventory movement -> supplier settlements -> accounting postings.
+- Purchasing: purchase orders -> goods receipts -> raw material purchases -> inventory movement -> supplier settlements -> accounting postings.
+- Purchasing (limitation): PO/GRN are workflow scaffolding only; inventory/AP still post at the purchase invoice step.
+- Purchasing (guardrail): manual `/raw-materials/intake` and batch creation are disabled by default and reserved for internal adjustments.
 - Inventory: raw materials + finished goods stock -> dispatch confirmations -> COGS/Inventory postings.
 - HR/Payroll: payroll runs -> calculations -> approvals -> post to accounting -> payments.
 - Reports: balance sheet, P&L, trial balance, inventory valuation, reconciliation dashboards.

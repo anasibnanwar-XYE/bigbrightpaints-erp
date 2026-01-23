@@ -41,8 +41,8 @@ public class TaxService {
 
         var taxConfig = companyAccountingSettingsService.requireTaxAccounts();
 
-        BigDecimal outputTax = sumTax(company, taxConfig.outputTaxAccountId(), start, end, true);
-        BigDecimal inputTax = sumTax(company, taxConfig.inputTaxAccountId(), start, end, false);
+        BigDecimal outputTax = roundCurrency(sumTax(company, taxConfig.outputTaxAccountId(), start, end, true));
+        BigDecimal inputTax = roundCurrency(sumTax(company, taxConfig.inputTaxAccountId(), start, end, false));
 
         GstReturnDto dto = new GstReturnDto();
         dto.setPeriod(target);
@@ -50,7 +50,7 @@ public class TaxService {
         dto.setPeriodEnd(end);
         dto.setOutputTax(outputTax);
         dto.setInputTax(inputTax);
-        dto.setNetPayable(outputTax.subtract(inputTax));
+        dto.setNetPayable(roundCurrency(outputTax.subtract(inputTax)));
         return dto;
     }
 
@@ -71,5 +71,12 @@ public class TaxService {
 
     private BigDecimal safe(BigDecimal value) {
         return value == null ? BigDecimal.ZERO : value;
+    }
+
+    private BigDecimal roundCurrency(BigDecimal value) {
+        if (value == null) {
+            return BigDecimal.ZERO.setScale(2, java.math.RoundingMode.HALF_UP);
+        }
+        return value.setScale(2, java.math.RoundingMode.HALF_UP);
     }
 }

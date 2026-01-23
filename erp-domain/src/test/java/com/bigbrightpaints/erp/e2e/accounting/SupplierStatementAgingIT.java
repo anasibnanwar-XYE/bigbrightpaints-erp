@@ -69,6 +69,7 @@ class SupplierStatementAgingIT extends AbstractIntegrationTest {
         BigDecimal quantity = new BigDecimal("10");
         BigDecimal costPerUnit = new BigDecimal("15.00");
         BigDecimal purchaseTotal = quantity.multiply(costPerUnit);
+        PurchaseWorkflowIds workflow = createPurchaseOrderAndReceipt(supplierId, rawMaterialId, quantity, costPerUnit, entryDate);
 
         Map<String, Object> line = new HashMap<>();
         line.put("rawMaterialId", rawMaterialId);
@@ -80,6 +81,8 @@ class SupplierStatementAgingIT extends AbstractIntegrationTest {
         purchaseReq.put("supplierId", supplierId);
         purchaseReq.put("invoiceNumber", invoiceNumber);
         purchaseReq.put("invoiceDate", entryDate);
+        purchaseReq.put("purchaseOrderId", workflow.purchaseOrderId());
+        purchaseReq.put("goodsReceiptId", workflow.goodsReceiptId());
         purchaseReq.put("lines", List.of(line));
 
         ResponseEntity<Map> purchaseResp = rest.exchange(
@@ -193,6 +196,55 @@ class SupplierStatementAgingIT extends AbstractIntegrationTest {
         Map<String, Object> data = (Map<String, Object>) resp.getBody().get("data");
         return ((Number) data.get("id")).longValue();
     }
+
+    private PurchaseWorkflowIds createPurchaseOrderAndReceipt(Long supplierId,
+                                                              Long rawMaterialId,
+                                                              BigDecimal quantity,
+                                                              BigDecimal costPerUnit,
+                                                              LocalDate entryDate) {
+        Map<String, Object> line = new HashMap<>();
+        line.put("rawMaterialId", rawMaterialId);
+        line.put("quantity", quantity);
+        line.put("costPerUnit", costPerUnit);
+        line.put("unit", "KG");
+
+        Map<String, Object> poReq = new HashMap<>();
+        poReq.put("supplierId", supplierId);
+        poReq.put("orderNumber", "PO-" + shortSuffix());
+        poReq.put("orderDate", entryDate);
+        poReq.put("lines", List.of(line));
+
+        ResponseEntity<Map> poResp = rest.exchange(
+                "/api/v1/purchasing/purchase-orders",
+                HttpMethod.POST,
+                new HttpEntity<>(poReq, headers),
+                Map.class);
+        assertThat(poResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> poData = (Map<String, Object>) poResp.getBody().get("data");
+        Long purchaseOrderId = ((Number) poData.get("id")).longValue();
+
+        Map<String, Object> grLine = new HashMap<>(line);
+        grLine.put("batchCode", "GRN-" + shortSuffix());
+
+        Map<String, Object> grReq = new HashMap<>();
+        grReq.put("purchaseOrderId", purchaseOrderId);
+        grReq.put("receiptNumber", "GRN-" + shortSuffix());
+        grReq.put("receiptDate", entryDate);
+        grReq.put("lines", List.of(grLine));
+
+        ResponseEntity<Map> grResp = rest.exchange(
+                "/api/v1/purchasing/goods-receipts",
+                HttpMethod.POST,
+                new HttpEntity<>(grReq, headers),
+                Map.class);
+        assertThat(grResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> grData = (Map<String, Object>) grResp.getBody().get("data");
+        Long goodsReceiptId = ((Number) grData.get("id")).longValue();
+
+        return new PurchaseWorkflowIds(purchaseOrderId, goodsReceiptId);
+    }
+
+    private record PurchaseWorkflowIds(Long purchaseOrderId, Long goodsReceiptId) {}
 
     private Account ensureAccount(String code, String name, AccountType type) {
         return accountRepository.findByCompanyAndCodeIgnoreCase(company, code)

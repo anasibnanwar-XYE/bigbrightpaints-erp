@@ -38,6 +38,7 @@ import com.bigbrightpaints.erp.modules.sales.event.SalesOrderCreatedEvent;
 import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlip;
 import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipLine;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
+import com.bigbrightpaints.erp.modules.accounting.service.CompanyAccountingSettingsService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -106,6 +107,8 @@ class SalesServiceTest {
     @Mock
     private CompanyDefaultAccountsService companyDefaultAccountsService;
     @Mock
+    private CompanyAccountingSettingsService companyAccountingSettingsService;
+    @Mock
     private CreditLimitOverrideService creditLimitOverrideService;
     @Mock
     private AuditService auditService;
@@ -137,6 +140,7 @@ class SalesServiceTest {
                 invoiceRepository,
                 factoryTaskRepository,
                 companyDefaultAccountsService,
+                companyAccountingSettingsService,
                 creditLimitOverrideService,
                 auditService);
 

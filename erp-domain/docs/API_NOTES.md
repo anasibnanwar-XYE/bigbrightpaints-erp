@@ -1,5 +1,15 @@
 # API Notes
 
+## Notes
+- `GET /api/v1/accounting/gst/return` aggregates POSTED journal entries only.
+- `POST /api/v1/raw-materials/intake` is disabled by default (`ERP_RAW_MATERIAL_INTAKE_ENABLED=false`) and is intended
+  for internal adjustments, not supplier invoice capture.
+- `POST /api/v1/raw-material-batches/{rawMaterialId}` follows the same intake guard and should be enabled only for
+  internal adjustments.
+- `POST /api/v1/purchasing/raw-material-purchases` requires a matching purchase order + goods receipt
+  (`purchaseOrderId`, `goodsReceiptId`) for the thin PO/GRN workflow.
+- Payroll runs apply advance-only deductions; PF/tax/other statutory deductions are not supported in HR payroll runs/summaries.
+
 ## Canonical Endpoints (Grouped by Module)
 
 ### ADMIN
@@ -34,7 +44,6 @@
 - `POST /api/v1/auth/password/reset`
 - `POST /api/v1/auth/refresh-token`
 - `POST /api/v1/multi-company/companies/switch`
-- `POST /api/v1/orchestrator/dispatch`
 - `POST /api/v1/orchestrator/factory/dispatch/{batchId}`
 - `POST /api/v1/orchestrator/orders/{orderId}/approve`
 - `POST /api/v1/orchestrator/orders/{orderId}/fulfillment`
@@ -90,6 +99,10 @@
 - `GET /api/v1/payroll/summary/monthly`
 - `GET /api/v1/payroll/summary/weekly`
 - `GET /api/v1/purchasing/raw-material-purchases/{id}`
+- `GET /api/v1/purchasing/purchase-orders`
+- `GET /api/v1/purchasing/purchase-orders/{id}`
+- `GET /api/v1/purchasing/goods-receipts`
+- `GET /api/v1/purchasing/goods-receipts/{id}`
 - `GET /api/v1/raw-material-batches/{rawMaterialId}`
 - `GET /api/v1/raw-materials/stock`
 - `GET /api/v1/raw-materials/stock/inventory`
@@ -152,6 +165,8 @@
 - `POST /api/v1/payroll/runs/{id}/mark-paid`
 - `POST /api/v1/payroll/runs/{id}/post`
 - `POST /api/v1/purchasing/raw-material-purchases/returns`
+- `POST /api/v1/purchasing/purchase-orders`
+- `POST /api/v1/purchasing/goods-receipts`
 - `POST /api/v1/raw-material-batches/{rawMaterialId}`
 - `POST /api/v1/raw-materials/intake`
 - `PUT /api/v1/accounting/catalog/products/{id}`
@@ -232,7 +247,8 @@
 - `GET /api/v1/sales/dealers` -> `GET /api/v1/dealers`
 - `GET /api/v1/sales/dealers/search` -> `GET /api/v1/dealers/search`
 - `POST /api/v1/hr/payroll-runs` -> `POST /api/v1/payroll/runs`
-- `POST /api/v1/orchestrator/dispatch/{orderId}` -> `POST /api/v1/orchestrator/dispatch`
+- `POST /api/v1/orchestrator/dispatch` -> `POST /api/v1/sales/dispatch/confirm` (disabled by default; feature flag `orchestrator.order-dispatch.enabled`)
+- `POST /api/v1/orchestrator/dispatch/{orderId}` -> `POST /api/v1/sales/dispatch/confirm`
 
 ## Response and Error Conventions
 - `ApiResponse<T>` wraps responses with `success`, `message`, `data`, `timestamp`.

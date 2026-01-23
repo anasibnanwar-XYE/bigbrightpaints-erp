@@ -36,6 +36,14 @@ public class RawMaterialPurchase extends VersionedEntity {
     @JoinColumn(name = "journal_entry_id")
     private JournalEntry journalEntry;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "purchase_order_id")
+    private PurchaseOrder purchaseOrder;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "goods_receipt_id")
+    private GoodsReceipt goodsReceipt;
+
     @Column(name = "invoice_number", nullable = false)
     private String invoiceNumber;
 
@@ -93,6 +101,10 @@ public class RawMaterialPurchase extends VersionedEntity {
     public void setSupplier(Supplier supplier) { this.supplier = supplier; }
     public JournalEntry getJournalEntry() { return journalEntry; }
     public void setJournalEntry(JournalEntry journalEntry) { this.journalEntry = journalEntry; }
+    public PurchaseOrder getPurchaseOrder() { return purchaseOrder; }
+    public void setPurchaseOrder(PurchaseOrder purchaseOrder) { this.purchaseOrder = purchaseOrder; }
+    public GoodsReceipt getGoodsReceipt() { return goodsReceipt; }
+    public void setGoodsReceipt(GoodsReceipt goodsReceipt) { this.goodsReceipt = goodsReceipt; }
     public String getInvoiceNumber() { return invoiceNumber; }
     public void setInvoiceNumber(String invoiceNumber) { this.invoiceNumber = invoiceNumber; }
     public LocalDate getInvoiceDate() { return invoiceDate; }

@@ -15,6 +15,8 @@ public record RawMaterialPurchaseRequest(
         @NotBlank String invoiceNumber,
         @NotNull LocalDate invoiceDate,
         String memo,
+        Long purchaseOrderId,
+        @NotNull Long goodsReceiptId,
         @PositiveOrZero BigDecimal taxAmount,
         @NotEmpty List<@Valid RawMaterialPurchaseLineRequest> lines
 ) {}

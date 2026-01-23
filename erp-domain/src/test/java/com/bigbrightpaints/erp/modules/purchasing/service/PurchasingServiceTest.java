@@ -15,6 +15,12 @@ import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchReposito
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
 import com.bigbrightpaints.erp.modules.inventory.service.RawMaterialService;
+import com.bigbrightpaints.erp.modules.purchasing.domain.GoodsReceipt;
+import com.bigbrightpaints.erp.modules.purchasing.domain.GoodsReceiptLine;
+import com.bigbrightpaints.erp.modules.purchasing.domain.GoodsReceiptRepository;
+import com.bigbrightpaints.erp.modules.purchasing.domain.PurchaseOrder;
+import com.bigbrightpaints.erp.modules.purchasing.domain.PurchaseOrderLine;
+import com.bigbrightpaints.erp.modules.purchasing.domain.PurchaseOrderRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchase;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseLine;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
@@ -54,6 +60,8 @@ class PurchasingServiceTest {
     @Mock
     private RawMaterialPurchaseRepository purchaseRepository;
     @Mock
+    private PurchaseOrderRepository purchaseOrderRepository;
+    @Mock
     private RawMaterialRepository rawMaterialRepository;
     @Mock
     private RawMaterialBatchRepository rawMaterialBatchRepository;
@@ -61,6 +69,8 @@ class PurchasingServiceTest {
     private RawMaterialService rawMaterialService;
     @Mock
     private RawMaterialMovementRepository movementRepository;
+    @Mock
+    private GoodsReceiptRepository goodsReceiptRepository;
     @Mock
     private AccountingFacade accountingFacade;
     @Mock
@@ -83,10 +93,12 @@ class PurchasingServiceTest {
         purchasingService = new PurchasingService(
                 companyContextService,
                 purchaseRepository,
+                purchaseOrderRepository,
                 rawMaterialRepository,
                 rawMaterialBatchRepository,
                 rawMaterialService,
                 movementRepository,
+                goodsReceiptRepository,
                 accountingFacade,
                 journalEntryRepository,
                 companyEntityLookup,
@@ -136,6 +148,8 @@ class PurchasingServiceTest {
                 "INV-001",
                 LocalDate.now(),
                 "Test memo",
+                200L,
+                300L,
                 BigDecimal.ZERO,
                 List.of(new RawMaterialPurchaseLineRequest(20L, null, BigDecimal.TEN, "KG", BigDecimal.valueOf(5), null, null, null))
         );
@@ -163,7 +177,7 @@ class PurchasingServiceTest {
         when(purchaseRepository.lockByCompanyAndId(company, 30L)).thenReturn(Optional.of(purchase));
         when(rawMaterialRepository.lockByCompanyAndId(company, 20L)).thenReturn(Optional.of(rawMaterial));
         when(companyClock.today(company)).thenReturn(LocalDate.now());
-        when(accountingFacade.postPurchaseReturn(any(), any(), any(), any(), any(), any()))
+        when(accountingFacade.postPurchaseReturn(any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(dummyJournal("REF-001"));
 
         // Atomic deduction returns 0 (no rows updated = insufficient stock)
@@ -204,7 +218,7 @@ class PurchasingServiceTest {
         when(companyClock.today(company)).thenReturn(LocalDate.now());
 
         JournalEntryDto journalDto = dummyJournal("PRN-SUP001-ABC123");
-        when(accountingFacade.postPurchaseReturn(any(), any(), any(), any(), any(), any()))
+        when(accountingFacade.postPurchaseReturn(any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(journalDto);
 
         RawMaterialBatch batch = new RawMaterialBatch();
@@ -250,6 +264,7 @@ class PurchasingServiceTest {
         when(purchaseRepository.lockByCompanyAndInvoiceNumberIgnoreCase(company, "INV-002"))
                 .thenReturn(Optional.empty());
         when(rawMaterialRepository.lockByCompanyAndId(company, 20L)).thenReturn(Optional.of(rawMaterial));
+        GoodsReceipt goodsReceipt = stubGoodsReceipt(300L, 200L, BigDecimal.TEN, BigDecimal.valueOf(5));
 
         JournalEntry journalEntry = new JournalEntry();
         ReflectionTestUtils.setField(journalEntry, "id", 999L);
@@ -277,6 +292,8 @@ class PurchasingServiceTest {
                 "INV-002",
                 LocalDate.now(),
                 "Test memo",
+                200L,
+                300L,
                 BigDecimal.ZERO,
                 List.of(new RawMaterialPurchaseLineRequest(20L, null, BigDecimal.TEN, "KG", BigDecimal.valueOf(5), null, null, null))
         );
@@ -297,6 +314,7 @@ class PurchasingServiceTest {
         when(purchaseRepository.lockByCompanyAndInvoiceNumberIgnoreCase(company, "INV-003"))
                 .thenReturn(Optional.empty());
         when(rawMaterialRepository.lockByCompanyAndId(company, 20L)).thenReturn(Optional.of(rawMaterial));
+        GoodsReceipt goodsReceipt = stubGoodsReceipt(301L, 201L, BigDecimal.TEN, BigDecimal.valueOf(5));
 
         JournalEntryDto journalDto = dummyJournal("RMP-SUP001-INV003", 999L);
         when(accountingFacade.postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any()))
@@ -316,6 +334,8 @@ class PurchasingServiceTest {
                 "INV-003",
                 LocalDate.now(),
                 "Taxed purchase",
+                201L,
+                301L,
                 taxAmount,
                 List.of(new RawMaterialPurchaseLineRequest(20L, null, BigDecimal.TEN, "KG", BigDecimal.valueOf(5), null, null, null))
         );
@@ -348,6 +368,7 @@ class PurchasingServiceTest {
         when(purchaseRepository.lockByCompanyAndInvoiceNumberIgnoreCase(company, "INV-004"))
                 .thenReturn(Optional.empty());
         when(rawMaterialRepository.lockByCompanyAndId(company, 20L)).thenReturn(Optional.of(rawMaterial));
+        GoodsReceipt goodsReceipt = stubGoodsReceipt(302L, 202L, new BigDecimal("10"), new BigDecimal("5.00"));
 
         JournalEntryDto journalDto = dummyJournal("RMP-SUP001-INV004", 1001L);
         when(accountingFacade.postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any()))
@@ -365,6 +386,8 @@ class PurchasingServiceTest {
                 "INV-004",
                 LocalDate.now(),
                 "Auto tax exclusive",
+                202L,
+                302L,
                 null,
                 List.of(new RawMaterialPurchaseLineRequest(
                         20L, null, new BigDecimal("10"), "KG", new BigDecimal("5.00"),
@@ -401,6 +424,7 @@ class PurchasingServiceTest {
         when(purchaseRepository.lockByCompanyAndInvoiceNumberIgnoreCase(company, "INV-005"))
                 .thenReturn(Optional.empty());
         when(rawMaterialRepository.lockByCompanyAndId(company, 20L)).thenReturn(Optional.of(rawMaterial));
+        GoodsReceipt goodsReceipt = stubGoodsReceipt(303L, 203L, new BigDecimal("10"), new BigDecimal("5.90"));
 
         JournalEntryDto journalDto = dummyJournal("RMP-SUP001-INV005", 1002L);
         when(accountingFacade.postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any()))
@@ -418,6 +442,8 @@ class PurchasingServiceTest {
                 "INV-005",
                 LocalDate.now(),
                 "Auto tax inclusive",
+                203L,
+                303L,
                 null,
                 List.of(new RawMaterialPurchaseLineRequest(
                         20L, null, new BigDecimal("10"), "KG", new BigDecimal("5.90"),
@@ -454,6 +480,7 @@ class PurchasingServiceTest {
         when(purchaseRepository.lockByCompanyAndInvoiceNumberIgnoreCase(company, "INV-006"))
                 .thenReturn(Optional.empty());
         when(rawMaterialRepository.lockByCompanyAndId(company, 20L)).thenReturn(Optional.of(rawMaterial));
+        GoodsReceipt goodsReceipt = stubGoodsReceipt(304L, 204L, new BigDecimal("3"), new BigDecimal("1.99"));
 
         JournalEntryDto journalDto = dummyJournal("RMP-SUP001-INV006", 1003L);
         when(accountingFacade.postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any()))
@@ -471,6 +498,8 @@ class PurchasingServiceTest {
                 "INV-006",
                 LocalDate.now(),
                 "Auto tax rounding",
+                204L,
+                304L,
                 null,
                 List.of(new RawMaterialPurchaseLineRequest(
                         20L, null, new BigDecimal("3"), "KG", new BigDecimal("1.99"),
@@ -498,6 +527,66 @@ class PurchasingServiceTest {
 
     private JournalEntryDto dummyJournal(String reference) {
         return dummyJournal(reference, 1L);
+    }
+
+    private GoodsReceipt stubGoodsReceipt(Long receiptId,
+                                          Long orderId,
+                                          BigDecimal quantity,
+                                          BigDecimal costPerUnit) {
+        PurchaseOrder order = buildPurchaseOrder(orderId, supplier, rawMaterial, quantity, costPerUnit);
+        GoodsReceipt receipt = buildGoodsReceipt(receiptId, order, rawMaterial, quantity, costPerUnit);
+        when(goodsReceiptRepository.lockByCompanyAndId(company, receiptId)).thenReturn(Optional.of(receipt));
+        when(purchaseRepository.findByCompanyAndGoodsReceipt(company, receipt)).thenReturn(Optional.empty());
+        return receipt;
+    }
+
+    private PurchaseOrder buildPurchaseOrder(Long orderId,
+                                             Supplier supplier,
+                                             RawMaterial material,
+                                             BigDecimal quantity,
+                                             BigDecimal costPerUnit) {
+        PurchaseOrder order = new PurchaseOrder();
+        ReflectionTestUtils.setField(order, "id", orderId);
+        order.setCompany(company);
+        order.setSupplier(supplier);
+        order.setOrderNumber("PO-" + orderId);
+        order.setOrderDate(LocalDate.now());
+
+        PurchaseOrderLine line = new PurchaseOrderLine();
+        line.setPurchaseOrder(order);
+        line.setRawMaterial(material);
+        line.setQuantity(quantity);
+        line.setUnit(material.getUnitType());
+        line.setCostPerUnit(costPerUnit);
+        line.setLineTotal(quantity.multiply(costPerUnit));
+        order.getLines().add(line);
+        return order;
+    }
+
+    private GoodsReceipt buildGoodsReceipt(Long receiptId,
+                                           PurchaseOrder order,
+                                           RawMaterial material,
+                                           BigDecimal quantity,
+                                           BigDecimal costPerUnit) {
+        GoodsReceipt receipt = new GoodsReceipt();
+        ReflectionTestUtils.setField(receipt, "id", receiptId);
+        receipt.setCompany(company);
+        receipt.setSupplier(order.getSupplier());
+        receipt.setPurchaseOrder(order);
+        receipt.setReceiptNumber("GRN-" + receiptId);
+        receipt.setReceiptDate(LocalDate.now());
+        receipt.setStatus("RECEIVED");
+
+        GoodsReceiptLine line = new GoodsReceiptLine();
+        line.setGoodsReceipt(receipt);
+        line.setRawMaterial(material);
+        line.setBatchCode("BATCH-" + receiptId);
+        line.setQuantity(quantity);
+        line.setUnit(material.getUnitType());
+        line.setCostPerUnit(costPerUnit);
+        line.setLineTotal(quantity.multiply(costPerUnit));
+        receipt.getLines().add(line);
+        return receipt;
     }
 
     private JournalEntryDto dummyJournal(String reference, Long id) {

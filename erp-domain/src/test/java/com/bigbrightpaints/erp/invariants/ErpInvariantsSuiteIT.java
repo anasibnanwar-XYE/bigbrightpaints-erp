@@ -550,11 +550,15 @@ public class ErpInvariantsSuiteIT extends AbstractIntegrationTest {
         line.put("rawMaterialId", material.getId());
         line.put("quantity", new BigDecimal("10"));
         line.put("costPerUnit", new BigDecimal("15.00"));
+        PurchaseWorkflowIds workflow = createPurchaseOrderAndReceipt(headers, p2p.supplier().getId(),
+                material.getId(), new BigDecimal("10"), new BigDecimal("15.00"), entryDate);
 
         Map<String, Object> purchaseReq = new HashMap<>();
         purchaseReq.put("supplierId", p2p.supplier().getId());
         purchaseReq.put("invoiceNumber", "P2P-INV-001");
         purchaseReq.put("invoiceDate", entryDate);
+        purchaseReq.put("purchaseOrderId", workflow.purchaseOrderId());
+        purchaseReq.put("goodsReceiptId", workflow.goodsReceiptId());
         purchaseReq.put("lines", List.of(line));
 
         ResponseEntity<Map> purchaseResp = rest.exchange("/api/v1/purchasing/raw-material-purchases",
@@ -656,12 +660,16 @@ public class ErpInvariantsSuiteIT extends AbstractIntegrationTest {
         line.put("rawMaterialId", material.getId());
         line.put("quantity", new BigDecimal("10"));
         line.put("costPerUnit", new BigDecimal("15.00"));
+        PurchaseWorkflowIds workflow = createPurchaseOrderAndReceipt(headers, returnDataset.supplier().getId(),
+                material.getId(), new BigDecimal("10"), new BigDecimal("15.00"), entryDate);
 
         String invoiceNumber = "P2P-RET-INV-" + System.nanoTime();
         Map<String, Object> purchaseReq = new HashMap<>();
         purchaseReq.put("supplierId", returnDataset.supplier().getId());
         purchaseReq.put("invoiceNumber", invoiceNumber);
         purchaseReq.put("invoiceDate", entryDate);
+        purchaseReq.put("purchaseOrderId", workflow.purchaseOrderId());
+        purchaseReq.put("goodsReceiptId", workflow.goodsReceiptId());
         purchaseReq.put("lines", List.of(line));
 
         ResponseEntity<Map> purchaseResp = rest.exchange("/api/v1/purchasing/raw-material-purchases",
@@ -1193,6 +1201,54 @@ public class ErpInvariantsSuiteIT extends AbstractIntegrationTest {
                     return brandRepository.save(brand);
                 });
     }
+
+    private PurchaseWorkflowIds createPurchaseOrderAndReceipt(HttpHeaders headers,
+                                                              Long supplierId,
+                                                              Long rawMaterialId,
+                                                              BigDecimal quantity,
+                                                              BigDecimal costPerUnit,
+                                                              LocalDate entryDate) {
+        Map<String, Object> line = new HashMap<>();
+        line.put("rawMaterialId", rawMaterialId);
+        line.put("quantity", quantity);
+        line.put("costPerUnit", costPerUnit);
+        line.put("unit", "KG");
+
+        Map<String, Object> poReq = new HashMap<>();
+        poReq.put("supplierId", supplierId);
+        poReq.put("orderNumber", "PO-" + System.nanoTime());
+        poReq.put("orderDate", entryDate);
+        poReq.put("lines", List.of(line));
+
+        ResponseEntity<Map> poResp = rest.exchange(
+                "/api/v1/purchasing/purchase-orders",
+                HttpMethod.POST,
+                new HttpEntity<>(poReq, headers),
+                Map.class);
+        Map<?, ?> poData = requireData(poResp, "create purchase order");
+        Long purchaseOrderId = ((Number) poData.get("id")).longValue();
+
+        Map<String, Object> grLine = new HashMap<>(line);
+        grLine.put("batchCode", "GRN-" + System.nanoTime());
+
+        Map<String, Object> grReq = new HashMap<>();
+        grReq.put("purchaseOrderId", purchaseOrderId);
+        grReq.put("receiptNumber", "GRN-" + System.nanoTime());
+        grReq.put("receiptDate", entryDate);
+        grReq.put("lines", List.of(grLine));
+
+        ResponseEntity<Map> grResp = rest.exchange(
+                "/api/v1/purchasing/goods-receipts",
+                HttpMethod.POST,
+                new HttpEntity<>(grReq, headers),
+                Map.class);
+        Map<?, ?> grData = requireData(grResp, "create goods receipt");
+        Long goodsReceiptId = ((Number) grData.get("id")).longValue();
+
+        return new PurchaseWorkflowIds(purchaseOrderId, goodsReceiptId);
+    }
+
+    private record PurchaseWorkflowIds(Long purchaseOrderId, Long goodsReceiptId) {}
 
     private ProductionProduct ensureProduct(Company company, ProductionBrand brand,
                                             String sku, String name, CanonicalErpDataset dataset) {

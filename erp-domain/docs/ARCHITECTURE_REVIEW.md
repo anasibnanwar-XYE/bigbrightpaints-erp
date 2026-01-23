@@ -30,7 +30,7 @@
 - Duplicate API surfaces:
   - Dealer directory endpoints exposed under both `/api/v1/dealers` and `/api/v1/sales/dealers`.
   - Payroll runs exposed under both `/api/v1/hr/payroll-runs` and `/api/v1/payroll/runs`.
-  - Orchestrator dispatch alias `/api/v1/orchestrator/dispatch/{orderId}` duplicates `/api/v1/orchestrator/dispatch`.
+  - Orchestrator dispatch endpoints (`/api/v1/orchestrator/dispatch*`) duplicate sales dispatch; canonical is `/api/v1/sales/dispatch/confirm`.
 - DTO duplication:
   - `PayrollRunDto` exists both in `modules/hr/dto` and as nested records in `PayrollService`.
 

@@ -20,13 +20,16 @@ Test expectations (current + to enforce):
 - Full-cycle or regression E2E should assert order -> invoice -> journal -> ledger chain.
 
 ## Procure-to-Pay (P2P)
-Chain: Purchase/Intake -> Raw Material Movements -> Supplier Settlement/Payment -> Journal Entry -> Supplier Ledger.
+Chain: Purchase Order -> Goods Receipt -> Purchase Invoice -> Raw Material Movements -> Supplier Settlement/Payment -> Journal Entry -> Supplier Ledger.
 
 Expected linkage checks:
+- Purchase order links to goods receipt(s); GRN quantities must not exceed PO quantities.
+- Goods receipt links to a posted purchase invoice (single-invoice path).
 - Raw material purchase links to intake movement(s) and purchase journal entry.
 - Raw material movements reference the purchase or purchase return and journal entry.
 - Supplier settlement allocations link to purchase(s) and settlement journal entry.
 - Supplier ledger entry references the settlement journal entry and supplier context.
+- Manual `/raw-materials/intake` is disabled by default and excluded from supplier invoice linkage.
 
 Test expectations (current + to enforce):
 - Purchasing E2E should assert purchase -> movements -> journal linkage.
@@ -85,11 +88,15 @@ Linkage keys observed in entities (primary keys, FK columns, and reference field
 - `inventory_movements.reference_type=SALES_ORDER` and `inventory_reservations.reference_type=SALES_ORDER` use `reference_id = sales_orders.id` (InventoryReference.SALES_ORDER).
 
 ### Procure-to-Pay (P2P)
+- `purchase_orders.supplier_id` -> `suppliers.id`.
+- `goods_receipts.purchase_order_id` -> `purchase_orders.id`.
+- `raw_material_purchases.purchase_order_id` -> `purchase_orders.id`.
+- `raw_material_purchases.goods_receipt_id` -> `goods_receipts.id`.
 - `raw_material_purchases.journal_entry_id` -> `journal_entries.id`.
 - `raw_material_purchases.supplier_id` -> `suppliers.id`.
 - `partner_settlement_allocations.purchase_id` -> `raw_material_purchases.id`; `partner_settlement_allocations.journal_entry_id` -> `journal_entries.id`.
 - `supplier_ledger_entries.journal_entry_id` -> `journal_entries.id`.
-- `raw_material_movements.reference_type=RAW_MATERIAL_PURCHASE` uses `reference_id = raw_material_batches.batch_code`.
+- `raw_material_movements.reference_type=RAW_MATERIAL_PURCHASE` uses `reference_id = purchase receipt reference`.
 - `raw_material_movements.reference_type=PURCHASE_RETURN` uses `reference_id = purchase return reference number`.
 
 ### Production / Inventory

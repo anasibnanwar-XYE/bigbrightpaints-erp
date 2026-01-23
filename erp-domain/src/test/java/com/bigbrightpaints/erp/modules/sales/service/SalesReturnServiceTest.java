@@ -4,6 +4,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.SalesReturnRequest;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
+import com.bigbrightpaints.erp.modules.accounting.service.CompanyAccountingSettingsService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
@@ -62,6 +63,8 @@ class SalesReturnServiceTest {
     private AccountingFacade accountingFacade;
     @Mock
     private CompanyEntityLookup companyEntityLookup;
+    @Mock
+    private CompanyAccountingSettingsService companyAccountingSettingsService;
 
     private SalesReturnService salesReturnService;
     private Company company;
@@ -75,11 +78,14 @@ class SalesReturnServiceTest {
                 inventoryMovementRepository,
                 batchNumberService,
                 accountingFacade,
-                companyEntityLookup
+                companyEntityLookup,
+                companyAccountingSettingsService
         );
         company = new Company();
         company.setTimezone("UTC");
         when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(companyAccountingSettingsService.requireTaxAccounts())
+                .thenReturn(new CompanyAccountingSettingsService.TaxAccountConfiguration(900L, 800L, null));
     }
 
     @Test

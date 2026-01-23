@@ -9,6 +9,8 @@ import com.bigbrightpaints.erp.orchestrator.service.TraceService;
 import jakarta.validation.Valid;
 import java.security.Principal;
 import java.util.Map;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,10 +27,14 @@ public class OrchestratorController {
 
     private final CommandDispatcher commandDispatcher;
     private final TraceService traceService;
+    private final boolean orderDispatchEnabled;
 
-    public OrchestratorController(CommandDispatcher commandDispatcher, TraceService traceService) {
+    public OrchestratorController(CommandDispatcher commandDispatcher,
+                                  TraceService traceService,
+                                  @Value("${orchestrator.order-dispatch.enabled:false}") boolean orderDispatchEnabled) {
         this.commandDispatcher = commandDispatcher;
         this.traceService = traceService;
+        this.orderDispatchEnabled = orderDispatchEnabled;
     }
 
     @PostMapping("/orders/{orderId}/approve")
@@ -113,6 +119,12 @@ public class OrchestratorController {
     private ResponseEntity<Map<String, Object>> handleDispatchOrder(String orderId,
                                                                      String companyId,
                                                                      Principal principal) {
+        if (!orderDispatchEnabled) {
+            return ResponseEntity.status(HttpStatus.GONE)
+                    .body(Map.of(
+                            "message", "Orchestrator dispatch is deprecated; use /api/v1/sales/dispatch/confirm",
+                            "canonicalPath", "/api/v1/sales/dispatch/confirm"));
+        }
         if (orderId == null || orderId.isBlank()) {
             return ResponseEntity.unprocessableEntity()
                     .body(Map.of("message", "orderId is required"));

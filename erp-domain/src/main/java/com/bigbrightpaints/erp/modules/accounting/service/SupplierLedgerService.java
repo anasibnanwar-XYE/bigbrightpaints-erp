@@ -90,8 +90,8 @@ public class SupplierLedgerService extends AbstractPartnerLedgerService<Supplier
 
     @Override
     protected void updateOutstandingBalance(Supplier partner, BigDecimal balance) {
-        BigDecimal nonNegative = balance != null && balance.compareTo(BigDecimal.ZERO) > 0 ? balance : BigDecimal.ZERO;
-        partner.setOutstandingBalance(nonNegative);
+        BigDecimal normalized = balance != null ? balance : BigDecimal.ZERO;
+        partner.setOutstandingBalance(normalized);
         supplierRepository.save(partner);
     }
 

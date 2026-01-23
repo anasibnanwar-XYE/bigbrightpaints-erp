@@ -84,6 +84,7 @@ tracked via `amountPaid`, `dueDate`, and `invoiceNumber`.
 
 ## Cross-Module Invariants
 These invariants must hold for a canonical O2C flow:
+- Dispatch confirmation is performed via `POST /api/v1/sales/dispatch/confirm` (factory alias: `POST /api/v1/dispatch/confirm`); orchestrator dispatch is deprecated.
 - Sales order → packaging slip(s) exists for reservation/dispatch.
 - On dispatch:
   - slip status `DISPATCHED`

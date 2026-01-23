@@ -8,6 +8,8 @@ import com.bigbrightpaints.erp.modules.accounting.domain.DealerLedgerRepository;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
+import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatch;
+import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatchRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReservation;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReservationRepository;
@@ -28,6 +30,7 @@ import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.*;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -47,6 +50,7 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
     @Autowired private TestRestTemplate rest;
     @Autowired private CompanyRepository companyRepository;
     @Autowired private FinishedGoodRepository finishedGoodRepository;
+    @Autowired private FinishedGoodBatchRepository finishedGoodBatchRepository;
     @Autowired private DealerRepository dealerRepository;
     @Autowired private SalesOrderRepository salesOrderRepository;
     @Autowired private InventoryReservationRepository inventoryReservationRepository;
@@ -87,12 +91,38 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
 
     private void ensureTestAccounts() {
         Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
-        ensureAccount(company, "ASSET-AR", "Accounts Receivable", AccountType.ASSET);
-        ensureAccount(company, "REV-SALES", "Sales Revenue", AccountType.REVENUE);
-        ensureAccount(company, "EXP-COGS", "Cost of Goods Sold", AccountType.EXPENSE);
-        ensureAccount(company, "ASSET-INV-FG", "Finished Goods Inventory", AccountType.ASSET);
-        ensureAccount(company, "LIAB-GST", "GST Liability", AccountType.LIABILITY);
-        ensureAccount(company, "DISC-SALES", "Sales Discounts", AccountType.EXPENSE);
+        Account receivable = ensureAccount(company, "ASSET-AR", "Accounts Receivable", AccountType.ASSET);
+        Account revenue = ensureAccount(company, "REV-SALES", "Sales Revenue", AccountType.REVENUE);
+        Account cogs = ensureAccount(company, "EXP-COGS", "Cost of Goods Sold", AccountType.EXPENSE);
+        Account inventory = ensureAccount(company, "ASSET-INV-FG", "Finished Goods Inventory", AccountType.ASSET);
+        Account gstOutput = ensureAccount(company, "LIAB-GST", "GST Liability", AccountType.LIABILITY);
+        Account gstInput = ensureAccount(company, "GST-IN", "GST Input", AccountType.ASSET);
+        Account discount = ensureAccount(company, "DISC-SALES", "Sales Discounts", AccountType.EXPENSE);
+
+        if (company.getDefaultInventoryAccountId() == null) {
+            company.setDefaultInventoryAccountId(inventory.getId());
+        }
+        if (company.getDefaultCogsAccountId() == null) {
+            company.setDefaultCogsAccountId(cogs.getId());
+        }
+        if (company.getDefaultRevenueAccountId() == null) {
+            company.setDefaultRevenueAccountId(revenue.getId());
+        }
+        if (company.getDefaultDiscountAccountId() == null) {
+            company.setDefaultDiscountAccountId(discount.getId());
+        }
+        if (company.getDefaultTaxAccountId() == null) {
+            company.setDefaultTaxAccountId(gstOutput.getId());
+        }
+        if (company.getGstOutputTaxAccountId() == null
+                || !company.getGstOutputTaxAccountId().equals(gstOutput.getId())) {
+            company.setGstOutputTaxAccountId(gstOutput.getId());
+        }
+        if (company.getGstInputTaxAccountId() == null
+                || !company.getGstInputTaxAccountId().equals(gstInput.getId())) {
+            company.setGstInputTaxAccountId(gstInput.getId());
+        }
+        companyRepository.save(company);
     }
 
     private Account ensureAccount(Company company, String code, String name, AccountType type) {
@@ -322,8 +352,6 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
     @Test
     @DisplayName("Dispatch creates Packing Slip, Invoice, Posts COGS")
     void dispatch_CreatesPackingSlip_Invoice_PostsCOGS() {
-        // This is a complex flow that requires orchestrator
-        // Test that the endpoint is available
         Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
 
         Dealer dealer = createDealer(company, "DISPATCH-DEALER", "Dispatch Dealer", new BigDecimal("500000"));
@@ -332,18 +360,70 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
         // Create and get order
         Long orderId = createOrder(dealer, fg, new BigDecimal("5"), new BigDecimal("1000.00"));
 
-        // Try to dispatch (will likely fail without proper setup, but tests endpoint)
         Map<String, Object> dispatchReq = Map.of(
-                "orderId", orderId
+                "orderId", orderId,
+                "confirmedBy", "e2e"
         );
 
-        ResponseEntity<Map> response = rest.exchange("/api/v1/orchestrator/dispatch",
+        ResponseEntity<Map> response = rest.exchange("/api/v1/sales/dispatch/confirm",
                 HttpMethod.POST, new HttpEntity<>(dispatchReq, headers), Map.class);
 
-        // Should respond (may fail validation but endpoint exists)
-        assertThat(response.getStatusCode()).isIn(
-                HttpStatus.OK, HttpStatus.ACCEPTED, HttpStatus.BAD_REQUEST, HttpStatus.UNPROCESSABLE_ENTITY
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<?, ?> data = requireData(response, "dispatch order");
+        assertThat(data.get("finalInvoiceId")).isNotNull();
+    }
+
+    @Test
+    @DisplayName("Dispatch with GST updates GST return output with deterministic rounding")
+    void dispatchWithGst_UpdatesGstReturnOutput() {
+        Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
+
+        Dealer dealer = createDealer(company, "GST-DISPATCH-DEALER", "GST Dispatch Dealer", new BigDecimal("500000"));
+        BigDecimal unitPrice = new BigDecimal("99.99");
+        BigDecimal quantity = new BigDecimal("3");
+        BigDecimal gstRate = new BigDecimal("18.00");
+        FinishedGood fg = createFinishedGood(company, "FG-GST-DISPATCH-001", new BigDecimal("100"), unitPrice, gstRate);
+
+        Map<String, Object> lineItem = Map.of(
+                "productCode", fg.getProductCode(),
+                "description", "GST Dispatch Product",
+                "quantity", quantity,
+                "unitPrice", unitPrice,
+                "gstRate", gstRate
         );
+
+        BigDecimal subtotal = unitPrice.multiply(quantity);
+        BigDecimal expectedTax = subtotal.multiply(gstRate)
+                .divide(new BigDecimal("100"), 2, java.math.RoundingMode.HALF_UP);
+        BigDecimal total = subtotal.add(expectedTax);
+
+        Map<String, Object> orderReq = Map.of(
+                "dealerId", dealer.getId(),
+                "totalAmount", total,
+                "currency", "INR",
+                "items", List.of(lineItem),
+                "gstTreatment", "PER_ITEM",
+                "gstRate", gstRate
+        );
+
+        ResponseEntity<Map> orderResp = rest.exchange("/api/v1/sales/orders",
+                HttpMethod.POST, new HttpEntity<>(orderReq, headers), Map.class);
+        Map<?, ?> orderData = requireData(orderResp, "create GST dispatch order");
+        Long orderId = ((Number) orderData.get("id")).longValue();
+
+        BigDecimal beforeOutput = gstOutputTax();
+
+        Map<String, Object> dispatchReq = Map.of(
+                "orderId", orderId,
+                "confirmedBy", "e2e"
+        );
+
+        ResponseEntity<Map> dispatchResp = rest.exchange("/api/v1/sales/dispatch/confirm",
+                HttpMethod.POST, new HttpEntity<>(dispatchReq, headers), Map.class);
+        assertThat(dispatchResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        BigDecimal afterOutput = gstOutputTax();
+        assertThat(afterOutput.subtract(beforeOutput)).isEqualByComparingTo(expectedTax);
     }
 
     // Helper methods
@@ -351,6 +431,15 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
         return dealerRepository.findAll().stream()
                 .filter(d -> d.getName().equals(name))
                 .findFirst()
+                .map(existing -> {
+                    if (existing.getReceivableAccount() == null) {
+                        Account receivable = accountRepository.findByCompanyAndCodeIgnoreCase(company, "ASSET-AR")
+                                .orElseThrow();
+                        existing.setReceivableAccount(receivable);
+                        return dealerRepository.save(existing);
+                    }
+                    return existing;
+                })
                 .orElseGet(() -> {
                     Dealer dealer = new Dealer();
                     dealer.setCompany(company);
@@ -360,6 +449,9 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
                     dealer.setPhone("1234567890");
                     dealer.setAddress("Test Address");
                     dealer.setCreditLimit(creditLimit);
+                    Account receivable = accountRepository.findByCompanyAndCodeIgnoreCase(company, "ASSET-AR")
+                            .orElseThrow();
+                    dealer.setReceivableAccount(receivable);
                     dealer.setOutstandingBalance(BigDecimal.ZERO);
                     return dealerRepository.save(dealer);
                 });
@@ -386,7 +478,7 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
         Account discountAccount = accountRepository.findByCompanyAndCodeIgnoreCase(company, "DISC-SALES")
                 .orElseThrow();
 
-        return finishedGoodRepository.findByCompanyAndProductCode(company, productCode)
+        FinishedGood fg = finishedGoodRepository.findByCompanyAndProductCode(company, productCode)
                 .map(existing -> {
                     boolean dirty = false;
                     if (existing.getRevenueAccountId() == null) {
@@ -417,19 +509,47 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
                     return dirty ? finishedGoodRepository.save(existing) : existing;
                 })
                 .orElseGet(() -> {
-                    FinishedGood fg = new FinishedGood();
-                    fg.setCompany(company);
-                    fg.setProductCode(productCode);
-                    fg.setName("Test FG " + productCode);
-                    fg.setCurrentStock(stock);
-                    fg.setReservedStock(BigDecimal.ZERO);
-                    fg.setRevenueAccountId(revenueAccount.getId());
-                    fg.setTaxAccountId(taxAccount.getId());
-                    fg.setValuationAccountId(inventoryAccount.getId());
-                    fg.setCogsAccountId(cogsAccount.getId());
-                    fg.setDiscountAccountId(discountAccount.getId());
-                    return finishedGoodRepository.save(fg);
+                    FinishedGood newFg = new FinishedGood();
+                    newFg.setCompany(company);
+                    newFg.setProductCode(productCode);
+                    newFg.setName("Test FG " + productCode);
+                    newFg.setCurrentStock(stock);
+                    newFg.setReservedStock(BigDecimal.ZERO);
+                    newFg.setRevenueAccountId(revenueAccount.getId());
+                    newFg.setTaxAccountId(taxAccount.getId());
+                    newFg.setValuationAccountId(inventoryAccount.getId());
+                    newFg.setCogsAccountId(cogsAccount.getId());
+                    newFg.setDiscountAccountId(discountAccount.getId());
+                    return finishedGoodRepository.save(newFg);
                 });
+        ensureFinishedGoodBatch(fg, stock, basePrice);
+        return fg;
+    }
+
+    private void ensureFinishedGoodBatch(FinishedGood fg, BigDecimal quantity, BigDecimal unitCost) {
+        if (quantity == null || quantity.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+        boolean hasAvailable = finishedGoodBatchRepository.findByFinishedGoodOrderByManufacturedAtAsc(fg).stream()
+                .anyMatch(batch -> batch.getQuantityAvailable() != null
+                        && batch.getQuantityAvailable().compareTo(BigDecimal.ZERO) > 0);
+        if (hasAvailable) {
+            return;
+        }
+        FinishedGoodBatch batch = new FinishedGoodBatch();
+        batch.setFinishedGood(fg);
+        batch.setBatchCode(fg.getProductCode() + "-BATCH-" + System.currentTimeMillis());
+        batch.setQuantityTotal(quantity);
+        batch.setQuantityAvailable(quantity);
+        batch.setUnitCost(unitCost != null ? unitCost : BigDecimal.ZERO);
+        batch.setManufacturedAt(Instant.now());
+        finishedGoodBatchRepository.save(batch);
+
+        BigDecimal current = fg.getCurrentStock() != null ? fg.getCurrentStock() : BigDecimal.ZERO;
+        if (current.compareTo(quantity) < 0) {
+            fg.setCurrentStock(quantity);
+            finishedGoodRepository.save(fg);
+        }
     }
 
     private ProductionProduct ensureProduct(Company company,
@@ -522,5 +642,27 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
             throw new AssertionError(String.format("%s response data has unexpected shape: %s", action, data));
         }
         return map;
+    }
+
+    private BigDecimal gstOutputTax() {
+        ResponseEntity<Map> response = rest.exchange("/api/v1/accounting/gst/return",
+                HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Object body = response.getBody();
+        if (!(body instanceof Map<?, ?> map)) {
+            return BigDecimal.ZERO;
+        }
+        Object data = map.get("data");
+        if (!(data instanceof Map<?, ?> dataMap)) {
+            return BigDecimal.ZERO;
+        }
+        Object value = dataMap.get("outputTax");
+        if (value instanceof Number) {
+            return new BigDecimal(value.toString());
+        }
+        if (value instanceof String str && !str.isBlank()) {
+            return new BigDecimal(str);
+        }
+        return BigDecimal.ZERO;
     }
 }

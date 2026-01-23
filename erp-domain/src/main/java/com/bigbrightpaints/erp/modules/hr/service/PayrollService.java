@@ -319,6 +319,14 @@ public class PayrollService {
 
         // Load payroll lines to calculate totals
         List<PayrollRunLine> runLines = payrollRunLineRepository.findByPayrollRun(run);
+        boolean hasUnsupportedDeductions = runLines.stream().anyMatch(line ->
+                hasPositive(line.getPfDeduction())
+                        || hasPositive(line.getTaxDeduction())
+                        || hasPositive(line.getOtherDeductions()));
+        if (hasUnsupportedDeductions) {
+            throw new IllegalStateException("Payroll statutory deductions (PF/tax/other) are not supported in runs. " +
+                    "Only advance deductions are applied; use accounting payroll payments for statutory withholdings.");
+        }
 
         // Calculate totals from run lines
         BigDecimal totalGrossPay = runLines.stream()
@@ -489,6 +497,10 @@ public class PayrollService {
         return balance.min(cap);
     }
 
+    private boolean hasPositive(BigDecimal value) {
+        return value != null && value.compareTo(BigDecimal.ZERO) > 0;
+    }
+
     /**
      * Get what-to-pay summary for current week (labourers)
      */
@@ -597,12 +609,10 @@ public class PayrollService {
                 grossPay = grossPay.subtract(dailyRate.multiply(absentDays));
             }
 
-            // Calculate deductions
-            BigDecimal pfDeduction = grossPay.compareTo(new BigDecimal("15000")) >= 0
-                ? grossPay.multiply(new BigDecimal("0.12")).setScale(0, RoundingMode.HALF_UP)
-                : BigDecimal.ZERO;
-            BigDecimal totalDed = pfDeduction;
-            BigDecimal netPay = grossPay.subtract(totalDed);
+            // Statutory deductions are not applied in the summary flow
+            BigDecimal pfDeduction = BigDecimal.ZERO;
+            BigDecimal totalDed = BigDecimal.ZERO;
+            BigDecimal netPay = grossPay;
 
             employeePay.add(new EmployeeMonthlyPayDto(
                 emp.getId(), emp.getFullName(), emp.getMonthlySalary(),

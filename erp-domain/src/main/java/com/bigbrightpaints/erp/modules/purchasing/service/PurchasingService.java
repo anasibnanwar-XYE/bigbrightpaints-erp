@@ -21,10 +21,24 @@ import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
 import com.bigbrightpaints.erp.modules.inventory.dto.RawMaterialBatchRequest;
 import com.bigbrightpaints.erp.modules.inventory.service.RawMaterialService;
 import com.bigbrightpaints.erp.modules.accounting.service.ReferenceNumberService;
+import com.bigbrightpaints.erp.modules.purchasing.domain.GoodsReceipt;
+import com.bigbrightpaints.erp.modules.purchasing.domain.GoodsReceiptLine;
+import com.bigbrightpaints.erp.modules.purchasing.domain.GoodsReceiptRepository;
+import com.bigbrightpaints.erp.modules.purchasing.domain.PurchaseOrder;
+import com.bigbrightpaints.erp.modules.purchasing.domain.PurchaseOrderLine;
+import com.bigbrightpaints.erp.modules.purchasing.domain.PurchaseOrderRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchase;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseLine;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
+import com.bigbrightpaints.erp.modules.purchasing.dto.GoodsReceiptLineRequest;
+import com.bigbrightpaints.erp.modules.purchasing.dto.GoodsReceiptLineResponse;
+import com.bigbrightpaints.erp.modules.purchasing.dto.GoodsReceiptRequest;
+import com.bigbrightpaints.erp.modules.purchasing.dto.GoodsReceiptResponse;
+import com.bigbrightpaints.erp.modules.purchasing.dto.PurchaseOrderLineRequest;
+import com.bigbrightpaints.erp.modules.purchasing.dto.PurchaseOrderLineResponse;
+import com.bigbrightpaints.erp.modules.purchasing.dto.PurchaseOrderRequest;
+import com.bigbrightpaints.erp.modules.purchasing.dto.PurchaseOrderResponse;
 import com.bigbrightpaints.erp.modules.purchasing.dto.RawMaterialPurchaseLineRequest;
 import com.bigbrightpaints.erp.modules.purchasing.dto.RawMaterialPurchaseLineResponse;
 import com.bigbrightpaints.erp.modules.purchasing.dto.RawMaterialPurchaseRequest;
@@ -48,9 +62,12 @@ import java.util.Objects;
 public class PurchasingService {
 
     private static final BigDecimal MAX_GST_RATE = new BigDecimal("28.00");
+    private static final BigDecimal UNIT_COST_TOLERANCE = new BigDecimal("0.01");
 
     private final CompanyContextService companyContextService;
     private final RawMaterialPurchaseRepository purchaseRepository;
+    private final PurchaseOrderRepository purchaseOrderRepository;
+    private final GoodsReceiptRepository goodsReceiptRepository;
     private final RawMaterialRepository rawMaterialRepository;
     private final RawMaterialBatchRepository rawMaterialBatchRepository;
     private final RawMaterialService rawMaterialService;
@@ -63,10 +80,12 @@ public class PurchasingService {
 
     public PurchasingService(CompanyContextService companyContextService,
                              RawMaterialPurchaseRepository purchaseRepository,
+                             PurchaseOrderRepository purchaseOrderRepository,
                              RawMaterialRepository rawMaterialRepository,
                              RawMaterialBatchRepository rawMaterialBatchRepository,
                              RawMaterialService rawMaterialService,
                              RawMaterialMovementRepository movementRepository,
+                             GoodsReceiptRepository goodsReceiptRepository,
                              AccountingFacade accountingFacade,
                              JournalEntryRepository journalEntryRepository,
                              CompanyEntityLookup companyEntityLookup,
@@ -74,10 +93,12 @@ public class PurchasingService {
                              CompanyClock companyClock) {
         this.companyContextService = companyContextService;
         this.purchaseRepository = purchaseRepository;
+        this.purchaseOrderRepository = purchaseOrderRepository;
         this.rawMaterialRepository = rawMaterialRepository;
         this.rawMaterialBatchRepository = rawMaterialBatchRepository;
         this.rawMaterialService = rawMaterialService;
         this.movementRepository = movementRepository;
+        this.goodsReceiptRepository = goodsReceiptRepository;
         this.accountingFacade = accountingFacade;
         this.journalEntryRepository = journalEntryRepository;
         this.companyEntityLookup = companyEntityLookup;
@@ -90,6 +111,190 @@ public class PurchasingService {
         return purchaseRepository.findByCompanyWithLinesOrderByInvoiceDateDesc(company).stream()
                 .map(this::toResponse)
                 .toList();
+    }
+
+    public List<PurchaseOrderResponse> listPurchaseOrders() {
+        Company company = companyContextService.requireCurrentCompany();
+        return purchaseOrderRepository.findByCompanyWithLinesOrderByOrderDateDesc(company).stream()
+                .map(this::toPurchaseOrderResponse)
+                .toList();
+    }
+
+    public PurchaseOrderResponse getPurchaseOrder(Long id) {
+        Company company = companyContextService.requireCurrentCompany();
+        PurchaseOrder order = purchaseOrderRepository.findByCompanyAndId(company, id)
+                .orElseThrow(() -> new IllegalArgumentException("Purchase order not found"));
+        return toPurchaseOrderResponse(order);
+    }
+
+    @Transactional
+    public PurchaseOrderResponse createPurchaseOrder(PurchaseOrderRequest request) {
+        Company company = companyContextService.requireCurrentCompany();
+        Supplier supplier = companyEntityLookup.requireSupplier(company, request.supplierId());
+
+        String orderNumber = request.orderNumber().trim();
+        purchaseOrderRepository.lockByCompanyAndOrderNumberIgnoreCase(company, orderNumber)
+                .ifPresent(existing -> {
+                    throw new IllegalArgumentException("Order number already used for this company");
+                });
+
+        List<PurchaseOrderLineRequest> sortedLines = request.lines().stream()
+                .sorted(Comparator.comparing(PurchaseOrderLineRequest::rawMaterialId))
+                .toList();
+
+        Map<Long, RawMaterial> lockedMaterials = new HashMap<>();
+        for (PurchaseOrderLineRequest lineRequest : sortedLines) {
+            RawMaterial rawMaterial = requireMaterial(company, lineRequest.rawMaterialId());
+            lockedMaterials.put(rawMaterial.getId(), rawMaterial);
+        }
+
+        PurchaseOrder purchaseOrder = new PurchaseOrder();
+        purchaseOrder.setCompany(company);
+        purchaseOrder.setSupplier(supplier);
+        purchaseOrder.setOrderNumber(orderNumber);
+        purchaseOrder.setOrderDate(request.orderDate());
+        purchaseOrder.setMemo(clean(request.memo()));
+
+        for (PurchaseOrderLineRequest lineRequest : request.lines()) {
+            RawMaterial rawMaterial = lockedMaterials.get(lineRequest.rawMaterialId());
+            if (rawMaterial == null) {
+                throw new IllegalArgumentException("Raw material not found");
+            }
+            BigDecimal quantity = positive(lineRequest.quantity(), "quantity");
+            BigDecimal costPerUnit = positive(lineRequest.costPerUnit(), "costPerUnit");
+            String unit = StringUtils.hasText(lineRequest.unit())
+                    ? lineRequest.unit().trim()
+                    : rawMaterial.getUnitType();
+            BigDecimal lineTotal = currency(MoneyUtils.safeMultiply(quantity, costPerUnit));
+
+            PurchaseOrderLine line = new PurchaseOrderLine();
+            line.setPurchaseOrder(purchaseOrder);
+            line.setRawMaterial(rawMaterial);
+            line.setQuantity(quantity);
+            line.setUnit(unit);
+            line.setCostPerUnit(costPerUnit);
+            line.setLineTotal(lineTotal);
+            line.setNotes(clean(lineRequest.notes()));
+            purchaseOrder.getLines().add(line);
+        }
+
+        PurchaseOrder saved = purchaseOrderRepository.save(purchaseOrder);
+        return toPurchaseOrderResponse(saved);
+    }
+
+    public List<GoodsReceiptResponse> listGoodsReceipts() {
+        Company company = companyContextService.requireCurrentCompany();
+        return goodsReceiptRepository.findByCompanyWithLinesOrderByReceiptDateDesc(company).stream()
+                .map(this::toGoodsReceiptResponse)
+                .toList();
+    }
+
+    public GoodsReceiptResponse getGoodsReceipt(Long id) {
+        Company company = companyContextService.requireCurrentCompany();
+        GoodsReceipt receipt = goodsReceiptRepository.findByCompanyAndId(company, id)
+                .orElseThrow(() -> new IllegalArgumentException("Goods receipt not found"));
+        return toGoodsReceiptResponse(receipt);
+    }
+
+    @Transactional
+    public GoodsReceiptResponse createGoodsReceipt(GoodsReceiptRequest request) {
+        Company company = companyContextService.requireCurrentCompany();
+        PurchaseOrder purchaseOrder = purchaseOrderRepository.lockByCompanyAndId(company, request.purchaseOrderId())
+                .orElseThrow(() -> new IllegalArgumentException("Purchase order not found"));
+        Supplier supplier = purchaseOrder.getSupplier();
+
+        String receiptNumber = request.receiptNumber().trim();
+        goodsReceiptRepository.lockByCompanyAndReceiptNumberIgnoreCase(company, receiptNumber)
+                .ifPresent(existing -> {
+                    throw new IllegalArgumentException("Receipt number already used for this company");
+                });
+        if (goodsReceiptRepository.existsByPurchaseOrder(purchaseOrder)) {
+            throw new ApplicationException(ErrorCode.BUSINESS_CONSTRAINT_VIOLATION,
+                    "Goods receipt already recorded for this purchase order")
+                    .withDetail("purchaseOrderId", purchaseOrder.getId());
+        }
+
+        Map<Long, PurchaseOrderLine> orderLinesByMaterial = new HashMap<>();
+        for (PurchaseOrderLine line : purchaseOrder.getLines()) {
+            if (line.getRawMaterial() == null || line.getRawMaterial().getId() == null) {
+                continue;
+            }
+            Long materialId = line.getRawMaterial().getId();
+            if (orderLinesByMaterial.containsKey(materialId)) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Purchase order has duplicate raw material lines")
+                        .withDetail("rawMaterialId", materialId);
+            }
+            orderLinesByMaterial.put(materialId, line);
+        }
+
+        GoodsReceipt receipt = new GoodsReceipt();
+        receipt.setCompany(company);
+        receipt.setSupplier(supplier);
+        receipt.setPurchaseOrder(purchaseOrder);
+        receipt.setReceiptNumber(receiptNumber);
+        receipt.setReceiptDate(request.receiptDate());
+        receipt.setMemo(clean(request.memo()));
+
+        boolean matchesOrder = true;
+        for (GoodsReceiptLineRequest lineRequest : request.lines()) {
+            RawMaterial rawMaterial = requireMaterial(company, lineRequest.rawMaterialId());
+            PurchaseOrderLine orderLine = orderLinesByMaterial.get(rawMaterial.getId());
+            if (orderLine == null) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Goods receipt line is not covered by purchase order")
+                        .withDetail("rawMaterialId", rawMaterial.getId());
+            }
+            BigDecimal quantity = positive(lineRequest.quantity(), "quantity");
+            if (quantity.compareTo(orderLine.getQuantity()) > 0) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Goods receipt quantity exceeds purchase order quantity")
+                        .withDetail("rawMaterialId", rawMaterial.getId())
+                        .withDetail("orderQuantity", orderLine.getQuantity())
+                        .withDetail("receiptQuantity", quantity);
+            }
+            if (quantity.compareTo(orderLine.getQuantity()) != 0) {
+                matchesOrder = false;
+            }
+
+            BigDecimal costPerUnit = positive(lineRequest.costPerUnit(), "costPerUnit");
+            String requestedUnit = StringUtils.hasText(lineRequest.unit()) ? lineRequest.unit().trim() : null;
+            if (requestedUnit != null && orderLine.getUnit() != null
+                    && !orderLine.getUnit().equalsIgnoreCase(requestedUnit)) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Goods receipt unit must match purchase order unit")
+                        .withDetail("rawMaterialId", rawMaterial.getId())
+                        .withDetail("orderUnit", orderLine.getUnit())
+                        .withDetail("receiptUnit", requestedUnit);
+            }
+            String unit = requestedUnit != null ? requestedUnit : orderLine.getUnit();
+            String batchCode = StringUtils.hasText(lineRequest.batchCode())
+                    ? lineRequest.batchCode().trim()
+                    : null;
+            BigDecimal lineTotal = currency(MoneyUtils.safeMultiply(quantity, costPerUnit));
+
+            GoodsReceiptLine line = new GoodsReceiptLine();
+            line.setGoodsReceipt(receipt);
+            line.setRawMaterial(rawMaterial);
+            line.setBatchCode(batchCode != null ? batchCode : rawMaterial.getSku() + "-" + receiptNumber);
+            line.setQuantity(quantity);
+            line.setUnit(unit);
+            line.setCostPerUnit(costPerUnit);
+            line.setLineTotal(lineTotal);
+            line.setNotes(clean(lineRequest.notes()));
+            receipt.getLines().add(line);
+        }
+
+        if (!matchesOrder) {
+            receipt.setStatus("PARTIAL");
+            purchaseOrder.setStatus("PARTIAL");
+        } else {
+            purchaseOrder.setStatus("RECEIVED");
+        }
+
+        GoodsReceipt savedReceipt = goodsReceiptRepository.saveAndFlush(receipt);
+        purchaseOrderRepository.save(purchaseOrder);
+        return toGoodsReceiptResponse(savedReceipt);
     }
 
     public RawMaterialPurchaseResponse getPurchase(Long id) {
@@ -112,6 +317,51 @@ public class PurchasingService {
                 .ifPresent(existing -> {
                     throw new IllegalArgumentException("Invoice number already used for this company");
                 });
+
+        GoodsReceipt goodsReceipt = goodsReceiptRepository.lockByCompanyAndId(company, request.goodsReceiptId())
+                .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Goods receipt not found"));
+        if (!supplier.getId().equals(goodsReceipt.getSupplier().getId())) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                    "Goods receipt does not belong to the supplier");
+        }
+        if ("INVOICED".equalsIgnoreCase(goodsReceipt.getStatus())) {
+            throw new ApplicationException(ErrorCode.BUSINESS_CONSTRAINT_VIOLATION,
+                    "Goods receipt is already invoiced");
+        }
+        PurchaseOrder purchaseOrder = goodsReceipt.getPurchaseOrder();
+        if (request.purchaseOrderId() != null
+                && (purchaseOrder == null || !purchaseOrder.getId().equals(request.purchaseOrderId()))) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                    "Purchase order does not match goods receipt");
+        }
+        if (purchaseOrder == null) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                    "Goods receipt is missing a purchase order");
+        }
+        purchaseRepository.findByCompanyAndGoodsReceipt(company, goodsReceipt)
+                .ifPresent(existing -> {
+                    throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
+                            "Goods receipt already linked to a purchase invoice")
+                            .withDetail("purchaseId", existing.getId());
+                });
+
+        Map<Long, BigDecimal> receiptQuantities = new HashMap<>();
+        Map<Long, BigDecimal> receiptUnitCosts = new HashMap<>();
+        Map<Long, String> receiptUnits = new HashMap<>();
+        for (GoodsReceiptLine line : goodsReceipt.getLines()) {
+            if (line.getRawMaterial() == null || line.getRawMaterial().getId() == null) {
+                continue;
+            }
+            Long materialId = line.getRawMaterial().getId();
+            if (receiptQuantities.containsKey(materialId)) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Goods receipt has duplicate raw material lines")
+                        .withDetail("rawMaterialId", materialId);
+            }
+            receiptQuantities.put(materialId, line.getQuantity());
+            receiptUnitCosts.put(materialId, line.getCostPerUnit());
+            receiptUnits.put(materialId, line.getUnit());
+        }
 
         boolean taxProvided = request.taxAmount() != null;
 
@@ -145,6 +395,36 @@ public class PurchasingService {
             String batchCode = StringUtils.hasText(lineRequest.batchCode())
                     ? lineRequest.batchCode().trim()
                     : null;
+
+            BigDecimal receiptQty = receiptQuantities.get(rawMaterial.getId());
+            if (receiptQty == null) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Purchase line is not covered by goods receipt")
+                        .withDetail("rawMaterialId", rawMaterial.getId());
+            }
+            if (quantity.compareTo(receiptQty) != 0) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Purchase quantity must match goods receipt quantity")
+                        .withDetail("rawMaterialId", rawMaterial.getId())
+                        .withDetail("receiptQuantity", receiptQty)
+                        .withDetail("invoiceQuantity", quantity);
+            }
+            BigDecimal receiptCost = receiptUnitCosts.get(rawMaterial.getId());
+            if (receiptCost != null && !MoneyUtils.withinTolerance(receiptCost, costPerUnit, UNIT_COST_TOLERANCE)) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Purchase unit cost must match goods receipt cost")
+                        .withDetail("rawMaterialId", rawMaterial.getId())
+                        .withDetail("receiptCostPerUnit", receiptCost)
+                        .withDetail("invoiceCostPerUnit", costPerUnit);
+            }
+            String receiptUnit = receiptUnits.get(rawMaterial.getId());
+            if (receiptUnit != null && !receiptUnit.equalsIgnoreCase(unit)) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Purchase unit must match goods receipt unit")
+                        .withDetail("rawMaterialId", rawMaterial.getId())
+                        .withDetail("receiptUnit", receiptUnit)
+                        .withDetail("invoiceUnit", unit);
+            }
             BigDecimal lineGrossRaw = MoneyUtils.safeMultiply(quantity, costPerUnit);
             BigDecimal lineGross = taxProvided ? lineGrossRaw : currency(lineGrossRaw);
             BigDecimal lineNet = lineGross;
@@ -207,6 +487,8 @@ public class PurchasingService {
         purchase.setTaxAmount(taxAmount);
         purchase.setOutstandingAmount(totalAmount);
         purchase.setJournalEntry(linkedJournal);
+        purchase.setPurchaseOrder(purchaseOrder);
+        purchase.setGoodsReceipt(goodsReceipt);
 
         // Process lines using already-locked materials
         List<RawMaterialService.ReceiptResult> receipts = new ArrayList<>();
@@ -262,6 +544,12 @@ public class PurchasingService {
                         movementRepository.save(movement);
                     });
         }
+        goodsReceipt.setStatus("INVOICED");
+        goodsReceiptRepository.save(goodsReceipt);
+        if ("RECEIVED".equalsIgnoreCase(purchaseOrder.getStatus())) {
+            purchaseOrder.setStatus("CLOSED");
+            purchaseOrderRepository.save(purchaseOrder);
+        }
         return toResponse(purchase);
     }
 
@@ -290,7 +578,9 @@ public class PurchasingService {
         }
         BigDecimal quantity = positive(request.quantity(), "quantity");
         BigDecimal unitCost = positive(request.unitCost(), "unitCost");
-        BigDecimal totalAmount = MoneyUtils.safeMultiply(quantity, unitCost);
+        BigDecimal lineNet = MoneyUtils.safeMultiply(quantity, unitCost);
+        BigDecimal taxAmount = computeReturnTax(purchase, material, quantity);
+        BigDecimal totalAmount = lineNet.add(taxAmount);
         String memo = returnMemo(material, supplier, request.reason());
         String reference = StringUtils.hasText(request.referenceNumber())
                 ? request.referenceNumber().trim()
@@ -301,17 +591,23 @@ public class PurchasingService {
                         InventoryReference.PURCHASE_RETURN,
                         reference);
         if (!existingMovements.isEmpty()) {
-            return returnExistingPurchaseReturn(material, supplier, quantity, unitCost, totalAmount, reference,
+            return returnExistingPurchaseReturn(purchase, material, supplier, quantity, unitCost, reference,
                     returnDate, memo, existingMovements);
         }
 
         // Post journal FIRST before deducting stock
+        Map<Long, BigDecimal> taxCredits = null;
+        if (taxAmount.compareTo(BigDecimal.ZERO) > 0) {
+            taxCredits = new HashMap<>();
+            taxCredits.put(null, taxAmount);
+        }
         JournalEntryDto entry = accountingFacade.postPurchaseReturn(
                 supplier.getId(),
                 reference,
                 returnDate,
                 memo,
-                Map.of(material.getInventoryAccountId(), totalAmount),
+                Map.of(material.getInventoryAccountId(), lineNet),
+                taxCredits,
                 totalAmount
         );
 
@@ -327,22 +623,31 @@ public class PurchasingService {
         return entry;
     }
 
-    private JournalEntryDto returnExistingPurchaseReturn(RawMaterial material,
+    private JournalEntryDto returnExistingPurchaseReturn(RawMaterialPurchase purchase,
+                                                         RawMaterial material,
                                                          Supplier supplier,
                                                          BigDecimal quantity,
                                                          BigDecimal unitCost,
-                                                         BigDecimal totalAmount,
                                                          String reference,
                                                          LocalDate returnDate,
                                                          String memo,
                                                          List<RawMaterialMovement> existingMovements) {
         validateReturnReplay(material, quantity, unitCost, reference, existingMovements);
+        BigDecimal lineNet = MoneyUtils.safeMultiply(quantity, unitCost);
+        BigDecimal taxAmount = computeReturnTax(purchase, material, quantity);
+        BigDecimal totalAmount = lineNet.add(taxAmount);
+        Map<Long, BigDecimal> taxCredits = null;
+        if (taxAmount.compareTo(BigDecimal.ZERO) > 0) {
+            taxCredits = new HashMap<>();
+            taxCredits.put(null, taxAmount);
+        }
         JournalEntryDto entry = accountingFacade.postPurchaseReturn(
                 supplier.getId(),
                 reference,
                 returnDate,
                 memo,
-                Map.of(material.getInventoryAccountId(), totalAmount),
+                Map.of(material.getInventoryAccountId(), lineNet),
+                taxCredits,
                 totalAmount
         );
         if (entry != null) {
@@ -501,6 +806,8 @@ public class PurchasingService {
     private RawMaterialPurchaseResponse toResponse(RawMaterialPurchase purchase) {
         JournalEntry journalEntry = purchase.getJournalEntry();
         Supplier supplier = purchase.getSupplier();
+        PurchaseOrder purchaseOrder = purchase.getPurchaseOrder();
+        GoodsReceipt goodsReceipt = purchase.getGoodsReceipt();
         List<RawMaterialPurchaseLineResponse> lines = purchase.getLines().stream()
                 .map(this::toLineResponse)
                 .toList();
@@ -517,6 +824,10 @@ public class PurchasingService {
                 supplier != null ? supplier.getId() : null,
                 supplier != null ? supplier.getCode() : null,
                 supplier != null ? supplier.getName() : null,
+                purchaseOrder != null ? purchaseOrder.getId() : null,
+                purchaseOrder != null ? purchaseOrder.getOrderNumber() : null,
+                goodsReceipt != null ? goodsReceipt.getId() : null,
+                goodsReceipt != null ? goodsReceipt.getReceiptNumber() : null,
                 journalEntry != null ? journalEntry.getId() : null,
                 purchase.getCreatedAt(),
                 lines
@@ -550,6 +861,86 @@ public class PurchasingService {
         return value;
     }
 
+    private PurchaseOrderResponse toPurchaseOrderResponse(PurchaseOrder order) {
+        Supplier supplier = order.getSupplier();
+        List<PurchaseOrderLineResponse> lines = order.getLines().stream()
+                .map(this::toPurchaseOrderLineResponse)
+                .toList();
+        BigDecimal totalAmount = lines.stream()
+                .map(PurchaseOrderLineResponse::lineTotal)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return new PurchaseOrderResponse(
+                order.getId(),
+                order.getPublicId(),
+                order.getOrderNumber(),
+                order.getOrderDate(),
+                totalAmount,
+                order.getStatus(),
+                order.getMemo(),
+                supplier != null ? supplier.getId() : null,
+                supplier != null ? supplier.getCode() : null,
+                supplier != null ? supplier.getName() : null,
+                order.getCreatedAt(),
+                lines
+        );
+    }
+
+    private PurchaseOrderLineResponse toPurchaseOrderLineResponse(PurchaseOrderLine line) {
+        RawMaterial material = line.getRawMaterial();
+        return new PurchaseOrderLineResponse(
+                material != null ? material.getId() : null,
+                material != null ? material.getName() : null,
+                line.getQuantity(),
+                line.getUnit(),
+                line.getCostPerUnit(),
+                line.getLineTotal(),
+                line.getNotes()
+        );
+    }
+
+    private GoodsReceiptResponse toGoodsReceiptResponse(GoodsReceipt receipt) {
+        Supplier supplier = receipt.getSupplier();
+        PurchaseOrder purchaseOrder = receipt.getPurchaseOrder();
+        List<GoodsReceiptLineResponse> lines = receipt.getLines().stream()
+                .map(this::toGoodsReceiptLineResponse)
+                .toList();
+        BigDecimal totalAmount = lines.stream()
+                .map(GoodsReceiptLineResponse::lineTotal)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return new GoodsReceiptResponse(
+                receipt.getId(),
+                receipt.getPublicId(),
+                receipt.getReceiptNumber(),
+                receipt.getReceiptDate(),
+                totalAmount,
+                receipt.getStatus(),
+                receipt.getMemo(),
+                supplier != null ? supplier.getId() : null,
+                supplier != null ? supplier.getCode() : null,
+                supplier != null ? supplier.getName() : null,
+                purchaseOrder != null ? purchaseOrder.getId() : null,
+                purchaseOrder != null ? purchaseOrder.getOrderNumber() : null,
+                receipt.getCreatedAt(),
+                lines
+        );
+    }
+
+    private GoodsReceiptLineResponse toGoodsReceiptLineResponse(GoodsReceiptLine line) {
+        RawMaterial material = line.getRawMaterial();
+        return new GoodsReceiptLineResponse(
+                material != null ? material.getId() : null,
+                material != null ? material.getName() : null,
+                line.getBatchCode(),
+                line.getQuantity(),
+                line.getUnit(),
+                line.getCostPerUnit(),
+                line.getLineTotal(),
+                line.getNotes()
+        );
+    }
+
     private BigDecimal nonNegative(BigDecimal value, String field) {
         if (value == null) {
             return BigDecimal.ZERO;
@@ -573,6 +964,44 @@ public class PurchasingService {
             return normalizePercent(company.getDefaultGstRate());
         }
         return BigDecimal.ZERO;
+    }
+
+    private BigDecimal computeReturnTax(RawMaterialPurchase purchase,
+                                        RawMaterial material,
+                                        BigDecimal returnQuantity) {
+        if (purchase == null || material == null || returnQuantity == null) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+        BigDecimal purchaseTax = MoneyUtils.zeroIfNull(purchase.getTaxAmount());
+        if (purchaseTax.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+        BigDecimal inventoryTotal = purchase.getLines().stream()
+                .map(RawMaterialPurchaseLine::getLineTotal)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (inventoryTotal.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+        BigDecimal materialLineTotal = purchase.getLines().stream()
+                .filter(line -> line.getRawMaterial() != null
+                        && line.getRawMaterial().getId().equals(material.getId()))
+                .map(RawMaterialPurchaseLine::getLineTotal)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal materialLineQty = purchase.getLines().stream()
+                .filter(line -> line.getRawMaterial() != null
+                        && line.getRawMaterial().getId().equals(material.getId()))
+                .map(RawMaterialPurchaseLine::getQuantity)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (materialLineTotal.compareTo(BigDecimal.ZERO) <= 0 || materialLineQty.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+        BigDecimal allocationRatio = materialLineTotal.divide(inventoryTotal, 6, RoundingMode.HALF_UP);
+        BigDecimal allocatedTax = purchaseTax.multiply(allocationRatio);
+        BigDecimal taxPerUnit = allocatedTax.divide(materialLineQty, 6, RoundingMode.HALF_UP);
+        return currency(taxPerUnit.multiply(returnQuantity));
     }
 
     private BigDecimal normalizePercent(BigDecimal rate) {

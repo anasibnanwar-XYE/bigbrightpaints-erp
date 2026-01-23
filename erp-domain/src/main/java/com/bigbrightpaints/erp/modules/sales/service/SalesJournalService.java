@@ -12,6 +12,7 @@ import com.bigbrightpaints.erp.modules.sales.util.SalesOrderReference;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProductRepository;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
+import com.bigbrightpaints.erp.modules.accounting.service.CompanyAccountingSettingsService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -38,15 +39,18 @@ public class SalesJournalService {
     private final AccountingFacade accountingFacade;
     private final ProductionProductRepository productionProductRepository;
     private final CompanyDefaultAccountsService companyDefaultAccountsService;
+    private final CompanyAccountingSettingsService companyAccountingSettingsService;
 
     public SalesJournalService(FinishedGoodsService finishedGoodsService,
                                AccountingFacade accountingFacade,
                                ProductionProductRepository productionProductRepository,
-                               CompanyDefaultAccountsService companyDefaultAccountsService) {
+                               CompanyDefaultAccountsService companyDefaultAccountsService,
+                               CompanyAccountingSettingsService companyAccountingSettingsService) {
         this.finishedGoodsService = finishedGoodsService;
         this.accountingFacade = accountingFacade;
         this.productionProductRepository = productionProductRepository;
         this.companyDefaultAccountsService = companyDefaultAccountsService;
+        this.companyAccountingSettingsService = companyAccountingSettingsService;
     }
 
     /**
@@ -101,6 +105,7 @@ public class SalesJournalService {
         Map<Long, BigDecimal> revenueLines = new LinkedHashMap<>();
         Map<Long, BigDecimal> taxLines = new LinkedHashMap<>();
         Map<String, ProductAccounts> accountCache = new LinkedHashMap<>();
+        Long gstOutputAccountId = null;
 
         for (SalesOrderItem item : items) {
             String productCode = item.getProductCode();
@@ -122,10 +127,13 @@ public class SalesJournalService {
 
             BigDecimal lineTax = item.getGstAmount() != null ? item.getGstAmount() : BigDecimal.ZERO;
             if (lineTax.compareTo(BigDecimal.ZERO) > 0) {
-                if (accounts.taxAccountId() == null) {
-                    throw new IllegalStateException("Product " + productCode + " missing tax account for GST posting");
+                if (gstOutputAccountId == null) {
+                    gstOutputAccountId = companyAccountingSettingsService.requireTaxAccounts().outputTaxAccountId();
                 }
-                taxLines.merge(accounts.taxAccountId(), lineTax, BigDecimal::add);
+                if (accounts.taxAccountId() != null && !accounts.taxAccountId().equals(gstOutputAccountId)) {
+                    throw new IllegalStateException("Product " + productCode + " tax account must match GST output account");
+                }
+                taxLines.merge(gstOutputAccountId, lineTax, BigDecimal::add);
             }
         }
 

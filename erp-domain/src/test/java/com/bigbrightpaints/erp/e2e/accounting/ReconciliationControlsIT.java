@@ -13,6 +13,8 @@ import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.reports.dto.InventoryValuationDto;
 import com.bigbrightpaints.erp.modules.reports.dto.ReconciliationSummaryDto;
 import com.bigbrightpaints.erp.modules.reports.service.ReportService;
+import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
+import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,6 +26,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Objects;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -45,6 +48,9 @@ public class ReconciliationControlsIT extends AbstractIntegrationTest {
 
     @Autowired
     private CompanyRepository companyRepository;
+
+    @Autowired
+    private DealerRepository dealerRepository;
 
     @BeforeEach
     void setUp() {
@@ -111,5 +117,42 @@ public class ReconciliationControlsIT extends AbstractIntegrationTest {
         assertThat(ap.variance()).isEqualByComparingTo(BigDecimal.ZERO);
         assertThat(ap.apAccountCount()).isPositive();
         assertThat(ap.supplierCount()).isPositive();
+    }
+
+    @Test
+    void arReconciliationAllowsCreditBalances() {
+        Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
+        SecurityContextHolder.getContext()
+                .setAuthentication(new UsernamePasswordAuthenticationToken("tester", "n/a"));
+
+        Dealer dealer = dealerRepository.findByCompanyAndCodeIgnoreCase(company, "FIX-DEALER")
+                .orElseThrow();
+        Account arAccount = accountRepository.findByCompanyAndCodeIgnoreCase(company, "AR").orElseThrow();
+        Account offset = accountRepository.findByCompanyAndCodeIgnoreCase(company, "CASH").orElseThrow();
+
+        BigDecimal creditAmount = new BigDecimal("50.00");
+        accountingService.createJournalEntry(new JournalEntryRequest(
+                "CREDIT-AR-" + System.nanoTime(),
+                LocalDate.now(),
+                "Credit memo",
+                dealer.getId(),
+                null,
+                false,
+                List.of(
+                        new JournalEntryRequest.JournalLineRequest(
+                                arAccount.getId(), "AR credit", BigDecimal.ZERO, creditAmount),
+                        new JournalEntryRequest.JournalLineRequest(
+                                offset.getId(), "Offset", creditAmount, BigDecimal.ZERO)
+                )
+        ));
+
+        Dealer refreshed = dealerRepository.findByCompanyAndId(company, dealer.getId()).orElseThrow();
+        assertThat(refreshed.getOutstandingBalance())
+                .as("outstanding balance matches ledger credit")
+                .isEqualByComparingTo(creditAmount.negate());
+
+        ReconciliationService.ReconciliationResult arResult = reconciliationService.reconcileArWithDealerLedger();
+        assertThat(arResult.discrepancies())
+                .noneMatch(discrepancy -> Objects.equals(discrepancy.dealerId(), dealer.getId()));
     }
 }

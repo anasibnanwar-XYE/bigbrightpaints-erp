@@ -9,11 +9,11 @@
 
 ## AR vs Dealer Ledger
 - AR control accounts (codes containing AR/RECEIVABLE) must match summed dealer ledger balances.
-- Dealer outstanding balances should align with ledger balances within tolerance.
+- Dealer outstanding balances are ledger-derived (can be negative for credit) and must align with ledger balances within tolerance.
 
 ## AP vs Supplier Ledger
 - AP control accounts (codes containing AP/PAYABLE) must match summed supplier ledger balances.
-- Supplier outstanding balances should align with ledger balances within tolerance.
+- Supplier outstanding balances are ledger-derived (can be negative for credit) and must align with ledger balances within tolerance.
 
 ## Period Close Controls
 - No unposted documents in the period window (draft invoices/purchases/payroll runs).

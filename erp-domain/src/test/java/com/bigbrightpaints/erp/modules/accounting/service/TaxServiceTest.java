@@ -68,6 +68,27 @@ class TaxServiceTest {
         assertThat(dto.getNetPayable()).isEqualByComparingTo("40.00");
     }
 
+    @Test
+    void generateGstReturn_roundsToCurrencyScale() {
+        YearMonth period = YearMonth.of(2024, 2);
+        LocalDate start = period.atDay(1);
+        LocalDate end = period.atEndOfMonth();
+
+        when(companyAccountingSettingsService.requireTaxAccounts())
+                .thenReturn(new CompanyAccountingSettingsService.TaxAccountConfiguration(1L, 2L, 3L));
+
+        when(journalLineRepository.findLinesForAccountBetween(company, 2L, start, end))
+                .thenReturn(List.of(line(BigDecimal.ZERO, new BigDecimal("10.005"))));
+        when(journalLineRepository.findLinesForAccountBetween(company, 1L, start, end))
+                .thenReturn(List.of(line(new BigDecimal("2.005"), BigDecimal.ZERO)));
+
+        GstReturnDto dto = taxService.generateGstReturn(period);
+
+        assertThat(dto.getOutputTax()).isEqualByComparingTo("10.01");
+        assertThat(dto.getInputTax()).isEqualByComparingTo("2.01");
+        assertThat(dto.getNetPayable()).isEqualByComparingTo("8.00");
+    }
+
     private JournalLine line(BigDecimal debit, BigDecimal credit) {
         JournalLine jl = new JournalLine();
         jl.setDebit(debit == null ? BigDecimal.ZERO : debit);

@@ -29,6 +29,15 @@
 - Test logs include expected warnings (invalid company IDs, negative balances, dispatch mapping); no failures.
 - Added `tasks/lf-tracker.md` to map LF IDs to evidence/commit signals; needs confirmation for evidence-only items.
 
+## Latest Update (2026-01-23)
+- Fixed GST draft test data to keep draft journal entries balanced so cross-suite invariant checks do not fail.
+  - File: `erp-domain/src/test/java/com/bigbrightpaints/erp/e2e/accounting/ProcureToPayE2ETest.java` (added offset debit line in `gstReturnIgnoresDraftEntries`).
+- Targeted test run after fix (PASS):
+  - `cd erp-domain && JAVA_TOOL_OPTIONS='-Djava.io.tmpdir=/tmp -Djna.tmpdir=/tmp' mvn -B -ntp -Dtest=ProcureToPayE2ETest,BusinessLogicRegressionTest,CriticalAccountingAxesIT test`
+- Full suite run (PASS):
+  - `cd erp-domain && JAVA_TOOL_OPTIONS='-Djava.io.tmpdir=/tmp -Djna.tmpdir=/tmp' mvn -B -ntp verify`
+  - Note: `nohup` backgrounding did not persist in this environment; ran verify in a live TTY session (session id 68399).
+
 ## Resume Instructions (Post Epic 10)
 1. LF-19 complete on `pr-coverage-lf-clean` at `b6da95f3e637677564b06f9633807f19af8dfab4`.
 2. LF-001/LF-007 complete on `pr-coverage-lf-clean` at `a87918f33cb57a2b4f8b0ab1ba2bd3d69b6f40c8`.

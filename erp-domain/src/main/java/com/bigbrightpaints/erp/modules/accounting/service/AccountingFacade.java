@@ -369,6 +369,21 @@ public class AccountingFacade {
                                               String memo,
                                               Map<Long, BigDecimal> inventoryCredits,
                                               BigDecimal totalAmount) {
+        return postPurchaseReturn(supplierId, referenceNumber, returnDate, memo, inventoryCredits, null, totalAmount);
+    }
+
+    /**
+     * Post purchase return journal entry (Dr AP / Cr Inventory [+ Cr Input Tax]).
+     */
+    @Transactional(isolation = Isolation.REPEATABLE_READ)
+    @Retryable(value = OptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 100))
+    public JournalEntryDto postPurchaseReturn(Long supplierId,
+                                              String referenceNumber,
+                                              LocalDate returnDate,
+                                              String memo,
+                                              Map<Long, BigDecimal> inventoryCredits,
+                                              Map<Long, BigDecimal> taxCredits,
+                                              BigDecimal totalAmount) {
         Objects.requireNonNull(supplierId, "Supplier ID is required");
         Objects.requireNonNull(totalAmount, "Total amount is required");
         Objects.requireNonNull(inventoryCredits, "Inventory credits are required");
@@ -412,6 +427,22 @@ public class AccountingFacade {
                         resolvedMemo,
                         BigDecimal.ZERO,
                         amount.abs()));
+            }
+        }
+
+        if (taxCredits != null && !taxCredits.isEmpty()) {
+            TaxAccountConfiguration taxConfig = companyAccountingSettingsService.requireTaxAccounts();
+            for (Map.Entry<Long, BigDecimal> entry : taxCredits.entrySet()) {
+                BigDecimal amount = entry.getValue();
+                if (amount != null && amount.compareTo(BigDecimal.ZERO) > 0) {
+                    Long accountId = entry.getKey() != null ? entry.getKey() : taxConfig.inputTaxAccountId();
+                    totalCredits = totalCredits.add(amount.abs());
+                    lines.add(new JournalEntryRequest.JournalLineRequest(
+                            accountId,
+                            "Reverse input tax for " + resolvedMemo,
+                            BigDecimal.ZERO,
+                            amount.abs()));
+                }
             }
         }
 

@@ -7,7 +7,8 @@ package com.bigbrightpaints.erp.modules.inventory.domain;
  * analytics can hop across inventory, production, sales, and accounting:
  * <ul>
  *     <li>{@link #PRODUCTION_LOG}: {@code referenceId} is the production log code.</li>
- *     <li>{@link #RAW_MATERIAL_PURCHASE}: {@code referenceId} is the raw material batch code.</li>
+ *     <li>{@link #RAW_MATERIAL_PURCHASE}: {@code referenceId} is the purchase receipt reference
+ *     (invoice line reference or batch code, depending on the intake flow).</li>
  *     <li>{@link #OPENING_STOCK}: {@code referenceId} is the opening stock batch code.</li>
  *     <li>{@link #SALES_ORDER}: {@code referenceId} is the sales order database identifier.</li>
  *     <li>{@link #MANUFACTURING_ORDER}: {@code referenceId} is the finished good batch public id

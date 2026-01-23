@@ -107,11 +107,15 @@ public class CriticalFixtureService {
         map.put("COGS", ensureAccount(company, "COGS", "Cost of Goods Sold", AccountType.COGS));
         map.put("REV", ensureAccount(company, "REV", "Revenue", AccountType.REVENUE));
         map.put("GST_OUT", ensureAccount(company, "GST-OUT", "Output Tax", AccountType.LIABILITY));
+        map.put("GST_IN", ensureAccount(company, "GST-IN", "Input Tax", AccountType.ASSET));
         map.put("DISC", ensureAccount(company, "DISC", "Discounts", AccountType.EXPENSE));
         map.put("WIP", ensureAccount(company, "WIP", "Work in Progress", AccountType.ASSET));
 
         if (company.getGstOutputTaxAccountId() == null) {
             company.setGstOutputTaxAccountId(map.get("GST_OUT").getId());
+        }
+        if (company.getGstInputTaxAccountId() == null) {
+            company.setGstInputTaxAccountId(map.get("GST_IN").getId());
         }
         companyRepository.save(company);
         return map;

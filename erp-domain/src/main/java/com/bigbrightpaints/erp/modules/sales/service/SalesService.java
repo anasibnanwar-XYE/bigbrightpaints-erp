@@ -15,6 +15,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.JournalLine;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.DealerLedgerService;
+import com.bigbrightpaints.erp.modules.accounting.service.CompanyAccountingSettingsService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.inventory.domain.*;
@@ -81,6 +82,7 @@ public class SalesService {
     private final InvoiceRepository invoiceRepository;
     private final FactoryTaskRepository factoryTaskRepository;
     private final CompanyDefaultAccountsService companyDefaultAccountsService;
+    private final CompanyAccountingSettingsService companyAccountingSettingsService;
     private final CreditLimitOverrideService creditLimitOverrideService;
     private final AuditService auditService;
 
@@ -105,6 +107,7 @@ public class SalesService {
                         InvoiceRepository invoiceRepository,
                         FactoryTaskRepository factoryTaskRepository,
                         CompanyDefaultAccountsService companyDefaultAccountsService,
+                        CompanyAccountingSettingsService companyAccountingSettingsService,
                         CreditLimitOverrideService creditLimitOverrideService,
                         AuditService auditService) {
         this.companyContextService = companyContextService;
@@ -128,6 +131,7 @@ public class SalesService {
         this.invoiceRepository = invoiceRepository;
         this.factoryTaskRepository = factoryTaskRepository;
         this.companyDefaultAccountsService = companyDefaultAccountsService;
+        this.companyAccountingSettingsService = companyAccountingSettingsService;
         this.creditLimitOverrideService = creditLimitOverrideService;
         this.auditService = auditService;
     }
@@ -1199,6 +1203,7 @@ public class SalesService {
         List<InvoiceLine> invoiceLines = new ArrayList<>();
         BigDecimal subtotal = BigDecimal.ZERO;
         BigDecimal taxTotal = BigDecimal.ZERO;
+        Long gstOutputAccountId = null;
 
         for (var slipLine : slip.getLines()) {
             DispatchConfirmRequest.DispatchLine override = lineOverrides.get(slipLine.getId());
@@ -1277,21 +1282,14 @@ public class SalesService {
                 }
 
                 BigDecimal lineGross = price.multiply(allocQty);
-                BigDecimal lineNet = lineGross.subtract(discount);
-                BigDecimal lineTax;
-                if (Boolean.TRUE.equals(override != null ? override.taxInclusive() : Boolean.FALSE)) {
-                    BigDecimal divisor = BigDecimal.ONE.add(taxRate.divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP));
-                    if (divisor.signum() == 0) {
-                        lineTax = BigDecimal.ZERO;
-                    } else {
-                        BigDecimal preTax = lineNet.divide(divisor, 6, RoundingMode.HALF_UP);
-                        lineTax = lineNet.subtract(preTax);
-                        lineNet = preTax;
-                    }
-                } else {
-                    lineTax = lineNet.multiply(taxRate).divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP);
-                }
-                BigDecimal lineTotal = lineNet.add(lineTax);
+                LineAmounts amounts = computeDispatchLineAmounts(
+                        lineGross,
+                        discount,
+                        taxRate,
+                        Boolean.TRUE.equals(override != null ? override.taxInclusive() : Boolean.FALSE));
+                BigDecimal lineNet = amounts.net();
+                BigDecimal lineTax = amounts.tax();
+                BigDecimal lineTotal = amounts.total();
 
                 subtotal = subtotal.add(lineNet);
                 taxTotal = taxTotal.add(lineTax);
@@ -1299,8 +1297,15 @@ public class SalesService {
                 if (fg.getRevenueAccountId() != null) {
                     revenueByAccount.merge(fg.getRevenueAccountId(), lineNet, BigDecimal::add);
                 }
-                if (fg.getTaxAccountId() != null && lineTax.compareTo(BigDecimal.ZERO) > 0) {
-                    taxByAccount.merge(fg.getTaxAccountId(), lineTax, BigDecimal::add);
+                if (lineTax.compareTo(BigDecimal.ZERO) > 0) {
+                    if (gstOutputAccountId == null) {
+                        gstOutputAccountId = companyAccountingSettingsService.requireTaxAccounts().outputTaxAccountId();
+                    }
+                    if (fg.getTaxAccountId() != null && !fg.getTaxAccountId().equals(gstOutputAccountId)) {
+                        throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                                "Finished good " + fg.getProductCode() + " tax account must match GST output account");
+                    }
+                    taxByAccount.merge(gstOutputAccountId, lineTax, BigDecimal::add);
                 }
 
                 InvoiceLine invLine = new InvoiceLine();
@@ -1331,29 +1336,29 @@ public class SalesService {
                         : (lastItem.getGstRate() == null ? BigDecimal.ZERO : lastItem.getGstRate());
                 BigDecimal discount = discountRemaining;
                 BigDecimal lineGross = price.multiply(remainingToAllocate);
-                BigDecimal lineNet = lineGross.subtract(discount);
-                BigDecimal lineTax;
-                if (Boolean.TRUE.equals(override != null ? override.taxInclusive() : Boolean.FALSE)) {
-                    BigDecimal divisor = BigDecimal.ONE.add(taxRate.divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP));
-                    if (divisor.signum() == 0) {
-                        lineTax = BigDecimal.ZERO;
-                    } else {
-                        BigDecimal preTax = lineNet.divide(divisor, 6, RoundingMode.HALF_UP);
-                        lineTax = lineNet.subtract(preTax);
-                        lineNet = preTax;
-                    }
-                } else {
-                    lineTax = lineNet.multiply(taxRate).divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP);
-                }
-                BigDecimal lineTotal = lineNet.add(lineTax);
+                LineAmounts amounts = computeDispatchLineAmounts(
+                        lineGross,
+                        discount,
+                        taxRate,
+                        Boolean.TRUE.equals(override != null ? override.taxInclusive() : Boolean.FALSE));
+                BigDecimal lineNet = amounts.net();
+                BigDecimal lineTax = amounts.tax();
+                BigDecimal lineTotal = amounts.total();
 
                 subtotal = subtotal.add(lineNet);
                 taxTotal = taxTotal.add(lineTax);
                 if (fg.getRevenueAccountId() != null) {
                     revenueByAccount.merge(fg.getRevenueAccountId(), lineNet, BigDecimal::add);
                 }
-                if (fg.getTaxAccountId() != null && lineTax.compareTo(BigDecimal.ZERO) > 0) {
-                    taxByAccount.merge(fg.getTaxAccountId(), lineTax, BigDecimal::add);
+                if (lineTax.compareTo(BigDecimal.ZERO) > 0) {
+                    if (gstOutputAccountId == null) {
+                        gstOutputAccountId = companyAccountingSettingsService.requireTaxAccounts().outputTaxAccountId();
+                    }
+                    if (fg.getTaxAccountId() != null && !fg.getTaxAccountId().equals(gstOutputAccountId)) {
+                        throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                                "Finished good " + fg.getProductCode() + " tax account must match GST output account");
+                    }
+                    taxByAccount.merge(gstOutputAccountId, lineTax, BigDecimal::add);
                 }
 
                 InvoiceLine invLine = new InvoiceLine();
@@ -1678,6 +1683,32 @@ public class SalesService {
         return new DispatchConfirmResponse.AccountPostingDto(accountId, name, debit, credit);
     }
 
+    private LineAmounts computeDispatchLineAmounts(BigDecimal gross,
+                                                   BigDecimal discount,
+                                                   BigDecimal taxRate,
+                                                   boolean taxInclusive) {
+        BigDecimal lineGross = gross != null ? gross : BigDecimal.ZERO;
+        BigDecimal lineDiscount = discount != null ? discount : BigDecimal.ZERO;
+        BigDecimal rate = taxRate != null ? taxRate : BigDecimal.ZERO;
+
+        BigDecimal netRaw = lineGross.subtract(lineDiscount);
+        BigDecimal taxRaw = BigDecimal.ZERO;
+        if (taxInclusive && rate.compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal divisor = BigDecimal.ONE.add(rate.divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP));
+            if (divisor.signum() > 0) {
+                BigDecimal preTax = netRaw.divide(divisor, 6, RoundingMode.HALF_UP);
+                taxRaw = netRaw.subtract(preTax);
+                netRaw = preTax;
+            }
+        } else if (rate.compareTo(BigDecimal.ZERO) > 0) {
+            taxRaw = netRaw.multiply(rate).divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP);
+        }
+
+        BigDecimal net = currency(netRaw);
+        BigDecimal tax = currency(taxRaw);
+        return new LineAmounts(net, tax, net.add(tax));
+    }
+
     private static final class OrderItemAllocation {
         private final SalesOrderItem item;
         private BigDecimal remaining;
@@ -1687,6 +1718,8 @@ public class SalesService {
             this.remaining = remaining != null ? remaining : BigDecimal.ZERO;
         }
     }
+
+    private record LineAmounts(BigDecimal net, BigDecimal tax, BigDecimal total) {}
 
     private String resolveOrderStatusAfterDispatch(Company company, SalesOrder order) {
         if (order == null || company == null) {

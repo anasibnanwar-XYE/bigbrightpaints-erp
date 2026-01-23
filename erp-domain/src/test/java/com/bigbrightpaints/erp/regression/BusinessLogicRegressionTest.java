@@ -80,11 +80,32 @@ public class BusinessLogicRegressionTest extends AbstractIntegrationTest {
 
     private void ensureTestAccounts() {
         Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
-        ensureAccount(company, "CASH", "Cash", AccountType.ASSET);
-        ensureAccount(company, "AR", "Accounts Receivable", AccountType.ASSET);
-        ensureAccount(company, "INV", "Inventory", AccountType.ASSET);
-        ensureAccount(company, "REV", "Revenue", AccountType.REVENUE);
-        ensureAccount(company, "COGS", "Cost of Goods Sold", AccountType.EXPENSE);
+        Account cash = ensureAccount(company, "CASH", "Cash", AccountType.ASSET);
+        Account ar = ensureAccount(company, "AR", "Accounts Receivable", AccountType.ASSET);
+        Account inventory = ensureAccount(company, "INV", "Inventory", AccountType.ASSET);
+        Account revenue = ensureAccount(company, "REV", "Revenue", AccountType.REVENUE);
+        Account cogs = ensureAccount(company, "COGS", "Cost of Goods Sold", AccountType.EXPENSE);
+        Account tax = ensureAccount(company, "TAX", "Tax Liability", AccountType.LIABILITY);
+
+        if (company.getDefaultInventoryAccountId() == null) {
+            company.setDefaultInventoryAccountId(inventory.getId());
+        }
+        if (company.getDefaultCogsAccountId() == null) {
+            company.setDefaultCogsAccountId(cogs.getId());
+        }
+        if (company.getDefaultRevenueAccountId() == null) {
+            company.setDefaultRevenueAccountId(revenue.getId());
+        }
+        if (company.getDefaultTaxAccountId() == null) {
+            company.setDefaultTaxAccountId(tax.getId());
+        }
+        if (company.getGstOutputTaxAccountId() == null) {
+            company.setGstOutputTaxAccountId(tax.getId());
+        }
+        if (company.getGstInputTaxAccountId() == null) {
+            company.setGstInputTaxAccountId(tax.getId());
+        }
+        companyRepository.save(company);
     }
 
     private Account ensureAccount(Company company, String code, String name, AccountType type) {
@@ -122,7 +143,12 @@ public class BusinessLogicRegressionTest extends AbstractIntegrationTest {
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
 
             assertThat(totalDebits)
-                    .withFailMessage("Journal entry %d is not balanced", entry.getId())
+                    .withFailMessage("Journal entry %d (%s, companyId=%s) is not balanced: debits=%s credits=%s",
+                            entry.getId(),
+                            entry.getReferenceNumber(),
+                            entry.getCompany() != null ? entry.getCompany().getId() : null,
+                            totalDebits,
+                            totalCredits)
                     .isEqualByComparingTo(totalCredits);
         }
     }
@@ -184,10 +210,11 @@ public class BusinessLogicRegressionTest extends AbstractIntegrationTest {
 
         // Test that the dispatch endpoint exists and follows proper flow
         Map<String, Object> dispatchReq = Map.of(
-                "orderId", 999999L // Non-existent order
+                "orderId", 999999L, // Non-existent order
+                "confirmedBy", "regression"
         );
 
-        ResponseEntity<Map> response = rest.exchange("/api/v1/orchestrator/dispatch",
+        ResponseEntity<Map> response = rest.exchange("/api/v1/sales/dispatch/confirm",
                 HttpMethod.POST, new HttpEntity<>(dispatchReq, headers), Map.class);
 
         // Should respond with error (order not found) but endpoint exists

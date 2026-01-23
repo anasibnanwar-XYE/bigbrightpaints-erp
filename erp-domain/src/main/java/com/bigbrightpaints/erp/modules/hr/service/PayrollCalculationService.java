@@ -82,10 +82,10 @@ public class PayrollCalculationService {
         Company company = companyContextService.requireCurrentCompany();
         LocalDate today = LocalDate.now();
         
-        // Get the week range (Monday to Sunday of current week, or previous week if today is Saturday)
-        LocalDate weekEnd = today.getDayOfWeek() == DayOfWeek.SATURDAY 
-                ? today.minusDays(1) // Friday
-                : today.with(TemporalAdjusters.previousOrSame(DayOfWeek.FRIDAY));
+        // Get the week range (Monday to Saturday of the latest completed week)
+        LocalDate weekEnd = today.getDayOfWeek() == DayOfWeek.SATURDAY
+                ? today
+                : today.with(TemporalAdjusters.previousOrSame(DayOfWeek.SATURDAY));
         LocalDate weekStart = weekEnd.minusDays(5); // Monday
         
         log.info("Calculating weekly payroll for {} to {}", weekStart, weekEnd);
@@ -353,6 +353,9 @@ public class PayrollCalculationService {
         for (PayrollLineItem item : lineItems) {
             PayrollRunLine line = new PayrollRunLine();
             line.setPayrollRun(run);
+            Employee employee = employeeRepository.findByCompanyAndId(company, item.employeeId())
+                    .orElseThrow(() -> new IllegalStateException("Employee not found for payroll run line: " + item.employeeId()));
+            line.setEmployee(employee);
             line.setName(item.employeeName());
             BigDecimal effectiveDays = item.presentDays().add(item.halfDays().multiply(new BigDecimal("0.5")));
             line.setDaysWorked(effectiveDays.setScale(0, RoundingMode.HALF_UP).intValue());
