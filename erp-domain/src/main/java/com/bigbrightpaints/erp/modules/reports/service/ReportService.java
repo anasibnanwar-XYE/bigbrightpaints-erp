@@ -311,6 +311,13 @@ public class ReportService {
         if (remaining.compareTo(BigDecimal.ZERO) <= 0) {
             return BigDecimal.ZERO;
         }
+        if (isWeightedAverage(material.getCostingMethod())) {
+            BigDecimal avgCost = rawMaterialBatchRepository.calculateWeightedAverageCost(material);
+            if (avgCost == null) {
+                return BigDecimal.ZERO;
+            }
+            return remaining.multiply(avgCost);
+        }
         List<RawMaterialBatch> batches = rawMaterialBatchRepository.findByRawMaterial(material).stream()
                 .sorted((a, b) -> a.getReceivedAt().compareTo(b.getReceivedAt()))
                 .toList();
@@ -323,6 +330,13 @@ public class ReportService {
         BigDecimal remaining = Optional.ofNullable(finishedGood.getCurrentStock()).orElse(BigDecimal.ZERO);
         if (remaining.compareTo(BigDecimal.ZERO) <= 0) {
             return BigDecimal.ZERO;
+        }
+        if (isWeightedAverage(finishedGood.getCostingMethod())) {
+            BigDecimal avgCost = finishedGoodBatchRepository.calculateWeightedAverageCost(finishedGood);
+            if (avgCost == null) {
+                return BigDecimal.ZERO;
+            }
+            return remaining.multiply(avgCost);
         }
         List<FinishedGoodBatch> batches = finishedGoodBatchRepository.findByFinishedGoodOrderByManufacturedAtAsc(finishedGood);
         return consumeValuation(remaining, batches.stream()
@@ -352,6 +366,14 @@ public class ReportService {
             total = total.add(remaining.multiply(lastCost));
         }
         return total;
+    }
+
+    private boolean isWeightedAverage(String method) {
+        if (method == null) {
+            return false;
+        }
+        String normalized = method.trim().toUpperCase();
+        return "WAC".equals(normalized) || "WEIGHTED_AVERAGE".equals(normalized) || "WEIGHTED-AVERAGE".equals(normalized);
     }
 
     private CashCategory classify(Account account) {

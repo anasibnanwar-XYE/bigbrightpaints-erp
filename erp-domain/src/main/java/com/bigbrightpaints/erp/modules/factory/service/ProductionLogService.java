@@ -319,6 +319,9 @@ public class ProductionLogService {
     private BigDecimal issueFromBatches(RawMaterial rawMaterial, BigDecimal requiredQty, String referenceId) {
         // Lock batches in FIFO order (pessimistic lock) to prevent double consumption
         List<RawMaterialBatch> batches = rawMaterialBatchRepository.findAvailableBatchesFIFO(rawMaterial);
+        BigDecimal weightedAverageCost = isWeightedAverage(rawMaterial.getCostingMethod())
+                ? rawMaterialBatchRepository.calculateWeightedAverageCost(rawMaterial)
+                : null;
         BigDecimal remaining = requiredQty;
         BigDecimal totalCost = BigDecimal.ZERO;
         List<RawMaterialMovement> movements = new ArrayList<>();
@@ -337,7 +340,9 @@ public class ProductionLogService {
             }
 
             // Capture cost snapshot BEFORE deduction while holding pessimistic lock
-            BigDecimal unitCost = Optional.ofNullable(batch.getCostPerUnit()).orElse(BigDecimal.ZERO);
+            BigDecimal unitCost = weightedAverageCost != null
+                    ? weightedAverageCost
+                    : Optional.ofNullable(batch.getCostPerUnit()).orElse(BigDecimal.ZERO);
             BigDecimal movementCost = unitCost.multiply(take);
 
             // Use atomic update to prevent race conditions and negative quantities
@@ -366,6 +371,14 @@ public class ProductionLogService {
         }
         rawMaterialMovementRepository.saveAll(movements);
         return totalCost;
+    }
+
+    private boolean isWeightedAverage(String method) {
+        if (method == null) {
+            return false;
+        }
+        String normalized = method.trim().toUpperCase();
+        return "WAC".equals(normalized) || "WEIGHTED_AVERAGE".equals(normalized) || "WEIGHTED-AVERAGE".equals(normalized);
     }
 
     private void postMaterialJournal(Company company,

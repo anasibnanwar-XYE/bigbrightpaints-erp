@@ -8,4 +8,7 @@ public record InvoiceLineDto(Long id,
                              BigDecimal quantity,
                              BigDecimal unitPrice,
                              BigDecimal taxRate,
-                             BigDecimal lineTotal) {}
+                             BigDecimal lineTotal,
+                             BigDecimal taxableAmount,
+                             BigDecimal taxAmount,
+                             BigDecimal discountAmount) {}

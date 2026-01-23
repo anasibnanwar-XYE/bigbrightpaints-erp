@@ -340,6 +340,7 @@ public class OpeningStockImportService {
                 BigDecimal.ZERO,
                 BigDecimal.ZERO,
                 BigDecimal.ZERO,
+                null,
                 null
         );
         RawMaterialDto created = rawMaterialService.createRawMaterial(request);

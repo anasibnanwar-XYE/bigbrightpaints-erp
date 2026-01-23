@@ -1,0 +1,2 @@
+ALTER TABLE raw_materials
+    ADD COLUMN IF NOT EXISTS costing_method VARCHAR(20) NOT NULL DEFAULT 'FIFO';

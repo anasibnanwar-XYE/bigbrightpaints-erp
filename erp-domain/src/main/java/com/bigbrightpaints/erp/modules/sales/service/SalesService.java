@@ -317,6 +317,7 @@ public class SalesService {
         order.setNotes(request.notes());
         order.setIdempotencyKey(idempotencyKey);
         order.setIdempotencyHash(requestSignature);
+        order.setGstInclusive(gstInclusive);
         OrderAmountSummary amounts = mapOrderItems(order, items, gstTreatment, orderLevelRate, gstInclusive);
         validateTotalAmount(request.totalAmount(), amounts.total());
         enforceCreditLimit(order.getDealer(), amounts.total());
@@ -347,6 +348,7 @@ public class SalesService {
                 .append('|').append(amountToken(request.totalAmount()))
                 .append('|').append(normalizeText(request.currency()))
                 .append('|').append(normalizeText(request.gstTreatment()))
+                .append('|').append(Boolean.TRUE.equals(request.gstInclusive()))
                 .append('|').append(amountToken(request.gstRate()))
                 .append('|').append(normalizeText(request.notes()));
         request.items().stream()
@@ -365,6 +367,7 @@ public class SalesService {
                 .append('|').append(amountToken(order.getTotalAmount()))
                 .append('|').append(normalizeText(order.getCurrency()))
                 .append('|').append(normalizeText(order.getGstTreatment()))
+                .append('|').append(order.isGstInclusive())
                 .append('|').append(amountToken(order.getGstRate()))
                 .append('|').append(normalizeText(order.getNotes()));
         order.getItems().stream()
@@ -423,6 +426,7 @@ public class SalesService {
         }
         order.setCurrency(request.currency());
         order.setNotes(request.notes());
+        order.setGstInclusive(gstInclusive);
         OrderAmountSummary amounts = mapOrderItems(order, items, gstTreatment, orderLevelRate, gstInclusive);
         validateTotalAmount(request.totalAmount(), amounts.total());
         return toDto(order);
@@ -526,7 +530,7 @@ public class SalesService {
                 .collect(Collectors.toList());
         return new SalesOrderDto(order.getId(), order.getPublicId(), order.getOrderNumber(), order.getStatus(),
                 order.getTotalAmount(), order.getSubtotalAmount(), order.getGstTotal(), order.getGstRate(),
-                order.getGstTreatment(), order.getGstRoundingAdjustment(), order.getCurrency(), dealerName,
+                order.getGstTreatment(), order.isGstInclusive(), order.getGstRoundingAdjustment(), order.getCurrency(), dealerName,
                 order.getTraceId(), order.getCreatedAt(), items);
     }
 
@@ -696,6 +700,15 @@ public class SalesService {
             return explicitFloor;
         }
         return discountFloor;
+    }
+
+    private BigDecimal resolveMinAllowedPriceForSku(Company company, String sku) {
+        if (!StringUtils.hasText(sku)) {
+            return BigDecimal.ZERO;
+        }
+        ProductionProduct product = productionProductRepository.findByCompanyAndSkuCode(company, sku)
+                .orElseThrow(() -> new IllegalArgumentException("SKU " + sku + " not found"));
+        return resolveMinAllowedPrice(product);
     }
 
     private List<PricedOrderLine> resolveOrderItems(Company company,
@@ -1128,6 +1141,8 @@ public class SalesService {
         Map<Long, BigDecimal> shipQtyByLineId = new HashMap<>();
 
         SalesOrder order = requireOrder(salesOrderId);
+        boolean orderTaxInclusive = order.isGstInclusive();
+        Map<String, BigDecimal> minPriceBySku = new HashMap<>();
         if (existingInvoice == null && order.getFulfillmentInvoiceId() != null) {
             existingInvoice = invoiceRepository.findByCompanyAndId(company, order.getFulfillmentInvoiceId()).orElse(null);
         }
@@ -1250,7 +1265,54 @@ public class SalesService {
             }
             BigDecimal totalShipQty = shipQty;
             BigDecimal discountTotal = override != null && override.discount() != null ? override.discount() : BigDecimal.ZERO;
+            if (discountTotal.compareTo(BigDecimal.ZERO) < 0) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Dispatch discount cannot be negative")
+                        .withDetail("packingSlipLineId", slipLine.getId())
+                        .withDetail("discount", discountTotal);
+            }
             BigDecimal discountRemaining = discountTotal;
+            BigDecimal totalGross = BigDecimal.ZERO;
+            if (discountTotal.compareTo(BigDecimal.ZERO) > 0) {
+                BigDecimal remainingForGross = shipQty;
+                SalesOrderItem grossLastItem = null;
+                for (OrderItemAllocation allocation : allocations) {
+                    if (remainingForGross.compareTo(BigDecimal.ZERO) <= 0) {
+                        break;
+                    }
+                    BigDecimal allocQty = allocation.remaining.min(remainingForGross);
+                    if (allocQty.compareTo(BigDecimal.ZERO) <= 0) {
+                        continue;
+                    }
+                    BigDecimal price = override != null && override.priceOverride() != null
+                            ? override.priceOverride()
+                            : allocation.item.getUnitPrice();
+                    totalGross = totalGross.add(price.multiply(allocQty));
+                    grossLastItem = allocation.item;
+                    remainingForGross = remainingForGross.subtract(allocQty);
+                }
+                if (remainingForGross.compareTo(BigDecimal.ZERO) > 0 && grossLastItem != null) {
+                    BigDecimal price = override != null && override.priceOverride() != null
+                            ? override.priceOverride()
+                            : grossLastItem.getUnitPrice();
+                    totalGross = totalGross.add(price.multiply(remainingForGross));
+                }
+                if (totalGross.compareTo(BigDecimal.ZERO) <= 0) {
+                    throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                            "Dispatch discount cannot exceed gross amount")
+                            .withDetail("packingSlipLineId", slipLine.getId())
+                            .withDetail("discount", discountTotal)
+                            .withDetail("grossAmount", totalGross);
+                }
+                if (discountTotal.compareTo(totalGross) > 0
+                        && !MoneyUtils.withinTolerance(discountTotal, totalGross, DISPATCH_TOTAL_TOLERANCE)) {
+                    throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                            "Dispatch discount exceeds gross amount")
+                            .withDetail("packingSlipLineId", slipLine.getId())
+                            .withDetail("discount", discountTotal)
+                            .withDetail("grossAmount", totalGross);
+                }
+            }
             BigDecimal remainingToAllocate = shipQty;
             SalesOrderItem lastItem = null;
             while (remainingToAllocate.compareTo(BigDecimal.ZERO) > 0 && !allocations.isEmpty()) {
@@ -1267,26 +1329,61 @@ public class SalesService {
                 BigDecimal price = override != null && override.priceOverride() != null
                         ? override.priceOverride()
                         : item.getUnitPrice();
+                if (price.compareTo(BigDecimal.ZERO) < 0) {
+                    throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                            "Dispatch price override cannot be negative")
+                            .withDetail("productCode", fg.getProductCode())
+                            .withDetail("overridePrice", price);
+                }
+                if (override != null && override.priceOverride() != null) {
+                    BigDecimal minAllowed = minPriceBySku.computeIfAbsent(
+                            fg.getProductCode(),
+                            sku -> resolveMinAllowedPriceForSku(company, sku));
+                    if (minAllowed.compareTo(BigDecimal.ZERO) > 0 && price.compareTo(minAllowed) < 0) {
+                        throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                                "Dispatch price override is below the minimum allowed")
+                                .withDetail("productCode", fg.getProductCode())
+                                .withDetail("overridePrice", price)
+                                .withDetail("minAllowed", minAllowed);
+                    }
+                }
                 BigDecimal taxRate = override != null && override.taxRate() != null
-                        ? override.taxRate()
+                        ? normalizePercent(override.taxRate())
                         : (item.getGstRate() == null ? BigDecimal.ZERO : item.getGstRate());
                 BigDecimal discount = BigDecimal.ZERO;
                 if (discountTotal.compareTo(BigDecimal.ZERO) > 0) {
                     if (lastAllocation) {
                         discount = discountRemaining;
                     } else {
-                        discount = discountTotal.multiply(allocQty)
-                                .divide(totalShipQty, 6, RoundingMode.HALF_UP);
+                        BigDecimal allocationBase = totalGross.compareTo(BigDecimal.ZERO) > 0
+                                ? totalGross
+                                : totalShipQty;
+                        BigDecimal weight = totalGross.compareTo(BigDecimal.ZERO) > 0
+                                ? price.multiply(allocQty)
+                                : allocQty;
+                        discount = discountTotal.multiply(weight)
+                                .divide(allocationBase, 6, RoundingMode.HALF_UP);
                         discountRemaining = discountRemaining.subtract(discount);
                     }
                 }
 
                 BigDecimal lineGross = price.multiply(allocQty);
+                if (lineGross.subtract(discount).compareTo(BigDecimal.ZERO) < 0
+                        && !MoneyUtils.withinTolerance(lineGross, discount, DISPATCH_TOTAL_TOLERANCE)) {
+                    throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                            "Dispatch discount exceeds line gross amount")
+                            .withDetail("packingSlipLineId", slipLine.getId())
+                            .withDetail("lineGross", lineGross)
+                            .withDetail("lineDiscount", discount);
+                }
+                boolean taxInclusive = override != null && override.taxInclusive() != null
+                        ? override.taxInclusive()
+                        : orderTaxInclusive;
                 LineAmounts amounts = computeDispatchLineAmounts(
                         lineGross,
                         discount,
                         taxRate,
-                        Boolean.TRUE.equals(override != null ? override.taxInclusive() : Boolean.FALSE));
+                        taxInclusive);
                 BigDecimal lineNet = amounts.net();
                 BigDecimal lineTax = amounts.tax();
                 BigDecimal lineTotal = amounts.total();
@@ -1334,16 +1431,45 @@ public class SalesService {
                 BigDecimal price = override != null && override.priceOverride() != null
                         ? override.priceOverride()
                         : lastItem.getUnitPrice();
+                if (price.compareTo(BigDecimal.ZERO) < 0) {
+                    throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                            "Dispatch price override cannot be negative")
+                            .withDetail("productCode", fg.getProductCode())
+                            .withDetail("overridePrice", price);
+                }
+                if (override != null && override.priceOverride() != null) {
+                    BigDecimal minAllowed = minPriceBySku.computeIfAbsent(
+                            fg.getProductCode(),
+                            sku -> resolveMinAllowedPriceForSku(company, sku));
+                    if (minAllowed.compareTo(BigDecimal.ZERO) > 0 && price.compareTo(minAllowed) < 0) {
+                        throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                                "Dispatch price override is below the minimum allowed")
+                                .withDetail("productCode", fg.getProductCode())
+                                .withDetail("overridePrice", price)
+                                .withDetail("minAllowed", minAllowed);
+                    }
+                }
                 BigDecimal taxRate = override != null && override.taxRate() != null
-                        ? override.taxRate()
+                        ? normalizePercent(override.taxRate())
                         : (lastItem.getGstRate() == null ? BigDecimal.ZERO : lastItem.getGstRate());
                 BigDecimal discount = discountRemaining;
                 BigDecimal lineGross = price.multiply(remainingToAllocate);
+                if (lineGross.subtract(discount).compareTo(BigDecimal.ZERO) < 0
+                        && !MoneyUtils.withinTolerance(lineGross, discount, DISPATCH_TOTAL_TOLERANCE)) {
+                    throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                            "Dispatch discount exceeds line gross amount")
+                            .withDetail("packingSlipLineId", slipLine.getId())
+                            .withDetail("lineGross", lineGross)
+                            .withDetail("lineDiscount", discount);
+                }
+                boolean taxInclusive = override != null && override.taxInclusive() != null
+                        ? override.taxInclusive()
+                        : orderTaxInclusive;
                 LineAmounts amounts = computeDispatchLineAmounts(
                         lineGross,
                         discount,
                         taxRate,
-                        Boolean.TRUE.equals(override != null ? override.taxInclusive() : Boolean.FALSE));
+                        taxInclusive);
                 BigDecimal lineNet = amounts.net();
                 BigDecimal lineTax = amounts.tax();
                 BigDecimal lineTotal = amounts.total();
@@ -1511,6 +1637,9 @@ public class SalesService {
                 );
                 cogsJournalId = cogsEntry != null ? cogsEntry.id() : null;
             }
+        }
+        if (cogsJournalId != null) {
+            finishedGoodsService.linkDispatchMovementsToJournal(order.getId(), cogsJournalId);
         }
 
         String invoiceNumber = existingInvoice != null

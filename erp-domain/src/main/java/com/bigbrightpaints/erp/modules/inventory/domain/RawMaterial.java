@@ -56,6 +56,9 @@ public class RawMaterial extends VersionedEntity {
     @Column(name = "material_type", nullable = false)
     private MaterialType materialType = MaterialType.PRODUCTION;
 
+    @Column(name = "costing_method", nullable = false)
+    private String costingMethod = "FIFO";
+
     @Column(name = "gst_rate")
     private BigDecimal gstRate = BigDecimal.ZERO;
 
@@ -186,6 +189,14 @@ public class RawMaterial extends VersionedEntity {
 
     public void setMaterialType(MaterialType materialType) {
         this.materialType = materialType;
+    }
+
+    public String getCostingMethod() {
+        return costingMethod;
+    }
+
+    public void setCostingMethod(String costingMethod) {
+        this.costingMethod = costingMethod;
     }
 
     public BigDecimal getGstRate() {

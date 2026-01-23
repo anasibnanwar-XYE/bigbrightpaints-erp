@@ -97,7 +97,8 @@ public class InventoryGlReconciliationIT extends AbstractIntegrationTest {
         var supplier = supplierRepository.findByCompanyAndCodeIgnoreCase(company, "FIX-SUP").orElseThrow();
 
         RawMaterialRequest rmRequest = new RawMaterialRequest(
-                "Pigment", "PG-1", "KG", new BigDecimal("10"), new BigDecimal("5"), new BigDecimal("50"), rmInventory.getId());
+                "Pigment", "PG-1", "KG", new BigDecimal("10"), new BigDecimal("5"), new BigDecimal("50"),
+                rmInventory.getId(), null);
         Long rawMaterialId = rawMaterialService.createRawMaterial(rmRequest).id();
 
         RawMaterialBatchRequest batchRequest = new RawMaterialBatchRequest(

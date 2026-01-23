@@ -28,4 +28,12 @@ public interface RawMaterialBatchRepository extends JpaRepository<RawMaterialBat
     @Query("UPDATE RawMaterialBatch b SET b.quantity = b.quantity - :deductQty " +
            "WHERE b.id = :batchId AND b.quantity >= :deductQty")
     int deductQuantityIfSufficient(@Param("batchId") Long batchId, @Param("deductQty") BigDecimal deductQty);
+
+    @Query("""
+            select sum(b.quantity * b.costPerUnit) / sum(b.quantity)
+            from RawMaterialBatch b
+            where b.rawMaterial = :rawMaterial
+              and b.quantity > 0
+            """)
+    BigDecimal calculateWeightedAverageCost(@Param("rawMaterial") RawMaterial rawMaterial);
 }

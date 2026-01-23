@@ -97,6 +97,7 @@ public class RawMaterialService {
         material.setMinStock(request.minStock() != null ? request.minStock() : BigDecimal.ZERO);
         material.setMaxStock(request.maxStock() != null ? request.maxStock() : BigDecimal.ZERO);
         material.setInventoryAccountId(request.inventoryAccountId());
+        material.setCostingMethod(normalizeCostingMethod(request.costingMethod()));
         if (material.getInventoryAccountId() == null) {
             material.setInventoryAccountId(company.getDefaultInventoryAccountId());
         }
@@ -117,6 +118,7 @@ public class RawMaterialService {
         material.setMinStock(request.minStock() != null ? request.minStock() : BigDecimal.ZERO);
         material.setMaxStock(request.maxStock() != null ? request.maxStock() : BigDecimal.ZERO);
         material.setInventoryAccountId(request.inventoryAccountId());
+        material.setCostingMethod(normalizeCostingMethod(request.costingMethod()));
         if (material.getInventoryAccountId() == null) {
             material.setInventoryAccountId(company.getDefaultInventoryAccountId());
         }
@@ -266,7 +268,20 @@ public class RawMaterialService {
         return new RawMaterialDto(material.getId(), material.getPublicId(), material.getName(), material.getSku(),
                 material.getUnitType(), material.getReorderLevel(), material.getCurrentStock(),
                 material.getMinStock(), material.getMaxStock(), stockStatus(material), material.getInventoryAccountId(),
+                material.getCostingMethod(),
                 material.getMaterialType() != null ? material.getMaterialType().name() : null);
+    }
+
+    private String normalizeCostingMethod(String method) {
+        if (!StringUtils.hasText(method)) {
+            return "FIFO";
+        }
+        String normalized = method.trim().toUpperCase();
+        return switch (normalized) {
+            case "FIFO" -> "FIFO";
+            case "WAC", "WEIGHTED_AVERAGE", "WEIGHTED-AVERAGE" -> "WAC";
+            default -> throw new IllegalArgumentException("Unsupported costing method " + method);
+        };
     }
 
     private RawMaterialBatchDto toBatchDto(RawMaterialBatch batch) {

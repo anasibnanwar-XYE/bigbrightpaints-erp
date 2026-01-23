@@ -105,6 +105,7 @@ public class InvoiceService {
 
         BigDecimal computedSubtotal = BigDecimal.ZERO;
         BigDecimal computedTax = BigDecimal.ZERO;
+        boolean gstInclusive = order.isGstInclusive();
         for (SalesOrderItem item : order.getItems()) {
             InvoiceLine line = new InvoiceLine();
             line.setInvoice(invoice);
@@ -116,9 +117,17 @@ public class InvoiceService {
                     ? item.getLineSubtotal()
                     : MoneyUtils.safeMultiply(item.getQuantity(), item.getUnitPrice());
             BigDecimal lineTax = item.getGstAmount() != null ? item.getGstAmount() : BigDecimal.ZERO;
+            BigDecimal lineGross = MoneyUtils.safeMultiply(item.getQuantity(), item.getUnitPrice());
+            BigDecimal discountBase = gstInclusive ? lineSubtotal.add(lineTax) : lineSubtotal;
+            BigDecimal lineDiscount = lineGross.subtract(discountBase);
+            if (lineDiscount.compareTo(BigDecimal.ZERO) < 0) {
+                lineDiscount = BigDecimal.ZERO;
+            } else {
+                lineDiscount = currency(lineDiscount);
+            }
             BigDecimal taxRate = item.getGstRate() != null ? item.getGstRate() : BigDecimal.ZERO;
             line.setTaxRate(taxRate);
-            line.setDiscountAmount(BigDecimal.ZERO);
+            line.setDiscountAmount(currency(lineDiscount));
             line.setTaxableAmount(lineSubtotal);
             line.setTaxAmount(lineTax);
             line.setLineTotal(lineSubtotal.add(lineTax));
@@ -170,6 +179,13 @@ public class InvoiceService {
                 packagingSlipRepository.save(slip);
             }
         }
+    }
+
+    private BigDecimal currency(BigDecimal value) {
+        if (value == null) {
+            return BigDecimal.ZERO.setScale(2, java.math.RoundingMode.HALF_UP);
+        }
+        return value.setScale(2, java.math.RoundingMode.HALF_UP);
     }
 
     @Transactional
@@ -272,7 +288,10 @@ public class InvoiceService {
                         line.getQuantity(),
                         line.getUnitPrice(),
                         line.getTaxRate(),
-                        line.getLineTotal()))
+                        line.getLineTotal(),
+                        line.getTaxableAmount(),
+                        line.getTaxAmount(),
+                        line.getDiscountAmount()))
                 .toList();
         Dealer dealer = invoice.getDealer();
         return new InvoiceDto(

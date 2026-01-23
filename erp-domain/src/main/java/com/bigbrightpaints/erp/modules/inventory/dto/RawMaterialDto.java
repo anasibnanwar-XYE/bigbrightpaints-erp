@@ -14,4 +14,5 @@ public record RawMaterialDto(Long id,
                              BigDecimal maxStock,
                              String stockStatus,
                              Long inventoryAccountId,
+                             String costingMethod,
                              String materialType) {}

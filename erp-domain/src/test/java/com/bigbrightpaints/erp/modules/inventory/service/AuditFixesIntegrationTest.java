@@ -357,6 +357,7 @@ class AuditFixesIntegrationTest extends AbstractIntegrationTest {
                 new BigDecimal("5"),
                 new BigDecimal("2"),
                 new BigDecimal("8"),
+                null,
                 null
         ));
 
@@ -364,6 +365,7 @@ class AuditFixesIntegrationTest extends AbstractIntegrationTest {
                 "Titanium Dioxide",
                 "RM-TIO2",
                 "KG",
+                null,
                 null,
                 null,
                 null,
@@ -409,7 +411,8 @@ class AuditFixesIntegrationTest extends AbstractIntegrationTest {
                 new BigDecimal("5"),
                 new BigDecimal("2"),
                 new BigDecimal("8"),
-                inventory.getId()
+                inventory.getId(),
+                null
         ));
 
         RawMaterialBatchRequest request = new RawMaterialBatchRequest(

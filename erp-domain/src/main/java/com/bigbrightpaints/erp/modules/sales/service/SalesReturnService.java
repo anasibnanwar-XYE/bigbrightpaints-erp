@@ -125,9 +125,9 @@ public class SalesReturnService {
             BigDecimal quantity = requirePositive(lineRequest.quantity(), "lines.quantity");
             FinishedGood finishedGood = lockFinishedGood(company, invoiceLine.getProductCode());
 
-            Long revenueAccountId = finishedGood.getRevenueAccountId() != null
-                    ? finishedGood.getRevenueAccountId()
-                    : finishedGood.getDiscountAccountId();
+            Long revenueAccountId = finishedGood.getDiscountAccountId() != null
+                    ? finishedGood.getDiscountAccountId()
+                    : finishedGood.getRevenueAccountId();
             if (revenueAccountId != null) {
                 BigDecimal baseAmount = currency(MoneyUtils.safeMultiply(perUnitBase(invoiceLine), quantity));
                 if (baseAmount.compareTo(BigDecimal.ZERO) > 0) {
@@ -201,8 +201,10 @@ public class SalesReturnService {
             return MoneyUtils.safeDivide(storedTax, quantity, 4, RoundingMode.HALF_UP);
         }
         BigDecimal total = Optional.ofNullable(line.getLineTotal()).orElse(BigDecimal.ZERO);
-        BigDecimal base = MoneyUtils.safeMultiply(line.getUnitPrice(), quantity);
-        BigDecimal taxTotal = total.subtract(base);
+        BigDecimal gross = MoneyUtils.safeMultiply(line.getUnitPrice(), quantity);
+        BigDecimal discount = MoneyUtils.zeroIfNull(line.getDiscountAmount());
+        BigDecimal net = gross.subtract(discount);
+        BigDecimal taxTotal = total.subtract(net);
         return MoneyUtils.safeDivide(taxTotal, quantity, 4, RoundingMode.HALF_UP);
     }
 
@@ -215,7 +217,10 @@ public class SalesReturnService {
         if (taxableAmount != null) {
             return MoneyUtils.safeDivide(taxableAmount, quantity, 4, RoundingMode.HALF_UP);
         }
-        return line.getUnitPrice() != null ? line.getUnitPrice() : BigDecimal.ZERO;
+        BigDecimal gross = MoneyUtils.safeMultiply(line.getUnitPrice(), quantity);
+        BigDecimal discount = MoneyUtils.zeroIfNull(line.getDiscountAmount());
+        BigDecimal net = gross.subtract(discount);
+        return MoneyUtils.safeDivide(net, quantity, 4, RoundingMode.HALF_UP);
     }
 
     private BigDecimal currency(BigDecimal value) {

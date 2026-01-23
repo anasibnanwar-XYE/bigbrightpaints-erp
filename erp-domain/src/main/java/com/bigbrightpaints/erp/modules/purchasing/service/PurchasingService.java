@@ -908,6 +908,8 @@ public class PurchasingService {
                 line.getUnit(),
                 line.getCostPerUnit(),
                 line.getLineTotal(),
+                line.getTaxRate(),
+                line.getTaxAmount(),
                 line.getNotes()
         );
     }

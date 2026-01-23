@@ -552,6 +552,7 @@ public class FinishedGoodsService {
             BigDecimal available = batch.getQuantityAvailable() != null ? batch.getQuantityAvailable() : BigDecimal.ZERO;
             BigDecimal suggestedShip = ordered.min(available);
             boolean hasShortage = available.compareTo(ordered) < 0;
+            BigDecimal unitCost = line.getUnitCost() != null ? line.getUnitCost() : BigDecimal.ZERO;
 
             linePreviews.add(new DispatchPreviewDto.LinePreview(
                     line.getId(),
@@ -562,13 +563,13 @@ public class FinishedGoodsService {
                     ordered,
                     available,
                     suggestedShip,
-                    line.getUnitCost(),
-                    suggestedShip.multiply(line.getUnitCost()),
+                    null,
+                    null,
                     hasShortage
             ));
 
-            totalOrdered = totalOrdered.add(ordered.multiply(line.getUnitCost()));
-            totalAvailable = totalAvailable.add(suggestedShip.multiply(line.getUnitCost()));
+            totalOrdered = totalOrdered.add(ordered.multiply(unitCost));
+            totalAvailable = totalAvailable.add(suggestedShip.multiply(unitCost));
         }
 
         return new DispatchPreviewDto(
@@ -580,8 +581,8 @@ public class FinishedGoodsService {
                 dealerName,
                 dealerCode,
                 slip.getCreatedAt(),
-                totalOrdered,
-                totalAvailable,
+                null,
+                null,
                 linePreviews
         );
     }
@@ -1198,6 +1199,34 @@ public class FinishedGoodsService {
         return batch != null && batch.getUnitCost() != null ? batch.getUnitCost() : BigDecimal.ZERO;
     }
 
+    @Transactional
+    public void linkDispatchMovementsToJournal(Long salesOrderId, Long journalEntryId) {
+        if (salesOrderId == null || journalEntryId == null) {
+            return;
+        }
+        List<InventoryMovement> movements = inventoryMovementRepository
+                .findByReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
+                        InventoryReference.SALES_ORDER,
+                        salesOrderId.toString());
+        if (movements.isEmpty()) {
+            return;
+        }
+        List<InventoryMovement> toUpdate = new ArrayList<>();
+        for (InventoryMovement movement : movements) {
+            if (movement.getJournalEntryId() != null) {
+                continue;
+            }
+            if (!"DISPATCH".equalsIgnoreCase(movement.getMovementType())) {
+                continue;
+            }
+            movement.setJournalEntryId(journalEntryId);
+            toUpdate.add(movement);
+        }
+        if (!toUpdate.isEmpty()) {
+            inventoryMovementRepository.saveAll(toUpdate);
+        }
+    }
+
     private String resolveBatchCode(FinishedGood finishedGood, String provided, Instant manufacturedAt) {
         if (StringUtils.hasText(provided)) {
             return provided.trim();
@@ -1250,15 +1279,15 @@ public class FinishedGoodsService {
                             batch.getPublicId(),
                             batch.getBatchCode(),
                             fg.getProductCode(),
-                            fg.getName(),
-                            line.getOrderedQuantity(),
-                            line.getShippedQuantity(),
-                            line.getBackorderQuantity(),
-                            line.getQuantity(),
-                            line.getUnitCost(),
-                            line.getNotes()
-                    );
-                })
+                    fg.getName(),
+                    line.getOrderedQuantity(),
+                    line.getShippedQuantity(),
+                    line.getBackorderQuantity(),
+                    line.getQuantity(),
+                    null,
+                    line.getNotes()
+            );
+        })
                 .toList();
         SalesOrder order = slip.getSalesOrder();
         String dealerName = order.getDealer() != null ? order.getDealer().getName() : null;

@@ -46,10 +46,10 @@ public class InvoicePdfService {
         BigDecimal subtotal = nonNull(invoice.getSubtotal());
         BigDecimal tax = nonNull(invoice.getTaxTotal());
         BigDecimal total = nonNull(invoice.getTotalAmount());
-        BigDecimal discount = subtotal.add(tax).subtract(total);
-        if (discount.compareTo(BigDecimal.ZERO) < 0) {
-            discount = BigDecimal.ZERO;
-        }
+        BigDecimal discount = invoice.getLines().stream()
+                .map(InvoiceLine::getDiscountAmount)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         InvoiceView view = new InvoiceView(
                 sanitizeForPdf(company.getName()),

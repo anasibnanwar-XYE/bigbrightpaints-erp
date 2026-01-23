@@ -11,5 +11,6 @@ public record RawMaterialRequest(
         @NotNull BigDecimal reorderLevel,
         @NotNull BigDecimal minStock,
         @NotNull BigDecimal maxStock,
-        Long inventoryAccountId
+        Long inventoryAccountId,
+        String costingMethod
 ) {}

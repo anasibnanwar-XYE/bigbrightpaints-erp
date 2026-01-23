@@ -284,7 +284,10 @@ public class BulkPackingService {
             // Consume using FIFO
             BigDecimal remaining = material.quantity();
             BigDecimal consumedCost = BigDecimal.ZERO;
-            
+            BigDecimal weightedAverageCost = isWeightedAverage(rm.getCostingMethod())
+                    ? rawMaterialBatchRepository.calculateWeightedAverageCost(rm)
+                    : null;
+
             List<RawMaterialBatch> batches = rawMaterialBatchRepository
                     .findAvailableBatchesFIFO(rm);
             
@@ -306,10 +309,12 @@ public class BulkPackingService {
                 movement.setReferenceId(reference);
                 movement.setMovementType("ISSUE");
                 movement.setQuantity(toConsume);
-                movement.setUnitCost(batch.getCostPerUnit());
+                BigDecimal unitCost = weightedAverageCost != null
+                        ? weightedAverageCost
+                        : (batch.getCostPerUnit() != null ? batch.getCostPerUnit() : BigDecimal.ZERO);
+                movement.setUnitCost(unitCost);
                 rawMaterialMovementRepository.save(movement);
 
-                BigDecimal unitCost = batch.getCostPerUnit() != null ? batch.getCostPerUnit() : BigDecimal.ZERO;
                 consumedCost = consumedCost.add(toConsume.multiply(unitCost));
                 remaining = remaining.subtract(toConsume);
             }
@@ -329,6 +334,14 @@ public class BulkPackingService {
         }
 
         return new PackagingCostSummary(totalCost, accountTotals, Map.of());
+    }
+
+    private boolean isWeightedAverage(String method) {
+        if (method == null) {
+            return false;
+        }
+        String normalized = method.trim().toUpperCase();
+        return "WAC".equals(normalized) || "WEIGHTED_AVERAGE".equals(normalized) || "WEIGHTED-AVERAGE".equals(normalized);
     }
 
     private PackagingCostSummary consumePackagingFromMappings(Company company,

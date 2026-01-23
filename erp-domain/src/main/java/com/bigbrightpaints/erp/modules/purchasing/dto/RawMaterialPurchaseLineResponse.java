@@ -10,4 +10,6 @@ public record RawMaterialPurchaseLineResponse(Long rawMaterialId,
                                               String unit,
                                               BigDecimal costPerUnit,
                                               BigDecimal lineTotal,
+                                              BigDecimal taxRate,
+                                              BigDecimal taxAmount,
                                               String notes) {}

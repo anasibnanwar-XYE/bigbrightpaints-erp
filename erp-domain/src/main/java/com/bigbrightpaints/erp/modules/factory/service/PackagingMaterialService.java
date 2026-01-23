@@ -223,6 +223,9 @@ public class PackagingMaterialService {
 
     private BigDecimal issueFromBatches(RawMaterial rawMaterial, BigDecimal requiredQty, String referenceId) {
         List<RawMaterialBatch> batches = rawMaterialBatchRepository.findAvailableBatchesFIFO(rawMaterial);
+        BigDecimal weightedAverageCost = isWeightedAverage(rawMaterial.getCostingMethod())
+                ? rawMaterialBatchRepository.calculateWeightedAverageCost(rawMaterial)
+                : null;
         BigDecimal remaining = requiredQty;
         BigDecimal totalCost = BigDecimal.ZERO;
 
@@ -235,7 +238,9 @@ public class PackagingMaterialService {
                 continue;
             }
             BigDecimal take = available.min(remaining);
-            BigDecimal unitCost = Optional.ofNullable(batch.getCostPerUnit()).orElse(BigDecimal.ZERO);
+            BigDecimal unitCost = weightedAverageCost != null
+                    ? weightedAverageCost
+                    : Optional.ofNullable(batch.getCostPerUnit()).orElse(BigDecimal.ZERO);
             BigDecimal movementCost = unitCost.multiply(take);
 
             // Atomic deduction
@@ -266,6 +271,14 @@ public class PackagingMaterialService {
         }
 
         return totalCost.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private boolean isWeightedAverage(String method) {
+        if (method == null) {
+            return false;
+        }
+        String normalized = method.trim().toUpperCase();
+        return "WAC".equals(normalized) || "WEIGHTED_AVERAGE".equals(normalized) || "WEIGHTED-AVERAGE".equals(normalized);
     }
 
     private String normalizePackagingSize(String size) {

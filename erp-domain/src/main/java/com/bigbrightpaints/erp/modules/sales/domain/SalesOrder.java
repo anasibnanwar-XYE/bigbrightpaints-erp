@@ -52,6 +52,9 @@ public class SalesOrder extends VersionedEntity {
     @Column(name = "gst_treatment", nullable = false)
     private String gstTreatment = "NONE";
 
+    @Column(name = "gst_inclusive", nullable = false)
+    private boolean gstInclusive = false;
+
     @Column(name = "gst_rate")
     private BigDecimal gstRate = BigDecimal.ZERO;
 
@@ -125,6 +128,8 @@ public class SalesOrder extends VersionedEntity {
     public void setGstTotal(BigDecimal gstTotal) { this.gstTotal = gstTotal; }
     public String getGstTreatment() { return gstTreatment; }
     public void setGstTreatment(String gstTreatment) { this.gstTreatment = gstTreatment; }
+    public boolean isGstInclusive() { return gstInclusive; }
+    public void setGstInclusive(boolean gstInclusive) { this.gstInclusive = gstInclusive; }
     public BigDecimal getGstRate() { return gstRate; }
     public void setGstRate(BigDecimal gstRate) { this.gstRate = gstRate; }
     public BigDecimal getGstRoundingAdjustment() { return gstRoundingAdjustment; }
