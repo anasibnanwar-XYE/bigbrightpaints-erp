@@ -1,216 +1,190 @@
-# Continuous End-to-End Hardening Plan (All Modules)
+# Comprehensive Continuous Hardening Plan (All Modules + Cross-Module)
 
-## Goal
-Deliver a unified, correct, and secure ERP backend by exhaustively validating every module, every cross-module flow, and every core algorithm. The process is continuous: scan → test → fix → verify → commit → repeat.
+## Purpose
+Create a never-ending, exhaustive hardening loop that validates every module, every endpoint, and every cross-module flow, including algorithms and business logic, with milestone commits after each completed epic.
 
-## Operating rules
-- After each epic or milestone, commit with clear scope and verification notes.
-- Never skip cross-module checks when modifying any module.
-- Prefer smallest-possible fixes with explicit tests for regressions.
-- Keep multi-company isolation and RBAC boundaries intact at all times.
-- Record stack traces and failing tests before any fix.
-- All changes must preserve accounting correctness and auditability.
+## Global invariants
+- Double-entry integrity for all journal entries (base currency balancing, FX rounding rules).
+- Idempotency for all posting flows (references/idempotency keys).
+- Company isolation on all queries and writes.
+- Period lock enforcement with documented override rules.
+- Role-based access for every endpoint with least privilege.
+- Reference sequencing is unique and auditable.
+- Status transitions are valid and deterministic.
 
-## Global invariants (must hold everywhere)
-- Double-entry integrity: every journal entry balances in base currency with defined FX rounding rules.
-- Idempotency: repeated calls with same idempotency key/reference never double-post.
-- Multi-company isolation: no cross-company data leakage in queries, caches, or joins.
-- Period control: postings respect period lock settings and override rules.
-- Status-driven flows: state transitions are valid and deterministic.
-- Reference number sequencing: unique, stable, and traceable across modules.
-- Role boundaries: read/write access consistent with policy; accounting read-only where specified.
+## Operating loop (never-ending)
+1. Scan: read controllers/services/entities for the epic’s scope.
+2. Test: run targeted tests or integration paths.
+3. Fix: minimal changes + tests.
+4. Verify: re-run tests and re-check invariants.
+5. Commit: milestone commit with verification notes.
+6. Repeat.
 
-## Epic backlog (end-to-end, exhaustive)
+## Epics (exhaustive, module by module)
 
-### Epic A — Auth + RBAC correctness (auth, rbac)
-- Verify login flows, JWT issuance/expiry, refresh/invalidations.
-- Ensure role claims propagate to controllers/services.
-- Validate permission annotations on every endpoint.
-- Confirm dealer portal isolation (dealer-only access).
-- Add tests for forbidden roles on sensitive endpoints.
-- Milestone commit: `audit: auth-rbac invariants`
+### Epic A — Auth + RBAC (auth, rbac, portal)
+- Login/logout/refresh token flows.
+- Role claim propagation to controllers/services.
+- All endpoint `@PreAuthorize` coverage.
+- Dealer portal isolation and leakage checks.
+- Negative tests for forbidden roles.
+- Milestone commit: `audit: auth-rbac`
 
-### Epic B — Company + configuration integrity (company, admin)
-- Validate company context resolution across services.
-- Confirm default accounts configuration is required where used.
-- Verify system settings toggle behavior (period lock, GST config, etc.).
-- Ensure admin endpoints are not exposed to non-admin roles.
-- Milestone commit: `audit: company-admin settings`
+### Epic B — Company + Admin config (company, admin)
+- Company context resolution.
+- Default accounts and system settings usage.
+- Admin-only endpoints enforced.
+- Seed/default account validations.
+- Milestone commit: `audit: company-admin`
 
-### Epic C — Accounting core algorithm audit (accounting)
-- Journal entry balancing, FX handling, rounding tolerance.
+### Epic C — Accounting core algorithms (accounting)
+- Journal entry balancing, FX math, rounding tolerance.
 - Reference uniqueness and duplicate handling.
-- Period close/lock/reopen behavior and reversals.
-- Reconciliation checks: GL vs subledger totals.
-- Statement/aging algorithms (buckets, running balance).
-- Tax (GST) computations and account mapping.
-- Accruals, write-offs, credit/debit notes logic.
-- Milestone commit: `audit: accounting core algorithms`
+- Period close/lock/reopen flows.
+- Statement/aging algorithms and bucket boundaries.
+- GST return computations and account mapping.
+- Reconciliation (GL vs subledger).
+- Milestone commit: `audit: accounting-core`
 
-### Epic D — Sales workflow integrity (sales, invoice)
-- Dealer lifecycle, credit limits, status changes.
-- Sales order creation, updates, cancellation, and confirmations.
-- Dispatch confirmation and invoice generation.
-- Revenue recognition, discounts, taxes, and AR postings.
-- Sales returns and reversal logic.
-- Sales order dealer filtering and list pagination correctness.
-- Milestone commit: `audit: sales workflow`
+### Epic D — Sales + Invoice workflows (sales, invoice)
+- Dealer lifecycle + credit limit enforcement.
+- Sales orders: status transitions, idempotency, dealer filters.
+- Dispatch confirm: revenue, discount, tax, AR postings.
+- Invoice generation, numbering, and reversal handling.
+- Sales returns and credit note behavior.
+- Milestone commit: `audit: sales-invoice`
 
-### Epic E — Purchasing workflow integrity (purchasing)
-- Supplier lifecycle, credit limits, status changes.
-- Purchase order creation, goods receipt, raw material purchases.
-- Supplier filtering on lists and multi-company scoping.
-- AP postings for purchases and payments.
-- Purchase returns and reversal logic.
-- Milestone commit: `audit: purchasing workflow`
+### Epic E — Purchasing workflows (purchasing)
+- Supplier lifecycle + credit limit enforcement.
+- Purchase orders, goods receipts, raw material purchases.
+- Supplier filters + pagination ordering.
+- AP postings and payment settlements.
+- Purchase returns and reversal correctness.
+- Milestone commit: `audit: purchasing`
 
-### Epic F — Inventory integrity (inventory, production, factory)
+### Epic F — Inventory + Production (inventory, production, factory)
 - Raw material and finished goods valuation.
-- Inventory movement journaling (COGS, inventory accounts).
-- Batch tracking, FIFO/LIFO/avg logic (if configured).
-- Production consumption and finished goods output.
-- Ensure stock movements are idempotent.
-- Milestone commit: `audit: inventory-production linkage`
+- Inventory movement journal entries.
+- Production consumption/output balancing.
+- Batch/lot integrity and idempotency.
+- Work-in-progress account impact.
+- Milestone commit: `audit: inventory-production`
 
-### Epic G — Payroll + HR integration (hr, accounting)
-- Payroll calculations, deductions, and postings.
-- Employee lifecycle and payroll approvals.
-- Ensure payroll entries respect period locks.
-- Milestone commit: `audit: payroll-hr linkage`
+### Epic G — HR + Payroll (hr, accounting)
+- Payroll calculations and journal entries.
+- Employee lifecycle and payroll access.
+- Period lock enforcement for payroll postings.
+- Milestone commit: `audit: hr-payroll`
 
-### Epic H — Portal + external access isolation (portal)
-- Dealer portal access only to dealer-owned records.
-- Validate portal endpoints for leakage.
-- Ensure portal actions don’t bypass accounting controls.
-- Milestone commit: `audit: portal isolation`
-
-### Epic I — Reporting correctness (reports)
-- Financial statements rollups match GL balances.
-- Trial balance correctness by period.
+### Epic H — Reports (reports)
+- Trial balance and P&L correctness.
 - Aging vs statement vs subledger alignment.
-- Report performance and caching correctness.
-- Milestone commit: `audit: reporting accuracy`
+- Performance and caching validation.
+- Milestone commit: `audit: reports`
 
-### Epic J — Data quality + migrations (admin, accounting, data)
-- Seed data correctness and consistency.
-- Migrations are idempotent and safe across environments.
-- Existing records remain compatible with new DTO fields.
-- Milestone commit: `chore: data compatibility`
+### Epic I — Data + Migrations (data, admin, accounting)
+- Migration idempotency and compatibility.
+- Seed data integrity (accounts, defaults, tax).
+- Backward compatibility of DTO changes.
+- Milestone commit: `chore: data-migrations`
 
-### Epic K — Performance + query shaping (all modules)
-- Validate pagination ordering with filters.
-- Detect N+1 patterns; add EntityGraphs as needed.
-- Validate index usage for hot tables.
-- Milestone commit: `perf: query tuning`
+### Epic J — API contract verification (openapi)
+- Sync `openapi.json` with param/response changes.
+- Backward compatibility checks.
+- Contract tests for critical endpoints.
+- Milestone commit: `chore: openapi`
 
-### Epic L — API contract verification (openapi)
-- Sync `openapi.json` with new params/fields.
-- Ensure backward compatibility where expected.
-- Add contract tests for critical endpoints.
-- Milestone commit: `chore: openapi sync`
+### Epic K — Performance + Query shaping (all)
+- Pagination ordering and filter correctness.
+- N+1 detection and EntityGraph tuning.
+- Index usage review for hot paths.
+- Milestone commit: `perf: query-tuning`
 
-## Cross-module flow validation (end-to-end)
+## Cross-module flows (full end-to-end)
 
 ### O2C (Order-to-Cash)
 - Sales order → dispatch → invoice → AR posting → receipt/settlement.
-- Validate revenue + tax + discount entries match invoice totals.
-- Confirm dealer balance updates and aging buckets.
-- Verify statement running balance aligns with GL and subledger.
+- Validate AR balances, statements, aging buckets, GL reconciliation.
 
 ### P2P (Procure-to-Pay)
 - PO → goods receipt → raw material purchase → AP posting → supplier payment.
-- Validate inventory valuation + AP postings align.
-- Confirm supplier balance updates and aging buckets.
+- Validate inventory valuation + AP balances + GL reconciliation.
 
 ### Production (Plan-to-Produce)
 - BOM → production order → raw material consumption → finished goods output.
-- Validate inventory movement entries and COGS postings.
+- Validate inventory movement and accounting impact.
 
 ### R2R (Record-to-Report)
-- Period close flows + reversals + reopen.
-- Reconcile GL vs subledgers vs statements.
+- Period close → lock → reopen and reversal handling.
+- Validate GL totals vs subledgers and statements.
 
 ### Returns + Reversals
-- Sales returns, purchase returns, credit/debit notes.
-- Validate references and reversal entries are consistent.
+- Sales return, purchase return, credit/debit notes.
+- Verify reference integrity and reversal correctness.
 
 ## Algorithm & business-logic checkpoints (always-on)
-- Pricing and discount allocation (line vs order, rounding rules).
-- Tax calculation (GST inclusive/exclusive, rate caps).
-- FX conversion and cash settlement math.
+- Pricing and discount allocation (line vs order).
+- Tax computations (GST inclusive/exclusive, rate caps).
+- FX conversion and settlement math.
 - Aging bucket boundaries and due-date logic.
-- Ledger running balance correctness.
-- Idempotency key + reference number generation.
-- Period lock validation (including overrides).
+- Ledger running balance accuracy.
+- Idempotency + reference generation rules.
+- Period lock enforcement including overrides.
 
-## Module-by-module deep checklist (every endpoint)
+## Per-module endpoint checklist (every endpoint)
 
 ### accounting
-- `journal-entries` list filters: dealer/supplier mutual exclusivity.
-- `journal-entries` create: validates lines, accounts, period lock.
-- `receipts`/`settlements`: cash calculation and allocation correctness.
-- `statements`/`aging`: ledger math, bucket logic, PDF output.
-- `periods` close/lock/reopen: entries and reversal handling.
-- `gst` return accuracy and account linkage.
+- `journal-entries` list filters and exclusivity.
+- `journal-entries` create: lines, accounts, period lock.
+- `receipts`/`settlements`: cash allocation correctness.
+- `statements`/`aging`: ledger math + PDF endpoints.
+- `periods` close/lock/reopen + reversal entries.
+- `gst` returns accuracy.
 
 ### sales
-- `dealers` CRUD: RBAC + receivable account mapping exposure.
-- `orders`: dealer filter, status transitions, idempotency.
-- `dispatch` confirm: invoice numbering, postings, inventory updates.
-- `promotions`/`targets`/`credit-requests`: RBAC + integrity.
+- `dealers` CRUD + receivable account exposure.
+- `orders` list filters + status transitions.
+- `dispatch` confirm: revenue/tax/discount accounting.
+- `promotions`/`targets`/`credit-requests`: RBAC integrity.
 
 ### invoice
-- Invoice generation and numbering.
-- Balance updates and AR linkages.
+- Invoice creation, numbering, AR impact.
 - Refunds/credit notes integration.
 
 ### purchasing
 - `purchase-orders` list filter by supplier.
 - `goods-receipts` list filter by supplier.
 - `raw-material-purchases` list filter by supplier.
-- Purchase returns and AP reconciliation.
+- Returns and AP reconciliation.
 
 ### inventory
-- Raw material movements and valuation.
-- Finished goods valuation and COGS postings.
-- Batch updates and movement integrity.
+- Movement valuation and batch integrity.
+- Finished goods valuation + COGS postings.
 
-### production / factory
-- Production order status transitions.
-- Consumption vs output quantity balancing.
-- Work-in-progress account impacts.
+### production/factory
+- Production status transitions.
+- Consumption vs output balance.
 
-### hr / payroll
-- Payroll posting entry accuracy.
-- Employee status and payroll access checks.
+### hr/payroll
+- Payroll entry accuracy + access checks.
 
-### auth / rbac / portal
-- Access boundaries for dealer users.
-- Admin-only endpoints protected.
-- Token scopes and expiry handling.
+### auth/rbac/portal
+- Dealer portal isolation + admin-only endpoints.
 
 ### reports
-- Trial balance and P&L totals reconcile with GL.
-- Aging and statements align with subledgers.
+- Trial balance + P&L alignment with GL.
+- Aging/statement consistency.
 
-## Testing matrix (repeat for each epic)
-- Unit tests for algorithmic changes.
+## Testing matrix (repeat per epic)
+- Unit tests for algorithms.
 - Integration tests for flow integrity.
 - Regression tests for fixed bugs.
-- Contract tests for API params/payloads.
-- Targeted performance checks for list endpoints.
-
-## Never-ending loop (operational)
-1. Scan: find new or adjacent logic paths.
-2. Test: run focused tests or small integration flows.
-3. Fix: implement minimal corrections + tests.
-4. Verify: re-run tests, reconcile with accounting checklist.
-5. Commit: milestone commit with verification notes.
-6. Repeat indefinitely.
+- Contract tests for API changes.
+- Performance checks for list endpoints.
 
 ## Milestone commit rule
-- After each epic or milestone, commit with a clear prefix and short verification notes.
-- No milestone proceeds without a commit and updated notes.
+- After each epic, commit with clear scope and verification notes.
+- Never proceed to next epic without a commit.
 
 ## Execution log (2026-01-24)
 - Async full suite: `mvn -B -ntp verify` → BUILD SUCCESS (268 run, 0 failures, 0 errors, 4 skipped, 08:54).
