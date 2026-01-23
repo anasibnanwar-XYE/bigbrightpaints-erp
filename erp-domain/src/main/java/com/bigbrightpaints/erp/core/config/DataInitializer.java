@@ -34,6 +34,7 @@ public class DataInitializer {
                         c.setName("Big Bright Paints");
                         c.setCode("BBP");
                         c.setTimezone("UTC");
+                        c.setBaseCurrency("INR");
                         return companyRepository.save(c);
                     });
             Role adminRole = roleRepository.findByName("ROLE_ADMIN").orElseGet(() -> {

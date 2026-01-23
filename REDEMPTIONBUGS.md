@@ -20,6 +20,9 @@
   - Fix: backfill GST accounts + defaults via Flyway and align dev seeding to canonical chart codes.
   - Locations: `erp-domain/src/main/resources/db/migration/V110__ensure_gst_accounts_defaults.sql`, `erp-domain/src/main/java/com/bigbrightpaints/erp/core/config/DataInitializer.java:52`
   - Reset script (optional): `erp-domain/scripts/reset_chart_of_accounts.sql`
+- R-008 Prod environment validation failed when production product metadata and base currency were missing (e.g., SAFARI-GENERAL-L-001 missing WIP/discount/semi-finished account IDs).
+  - Fix: backfill production metadata, raw material/finished good account references, ensure WIP account, and default base currency via Flyway; seed base currency for new dev/seed companies.
+  - Locations: `erp-domain/src/main/resources/db/migration/V111__backfill_production_product_metadata.sql`, `erp-domain/src/main/java/com/bigbrightpaints/erp/core/config/DataInitializer.java:44`
 
 ## Open
 - R-006 Dispatch confirmation throws when multiple invoices exist for an order, but `DispatchConfirmRequest` has no invoice selector.

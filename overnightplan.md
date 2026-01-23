@@ -189,3 +189,5 @@ Create a never-ending, exhaustive hardening loop that validates every module, ev
 ## Execution log (2026-01-24)
 - Async full suite: `mvn -B -ntp verify` → BUILD SUCCESS (268 run, 0 failures, 0 errors, 4 skipped, 08:54).
 - Manual API smoke (seed profile): created dealer/supplier, verified dealer list includes receivable account fields, posted dealer/supplier journal entries, validated journal entry filters, and confirmed sales/purchasing list filters accept dealerId/supplierId.
+- Staging boot (prod+seed + validation enabled): required `ERP_LICENSE_KEY` and dispatch account envs; added `V111__backfill_production_product_metadata.sql` + base currency seeding, then reran successfully (config health checks passed); login + dealer list verified.
+- Async verify rerun: BUILD SUCCESS (268 run, 0 failures, 0 errors, 4 skipped, 07:38).
