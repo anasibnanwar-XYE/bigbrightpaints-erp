@@ -256,7 +256,7 @@ public class SalesService {
         Company company = companyContextService.requireCurrentCompany();
         int safeSize = Math.max(1, Math.min(size, 200));
         PageRequest pageable = PageRequest.of(Math.max(page, 0), safeSize);
-        Dealer dealer = dealerId != null ? requireDealer(company, dealerId) : null;
+        Dealer dealer = dealerId != null ? requireDealer(dealerId) : null;
         Page<Long> orderIds;
         if (status == null || status.isBlank()) {
             orderIds = dealer == null
@@ -282,7 +282,7 @@ public class SalesService {
 
     public List<SalesOrderDto> listOrders(String status, Long dealerId) {
         Company company = companyContextService.requireCurrentCompany();
-        Dealer dealer = dealerId != null ? requireDealer(company, dealerId) : null;
+        Dealer dealer = dealerId != null ? requireDealer(dealerId) : null;
         List<SalesOrder> orders;
         if (status == null || status.isBlank()) {
             orders = dealer == null

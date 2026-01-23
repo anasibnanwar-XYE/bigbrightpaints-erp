@@ -18,13 +18,16 @@ import java.util.Optional;
 public interface JournalEntryRepository extends JpaRepository<JournalEntry, Long> {
     @EntityGraph(attributePaths = {"lines", "lines.account"})
     List<JournalEntry> findByCompanyOrderByEntryDateDesc(Company company);
+    @EntityGraph(attributePaths = {"lines", "lines.account"})
     List<JournalEntry> findByCompanyAndDealerOrderByEntryDateDesc(Company company, Dealer dealer);
     @EntityGraph(attributePaths = {"lines", "lines.account"})
     Page<JournalEntry> findByCompanyOrderByEntryDateDesc(Company company, Pageable pageable);
     Page<JournalEntry> findByCompanyAndDealerOrderByEntryDateDesc(Company company, Dealer dealer, Pageable pageable);
     @EntityGraph(attributePaths = {"lines", "lines.account"})
     Page<JournalEntry> findByCompanyOrderByEntryDateDescIdDesc(Company company, Pageable pageable);
+    @EntityGraph(attributePaths = {"lines", "lines.account"})
     Page<JournalEntry> findByCompanyAndDealerOrderByEntryDateDescIdDesc(Company company, Dealer dealer, Pageable pageable);
+    @EntityGraph(attributePaths = {"lines", "lines.account"})
     Page<JournalEntry> findByCompanyAndSupplierOrderByEntryDateDescIdDesc(Company company, Supplier supplier, Pageable pageable);
     @EntityGraph(attributePaths = {"lines", "lines.account"})
     Optional<JournalEntry> findById(Long id);
