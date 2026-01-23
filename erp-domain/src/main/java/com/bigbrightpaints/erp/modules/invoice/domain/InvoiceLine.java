@@ -31,6 +31,15 @@ public class InvoiceLine extends VersionedEntity {
     @Column(name = "tax_rate", nullable = false)
     private BigDecimal taxRate = BigDecimal.ZERO;
 
+    @Column(name = "taxable_amount")
+    private BigDecimal taxableAmount;
+
+    @Column(name = "tax_amount")
+    private BigDecimal taxAmount;
+
+    @Column(name = "discount_amount")
+    private BigDecimal discountAmount;
+
     @Column(name = "line_total", nullable = false)
     private BigDecimal lineTotal;
 
@@ -47,6 +56,12 @@ public class InvoiceLine extends VersionedEntity {
     public void setUnitPrice(BigDecimal unitPrice) { this.unitPrice = unitPrice; }
     public BigDecimal getTaxRate() { return taxRate; }
     public void setTaxRate(BigDecimal taxRate) { this.taxRate = taxRate; }
+    public BigDecimal getTaxableAmount() { return taxableAmount; }
+    public void setTaxableAmount(BigDecimal taxableAmount) { this.taxableAmount = taxableAmount; }
+    public BigDecimal getTaxAmount() { return taxAmount; }
+    public void setTaxAmount(BigDecimal taxAmount) { this.taxAmount = taxAmount; }
+    public BigDecimal getDiscountAmount() { return discountAmount; }
+    public void setDiscountAmount(BigDecimal discountAmount) { this.discountAmount = discountAmount; }
     public BigDecimal getLineTotal() { return lineTotal; }
     public void setLineTotal(BigDecimal lineTotal) { this.lineTotal = lineTotal; }
 }

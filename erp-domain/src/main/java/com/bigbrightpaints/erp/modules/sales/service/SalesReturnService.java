@@ -95,7 +95,7 @@ public class SalesReturnService {
             }
             FinishedGood finishedGood = lockFinishedGood(company, invoiceLine.getProductCode());
 
-            BigDecimal baseAmount = currency(MoneyUtils.safeMultiply(invoiceLine.getUnitPrice(), quantity));
+            BigDecimal baseAmount = currency(MoneyUtils.safeMultiply(perUnitBase(invoiceLine), quantity));
             BigDecimal taxPerUnit = perUnitTax(invoiceLine);
             BigDecimal taxAmount = currency(MoneyUtils.safeMultiply(taxPerUnit, quantity));
             BigDecimal totalLineAmount = baseAmount.add(taxAmount);
@@ -129,7 +129,7 @@ public class SalesReturnService {
                     ? finishedGood.getDiscountAccountId()
                     : finishedGood.getRevenueAccountId();
             if (revenueAccountId != null) {
-                BigDecimal baseAmount = currency(invoiceLine.getUnitPrice().multiply(quantity));
+                BigDecimal baseAmount = currency(MoneyUtils.safeMultiply(perUnitBase(invoiceLine), quantity));
                 if (baseAmount.compareTo(BigDecimal.ZERO) > 0) {
                     returnLines.merge(revenueAccountId, baseAmount, BigDecimal::add);
                 }
@@ -192,13 +192,30 @@ public class SalesReturnService {
     }
 
     private BigDecimal perUnitTax(InvoiceLine line) {
-        BigDecimal total = Optional.ofNullable(line.getLineTotal()).orElse(BigDecimal.ZERO);
-        BigDecimal base = MoneyUtils.safeMultiply(line.getUnitPrice(), Optional.ofNullable(line.getQuantity()).orElse(BigDecimal.ONE));
-        BigDecimal taxTotal = total.subtract(base);
-        if (line.getQuantity() == null || line.getQuantity().compareTo(BigDecimal.ZERO) <= 0) {
+        BigDecimal quantity = line.getQuantity();
+        if (quantity == null || quantity.compareTo(BigDecimal.ZERO) <= 0) {
             return BigDecimal.ZERO;
         }
-        return MoneyUtils.safeDivide(taxTotal, line.getQuantity(), 4, RoundingMode.HALF_UP);
+        BigDecimal storedTax = line.getTaxAmount();
+        if (storedTax != null) {
+            return MoneyUtils.safeDivide(storedTax, quantity, 4, RoundingMode.HALF_UP);
+        }
+        BigDecimal total = Optional.ofNullable(line.getLineTotal()).orElse(BigDecimal.ZERO);
+        BigDecimal base = MoneyUtils.safeMultiply(line.getUnitPrice(), quantity);
+        BigDecimal taxTotal = total.subtract(base);
+        return MoneyUtils.safeDivide(taxTotal, quantity, 4, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal perUnitBase(InvoiceLine line) {
+        BigDecimal quantity = line.getQuantity();
+        if (quantity == null || quantity.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal taxableAmount = line.getTaxableAmount();
+        if (taxableAmount != null) {
+            return MoneyUtils.safeDivide(taxableAmount, quantity, 4, RoundingMode.HALF_UP);
+        }
+        return line.getUnitPrice() != null ? line.getUnitPrice() : BigDecimal.ZERO;
     }
 
     private BigDecimal currency(BigDecimal value) {

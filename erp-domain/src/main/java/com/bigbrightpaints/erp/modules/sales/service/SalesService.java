@@ -1314,6 +1314,9 @@ public class SalesService {
                 invLine.setQuantity(allocQty);
                 invLine.setUnitPrice(price);
                 invLine.setTaxRate(taxRate);
+                invLine.setDiscountAmount(discount);
+                invLine.setTaxableAmount(lineNet);
+                invLine.setTaxAmount(lineTax);
                 invLine.setLineTotal(lineTotal);
                 invoiceLines.add(invLine);
 
@@ -1367,6 +1370,9 @@ public class SalesService {
                 invLine.setQuantity(remainingToAllocate);
                 invLine.setUnitPrice(price);
                 invLine.setTaxRate(taxRate);
+                invLine.setDiscountAmount(discount);
+                invLine.setTaxableAmount(lineNet);
+                invLine.setTaxAmount(lineTax);
                 invLine.setLineTotal(lineTotal);
                 invoiceLines.add(invLine);
             }

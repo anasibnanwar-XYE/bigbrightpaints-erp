@@ -42,6 +42,12 @@ public class RawMaterialPurchaseLine extends VersionedEntity {
     @Column(name = "line_total", nullable = false)
     private BigDecimal lineTotal;
 
+    @Column(name = "tax_rate")
+    private BigDecimal taxRate;
+
+    @Column(name = "tax_amount")
+    private BigDecimal taxAmount;
+
     @Column(name = "notes")
     private String notes;
 
@@ -62,6 +68,10 @@ public class RawMaterialPurchaseLine extends VersionedEntity {
     public void setCostPerUnit(BigDecimal costPerUnit) { this.costPerUnit = costPerUnit; }
     public BigDecimal getLineTotal() { return lineTotal; }
     public void setLineTotal(BigDecimal lineTotal) { this.lineTotal = lineTotal; }
+    public BigDecimal getTaxRate() { return taxRate; }
+    public void setTaxRate(BigDecimal taxRate) { this.taxRate = taxRate; }
+    public BigDecimal getTaxAmount() { return taxAmount; }
+    public void setTaxAmount(BigDecimal taxAmount) { this.taxAmount = taxAmount; }
     public String getNotes() { return notes; }
     public void setNotes(String notes) { this.notes = notes; }
 }

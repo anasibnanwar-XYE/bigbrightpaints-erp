@@ -54,9 +54,11 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 @Service
 public class PurchasingService {
@@ -143,8 +145,14 @@ public class PurchasingService {
                 .toList();
 
         Map<Long, RawMaterial> lockedMaterials = new HashMap<>();
+        Set<Long> seenMaterialIds = new HashSet<>();
         for (PurchaseOrderLineRequest lineRequest : sortedLines) {
             RawMaterial rawMaterial = requireMaterial(company, lineRequest.rawMaterialId());
+            if (!seenMaterialIds.add(rawMaterial.getId())) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Purchase order has duplicate raw material lines")
+                        .withDetail("rawMaterialId", rawMaterial.getId());
+            }
             lockedMaterials.put(rawMaterial.getId(), rawMaterial);
         }
 
@@ -237,12 +245,18 @@ public class PurchasingService {
         receipt.setMemo(clean(request.memo()));
 
         boolean matchesOrder = true;
+        Set<Long> receiptMaterialIds = new HashSet<>();
         for (GoodsReceiptLineRequest lineRequest : request.lines()) {
             RawMaterial rawMaterial = requireMaterial(company, lineRequest.rawMaterialId());
             PurchaseOrderLine orderLine = orderLinesByMaterial.get(rawMaterial.getId());
             if (orderLine == null) {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
                         "Goods receipt line is not covered by purchase order")
+                        .withDetail("rawMaterialId", rawMaterial.getId());
+            }
+            if (!receiptMaterialIds.add(rawMaterial.getId())) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Goods receipt has duplicate raw material lines")
                         .withDetail("rawMaterialId", rawMaterial.getId());
             }
             BigDecimal quantity = positive(lineRequest.quantity(), "quantity");
@@ -283,6 +297,10 @@ public class PurchasingService {
             line.setLineTotal(lineTotal);
             line.setNotes(clean(lineRequest.notes()));
             receipt.getLines().add(line);
+        }
+
+        if (receiptMaterialIds.size() != orderLinesByMaterial.size()) {
+            matchesOrder = false;
         }
 
         if (!matchesOrder) {
@@ -364,6 +382,7 @@ public class PurchasingService {
         }
 
         boolean taxProvided = request.taxAmount() != null;
+        Set<Long> invoiceMaterialIds = new HashSet<>();
 
         // Sort lines by rawMaterialId to maintain consistent lock ordering and avoid deadlocks
         List<RawMaterialPurchaseLineRequest> sortedLines = request.lines().stream()
@@ -402,6 +421,11 @@ public class PurchasingService {
                         "Purchase line is not covered by goods receipt")
                         .withDetail("rawMaterialId", rawMaterial.getId());
             }
+            if (!invoiceMaterialIds.add(rawMaterial.getId())) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Purchase invoice has duplicate raw material lines")
+                        .withDetail("rawMaterialId", rawMaterial.getId());
+            }
             if (quantity.compareTo(receiptQty) != 0) {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
                         "Purchase quantity must match goods receipt quantity")
@@ -429,10 +453,12 @@ public class PurchasingService {
             BigDecimal lineGross = taxProvided ? lineGrossRaw : currency(lineGrossRaw);
             BigDecimal lineNet = lineGross;
             BigDecimal lineTax = currency(BigDecimal.ZERO);
+            BigDecimal lineTaxRate = null;
             BigDecimal netUnitCost = costPerUnit;
 
             if (!taxProvided) {
                 BigDecimal taxRate = resolveLineTaxRate(lineRequest, rawMaterial, company);
+                lineTaxRate = taxRate;
                 boolean taxInclusive = Boolean.TRUE.equals(lineRequest.taxInclusive());
                 if (taxRate.compareTo(BigDecimal.ZERO) > 0) {
                     if (taxInclusive) {
@@ -460,13 +486,48 @@ public class PurchasingService {
             inventoryTotal = inventoryTotal.add(lineNet);
             taxTotal = taxTotal.add(lineTax);
             inventoryDebits.merge(inventoryAccountId, lineNet, BigDecimal::add);
-            computedLines.add(new PurchaseLineCalc(rawMaterial, quantity, unit, batchCode, netUnitCost, lineNet, lineRequest.notes()));
+            computedLines.add(new PurchaseLineCalc(rawMaterial, quantity, unit, batchCode, netUnitCost, lineNet, lineTax, lineTaxRate, lineRequest.notes()));
+        }
+
+        if (invoiceMaterialIds.size() != receiptQuantities.size()) {
+            List<Long> missingMaterialIds = receiptQuantities.keySet().stream()
+                    .filter(materialId -> !invoiceMaterialIds.contains(materialId))
+                    .sorted()
+                    .toList();
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Purchase invoice must include all goods receipt lines")
+                    .withDetail("missingRawMaterialIds", missingMaterialIds);
         }
 
         BigDecimal taxAmount = taxProvided
                 ? currency(nonNegative(request.taxAmount(), "taxAmount"))
                 : currency(taxTotal);
         BigDecimal totalAmount = inventoryTotal.add(taxAmount);
+
+        if (taxProvided && taxAmount.compareTo(BigDecimal.ZERO) > 0 && inventoryTotal.compareTo(BigDecimal.ZERO) > 0
+                && !computedLines.isEmpty()) {
+            List<PurchaseLineCalc> allocatedLines = new ArrayList<>(computedLines.size());
+            BigDecimal remaining = taxAmount;
+            for (int i = 0; i < computedLines.size(); i++) {
+                PurchaseLineCalc line = computedLines.get(i);
+                BigDecimal allocatedTax = (i == computedLines.size() - 1)
+                        ? remaining
+                        : currency(line.lineNet().multiply(taxAmount)
+                                .divide(inventoryTotal, 6, RoundingMode.HALF_UP));
+                remaining = remaining.subtract(allocatedTax);
+                allocatedLines.add(new PurchaseLineCalc(
+                        line.rawMaterial(),
+                        line.quantity(),
+                        line.unit(),
+                        line.batchCode(),
+                        line.netUnitCost(),
+                        line.lineNet(),
+                        allocatedTax,
+                        null,
+                        line.notes()));
+            }
+            computedLines = allocatedLines;
+        }
 
         // Post journal FIRST to avoid orphan purchases if journal fails
         String referenceNumber = referenceNumberService.purchaseReference(company, supplier, invoiceNumber);
@@ -527,6 +588,8 @@ public class PurchasingService {
             line.setUnit(unit);
             line.setCostPerUnit(costPerUnit);
             line.setLineTotal(lineTotal);
+            line.setTaxAmount(lineCalc.lineTax());
+            line.setTaxRate(lineCalc.taxRate());
             line.setNotes(lineCalc.notes());
             purchase.getLines().add(line);
         }
@@ -976,13 +1039,6 @@ public class PurchasingService {
         if (purchaseTax.compareTo(BigDecimal.ZERO) <= 0) {
             return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
         }
-        BigDecimal inventoryTotal = purchase.getLines().stream()
-                .map(RawMaterialPurchaseLine::getLineTotal)
-                .filter(Objects::nonNull)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        if (inventoryTotal.compareTo(BigDecimal.ZERO) <= 0) {
-            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
-        }
         BigDecimal materialLineTotal = purchase.getLines().stream()
                 .filter(line -> line.getRawMaterial() != null
                         && line.getRawMaterial().getId().equals(material.getId()))
@@ -996,6 +1052,30 @@ public class PurchasingService {
                 .filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         if (materialLineTotal.compareTo(BigDecimal.ZERO) <= 0 || materialLineQty.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+        boolean hasLineTaxData = purchase.getLines().stream()
+                .map(RawMaterialPurchaseLine::getTaxAmount)
+                .anyMatch(Objects::nonNull);
+        if (hasLineTaxData) {
+            BigDecimal materialLineTax = purchase.getLines().stream()
+                    .filter(line -> line.getRawMaterial() != null
+                            && line.getRawMaterial().getId().equals(material.getId()))
+                    .map(RawMaterialPurchaseLine::getTaxAmount)
+                    .filter(Objects::nonNull)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            if (materialLineTax.compareTo(BigDecimal.ZERO) <= 0) {
+                return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+            }
+            BigDecimal taxPerUnit = materialLineTax.divide(materialLineQty, 6, RoundingMode.HALF_UP);
+            return currency(taxPerUnit.multiply(returnQuantity));
+        }
+
+        BigDecimal inventoryTotal = purchase.getLines().stream()
+                .map(RawMaterialPurchaseLine::getLineTotal)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (inventoryTotal.compareTo(BigDecimal.ZERO) <= 0) {
             return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
         }
         BigDecimal allocationRatio = materialLineTotal.divide(inventoryTotal, 6, RoundingMode.HALF_UP);
@@ -1073,6 +1153,8 @@ public class PurchasingService {
             String batchCode,
             BigDecimal netUnitCost,
             BigDecimal lineNet,
+            BigDecimal lineTax,
+            BigDecimal taxRate,
             String notes
     ) {
     }
