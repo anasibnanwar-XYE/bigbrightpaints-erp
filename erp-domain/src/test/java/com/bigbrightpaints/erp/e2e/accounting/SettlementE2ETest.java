@@ -267,6 +267,45 @@ public class SettlementE2ETest extends AbstractIntegrationTest {
     }
 
     @Test
+    @DisplayName("Dealer receipt retry is idempotent (no duplicate allocations)")
+    void dealerReceipt_Idempotent_ReusesExisting() {
+        String reference = "REC-IDEM-" + UUID.randomUUID();
+        Map<String, Object> allocation = Map.of(
+                "invoiceId", invoice.getId(),
+                "appliedAmount", new BigDecimal("800.00")
+        );
+        Map<String, Object> payload = Map.of(
+                "dealerId", dealer.getId(),
+                "cashAccountId", cash.getId(),
+                "amount", new BigDecimal("800.00"),
+                "referenceNumber", reference,
+                "memo", "Dealer receipt retry",
+                "allocations", List.of(allocation)
+        );
+
+        ResponseEntity<Map> first = rest.exchange(
+                "/api/v1/accounting/receipts/dealer",
+                HttpMethod.POST,
+                new HttpEntity<>(payload, headers),
+                Map.class);
+        assertThat(first.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        ResponseEntity<Map> second = rest.exchange(
+                "/api/v1/accounting/receipts/dealer",
+                HttpMethod.POST,
+                new HttpEntity<>(payload, headers),
+                Map.class);
+        assertThat(second.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        List<PartnerSettlementAllocation> allocations = allocationRepository
+                .findByCompanyAndIdempotencyKey(company, reference);
+        assertThat(allocations).hasSize(1);
+
+        Invoice refreshed = invoiceRepository.findById(invoice.getId()).orElseThrow();
+        assertThat(refreshed.getOutstandingAmount()).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
     @DisplayName("Dealer settlement rejects discount without discount account")
     void dealerSettlement_MissingDiscountAccount_ValidationFails() {
         Map<String, Object> allocation = Map.of(
@@ -291,6 +330,50 @@ public class SettlementE2ETest extends AbstractIntegrationTest {
                 Map.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    @DisplayName("Dealer settlement retry after validation failure does not duplicate allocations")
+    void dealerSettlement_FailureThenRetry_NoDuplicateAllocations() {
+        String idemKey = "SETTLE-FAIL-" + UUID.randomUUID();
+        Map<String, Object> allocation = Map.of(
+                "invoiceId", invoice.getId(),
+                "appliedAmount", new BigDecimal("100.00"),
+                "discountAmount", new BigDecimal("5.00")
+        );
+
+        Map<String, Object> badPayload = Map.of(
+                "dealerId", dealer.getId(),
+                "cashAccountId", cash.getId(),
+                "settlementDate", LocalDate.now(),
+                "allocations", List.of(allocation),
+                "idempotencyKey", idemKey
+        );
+        ResponseEntity<Map> badResponse = rest.exchange(
+                "/api/v1/accounting/settlements/dealers",
+                HttpMethod.POST,
+                new HttpEntity<>(badPayload, headers),
+                Map.class);
+        assertThat(badResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(allocationRepository.findByCompanyAndIdempotencyKey(company, idemKey)).isEmpty();
+
+        Map<String, Object> goodPayload = Map.of(
+                "dealerId", dealer.getId(),
+                "cashAccountId", cash.getId(),
+                "discountAccountId", discount.getId(),
+                "settlementDate", LocalDate.now(),
+                "allocations", List.of(allocation),
+                "idempotencyKey", idemKey
+        );
+        ResponseEntity<Map> goodResponse = rest.exchange(
+                "/api/v1/accounting/settlements/dealers",
+                HttpMethod.POST,
+                new HttpEntity<>(goodPayload, headers),
+                Map.class);
+        assertThat(goodResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        List<PartnerSettlementAllocation> rows = allocationRepository.findByCompanyAndIdempotencyKey(company, idemKey);
+        assertThat(rows).hasSize(1);
     }
 
     @Test
@@ -360,10 +443,17 @@ public class SettlementE2ETest extends AbstractIntegrationTest {
         List<PartnerSettlementAllocation> rows = allocationRepository.findByCompanyAndIdempotencyKey(company, idemKey);
         assertThat(rows).hasSize(2);
 
+        Map<String, Object> reorderPayload = Map.of(
+                "dealerId", dealer.getId(),
+                "cashAccountId", cash.getId(),
+                "allocations", List.of(allocationB, allocationA),
+                "idempotencyKey", idemKey
+        );
+
         ResponseEntity<Map> secondCall = rest.exchange(
                 "/api/v1/accounting/settlements/dealers",
                 HttpMethod.POST,
-                new HttpEntity<>(payload, headers),
+                new HttpEntity<>(reorderPayload, headers),
                 Map.class);
         assertThat(secondCall.getStatusCode()).isEqualTo(HttpStatus.OK);
 
