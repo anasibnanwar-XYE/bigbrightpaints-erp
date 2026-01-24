@@ -6,6 +6,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.domain.DealerLedgerEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.DealerLedgerRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalLine;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
@@ -529,6 +530,56 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
                 .filter(m -> "DISPATCH".equalsIgnoreCase(m.getMovementType()))
                 .count();
         assertThat(dispatchMovementsAfter).isEqualTo(dispatchMovementsBefore);
+    }
+
+    @Test
+    @DisplayName("Dispatch COGS uses slip unit costs and links inventory movements")
+    void dispatchCogs_matchesSlipUnitCosts_andLinksMovements() {
+        Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
+
+        Dealer dealer = createDealer(company, "DISPATCH-COGS", "Dispatch COGS Dealer", new BigDecimal("500000"));
+        FinishedGood fg = createFinishedGood(company, "FG-DISPATCH-COGS", new BigDecimal("20"));
+
+        Long orderId = createOrder(dealer, fg, new BigDecimal("3"), new BigDecimal("1000.00"));
+
+        Map<String, Object> dispatchReq = Map.of(
+                "orderId", orderId,
+                "confirmedBy", "e2e"
+        );
+        ResponseEntity<Map> response = rest.exchange("/api/v1/sales/dispatch/confirm",
+                HttpMethod.POST, new HttpEntity<>(dispatchReq, headers), Map.class);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        PackagingSlip slip = packagingSlipRepository.findByCompanyAndSalesOrderId(company, orderId).orElseThrow();
+        Long cogsJournalId = slip.getCogsJournalEntryId();
+        assertThat(cogsJournalId).isNotNull();
+
+        BigDecimal expectedCost = slip.getLines().stream()
+                .map(line -> {
+                    BigDecimal shipped = line.getShippedQuantity() != null ? line.getShippedQuantity() : line.getOrderedQuantity();
+                    if (shipped == null) {
+                        shipped = line.getQuantity();
+                    }
+                    BigDecimal unitCost = line.getUnitCost() != null ? line.getUnitCost() : BigDecimal.ZERO;
+                    return unitCost.multiply(shipped);
+                })
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        var cogsEntry = journalEntryRepository.findById(cogsJournalId).orElseThrow();
+        BigDecimal totalDebits = cogsEntry.getLines().stream()
+                .map(JournalLine::getDebit)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal totalCredits = cogsEntry.getLines().stream()
+                .map(JournalLine::getCredit)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        assertThat(totalDebits).isEqualByComparingTo(expectedCost);
+        assertThat(totalCredits).isEqualByComparingTo(expectedCost);
+
+        inventoryMovementRepository
+                .findByReferenceTypeAndReferenceIdOrderByCreatedAtAsc(InventoryReference.SALES_ORDER, orderId.toString())
+                .stream()
+                .filter(m -> "DISPATCH".equalsIgnoreCase(m.getMovementType()))
+                .forEach(m -> assertThat(m.getJournalEntryId()).isEqualTo(cogsJournalId));
     }
 
     @Test
