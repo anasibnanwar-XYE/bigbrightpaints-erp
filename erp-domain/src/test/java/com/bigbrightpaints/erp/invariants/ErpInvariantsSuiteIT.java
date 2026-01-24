@@ -262,6 +262,9 @@ public class ErpInvariantsSuiteIT extends AbstractIntegrationTest {
 
         Invoice invoice = invoiceRepository.findById(invoiceId)
                 .orElseThrow(() -> new AssertionError("Invoice missing for O2C flow"));
+        JournalEntry arJournal = journalEntryRepository.findById(arJournalId)
+                .orElseThrow(() -> new AssertionError("AR journal missing for dispatch " + arJournalId));
+        String arReference = arJournal.getReferenceNumber();
         invariants.assertJournalLinkedTo("INVOICE", invoiceId);
         invariants.assertJournalBalanced(invoice.getJournalEntry().getId());
         List<DealerLedgerEntry> invoiceLedgerEntries =
@@ -281,6 +284,13 @@ public class ErpInvariantsSuiteIT extends AbstractIntegrationTest {
                 .stream().findFirst()
                 .orElseThrow(() -> new AssertionError("Packaging slip missing for order " + orderId));
         assertThat(slip.getInvoiceId()).isEqualTo(invoiceId);
+        assertThat(slip.getJournalEntryId())
+                .as("packaging slip AR journal link")
+                .isEqualTo(arJournalId);
+        assertThat(slip.getCogsJournalEntryId())
+                .as("packaging slip COGS journal link")
+                .isNotNull();
+        invariants.assertJournalBalanced(slip.getCogsJournalEntryId());
         invariants.assertJournalLinkedTo("PACKAGING_SLIP", slip.getId());
 
         List<InventoryMovement> movements = inventoryMovementRepository
@@ -317,6 +327,13 @@ public class ErpInvariantsSuiteIT extends AbstractIntegrationTest {
                 .map(InventoryMovement::getId)
                 .toList();
         assertThat(repeatMovementIds).containsExactlyElementsOf(movementIds);
+        long arReferenceCount = journalEntryRepository.findAll().stream()
+                .filter(entry -> entry.getCompany().getId().equals(company.getId()))
+                .filter(entry -> arReference.equals(entry.getReferenceNumber()))
+                .count();
+        assertThat(arReferenceCount)
+                .as("AR journal reference should be unique for dispatch")
+                .isEqualTo(1);
 
         Map<String, Object> allocation = Map.of(
                 "invoiceId", invoiceId,

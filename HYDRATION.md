@@ -8,9 +8,9 @@
 
 ## Async Verify
 - Command: `nohup bash -lc 'cd erp-domain && mvn -B -ntp verify' > /tmp/task00-verify.log 2>&1 & echo $! > /tmp/task00-verify.pid`
-- PID: `27360`
+- PID: `39125`
 - Log: `/tmp/task00-verify.log`
-- Status: FINISHED (started 2026-01-25T01:18:39+05:30)
+- Status: FINISHED (started 2026-01-25T01:45:24+05:30)
 - Last observed: BUILD SUCCESS; Tests run: 394, Failures: 0, Errors: 0, Skipped: 4.
 
 ## Triage Commands
@@ -19,7 +19,7 @@
 - Surefire XML scan: `grep -nH -E "<failure|<error" erp-domain/target/surefire-reports/*.xml`
 
 ## Completed Milestones (with commit SHAs)
-- EPIC 00 / Milestone 00 — Baseline async verify (PASS): `025eb146ee99712b6dabd3ddd5becac697237f60`.
+- EPIC 00 / Milestone 00 — Baseline async verify (PASS): `025eb146ee99712b6dabd3ddd5becac697237f60` (verify + hydration kickoff), `1034d5ff3eea8a62b6baa8f748015f177a35c2a3` (record baseline state).
 
 ## Open Findings (bugs / security issues / logic flaws)
 - HIGH — Inventory accounting domain events appear unused (risk: future double-posting if wired later): `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/event/InventoryAccountingEventListener.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/event/InventoryMovementEvent.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/event/InventoryValuationChangedEvent.java`.
@@ -38,16 +38,26 @@
 - Prefer strengthening invariants/tests over widening tolerances (posting tolerances remain strict).
 - Proceed with Task 00 despite pre-existing worktree diffs; avoid unrelated edits and isolate milestone changes.
 - Baseline async verify passed; Milestone 01 triage not triggered.
+- Milestone 02 tests failed due to LazyInitialization in `ErpInvariantsSuiteIT`; fix by fetching AR journal reference via repository.
+- Milestone 02 assertions added for dispatch linkage, AR reference uniqueness, and GST tax accounts.
 
 ## Test Status Log
 - 2026-01-24: `cd erp-domain && mvn -B -ntp verify` (PASS) — Tests run: 394, Failures: 0, Errors: 0, Skipped: 4; JaCoCo gates met.
 - 2026-01-25: `cd erp-domain && mvn -B -ntp verify` (PASS) — Tests run: 394, Failures: 0, Errors: 0, Skipped: 4; JaCoCo gates met.
 - 2026-01-25: `nohup bash -lc 'cd erp-domain && mvn -B -ntp verify' > /tmp/task00-verify.log 2>&1 & echo $! > /tmp/task00-verify.pid` (PASS) — PID 27360; Tests run: 394, Failures: 0, Errors: 0, Skipped: 4.
+- 2026-01-25: `nohup bash -lc 'cd erp-domain && mvn -B -ntp verify' > /tmp/task00-verify.log 2>&1 & echo $! > /tmp/task00-verify.pid` (PASS) — PID 39125; Tests run: 394, Failures: 0, Errors: 0, Skipped: 4.
+- 2026-01-25: `nohup bash -lc 'cd erp-domain && mvn -B -ntp -Dtest=ErpInvariantsSuiteIT,CriticalAccountingAxesIT test' > /tmp/task00-m02-tests-1.log 2>&1 & echo $! > /tmp/task00-m02-tests-1.pid` (FAIL) — PID 30407; Error: `ErpInvariantsSuiteIT.orderToCash_goldenPath` LazyInitializationException.
+- 2026-01-25: `cd erp-domain && mvn -B -ntp -Dtest=ErpInvariantsSuiteIT#orderToCash_goldenPath test` (FAIL) — LazyInitializationException (rerun 1).
+- 2026-01-25: `cd erp-domain && mvn -B -ntp -Dtest=ErpInvariantsSuiteIT#orderToCash_goldenPath test` (FAIL) — LazyInitializationException (rerun 2).
+- 2026-01-25: `cd erp-domain && mvn -B -ntp -Dtest=ErpInvariantsSuiteIT#orderToCash_goldenPath test` (PASS) — Post-fix rerun 1.
+- 2026-01-25: `cd erp-domain && mvn -B -ntp -Dtest=ErpInvariantsSuiteIT#orderToCash_goldenPath test` (PASS) — Post-fix rerun 2.
+- 2026-01-25: `nohup bash -lc 'cd erp-domain && mvn -B -ntp -Dtest=ErpInvariantsSuiteIT,CriticalAccountingAxesIT test' > /tmp/task00-m02-tests-2.log 2>&1 & echo $! > /tmp/task00-m02-tests-2.pid` (PASS) — PID 35096; Tests run: 19, Failures: 0, Errors: 0, Skipped: 0.
+- 2026-01-25: `nohup bash -lc 'cd erp-domain && mvn -B -ntp -Dtest=ErpInvariantsSuiteIT,CriticalAccountingAxesIT test' > /tmp/task00-m02-tests-3.log 2>&1 & echo $! > /tmp/task00-m02-tests-3.pid` (PASS) — PID 36465; Tests run: 19, Failures: 0, Errors: 0, Skipped: 0.
+- 2026-01-25: `nohup bash -lc 'cd erp-domain && mvn -B -ntp -Dtest=ErpInvariantsSuiteIT,CriticalAccountingAxesIT test' > /tmp/task00-m02-tests-4.log 2>&1 & echo $! > /tmp/task00-m02-tests-4.pid` (PASS) — PID 37799; Tests run: 19, Failures: 0, Errors: 0, Skipped: 0.
 
 ## Next Actions (explicit)
-1. Begin EPIC 00 Milestone 02: extend invariant assertions (no behavior changes).
-2. Run `cd erp-domain && mvn -B -ntp -Dtest=ErpInvariantsSuiteIT,CriticalAccountingAxesIT test` (3x for flake check).
-3. Start async full-suite gate after Milestone 02 changes.
+1. Re-run `cd erp-domain && mvn -B -ntp -Dtest=ErpInvariantsSuiteIT,CriticalAccountingAxesIT test` (3x) after the fix.
+2. Start async full-suite gate after Milestone 02 tests pass.
 
 ## Historical (prior work references)
 - Epic 03: branch `epic-03-production-stock`, tip `3f2370c38c0152153369507159e5ae26ca1fa048`.

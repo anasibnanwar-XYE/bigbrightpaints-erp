@@ -19,6 +19,7 @@ import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryReversalRequest;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
+import com.bigbrightpaints.erp.modules.accounting.service.CompanyAccountingSettingsService;
 import com.bigbrightpaints.erp.modules.accounting.service.TaxService;
 import com.bigbrightpaints.erp.modules.accounting.service.ReconciliationService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -105,6 +106,7 @@ class CriticalAccountingAxesIT extends AbstractIntegrationTest {
     @Autowired private SalesService salesService;
     @Autowired private SalesOrderRepository salesOrderRepository;
     @Autowired private TaxService taxService;
+    @Autowired private CompanyAccountingSettingsService companyAccountingSettingsService;
     @Autowired private ReconciliationService reconciliationService;
     @Autowired private ReportService reportService;
     @Autowired private TestRestTemplate restTemplate;
@@ -271,10 +273,12 @@ class CriticalAccountingAxesIT extends AbstractIntegrationTest {
         LocalDate today = LocalDate.now();
         YearMonth period = YearMonth.from(today);
         var before = taxService.generateGstReturn(period);
+        CompanyAccountingSettingsService.TaxAccountConfiguration taxAccounts =
+                companyAccountingSettingsService.requireTaxAccounts();
 
         BigDecimal saleBase = new BigDecimal("1000.00");
         BigDecimal saleTax = new BigDecimal("180.00");
-        accountingFacade.postSalesJournal(
+        JournalEntryDto saleJournal = accountingFacade.postSalesJournal(
                 dealer.getId(),
                 "GST-OUT-" + UUID.randomUUID(),
                 today,
@@ -283,10 +287,16 @@ class CriticalAccountingAxesIT extends AbstractIntegrationTest {
                 Map.of(accounts.get("GST_OUT").getId(), saleTax),
                 saleBase.add(saleTax),
                 null);
+        JournalEntry saleEntry = journalEntryRepository.findById(saleJournal.id()).orElseThrow();
+        BigDecimal outputTaxCredit = saleEntry.getLines().stream()
+                .filter(line -> line.getAccount().getId().equals(taxAccounts.outputTaxAccountId()))
+                .map(line -> line.getCredit() == null ? BigDecimal.ZERO : line.getCredit())
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        assertThat(outputTaxCredit).isEqualByComparingTo(saleTax);
 
         BigDecimal purchaseBase = new BigDecimal("500.00");
         BigDecimal purchaseTax = new BigDecimal("90.00");
-        accountingFacade.postPurchaseJournal(
+        JournalEntryDto purchaseJournal = accountingFacade.postPurchaseJournal(
                 supplier.getId(),
                 "GST-IN-" + UUID.randomUUID(),
                 today,
@@ -295,6 +305,12 @@ class CriticalAccountingAxesIT extends AbstractIntegrationTest {
                 Map.of(accounts.get("GST_IN").getId(), purchaseTax),
                 purchaseBase.add(purchaseTax),
                 null);
+        JournalEntry purchaseEntry = journalEntryRepository.findById(purchaseJournal.id()).orElseThrow();
+        BigDecimal inputTaxDebit = purchaseEntry.getLines().stream()
+                .filter(line -> line.getAccount().getId().equals(taxAccounts.inputTaxAccountId()))
+                .map(line -> line.getDebit() == null ? BigDecimal.ZERO : line.getDebit())
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        assertThat(inputTaxDebit).isEqualByComparingTo(purchaseTax);
 
         var after = taxService.generateGstReturn(period);
 
