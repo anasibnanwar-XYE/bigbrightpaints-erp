@@ -75,7 +75,7 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
     @BeforeEach
     void setup() {
         dataSeeder.ensureUser(ADMIN_EMAIL, ADMIN_PASSWORD, "Sales Admin", COMPANY_CODE,
-                List.of("ROLE_ADMIN", "ROLE_SALES", "orders.approve"));
+                List.of("ROLE_ADMIN", "ROLE_SALES", "orders.approve", "dispatch.confirm"));
         authToken = login();
         headers = createHeaders(authToken);
         ensureTestAccounts();
@@ -462,6 +462,73 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
                 .get()
                 .extracting(entry -> entry.getId())
                 .isEqualTo(arJournalId);
+    }
+
+    @Test
+    @DisplayName("Both dispatch endpoints are equivalent and idempotent")
+    void dispatchEndpoints_areEquivalent() {
+        Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
+
+        Dealer dealer = createDealer(company, "DISPATCH-EQUIV", "Dispatch Equiv Dealer", new BigDecimal("500000"));
+        FinishedGood fg = createFinishedGood(company, "FG-DISPATCH-EQUIV", new BigDecimal("25"));
+
+        Long orderId = createOrder(dealer, fg, new BigDecimal("4"), new BigDecimal("1000.00"));
+
+        PackagingSlip slip = packagingSlipRepository.findByCompanyAndSalesOrderId(company, orderId).orElseThrow();
+        List<Map<String, Object>> lines = slip.getLines().stream()
+                .map(line -> Map.<String, Object>of(
+                        "lineId", line.getId(),
+                        "shippedQuantity", line.getOrderedQuantity() != null ? line.getOrderedQuantity() : line.getQuantity(),
+                        "notes", "ship"))
+                .toList();
+
+        Map<String, Object> dispatchReq = new java.util.HashMap<>();
+        dispatchReq.put("packagingSlipId", slip.getId());
+        dispatchReq.put("lines", lines);
+        dispatchReq.put("notes", "factory confirm");
+        dispatchReq.put("confirmedBy", "e2e");
+
+        ResponseEntity<Map> factoryResponse = rest.exchange("/api/v1/dispatch/confirm",
+                HttpMethod.POST, new HttpEntity<>(dispatchReq, headers), Map.class);
+        assertThat(factoryResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        PackagingSlip afterFactory = packagingSlipRepository.findById(slip.getId()).orElseThrow();
+        Long invoiceId = afterFactory.getInvoiceId();
+        Long arJournalId = afterFactory.getJournalEntryId();
+        Long cogsJournalId = afterFactory.getCogsJournalEntryId();
+        assertThat(invoiceId).isNotNull();
+        assertThat(arJournalId).isNotNull();
+        assertThat(cogsJournalId).isNotNull();
+
+        long dispatchMovementsBefore = inventoryMovementRepository
+                .findByReferenceTypeAndReferenceIdOrderByCreatedAtAsc(InventoryReference.SALES_ORDER, orderId.toString())
+                .stream()
+                .filter(m -> "DISPATCH".equalsIgnoreCase(m.getMovementType()))
+                .count();
+
+        Map<String, Object> salesDispatchReq = Map.of(
+                "orderId", orderId,
+                "confirmedBy", "e2e"
+        );
+        ResponseEntity<Map> salesResponse = rest.exchange("/api/v1/sales/dispatch/confirm",
+                HttpMethod.POST, new HttpEntity<>(salesDispatchReq, headers), Map.class);
+        assertThat(salesResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<?, ?> salesData = requireData(salesResponse, "sales dispatch confirm");
+
+        Long invoiceId2 = ((Number) salesData.get("finalInvoiceId")).longValue();
+        Long arJournalId2 = ((Number) salesData.get("arJournalEntryId")).longValue();
+        assertThat(invoiceId2).isEqualTo(invoiceId);
+        assertThat(arJournalId2).isEqualTo(arJournalId);
+
+        PackagingSlip afterSales = packagingSlipRepository.findById(slip.getId()).orElseThrow();
+        assertThat(afterSales.getCogsJournalEntryId()).isEqualTo(cogsJournalId);
+
+        long dispatchMovementsAfter = inventoryMovementRepository
+                .findByReferenceTypeAndReferenceIdOrderByCreatedAtAsc(InventoryReference.SALES_ORDER, orderId.toString())
+                .stream()
+                .filter(m -> "DISPATCH".equalsIgnoreCase(m.getMovementType()))
+                .count();
+        assertThat(dispatchMovementsAfter).isEqualTo(dispatchMovementsBefore);
     }
 
     @Test
