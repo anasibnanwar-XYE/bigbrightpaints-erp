@@ -3,7 +3,7 @@
 ## Overnight Runner State
 - Branch: `accounting-correctness-v1`
 - Current epic/milestone pointer: `tasks/task-00.md → EPIC 01 → Milestone 02` (pending)
-- Last commit SHA: `bc3238c077ec9ad06aad2e6b5a9c1d2ac7ffce63`
+- Last commit SHA: `40e4410b4b1a5e3fb095a7b2b2b47f6998ba3b50`
 - Next actions: start EPIC 01 / Milestone 02 (endpoint equivalence) while async verify runs.
 - Working tree status: pre-existing diffs present (unrelated); avoid touching unrelated files.
 
