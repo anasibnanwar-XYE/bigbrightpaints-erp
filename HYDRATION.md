@@ -2,20 +2,20 @@
 
 ## Overnight Runner State
 - Branch: `accounting-correctness-v1`
-- Current epic/milestone pointer: `tasks/task-00.md → EPIC B → Milestone 01` (pending: idempotency inventory)
-- Last commit SHA: `75fc13875b02fb555252368e0bb1d37adb0af909`
-- Next actions: start EPIC B / Milestone 01 (idempotency inventory), continue async verify triage (log empty).
+- Current epic/milestone pointer: `tasks/task-00.md → EPIC B → Milestone 02` (pending: retry/partial failure tests)
+- Last commit SHA: `3d099eb6eea55e606c0c53e1862446de37b21375`
+- Next actions: start EPIC B / Milestone 02 (retry/partial failure tests), continue async verify triage (log empty).
 - Working tree status: pre-existing diffs present (unrelated); avoid touching unrelated files.
 
 ## Current State
 - Worktree: `/home/realnigga/Desktop/CLI_BACKEND_epic04`
 - Branch: `accounting-correctness-v1`
-- Current milestone pointer: `tasks/task-00.md → EPIC B → Milestone 01` (pending: idempotency inventory)
+- Current milestone pointer: `tasks/task-00.md → EPIC B → Milestone 02` (pending: retry/partial failure tests)
 - Working tree: pre-existing diffs present; proceeding without touching unrelated changes.
 
 ## Async Verify
 - Command: `nohup bash -lc 'cd erp-domain && mvn -B -ntp verify' > /tmp/task00-verify.log 2>&1 & echo $! > /tmp/task00-verify.pid`
-- PID: `65537` (latest attempt)
+- PID: `67297` (latest attempt)
 - Log: `/tmp/task00-verify.log`
 - Status: FINISHED early (log empty; no BUILD SUCCESS/FAILURE)
 - Last observed: `/tmp/task00-verify.log` has 0 lines; background PID exits immediately.
@@ -35,11 +35,13 @@
 - EPIC A / Milestone A1 — Evidence map skeleton (PASS): `70fe5360ceb6e44dbf38d934099243cd6a04e251`.
 - EPIC A / Milestone A2 — Golden path trace (PASS): `6356459d76a7f0c2fb1bbedaf69b79b2f49a6072`.
 - EPIC A / Milestone A3 — Idempotency + reference evidence (PASS): `75fc13875b02fb555252368e0bb1d37adb0af909`.
+- EPIC B / Milestone B1 — Idempotency inventory (PASS): `3d099eb6eea55e606c0c53e1862446de37b21375`.
 
 ## Evidence Pack
 - EPIC A / Milestone A1 trace map: `docs/cross-module-trace-map.md`
 - EPIC A / Milestone A2 golden path trace: `docs/cross-module-trace-map.md`
 - EPIC A / Milestone A3 idempotency evidence: `docs/cross-module-trace-map.md`
+- EPIC B / Milestone B1 idempotency inventory: `docs/idempotency-inventory.md`
 
 ## Open Findings (bugs / security issues / logic flaws)
 - HIGH — Inventory accounting domain events appear unused (risk: future double-posting if wired later): `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/event/InventoryAccountingEventListener.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/event/InventoryMovementEvent.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/event/InventoryValuationChangedEvent.java`.
@@ -90,9 +92,10 @@
 - 2026-01-25: `cd erp-domain && mvn -B -ntp -Dtest=ApplicationSmokeTest,CriticalPathSmokeTest test` (PASS) — Tests run: 14, Failures: 0, Errors: 0, Skipped: 0.
 - 2026-01-25: `cd erp-domain && mvn -B -ntp -Dtest=OrderFulfillmentE2ETest,ErpInvariantsSuiteIT test` (PASS) — Tests run: 21, Failures: 0, Errors: 0, Skipped: 0.
 - 2026-01-25: `cd erp-domain && mvn -B -ntp -Dtest=ErpInvariantsSuiteIT test` (PASS) — Tests run: 9, Failures: 0, Errors: 0, Skipped: 0.
+- 2026-01-25: `cd erp-domain && mvn -B -ntp -Dtest=ErpInvariantsSuiteIT test` (PASS) — Tests run: 9, Failures: 0, Errors: 0, Skipped: 0. (EPIC B1)
 
 ## Next Actions (explicit)
-1. Begin EPIC B / Milestone 01: idempotency inventory (code + DB).
+1. Begin EPIC B / Milestone 02: retry + partial failure regression tests.
 2. Re-attempt async verify (`/tmp/task00-verify.log`) and record results (log currently empty).
 
 ## Historical (prior work references)
