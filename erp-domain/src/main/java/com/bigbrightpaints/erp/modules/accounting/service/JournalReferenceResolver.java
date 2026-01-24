@@ -5,6 +5,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMapping;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMappingRepository;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -30,8 +31,12 @@ public class JournalReferenceResolver {
         if (direct.isPresent()) {
             return direct;
         }
-        Optional<JournalReferenceMapping> legacy = journalReferenceMappingRepository
-                .findByCompanyAndLegacyReferenceIgnoreCase(company, trimmed);
+        List<JournalReferenceMapping> legacyMappings = journalReferenceMappingRepository
+                .findAllByCompanyAndLegacyReferenceIgnoreCase(company, trimmed);
+        if (legacyMappings.size() > 1) {
+            throw new IllegalStateException("Multiple journal reference mappings for legacy reference '" + trimmed + "'");
+        }
+        Optional<JournalReferenceMapping> legacy = legacyMappings.stream().findFirst();
         if (legacy.isPresent()) {
             String canonical = legacy.get().getCanonicalReference();
             if (StringUtils.hasText(canonical) && !canonical.equalsIgnoreCase(trimmed)) {
@@ -42,8 +47,12 @@ public class JournalReferenceResolver {
                 }
             }
         }
-        Optional<JournalReferenceMapping> canonical = journalReferenceMappingRepository
-                .findByCompanyAndCanonicalReferenceIgnoreCase(company, trimmed);
+        List<JournalReferenceMapping> canonicalMappings = journalReferenceMappingRepository
+                .findAllByCompanyAndCanonicalReferenceIgnoreCase(company, trimmed);
+        if (canonicalMappings.size() > 1) {
+            throw new IllegalStateException("Multiple journal reference mappings for canonical reference '" + trimmed + "'");
+        }
+        Optional<JournalReferenceMapping> canonical = canonicalMappings.stream().findFirst();
         if (canonical.isPresent()) {
             String legacyRef = canonical.get().getLegacyReference();
             if (StringUtils.hasText(legacyRef) && !legacyRef.equalsIgnoreCase(trimmed)) {
