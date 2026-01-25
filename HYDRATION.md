@@ -18,7 +18,7 @@
 - PID: `280762` (latest attempt)
 - Log: `/tmp/task01-verify.log`
 - Exit: `/tmp/task01-verify.exit`
-- Status: RUNNING
+- Status: FINISHED (exit 0)
 
 ## Triage Commands
 - First failing test in log: `grep -nE "FAILURE|ERROR|Failed" /tmp/task01-verify.log`
