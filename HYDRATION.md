@@ -18,7 +18,7 @@
 - PID: `283743` (latest attempt)
 - Log: `/tmp/task01-verify.log`
 - Exit: `/tmp/task01-verify.exit`
-- Status: RUNNING
+- Status: FINISHED (log shows BUILD SUCCESS; exit file not updated)
 
 ## Triage Commands
 - First failing test in log: `grep -nE "FAILURE|ERROR|Failed" /tmp/task01-verify.log`
@@ -109,6 +109,7 @@
 
 ## Open Findings (bugs / security issues / logic flaws)
 - MEDIUM — Task01 async verify attempts via `nohup` ended with empty log and no exit update (PIDs `220820`, `278297`; `/tmp/task01-verify.log` only start line). Using `setsid` runner for reliable async verify artifacts.
+- LOW — `setsid` command interpolation dropped `$status` and did not update `/tmp/task01-verify.exit` for PID `283743`; log shows BUILD SUCCESS but exit file empty. Use single-quoted script or wrapper to persist exit code.
 - MEDIUM — Inventory accounting events are now gated behind `erp.inventory.accounting.events.enabled` (default off); enabling requires removal of overlapping manual postings to avoid double-posting: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/event/InventoryAccountingEventListener.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/event/InventoryMovementEvent.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/event/InventoryValuationChangedEvent.java`.
 - MEDIUM — `journal_reference_mappings` does not enforce uniqueness on `(company_id, canonical_reference)`; resolver now searches mappings to find a real journal entry but ambiguity remains without a uniqueness constraint: `erp-domain/src/main/resources/db/migration/V88__journal_reference_mappings.sql`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/JournalReferenceResolver.java`.
 - MEDIUM — `InventoryAccountingEventListener` uses `LocalDate.now()` instead of company timezone / event date for valuation re-posting (period correctness risk): `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/event/InventoryAccountingEventListener.java`.
