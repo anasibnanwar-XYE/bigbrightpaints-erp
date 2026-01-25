@@ -2,23 +2,23 @@
 
 ## Overnight Runner State
 - Branch: `accounting-correctness-v1`
-- Current epic/milestone pointer: `tasks/task-00.md → EPIC 05 → Milestone 02` (canonical reference consistency + uniqueness)
-- Last commit SHA: `cc6c9b982e778ef32efd8826e7e7578abc6095fd`
-- Next actions: start EPIC 05 / Milestone 02.
+- Current epic/milestone pointer: `tasks/task-00.md → EPIC 05 → Milestone 03` (rounding standardization)
+- Last commit SHA: `077510684e7dadda7f55fdad6a9975124ff5b437`
+- Next actions: start EPIC 05 / Milestone 03.
 - Working tree status: pre-existing diffs present (unrelated); avoid touching unrelated files.
 
 ## Current State
 - Worktree: `/home/realnigga/Desktop/CLI_BACKEND_epic04`
 - Branch: `accounting-correctness-v1`
-- Current milestone pointer: `tasks/task-00.md → EPIC 05 → Milestone 02` (canonical reference consistency + uniqueness)
+- Current milestone pointer: `tasks/task-00.md → EPIC 05 → Milestone 03` (rounding standardization)
 - Working tree: pre-existing diffs present; proceeding without touching unrelated changes.
 
 ## Async Verify
 - Command: `scripts/task00_async_verify.sh` (setsid background; writes exit code)
-- PID: `40052` (latest attempt)
+- PID: `46454` (latest attempt)
 - Log: `/tmp/task00-verify.log`
 - Exit: `/tmp/task00-verify.exit`
-- Status: RUNNING.
+- Status: FINISHED (exit 0, BUILD SUCCESS; Tests run: 418, Failures: 0, Errors: 0, Skipped: 4).
 
 ## Triage Commands
 - First failing test in log: `grep -nE "FAILURE|ERROR|Failed" /tmp/task00-verify.log`
@@ -62,6 +62,7 @@
 - EPIC 04 / Milestone 01 — Tenant boundary & authorization audit (PASS): `33834dc7d85cbe4f11dd142c99724d989c779ebd`.
 - EPIC 04 / Milestone 02 — Business-logic bypass + idempotency audit (PASS): `560c731dc6b6c32973fb1536095cf28050641369`.
 - EPIC 05 / Milestone 01 — Inventory all posting paths + divergences (PASS): `cc6c9b982e778ef32efd8826e7e7578abc6095fd`.
+- EPIC 05 / Milestone 02 — Canonical reference consistency + uniqueness (PASS): `077510684e7dadda7f55fdad6a9975124ff5b437`.
 
 ## Evidence Pack
 - EPIC A / Milestone A1 trace map: `docs/cross-module-trace-map.md`
@@ -81,10 +82,11 @@
 - EPIC E / Milestone E1 constraint mismatch list: `docs/constraint-mismatch-notes.md`
 - EPIC E / Milestone E2 journal reference tolerance: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/JournalReferenceResolver.java`
 - EPIC 05 / Milestone 01 posting path inventory: `docs/posting-path-inventory.md`
+- EPIC 05 / Milestone 02 canonical reference mapping guard: `erp-domain/src/test/java/com/bigbrightpaints/erp/regression/JournalReferenceMappingRegressionIT.java`
 
 ## Open Findings (bugs / security issues / logic flaws)
 - HIGH — Inventory accounting domain events appear unused (risk: future double-posting if wired later): `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/event/InventoryAccountingEventListener.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/event/InventoryMovementEvent.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/event/InventoryValuationChangedEvent.java`.
-- MEDIUM — `journal_reference_mappings` does not enforce uniqueness on `(company_id, canonical_reference)`; resolver now selects latest mapping but ambiguity remains: `erp-domain/src/main/resources/db/migration/V88__journal_reference_mappings.sql`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/JournalReferenceResolver.java`.
+- MEDIUM — `journal_reference_mappings` does not enforce uniqueness on `(company_id, canonical_reference)`; resolver now searches mappings to find a real journal entry but ambiguity remains without a uniqueness constraint: `erp-domain/src/main/resources/db/migration/V88__journal_reference_mappings.sql`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/JournalReferenceResolver.java`.
 - MEDIUM — `InventoryAccountingEventListener` uses `LocalDate.now()` instead of company timezone / event date for valuation re-posting (period correctness risk): `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/event/InventoryAccountingEventListener.java`.
 - MEDIUM — Tenant guard: `CompanyContextFilter.validateCompanyAccess(...)` allows company selection for unauthenticated requests and for non-`UserPrincipal` principals (requires audit of public endpoints): `erp-domain/src/main/java/com/bigbrightpaints/erp/core/security/CompanyContextFilter.java`.
 - LOW — Sales dispatch posting uses invoice number as a journal reference (canonical reference is order-number-based); safe today but increases idempotency complexity: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/service/SalesService.java:1751`.
@@ -113,6 +115,7 @@
 - EPIC D / Milestone D5 rejects sales returns without matching dispatch cost layers.
 - EPIC E / Milestone E1 recorded constraint vs repository mismatch list for key tables.
 - EPIC E / Milestone E2 tolerates duplicate journal reference mappings via deterministic selection.
+- EPIC 05 / Milestone 02 ensures sales journals create legacy→canonical mappings and resolver scans mappings to locate the actual journal entry when duplicates exist.
 - Task 00 plan expanded to cross-module audit EPICs A–F (docs-only change).
 - EPIC 02 / Milestone 02 avoids phantom GST-inclusive discounts by tolerating rounding deltas in invoice/journal discount extraction.
 - EPIC 02 / Milestone 03 adds mixed-discount return coverage and asserts inventory restock deltas instead of absolute stock.
@@ -214,10 +217,11 @@
 - 2026-01-25: `cd erp-domain && mvn -B -ntp -Dtest=SettlementE2ETest,ErpInvariantsSuiteIT,IdempotencyConflictRegressionIT test` (PASS) — Tests run: 21, Failures: 0, Errors: 0, Skipped: 0.
 - 2026-01-25: `scripts/task00_async_verify.sh` (PASS) — PID 35240; exit 0; BUILD SUCCESS; Tests run: 417, Failures: 0, Errors: 0, Skipped: 4.
 - 2026-01-25: `cd erp-domain && mvn -B -ntp -Dtest=CriticalPathSmokeTest,CriticalAccountingAxesIT test` (PASS) — Tests run: 19, Failures: 0, Errors: 0, Skipped: 0.
-- 2026-01-25: `scripts/task00_async_verify.sh` (RUNNING) — PID 40052; exit pending; log `/tmp/task00-verify.log`.
+- 2026-01-25: `cd erp-domain && mvn -B -ntp -Dtest=IdempotencyConflictRegressionIT,JournalReferenceMappingRegressionIT test` (PASS) — Tests run: 3, Failures: 0, Errors: 0, Skipped: 0.
+- 2026-01-25: `scripts/task00_async_verify.sh` (PASS) — PID 46454; exit 0; BUILD SUCCESS; Tests run: 418, Failures: 0, Errors: 0, Skipped: 4.
 
 ## Next Actions (explicit)
-1. Start EPIC 05 / Milestone 02: canonical reference consistency + uniqueness.
+1. Start EPIC 05 / Milestone 03: rounding standardization.
 
 ## Historical (prior work references)
 - Epic 03: branch `epic-03-production-stock`, tip `3f2370c38c0152153369507159e5ae26ca1fa048`.

@@ -797,7 +797,7 @@ Milestone 01 — Inventory all posting paths + divergences **COMPLETED** — com
 - Rollback/recovery notes:
   - If refactor risk is high, break into multiple commits and keep behavior identical until invariant tests prove otherwise.
 
-Milestone 02 — Canonical reference consistency + uniqueness
+Milestone 02 — Canonical reference consistency + uniqueness **COMPLETED** — commit `077510684e7dadda7f55fdad6a9975124ff5b437`
 - Implementation steps:
   - Fix the canonical reference uniqueness gap:
     - either enforce uniqueness at DB level for `(company_id, canonical_reference)`, or
