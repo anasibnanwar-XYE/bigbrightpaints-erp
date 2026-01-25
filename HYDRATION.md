@@ -2,20 +2,20 @@
 
 ## Overnight Runner State
 - Branch: `accounting-correctness-v1`
-- Current epic/milestone pointer: `tasks/task-00.md → EPIC F → Milestone F1` (regression run order + evidence recording)
+- Current epic/milestone pointer: `tasks/task-00.md → EPIC F → Milestone F2` (flake guard reruns)
 - Last commit SHA: `3e4fa3af54da84f465b1e117cd52aeb254f29d9f`
-- Next actions: start EPIC F / Milestone F1 (regression run order + evidence recording), continue async verify triage (log empty; PID 124084).
+- Next actions: run EPIC F / Milestone F2 flake-guard reruns, continue async verify triage (log empty; PID 130049).
 - Working tree status: pre-existing diffs present (unrelated); avoid touching unrelated files.
 
 ## Current State
 - Worktree: `/home/realnigga/Desktop/CLI_BACKEND_epic04`
 - Branch: `accounting-correctness-v1`
-- Current milestone pointer: `tasks/task-00.md → EPIC F → Milestone F1` (regression run order + evidence recording)
+- Current milestone pointer: `tasks/task-00.md → EPIC F → Milestone F2` (flake guard reruns)
 - Working tree: pre-existing diffs present; proceeding without touching unrelated changes.
 
 ## Async Verify
 - Command: `nohup bash -lc 'cd erp-domain && mvn -B -ntp verify' > /tmp/task00-verify.log 2>&1 & echo $! > /tmp/task00-verify.pid`
-- PID: `124084` (latest attempt)
+- PID: `130049` (latest attempt)
 - Log: `/tmp/task00-verify.log`
 - Status: FINISHED early (log empty; no BUILD SUCCESS/FAILURE)
 - Last observed: `/tmp/task00-verify.log` has 0 lines; background PID exits immediately.
@@ -48,6 +48,7 @@
 - EPIC D / Milestone D5 — Returns require dispatch cost layers (PASS): `8769f33d713e2f5f9861bae53306af0914ddd0ac`.
 - EPIC E / Milestone E1 — Constraint vs repository assumption review (PASS): `0ba598ce6d41916fa8afcc1d3b30f76161334fef`.
 - EPIC E / Milestone E2 — Align constraints or code (PASS): `3e4fa3af54da84f465b1e117cd52aeb254f29d9f`.
+ - EPIC F / Milestone F1 — Regression run order + evidence recording (PASS): `TBD`.
 
 ## Evidence Pack
 - EPIC A / Milestone A1 trace map: `docs/cross-module-trace-map.md`
@@ -157,10 +158,13 @@
 - 2026-01-25: `nohup bash -lc 'cd erp-domain && mvn -B -ntp verify' > /tmp/task00-verify.log 2>&1 & echo $! > /tmp/task00-verify.pid` (FINISHED early) — PID 122239; log empty; no BUILD SUCCESS/FAILURE.
 - 2026-01-25: `cd erp-domain && mvn -B -ntp -Dtest=IdempotencyConflictRegressionIT test` (PASS) — Tests run: 2, Failures: 0, Errors: 0, Skipped: 0. (EPIC E2)
 - 2026-01-25: `nohup bash -lc 'cd erp-domain && mvn -B -ntp verify' > /tmp/task00-verify.log 2>&1 & echo $! > /tmp/task00-verify.pid` (FINISHED early) — PID 124084; log empty; no BUILD SUCCESS/FAILURE.
+- 2026-01-25: `cd erp-domain && mvn -B -ntp -Dtest=BusinessLogicRegressionTest,IdempotencyConflictRegressionIT test` (PASS) — Tests run: 9, Failures: 0, Errors: 0, Skipped: 0.
+- 2026-01-25: `cd erp-domain && mvn -B -ntp -Dtest=PerformanceBudgetIT,PerformanceExplainIT test` (PASS) — Tests run: 3, Failures: 0, Errors: 0, Skipped: 0.
+- 2026-01-25: `nohup bash -lc 'cd erp-domain && mvn -B -ntp verify' > /tmp/task00-verify.log 2>&1 & echo $! > /tmp/task00-verify.pid` (FINISHED early) — PID 130049; log empty; no BUILD SUCCESS/FAILURE.
 
 ## Next Actions (explicit)
-1. Begin EPIC F / Milestone F1: regression run order + evidence recording.
-2. Continue async verify triage (`/tmp/task00-verify.log` still empty after PID 124084).
+1. Begin EPIC F / Milestone F2: flake-guard reruns.
+2. Continue async verify triage (`/tmp/task00-verify.log` still empty after PID 130049).
 
 ## Historical (prior work references)
 - Epic 03: branch `epic-03-production-stock`, tip `3f2370c38c0152153369507159e5ae26ca1fa048`.
