@@ -4,7 +4,7 @@
 - Branch: `accounting-correctness-v1`
 - Current epic/milestone pointer: `tasks/task-00.md → EPIC 02 → Milestone 04` (mixed tax rates + zero-rated items)
 - Last commit SHA: `8bc3edc3edcd8abf703b24c5d1f20be2c7caf1f4`
-- Next actions: fix async verify runner reliability (empty log), then begin EPIC 02 / Milestone 04.
+- Next actions: begin EPIC 02 / Milestone 04 (mixed tax rates + zero-rated items).
 - Working tree status: pre-existing diffs present (unrelated); avoid touching unrelated files.
 
 ## Current State
@@ -14,11 +14,11 @@
 - Working tree: pre-existing diffs present; proceeding without touching unrelated changes.
 
 ## Async Verify
-- Command: `nohup bash -lc 'cd erp-domain && mvn -B -ntp verify' > /tmp/task00-verify.log 2>&1 & echo $! > /tmp/task00-verify.pid`
-- PID: `150858` (latest attempt)
+- Command: `scripts/task00_async_verify.sh` (setsid background; writes exit code)
+- PID: `10955` (latest attempt)
 - Log: `/tmp/task00-verify.log`
-- Status: FINISHED early (log empty; no BUILD SUCCESS/FAILURE)
-- Last observed: `/tmp/task00-verify.log` has 0 lines; background PID exits immediately.
+- Exit: `/tmp/task00-verify.exit`
+- Status: FINISHED (exit 0; BUILD SUCCESS).
 
 ## Triage Commands
 - First failing test in log: `grep -nE "FAILURE|ERROR|Failed" /tmp/task00-verify.log`
@@ -86,7 +86,7 @@
 - MEDIUM — Packaging slips allow multiple per sales order, but repository exposes Optional `findByCompanyAndSalesOrderId`/`findAndLockBySalesOrderId` (risk: multi-slip ambiguity): `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/domain/PackagingSlipRepository.java`, `erp-domain/src/main/resources/db/migration/V9__finished_goods_inventory.sql`.
 - MEDIUM — Invoices allow multiple per sales order, but repository exposes Optional `findByCompanyAndSalesOrderId`/`lockByCompanyAndSalesOrderId` (risk: partial invoice ambiguity): `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/invoice/domain/InvoiceRepository.java`, `erp-domain/src/main/resources/db/migration/V12__invoices.sql`.
 - LOW/MEDIUM — Inventory movements lack uniqueness on reference/movement fields; idempotency relies on service guards only: `erp-domain/src/main/resources/db/migration/V9__finished_goods_inventory.sql`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/domain/InventoryMovementRepository.java`.
-- MEDIUM — Async verify finished early with empty log (runner reliability risk): PID `150858`, log `/tmp/task00-verify.log` empty; no BUILD SUCCESS/FAILURE.
+- MEDIUM — Async verify finished early with empty log (runner reliability risk): PID `150858`, log `/tmp/task00-verify.log` empty; no BUILD SUCCESS/FAILURE. Mitigated by `scripts/task00_async_verify.sh` (setsid) — PID `10955` produced exit 0 + BUILD SUCCESS.
 
 ## Decisions Log
 - Treat `POST /api/v1/sales/dispatch/confirm` (`SalesService.confirmDispatch(...)`) as the authoritative cross-module flow for shipped-quantity accounting (AR/Revenue/Tax + COGS + invoice creation).
@@ -108,6 +108,7 @@
 - Task 00 plan expanded to cross-module audit EPICs A–F (docs-only change).
 - EPIC 02 / Milestone 02 avoids phantom GST-inclusive discounts by tolerating rounding deltas in invoice/journal discount extraction.
 - EPIC 02 / Milestone 03 adds mixed-discount return coverage and asserts inventory restock deltas instead of absolute stock.
+- Async verify runner now uses `setsid` to avoid background process termination; log + exit file are required artifacts.
 - Dispatch confirm now rehydrates missing slip/order journal + invoice links when artifacts already exist (no inventory mutation).
 - Added endpoint-equivalence E2E coverage for `/sales/dispatch/confirm` and `/dispatch/confirm`.
 - Added dispatch COGS assertions: slip unit cost totals match COGS journal and movements link to journal.
@@ -189,10 +190,10 @@
 - 2026-01-25: `cd erp-domain && mvn -B -ntp -Dtest=SalesReturnCreditNoteE2EIT#salesReturn_postsCreditNoteAndRestocksInventory test` (PASS) — rerun 2 after fix.
 - 2026-01-25: `cd erp-domain && mvn -B -ntp -Dtest=SalesReturnCreditNoteE2EIT,CriticalAccountingAxesIT test` (PASS) — Tests run: 13, Failures: 0, Errors: 0, Skipped: 0.
 - 2026-01-25: `nohup bash -lc 'cd erp-domain && mvn -B -ntp verify' > /tmp/task00-verify.log 2>&1 & echo $! > /tmp/task00-verify.pid` (FINISHED early) — PID 150858; log empty; no BUILD SUCCESS/FAILURE.
+- 2026-01-25: `scripts/task00_async_verify.sh` (PASS) — PID 10955; exit 0; BUILD SUCCESS; Tests run: 412, Failures: 0, Errors: 0, Skipped: 4.
 
 ## Next Actions (explicit)
-1. Fix async verify runner reliability (capture log + exit code).
-2. Begin EPIC 02 / Milestone 04: mixed tax rates + zero-rated items.
+1. Begin EPIC 02 / Milestone 04: mixed tax rates + zero-rated items.
 
 ## Historical (prior work references)
 - Epic 03: branch `epic-03-production-stock`, tip `3f2370c38c0152153369507159e5ae26ca1fa048`.
