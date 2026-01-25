@@ -4,7 +4,7 @@
 - Branch: `accounting-correctness-v1`
 - Current epic/milestone pointer: `Task 00 COMPLETE`
 - Last commit SHA: `a027d1fbd46e678467d3ca45bd2154cce02ac32e`
-- Next actions: monitor async verify, commit & push settlement/return fixes.
+- Next actions: monitor async verify, commit & push return lookup scoping fix.
 - Working tree status: pre-existing diffs present (unrelated); avoid touching unrelated files.
 
 ## Current State
@@ -146,6 +146,7 @@
 - Posting-path inventory captured; direct `createJournalEntry(...)` call sites now documented with keep/migrate decisions.
 - EPIC 06 / Milestone 02 scopes inventory movement lookups by company for dispatch linking and sales returns to prevent cross-company leakage.
 - Dealer settlement now clears invoice outstanding using applied + discount/write-off + FX adjustment (capped to outstanding when applied already covers it); sales return movements include invoice-line reference ids to enforce per-line return limits.
+- Sales return lookup now scopes to exact invoice reference or `invoiceNumber:` prefix to avoid cross-invoice contamination.
 
 ## Test Status Log
 - 2026-01-24: Task 00 plan expansion commit (docs-only); tests not run.
@@ -200,6 +201,7 @@
 - 2026-01-25: `nohup bash -lc 'cd erp-domain && mvn -B -ntp verify' > /tmp/task00-verify.log 2>&1 & echo $! > /tmp/task00-verify.pid` (FINISHED early) — PID 122239; log empty; no BUILD SUCCESS/FAILURE.
 - 2026-01-25: `cd erp-domain && mvn -B -ntp -Dtest=IdempotencyConflictRegressionIT test` (PASS) — Tests run: 2, Failures: 0, Errors: 0, Skipped: 0. (EPIC E2)
 - 2026-01-25: `cd erp-domain && mvn -B -ntp -Dtest=SalesReturnServiceTest,SalesReturnCreditNoteE2EIT,ErpInvariantsSuiteIT,SettlementE2ETest test` (PASS) — Tests run: 26, Failures: 0, Errors: 0, Skipped: 0.
+- 2026-01-25: `cd erp-domain && mvn -B -ntp -Dtest=SalesReturnServiceTest test` (PASS) — Tests run: 4, Failures: 0, Errors: 0, Skipped: 0.
 - 2026-01-25: `nohup bash -lc 'cd erp-domain && mvn -B -ntp verify' > /tmp/task00-verify.log 2>&1 & echo $! > /tmp/task00-verify.pid` (FINISHED early) — PID 124084; log empty; no BUILD SUCCESS/FAILURE.
 - 2026-01-25: `cd erp-domain && mvn -B -ntp -Dtest=BusinessLogicRegressionTest,IdempotencyConflictRegressionIT test` (PASS) — Tests run: 9, Failures: 0, Errors: 0, Skipped: 0.
 - 2026-01-25: `cd erp-domain && mvn -B -ntp -Dtest=PerformanceBudgetIT,PerformanceExplainIT test` (PASS) — Tests run: 3, Failures: 0, Errors: 0, Skipped: 0.

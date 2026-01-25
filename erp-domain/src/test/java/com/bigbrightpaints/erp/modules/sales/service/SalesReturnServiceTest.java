@@ -153,10 +153,15 @@ class SalesReturnServiceTest {
                 eq(InventoryReference.SALES_ORDER),
                 eq("99"))
         ).thenReturn(List.of(dispatchMovement));
-        when(inventoryMovementRepository.findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdStartingWithOrderByCreatedAtAsc(
+        when(inventoryMovementRepository.findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
                 eq(company),
                 eq("SALES_RETURN"),
                 eq("INV-1")
+        )).thenReturn(List.of());
+        when(inventoryMovementRepository.findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdStartingWithOrderByCreatedAtAsc(
+                eq(company),
+                eq("SALES_RETURN"),
+                eq("INV-1:")
         )).thenReturn(List.of());
 
         JournalEntryDto salesReturnEntry = stubEntry(100L);
@@ -253,11 +258,16 @@ class SalesReturnServiceTest {
 
         when(companyEntityLookup.requireInvoice(company, 10L)).thenReturn(invoice);
         when(finishedGoodRepository.lockByCompanyAndProductCode(company, "FG-1")).thenReturn(Optional.of(fg));
-        when(inventoryMovementRepository.findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdStartingWithOrderByCreatedAtAsc(
+        when(inventoryMovementRepository.findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
                 eq(company),
                 eq("SALES_RETURN"),
                 eq("INV-1")
         )).thenReturn(List.of(priorReturn));
+        when(inventoryMovementRepository.findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdStartingWithOrderByCreatedAtAsc(
+                eq(company),
+                eq("SALES_RETURN"),
+                eq("INV-1:")
+        )).thenReturn(List.of());
 
         SalesReturnRequest request = new SalesReturnRequest(
                 10L,
@@ -313,10 +323,15 @@ class SalesReturnServiceTest {
 
         when(companyEntityLookup.requireInvoice(company, 10L)).thenReturn(invoice);
         when(finishedGoodRepository.lockByCompanyAndProductCode(company, "FG-1")).thenReturn(Optional.of(fg));
-        when(inventoryMovementRepository.findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdStartingWithOrderByCreatedAtAsc(
+        when(inventoryMovementRepository.findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
                 eq(company),
                 eq("SALES_RETURN"),
                 eq("INV-1")
+        )).thenReturn(List.of());
+        when(inventoryMovementRepository.findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdStartingWithOrderByCreatedAtAsc(
+                eq(company),
+                eq("SALES_RETURN"),
+                eq("INV-1:")
         )).thenReturn(List.of(priorReturn));
 
         SalesReturnRequest request = new SalesReturnRequest(
@@ -395,10 +410,15 @@ class SalesReturnServiceTest {
                 eq(InventoryReference.SALES_ORDER),
                 eq("101"))
         ).thenReturn(List.of(dispatchMovement));
-        when(inventoryMovementRepository.findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdStartingWithOrderByCreatedAtAsc(
+        when(inventoryMovementRepository.findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
                 eq(company),
                 eq("SALES_RETURN"),
                 eq("INV-2")
+        )).thenReturn(List.of());
+        when(inventoryMovementRepository.findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdStartingWithOrderByCreatedAtAsc(
+                eq(company),
+                eq("SALES_RETURN"),
+                eq("INV-2:")
         )).thenReturn(List.of());
 
         when(accountingFacade.postSalesReturn(

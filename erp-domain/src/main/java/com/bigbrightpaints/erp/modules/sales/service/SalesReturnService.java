@@ -429,17 +429,29 @@ public class SalesReturnService {
         if (normalized == null || normalized.isEmpty()) {
             return ReturnMovementSummary.empty();
         }
-        List<InventoryMovement> movements = inventoryMovementRepository
-                .findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdStartingWithOrderByCreatedAtAsc(
+        List<InventoryMovement> movements = new java.util.ArrayList<>();
+        List<InventoryMovement> legacyMovements = inventoryMovementRepository
+                .findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
                         company,
                         SALES_RETURN_REFERENCE,
                         normalized);
-        if (movements == null || movements.isEmpty()) {
+        if (legacyMovements != null && !legacyMovements.isEmpty()) {
+            movements.addAll(legacyMovements);
+        }
+        String prefix = normalized + SALES_RETURN_LINE_SEPARATOR;
+        List<InventoryMovement> lineMovements = inventoryMovementRepository
+                .findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdStartingWithOrderByCreatedAtAsc(
+                        company,
+                        SALES_RETURN_REFERENCE,
+                        prefix);
+        if (lineMovements != null && !lineMovements.isEmpty()) {
+            movements.addAll(lineMovements);
+        }
+        if (movements.isEmpty()) {
             return ReturnMovementSummary.empty();
         }
         Map<Long, BigDecimal> totalsByLine = new LinkedHashMap<>();
         Map<Long, BigDecimal> totalsByFinishedGood = new LinkedHashMap<>();
-        String prefix = normalized + SALES_RETURN_LINE_SEPARATOR;
         for (InventoryMovement movement : movements) {
             FinishedGood finishedGood = movement.getFinishedGood();
             if (finishedGood == null || finishedGood.getId() == null) {
