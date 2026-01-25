@@ -945,7 +945,7 @@ Scope:
 
 Milestones:
 
-Milestone 01 — Build + run the regression matrix (targeted first)
+Milestone 01 — Build + run the regression matrix (targeted first) **COMPLETED** — commit `17fcb52901e557b53ead3bb09742c68b32da3a18`
 - Implementation steps:
   - Run and record (in `HYDRATION.md`) a fixed regression order:
     1) invariants → 2) sales/inventory E2E → 3) accounting E2E → 4) regression → 5) performance

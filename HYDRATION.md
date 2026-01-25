@@ -2,15 +2,15 @@
 
 ## Overnight Runner State
 - Branch: `accounting-correctness-v1`
-- Current epic/milestone pointer: `tasks/task-00.md → EPIC 08 → Milestone 01` (regression matrix)
-- Last commit SHA: `e2be5a472e184fc04255164c30a3bfce0c37f586`
-- Next actions: start EPIC 08 / Milestone 01.
+- Current epic/milestone pointer: `tasks/task-00.md → EPIC 08 → Milestone 02` (domino gate)
+- Last commit SHA: `17fcb52901e557b53ead3bb09742c68b32da3a18`
+- Next actions: start EPIC 08 / Milestone 02.
 - Working tree status: pre-existing diffs present (unrelated); avoid touching unrelated files.
 
 ## Current State
 - Worktree: `/home/realnigga/Desktop/CLI_BACKEND_epic04`
 - Branch: `accounting-correctness-v1`
-- Current milestone pointer: `tasks/task-00.md → EPIC 08 → Milestone 01` (regression matrix)
+- Current milestone pointer: `tasks/task-00.md → EPIC 08 → Milestone 02` (domino gate)
 - Working tree: pre-existing diffs present; proceeding without touching unrelated changes.
 
 ## Async Verify
@@ -69,6 +69,7 @@
 - EPIC 06 / Milestone 02 — Data integrity audit for critical endpoints (PASS): `b2fcaa45e91faf0f693941d12c971dc4be1c2e4c`.
 - EPIC 06 / Milestone 03 — Performance + query plan budget (PASS): `009609bf63a59924218266aed1b3d715104e04cf`.
 - EPIC 07 / Milestone 01 — Accounting mental model docs (PASS): `e2be5a472e184fc04255164c30a3bfce0c37f586`.
+- EPIC 08 / Milestone 01 — Regression matrix (PASS): `17fcb52901e557b53ead3bb09742c68b32da3a18`.
 
 ## Evidence Pack
 - EPIC A / Milestone A1 trace map: `docs/cross-module-trace-map.md`
@@ -259,7 +260,7 @@
 - 2026-01-25: `scripts/task00_async_verify.sh` (PASS) — PID 103161; exit 0; BUILD SUCCESS; Tests run: 419, Failures: 0, Errors: 0, Skipped: 4.
 
 ## Next Actions (explicit)
-1. Start EPIC 08 / Milestone 01: regression matrix.
+1. Start EPIC 08 / Milestone 02: final domino gate (full suite twice).
 
 ## Historical (prior work references)
 - Epic 03: branch `epic-03-production-stock`, tip `3f2370c38c0152153369507159e5ae26ca1fa048`.
