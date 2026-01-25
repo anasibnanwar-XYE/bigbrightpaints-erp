@@ -44,10 +44,10 @@ public interface FinishedGoodBatchRepository extends JpaRepository<FinishedGoodB
     List<FinishedGoodBatch> findAllocatableBatchesLIFO(@Param("finishedGood") FinishedGood finishedGood);
 
     @Query("""
-            select sum(b.quantityAvailable * b.unitCost) / sum(b.quantityAvailable)
+            select sum(b.quantityTotal * b.unitCost) / sum(b.quantityTotal)
             from FinishedGoodBatch b
             where b.finishedGood = :finishedGood
-              and b.quantityAvailable > 0
+              and b.quantityTotal > 0
             """)
     BigDecimal calculateWeightedAverageCost(@Param("finishedGood") FinishedGood finishedGood);
 
