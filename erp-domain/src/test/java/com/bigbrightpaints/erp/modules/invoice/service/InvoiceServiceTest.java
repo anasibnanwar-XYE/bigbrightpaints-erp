@@ -22,6 +22,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -30,6 +31,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -114,5 +116,48 @@ class InvoiceServiceTest {
 
         assertThat(order.getSalesJournalEntryId()).isEqualTo(100L);
         assertThat(dto.journalEntryId()).isEqualTo(100L);
+    }
+
+    @Test
+    void issueInvoiceForOrder_ignoresInclusiveRoundingDeltaForDiscounts() {
+        Long orderId = 55L;
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(invoiceRepository.findAllByCompanyAndSalesOrderId(company, orderId)).thenReturn(List.of());
+
+        Dealer dealer = new Dealer();
+        SalesOrder order = new SalesOrder();
+        order.setCompany(company);
+        order.setDealer(dealer);
+        order.setOrderNumber("SO-55");
+        order.setCurrency("INR");
+        order.setGstInclusive(true);
+        order.setSubtotalAmount(new BigDecimal("84.75"));
+        order.setGstTotal(new BigDecimal("15.25"));
+        order.setTotalAmount(new BigDecimal("100.00"));
+
+        SalesOrderItem item = new SalesOrderItem();
+        item.setProductCode("SKU-1");
+        item.setDescription("Paint");
+        item.setQuantity(BigDecimal.ONE);
+        item.setUnitPrice(new BigDecimal("100.01"));
+        item.setLineSubtotal(new BigDecimal("84.75"));
+        item.setGstAmount(new BigDecimal("15.25"));
+        item.setGstRate(new BigDecimal("18.00"));
+        order.getItems().add(item);
+
+        when(salesService.getOrderWithItems(orderId)).thenReturn(order);
+        when(invoiceNumberService.nextInvoiceNumber(company)).thenReturn("INV-55");
+        when(journalReferenceResolver.findExistingEntry(eq(company), anyString())).thenReturn(Optional.empty());
+        when(salesJournalService.postSalesJournal(eq(order), any(), anyString(), any(), anyString())).thenReturn(null);
+        when(invoiceRepository.save(any(Invoice.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        invoiceService.issueInvoiceForOrder(orderId);
+
+        ArgumentCaptor<Invoice> invoiceCaptor = ArgumentCaptor.forClass(Invoice.class);
+        verify(invoiceRepository).save(invoiceCaptor.capture());
+        Invoice saved = invoiceCaptor.getValue();
+
+        assertThat(saved.getLines()).hasSize(1);
+        assertThat(saved.getLines().get(0).getDiscountAmount()).isEqualByComparingTo("0.00");
     }
 }

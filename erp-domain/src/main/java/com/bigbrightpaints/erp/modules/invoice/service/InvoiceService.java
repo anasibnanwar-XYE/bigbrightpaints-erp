@@ -37,6 +37,8 @@ import java.util.Optional;
 @Service
 public class InvoiceService {
 
+    private static final BigDecimal ROUNDING_TOLERANCE = new BigDecimal("0.05");
+
     private final CompanyContextService companyContextService;
     private final InvoiceRepository invoiceRepository;
     private final SalesService salesService;
@@ -119,12 +121,7 @@ public class InvoiceService {
             BigDecimal lineTax = item.getGstAmount() != null ? item.getGstAmount() : BigDecimal.ZERO;
             BigDecimal lineGross = MoneyUtils.safeMultiply(item.getQuantity(), item.getUnitPrice());
             BigDecimal discountBase = gstInclusive ? lineSubtotal.add(lineTax) : lineSubtotal;
-            BigDecimal lineDiscount = lineGross.subtract(discountBase);
-            if (lineDiscount.compareTo(BigDecimal.ZERO) < 0) {
-                lineDiscount = BigDecimal.ZERO;
-            } else {
-                lineDiscount = currency(lineDiscount);
-            }
+            BigDecimal lineDiscount = MoneyUtils.positiveCurrencyDelta(lineGross, discountBase, ROUNDING_TOLERANCE);
             BigDecimal taxRate = item.getGstRate() != null ? item.getGstRate() : BigDecimal.ZERO;
             line.setTaxRate(taxRate);
             line.setDiscountAmount(currency(lineDiscount));

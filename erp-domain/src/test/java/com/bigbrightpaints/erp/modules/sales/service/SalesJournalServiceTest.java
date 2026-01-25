@@ -182,4 +182,69 @@ class SalesJournalServiceTest {
         assertThat(taxLines.get(22L)).isEqualByComparingTo("9.00");
         assertThat(discountLines.get(21L)).isEqualByComparingTo("10.00");
     }
+
+    @Test
+    void postSalesJournal_ignoresInclusiveRoundingDelta() {
+        Company company = new Company();
+        company.setTimezone("UTC");
+        Dealer dealer = new Dealer();
+        ReflectionTestUtils.setField(dealer, "id", 88L);
+
+        SalesOrder order = new SalesOrder();
+        order.setCompany(company);
+        order.setDealer(dealer);
+        order.setOrderNumber("SO-3");
+        order.setGstInclusive(true);
+
+        SalesOrderItem item = new SalesOrderItem();
+        item.setProductCode("SKU-3");
+        item.setQuantity(BigDecimal.ONE);
+        item.setUnitPrice(new BigDecimal("100.01"));
+        item.setLineSubtotal(new BigDecimal("84.75"));
+        item.setGstAmount(new BigDecimal("15.25"));
+        item.setGstRate(new BigDecimal("18.00"));
+        order.getItems().add(item);
+
+        FinishedGoodAccountingProfile profile = new FinishedGoodAccountingProfile(
+                "SKU-3",
+                null,
+                null,
+                30L,
+                31L,
+                32L
+        );
+        when(finishedGoodsService.accountingProfiles(List.of("SKU-3"))).thenReturn(Map.of("SKU-3", profile));
+        when(companyAccountingSettingsService.requireTaxAccounts())
+                .thenReturn(new CompanyAccountingSettingsService.TaxAccountConfiguration(null, 32L, null));
+
+        ArgumentCaptor<Map<Long, BigDecimal>> revenueCaptor = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<Map<Long, BigDecimal>> taxCaptor = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<Map<Long, BigDecimal>> discountCaptor = ArgumentCaptor.forClass(Map.class);
+
+        salesJournalService.postSalesJournal(
+                order,
+                new BigDecimal("100.00"),
+                "INV-REF-3",
+                LocalDate.of(2024, 4, 10),
+                "Invoice INV-3");
+
+        verify(accountingFacade).postSalesJournal(
+                eq(88L),
+                eq("SO-3"),
+                eq(LocalDate.of(2024, 4, 10)),
+                eq("Invoice INV-3"),
+                revenueCaptor.capture(),
+                taxCaptor.capture(),
+                discountCaptor.capture(),
+                eq(new BigDecimal("100.00")),
+                eq("INV-REF-3"));
+
+        Map<Long, BigDecimal> revenueLines = revenueCaptor.getValue();
+        Map<Long, BigDecimal> taxLines = taxCaptor.getValue();
+        Map<Long, BigDecimal> discountLines = discountCaptor.getValue();
+
+        assertThat(revenueLines.get(30L)).isEqualByComparingTo("84.75");
+        assertThat(taxLines.get(32L)).isEqualByComparingTo("15.25");
+        assertThat(discountLines).isNull();
+    }
 }

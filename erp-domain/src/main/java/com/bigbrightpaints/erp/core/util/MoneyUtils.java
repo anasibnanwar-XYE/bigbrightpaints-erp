@@ -30,6 +30,18 @@ public final class MoneyUtils {
         return dividend.divide(divisor, scale, roundingMode);
     }
 
+    public static BigDecimal positiveCurrencyDelta(BigDecimal left, BigDecimal right, BigDecimal tolerance) {
+        BigDecimal delta = zeroIfNull(left).subtract(zeroIfNull(right));
+        if (delta.compareTo(BigDecimal.ZERO) <= 0) {
+            return roundCurrency(BigDecimal.ZERO);
+        }
+        BigDecimal rounded = roundCurrency(delta);
+        if (withinTolerance(rounded, BigDecimal.ZERO, tolerance)) {
+            return roundCurrency(BigDecimal.ZERO);
+        }
+        return rounded;
+    }
+
     public static BigDecimal roundCurrency(BigDecimal value) {
         if (value == null) {
             return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);

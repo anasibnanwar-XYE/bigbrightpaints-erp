@@ -126,10 +126,7 @@ public class SalesJournalService {
             BigDecimal lineTax = item.getGstAmount() != null ? item.getGstAmount() : BigDecimal.ZERO;
             BigDecimal lineGross = MoneyUtils.safeMultiply(item.getQuantity(), item.getUnitPrice());
             BigDecimal discountBase = gstInclusive ? lineSubtotal.add(lineTax) : lineSubtotal;
-            BigDecimal lineDiscount = lineGross.subtract(discountBase);
-            if (lineDiscount.compareTo(BigDecimal.ZERO) < 0) {
-                lineDiscount = BigDecimal.ZERO;
-            }
+            BigDecimal lineDiscount = MoneyUtils.positiveCurrencyDelta(lineGross, discountBase, ROUNDING_TOLERANCE);
             BigDecimal discountNet = normalizeDiscountNet(lineDiscount, item.getGstRate(), gstInclusive);
             BigDecimal grossNet = currency(lineSubtotal.add(discountNet));
 

@@ -2,20 +2,20 @@
 
 ## Overnight Runner State
 - Branch: `accounting-correctness-v1`
-- Current epic/milestone pointer: `tasks/task-00.md → EPIC 02 → Milestone 02` (inclusive vs exclusive + rounding edge cases)
-- Last commit SHA: `d75042d2699b9a21fc9b9dc7078c0133dc7df380`
-- Next actions: begin EPIC 02 / Milestone 02, continue async verify triage (log empty; PID 141209).
+- Current epic/milestone pointer: `tasks/task-00.md → EPIC 02 → Milestone 03` (returns/credit notes correctness)
+- Last commit SHA: `29cf824944b40c84ce6b30be4b2865cd4e251519`
+- Next actions: begin EPIC 02 / Milestone 03, continue async verify triage (log empty; PID 145616).
 - Working tree status: pre-existing diffs present (unrelated); avoid touching unrelated files.
 
 ## Current State
 - Worktree: `/home/realnigga/Desktop/CLI_BACKEND_epic04`
 - Branch: `accounting-correctness-v1`
-- Current milestone pointer: `tasks/task-00.md → EPIC 02 → Milestone 02` (inclusive vs exclusive + rounding edge cases)
+- Current milestone pointer: `tasks/task-00.md → EPIC 02 → Milestone 03` (returns/credit notes correctness)
 - Working tree: pre-existing diffs present; proceeding without touching unrelated changes.
 
 ## Async Verify
 - Command: `nohup bash -lc 'cd erp-domain && mvn -B -ntp verify' > /tmp/task00-verify.log 2>&1 & echo $! > /tmp/task00-verify.pid`
-- PID: `141209` (latest attempt)
+- PID: `145616` (latest attempt)
 - Log: `/tmp/task00-verify.log`
 - Status: FINISHED early (log empty; no BUILD SUCCESS/FAILURE)
 - Last observed: `/tmp/task00-verify.log` has 0 lines; background PID exits immediately.
@@ -50,7 +50,8 @@
 - EPIC E / Milestone E2 — Align constraints or code (PASS): `3e4fa3af54da84f465b1e117cd52aeb254f29d9f`.
 - EPIC F / Milestone F1 — Regression run order + evidence recording (PASS): `2b6d4ab0fb70b7bd55891da41df7f3c15b6f8ed7`.
 - EPIC F / Milestone F2 — Flake guard reruns (PASS): `d75042d2699b9a21fc9b9dc7078c0133dc7df380`.
-- EPIC 02 / Milestone 01 — GST treatments (PASS): `TBD`.
+- EPIC 02 / Milestone 01 — GST treatments (PASS): `29cf824944b40c84ce6b30be4b2865cd4e251519`.
+- EPIC 02 / Milestone 02 — Inclusive vs exclusive + rounding edge cases (PASS): `TBD`.
 
 ## Evidence Pack
 - EPIC A / Milestone A1 trace map: `docs/cross-module-trace-map.md`
@@ -73,7 +74,6 @@
 ## Open Findings (bugs / security issues / logic flaws)
 - HIGH — Inventory accounting domain events appear unused (risk: future double-posting if wired later): `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/event/InventoryAccountingEventListener.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/event/InventoryMovementEvent.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/event/InventoryValuationChangedEvent.java`.
 - MEDIUM — `journal_reference_mappings` does not enforce uniqueness on `(company_id, canonical_reference)`; resolver now selects latest mapping but ambiguity remains: `erp-domain/src/main/resources/db/migration/V88__journal_reference_mappings.sql`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/JournalReferenceResolver.java`.
-- MEDIUM — GST-inclusive rounding deltas can be misclassified as “discount” in legacy journal/invoice flows (risk: wrong discount postings): `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/service/SalesJournalService.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/invoice/service/InvoiceService.java`.
 - MEDIUM — `InventoryAccountingEventListener` uses `LocalDate.now()` instead of company timezone / event date for valuation re-posting (period correctness risk): `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/event/InventoryAccountingEventListener.java`.
 - MEDIUM — Tenant guard: `CompanyContextFilter.validateCompanyAccess(...)` allows company selection for unauthenticated requests and for non-`UserPrincipal` principals (requires audit of public endpoints): `erp-domain/src/main/java/com/bigbrightpaints/erp/core/security/CompanyContextFilter.java`.
 - LOW — Sales dispatch posting uses invoice number as a journal reference (canonical reference is order-number-based); safe today but increases idempotency complexity: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/service/SalesService.java:1751`.
@@ -102,6 +102,7 @@
 - EPIC E / Milestone E1 recorded constraint vs repository mismatch list for key tables.
 - EPIC E / Milestone E2 tolerates duplicate journal reference mappings via deterministic selection.
 - Task 00 plan expanded to cross-module audit EPICs A–F (docs-only change).
+- EPIC 02 / Milestone 02 avoids phantom GST-inclusive discounts by tolerating rounding deltas in invoice/journal discount extraction.
 - Dispatch confirm now rehydrates missing slip/order journal + invoice links when artifacts already exist (no inventory mutation).
 - Added endpoint-equivalence E2E coverage for `/sales/dispatch/confirm` and `/dispatch/confirm`.
 - Added dispatch COGS assertions: slip unit cost totals match COGS journal and movements link to journal.
@@ -176,10 +177,12 @@
 - 2026-01-25: `nohup bash -lc 'cd erp-domain && mvn -B -ntp verify' > /tmp/task00-verify.log 2>&1 & echo $! > /tmp/task00-verify.pid` (FINISHED early) — PID 139103; log empty; no BUILD SUCCESS/FAILURE.
 - 2026-01-25: `cd erp-domain && mvn -B -ntp -Dtest=CriticalAccountingAxesIT,GstInclusiveRoundingIT test` (PASS) — Tests run: 15, Failures: 0, Errors: 0, Skipped: 0.
 - 2026-01-25: `nohup bash -lc 'cd erp-domain && mvn -B -ntp verify' > /tmp/task00-verify.log 2>&1 & echo $! > /tmp/task00-verify.pid` (FINISHED early) — PID 141209; log empty; no BUILD SUCCESS/FAILURE.
+- 2026-01-25: `cd erp-domain && mvn -B -ntp -Dtest=GstInclusiveRoundingIT,OrderFulfillmentE2ETest,SalesJournalServiceTest,InvoiceServiceTest test` (PASS) — Tests run: 22, Failures: 0, Errors: 0, Skipped: 0.
+- 2026-01-25: `nohup bash -lc 'cd erp-domain && mvn -B -ntp verify' > /tmp/task00-verify.log 2>&1 & echo $! > /tmp/task00-verify.pid` (FINISHED early) — PID 145616; log empty; no BUILD SUCCESS/FAILURE.
 
 ## Next Actions (explicit)
-1. Begin EPIC 02 / Milestone 02: inclusive vs exclusive + rounding edge cases.
-2. Continue async verify triage (`/tmp/task00-verify.log` still empty after PID 141209).
+1. Begin EPIC 02 / Milestone 03: returns/credit notes correctness.
+2. Continue async verify triage (`/tmp/task00-verify.log` still empty after PID 145616).
 
 ## Historical (prior work references)
 - Epic 03: branch `epic-03-production-stock`, tip `3f2370c38c0152153369507159e5ae26ca1fa048`.
