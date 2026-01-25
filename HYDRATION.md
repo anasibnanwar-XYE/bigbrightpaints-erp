@@ -2,20 +2,20 @@
 
 ## Overnight Runner State
 - Branch: `accounting-correctness-v1`
-- Current epic/milestone pointer: `tasks/task-00.md → EPIC 02 → Milestone 01` (GST treatments: NONE / PER_ITEM / ORDER_TOTAL)
-- Last commit SHA: `2b6d4ab0fb70b7bd55891da41df7f3c15b6f8ed7`
-- Next actions: begin EPIC 02 / Milestone 01, continue async verify triage (log empty; PID 139103).
+- Current epic/milestone pointer: `tasks/task-00.md → EPIC 02 → Milestone 02` (inclusive vs exclusive + rounding edge cases)
+- Last commit SHA: `d75042d2699b9a21fc9b9dc7078c0133dc7df380`
+- Next actions: begin EPIC 02 / Milestone 02, continue async verify triage (log empty; PID 141209).
 - Working tree status: pre-existing diffs present (unrelated); avoid touching unrelated files.
 
 ## Current State
 - Worktree: `/home/realnigga/Desktop/CLI_BACKEND_epic04`
 - Branch: `accounting-correctness-v1`
-- Current milestone pointer: `tasks/task-00.md → EPIC 02 → Milestone 01` (GST treatments: NONE / PER_ITEM / ORDER_TOTAL)
+- Current milestone pointer: `tasks/task-00.md → EPIC 02 → Milestone 02` (inclusive vs exclusive + rounding edge cases)
 - Working tree: pre-existing diffs present; proceeding without touching unrelated changes.
 
 ## Async Verify
 - Command: `nohup bash -lc 'cd erp-domain && mvn -B -ntp verify' > /tmp/task00-verify.log 2>&1 & echo $! > /tmp/task00-verify.pid`
-- PID: `139103` (latest attempt)
+- PID: `141209` (latest attempt)
 - Log: `/tmp/task00-verify.log`
 - Status: FINISHED early (log empty; no BUILD SUCCESS/FAILURE)
 - Last observed: `/tmp/task00-verify.log` has 0 lines; background PID exits immediately.
@@ -49,7 +49,8 @@
 - EPIC E / Milestone E1 — Constraint vs repository assumption review (PASS): `0ba598ce6d41916fa8afcc1d3b30f76161334fef`.
 - EPIC E / Milestone E2 — Align constraints or code (PASS): `3e4fa3af54da84f465b1e117cd52aeb254f29d9f`.
 - EPIC F / Milestone F1 — Regression run order + evidence recording (PASS): `2b6d4ab0fb70b7bd55891da41df7f3c15b6f8ed7`.
-- EPIC F / Milestone F2 — Flake guard reruns (PASS): `TBD`.
+- EPIC F / Milestone F2 — Flake guard reruns (PASS): `d75042d2699b9a21fc9b9dc7078c0133dc7df380`.
+- EPIC 02 / Milestone 01 — GST treatments (PASS): `TBD`.
 
 ## Evidence Pack
 - EPIC A / Milestone A1 trace map: `docs/cross-module-trace-map.md`
@@ -173,10 +174,12 @@
 - 2026-01-25: `cd erp-domain && mvn -B -ntp -Dtest=BusinessLogicRegressionTest,IdempotencyConflictRegressionIT test` (PASS) — Tests run: 9, Failures: 0, Errors: 0, Skipped: 0. (EPIC F2 run 2)
 - 2026-01-25: `cd erp-domain && mvn -B -ntp -Dtest=PerformanceBudgetIT,PerformanceExplainIT test` (PASS) — Tests run: 3, Failures: 0, Errors: 0, Skipped: 0. (EPIC F2 run 2)
 - 2026-01-25: `nohup bash -lc 'cd erp-domain && mvn -B -ntp verify' > /tmp/task00-verify.log 2>&1 & echo $! > /tmp/task00-verify.pid` (FINISHED early) — PID 139103; log empty; no BUILD SUCCESS/FAILURE.
+- 2026-01-25: `cd erp-domain && mvn -B -ntp -Dtest=CriticalAccountingAxesIT,GstInclusiveRoundingIT test` (PASS) — Tests run: 15, Failures: 0, Errors: 0, Skipped: 0.
+- 2026-01-25: `nohup bash -lc 'cd erp-domain && mvn -B -ntp verify' > /tmp/task00-verify.log 2>&1 & echo $! > /tmp/task00-verify.pid` (FINISHED early) — PID 141209; log empty; no BUILD SUCCESS/FAILURE.
 
 ## Next Actions (explicit)
-1. Begin EPIC 02 / Milestone 01: GST treatments (NONE / PER_ITEM / ORDER_TOTAL).
-2. Continue async verify triage (`/tmp/task00-verify.log` still empty after PID 139103).
+1. Begin EPIC 02 / Milestone 02: inclusive vs exclusive + rounding edge cases.
+2. Continue async verify triage (`/tmp/task00-verify.log` still empty after PID 141209).
 
 ## Historical (prior work references)
 - Epic 03: branch `epic-03-production-stock`, tip `3f2370c38c0152153369507159e5ae26ca1fa048`.
