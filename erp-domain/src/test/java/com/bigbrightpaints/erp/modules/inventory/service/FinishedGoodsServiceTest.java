@@ -165,7 +165,7 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
         assertThat(result.shortages()).isEmpty();
         assertThat(second.shortages()).isEmpty();
         PackagingSlip refreshed = packagingSlipRepository.findByIdAndCompany(slip.getId(), company).orElseThrow();
-        assertThat(refreshed.getStatus()).isEqualTo("BACKORDER");
+        assertThat(refreshed.getStatus()).isEqualTo("RESERVED");
         assertThat(refreshed.getLines()).hasSize(2);
         List<InventoryReservation> reservations = inventoryReservationRepository
                 .findByFinishedGoodCompanyAndReferenceTypeAndReferenceId(

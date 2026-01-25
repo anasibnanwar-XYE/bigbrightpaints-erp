@@ -322,10 +322,13 @@ public class FinishedGoodsService {
             allocateItem(order, slip, finishedGood, synthetic, shortages);
         }
 
-        if (!shortages.isEmpty()) {
+        if (shortages.isEmpty()) {
+            slip.setStatus("RESERVED");
+            updateSlipStatusBasedOnAvailability(slip, shortages);
+        } else {
             slip.setStatus("BACKORDER");
+            packagingSlipRepository.save(slip);
         }
-        packagingSlipRepository.save(slip);
         return new InventoryReservationResult(toSlipDto(slip), List.copyOf(shortages));
     }
 
