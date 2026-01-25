@@ -12,6 +12,7 @@ import com.bigbrightpaints.erp.modules.inventory.event.InventoryMovementEvent;
 import com.bigbrightpaints.erp.modules.inventory.event.InventoryValuationChangedEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionPhase;
@@ -32,6 +33,7 @@ import java.util.List;
  * This eliminates the need for manual/hardcoded GL postings in inventory operations.
  */
 @Component
+@ConditionalOnProperty(prefix = "erp.inventory.accounting", name = "events.enabled", havingValue = "true")
 public class InventoryAccountingEventListener {
 
     private static final Logger log = LoggerFactory.getLogger(InventoryAccountingEventListener.class);
