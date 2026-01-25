@@ -2,20 +2,20 @@
 
 ## Overnight Runner State
 - Branch: `accounting-correctness-v1`
-- Current epic/milestone pointer: `tasks/task-00.md → EPIC C → Milestone 03` (standardize tax computation usage)
-- Last commit SHA: `7d8a2cb2436921add18066205cbbcbd02b2ae3eb`
-- Next actions: start EPIC C / Milestone 03 (standardize tax computation usage), continue async verify triage (log empty).
+- Current epic/milestone pointer: `tasks/task-00.md → EPIC D → Milestone 01` (cross-company tampering tests)
+- Last commit SHA: `83104237f5c2c7a8bcb551a9534d3024d8861e9c`
+- Next actions: start EPIC D / Milestone 01 (cross-company tampering tests), continue async verify triage (log empty).
 - Working tree status: pre-existing diffs present (unrelated); avoid touching unrelated files.
 
 ## Current State
 - Worktree: `/home/realnigga/Desktop/CLI_BACKEND_epic04`
 - Branch: `accounting-correctness-v1`
-- Current milestone pointer: `tasks/task-00.md → EPIC C → Milestone 03` (standardize tax computation usage)
+- Current milestone pointer: `tasks/task-00.md → EPIC D → Milestone 01` (cross-company tampering tests)
 - Working tree: pre-existing diffs present; proceeding without touching unrelated changes.
 
 ## Async Verify
 - Command: `nohup bash -lc 'cd erp-domain && mvn -B -ntp verify' > /tmp/task00-verify.log 2>&1 & echo $! > /tmp/task00-verify.pid`
-- PID: `100537` (latest attempt)
+- PID: `102684` (latest attempt)
 - Log: `/tmp/task00-verify.log`
 - Status: FINISHED early (log empty; no BUILD SUCCESS/FAILURE)
 - Last observed: `/tmp/task00-verify.log` has 0 lines; background PID exits immediately.
@@ -40,6 +40,7 @@
 - EPIC B / Milestone B3 — Duplicate posting hardening (PASS): `5fc120c92076a51a56b88f64c8d3b0927ce8cff8`.
 - EPIC C / Milestone C1 — Rounding/tax inventory (PASS): `06966b4d54e01a15455a1bcab0665286ff25c66b`.
 - EPIC C / Milestone C2 — Balance + rounding assertions (PASS): `7d8a2cb2436921add18066205cbbcbd02b2ae3eb`.
+- EPIC C / Milestone C3 — Standardize tax computation usage (PASS): `83104237f5c2c7a8bcb551a9534d3024d8861e9c`.
 
 ## Evidence Pack
 - EPIC A / Milestone A1 trace map: `docs/cross-module-trace-map.md`
@@ -50,6 +51,7 @@
 - EPIC B / Milestone B3 duplicate mapping guard: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/JournalReferenceResolver.java`
 - EPIC C / Milestone C1 rounding/tax inventory: `docs/rounding-tax-inventory.md`
 - EPIC C / Milestone C2 balance/rounding assertions: `erp-domain/src/test/java/com/bigbrightpaints/erp/invariants/ErpInvariantsSuiteIT.java`
+- EPIC C / Milestone C3 rounding source-of-truth: `erp-domain/src/main/java/com/bigbrightpaints/erp/core/util/MoneyUtils.java`
 
 ## Open Findings (bugs / security issues / logic flaws)
 - HIGH — Inventory accounting domain events appear unused (risk: future double-posting if wired later): `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/event/InventoryAccountingEventListener.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/event/InventoryMovementEvent.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/event/InventoryValuationChangedEvent.java`.
@@ -71,6 +73,7 @@
 - Milestone 02 tests failed due to LazyInitialization in `ErpInvariantsSuiteIT`; fix by fetching AR journal reference via repository.
 - Milestone 02 assertions added for dispatch linkage, AR reference uniqueness, and GST tax accounts.
 - EPIC C / Milestone 02 adds invoice/line net+tax==total and zero-discount assertions in golden path.
+- EPIC C / Milestone 03 centralizes currency rounding via `MoneyUtils.roundCurrency` in Sales/Invoice journals.
 - Task 00 plan expanded to cross-module audit EPICs A–F (docs-only change).
 - Dispatch confirm now rehydrates missing slip/order journal + invoice links when artifacts already exist (no inventory mutation).
 - Added endpoint-equivalence E2E coverage for `/sales/dispatch/confirm` and `/dispatch/confirm`.
@@ -107,10 +110,12 @@
 - 2026-01-25: `cd erp-domain && mvn -B -ntp -Dtest=GstInclusiveRoundingIT test` (PASS) — Tests run: 2, Failures: 0, Errors: 0, Skipped: 0.
 - 2026-01-25: `cd erp-domain && mvn -B -ntp -Dtest=ErpInvariantsSuiteIT,CriticalAccountingAxesIT test` (PASS) — Tests run: 19, Failures: 0, Errors: 0, Skipped: 0. (EPIC C2 flake-guard run)
 - 2026-01-25: `nohup bash -lc 'cd erp-domain && mvn -B -ntp verify' > /tmp/task00-verify.log 2>&1 & echo $! > /tmp/task00-verify.pid` (FINISHED early) — PID 100537; log empty; no BUILD SUCCESS/FAILURE.
+- 2026-01-25: `cd erp-domain && mvn -B -ntp -Dtest=GstInclusiveRoundingIT,CriticalAccountingAxesIT test` (PASS) — Tests run: 12, Failures: 0, Errors: 0, Skipped: 0. (EPIC C3)
+- 2026-01-25: `nohup bash -lc 'cd erp-domain && mvn -B -ntp verify' > /tmp/task00-verify.log 2>&1 & echo $! > /tmp/task00-verify.pid` (FINISHED early) — PID 102684; log empty; no BUILD SUCCESS/FAILURE.
 
 ## Next Actions (explicit)
-1. Begin EPIC C / Milestone 03: standardize tax computation usage (minimal diff).
-2. Continue async verify triage (`/tmp/task00-verify.log` still empty after PID 100537).
+1. Begin EPIC D / Milestone 01: cross-company tampering tests (fail closed).
+2. Continue async verify triage (`/tmp/task00-verify.log` still empty after PID 102684).
 
 ## Historical (prior work references)
 - Epic 03: branch `epic-03-production-stock`, tip `3f2370c38c0152153369507159e5ae26ca1fa048`.
