@@ -1032,6 +1032,22 @@ public class FinishedGoodsService {
         if (!batchesToSave.isEmpty()) {
             finishedGoodBatchRepository.saveAll(batchesToSave);
         }
+        List<InventoryReservation> reservations = inventoryReservationRepository
+                .findByFinishedGoodCompanyAndReferenceTypeAndReferenceId(
+                        company,
+                        InventoryReference.SALES_ORDER,
+                        slip.getSalesOrder().getId().toString());
+        if (!reservations.isEmpty()) {
+            for (InventoryReservation reservation : reservations) {
+                if ("CANCELLED".equalsIgnoreCase(reservation.getStatus()) ||
+                        "FULFILLED".equalsIgnoreCase(reservation.getStatus())) {
+                    continue;
+                }
+                reservation.setStatus("CANCELLED");
+                reservation.setReservedQuantity(BigDecimal.ZERO);
+            }
+            inventoryReservationRepository.saveAll(reservations);
+        }
 
         slip.setStatus("CANCELLED");
         slip.setDispatchNotes(reason != null ? reason : "Backorder canceled by " + (username != null ? username : "system"));
