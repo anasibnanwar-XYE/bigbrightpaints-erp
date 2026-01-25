@@ -867,7 +867,7 @@ Milestone 01 — Endpoint inventory + duplication map **COMPLETED** — commit `
 - Rollback/recovery notes:
   - No endpoint removal; only documentation + internal consolidation.
 
-Milestone 02 — Data integrity audit for critical endpoints
+Milestone 02 — Data integrity audit for critical endpoints **COMPLETED** — commit `b2fcaa45e91faf0f693941d12c971dc4be1c2e4c`
 - Implementation steps:
   - For critical endpoints (dispatch, purchase, settlements, returns), confirm:
     - company scoping,
