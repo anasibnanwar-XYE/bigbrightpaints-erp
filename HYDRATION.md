@@ -15,7 +15,7 @@
 
 ## Async Verify
 - Command: `scripts/task00_async_verify.sh` (setsid background; writes exit code)
-- PID: `103161` (latest attempt)
+- PID: `109871` (latest attempt)
 - Log: `/tmp/task00-verify.log`
 - Exit: `/tmp/task00-verify.exit`
 - Status: FINISHED (exit 0, BUILD SUCCESS; Tests run: 419, Failures: 0, Errors: 0, Skipped: 4).
@@ -258,6 +258,8 @@
 - 2026-01-25: `cd erp-domain && mvn -B -ntp -Dtest=BusinessLogicRegressionTest,IdempotencyConflictRegressionIT test` (PASS) — Tests run: 9, Failures: 0, Errors: 0, Skipped: 0. (EPIC 08 M01 run 2)
 - 2026-01-25: `cd erp-domain && mvn -B -ntp -Dtest=PerformanceBudgetIT,PerformanceExplainIT test` (PASS) — Tests run: 3, Failures: 0, Errors: 0, Skipped: 0. (EPIC 08 M01 run 2)
 - 2026-01-25: `scripts/task00_async_verify.sh` (PASS) — PID 103161; exit 0; BUILD SUCCESS; Tests run: 419, Failures: 0, Errors: 0, Skipped: 4.
+- 2026-01-25: `scripts/task00_async_verify.sh` (PASS) — PID 106867; exit 0; BUILD SUCCESS; Tests run: 419, Failures: 0, Errors: 0, Skipped: 4. (EPIC 08 M02 run 1)
+- 2026-01-25: `scripts/task00_async_verify.sh` (PASS) — PID 109871; exit 0; BUILD SUCCESS; Tests run: 419, Failures: 0, Errors: 0, Skipped: 4. (EPIC 08 M02 run 2)
 
 ## Next Actions (explicit)
 1. Start EPIC 08 / Milestone 02: final domino gate (full suite twice).
