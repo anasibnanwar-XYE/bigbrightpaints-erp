@@ -3,7 +3,7 @@
 ## Overnight Runner State
 - Branch: `accounting-correctness-v1`
 - Current epic/milestone pointer: `tasks/task-00.md → EPIC 03 → Milestone 01` (purchase tax allocation + exact balance)
-- Last commit SHA: `b9704a72f5bf1292f7c3248bd8829acfcbed0721`
+- Last commit SHA: `52fd14ea969e15c25dd23df961d43fc433181ab6`
 - Next actions: monitor async verify (PID 15219), then start EPIC 03 / Milestone 01.
 - Working tree status: pre-existing diffs present (unrelated); avoid touching unrelated files.
 
@@ -55,7 +55,7 @@
 - EPIC 02 / Milestone 02 — Tests: `cd erp-domain && mvn -B -ntp -Dtest=GstInclusiveRoundingIT,OrderFulfillmentE2ETest,SalesJournalServiceTest,InvoiceServiceTest test` (PASS).
 - EPIC 02 / Milestone 03 — Returns/credit notes correctness (PASS): `8bc3edc3edcd8abf703b24c5d1f20be2c7caf1f4`.
 - EPIC 02 / Milestone 03 — Tests: `cd erp-domain && mvn -B -ntp -Dtest=SalesReturnCreditNoteE2EIT,CriticalAccountingAxesIT test` (PASS); `cd erp-domain && mvn -B -ntp -Dtest=SalesReturnCreditNoteE2EIT#salesReturn_postsCreditNoteAndRestocksInventory test` (PASS x2).
-- EPIC 02 / Milestone 04 — Mixed tax rates + zero-rated items (PASS): `b9704a72f5bf1292f7c3248bd8829acfcbed0721`.
+- EPIC 02 / Milestone 04 — Mixed tax rates + zero-rated items (PASS): `52fd14ea969e15c25dd23df961d43fc433181ab6`.
 - EPIC 02 / Milestone 04 — Tests: `cd erp-domain && mvn -B -ntp -Dtest=OrderFulfillmentE2ETest,CriticalAccountingAxesIT test` (PASS).
 
 ## Evidence Pack
