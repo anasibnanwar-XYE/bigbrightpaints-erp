@@ -2,23 +2,23 @@
 
 ## Overnight Runner State
 - Branch: `accounting-correctness-v1`
-- Current epic/milestone pointer: `tasks/task-00.md → EPIC 05 → Milestone 04` (inventory event journaling)
-- Last commit SHA: `b0f34b6a1a7fbebf1432a7fb222e5a503989c71b`
-- Next actions: start EPIC 05 / Milestone 04.
+- Current epic/milestone pointer: `tasks/task-00.md → EPIC 06 → Milestone 01` (endpoint inventory + duplication map)
+- Last commit SHA: `b1384dc7630ea4c85cd1abab5a935c4eb3c6e53b`
+- Next actions: start EPIC 06 / Milestone 01.
 - Working tree status: pre-existing diffs present (unrelated); avoid touching unrelated files.
 
 ## Current State
 - Worktree: `/home/realnigga/Desktop/CLI_BACKEND_epic04`
 - Branch: `accounting-correctness-v1`
-- Current milestone pointer: `tasks/task-00.md → EPIC 05 → Milestone 04` (inventory event journaling)
+- Current milestone pointer: `tasks/task-00.md → EPIC 06 → Milestone 01` (endpoint inventory + duplication map)
 - Working tree: pre-existing diffs present; proceeding without touching unrelated changes.
 
 ## Async Verify
 - Command: `scripts/task00_async_verify.sh` (setsid background; writes exit code)
-- PID: `53139` (latest attempt)
+- PID: `59844` (latest attempt)
 - Log: `/tmp/task00-verify.log`
 - Exit: `/tmp/task00-verify.exit`
-- Status: FINISHED (exit 0, BUILD SUCCESS; Tests run: 418, Failures: 0, Errors: 0, Skipped: 4).
+- Status: FINISHED (exit 0, BUILD SUCCESS; Tests run: 419, Failures: 0, Errors: 0, Skipped: 4).
 
 ## Triage Commands
 - First failing test in log: `grep -nE "FAILURE|ERROR|Failed" /tmp/task00-verify.log`
@@ -64,6 +64,7 @@
 - EPIC 05 / Milestone 01 — Inventory all posting paths + divergences (PASS): `cc6c9b982e778ef32efd8826e7e7578abc6095fd`.
 - EPIC 05 / Milestone 02 — Canonical reference consistency + uniqueness (PASS): `077510684e7dadda7f55fdad6a9975124ff5b437`.
 - EPIC 05 / Milestone 03 — Rounding standardization (PASS): `b0f34b6a1a7fbebf1432a7fb222e5a503989c71b`.
+- EPIC 05 / Milestone 04 — Inventory event journaling guard (PASS): `b1384dc7630ea4c85cd1abab5a935c4eb3c6e53b`.
 
 ## Evidence Pack
 - EPIC A / Milestone A1 trace map: `docs/cross-module-trace-map.md`
@@ -85,9 +86,10 @@
 - EPIC 05 / Milestone 01 posting path inventory: `docs/posting-path-inventory.md`
 - EPIC 05 / Milestone 02 canonical reference mapping guard: `erp-domain/src/test/java/com/bigbrightpaints/erp/regression/JournalReferenceMappingRegressionIT.java`
 - EPIC 05 / Milestone 03 rounding standardization: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/TaxService.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/purchasing/service/PurchasingService.java`
+- EPIC 05 / Milestone 04 inventory event guard: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/event/InventoryAccountingEventListener.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/regression/InventoryAccountingEventListenerIT.java`
 
 ## Open Findings (bugs / security issues / logic flaws)
-- HIGH — Inventory accounting domain events appear unused (risk: future double-posting if wired later): `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/event/InventoryAccountingEventListener.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/event/InventoryMovementEvent.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/event/InventoryValuationChangedEvent.java`.
+- MEDIUM — Inventory accounting events are now gated behind `erp.inventory.accounting.events.enabled` (default off); enabling requires removal of overlapping manual postings to avoid double-posting: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/event/InventoryAccountingEventListener.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/event/InventoryMovementEvent.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/event/InventoryValuationChangedEvent.java`.
 - MEDIUM — `journal_reference_mappings` does not enforce uniqueness on `(company_id, canonical_reference)`; resolver now searches mappings to find a real journal entry but ambiguity remains without a uniqueness constraint: `erp-domain/src/main/resources/db/migration/V88__journal_reference_mappings.sql`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/JournalReferenceResolver.java`.
 - MEDIUM — `InventoryAccountingEventListener` uses `LocalDate.now()` instead of company timezone / event date for valuation re-posting (period correctness risk): `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/event/InventoryAccountingEventListener.java`.
 - MEDIUM — Tenant guard: `CompanyContextFilter.validateCompanyAccess(...)` allows company selection for unauthenticated requests and for non-`UserPrincipal` principals (requires audit of public endpoints): `erp-domain/src/main/java/com/bigbrightpaints/erp/core/security/CompanyContextFilter.java`.
@@ -119,6 +121,7 @@
 - EPIC E / Milestone E2 tolerates duplicate journal reference mappings via deterministic selection.
 - EPIC 05 / Milestone 02 ensures sales journals create legacy→canonical mappings and resolver scans mappings to locate the actual journal entry when duplicates exist.
 - EPIC 05 / Milestone 03 standardizes GST rounding outputs via `MoneyUtils.roundCurrency` in `TaxService` and purchase return tax flows.
+- EPIC 05 / Milestone 04 disables inventory accounting event postings by default via property gate and adds a regression test to prevent duplicate journals when enabled.
 - Task 00 plan expanded to cross-module audit EPICs A–F (docs-only change).
 - EPIC 02 / Milestone 02 avoids phantom GST-inclusive discounts by tolerating rounding deltas in invoice/journal discount extraction.
 - EPIC 02 / Milestone 03 adds mixed-discount return coverage and asserts inventory restock deltas instead of absolute stock.
@@ -224,9 +227,11 @@
 - 2026-01-25: `scripts/task00_async_verify.sh` (PASS) — PID 46454; exit 0; BUILD SUCCESS; Tests run: 418, Failures: 0, Errors: 0, Skipped: 4.
 - 2026-01-25: `cd erp-domain && mvn -B -ntp -Dtest=GstInclusiveRoundingIT,CriticalAccountingAxesIT test` (PASS) — Tests run: 15, Failures: 0, Errors: 0, Skipped: 0.
 - 2026-01-25: `scripts/task00_async_verify.sh` (PASS) — PID 53139; exit 0; BUILD SUCCESS; Tests run: 418, Failures: 0, Errors: 0, Skipped: 4.
+- 2026-01-25: `cd erp-domain && mvn -B -ntp -Dtest=InventoryAccountingEventListenerIT,InventoryGlReconciliationIT test` (PASS) — Tests run: 3, Failures: 0, Errors: 0, Skipped: 0.
+- 2026-01-25: `scripts/task00_async_verify.sh` (PASS) — PID 59844; exit 0; BUILD SUCCESS; Tests run: 419, Failures: 0, Errors: 0, Skipped: 4.
 
 ## Next Actions (explicit)
-1. Start EPIC 05 / Milestone 04: inventory event journaling decision + guard.
+1. Start EPIC 06 / Milestone 01: endpoint inventory + duplication map.
 
 ## Historical (prior work references)
 - Epic 03: branch `epic-03-production-stock`, tip `3f2370c38c0152153369507159e5ae26ca1fa048`.

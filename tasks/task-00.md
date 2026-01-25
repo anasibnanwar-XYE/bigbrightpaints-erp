@@ -826,7 +826,7 @@ Milestone 03 — Rounding standardization (single source of truth) **COMPLETED**
 - Rollback/recovery notes:
   - If consolidation changes behavior, re-scope to “behavior-preserving refactor” first, then correctness.
 
-Milestone 04 — Inventory event journaling: either wire safely or keep disabled explicitly
+Milestone 04 — Inventory event journaling: either wire safely or keep disabled explicitly **COMPLETED** — commit `b1384dc7630ea4c85cd1abab5a935c4eb3c6e53b`
 - Implementation steps:
   - `InventoryAccountingEventListener` exists but events are not published today.
   - Decide and document:
