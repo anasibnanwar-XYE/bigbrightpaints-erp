@@ -1349,6 +1349,13 @@ public class FinishedGoodsService {
         if (slip == null) {
             return;
         }
+        String currentStatus = slip.getStatus();
+        if (currentStatus != null) {
+            String normalized = currentStatus.trim().toUpperCase();
+            if ("DISPATCHED".equals(normalized) || "CANCELLED".equals(normalized) || "BACKORDER".equals(normalized)) {
+                return;
+            }
+        }
         boolean hasShortage = shortages != null && !shortages.isEmpty();
         slip.setStatus(hasShortage ? "PENDING_PRODUCTION" : "RESERVED");
         packagingSlipRepository.save(slip);
