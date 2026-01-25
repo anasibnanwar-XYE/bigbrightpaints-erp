@@ -160,8 +160,10 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
         createReservation(order, fg, reservedBatch, new BigDecimal("5"));
 
         FinishedGoodsService.InventoryReservationResult result = finishedGoodsService.reserveForOrder(order);
+        FinishedGoodsService.InventoryReservationResult second = finishedGoodsService.reserveForOrder(order);
 
         assertThat(result.shortages()).isEmpty();
+        assertThat(second.shortages()).isEmpty();
         PackagingSlip refreshed = packagingSlipRepository.findByIdAndCompany(slip.getId(), company).orElseThrow();
         assertThat(refreshed.getStatus()).isEqualTo("BACKORDER");
         assertThat(refreshed.getLines()).hasSize(2);
@@ -176,6 +178,33 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
         assertThat(reservations)
                 .anyMatch(r -> r.getFinishedGoodBatch() != null &&
                         r.getFinishedGoodBatch().getId().equals(availableBatch.getId()));
+    }
+
+    @Test
+    void reserveForOrderBackorderWithNullReservedQuantityIsNotDuplicated() {
+        Company company = seedCompany("BACKORDER-NULL");
+        FinishedGood fg = createFinishedGood(company, "FG-NULL", new BigDecimal("5"), new BigDecimal("5"), "FIFO");
+        FinishedGoodBatch batch = createBatch(fg, "BATCH-NULL", new BigDecimal("5"), new BigDecimal("5"), new BigDecimal("6"));
+        SalesOrder order = createOrder(company, "SO-NULL-" + UUID.randomUUID(), fg.getProductCode(), new BigDecimal("5"));
+        PackagingSlip slip = createSlip(company, order, "BACKORDER", batch, new BigDecimal("5"));
+
+        InventoryReservation reservation = new InventoryReservation();
+        reservation.setFinishedGood(fg);
+        reservation.setFinishedGoodBatch(batch);
+        reservation.setReferenceType(InventoryReference.SALES_ORDER);
+        reservation.setReferenceId(order.getId().toString());
+        reservation.setQuantity(new BigDecimal("5"));
+        reservation.setReservedQuantity(null);
+        reservation.setStatus("RESERVED");
+        inventoryReservationRepository.save(reservation);
+
+        FinishedGoodsService.InventoryReservationResult result = finishedGoodsService.reserveForOrder(order);
+
+        assertThat(result.shortages()).isEmpty();
+        List<InventoryReservation> reservations = inventoryReservationRepository
+                .findByFinishedGoodCompanyAndReferenceTypeAndReferenceId(
+                        company, InventoryReference.SALES_ORDER, order.getId().toString());
+        assertThat(reservations).hasSize(1);
     }
 
     @Test

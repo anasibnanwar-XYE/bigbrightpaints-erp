@@ -299,7 +299,7 @@ public class FinishedGoodsService {
             if (fg == null || fg.getProductCode() == null) {
                 continue;
             }
-            BigDecimal covered = safeQuantity(reservation.getReservedQuantity())
+            BigDecimal covered = resolveReservedQuantity(reservation)
                     .add(safeQuantity(reservation.getFulfilledQuantity()));
             if (covered.compareTo(BigDecimal.ZERO) <= 0) {
                 continue;
