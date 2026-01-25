@@ -82,6 +82,49 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     }
 
+    @Test
+    void admin_user_update_ignores_cross_company_header() {
+        String token = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("X-Company-Id", OTHER_COMPANY);
+
+        Map<String, Object> payload = Map.of("displayName", "Other Admin Updated");
+
+        ResponseEntity<Map> response = rest.exchange(
+                "/api/v1/admin/users/" + otherCompanyUser.getId(),
+                HttpMethod.PUT,
+                new HttpEntity<>(payload, headers),
+                Map.class);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void admin_users_list_ignores_cross_company_header() {
+        String token = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+        headers.set("X-Company-Id", OTHER_COMPANY);
+
+        ResponseEntity<Map> response = rest.exchange(
+                "/api/v1/admin/users",
+                HttpMethod.GET,
+                new HttpEntity<>(headers),
+                Map.class);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> body = response.getBody();
+        assertThat(body).isNotNull();
+        Object data = body.get("data");
+        assertThat(data).isInstanceOf(List.class);
+        List<?> users = (List<?>) data;
+        boolean includesOtherCompanyUser = users.stream()
+                .filter(Map.class::isInstance)
+                .map(entry -> ((Map<?, ?>) entry).get("email"))
+                .anyMatch(email -> otherCompanyUser.getEmail().equalsIgnoreCase(String.valueOf(email)));
+        assertThat(includesOtherCompanyUser).isFalse();
+    }
+
     private String login(String email, String password, String companyCode) {
         Map<String, Object> body = Map.of(
                 "email", email,
