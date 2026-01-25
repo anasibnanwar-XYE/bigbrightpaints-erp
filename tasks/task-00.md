@@ -732,7 +732,7 @@ Scope:
 
 Milestones:
 
-Milestone 01 — Tenant boundary & authorization audit (fail closed)
+Milestone 01 — Tenant boundary & authorization audit (fail closed) **COMPLETED** — commit `33834dc7d85cbe4f11dd142c99724d989c779ebd`
 - Implementation steps:
   - Enumerate permitAll endpoints from `SecurityConfig` and confirm they cannot be used to access company-scoped data via `X-Company-Id`.
   - Audit special authorities like `hasAuthority('dispatch.confirm')` in `DispatchController`.

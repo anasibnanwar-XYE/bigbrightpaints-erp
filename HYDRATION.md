@@ -2,15 +2,15 @@
 
 ## Overnight Runner State
 - Branch: `accounting-correctness-v1`
-- Current epic/milestone pointer: `tasks/task-00.md → EPIC 04 → Milestone 01` (tenant boundary & authorization audit)
+- Current epic/milestone pointer: `tasks/task-00.md → EPIC 04 → Milestone 02` (business-logic bypass + idempotency audit)
 - Last commit SHA: `33834dc7d85cbe4f11dd142c99724d989c779ebd`
-- Next actions: monitor async verify (PID 27495) while proceeding with next safe-work item.
+- Next actions: start EPIC 04 / Milestone 02.
 - Working tree status: pre-existing diffs present (unrelated); avoid touching unrelated files.
 
 ## Current State
 - Worktree: `/home/realnigga/Desktop/CLI_BACKEND_epic04`
 - Branch: `accounting-correctness-v1`
-- Current milestone pointer: `tasks/task-00.md → EPIC 04 → Milestone 01` (tenant boundary & authorization audit)
+- Current milestone pointer: `tasks/task-00.md → EPIC 04 → Milestone 02` (business-logic bypass + idempotency audit)
 - Working tree: pre-existing diffs present; proceeding without touching unrelated changes.
 
 ## Async Verify
@@ -18,7 +18,7 @@
 - PID: `27495` (latest attempt)
 - Log: `/tmp/task00-verify.log`
 - Exit: `/tmp/task00-verify.exit`
-- Status: RUNNING (log non-empty; exit pending).
+- Status: FINISHED (exit 0; BUILD SUCCESS).
 
 ## Triage Commands
 - First failing test in log: `grep -nE "FAILURE|ERROR|Failed" /tmp/task00-verify.log`
@@ -59,6 +59,7 @@
 - EPIC 02 / Milestone 04 — Tests: `cd erp-domain && mvn -B -ntp -Dtest=OrderFulfillmentE2ETest,CriticalAccountingAxesIT test` (PASS).
 - EPIC 03 / Milestone 01 — Purchase tax allocation + exact balance (PASS): `8ec59e6963ae985433b4db915d796e5cd740ea94`.
 - EPIC 03 / Milestone 02 — Purchase returns + supplier settlements (PASS): `f74478a9eec6ee1897a8d62a3ad211041e1f7f55`.
+- EPIC 04 / Milestone 01 — Tenant boundary & authorization audit (PASS): `33834dc7d85cbe4f11dd142c99724d989c779ebd`.
 
 ## Evidence Pack
 - EPIC A / Milestone A1 trace map: `docs/cross-module-trace-map.md`
@@ -117,6 +118,7 @@
 - Added endpoint-equivalence E2E coverage for `/sales/dispatch/confirm` and `/dispatch/confirm`.
 - Added dispatch COGS assertions: slip unit cost totals match COGS journal and movements link to journal.
 - Partial dispatch verification uses slip-line repository reads (avoid lazy session) and asserts backorder slip quantity + dispatch qty alignment.
+- Sales dispatch confirmation now requires `dispatch.confirm` permission to prevent bypass of factory-only guard.
 
 ## Test Status Log
 - 2026-01-24: Task 00 plan expansion commit (docs-only); tests not run.
@@ -202,10 +204,10 @@
 - 2026-01-25: `cd erp-domain && mvn -B -ntp -Dtest=SettlementE2ETest,PurchaseReturnIdempotencyRegressionIT,ProcureToPayE2ETest test` (PASS) — Tests run: 25, Failures: 0, Errors: 0, Skipped: 0.
 - 2026-01-25: `scripts/task00_async_verify.sh` (PASS) — PID 24102; exit 0; BUILD SUCCESS; Tests run: 415, Failures: 0, Errors: 0, Skipped: 4.
 - 2026-01-25: `cd erp-domain && mvn -B -ntp -Dtest=SalesControllerIT,AdminUserSecurityIT test` (PASS) — Tests run: 7, Failures: 0, Errors: 0, Skipped: 0.
+- 2026-01-25: `scripts/task00_async_verify.sh` (PASS) — PID 27495; exit 0; BUILD SUCCESS; Tests run: 416, Failures: 0, Errors: 0, Skipped: 4.
 
 ## Next Actions (explicit)
-1. Monitor async verify (PID 27495).
-2. Continue EPIC 04 / Milestone 01: tenant boundary & authorization audit.
+1. Continue EPIC 04 / Milestone 02: business-logic bypass + idempotency audit.
 
 ## Historical (prior work references)
 - Epic 03: branch `epic-03-production-stock`, tip `3f2370c38c0152153369507159e5ae26ca1fa048`.
