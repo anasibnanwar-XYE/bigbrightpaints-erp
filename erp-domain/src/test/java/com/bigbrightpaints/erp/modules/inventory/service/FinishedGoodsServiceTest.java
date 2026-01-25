@@ -208,6 +208,24 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void reserveForOrderBackorderRebuildsMissingReservations() {
+        Company company = seedCompany("BACKORDER-REB");
+        FinishedGood fg = createFinishedGood(company, "FG-REB", new BigDecimal("5"), new BigDecimal("5"), "FIFO");
+        FinishedGoodBatch batch = createBatch(fg, "BATCH-REB", new BigDecimal("5"), new BigDecimal("5"), new BigDecimal("6"));
+        SalesOrder order = createOrder(company, "SO-REB-" + UUID.randomUUID(), fg.getProductCode(), new BigDecimal("5"));
+        createSlip(company, order, "BACKORDER", batch, new BigDecimal("5"));
+
+        FinishedGoodsService.InventoryReservationResult result = finishedGoodsService.reserveForOrder(order);
+
+        assertThat(result.shortages()).isEmpty();
+        List<InventoryReservation> reservations = inventoryReservationRepository
+                .findByFinishedGoodCompanyAndReferenceTypeAndReferenceId(
+                        company, InventoryReference.SALES_ORDER, order.getId().toString());
+        assertThat(reservations).hasSize(1);
+        assertThat(reservations.getFirst().getReservedQuantity()).isEqualByComparingTo(new BigDecimal("5"));
+    }
+
+    @Test
     void previewUsesReservedForOrder() {
         Company company = seedCompany("PREVIEW-RES");
         FinishedGood fg = createFinishedGood(company, "FG-PREV", new BigDecimal("5"), new BigDecimal("5"), "FIFO");
