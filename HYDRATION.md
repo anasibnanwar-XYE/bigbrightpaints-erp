@@ -3,7 +3,7 @@
 ## Overnight Runner State
 - Branch: `predeploy-blockers-v1`
 - Current epic/milestone pointer: `Task 01 / EPIC 05 / Milestone 01 (persist refresh tokens)`
-- Last commit SHA: `b6750925aa75db639bd37a1a793eb9d7c8125d0d`
+- Last commit SHA: `a9442d2256f0f7c2103fb9cc80cdcc87f7046526`
 - Next actions: start EPIC 05 / Milestone 01; update HYDRATION + push.
 - Working tree status: pre-existing diffs present (unrelated); avoid touching unrelated files.
 
@@ -15,10 +15,10 @@
 
 ## Async Verify
 - Command: `setsid bash -lc "set +e; echo '[task01] verify start $(date -Is)'; cd '/home/realnigga/Desktop/CLI_BACKEND_epic04/erp-domain' && mvn -B -ntp verify; status=$?; echo '[task01] verify exit $status $(date -Is)'; echo $status > /tmp/task01-verify.exit" >> /tmp/task01-verify.log 2>&1 < /dev/null & echo $! > /tmp/task01-verify.pid`
-- PID: `283743` (latest attempt)
+- PID: `297786` (latest attempt)
 - Log: `/tmp/task01-verify.log`
 - Exit: `/tmp/task01-verify.exit`
-- Status: FINISHED (log shows BUILD SUCCESS; exit file not updated)
+- Status: RUNNING
 
 ## Triage Commands
 - First failing test in log: `grep -nE "FAILURE|ERROR|Failed" /tmp/task01-verify.log`
