@@ -128,6 +128,28 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void reserveForOrderKeepsBackorderSlip() {
+        Company company = seedCompany("BACKORDER-KEEP");
+        FinishedGood fg = createFinishedGood(company, "FG-KEEP", new BigDecimal("5"), new BigDecimal("5"), "FIFO");
+        FinishedGoodBatch batch = createBatch(fg, "BATCH-KEEP", new BigDecimal("5"), BigDecimal.ZERO, new BigDecimal("7"));
+        SalesOrder order = createOrder(company, "SO-KEEP-" + UUID.randomUUID(), fg.getProductCode(), new BigDecimal("10"));
+        PackagingSlip slip = createSlip(company, order, "BACKORDER", batch, new BigDecimal("5"));
+        createReservation(order, fg, batch, new BigDecimal("5"));
+
+        finishedGoodsService.reserveForOrder(order);
+
+        PackagingSlip refreshed = packagingSlipRepository.findByIdAndCompany(slip.getId(), company).orElseThrow();
+        assertThat(refreshed.getStatus()).isEqualTo("BACKORDER");
+        assertThat(refreshed.getLines()).hasSize(1);
+        List<InventoryReservation> reservations = inventoryReservationRepository
+                .findByFinishedGoodCompanyAndReferenceTypeAndReferenceId(
+                        company, InventoryReference.SALES_ORDER, order.getId().toString());
+        assertThat(reservations).isNotEmpty();
+        assertThat(reservations).allMatch(r -> !"CANCELLED".equalsIgnoreCase(r.getStatus()));
+        assertThat(reservations).allSatisfy(r -> assertThat(r.getReservedQuantity()).isEqualByComparingTo(new BigDecimal("5")));
+    }
+
+    @Test
     void previewUsesReservedForOrder() {
         Company company = seedCompany("PREVIEW-RES");
         FinishedGood fg = createFinishedGood(company, "FG-PREV", new BigDecimal("5"), new BigDecimal("5"), "FIFO");

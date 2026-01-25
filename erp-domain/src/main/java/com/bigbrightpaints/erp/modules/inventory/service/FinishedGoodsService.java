@@ -247,6 +247,9 @@ public class FinishedGoodsService {
         }
 
         if (!slip.getLines().isEmpty()) {
+            if ("BACKORDER".equalsIgnoreCase(slip.getStatus())) {
+                return new InventoryReservationResult(toSlipDto(slip), List.of());
+            }
             if (slipLinesMatchOrder(slip, managedOrder)) {
                 updateSlipStatusBasedOnAvailability(slip, List.of());
                 return new InventoryReservationResult(toSlipDto(slip), List.of());
