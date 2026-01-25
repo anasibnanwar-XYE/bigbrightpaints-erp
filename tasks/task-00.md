@@ -963,7 +963,7 @@ Milestone 01 — Build + run the regression matrix (targeted first) **COMPLETED*
 - Rollback/recovery notes:
   - If a late fix breaks earlier milestones, revert the late fix and re-approach with smaller diffs.
 
-Milestone 02 — Final “domino” gate (full suite twice)
+Milestone 02 — Final “domino” gate (full suite twice) **COMPLETED** — commit `16b3e097c0b61101a7105af7864fd0ba94c4f284`
 - Implementation steps:
   - Run `mvn verify` twice (async if needed) and compare results; no new failures allowed.
 - Verify steps:
