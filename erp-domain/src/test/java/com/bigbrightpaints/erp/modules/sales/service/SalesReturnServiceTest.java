@@ -148,11 +148,13 @@ class SalesReturnServiceTest {
         dispatchMovement.setMovementType("DISPATCH");
         dispatchMovement.setQuantity(new BigDecimal("1"));
         dispatchMovement.setUnitCost(new BigDecimal("50"));
-        when(inventoryMovementRepository.findByReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
-                InventoryReference.SALES_ORDER,
-                "99")
+        when(inventoryMovementRepository.findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
+                eq(company),
+                eq(InventoryReference.SALES_ORDER),
+                eq("99"))
         ).thenReturn(List.of(dispatchMovement));
-        when(inventoryMovementRepository.findByReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
+        when(inventoryMovementRepository.findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
+                eq(company),
                 eq("SALES_RETURN"),
                 eq("INV-1")
         )).thenReturn(List.of());
@@ -251,7 +253,8 @@ class SalesReturnServiceTest {
 
         when(companyEntityLookup.requireInvoice(company, 10L)).thenReturn(invoice);
         when(finishedGoodRepository.lockByCompanyAndProductCode(company, "FG-1")).thenReturn(Optional.of(fg));
-        when(inventoryMovementRepository.findByReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
+        when(inventoryMovementRepository.findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
+                eq(company),
                 eq("SALES_RETURN"),
                 eq("INV-1")
         )).thenReturn(List.of(priorReturn));
@@ -327,11 +330,13 @@ class SalesReturnServiceTest {
         dispatchMovement.setMovementType("DISPATCH");
         dispatchMovement.setQuantity(new BigDecimal("1"));
         dispatchMovement.setUnitCost(new BigDecimal("50"));
-        when(inventoryMovementRepository.findByReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
-                InventoryReference.SALES_ORDER,
-                "101")
+        when(inventoryMovementRepository.findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
+                eq(company),
+                eq(InventoryReference.SALES_ORDER),
+                eq("101"))
         ).thenReturn(List.of(dispatchMovement));
-        when(inventoryMovementRepository.findByReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
+        when(inventoryMovementRepository.findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
+                eq(company),
                 eq("SALES_RETURN"),
                 eq("INV-2")
         )).thenReturn(List.of());

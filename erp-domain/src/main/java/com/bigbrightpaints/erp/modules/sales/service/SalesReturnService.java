@@ -39,6 +39,7 @@ import java.util.stream.Collectors;
 public class SalesReturnService {
 
     private static final String SALES_RETURN_REFERENCE = "SALES_RETURN";
+    private static final BigDecimal DISCOUNT_TOLERANCE = new BigDecimal("0.02");
 
     private final CompanyContextService companyContextService;
     private final FinishedGoodRepository finishedGoodRepository;
@@ -82,7 +83,6 @@ public class SalesReturnService {
             throw new IllegalArgumentException("Return lines are required");
         }
 
-        Map<Long, BigDecimal> existingReturnsByFg = loadReturnMovements(invoice.getInvoiceNumber());
         Map<Long, BigDecimal> requestedReturnQtyByFg = new LinkedHashMap<>();
         Map<Long, BigDecimal> invoicedQtyByFg = new LinkedHashMap<>();
         Map<String, FinishedGood> finishedGoodsByCode = new HashMap<>();
@@ -120,6 +120,7 @@ public class SalesReturnService {
             invoicedQtyByFg.merge(finishedGood.getId(), invoicedQty, BigDecimal::add);
         }
 
+        Map<Long, BigDecimal> existingReturnsByFg = loadReturnMovements(company, invoice.getInvoiceNumber());
         for (Map.Entry<Long, BigDecimal> entry : requestedReturnQtyByFg.entrySet()) {
             BigDecimal invoicedQty = invoicedQtyByFg.getOrDefault(entry.getKey(), BigDecimal.ZERO);
             BigDecimal priorReturnedQty = existingReturnsByFg.getOrDefault(entry.getKey(), BigDecimal.ZERO);
@@ -134,7 +135,7 @@ public class SalesReturnService {
         Map<Long, BigDecimal> totalReturnQtyByFg = new LinkedHashMap<>();
         Long salesOrderId = invoice.getSalesOrder() != null ? invoice.getSalesOrder().getId() : null;
         Map<Long, java.util.List<InventoryMovement>> dispatchMovementsByFg = salesOrderId != null
-                ? loadDispatchMovements(salesOrderId)
+                ? loadDispatchMovements(company, salesOrderId)
                 : Map.of();
         Long gstOutputAccountId = null;
 
@@ -192,7 +193,8 @@ public class SalesReturnService {
                         + " missing revenue account for sales return");
             }
             BigDecimal baseAmount = currency(MoneyUtils.safeMultiply(perUnitBase(invoiceLine), quantity));
-            BigDecimal discountAmount = currency(MoneyUtils.safeMultiply(perUnitDiscount(invoiceLine, gstInclusive), quantity));
+            boolean discountTaxInclusive = isDiscountTaxInclusive(invoiceLine, gstInclusive);
+            BigDecimal discountAmount = currency(MoneyUtils.safeMultiply(perUnitDiscount(invoiceLine, discountTaxInclusive), quantity));
             BigDecimal grossAmount = baseAmount.add(discountAmount);
             if (grossAmount.compareTo(BigDecimal.ZERO) > 0) {
                 returnLines.merge(revenueAccountId, grossAmount, BigDecimal::add);
@@ -294,13 +296,13 @@ public class SalesReturnService {
         return MoneyUtils.safeDivide(net, quantity, 4, RoundingMode.HALF_UP);
     }
 
-    private BigDecimal perUnitDiscount(InvoiceLine line, boolean gstInclusive) {
+    private BigDecimal perUnitDiscount(InvoiceLine line, boolean discountTaxInclusive) {
         BigDecimal quantity = line.getQuantity();
         if (quantity == null || quantity.compareTo(BigDecimal.ZERO) <= 0) {
             return BigDecimal.ZERO;
         }
         BigDecimal discount = MoneyUtils.zeroIfNull(line.getDiscountAmount());
-        if (gstInclusive && discount.compareTo(BigDecimal.ZERO) > 0) {
+        if (discountTaxInclusive && discount.compareTo(BigDecimal.ZERO) > 0) {
             BigDecimal rate = line.getTaxRate() != null ? line.getTaxRate() : BigDecimal.ZERO;
             if (rate.compareTo(BigDecimal.ZERO) > 0) {
                 BigDecimal divisor = BigDecimal.ONE.add(rate.divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP));
@@ -312,11 +314,36 @@ public class SalesReturnService {
         return MoneyUtils.safeDivide(discount, quantity, 4, RoundingMode.HALF_UP);
     }
 
-    private BigDecimal currency(BigDecimal value) {
-        if (value == null) {
-            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+    private boolean isDiscountTaxInclusive(InvoiceLine line, boolean orderGstInclusive) {
+        if (line == null) {
+            return orderGstInclusive;
         }
-        return value.setScale(2, RoundingMode.HALF_UP);
+        BigDecimal discount = MoneyUtils.zeroIfNull(line.getDiscountAmount());
+        if (discount.compareTo(BigDecimal.ZERO) <= 0) {
+            return orderGstInclusive;
+        }
+        BigDecimal quantity = line.getQuantity();
+        BigDecimal unitPrice = line.getUnitPrice();
+        if (quantity == null || unitPrice == null) {
+            return orderGstInclusive;
+        }
+        BigDecimal gross = MoneyUtils.safeMultiply(unitPrice, quantity);
+        if (gross.compareTo(BigDecimal.ZERO) <= 0) {
+            return orderGstInclusive;
+        }
+        BigDecimal lineTotal = line.getLineTotal();
+        if (lineTotal == null) {
+            lineTotal = MoneyUtils.safeAdd(line.getTaxableAmount(), line.getTaxAmount());
+        }
+        if (lineTotal == null) {
+            return orderGstInclusive;
+        }
+        BigDecimal expectedNetRaw = gross.subtract(discount);
+        return MoneyUtils.withinTolerance(lineTotal, expectedNetRaw, DISCOUNT_TOLERANCE);
+    }
+
+    private BigDecimal currency(BigDecimal value) {
+        return MoneyUtils.roundCurrency(value);
     }
 
     private void postCogsReversal(Invoice invoice,
@@ -368,21 +395,27 @@ public class SalesReturnService {
         }
     }
 
-    private Map<Long, java.util.List<InventoryMovement>> loadDispatchMovements(Long salesOrderId) {
+    private Map<Long, java.util.List<InventoryMovement>> loadDispatchMovements(Company company, Long salesOrderId) {
         return inventoryMovementRepository
-                .findByReferenceTypeAndReferenceIdOrderByCreatedAtAsc(InventoryReference.SALES_ORDER, salesOrderId.toString())
+                .findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
+                        company,
+                        InventoryReference.SALES_ORDER,
+                        salesOrderId.toString())
                 .stream()
                 .filter(mv -> "DISPATCH".equalsIgnoreCase(mv.getMovementType()))
                 .filter(mv -> mv.getFinishedGood() != null)
                 .collect(Collectors.groupingBy(mv -> mv.getFinishedGood().getId(), LinkedHashMap::new, Collectors.toList()));
     }
 
-    private Map<Long, BigDecimal> loadReturnMovements(String invoiceNumber) {
+    private Map<Long, BigDecimal> loadReturnMovements(Company company, String invoiceNumber) {
         if (invoiceNumber == null) {
             return Map.of();
         }
         List<InventoryMovement> movements = inventoryMovementRepository
-                .findByReferenceTypeAndReferenceIdOrderByCreatedAtAsc(SALES_RETURN_REFERENCE, invoiceNumber);
+                .findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
+                        company,
+                        SALES_RETURN_REFERENCE,
+                        invoiceNumber);
         if (movements == null || movements.isEmpty()) {
             return Map.of();
         }

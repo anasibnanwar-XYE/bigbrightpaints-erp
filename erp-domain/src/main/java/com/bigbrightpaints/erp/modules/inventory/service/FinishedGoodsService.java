@@ -1221,8 +1221,10 @@ public class FinishedGoodsService {
         if (salesOrderId == null || journalEntryId == null) {
             return;
         }
+        Company company = companyContextService.requireCurrentCompany();
         List<InventoryMovement> movements = inventoryMovementRepository
-                .findByReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
+                .findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
+                        company,
                         InventoryReference.SALES_ORDER,
                         salesOrderId.toString());
         if (movements.isEmpty()) {
