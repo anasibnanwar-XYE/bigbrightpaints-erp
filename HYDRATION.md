@@ -3,8 +3,8 @@
 ## Overnight Runner State
 - Branch: `predeploy-blockers-v1`
 - Current epic/milestone pointer: `Task 01 / EPIC 05 / Milestone 01 (persist refresh tokens)`
-- Last commit SHA: `338772159dcdd0d6fe099fc79d994022eb84a11a`
-- Next actions: monitor async verify PID 283743; start EPIC 05 / Milestone 01; update HYDRATION + push.
+- Last commit SHA: `b6750925aa75db639bd37a1a793eb9d7c8125d0d`
+- Next actions: start EPIC 05 / Milestone 01; update HYDRATION + push.
 - Working tree status: pre-existing diffs present (unrelated); avoid touching unrelated files.
 
 ## Current State
@@ -32,6 +32,7 @@
 - EPIC 02 / Milestone 01 — Guard terminal slip status transitions (PASS): `3ca9a1fc638a48ce4d99ee9d2d1cfb79045b49bc`.
 - EPIC 02 / Milestone 02 — Backorder cancellation clears reservations (PASS): `6f3db68594bde7a26bd978e162c2fd4f187eac4b`.
 - EPIC 02 / Milestone 03 — Backorder reservations stay consistent (PASS): `338772159dcdd0d6fe099fc79d994022eb84a11a`.
+- EPIC 02 / Milestone 03 — Backorder slip reconciles remaining shortages (PASS): `b6750925aa75db639bd37a1a793eb9d7c8125d0d`.
 - EPIC 03 / Milestone 01 — Dispatch preview includes reserved allocations (PASS): `61c95d050a1f24260d8827fced9b6f9580baad0b`.
 - EPIC 04 / Milestone 01 — Accept DISPATCHED fulfillment status (PASS): `9e3f8ccb613b63e58411a9fddab1dff86a53054f`.
 - EPIC 00 / Milestone 00 — Baseline async verify (PASS): `025eb146ee99712b6dabd3ddd5becac697237f60` (verify + hydration kickoff), `1034d5ff3eea8a62b6baa8f748015f177a35c2a3` (record baseline state).
@@ -157,9 +158,10 @@
 - EPIC 06 / Milestone 02 scopes inventory movement lookups by company for dispatch linking and sales returns to prevent cross-company leakage.
 - Dealer settlement now clears invoice outstanding using applied + discount/write-off + FX adjustment (capped to outstanding when applied already covers it); sales return movements include invoice-line reference ids to enforce per-line return limits.
 - Sales return lookup now scopes to exact invoice reference or `invoiceNumber:` prefix to avoid cross-invoice contamination.
-- EPIC 02 / Milestone 03 treats BACKORDER slips as paper artifacts; `reserveForOrder` returns early without rebuilding/releasing reservations when slip status is BACKORDER. Re-reserve should happen after explicit cancel.
+- EPIC 02 / Milestone 03 keeps BACKORDER slips as paper artifacts but still reconciles missing order quantities by allocating only the unreserved remainder and returning shortages when stock is unavailable.
 
 ## Test Status Log
+- 2026-01-26: `cd erp-domain && mvn -B -ntp -Dtest=FinishedGoodsServiceTest#reserveForOrderAllocatesShortagesWhenBackorderSlipExists test` (PASS) — Tests run: 1, Failures: 0, Errors: 0, Skipped: 0.
 - 2026-01-26: `cd erp-domain && mvn -B -ntp -Dtest=FinishedGoodsServiceTest#reserveForOrderKeepsBackorderSlip test` (PASS) — Tests run: 1, Failures: 0, Errors: 0, Skipped: 0.
 - 2026-01-26: `cd erp-domain && mvn -B -ntp -Dtest=FinishedGoodsServiceTest#dispatchRejectsZeroCostWhenOnHandExists test` (PASS) — Tests run: 1, Failures: 0, Errors: 0, Skipped: 0.
 - 2026-01-26: `cd erp-domain && mvn -B -ntp -Dtest=FinishedGoodsServiceTest,IntegrationCoordinatorTest test` (PASS) — Tests run: 13, Failures: 0, Errors: 0, Skipped: 0.
