@@ -166,6 +166,42 @@ class PeriodCloseLockIT extends AbstractIntegrationTest {
     }
 
     @Test
+    @DisplayName("Reversal blocked when posting into closed period (even with admin override)")
+    void reversalBlockedWhenPeriodClosed() {
+        LocalDate today = TestDateUtils.safeDate(company);
+        Long periodId = currentPeriodId(today);
+        rest.exchange(
+                "/api/v1/accounting/periods/" + periodId + "/reopen",
+                HttpMethod.POST,
+                new HttpEntity<>(Map.of("reason", "Ensure period open"), headers),
+                Map.class);
+        Long entryId = postJournal(today,
+                List.of(
+                        line(cash.getId(), new BigDecimal("50.00"), BigDecimal.ZERO),
+                        line(revenue.getId(), BigDecimal.ZERO, new BigDecimal("50.00"))
+                ));
+        ResponseEntity<Map> closeResp = rest.exchange(
+                "/api/v1/accounting/periods/" + periodId + "/close",
+                HttpMethod.POST,
+                new HttpEntity<>(Map.of("note", "Hard close", "force", true), headers),
+                Map.class);
+        assertThat(closeResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        ResponseEntity<Map> reversalResp = rest.exchange(
+                "/api/v1/accounting/journal-entries/" + entryId + "/reverse",
+                HttpMethod.POST,
+                new HttpEntity<>(Map.of(
+                        "reversalDate", today,
+                        "reason", "Closed-period reversal attempt",
+                        "adminOverride", true
+                ), headers),
+                Map.class);
+
+        assertThat(reversalResp.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(reversalResp.getBody().get("message").toString()).containsIgnoringCase("locked/closed");
+    }
+
+    @Test
     @DisplayName("Reopen requires explicit reason")
     void reopenRequiresReason() {
         LocalDate today = LocalDate.now();
@@ -197,7 +233,7 @@ class PeriodCloseLockIT extends AbstractIntegrationTest {
         );
     }
 
-    private void postJournal(LocalDate date, List<Map<String, Object>> lines) {
+    private Long postJournal(LocalDate date, List<Map<String, Object>> lines) {
         ResponseEntity<Map> resp = rest.exchange("/api/v1/accounting/journal-entries",
                 HttpMethod.POST,
                 new HttpEntity<>(Map.of(
@@ -209,6 +245,7 @@ class PeriodCloseLockIT extends AbstractIntegrationTest {
                 ), headers),
                 Map.class);
         assertThat(resp.getStatusCode()).as("Journal posting should succeed: " + resp.getBody()).isEqualTo(HttpStatus.OK);
+        return ((Number) ((Map<?, ?>) resp.getBody().get("data")).get("id")).longValue();
     }
 
     private Long currentPeriodId(LocalDate forDate) {

@@ -32,6 +32,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @Service
 public class AccountingPeriodService {
@@ -378,9 +379,20 @@ public class AccountingPeriodService {
     private record JournalLineSpec(Account account, BigDecimal debit, BigDecimal credit, String description) {}
 
     private void createReversalFor(JournalEntry source, AccountingPeriod period, Instant timestamp) {
+        String reversalReference = source.getReferenceNumber() + "-REOPEN";
+        Optional<JournalEntry> existingReversal = journalEntryRepository.findByCompanyAndReferenceNumber(
+                source.getCompany(), reversalReference);
+        if (existingReversal.isPresent()) {
+            if (source.getReversalEntry() == null) {
+                source.setReversalEntry(existingReversal.get());
+                source.setStatus("REVERSED");
+                journalEntryRepository.save(source);
+            }
+            return;
+        }
         JournalEntry reversal = new JournalEntry();
         reversal.setCompany(source.getCompany());
-        reversal.setReferenceNumber(source.getReferenceNumber() + "-REOPEN");
+        reversal.setReferenceNumber(reversalReference);
         reversal.setEntryDate(period.getEndDate());
         reversal.setMemo("Reversal of closing entry " + source.getReferenceNumber());
         reversal.setStatus("POSTED");
