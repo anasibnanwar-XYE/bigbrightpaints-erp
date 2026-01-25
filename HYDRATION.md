@@ -2,20 +2,20 @@
 
 ## Overnight Runner State
 - Branch: `predeploy-blockers-v1`
-- Current epic/milestone pointer: `Task 01 / EPIC 00 / Milestone 01 (regression tests: settlements/returns; remaining: FinishedGoodsService + IntegrationCoordinator)`
-- Last commit SHA: `bd48320d64fd83a6bfda7b82e01ffa764fb40e5a`
-- Next actions: monitor async verify PID 239563; finish EPIC 00 / Milestone 01 tests for FinishedGoodsService + IntegrationCoordinator; proceed to EPIC 01.
+- Current epic/milestone pointer: `Task 01 / EPIC 01 / Milestone 02 (fail closed on zero dispatch cost)`
+- Last commit SHA: `9e3f8ccb613b63e58411a9fddab1dff86a53054f`
+- Next actions: monitor async verify PID 278297; implement EPIC 01 / Milestone 02; update HYDRATION + push.
 - Working tree status: pre-existing diffs present (unrelated); avoid touching unrelated files.
 
 ## Current State
 - Worktree: `/home/realnigga/Desktop/CLI_BACKEND_epic04`
 - Branch: `predeploy-blockers-v1`
-- Current milestone pointer: `Task 01 / EPIC 00 / Milestone 01 (settlement/return regressions)`
+- Current milestone pointer: `Task 01 / EPIC 01 / Milestone 02 (fail closed on zero dispatch cost)`
 - Working tree: pre-existing diffs present; proceeding without touching unrelated changes.
 
 ## Async Verify
-- Command: `setsid bash -lc "set +e; echo '[task01] verify start $(date -Is)'; cd '/home/realnigga/Desktop/CLI_BACKEND_epic04/erp-domain' && mvn -B -ntp verify; status=$?; echo '[task01] verify exit $status $(date -Is)'; echo $status > /tmp/task01-verify.exit" >> /tmp/task01-verify.log 2>&1 < /dev/null & echo $! > /tmp/task01-verify.pid`
-- PID: `239563` (latest attempt)
+- Command: `nohup bash -lc 'echo "[task01] verify start $(date -Is)"; cd erp-domain && mvn -B -ntp verify; status=$?; echo "[task01] verify exit $status $(date -Is)"; echo $status > /tmp/task01-verify.exit' > /tmp/task01-verify.log 2>&1 & echo $! > /tmp/task01-verify.pid`
+- PID: `278297` (latest attempt)
 - Log: `/tmp/task01-verify.log`
 - Exit: `/tmp/task01-verify.exit`
 - Status: RUNNING
@@ -26,6 +26,12 @@
 - Surefire XML scan: `grep -nH -E "<failure|<error" erp-domain/target/surefire-reports/*.xml`
 
 ## Completed Milestones (with commit SHAs)
+- EPIC 00 / Milestone 01 — Regression tests for dispatch/reservations/orchestrator (PASS): `259a5664ee418105ad340cda3b454f998a5ef1de`.
+- EPIC 01 / Milestone 01 — WAC uses on-hand quantity (PASS): `6910f4036539364e3a2c32918e6b911c9b2f60cb`.
+- EPIC 02 / Milestone 01 — Guard terminal slip status transitions (PASS): `3ca9a1fc638a48ce4d99ee9d2d1cfb79045b49bc`.
+- EPIC 02 / Milestone 02 — Backorder cancellation clears reservations (PASS): `6f3db68594bde7a26bd978e162c2fd4f187eac4b`.
+- EPIC 03 / Milestone 01 — Dispatch preview includes reserved allocations (PASS): `61c95d050a1f24260d8827fced9b6f9580baad0b`.
+- EPIC 04 / Milestone 01 — Accept DISPATCHED fulfillment status (PASS): `9e3f8ccb613b63e58411a9fddab1dff86a53054f`.
 - EPIC 00 / Milestone 00 — Baseline async verify (PASS): `025eb146ee99712b6dabd3ddd5becac697237f60` (verify + hydration kickoff), `1034d5ff3eea8a62b6baa8f748015f177a35c2a3` (record baseline state).
 - EPIC 00 / Milestone 02 — Tighten invariant coverage (PASS): `25673232fd12ae5b8490df154a89cdd575cfd593`.
 - EPIC 01 / Milestone 01 — Dispatch idempotency + partial recovery (PASS): `d4c231a4b9555c09740f3c3313a35826017889c3`.
@@ -150,6 +156,7 @@
 - Sales return lookup now scopes to exact invoice reference or `invoiceNumber:` prefix to avoid cross-invoice contamination.
 
 ## Test Status Log
+- 2026-01-26: `cd erp-domain && mvn -B -ntp -Dtest=FinishedGoodsServiceTest,IntegrationCoordinatorTest test` (PASS) — Tests run: 13, Failures: 0, Errors: 0, Skipped: 0.
 - 2026-01-26: `cd erp-domain && mvn -B -ntp -Dtest=SalesReturnServiceTest,SettlementE2ETest test` (PASS) — Tests run: 16, Failures: 0, Errors: 0, Skipped: 0.
 - 2026-01-25: `nohup bash -lc 'cd erp-domain && mvn -B -ntp verify' > /tmp/task01-verify.log 2>&1 & echo $! > /tmp/task01-verify.pid` (RUNNING) — PID 220820.
 - 2026-01-24: Task 00 plan expansion commit (docs-only); tests not run.
