@@ -631,7 +631,7 @@ public class PayrollService {
                     emp.getId(), BigDecimal.ZERO);
 
             BigDecimal dailyRate = emp.getDailyRate();
-            BigDecimal baseDays = presentDays.add(halfDays.multiply(new BigDecimal("0.5")));
+            BigDecimal baseDays = presentDays;
             BigDecimal basePay = dailyRate.multiply(baseDays);
             BigDecimal holidayPay = dailyRate.multiply(holidayDays);
             BigDecimal grossPay = basePay.add(holidayPay);
