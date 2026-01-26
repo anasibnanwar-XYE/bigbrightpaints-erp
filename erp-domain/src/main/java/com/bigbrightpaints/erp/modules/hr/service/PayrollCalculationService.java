@@ -2,6 +2,7 @@ package com.bigbrightpaints.erp.modules.hr.service;
 
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.modules.hr.domain.*;
 import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
 import org.slf4j.Logger;
@@ -49,6 +50,7 @@ public class PayrollCalculationService {
     private final PayrollRunRepository payrollRunRepository;
     private final PayrollRunLineRepository payrollRunLineRepository;
     private final CompanyContextService companyContextService;
+    private final CompanyClock companyClock;
     private final JavaMailSender mailSender;
     private final TemplateEngine templateEngine;
 
@@ -63,6 +65,7 @@ public class PayrollCalculationService {
                                      PayrollRunRepository payrollRunRepository,
                                      PayrollRunLineRepository payrollRunLineRepository,
                                      CompanyContextService companyContextService,
+                                     CompanyClock companyClock,
                                      JavaMailSender mailSender,
                                      TemplateEngine templateEngine) {
         this.employeeRepository = employeeRepository;
@@ -70,6 +73,7 @@ public class PayrollCalculationService {
         this.payrollRunRepository = payrollRunRepository;
         this.payrollRunLineRepository = payrollRunLineRepository;
         this.companyContextService = companyContextService;
+        this.companyClock = companyClock;
         this.mailSender = mailSender;
         this.templateEngine = templateEngine;
     }
@@ -80,13 +84,19 @@ public class PayrollCalculationService {
     @Transactional
     public PayrollSummary calculateWeeklyPayroll() {
         Company company = companyContextService.requireCurrentCompany();
-        LocalDate today = LocalDate.now();
+        LocalDate today = companyClock.today(company);
         
         // Get the week range (Monday to Saturday of the latest completed week)
         LocalDate weekEnd = today.getDayOfWeek() == DayOfWeek.SATURDAY
                 ? today
                 : today.with(TemporalAdjusters.previousOrSame(DayOfWeek.SATURDAY));
         LocalDate weekStart = weekEnd.minusDays(5); // Monday
+
+        String reference = "WEEKLY-" + weekEnd.format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+        Optional<PayrollRun> existing = payrollRunRepository.findByCompanyAndIdempotencyKey(company, reference);
+        if (existing.isPresent()) {
+            return buildSummaryFromRun(existing.get());
+        }
         
         log.info("Calculating weekly payroll for {} to {}", weekStart, weekEnd);
         
@@ -111,7 +121,6 @@ public class PayrollCalculationService {
         }
         
         // Create payroll run
-        String reference = "WEEKLY-" + weekEnd.format(DateTimeFormatter.ofPattern("yyyyMMdd"));
         PayrollRun run = createPayrollRun(company, reference, PayrollRun.RunType.WEEKLY,
                 weekStart, weekEnd, today, totalGross, totalAdvances, totalNet, lineItems);
         
@@ -123,7 +132,7 @@ public class PayrollCalculationService {
                 weekEnd,
                 lineItems,
                 totalNet,
-                LocalDateTime.now()
+                nowLocal(company)
         );
         
         // Send notification email
@@ -138,11 +147,17 @@ public class PayrollCalculationService {
     @Transactional
     public PayrollSummary calculateMonthlyPayroll() {
         Company company = companyContextService.requireCurrentCompany();
-        LocalDate today = LocalDate.now();
+        LocalDate today = companyClock.today(company);
         
         // Get the month range
         LocalDate monthStart = today.withDayOfMonth(1);
         LocalDate monthEnd = today.with(TemporalAdjusters.lastDayOfMonth());
+
+        String reference = "MONTHLY-" + monthEnd.format(DateTimeFormatter.ofPattern("yyyyMM"));
+        Optional<PayrollRun> existing = payrollRunRepository.findByCompanyAndIdempotencyKey(company, reference);
+        if (existing.isPresent()) {
+            return buildSummaryFromRun(existing.get());
+        }
         
         log.info("Calculating monthly payroll for {} to {}", monthStart, monthEnd);
         
@@ -167,7 +182,6 @@ public class PayrollCalculationService {
         }
         
         // Create payroll run
-        String reference = "MONTHLY-" + monthEnd.format(DateTimeFormatter.ofPattern("yyyyMM"));
         PayrollRun run = createPayrollRun(company, reference, PayrollRun.RunType.MONTHLY,
                 monthStart, monthEnd, today, totalGross, totalAdvances, totalNet, lineItems);
         
@@ -179,7 +193,7 @@ public class PayrollCalculationService {
                 monthEnd,
                 lineItems,
                 totalNet,
-                LocalDateTime.now()
+                nowLocal(company)
         );
         
         // Send notification email
@@ -265,7 +279,7 @@ public class PayrollCalculationService {
     @Transactional(readOnly = true)
     public PayrollSummary previewPayroll(Employee.PaymentSchedule schedule) {
         Company company = companyContextService.requireCurrentCompany();
-        LocalDate today = LocalDate.now();
+        LocalDate today = companyClock.today(company);
         
         LocalDate startDate, endDate;
         String type;
@@ -306,7 +320,7 @@ public class PayrollCalculationService {
                 endDate,
                 lineItems,
                 totalNet,
-                LocalDateTime.now()
+                nowLocal(company)
         );
     }
 
@@ -331,6 +345,10 @@ public class PayrollCalculationService {
                                          LocalDate periodStart, LocalDate periodEnd, LocalDate runDate,
                                          BigDecimal totalGross, BigDecimal totalAdvances, BigDecimal totalNet,
                                          List<PayrollLineItem> lineItems) {
+        Optional<PayrollRun> existing = payrollRunRepository.findByCompanyAndIdempotencyKey(company, reference);
+        if (existing.isPresent()) {
+            return existing.get();
+        }
         PayrollRun run = new PayrollRun();
         run.setCompany(company);
         run.setRunType(runType);
@@ -378,6 +396,63 @@ public class PayrollCalculationService {
         }
         
         return run;
+    }
+
+    private PayrollSummary buildSummaryFromRun(PayrollRun run) {
+        Company company = run.getCompany();
+        List<PayrollRunLine> lines = payrollRunLineRepository.findByPayrollRunWithEmployeeOrderByEmployeeFirstNameAsc(run);
+        List<PayrollLineItem> lineItems = lines.stream()
+                .map(this::toLineItem)
+                .toList();
+        BigDecimal totalNet = lineItems.stream()
+                .map(PayrollLineItem::netPay)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        LocalDateTime calculatedAt = run.getCreatedAt() != null
+                ? LocalDateTime.ofInstant(run.getCreatedAt(), companyClock.zoneId(company))
+                : nowLocal(company);
+        return new PayrollSummary(
+                run.getId(),
+                run.getRunNumber(),
+                run.getRunType() != null ? run.getRunType().name() : "UNKNOWN",
+                run.getPeriodStart(),
+                run.getPeriodEnd(),
+                lineItems,
+                totalNet,
+                calculatedAt
+        );
+    }
+
+    private PayrollLineItem toLineItem(PayrollRunLine line) {
+        Employee employee = line.getEmployee();
+        String name = line.getName() != null ? line.getName() : (employee != null ? employee.getFullName() : "Unknown");
+        String type = employee != null && employee.getEmployeeType() != null
+                ? employee.getEmployeeType().name()
+                : "UNKNOWN";
+        return new PayrollLineItem(
+                employee != null ? employee.getId() : null,
+                name,
+                type,
+                safe(line.getDailyRate()),
+                safe(line.getPresentDays()),
+                safe(line.getHalfDays()),
+                safe(line.getOvertimeHours()),
+                safe(line.getDoubleOtHours()),
+                safe(line.getBasePay()),
+                safe(line.getOvertimePay()),
+                safe(line.getHolidayPay()),
+                safe(line.getGrossPay()),
+                safe(line.getAdvanceDeduction()),
+                safe(line.getTotalDeductions()),
+                safe(line.getNetPay())
+        );
+    }
+
+    private LocalDateTime nowLocal(Company company) {
+        return LocalDateTime.ofInstant(companyClock.now(company), companyClock.zoneId(company));
+    }
+
+    private BigDecimal safe(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
     }
 
     private void sendPayrollNotification(PayrollSummary summary) {

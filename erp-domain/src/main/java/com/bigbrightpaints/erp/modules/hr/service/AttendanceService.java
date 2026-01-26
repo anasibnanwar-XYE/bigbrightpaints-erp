@@ -3,6 +3,7 @@ package com.bigbrightpaints.erp.modules.hr.service;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.hr.domain.*;
+import com.bigbrightpaints.erp.core.util.CompanyClock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.core.Authentication;
@@ -13,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 
@@ -29,13 +31,16 @@ public class AttendanceService {
     private final AttendanceRepository attendanceRepository;
     private final EmployeeRepository employeeRepository;
     private final CompanyContextService companyContextService;
+    private final CompanyClock companyClock;
 
     public AttendanceService(AttendanceRepository attendanceRepository,
                             EmployeeRepository employeeRepository,
-                            CompanyContextService companyContextService) {
+                            CompanyContextService companyContextService,
+                            CompanyClock companyClock) {
         this.attendanceRepository = attendanceRepository;
         this.employeeRepository = employeeRepository;
         this.companyContextService = companyContextService;
+        this.companyClock = companyClock;
     }
 
     /**
@@ -61,8 +66,9 @@ public class AttendanceService {
         Company company = companyContextService.requireCurrentCompany();
         Employee employee = employeeRepository.findByCompanyAndId(company, employeeId)
                 .orElseThrow(() -> new IllegalArgumentException("Employee not found"));
-        
-        LocalDate today = LocalDate.now();
+
+        LocalDate today = companyClock.today(company);
+        ZoneId zoneId = companyClock.zoneId(company);
         
         // Check if already marked
         Optional<Attendance> existing = attendanceRepository.findByCompanyAndEmployeeAndAttendanceDate(
@@ -80,7 +86,7 @@ public class AttendanceService {
             attendance.setEmployee(employee);
             attendance.setAttendanceDate(today);
             attendance.setStatus(status);
-            attendance.setCheckInTime(LocalTime.now());
+            attendance.setCheckInTime(LocalTime.ofInstant(companyClock.now(company), zoneId));
             attendance.setRemarks(remarks);
             attendance.setWeekend(isWeekend(today));
             log.info("Marked {} as {} for {}", employee.getFullName(), status, today);
@@ -106,7 +112,7 @@ public class AttendanceService {
     @Transactional(readOnly = true)
     public List<AttendanceDto> getTodayAttendance() {
         Company company = companyContextService.requireCurrentCompany();
-        LocalDate today = LocalDate.now();
+        LocalDate today = companyClock.today(company);
         return attendanceRepository.findByCompanyAndAttendanceDateOrderByEmployeeFirstNameAsc(company, today)
                 .stream()
                 .map(this::toDto)
