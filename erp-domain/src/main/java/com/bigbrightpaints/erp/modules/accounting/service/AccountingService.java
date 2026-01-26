@@ -1340,14 +1340,15 @@ public class AccountingService {
                             String.format("Cannot settle invoice %s in %s with settlement currency %s", invoice.getInvoiceNumber(), invoice.getCurrency(), settlementCurrency));
                 }
 
-                // open-item tracking: reduce outstanding by cleared amount (applied + adjustments)
-                BigDecimal cleared = applied.add(discount).add(writeOff).add(fxAdjustment);
-                if (cleared.compareTo(BigDecimal.ZERO) < 0) {
-                    cleared = BigDecimal.ZERO;
-                }
+                // Open-item tracking: applied amount represents gross invoice reduction.
+                BigDecimal cleared = applied;
                 BigDecimal currentOutstanding = MoneyUtils.zeroIfNull(invoice.getOutstandingAmount());
-                if (cleared.compareTo(currentOutstanding) > 0 && applied.compareTo(currentOutstanding) <= 0) {
-                    cleared = currentOutstanding;
+                if (cleared.subtract(currentOutstanding).compareTo(ALLOCATION_TOLERANCE) > 0) {
+                    throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                            "Settlement allocation exceeds invoice outstanding amount")
+                            .withDetail("invoiceId", invoice.getId())
+                            .withDetail("outstandingAmount", currentOutstanding)
+                            .withDetail("appliedAmount", cleared);
                 }
                 // Use centralized policy for settlement - handles status transitions
                 String settlementRef = trimmedIdempotencyKey + "-INV-" + invoice.getId();
@@ -1633,18 +1634,15 @@ public class AccountingService {
                 if (purchase.getSupplier() == null || !purchase.getSupplier().getId().equals(supplier.getId())) {
                     throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Purchase does not belong to the supplier");
                 }
-                // open-item: reduce outstanding by cleared amount
-                BigDecimal cleared = applied.add(discount).add(writeOff).add(fxAdjustment);
-                if (cleared.compareTo(BigDecimal.ZERO) < 0) {
-                    cleared = BigDecimal.ZERO;
-                }
+                // Open-item: applied amount represents gross purchase reduction.
+                BigDecimal cleared = applied;
                 BigDecimal currentOutstanding = MoneyUtils.zeroIfNull(purchase.getOutstandingAmount());
                 if (cleared.subtract(currentOutstanding).compareTo(ALLOCATION_TOLERANCE) > 0) {
                     throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
                             "Settlement allocation exceeds purchase outstanding amount")
                             .withDetail("purchaseId", purchase.getId())
                             .withDetail("outstandingAmount", currentOutstanding)
-                            .withDetail("clearedAmount", cleared);
+                            .withDetail("appliedAmount", cleared);
                 }
                 purchase.setOutstandingAmount(currentOutstanding.subtract(cleared).max(BigDecimal.ZERO));
                 updatePurchaseStatus(purchase);
@@ -2748,25 +2746,17 @@ public class AccountingService {
                 )
         ));
         // Find batches for proportional revaluation
-        List<FinishedGoodBatch> revalBatches = finishedGoodBatchRepository.findByFinishedGood_ValuationAccountId(inventoryAccount.getId());
+        List<FinishedGoodBatch> revalBatches = finishedGoodBatchRepository
+                .findByFinishedGood_ValuationAccountId(inventoryAccount.getId());
         if (revalBatches.isEmpty()) {
-            revalBatches = new ArrayList<>(finishedGoodBatchRepository.findAll());
+            revalBatches = finishedGoodBatchRepository.findAll().stream()
+                    .filter(b -> b.getFinishedGood() != null)
+                    .filter(b -> Objects.equals(b.getFinishedGood().getValuationAccountId(), inventoryAccount.getId()))
+                    .toList();
         }
-        revalBatches.stream()
-                .filter(b -> b.getFinishedGood() != null)
-                .filter(b -> Objects.equals(b.getFinishedGood().getValuationAccountId(), inventoryAccount.getId()))
-                .max(Comparator
-                        .comparing(FinishedGoodBatch::getManufacturedAt, Comparator.nullsLast(Comparator.naturalOrder()))
-                        .thenComparing(FinishedGoodBatch::getId, Comparator.nullsLast(Comparator.naturalOrder())))
-                .ifPresent(batch -> {
-                    BigDecimal qty = batch.getQuantityTotal() == null ? BigDecimal.ONE : batch.getQuantityTotal();
-                    if (qty.compareTo(BigDecimal.ZERO) <= 0) {
-                        qty = BigDecimal.ONE;
-                    }
-                    BigDecimal deltaPerUnit = delta.divide(qty, 6, RoundingMode.HALF_UP);
-                    batch.setUnitCost(batch.getUnitCost().add(deltaPerUnit));
-                    finishedGoodBatchRepository.save(batch);
-                });
+        if (!revalBatches.isEmpty()) {
+            revalueFinishedBatches(revalBatches, delta);
+        }
         return je;
     }
 

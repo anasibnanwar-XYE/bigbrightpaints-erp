@@ -16,6 +16,7 @@ import com.bigbrightpaints.erp.modules.accounting.dto.DealerSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryReversalRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.InventoryRevaluationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.SettlementAllocationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.SettlementPaymentRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.SupplierSettlementRequest;
@@ -24,6 +25,8 @@ import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunLineRepository;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunRepository;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
+import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatch;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatchRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository;
@@ -941,6 +944,7 @@ class AccountingServiceTest {
         );
 
         service.settleSupplierInvoices(request);
+        assertThat(purchase.getOutstandingAmount()).isEqualByComparingTo("100.00");
 
         JournalEntryRequest captured = journalCaptor.getValue();
         JournalEntryRequest.JournalLineRequest cashLine = captured.lines().stream()
@@ -959,6 +963,136 @@ class AccountingServiceTest {
         assertThat(cashLine.credit()).isEqualByComparingTo("85.00");
         assertThat(discountLine.credit()).isEqualByComparingTo("10.00");
         assertThat(fxGainLine.credit()).isEqualByComparingTo("5.00");
+    }
+
+    @Test
+    void settleDealerInvoices_appliesGrossAmountToInvoice() {
+        AccountingService service = spy(accountingService);
+
+        Dealer dealer = new Dealer();
+        dealer.setName("Dealer");
+        Account receivable = new Account();
+        receivable.setCompany(company);
+        receivable.setCode("AR");
+        receivable.setType(AccountType.ASSET);
+        ReflectionTestUtils.setField(receivable, "id", 10L);
+        dealer.setReceivableAccount(receivable);
+        ReflectionTestUtils.setField(dealer, "id", 1L);
+
+        Account cash = new Account();
+        cash.setCompany(company);
+        cash.setCode("CASH");
+        ReflectionTestUtils.setField(cash, "id", 20L);
+
+        Account discount = new Account();
+        discount.setCompany(company);
+        discount.setCode("DISC");
+        ReflectionTestUtils.setField(discount, "id", 21L);
+
+        var invoice = new com.bigbrightpaints.erp.modules.invoice.domain.Invoice();
+        invoice.setDealer(dealer);
+        invoice.setCurrency("INR");
+        invoice.setOutstandingAmount(new BigDecimal("1000.00"));
+        invoice.setTotalAmount(new BigDecimal("1000.00"));
+        ReflectionTestUtils.setField(invoice, "id", 5L);
+
+        when(dealerRepository.lockByCompanyAndId(eq(company), eq(1L))).thenReturn(Optional.of(dealer));
+        when(invoiceRepository.lockByCompanyAndId(eq(company), eq(5L))).thenReturn(Optional.of(invoice));
+        when(settlementAllocationRepository.findByCompanyAndIdempotencyKey(any(), any())).thenReturn(List.of());
+        when(companyEntityLookup.requireAccount(eq(company), eq(20L))).thenReturn(cash);
+        when(companyEntityLookup.requireAccount(eq(company), eq(21L))).thenReturn(discount);
+
+        JournalEntryDto journalEntryDto = stubEntry(44L);
+        doReturn(journalEntryDto).when(service).createJournalEntry(any());
+        when(companyEntityLookup.requireJournalEntry(eq(company), eq(44L))).thenReturn(new com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry());
+
+        SettlementAllocationRequest allocation = new SettlementAllocationRequest(
+                5L,
+                null,
+                new BigDecimal("500.00"),
+                new BigDecimal("50.00"),
+                BigDecimal.ZERO,
+                null,
+                "settle");
+
+        DealerSettlementRequest request = new DealerSettlementRequest(
+                1L,
+                20L,
+                21L,
+                null,
+                null,
+                null,
+                LocalDate.of(2024, 4, 9),
+                "REF-AR-1",
+                "Dealer settlement",
+                "IDEMP-AR-1",
+                Boolean.FALSE,
+                List.of(allocation),
+                null
+        );
+
+        service.settleDealerInvoices(request);
+
+        ArgumentCaptor<BigDecimal> amountCaptor = ArgumentCaptor.forClass(BigDecimal.class);
+        verify(invoiceSettlementPolicy).applySettlement(eq(invoice), amountCaptor.capture(), eq("IDEMP-AR-1-INV-5"));
+        assertThat(amountCaptor.getValue()).isEqualByComparingTo("500.00");
+    }
+
+    @Test
+    void revalueInventory_distributesAcrossFinishedGoodBatches() {
+        AccountingService service = spy(accountingService);
+
+        Account inventory = new Account();
+        inventory.setCompany(company);
+        inventory.setCode("INV");
+        ReflectionTestUtils.setField(inventory, "id", 11L);
+
+        Account reval = new Account();
+        reval.setCompany(company);
+        reval.setCode("REVAL");
+        ReflectionTestUtils.setField(reval, "id", 12L);
+
+        FinishedGood fg = new FinishedGood();
+        fg.setCompany(company);
+        fg.setProductCode("FG-1");
+        fg.setValuationAccountId(11L);
+
+        FinishedGoodBatch batch1 = new FinishedGoodBatch();
+        batch1.setFinishedGood(fg);
+        batch1.setBatchCode("B1");
+        batch1.setQuantityTotal(new BigDecimal("10"));
+        batch1.setQuantityAvailable(new BigDecimal("10"));
+        batch1.setUnitCost(new BigDecimal("100.000000"));
+
+        FinishedGoodBatch batch2 = new FinishedGoodBatch();
+        batch2.setFinishedGood(fg);
+        batch2.setBatchCode("B2");
+        batch2.setQuantityTotal(new BigDecimal("10"));
+        batch2.setQuantityAvailable(new BigDecimal("10"));
+        batch2.setUnitCost(new BigDecimal("200.000000"));
+
+        when(companyEntityLookup.requireAccount(eq(company), eq(11L))).thenReturn(inventory);
+        when(companyEntityLookup.requireAccount(eq(company), eq(12L))).thenReturn(reval);
+        when(journalEntryRepository.findByCompanyAndReferenceNumber(eq(company), any())).thenReturn(Optional.empty());
+        when(finishedGoodBatchRepository.findByFinishedGood_ValuationAccountId(eq(11L)))
+                .thenReturn(List.of(batch1, batch2));
+
+        JournalEntryDto journalEntryDto = stubEntry(77L);
+        doReturn(journalEntryDto).when(service).createJournalEntry(any());
+
+        service.revalueInventory(new InventoryRevaluationRequest(
+                11L,
+                12L,
+                new BigDecimal("20.00"),
+                "Reval",
+                LocalDate.of(2024, 4, 9),
+                "REVAL-1",
+                null,
+                Boolean.FALSE
+        ));
+
+        assertThat(batch1.getUnitCost()).isEqualByComparingTo("101.000000");
+        assertThat(batch2.getUnitCost()).isEqualByComparingTo("201.000000");
     }
 
     @Test
@@ -982,6 +1116,8 @@ class AccountingServiceTest {
         var invoice = new com.bigbrightpaints.erp.modules.invoice.domain.Invoice();
         invoice.setDealer(dealer);
         invoice.setCurrency("INR");
+        invoice.setOutstandingAmount(new BigDecimal("100.00"));
+        invoice.setTotalAmount(new BigDecimal("100.00"));
 
         when(dealerRepository.lockByCompanyAndId(eq(company), eq(1L))).thenReturn(Optional.of(dealer));
         when(invoiceRepository.lockByCompanyAndId(eq(company), eq(3L))).thenReturn(Optional.of(invoice));
