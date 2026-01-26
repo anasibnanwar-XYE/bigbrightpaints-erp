@@ -34,7 +34,7 @@ import java.util.List;
  * This eliminates the need for manual/hardcoded GL postings in inventory operations.
  */
 @Component
-@ConditionalOnProperty(prefix = "erp.inventory.accounting", name = "events.enabled", havingValue = "true")
+@ConditionalOnProperty(prefix = "erp.inventory.accounting", name = "events.enabled", havingValue = "true", matchIfMissing = true)
 public class InventoryAccountingEventListener {
 
     private static final Logger log = LoggerFactory.getLogger(InventoryAccountingEventListener.class);
