@@ -316,6 +316,7 @@
 - 2026-01-27: Invoice issuance now routes through dispatch confirmation when a packing slip exists to ensure shipped-quantity invoicing (prevents partial-dispatch AR overstatement). `cd erp-domain && mvn -B -ntp -Dtest=InvoiceServiceTest test` (PASS) — Tests run: 3, Failures: 0, Errors: 0, Skipped: 0.
 - 2026-01-27: Raw-material movement journal linking now scopes by company to avoid cross-tenant reference collisions. `cd erp-domain && mvn -B -ntp -Dtest=BulkPackingServiceTest,PackingServiceTest test` (PASS) — Tests run: 3, Failures: 0, Errors: 0, Skipped: 0.
 - 2026-01-27: Reserved stock calculations now ignore CANCELLED/FULFILLED reservations to avoid inflated rebuild totals. `cd erp-domain && mvn -B -ntp -Dtest=FinishedGoodsServiceTest test` (PASS) — Tests run: 11, Failures: 0, Errors: 0, Skipped: 0.
+- 2026-01-27: Finished-good batch registration now rejects negative quantity/unit cost; added validation annotations. `cd erp-domain && mvn -B -ntp -Dtest=FinishedGoodsServiceTest test` (PASS) — Tests run: 13, Failures: 0, Errors: 0, Skipped: 0.
 
 ## Next Actions (explicit)
 1. Task 00 complete; no further actions queued.

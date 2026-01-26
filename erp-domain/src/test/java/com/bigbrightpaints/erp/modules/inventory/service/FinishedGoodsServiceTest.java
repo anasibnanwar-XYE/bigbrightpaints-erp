@@ -15,6 +15,7 @@ import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlip;
 import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipLine;
 import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipRepository;
 import com.bigbrightpaints.erp.modules.inventory.dto.DispatchPreviewDto;
+import com.bigbrightpaints.erp.modules.inventory.dto.FinishedGoodBatchRequest;
 import com.bigbrightpaints.erp.modules.inventory.dto.DispatchConfirmationRequest;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderItem;
@@ -268,6 +269,38 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
                         company, InventoryReference.SALES_ORDER, order.getId().toString());
         assertThat(reservations).hasSize(1);
         assertThat(reservations.getFirst().getReservedQuantity()).isEqualByComparingTo(new BigDecimal("5"));
+    }
+
+    @Test
+    void registerBatchRejectsNegativeQuantity() {
+        Company company = seedCompany("BATCH-NEG-QTY");
+        FinishedGood fg = createFinishedGood(company, "FG-NEG-QTY", new BigDecimal("0"), BigDecimal.ZERO, "FIFO");
+
+        assertThatThrownBy(() -> finishedGoodsService.registerBatch(new FinishedGoodBatchRequest(
+                fg.getId(),
+                "BATCH-NEG-QTY",
+                new BigDecimal("-1"),
+                new BigDecimal("10.00"),
+                Instant.now(),
+                null
+        ))).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Batch quantity");
+    }
+
+    @Test
+    void registerBatchRejectsNegativeUnitCost() {
+        Company company = seedCompany("BATCH-NEG-COST");
+        FinishedGood fg = createFinishedGood(company, "FG-NEG-COST", new BigDecimal("0"), BigDecimal.ZERO, "FIFO");
+
+        assertThatThrownBy(() -> finishedGoodsService.registerBatch(new FinishedGoodBatchRequest(
+                fg.getId(),
+                "BATCH-NEG-COST",
+                new BigDecimal("1"),
+                new BigDecimal("-5.00"),
+                Instant.now(),
+                null
+        ))).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("unit cost");
     }
 
     @Test

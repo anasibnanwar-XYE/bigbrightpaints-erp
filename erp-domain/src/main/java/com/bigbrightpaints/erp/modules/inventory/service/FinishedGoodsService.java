@@ -196,22 +196,30 @@ public class FinishedGoodsService {
     @Transactional
     public FinishedGoodBatchDto registerBatch(FinishedGoodBatchRequest request) {
         FinishedGood finishedGood = lockFinishedGood(request.finishedGoodId());
+        BigDecimal quantity = safeQuantity(request.quantity());
+        if (quantity.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Batch quantity must be greater than zero");
+        }
+        BigDecimal unitCost = request.unitCost() != null ? request.unitCost() : BigDecimal.ZERO;
+        if (unitCost.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("Batch unit cost cannot be negative");
+        }
         FinishedGoodBatch batch = new FinishedGoodBatch();
         batch.setFinishedGood(finishedGood);
         batch.setBatchCode(resolveBatchCode(finishedGood, request.batchCode(), request.manufacturedAt()));
-        batch.setQuantityTotal(request.quantity());
-        batch.setQuantityAvailable(request.quantity());
-        batch.setUnitCost(request.unitCost());
+        batch.setQuantityTotal(quantity);
+        batch.setQuantityAvailable(quantity);
+        batch.setUnitCost(unitCost);
         batch.setManufacturedAt(request.manufacturedAt() == null ? Instant.now() : request.manufacturedAt());
         batch.setExpiryDate(request.expiryDate());
         FinishedGoodBatch savedBatch = finishedGoodBatchRepository.save(batch);
 
-        finishedGood.setCurrentStock(finishedGood.getCurrentStock().add(request.quantity()));
+        finishedGood.setCurrentStock(finishedGood.getCurrentStock().add(quantity));
         finishedGoodRepository.save(finishedGood);
         wacCache.remove(finishedGood.getId());
 
         recordMovement(finishedGood, savedBatch, InventoryReference.MANUFACTURING_ORDER, savedBatch.getPublicId().toString(),
-                "RECEIPT", request.quantity(), request.unitCost());
+                "RECEIPT", quantity, unitCost);
 
         return toBatchDto(savedBatch);
     }
