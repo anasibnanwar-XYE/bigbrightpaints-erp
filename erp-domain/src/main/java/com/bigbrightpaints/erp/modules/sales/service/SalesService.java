@@ -5,6 +5,7 @@ import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.CreditLimitExceededException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
+import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.util.MoneyUtils;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
@@ -79,6 +80,7 @@ public class SalesService {
     private final DealerLedgerService dealerLedgerService;
     private final AccountRepository accountRepository;
     private final CompanyEntityLookup companyEntityLookup;
+    private final CompanyClock companyClock;
     private final PackagingSlipRepository packagingSlipRepository;
     private final FinishedGoodsService finishedGoodsService;
     private final AccountingService accountingService;
@@ -116,7 +118,8 @@ public class SalesService {
                         CompanyDefaultAccountsService companyDefaultAccountsService,
                         CompanyAccountingSettingsService companyAccountingSettingsService,
                         CreditLimitOverrideService creditLimitOverrideService,
-                        AuditService auditService) {
+                        AuditService auditService,
+                        CompanyClock companyClock) {
         this.companyContextService = companyContextService;
         this.dealerRepository = dealerRepository;
         this.salesOrderRepository = salesOrderRepository;
@@ -142,6 +145,7 @@ public class SalesService {
         this.companyAccountingSettingsService = companyAccountingSettingsService;
         this.creditLimitOverrideService = creditLimitOverrideService;
         this.auditService = auditService;
+        this.companyClock = companyClock;
     }
 
     /* Dealers */
@@ -869,6 +873,7 @@ public class SalesService {
                                              SalesOrder order,
                                              List<FinishedGoodsService.InventoryShortage> shortages,
                                              Long packagingSlipId) {
+        LocalDate today = companyClock.today(company);
         for (FinishedGoodsService.InventoryShortage shortage : shortages) {
             BigDecimal shortageQty = shortage.shortageQuantity();
 
@@ -877,13 +882,13 @@ public class SalesService {
             LocalDate dueDate;
             if (shortageQty.compareTo(new BigDecimal("100")) >= 0) {
                 urgencyPrefix = "[URGENT] ";
-                dueDate = LocalDate.now().plusDays(1); // Large shortage - due tomorrow
+                dueDate = today.plusDays(1); // Large shortage - due tomorrow
             } else if (shortageQty.compareTo(new BigDecimal("50")) >= 0) {
                 urgencyPrefix = "[HIGH] ";
-                dueDate = LocalDate.now().plusDays(3); // Medium shortage - 3 days
+                dueDate = today.plusDays(3); // Medium shortage - 3 days
             } else {
                 urgencyPrefix = "";
-                dueDate = LocalDate.now().plusDays(7); // Small shortage - 1 week
+                dueDate = today.plusDays(7); // Small shortage - 1 week
             }
 
             FactoryTask task = new FactoryTask();

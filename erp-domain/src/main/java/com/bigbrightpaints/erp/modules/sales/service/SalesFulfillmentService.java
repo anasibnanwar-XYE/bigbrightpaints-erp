@@ -3,6 +3,7 @@ package com.bigbrightpaints.erp.modules.sales.service;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
+import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.DispatchPosting;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.InventoryReservationResult;
@@ -46,19 +47,22 @@ public class SalesFulfillmentService {
     private final SalesJournalService salesJournalService;
     private final AccountingFacade accountingFacade;
     private final InvoiceService invoiceService;
+    private final CompanyClock companyClock;
 
     public SalesFulfillmentService(SalesService salesService,
                                    SalesOrderRepository salesOrderRepository,
                                    FinishedGoodsService finishedGoodsService,
                                    SalesJournalService salesJournalService,
                                    AccountingFacade accountingFacade,
-                                   InvoiceService invoiceService) {
+                                   InvoiceService invoiceService,
+                                   CompanyClock companyClock) {
         this.salesService = salesService;
         this.salesOrderRepository = salesOrderRepository;
         this.finishedGoodsService = finishedGoodsService;
         this.salesJournalService = salesJournalService;
         this.accountingFacade = accountingFacade;
         this.invoiceService = invoiceService;
+        this.companyClock = companyClock;
     }
 
     /**
@@ -194,7 +198,7 @@ public class SalesFulfillmentService {
                         order,
                         null,
                         null,
-                        options.entryDate() != null ? options.entryDate() : LocalDate.now(),
+                        options.entryDate() != null ? options.entryDate() : companyClock.today(order.getCompany()),
                         "Sales fulfillment for " + orderNumber
                 );
                 result.salesJournalId(salesJournalId);
