@@ -631,10 +631,24 @@ public class PayrollService {
                     emp.getId(), BigDecimal.ZERO);
 
             BigDecimal dailyRate = emp.getDailyRate();
-            BigDecimal baseDays = presentDays;
-            BigDecimal basePay = dailyRate.multiply(baseDays);
-            BigDecimal holidayPay = dailyRate.multiply(holidayDays);
-            BigDecimal grossPay = basePay.add(holidayPay);
+            BigDecimal monthlySalary = emp.getMonthlySalary();
+            BigDecimal grossPay;
+            if (monthlySalary != null && monthlySalary.compareTo(BigDecimal.ZERO) > 0) {
+                BigDecimal deductionDays = absentDays;
+                if (halfDays.compareTo(BigDecimal.ZERO) > 0) {
+                    deductionDays = deductionDays.add(halfDays.multiply(new BigDecimal("0.5")));
+                }
+                BigDecimal absenceDeduction = dailyRate.multiply(deductionDays);
+                grossPay = monthlySalary.subtract(absenceDeduction);
+                if (grossPay.compareTo(BigDecimal.ZERO) < 0) {
+                    grossPay = BigDecimal.ZERO;
+                }
+            } else {
+                BigDecimal baseDays = presentDays;
+                BigDecimal basePay = dailyRate.multiply(baseDays);
+                BigDecimal holidayPay = dailyRate.multiply(holidayDays);
+                grossPay = basePay.add(holidayPay);
+            }
 
             // Statutory deductions are not applied in the summary flow
             BigDecimal pfDeduction = BigDecimal.ZERO;
