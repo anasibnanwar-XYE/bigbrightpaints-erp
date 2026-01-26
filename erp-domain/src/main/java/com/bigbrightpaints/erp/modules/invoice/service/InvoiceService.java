@@ -20,6 +20,8 @@ import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderItem;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderRepository;
+import com.bigbrightpaints.erp.modules.sales.dto.DispatchConfirmRequest;
+import com.bigbrightpaints.erp.modules.sales.dto.DispatchConfirmResponse;
 import com.bigbrightpaints.erp.modules.sales.service.SalesJournalService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesService;
 import com.bigbrightpaints.erp.modules.sales.util.SalesOrderReference;
@@ -93,6 +95,30 @@ public class InvoiceService {
         SalesOrder order = salesService.getOrderWithItems(salesOrderId);
         if (order.getDealer() == null) {
             throw new IllegalStateException("Dealer is required to issue an invoice");
+        }
+        List<PackagingSlip> slips = Optional
+                .ofNullable(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, salesOrderId))
+                .orElse(List.of());
+        if (!slips.isEmpty()) {
+            if (slips.size() > 1) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                        "Multiple packing slips exist for order; issue invoices per dispatch");
+            }
+            PackagingSlip slip = slips.get(0);
+            DispatchConfirmResponse response = salesService.confirmDispatch(new DispatchConfirmRequest(
+                    slip.getId(),
+                    null,
+                    null,
+                    null,
+                    null,
+                    Boolean.FALSE,
+                    null
+            ));
+            if (response == null || response.finalInvoiceId() == null) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Dispatch confirmation did not produce an invoice");
+            }
+            return getInvoice(response.finalInvoiceId());
         }
         Invoice invoice = new Invoice();
         invoice.setCompany(order.getCompany());

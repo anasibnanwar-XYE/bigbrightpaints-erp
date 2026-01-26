@@ -313,6 +313,7 @@
 - 2026-01-27: Sales return idempotency now uses hash reference when base CRN exists; added AccountingFacadeTest coverage.
 - 2026-01-27: Dealer/supplier settlement allocations now require invoice/purchase IDs (and reject cross-type allocations); updated AccountingServiceTest coverage. `cd erp-domain && mvn -B -ntp -Dtest=AccountingServiceTest,AccountingFacadeTest test` (PASS) — Tests run: 29, Failures: 0, Errors: 0, Skipped: 0.
 - 2026-01-27: Inventory accounting events default to enabled (matchIfMissing) and application.yml explicitly sets enabled=true. `cd erp-domain && mvn -B -ntp -Dtest=InventoryAccountingEventListenerIT test` (PASS) — Tests run: 1, Failures: 0, Errors: 0, Skipped: 0.
+- 2026-01-27: Invoice issuance now routes through dispatch confirmation when a packing slip exists to ensure shipped-quantity invoicing (prevents partial-dispatch AR overstatement). `cd erp-domain && mvn -B -ntp -Dtest=InvoiceServiceTest test` (PASS) — Tests run: 3, Failures: 0, Errors: 0, Skipped: 0.
 
 ## Next Actions (explicit)
 1. Task 00 complete; no further actions queued.

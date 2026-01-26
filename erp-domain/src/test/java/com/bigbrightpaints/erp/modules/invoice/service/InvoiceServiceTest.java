@@ -10,10 +10,13 @@ import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
 import com.bigbrightpaints.erp.modules.invoice.dto.InvoiceDto;
 import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlip;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderItem;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderRepository;
+import com.bigbrightpaints.erp.modules.sales.dto.DispatchConfirmRequest;
+import com.bigbrightpaints.erp.modules.sales.dto.DispatchConfirmResponse;
 import com.bigbrightpaints.erp.modules.sales.service.SalesJournalService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesService;
 import java.math.BigDecimal;
@@ -32,6 +35,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -159,5 +163,51 @@ class InvoiceServiceTest {
 
         assertThat(saved.getLines()).hasSize(1);
         assertThat(saved.getLines().get(0).getDiscountAmount()).isEqualByComparingTo("0.00");
+    }
+
+    @Test
+    void issueInvoiceForOrder_usesDispatchConfirmationWhenSlipExists() {
+        Long orderId = 77L;
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(invoiceRepository.findAllByCompanyAndSalesOrderId(company, orderId)).thenReturn(List.of());
+
+        Dealer dealer = new Dealer();
+        SalesOrder order = new SalesOrder();
+        order.setCompany(company);
+        order.setDealer(dealer);
+        order.setOrderNumber("SO-77");
+        order.setCurrency("INR");
+
+        when(salesService.getOrderWithItems(orderId)).thenReturn(order);
+
+        PackagingSlip slip = new PackagingSlip();
+        ReflectionTestUtils.setField(slip, "id", 99L);
+        when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, orderId)).thenReturn(List.of(slip));
+
+        DispatchConfirmResponse response = new DispatchConfirmResponse(
+                slip.getId(),
+                orderId,
+                123L,
+                null,
+                List.of(),
+                true,
+                List.of()
+        );
+        when(salesService.confirmDispatch(any())).thenReturn(response);
+
+        Invoice invoice = new Invoice();
+        ReflectionTestUtils.setField(invoice, "id", 123L);
+        invoice.setCompany(company);
+        invoice.setInvoiceNumber("INV-77");
+        when(invoiceRepository.findByCompanyAndId(company, 123L)).thenReturn(Optional.of(invoice));
+
+        InvoiceDto dto = invoiceService.issueInvoiceForOrder(orderId);
+
+        ArgumentCaptor<DispatchConfirmRequest> requestCaptor = ArgumentCaptor.forClass(DispatchConfirmRequest.class);
+        verify(salesService).confirmDispatch(requestCaptor.capture());
+        assertThat(requestCaptor.getValue().packingSlipId()).isEqualTo(99L);
+        assertThat(dto.id()).isEqualTo(123L);
+
+        verifyNoInteractions(invoiceNumberService);
     }
 }
