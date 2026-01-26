@@ -439,7 +439,7 @@ public class AccountingService {
         }
 
         if (foreignCurrency && totalForeignDebit.compareTo(BigDecimal.ZERO) > 0) {
-            entry.setForeignAmountTotal(totalForeignDebit.setScale(2, RoundingMode.HALF_UP).doubleValue());
+            entry.setForeignAmountTotal(totalForeignDebit.setScale(2, RoundingMode.HALF_UP));
         }
 
         if (duplicate.isPresent()) {

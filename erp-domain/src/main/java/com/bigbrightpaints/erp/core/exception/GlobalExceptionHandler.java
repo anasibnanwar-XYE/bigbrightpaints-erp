@@ -42,7 +42,16 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     private String activeProfile;
 
     private boolean isProductionMode() {
-        return "prod".equalsIgnoreCase(activeProfile) || "production".equalsIgnoreCase(activeProfile);
+        if (activeProfile == null || activeProfile.isBlank()) {
+            return false;
+        }
+        for (String profile : activeProfile.split(",")) {
+            String normalized = profile.trim();
+            if ("prod".equalsIgnoreCase(normalized) || "production".equalsIgnoreCase(normalized)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
