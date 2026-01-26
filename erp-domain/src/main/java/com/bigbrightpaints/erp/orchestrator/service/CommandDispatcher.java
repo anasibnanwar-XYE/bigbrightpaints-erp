@@ -9,6 +9,7 @@ import com.bigbrightpaints.erp.orchestrator.policy.PolicyEnforcer;
 import com.bigbrightpaints.erp.orchestrator.workflow.WorkflowService;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.InventoryReservationResult;
 import java.math.BigDecimal;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -81,10 +82,12 @@ public class CommandDispatcher {
         String traceId = workflowService.startWorkflow("order-fulfillment");
         IntegrationCoordinator.AutoApprovalResult result =
                 integrationCoordinator.updateFulfillment(orderId, request.status(), companyId);
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("status", request.status());
+        payload.put("awaitingProduction", result.awaitingProduction());
+        payload.put("notes", request.notes());
         DomainEvent event = DomainEvent.of("OrderFulfillmentUpdated", companyId, userId, "Order", orderId,
-                Map.of("status", request.status(),
-                        "awaitingProduction", result.awaitingProduction(),
-                        "notes", request.notes()));
+                payload);
         eventPublisherService.enqueue(event);
         traceService.record(traceId, "ORDER_FULFILLMENT_UPDATED", companyId, Map.of("orderId", orderId, "status", request.status()));
         return traceId;

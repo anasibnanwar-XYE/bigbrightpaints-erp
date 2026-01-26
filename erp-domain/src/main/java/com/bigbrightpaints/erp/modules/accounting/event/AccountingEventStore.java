@@ -4,6 +4,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLine;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -31,13 +32,16 @@ public class AccountingEventStore {
     private final AccountingEventRepository eventRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
+    private final CompanyClock companyClock;
 
     public AccountingEventStore(AccountingEventRepository eventRepository,
                                 ApplicationEventPublisher eventPublisher,
-                                ObjectMapper objectMapper) {
+                                ObjectMapper objectMapper,
+                                CompanyClock companyClock) {
         this.eventRepository = eventRepository;
         this.eventPublisher = eventPublisher;
         this.objectMapper = objectMapper;
+        this.companyClock = companyClock;
     }
 
     /**
@@ -68,11 +72,11 @@ public class AccountingEventStore {
         BigDecimal totalCredit = entry.getLines().stream()
                 .map(JournalLine::getCredit)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        entryEvent.setPayload(serializePayload(Map.of(
-                "status", entry.getStatus(),
-                "totalDebit", totalDebit,
-                "totalCredit", totalCredit
-        )));
+        Map<String, Object> entryPayload = new HashMap<>();
+        entryPayload.put("status", entry.getStatus());
+        entryPayload.put("totalDebit", totalDebit);
+        entryPayload.put("totalCredit", totalCredit);
+        entryEvent.setPayload(serializePayload(entryPayload));
         events.add(eventRepository.save(entryEvent));
 
         // Individual line events (for balance tracking)
@@ -134,11 +138,11 @@ public class AccountingEventStore {
         event.setJournalReference(original.getReferenceNumber());
         event.setDescription(reason);
         event.setUserId(getCurrentUserId());
-        event.setPayload(serializePayload(Map.of(
-                "reversalEntryId", reversal.getId(),
-                "reversalReference", reversal.getReferenceNumber(),
-                "reason", reason != null ? reason : ""
-        )));
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("reversalEntryId", reversal.getId());
+        payload.put("reversalReference", reversal.getReferenceNumber());
+        payload.put("reason", reason != null ? reason : "");
+        event.setPayload(serializePayload(payload));
 
         return eventRepository.save(event);
     }
@@ -156,7 +160,7 @@ public class AccountingEventStore {
         event.setAggregateType("Account");
         event.setSequenceNumber(eventRepository.getNextSequenceNumber(
                 UUID.nameUUIDFromBytes(("Account-" + account.getId()).getBytes())));
-        event.setEffectiveDate(LocalDate.now());
+        event.setEffectiveDate(companyClock.today(account.getCompany()));
         event.setAccountId(account.getId());
         event.setAccountCode(account.getCode());
         event.setBalanceBefore(oldBalance);

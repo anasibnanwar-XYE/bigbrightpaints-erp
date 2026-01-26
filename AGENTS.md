@@ -36,7 +36,8 @@ below to avoid data loss and ensure repeatable CI/debugging runs.
 ## Output expectations
 - Summarize changes with file paths.
 - Provide reproduction steps and test commands.
-- If blocked, state the exact blocker and what evidence is needed.
+- If blocked, state the exact blocker and what evidence is needed.      
+
 
 <skills_system priority="1">
 
@@ -165,4 +166,4 @@ Usage notes:
 </available_skills>
 <!-- SKILLS_TABLE_END -->
 
-</skills_system>
+</skills_system>    

@@ -8,6 +8,7 @@ import com.bigbrightpaints.erp.orchestrator.service.CommandDispatcher;
 import com.bigbrightpaints.erp.orchestrator.service.TraceService;
 import jakarta.validation.Valid;
 import java.security.Principal;
+import java.util.HashMap;
 import java.util.Map;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -136,8 +137,12 @@ public class OrchestratorController {
             return ResponseEntity.accepted().body(Map.of("traceId", traceId));
         } catch (Exception ex) {
             String traceId = commandDispatcher.generateTraceId();
+            String message = ex.getMessage();
+            if (message == null || message.isBlank()) {
+                message = ex.getClass().getSimpleName();
+            }
             return ResponseEntity.badRequest()
-                    .body(Map.of("traceId", traceId, "message", ex.getMessage()));
+                    .body(new HashMap<>(Map.of("traceId", traceId, "message", message)));
         }
     }
 }

@@ -53,7 +53,7 @@ public class SupplierLedgerEntry extends VersionedEntity {
     @PrePersist
     public void prePersist() {
         if (entryDate == null) {
-            entryDate = LocalDate.now();
+            throw new IllegalStateException("Supplier ledger entry date must be set before persisting");
         }
         if (createdAt == null) {
             createdAt = Instant.now();

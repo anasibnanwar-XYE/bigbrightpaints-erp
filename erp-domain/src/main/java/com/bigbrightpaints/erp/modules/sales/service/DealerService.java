@@ -23,6 +23,8 @@ import org.springframework.util.StringUtils;
 import java.math.BigDecimal;
 import java.security.SecureRandom;
 import java.text.Normalizer;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -170,24 +172,24 @@ public class DealerService {
                 .orElseThrow(() -> new IllegalArgumentException("Dealer not found"));
         var entries = dealerLedgerService.entries(dealer);
         BigDecimal running = BigDecimal.ZERO;
-        var lines = new java.util.ArrayList<Map<String, Object>>();
+        var lines = new ArrayList<Map<String, Object>>();
         for (var e : entries) {
             running = running.add(e.getDebit()).subtract(e.getCredit());
-            lines.add(Map.of(
-                    "date", e.getEntryDate(),
-                    "reference", e.getReferenceNumber(),
-                    "memo", e.getMemo(),
-                    "debit", e.getDebit(),
-                    "credit", e.getCredit(),
-                    "runningBalance", running
-            ));
+            Map<String, Object> line = new LinkedHashMap<>();
+            line.put("date", e.getEntryDate());
+            line.put("reference", e.getReferenceNumber());
+            line.put("memo", e.getMemo());
+            line.put("debit", e.getDebit());
+            line.put("credit", e.getCredit());
+            line.put("runningBalance", running);
+            lines.add(line);
         }
-        return Map.of(
-                "dealerId", dealer.getId(),
-                "dealerName", dealer.getName(),
-                "currentBalance", running,
-                "entries", lines
-        );
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("dealerId", dealer.getId());
+        payload.put("dealerName", dealer.getName());
+        payload.put("currentBalance", running);
+        payload.put("entries", lines);
+        return payload;
     }
 
     private Account createReceivableAccount(Company company, Dealer dealer) {

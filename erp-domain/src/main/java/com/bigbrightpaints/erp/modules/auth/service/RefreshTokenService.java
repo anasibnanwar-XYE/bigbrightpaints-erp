@@ -1,44 +1,77 @@
 package com.bigbrightpaints.erp.modules.auth.service;
 
+import com.bigbrightpaints.erp.modules.auth.domain.RefreshToken;
+import com.bigbrightpaints.erp.modules.auth.domain.RefreshTokenRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class RefreshTokenService {
 
-    private final Map<String, TokenRecord> store = new ConcurrentHashMap<>();
+    private static final Logger logger = LoggerFactory.getLogger(RefreshTokenService.class);
 
+    private final RefreshTokenRepository refreshTokenRepository;
+
+    public RefreshTokenService(RefreshTokenRepository refreshTokenRepository) {
+        this.refreshTokenRepository = refreshTokenRepository;
+    }
+
+    @Transactional
     public String issue(String userEmail, Instant expiresAt) {
         String token = UUID.randomUUID().toString();
-        store.put(token, new TokenRecord(userEmail, Instant.now(), expiresAt));
+        RefreshToken record = new RefreshToken(token, userEmail, Instant.now(), expiresAt);
+        refreshTokenRepository.save(record);
         return token;
     }
 
+    @Transactional
     public Optional<TokenRecord> consume(String refreshToken) {
-        TokenRecord record = store.remove(refreshToken);
-        if (record == null) {
+        if (refreshToken == null || refreshToken.isBlank()) {
             return Optional.empty();
         }
-        if (record.expiresAt().isBefore(Instant.now())) {
+        Optional<RefreshToken> record = refreshTokenRepository.findForUpdate(refreshToken);
+        if (record.isEmpty()) {
             return Optional.empty();
         }
-        return Optional.of(record);
+        RefreshToken stored = record.get();
+        if (stored.isExpired(Instant.now())) {
+            refreshTokenRepository.delete(stored);
+            return Optional.empty();
+        }
+        refreshTokenRepository.delete(stored);
+        return Optional.of(new TokenRecord(stored.getUserEmail(), stored.getIssuedAt(), stored.getExpiresAt()));
     }
 
+    @Transactional
     public void revoke(String refreshToken) {
-        store.remove(refreshToken);
-    }
-
-    public void revokeAllForUser(String userEmail) {
-        if (userEmail == null) {
+        if (refreshToken == null || refreshToken.isBlank()) {
             return;
         }
-        store.entrySet().removeIf(entry -> userEmail.equalsIgnoreCase(entry.getValue().userEmail()));
+        refreshTokenRepository.deleteByToken(refreshToken);
+    }
+
+    @Transactional
+    public void revokeAllForUser(String userEmail) {
+        if (userEmail == null || userEmail.isBlank()) {
+            return;
+        }
+        refreshTokenRepository.deleteByUserEmail(userEmail);
+    }
+
+    @Scheduled(fixedDelay = 3600000) // 1 hour
+    @Transactional
+    public void cleanupExpiredTokens() {
+        int removed = refreshTokenRepository.deleteExpiredTokens(Instant.now());
+        if (removed > 0) {
+            logger.info("Refresh token cleanup removed {} expired tokens", removed);
+        }
     }
 
     public record TokenRecord(String userEmail, Instant issuedAt, Instant expiresAt) {}

@@ -536,13 +536,19 @@ public class FinishedGoodsService {
             // Resolve cost before mutating quantities so WAC reflects pre-dispatch average.
             BigDecimal unitCost = resolveDispatchUnitCost(fg, batch);
             requireNonZeroDispatchCost(fg, unitCost, shipQty);
-            BigDecimal reserved = fg.getReservedStock() == null ? BigDecimal.ZERO : fg.getReservedStock();
-            BigDecimal newReserved = reserved.subtract(shipQty).max(BigDecimal.ZERO);
-            fg.setReservedStock(newReserved);
-            fg.setCurrentStock(current.subtract(shipQty).max(BigDecimal.ZERO));
+            BigDecimal reserved = safeQuantity(fg.getReservedStock());
+            requireSufficientQuantity(reserved, shipQty,
+                    "Reserved stock insufficient for FG " + fg.getProductCode());
+            fg.setReservedStock(reserved.subtract(shipQty));
+            fg.setCurrentStock(current.subtract(shipQty));
             if (batch != null) {
-                BigDecimal qtyAvailable = batch.getQuantityAvailable() == null ? BigDecimal.ZERO : batch.getQuantityAvailable();
-                BigDecimal updatedAvailable = qtyAvailable.subtract(shipQty.min(qtyAvailable)).max(BigDecimal.ZERO);
+                BigDecimal batchTotal = safeQuantity(batch.getQuantityTotal());
+                requireSufficientQuantity(batchTotal, shipQty,
+                        "Batch stock insufficient for batch " + batch.getBatchCode()
+                                + " FG " + fg.getProductCode());
+                batch.setQuantityTotal(batchTotal.subtract(shipQty));
+                BigDecimal qtyAvailable = safeQuantity(batch.getQuantityAvailable());
+                BigDecimal updatedAvailable = qtyAvailable.subtract(shipQty.min(qtyAvailable));
                 batch.setQuantityAvailable(updatedAvailable);
                 batchesToSave.add(batch);
             }
@@ -770,14 +776,18 @@ public class FinishedGoodsService {
                 if (currentStock.compareTo(shipped) < 0) {
                     throw new IllegalStateException("Insufficient current stock for FG " + fg.getProductCode() + ": available=" + currentStock + ", requested=" + shipped);
                 }
-                BigDecimal reservedStock = fg.getReservedStock() != null ? fg.getReservedStock() : BigDecimal.ZERO;
-
+                BigDecimal reservedStock = safeQuantity(fg.getReservedStock());
+                requireSufficientQuantity(reservedStock, shipped,
+                        "Reserved stock insufficient for FG " + fg.getProductCode());
                 fg.setCurrentStock(currentStock.subtract(shipped));
-                fg.setReservedStock(reservedStock.subtract(shipped).max(BigDecimal.ZERO));
+                fg.setReservedStock(reservedStock.subtract(shipped));
                 wacCache.remove(fg.getId());
 
-                BigDecimal batchQty = batch.getQuantityTotal() != null ? batch.getQuantityTotal() : BigDecimal.ZERO;
-                batch.setQuantityTotal(batchQty.subtract(shipped).max(BigDecimal.ZERO));
+                BigDecimal batchQty = safeQuantity(batch.getQuantityTotal());
+                requireSufficientQuantity(batchQty, shipped,
+                        "Batch stock insufficient for batch " + batch.getBatchCode()
+                                + " FG " + fg.getProductCode());
+                batch.setQuantityTotal(batchQty.subtract(shipped));
                 batchesToSave.add(batch);
 
                 totalCogsCost = totalCogsCost.add(shipped.multiply(unitCost));
@@ -1188,6 +1198,14 @@ public class FinishedGoodsService {
 
     private BigDecimal safeQuantity(BigDecimal value) {
         return value != null ? value : BigDecimal.ZERO;
+    }
+
+    private void requireSufficientQuantity(BigDecimal available, BigDecimal required, String context) {
+        BigDecimal safeAvailable = safeQuantity(available);
+        BigDecimal safeRequired = safeQuantity(required);
+        if (safeAvailable.compareTo(safeRequired) < 0) {
+            throw new IllegalStateException(context + ": available=" + safeAvailable + ", requested=" + safeRequired);
+        }
     }
 
     private boolean slipLinesMatchOrder(PackagingSlip slip, SalesOrder order) {

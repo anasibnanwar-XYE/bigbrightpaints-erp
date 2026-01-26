@@ -5,6 +5,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
+import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
@@ -42,15 +43,18 @@ public class InventoryAccountingEventListener {
     private final AccountRepository accountRepository;
     private final CompanyRepository companyRepository;
     private final JournalEntryRepository journalEntryRepository;
+    private final CompanyClock companyClock;
 
     public InventoryAccountingEventListener(AccountingService accountingService,
                                             AccountRepository accountRepository,
                                             CompanyRepository companyRepository,
-                                            JournalEntryRepository journalEntryRepository) {
+                                            JournalEntryRepository journalEntryRepository,
+                                            CompanyClock companyClock) {
         this.accountingService = accountingService;
         this.accountRepository = accountRepository;
         this.companyRepository = companyRepository;
         this.journalEntryRepository = journalEntryRepository;
+        this.companyClock = companyClock;
     }
 
     /**
@@ -128,9 +132,10 @@ public class InventoryAccountingEventListener {
                 );
             }
 
+            LocalDate entryDate = companyClock.dateForInstant(company, event.timestamp());
             JournalEntryRequest request = new JournalEntryRequest(
                     refNumber,
-                    LocalDate.now(),
+                    entryDate,
                     memo,
                     null, null, false,
                     lines

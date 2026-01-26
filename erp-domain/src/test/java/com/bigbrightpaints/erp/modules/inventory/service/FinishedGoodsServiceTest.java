@@ -15,6 +15,7 @@ import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlip;
 import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipLine;
 import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipRepository;
 import com.bigbrightpaints.erp.modules.inventory.dto.DispatchPreviewDto;
+import com.bigbrightpaints.erp.modules.inventory.dto.DispatchConfirmationRequest;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderItem;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderRepository;
@@ -92,6 +93,50 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
         assertThatThrownBy(() -> finishedGoodsService.markSlipDispatched(order.getId(), slip))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Dispatch cost is zero");
+    }
+
+    @Test
+    void confirmDispatchRejectsWhenReservedStockDriftsNegative() {
+        Company company = seedCompany("DISPATCH-RES-NEG");
+        FinishedGood fg = createFinishedGood(company, "FG-NEG", new BigDecimal("5"), new BigDecimal("1"), "FIFO");
+        FinishedGoodBatch batch = createBatch(fg, "BATCH-NEG", new BigDecimal("5"), BigDecimal.ZERO, new BigDecimal("10"));
+        SalesOrder order = createOrder(company, "SO-NEG-" + UUID.randomUUID(), fg.getProductCode(), new BigDecimal("5"));
+        PackagingSlip slip = createSlip(company, order, "RESERVED", batch, new BigDecimal("5"));
+        createReservation(order, fg, batch, new BigDecimal("5"));
+
+        PackagingSlipLine line = slip.getLines().getFirst();
+        DispatchConfirmationRequest request = new DispatchConfirmationRequest(
+                slip.getId(),
+                List.of(new DispatchConfirmationRequest.LineConfirmation(line.getId(), new BigDecimal("5"), null)),
+                null,
+                null,
+                null);
+
+        assertThatThrownBy(() -> finishedGoodsService.confirmDispatch(request, "tester"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Reserved stock insufficient");
+    }
+
+    @Test
+    void confirmDispatchRejectsWhenBatchStockInsufficient() {
+        Company company = seedCompany("DISPATCH-BATCH-NEG");
+        FinishedGood fg = createFinishedGood(company, "FG-BATCH", new BigDecimal("5"), new BigDecimal("5"), "FIFO");
+        FinishedGoodBatch batch = createBatch(fg, "BATCH-LOW", new BigDecimal("2"), BigDecimal.ZERO, new BigDecimal("11"));
+        SalesOrder order = createOrder(company, "SO-BATCH-" + UUID.randomUUID(), fg.getProductCode(), new BigDecimal("5"));
+        PackagingSlip slip = createSlip(company, order, "RESERVED", batch, new BigDecimal("5"));
+        createReservation(order, fg, batch, new BigDecimal("5"));
+
+        PackagingSlipLine line = slip.getLines().getFirst();
+        DispatchConfirmationRequest request = new DispatchConfirmationRequest(
+                slip.getId(),
+                List.of(new DispatchConfirmationRequest.LineConfirmation(line.getId(), new BigDecimal("5"), null)),
+                null,
+                null,
+                null);
+
+        assertThatThrownBy(() -> finishedGoodsService.confirmDispatch(request, "tester"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Batch stock insufficient");
     }
 
     @Test

@@ -17,6 +17,7 @@ import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -157,7 +158,9 @@ public class AuditService {
      * Logs a failed event.
      */
     public void logFailure(AuditEvent event, String reason) {
-        logEvent(event, AuditStatus.FAILURE, Map.of("reason", reason));
+        Map<String, String> metadata = new HashMap<>();
+        metadata.put("reason", safeString(reason));
+        logEvent(event, AuditStatus.FAILURE, metadata);
     }
 
     /**
@@ -171,14 +174,18 @@ public class AuditService {
      * Logs a warning event.
      */
     public void logWarning(AuditEvent event, String message) {
-        logEvent(event, AuditStatus.WARNING, Map.of("message", message));
+        Map<String, String> metadata = new HashMap<>();
+        metadata.put("message", safeString(message));
+        logEvent(event, AuditStatus.WARNING, metadata);
     }
 
     /**
      * Logs an informational event.
      */
     public void logInfo(AuditEvent event, String message) {
-        logEvent(event, AuditStatus.INFO, Map.of("message", message));
+        Map<String, String> metadata = new HashMap<>();
+        metadata.put("message", safeString(message));
+        logEvent(event, AuditStatus.INFO, metadata);
     }
 
     /**
@@ -198,7 +205,11 @@ public class AuditService {
      * Logs data access event.
      */
     public void logDataAccess(String resourceType, String resourceId, String operation) {
-        AuditEvent event = switch (operation.toUpperCase()) {
+        String normalizedOperation = operation == null ? "" : operation.trim();
+        if (normalizedOperation.isEmpty()) {
+            normalizedOperation = "READ";
+        }
+        AuditEvent event = switch (normalizedOperation.toUpperCase()) {
             case "CREATE" -> AuditEvent.DATA_CREATE;
             case "READ" -> AuditEvent.DATA_READ;
             case "UPDATE" -> AuditEvent.DATA_UPDATE;
@@ -207,21 +218,25 @@ public class AuditService {
             default -> AuditEvent.DATA_READ;
         };
 
-        logEvent(event, AuditStatus.SUCCESS, Map.of(
-            "resourceType", resourceType,
-            "resourceId", resourceId,
-            "operation", operation
-        ));
+        Map<String, String> metadata = new HashMap<>();
+        metadata.put("resourceType", safeString(resourceType));
+        metadata.put("resourceId", safeString(resourceId));
+        metadata.put("operation", normalizedOperation);
+        logEvent(event, AuditStatus.SUCCESS, metadata);
     }
 
     /**
      * Logs sensitive data access.
      */
     public void logSensitiveDataAccess(String dataType, String reason) {
-        logEvent(AuditEvent.SENSITIVE_DATA_ACCESSED, AuditStatus.INFO, Map.of(
-            "dataType", dataType,
-            "reason", reason != null ? reason : "Not specified"
-        ));
+        Map<String, String> metadata = new HashMap<>();
+        metadata.put("dataType", safeString(dataType));
+        metadata.put("reason", reason != null ? reason : "Not specified");
+        logEvent(AuditEvent.SENSITIVE_DATA_ACCESSED, AuditStatus.INFO, metadata);
+    }
+
+    private String safeString(String value) {
+        return value == null ? "" : value;
     }
 
     /**

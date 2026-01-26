@@ -400,6 +400,14 @@ public class FactoryPackagingCostingIT extends AbstractIntegrationTest {
         reservation.setReservedQuantity(qty);
         reservation.setStatus("RESERVED");
         inventoryReservationRepository.save(reservation);
+
+        BigDecimal reserved = fg.getReservedStock() != null ? fg.getReservedStock() : BigDecimal.ZERO;
+        fg.setReservedStock(reserved.add(qty));
+        finishedGoodRepository.save(fg);
+
+        BigDecimal available = batch.getQuantityAvailable() != null ? batch.getQuantityAvailable() : BigDecimal.ZERO;
+        batch.setQuantityAvailable(available.subtract(qty));
+        finishedGoodBatchRepository.save(batch);
     }
 
     private JournalEntry requireJournal(Company company, String reference) {

@@ -27,11 +27,14 @@ public class TokenBlacklistService {
 
     private final BlacklistedTokenRepository blacklistedTokenRepository;
     private final UserTokenRevocationRepository userTokenRevocationRepository;
+    private final JwtProperties jwtProperties;
 
     public TokenBlacklistService(BlacklistedTokenRepository blacklistedTokenRepository,
-                                  UserTokenRevocationRepository userTokenRevocationRepository) {
+                                  UserTokenRevocationRepository userTokenRevocationRepository,
+                                  JwtProperties jwtProperties) {
         this.blacklistedTokenRepository = blacklistedTokenRepository;
         this.userTokenRevocationRepository = userTokenRevocationRepository;
+        this.jwtProperties = jwtProperties;
     }
 
     /**
@@ -181,7 +184,8 @@ public class TokenBlacklistService {
 
         int removedTokens = blacklistedTokenRepository.deleteExpiredTokens(now);
 
-        Instant cutoff = now.minusSeconds(86400); // 24 hours
+        // Keep user revocations at least as long as refresh tokens remain valid.
+        Instant cutoff = now.minusSeconds(jwtProperties.getRefreshTokenTtlSeconds());
         int removedRevocations = userTokenRevocationRepository.deleteOldRevocations(cutoff);
 
         if (removedTokens > 0 || removedRevocations > 0) {

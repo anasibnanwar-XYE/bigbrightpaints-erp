@@ -81,7 +81,7 @@ public class DealerLedgerEntry extends VersionedEntity {
             createdAt = Instant.now();
         }
         if (entryDate == null) {
-            entryDate = LocalDate.now();
+            throw new IllegalStateException("Dealer ledger entry date must be set before persisting");
         }
     }
 
@@ -202,16 +202,19 @@ public class DealerLedgerEntry extends VersionedEntity {
         return total.subtract(amountPaid != null ? amountPaid : BigDecimal.ZERO);
     }
 
-    public boolean isOverdue() {
-        return dueDate != null && 
-               LocalDate.now().isAfter(dueDate) && 
-               !"PAID".equals(paymentStatus);
+    public boolean isOverdue(LocalDate asOfDate) {
+        if (asOfDate == null) {
+            return false;
+        }
+        return dueDate != null
+                && asOfDate.isAfter(dueDate)
+                && !"PAID".equals(paymentStatus);
     }
 
-    public long getDaysOverdue() {
-        if (dueDate == null || !isOverdue()) {
+    public long getDaysOverdue(LocalDate asOfDate) {
+        if (dueDate == null || !isOverdue(asOfDate)) {
             return 0;
         }
-        return java.time.temporal.ChronoUnit.DAYS.between(dueDate, LocalDate.now());
+        return java.time.temporal.ChronoUnit.DAYS.between(dueDate, asOfDate);
     }
 }

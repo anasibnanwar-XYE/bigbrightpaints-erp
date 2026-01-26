@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.accounting.service;
 
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
+import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,11 +17,14 @@ public class AuditDigestScheduler {
 
     private final AccountingService accountingService;
     private final CompanyRepository companyRepository;
+    private final CompanyClock companyClock;
 
     public AuditDigestScheduler(AccountingService accountingService,
-                                CompanyRepository companyRepository) {
+                                CompanyRepository companyRepository,
+                                CompanyClock companyClock) {
         this.accountingService = accountingService;
         this.companyRepository = companyRepository;
+        this.companyClock = companyClock;
     }
 
     /**
@@ -29,10 +33,10 @@ public class AuditDigestScheduler {
         */
     @Scheduled(cron = "0 30 2 * * *")
     public void publishDailyDigest() {
-        LocalDate yesterday = LocalDate.now().minusDays(1);
         companyRepository.findAll().forEach(company -> {
             try {
                 CompanyContextHolder.setCompanyId(company.getCode());
+                LocalDate yesterday = companyClock.today(company).minusDays(1);
                 var digest = accountingService.auditDigest(yesterday, yesterday);
                 if (digest.entries().isEmpty()) {
                     return;

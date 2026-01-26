@@ -28,7 +28,8 @@ public class TraceService {
 
     public void record(String traceId, String eventType, String companyCode, Map<String, Object> details) {
         Long companyId = resolveCompanyId(companyCode);
-        AuditRecord record = new AuditRecord(traceId, eventType, Instant.now(), details.toString(), companyId);
+        String payload = details != null ? details.toString() : "{}";
+        AuditRecord record = new AuditRecord(traceId, eventType, Instant.now(), payload, companyId);
         auditRepository.save(record);
     }
 

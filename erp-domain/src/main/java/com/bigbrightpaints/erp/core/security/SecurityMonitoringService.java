@@ -11,6 +11,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -152,15 +153,15 @@ public class SecurityMonitoringService {
         tokenBlacklistService.revokeAllUserTokens(username);
 
         // Log security alert
+        Map<String, String> metadata = new HashMap<>();
+        metadata.put("username", username == null ? "" : username);
+        metadata.put("ipAddress", ipAddress == null ? "" : ipAddress);
+        metadata.put("attempts", String.valueOf(attempts));
+        metadata.put("action", "User blocked for 30 minutes");
         auditService.logSecurityAlert(
             "BRUTE_FORCE_ATTACK",
             "Multiple failed login attempts detected",
-            Map.of(
-                "username", username,
-                "ipAddress", ipAddress,
-                "attempts", String.valueOf(attempts),
-                "action", "User blocked for 30 minutes"
-            )
+            metadata
         );
 
         logger.error("SECURITY ALERT: Brute force attack detected - User: {}, IP: {}, Attempts: {}",
@@ -179,14 +180,14 @@ public class SecurityMonitoringService {
         blockedIPs.put(ipAddress, blockUntil);
 
         // Log security alert
+        Map<String, String> metadata = new HashMap<>();
+        metadata.put("ipAddress", ipAddress == null ? "" : ipAddress);
+        metadata.put("attempts", String.valueOf(attempts));
+        metadata.put("action", "IP blocked for 1 hour");
         auditService.logSecurityAlert(
             "SUSPICIOUS_IP",
             "Multiple failed login attempts from IP",
-            Map.of(
-                "ipAddress", ipAddress,
-                "attempts", String.valueOf(attempts),
-                "action", "IP blocked for 1 hour"
-            )
+            metadata
         );
 
         logger.error("SECURITY ALERT: Suspicious IP detected - IP: {}, Attempts: {}",
@@ -199,15 +200,11 @@ public class SecurityMonitoringService {
     private void handleRateLimitViolation(String identifier, int count) {
         increaseSuspiciousScore(identifier, 3);
 
-        auditService.logSecurityAlert(
-            "RATE_LIMIT_VIOLATION",
-            "Rate limit exceeded",
-            Map.of(
-                "identifier", identifier,
-                "requests", String.valueOf(count),
-                "limit", String.valueOf(maxRequestsPerMinute)
-            )
-        );
+        Map<String, String> metadata = new HashMap<>();
+        metadata.put("identifier", identifier == null ? "" : identifier);
+        metadata.put("requests", String.valueOf(count));
+        metadata.put("limit", String.valueOf(maxRequestsPerMinute));
+        auditService.logSecurityAlert("RATE_LIMIT_VIOLATION", "Rate limit exceeded", metadata);
 
         logger.warn("Rate limit violation - Identifier: {}, Requests: {}", identifier, count);
     }
@@ -237,15 +234,11 @@ public class SecurityMonitoringService {
      * Handles detected suspicious activity.
      */
     private void handleSuspiciousActivity(String identifier, int score) {
-        auditService.logSecurityAlert(
-            "SUSPICIOUS_ACTIVITY",
-            "Suspicious activity threshold exceeded",
-            Map.of(
-                "identifier", identifier,
-                "score", String.valueOf(score),
-                "threshold", String.valueOf(suspiciousActivityThreshold)
-            )
-        );
+        Map<String, String> metadata = new HashMap<>();
+        metadata.put("identifier", identifier == null ? "" : identifier);
+        metadata.put("score", String.valueOf(score));
+        metadata.put("threshold", String.valueOf(suspiciousActivityThreshold));
+        auditService.logSecurityAlert("SUSPICIOUS_ACTIVITY", "Suspicious activity threshold exceeded", metadata);
 
         logger.warn("SECURITY WARNING: Suspicious activity detected - Identifier: {}, Score: {}",
                    identifier, score);

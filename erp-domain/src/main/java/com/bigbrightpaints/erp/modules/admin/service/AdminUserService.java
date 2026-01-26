@@ -6,6 +6,7 @@ import com.bigbrightpaints.erp.core.util.PasswordUtils;
 import com.bigbrightpaints.erp.modules.admin.dto.CreateUserRequest;
 import com.bigbrightpaints.erp.modules.admin.dto.UpdateUserRequest;
 import com.bigbrightpaints.erp.modules.admin.dto.UserDto;
+import com.bigbrightpaints.erp.modules.auth.service.RefreshTokenService;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -36,6 +37,7 @@ public class AdminUserService {
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
     private final TokenBlacklistService tokenBlacklistService;
+    private final RefreshTokenService refreshTokenService;
     private final DealerRepository dealerRepository;
     private final AccountRepository accountRepository;
 
@@ -46,6 +48,7 @@ public class AdminUserService {
                             PasswordEncoder passwordEncoder,
                             EmailService emailService,
                             TokenBlacklistService tokenBlacklistService,
+                            RefreshTokenService refreshTokenService,
                             DealerRepository dealerRepository,
                             AccountRepository accountRepository) {
         this.userRepository = userRepository;
@@ -55,6 +58,7 @@ public class AdminUserService {
         this.passwordEncoder = passwordEncoder;
         this.emailService = emailService;
         this.tokenBlacklistService = tokenBlacklistService;
+        this.refreshTokenService = refreshTokenService;
         this.dealerRepository = dealerRepository;
         this.accountRepository = accountRepository;
     }
@@ -170,6 +174,7 @@ public class AdminUserService {
         // Revoke tokens if permissions changed to force re-authentication
         if (requiresReauth) {
             tokenBlacklistService.revokeAllUserTokens(user.getEmail());
+            refreshTokenService.revokeAllForUser(user.getEmail());
         }
         return toDto(user);
     }
@@ -183,6 +188,7 @@ public class AdminUserService {
             userRepository.save(user);
             // Revoke all active tokens to force re-authentication
             tokenBlacklistService.revokeAllUserTokens(user.getEmail());
+            refreshTokenService.revokeAllForUser(user.getEmail());
             emailService.sendUserSuspendedEmail(user.getEmail(), user.getDisplayName());
         });
     }
@@ -202,6 +208,7 @@ public class AdminUserService {
         Company company = companyContextService.requireCurrentCompany();
         userRepository.lockByIdAndCompanyId(id, company.getId()).ifPresent(user -> {
             tokenBlacklistService.revokeAllUserTokens(user.getEmail());
+            refreshTokenService.revokeAllForUser(user.getEmail());
             userRepository.delete(user);
             emailService.sendUserDeletedEmail(user.getEmail(), user.getDisplayName());
         });
@@ -216,6 +223,7 @@ public class AdminUserService {
             user.setMfaRecoveryCodeHashes(List.of());
             userRepository.save(user);
             tokenBlacklistService.revokeAllUserTokens(user.getEmail());
+            refreshTokenService.revokeAllForUser(user.getEmail());
         });
     }
 

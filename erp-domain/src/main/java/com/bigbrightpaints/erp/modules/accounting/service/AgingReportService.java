@@ -2,6 +2,7 @@ package com.bigbrightpaints.erp.modules.accounting.service;
 
 import com.bigbrightpaints.erp.modules.accounting.domain.DealerLedgerEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.DealerLedgerRepository;
+import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
@@ -32,24 +33,29 @@ public class AgingReportService {
     private final DealerLedgerRepository dealerLedgerRepository;
     private final DealerRepository dealerRepository;
     private final CompanyContextService companyContextService;
+    private final CompanyClock companyClock;
 
     public AgingReportService(DealerLedgerRepository dealerLedgerRepository,
                               DealerRepository dealerRepository,
-                              CompanyContextService companyContextService) {
+                              CompanyContextService companyContextService,
+                              CompanyClock companyClock) {
         this.dealerLedgerRepository = dealerLedgerRepository;
         this.dealerRepository = dealerRepository;
         this.companyContextService = companyContextService;
+        this.companyClock = companyClock;
     }
 
     /**
      * Generate aged receivables report for all dealers
      */
     public AgedReceivablesReport getAgedReceivablesReport() {
-        return getAgedReceivablesReport(LocalDate.now());
+        Company company = companyContextService.requireCurrentCompany();
+        return getAgedReceivablesReport(companyClock.today(company));
     }
 
     public AgedReceivablesReport getAgedReceivablesReport(LocalDate asOfDate) {
         Company company = companyContextService.requireCurrentCompany();
+        LocalDate effectiveDate = asOfDate != null ? asOfDate : companyClock.today(company);
         List<DealerLedgerEntry> unpaidEntries = dealerLedgerRepository.findAllUnpaid(company);
         
         Map<Long, List<DealerLedgerEntry>> byDealer = unpaidEntries.stream()
@@ -60,7 +66,7 @@ public class AgingReportService {
         
         for (Map.Entry<Long, List<DealerLedgerEntry>> entry : byDealer.entrySet()) {
             Dealer dealer = entry.getValue().get(0).getDealer();
-            AgingBuckets buckets = calculateBuckets(entry.getValue(), asOfDate);
+            AgingBuckets buckets = calculateBuckets(entry.getValue(), effectiveDate);
             
             dealerDetails.add(new DealerAgingDetail(
                     dealer.getId(),
@@ -76,7 +82,7 @@ public class AgingReportService {
         // Sort by total outstanding descending
         dealerDetails.sort((a, b) -> b.totalOutstanding().compareTo(a.totalOutstanding()));
         
-        return new AgedReceivablesReport(asOfDate, dealerDetails, totalBuckets, totalBuckets.total());
+        return new AgedReceivablesReport(effectiveDate, dealerDetails, totalBuckets, totalBuckets.total());
     }
 
     /**
@@ -88,7 +94,8 @@ public class AgingReportService {
                 .orElseThrow(() -> new IllegalArgumentException("Dealer not found"));
         
         List<DealerLedgerEntry> unpaid = dealerLedgerRepository.findUnpaidByDealer(company, dealer);
-        AgingBuckets buckets = calculateBuckets(unpaid, LocalDate.now());
+        LocalDate today = companyClock.today(company);
+        AgingBuckets buckets = calculateBuckets(unpaid, today);
         
         return new DealerAgingDetail(
                 dealer.getId(),
@@ -108,7 +115,7 @@ public class AgingReportService {
                 .orElseThrow(() -> new IllegalArgumentException("Dealer not found"));
         
         List<DealerLedgerEntry> unpaid = dealerLedgerRepository.findUnpaidByDealer(company, dealer);
-        LocalDate today = LocalDate.now();
+        LocalDate today = companyClock.today(company);
         
         List<AgingLineItem> lineItems = unpaid.stream()
                 .map(e -> new AgingLineItem(
@@ -151,9 +158,9 @@ public class AgingReportService {
         BigDecimal totalOutstanding = unpaid.stream()
                 .map(DealerLedgerEntry::getOutstandingAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        
+        LocalDate today = companyClock.today(company);
         long overdueCount = unpaid.stream()
-                .filter(DealerLedgerEntry::isOverdue)
+                .filter(entry -> entry.isOverdue(today))
                 .count();
         
         return new DSOReport(

@@ -65,7 +65,7 @@ public class Invoice extends VersionedEntity {
     private String currency = "INR";
 
     @Column(name = "issue_date", nullable = false)
-    private LocalDate issueDate = LocalDate.now();
+    private LocalDate issueDate;
 
     @Column(name = "due_date")
     private LocalDate dueDate;
@@ -98,6 +98,9 @@ public class Invoice extends VersionedEntity {
         updatedAt = now;
         if (outstandingAmount == null || outstandingAmount.compareTo(BigDecimal.ZERO) == 0) {
             outstandingAmount = totalAmount != null ? totalAmount : BigDecimal.ZERO;
+        }
+        if (issueDate == null) {
+            throw new IllegalStateException("Invoice issue date must be set before persisting");
         }
     }
 
