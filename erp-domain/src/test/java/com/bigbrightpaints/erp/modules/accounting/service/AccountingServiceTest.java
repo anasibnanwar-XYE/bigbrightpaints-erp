@@ -1161,6 +1161,102 @@ class AccountingServiceTest {
                 .hasMessageContaining("must equal net cash required");
     }
 
+    @Test
+    void settleDealerInvoices_rejectsMissingInvoiceAllocation() {
+        Dealer dealer = new Dealer();
+        dealer.setName("Dealer");
+        Account arAccount = new Account();
+        arAccount.setCompany(company);
+        arAccount.setCode("AR");
+        dealer.setReceivableAccount(arAccount);
+        ReflectionTestUtils.setField(dealer, "id", 1L);
+        ReflectionTestUtils.setField(arAccount, "id", 10L);
+
+        when(dealerRepository.lockByCompanyAndId(eq(company), eq(1L))).thenReturn(Optional.of(dealer));
+        when(settlementAllocationRepository.findByCompanyAndIdempotencyKey(any(), any())).thenReturn(List.of());
+
+        SettlementAllocationRequest allocation = new SettlementAllocationRequest(
+                null,
+                2L,
+                new BigDecimal("100.00"),
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                null,
+                null);
+
+        DealerSettlementRequest request = new DealerSettlementRequest(
+                1L,
+                2L,
+                null,
+                null,
+                null,
+                null,
+                LocalDate.now(),
+                null,
+                null,
+                "IDEMP-TEST",
+                Boolean.FALSE,
+                List.of(allocation),
+                null
+        );
+
+        assertThatThrownBy(() -> accountingService.settleDealerInvoices(request))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Invoice allocation is required for dealer settlements");
+    }
+
+    @Test
+    void settleSupplierInvoices_rejectsMissingPurchaseAllocation() {
+        AccountingService service = spy(accountingService);
+
+        Supplier supplier = new Supplier();
+        supplier.setName("Supplier");
+        Account payable = new Account();
+        payable.setCompany(company);
+        payable.setCode("AP");
+        payable.setType(AccountType.LIABILITY);
+        ReflectionTestUtils.setField(payable, "id", 10L);
+        supplier.setPayableAccount(payable);
+        ReflectionTestUtils.setField(supplier, "id", 1L);
+
+        Account cash = new Account();
+        cash.setCompany(company);
+        cash.setCode("CASH");
+        ReflectionTestUtils.setField(cash, "id", 20L);
+
+        when(supplierRepository.lockByCompanyAndId(eq(company), eq(1L))).thenReturn(Optional.of(supplier));
+        when(settlementAllocationRepository.findByCompanyAndIdempotencyKey(any(), any())).thenReturn(List.of());
+        when(companyEntityLookup.requireAccount(eq(company), eq(20L))).thenReturn(cash);
+
+        SettlementAllocationRequest allocation = new SettlementAllocationRequest(
+                null,
+                null,
+                new BigDecimal("100.00"),
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                null,
+                null);
+
+        SupplierSettlementRequest request = new SupplierSettlementRequest(
+                1L,
+                20L,
+                null,
+                null,
+                null,
+                null,
+                LocalDate.of(2024, 4, 9),
+                "REF-AP-1",
+                "Supplier settlement",
+                "IDEMP-AP-1",
+                Boolean.FALSE,
+                List.of(allocation)
+        );
+
+        assertThatThrownBy(() -> service.settleSupplierInvoices(request))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Purchase allocation is required for supplier settlements");
+    }
+
     private JournalEntryDto stubEntry(long id) {
         return new JournalEntryDto(
                 id,

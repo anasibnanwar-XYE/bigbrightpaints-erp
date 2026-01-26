@@ -746,6 +746,14 @@ public class AccountingService {
         List<Invoice> touchedInvoices = new ArrayList<>();
 
         for (SettlementAllocationRequest allocation : allocations) {
+            if (allocation.invoiceId() == null) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Invoice allocation is required for dealer settlements");
+            }
+            if (allocation.purchaseId() != null) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Dealer settlements cannot allocate to purchases");
+            }
             BigDecimal applied = requirePositive(allocation.appliedAmount(), "appliedAmount");
             Invoice invoice = invoiceRepository.lockByCompanyAndId(company, allocation.invoiceId())
                     .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Invoice not found"));
@@ -1202,6 +1210,14 @@ public class AccountingService {
         List<RawMaterialPurchase> touchedPurchases = new ArrayList<>();
 
         for (SettlementAllocationRequest allocation : allocations) {
+            if (allocation.purchaseId() == null) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Purchase allocation is required for supplier settlements");
+            }
+            if (allocation.invoiceId() != null) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Supplier settlements cannot allocate to invoices");
+            }
             BigDecimal applied = requirePositive(allocation.appliedAmount(), "appliedAmount");
             RawMaterialPurchase purchase = rawMaterialPurchaseRepository.lockByCompanyAndId(company, allocation.purchaseId())
                     .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Raw material purchase not found"));
@@ -1312,6 +1328,14 @@ public class AccountingService {
         List<Invoice> touchedInvoices = new ArrayList<>();
 
         for (SettlementAllocationRequest allocation : allocations) {
+            if (allocation.invoiceId() == null) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Invoice allocation is required for dealer settlements");
+            }
+            if (allocation.purchaseId() != null) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Dealer settlements cannot allocate to purchases");
+            }
             BigDecimal applied = requirePositive(allocation.appliedAmount(), "appliedAmount");
             BigDecimal discount = normalizeNonNegative(allocation.discountAmount(), "discountAmount");
             BigDecimal writeOff = normalizeNonNegative(allocation.writeOffAmount(), "writeOffAmount");
@@ -1613,6 +1637,14 @@ public class AccountingService {
         List<RawMaterialPurchase> touchedPurchases = new ArrayList<>();
 
         for (SettlementAllocationRequest allocation : allocations) {
+            if (allocation.purchaseId() == null) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Purchase allocation is required for supplier settlements");
+            }
+            if (allocation.invoiceId() != null) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Supplier settlements cannot allocate to invoices");
+            }
             BigDecimal applied = requirePositive(allocation.appliedAmount(), "appliedAmount");
             BigDecimal discount = normalizeNonNegative(allocation.discountAmount(), "discountAmount");
             BigDecimal writeOff = normalizeNonNegative(allocation.writeOffAmount(), "writeOffAmount");
