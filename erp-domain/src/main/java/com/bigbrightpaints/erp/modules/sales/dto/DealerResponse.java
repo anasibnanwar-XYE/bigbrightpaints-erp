@@ -15,6 +15,5 @@ public record DealerResponse(
         BigDecimal outstandingBalance,
         Long receivableAccountId,
         String receivableAccountCode,
-        String portalEmail,
-        String generatedPassword
+        String portalEmail
 ) {}

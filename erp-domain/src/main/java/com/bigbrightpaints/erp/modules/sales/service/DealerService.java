@@ -8,6 +8,7 @@ import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.core.notification.EmailService;
 import com.bigbrightpaints.erp.modules.rbac.service.RoleService;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
@@ -41,6 +42,7 @@ public class DealerService {
     private final UserAccountRepository userAccountRepository;
     private final RoleService roleService;
     private final PasswordEncoder passwordEncoder;
+    private final EmailService emailService;
     private final AccountRepository accountRepository;
     private final DealerLedgerService dealerLedgerService;
 
@@ -49,6 +51,7 @@ public class DealerService {
                          UserAccountRepository userAccountRepository,
                          RoleService roleService,
                          PasswordEncoder passwordEncoder,
+                         EmailService emailService,
                          AccountRepository accountRepository,
                          DealerLedgerService dealerLedgerService) {
         this.dealerRepository = dealerRepository;
@@ -56,6 +59,7 @@ public class DealerService {
         this.userAccountRepository = userAccountRepository;
         this.roleService = roleService;
         this.passwordEncoder = passwordEncoder;
+        this.emailService = emailService;
         this.accountRepository = accountRepository;
         this.dealerLedgerService = dealerLedgerService;
     }
@@ -80,6 +84,7 @@ public class DealerService {
         String rawPassword = generateRandomPassword();
 
         UserAccount portalUser = new UserAccount(portalEmail, passwordEncoder.encode(rawPassword), dealer.getName());
+        portalUser.setMustChangePassword(true);
         portalUser.getRoles().add(roleService.ensureRoleExists("ROLE_DEALER"));
         portalUser.getCompanies().add(company);
         portalUser = userAccountRepository.save(portalUser);
@@ -90,7 +95,8 @@ public class DealerService {
         dealer.setReceivableAccount(receivableAccount);
         dealer = dealerRepository.save(dealer);
 
-        return toResponse(dealer, portalEmail, rawPassword);
+        emailService.sendUserCredentialsEmail(portalEmail, dealer.getName(), rawPassword);
+        return toResponse(dealer, portalEmail);
     }
 
     @Transactional
@@ -103,7 +109,6 @@ public class DealerService {
                 .map(dealer -> toResponse(
                         dealer,
                         dealer.getPortalUser() != null ? dealer.getPortalUser().getEmail() : null,
-                        null,
                         balances.getOrDefault(dealer.getId(), BigDecimal.ZERO)))
                 .toList();
     }
@@ -157,8 +162,7 @@ public class DealerService {
         dealer = dealerRepository.save(dealer);
         BigDecimal balance = dealerLedgerService.currentBalance(dealer.getId());
         return toResponse(dealer, 
-                dealer.getPortalUser() != null ? dealer.getPortalUser().getEmail() : null, 
-                null, 
+                dealer.getPortalUser() != null ? dealer.getPortalUser().getEmail() : null,
                 balance);
     }
 
@@ -232,12 +236,12 @@ public class DealerService {
         return UUID.randomUUID().toString().replace("-", "").substring(0, 12) + RANDOM.nextInt(10);
     }
 
-    private DealerResponse toResponse(Dealer dealer, String portalEmail, String generatedPassword) {
+    private DealerResponse toResponse(Dealer dealer, String portalEmail) {
         BigDecimal balance = dealer.getId() == null ? BigDecimal.ZERO : dealerLedgerService.currentBalance(dealer.getId());
-        return toResponse(dealer, portalEmail, generatedPassword, balance);
+        return toResponse(dealer, portalEmail, balance);
     }
 
-    private DealerResponse toResponse(Dealer dealer, String portalEmail, String generatedPassword, BigDecimal outstandingBalance) {
+    private DealerResponse toResponse(Dealer dealer, String portalEmail, BigDecimal outstandingBalance) {
         Account receivableAccount = dealer.getReceivableAccount();
         return new DealerResponse(
                 dealer.getId(),
@@ -251,8 +255,7 @@ public class DealerService {
                 outstandingBalance,
                 receivableAccount != null ? receivableAccount.getId() : null,
                 receivableAccount != null ? receivableAccount.getCode() : null,
-                portalEmail,
-                generatedPassword
+                portalEmail
         );
     }
 }
