@@ -101,7 +101,7 @@ public class PortalInsightsService {
         List<ProductionPlan> plans = productionPlanRepository.findByCompanyOrderByPlannedDateDesc(company);
 
         String revenue = currency(totalAmount(orders));
-        String last30 = currency(sumWithin(orders, 30));
+        String last30 = currency(sumWithin(orders, 30, company));
         long dealers = dealerRepository.findByCompanyOrderByNameAsc(company).size();
         long activeEmployees = employees.stream().filter(emp -> "ACTIVE".equalsIgnoreCase(emp.getStatus())).count();
         double fulfilment = ratio(
@@ -282,7 +282,7 @@ public class PortalInsightsService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    private BigDecimal sumWithin(List<SalesOrder> orders, int days) {
+    private BigDecimal sumWithin(List<SalesOrder> orders, int days, Company company) {
         Instant cutoff = companyClock.now(company).minus(days, ChronoUnit.DAYS);
         return orders.stream()
                 .filter(order -> order.getCreatedAt() != null && order.getCreatedAt().isAfter(cutoff))
