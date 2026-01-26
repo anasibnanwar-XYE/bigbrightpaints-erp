@@ -2,15 +2,15 @@
 
 ## Overnight Runner State
 - Branch: `predeploy-blockers-v1`
-- Current epic/milestone pointer: `Task 01 / EPIC 07 / Milestone 01 (dispatch safety validation)` — COMPLETE
+- Current epic/milestone pointer: `Task 01 COMPLETE`
 - Last commit SHA: `0335f1252600f2002541f0d3b1483a89db0d8ec3`
-- Next actions: await next epic/milestone; update/push if requested.
+- Next actions: Task 01 complete; await next task/epic.
 - Working tree status: pre-existing diffs present (unrelated); avoid touching unrelated files.
 
 ## Current State
 - Worktree: `/home/realnigga/Desktop/CLI_BACKEND_epic04`
 - Branch: `predeploy-blockers-v1`
-- Current milestone pointer: `Task 01 / EPIC 07 / Milestone 01 (dispatch safety validation)` — COMPLETE
+- Current milestone pointer: `Task 01 COMPLETE`
 - Working tree: pre-existing diffs present; proceeding without touching unrelated changes.
 
 ## Async Verify
@@ -73,20 +73,22 @@
 - EPIC 03 / Milestone 02 — Purchase returns + supplier settlements (PASS): `f74478a9eec6ee1897a8d62a3ad211041e1f7f55`.
 - EPIC 04 / Milestone 01 — Tenant boundary & authorization audit (PASS): `33834dc7d85cbe4f11dd142c99724d989c779ebd`.
 - EPIC 04 / Milestone 02 — Business-logic bypass + idempotency audit (PASS): `560c731dc6b6c32973fb1536095cf28050641369`.
-- EPIC 05 / Milestone 01 — Persist refresh tokens (PASS): `LOCAL (uncommitted)`.
-- EPIC 05 / Milestone 02 — Align revocation retention to refresh TTL (PASS): `LOCAL (uncommitted)`.
-- EPIC 05 / Milestone 03 — Admin revokes refresh tokens (PASS): `LOCAL (uncommitted)`.
+- EPIC 05 / Milestone 01 — Persist refresh tokens (PASS): `5ae128dd70ef5c92ba98b55a1ce8aa347fb4fab6`.
+- EPIC 05 / Milestone 02 — Align revocation retention to refresh TTL (PASS): `5ae128dd70ef5c92ba98b55a1ce8aa347fb4fab6`.
+- EPIC 05 / Milestone 03 — Admin revokes refresh tokens (PASS): `5ae128dd70ef5c92ba98b55a1ce8aa347fb4fab6`.
 - EPIC 05 / Milestone 01 — Inventory all posting paths + divergences (PASS): `cc6c9b982e778ef32efd8826e7e7578abc6095fd`.
 - EPIC 05 / Milestone 02 — Canonical reference consistency + uniqueness (PASS): `077510684e7dadda7f55fdad6a9975124ff5b437`.
 - EPIC 05 / Milestone 03 — Rounding standardization (PASS): `b0f34b6a1a7fbebf1432a7fb222e5a503989c71b`.
 - EPIC 05 / Milestone 04 — Inventory event journaling guard (PASS): `b1384dc7630ea4c85cd1abab5a935c4eb3c6e53b`.
-- EPIC 06 / Milestone 01 — Business date provider + timezone-safe defaults (PASS): `LOCAL (uncommitted)`.
-- EPIC 06 / Milestone 02 — Day-boundary regression coverage (PASS): `LOCAL (uncommitted)`.
+- EPIC 06 / Milestone 01 — Business date provider + timezone-safe defaults (PASS): `5ae128dd70ef5c92ba98b55a1ce8aa347fb4fab6`.
+- EPIC 06 / Milestone 02 — Day-boundary regression coverage (PASS): `5ae128dd70ef5c92ba98b55a1ce8aa347fb4fab6`.
 - EPIC 06 / Milestone 01 — Endpoint inventory + duplication map (PASS): `02973ee7ba26ef6ccbc1c560d75b495b6e1f1746`.
 - EPIC 06 / Milestone 02 — Data integrity audit for critical endpoints (PASS): `b2fcaa45e91faf0f693941d12c971dc4be1c2e4c`.
 - EPIC 06 / Milestone 03 — Performance + query plan budget (PASS): `009609bf63a59924218266aed1b3d715104e04cf`.
 - EPIC 07 / Milestone 01 — Accounting mental model docs (PASS): `e2be5a472e184fc04255164c30a3bfce0c37f586`.
-- EPIC 07 / Milestone 01 — Dispatch safety validation (PASS): `LOCAL (uncommitted)`.
+- EPIC 07 / Milestone 01 — Dispatch safety validation (PASS): `5ae128dd70ef5c92ba98b55a1ce8aa347fb4fab6`.
+- EPIC 08 / Milestone 01 — JournalEntry foreign amount BigDecimal (PASS): `ff4f5e7f84db295d8b028c5a1ca4a7c130cb9f9a`.
+- EPIC 09 / Milestone 01 — Prod mode detection for profile list (PASS): `ff4f5e7f84db295d8b028c5a1ca4a7c130cb9f9a`.
 - EPIC 08 / Milestone 01 — Regression matrix (PASS): `17fcb52901e557b53ead3bb09742c68b32da3a18`.
 - EPIC 08 / Milestone 02 — Domino gate (PASS): `16b3e097c0b61101a7105af7864fd0ba94c4f284`.
 - Production Readiness Checklist — COMPLETE: `a027d1fbd46e678467d3ca45bd2154cce02ac32e`.
@@ -303,6 +305,7 @@
 - 2026-01-26: `cd erp-domain && mvn -B -ntp -Dtest=RefreshTokenServiceIT,AuthControllerIT clean test` (PASS) — Tests run: 5, Failures: 0, Errors: 0, Skipped: 0.
 - 2026-01-26: `cd erp-domain && mvn -B -ntp -Dtest=CompanyClockTest test` (PASS) — Tests run: 2, Failures: 0, Errors: 0, Skipped: 0.
 - 2026-01-26: `cd erp-domain && mvn -B -ntp verify` (PASS) — Tests run: 442, Failures: 0, Errors: 0, Skipped: 4.
+- 2026-01-26: `cd erp-domain && mvn -B -ntp verify` (PASS) — Tests run: 444, Failures: 0, Errors: 0, Skipped: 4.
 
 ## Next Actions (explicit)
 1. Task 00 complete; no further actions queued.
