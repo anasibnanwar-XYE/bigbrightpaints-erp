@@ -332,6 +332,7 @@
 - 2026-01-27: Dealer creation now stores company name, avoids dummy portal emails by reusing existing users, generates policy-compliant passwords, and scopes dealer auto-creation to company (DealerService, Dealer, DealerResponse, AdminUserService, V100 migration). Tests not run (logic-only change).
 - 2026-01-27: Aligned bulk packing and portal insights date handling to CompanyClock (BulkPackingService, PortalInsightsService). Tests not run (logic-only change).
 - 2026-01-27: Fixed PortalInsightsService sumWithin to use CompanyClock with explicit company context after compile error. Tests pending.
+- 2026-01-27: Updated sales service tests for CompanyClock constructor changes (SalesServiceTest, SalesFulfillmentServiceTest). Tests pending.
 
 ## Next Actions (explicit)
 1. Task 00 complete; no further actions queued.

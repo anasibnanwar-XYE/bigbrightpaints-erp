@@ -14,6 +14,7 @@ import com.bigbrightpaints.erp.modules.invoice.service.InvoiceService;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderRepository;
 import com.bigbrightpaints.erp.modules.sales.dto.DispatchConfirmResponse;
+import com.bigbrightpaints.erp.core.util.CompanyClock;
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -40,6 +41,8 @@ class SalesFulfillmentServiceTest {
     private AccountingFacade accountingFacade;
     @Mock
     private InvoiceService invoiceService;
+    @Mock
+    private CompanyClock companyClock;
 
     private SalesFulfillmentService fulfillmentService;
 
@@ -51,7 +54,8 @@ class SalesFulfillmentServiceTest {
                 finishedGoodsService,
                 salesJournalService,
                 accountingFacade,
-                invoiceService);
+                invoiceService,
+                companyClock);
     }
 
     @Test
