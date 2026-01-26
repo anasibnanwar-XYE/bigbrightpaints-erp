@@ -325,9 +325,13 @@ class HighImpactRegressionIT extends AbstractIntegrationTest {
         );
         finishedGoodsService.registerBatch(batchRequest);
 
-        // Get initial inventory account balance
+        // Get initial inventory account balance + total quantity for valuation account
         Account inventoryAccount = accountRepository.findById(accountsA.get("INV").getId()).orElseThrow();
         BigDecimal invBalanceBefore = inventoryAccount.getBalance() == null ? BigDecimal.ZERO : inventoryAccount.getBalance();
+        BigDecimal totalQty = finishedGoodBatchRepository.findByFinishedGood_ValuationAccountId(accountsA.get("INV").getId())
+                .stream()
+                .map(batch -> batch.getQuantityTotal() != null ? batch.getQuantityTotal() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         // Revalue by +20 (total value increase = 20)
         BigDecimal revaluationAmount = new BigDecimal("20.00");
@@ -351,10 +355,12 @@ class HighImpactRegressionIT extends AbstractIntegrationTest {
                 .findFirst()
                 .orElseThrow();
 
-        // New unit cost = (10 * 100 + 20) / 10 = 102
-        BigDecimal expectedUnitCost = new BigDecimal("102.000000");
+        BigDecimal deltaPerUnit = totalQty.compareTo(BigDecimal.ZERO) > 0
+                ? revaluationAmount.divide(totalQty, 6, RoundingMode.HALF_UP)
+                : BigDecimal.ZERO;
+        BigDecimal expectedUnitCost = new BigDecimal("100.000000").add(deltaPerUnit).setScale(6, RoundingMode.HALF_UP);
         assertThat(updatedBatch.getUnitCost().setScale(6, RoundingMode.HALF_UP))
-                .as("Batch unitCost should be updated to 102.000000")
+                .as("Batch unitCost should reflect proportional revaluation")
                 .isEqualByComparingTo(expectedUnitCost);
 
         // Verify inventory account balance increased by revaluation amount

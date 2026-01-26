@@ -241,12 +241,12 @@ public class FactoryPackagingCostingIT extends AbstractIntegrationTest {
         assertLineAmount(packingSessionJournal, wip.getId(), new BigDecimal("250.00"), true);
 
         List<RawMaterialMovement> rmMovements = rawMaterialMovementRepository
-                .findByReferenceTypeAndReferenceId(InventoryReference.PRODUCTION_LOG, productionCode);
+                .findByRawMaterialCompanyAndReferenceTypeAndReferenceId(company, InventoryReference.PRODUCTION_LOG, productionCode);
         assertThat(rmMovements).isNotEmpty();
         assertThat(rmMovements).allMatch(movement -> rmJournal.getId().equals(movement.getJournalEntryId()));
 
         List<RawMaterialMovement> packagingMovements = rawMaterialMovementRepository
-                .findByReferenceTypeAndReferenceId(InventoryReference.PACKING_RECORD, packagingReference);
+                .findByRawMaterialCompanyAndReferenceTypeAndReferenceId(company, InventoryReference.PACKING_RECORD, packagingReference);
         assertThat(packagingMovements).isNotEmpty();
         assertThat(packagingMovements).allMatch(movement -> packagingJournal.getId().equals(movement.getJournalEntryId()));
 
