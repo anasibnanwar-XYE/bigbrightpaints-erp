@@ -323,6 +323,7 @@
 - 2026-01-27: Attendance and payroll calculations now use CompanyClock timezone; payroll runs reuse existing idempotency keys to avoid duplicate runs and return summaries from persisted runs. Tests not run (logic-only change).
 - 2026-01-27: Payroll run default runDate now uses CompanyClock to align with company timezone. Tests not run (logic-only change).
 - 2026-01-27: Dealer creation no longer returns generated passwords; dealer portal users get must-change-password and credentials email via EmailService. Tests not run (logic-only change).
+- 2026-01-27: `scripts/task00_async_verify.sh` (PASS) — PID 67826; exit 0; BUILD SUCCESS; Tests run: 457, Failures: 0, Errors: 0, Skipped: 4. (Note: started before latest dealer password response change.)
 
 ## Next Actions (explicit)
 1. Task 00 complete; no further actions queued.
