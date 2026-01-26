@@ -104,6 +104,9 @@ public class ReportService {
         BigDecimal investing = BigDecimal.ZERO;
         BigDecimal financing = BigDecimal.ZERO;
         for (JournalEntry entry : entries) {
+            if (!"POSTED".equalsIgnoreCase(entry.getStatus())) {
+                continue;
+            }
             for (JournalLine line : entry.getLines()) {
                 BigDecimal delta = safe(line.getDebit()).subtract(safe(line.getCredit()));
                 CashCategory category = classify(line.getAccount());
@@ -150,7 +153,10 @@ public class ReportService {
             if (dealer == null) {
                 continue;
             }
-            BigDecimal outstanding = Optional.ofNullable(invoice.getTotalAmount()).orElse(BigDecimal.ZERO);
+            BigDecimal outstanding = invoice.getOutstandingAmount();
+            if (outstanding == null) {
+                outstanding = Optional.ofNullable(invoice.getTotalAmount()).orElse(BigDecimal.ZERO);
+            }
             if (outstanding.compareTo(BigDecimal.ZERO) == 0) {
                 continue;
             }
@@ -340,7 +346,7 @@ public class ReportService {
         }
         List<FinishedGoodBatch> batches = finishedGoodBatchRepository.findByFinishedGoodOrderByManufacturedAtAsc(finishedGood);
         return consumeValuation(remaining, batches.stream()
-                .map(batch -> new CostSlice(batch.getQuantityAvailable(), batch.getUnitCost()))
+                .map(batch -> new CostSlice(batch.getQuantityTotal(), batch.getUnitCost()))
                 .toList());
     }
 

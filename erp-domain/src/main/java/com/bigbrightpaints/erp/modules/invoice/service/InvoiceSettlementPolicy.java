@@ -101,10 +101,16 @@ public class InvoiceSettlementPolicy {
         }
         if (outstanding == null || outstanding.compareTo(BigDecimal.ZERO) <= 0) {
             invoice.setStatus(InvoiceStatus.PAID.name());
-        } else if (outstanding.compareTo(invoice.getTotalAmount()) < 0) {
+            return;
+        }
+        BigDecimal total = invoice.getTotalAmount() != null ? invoice.getTotalAmount() : BigDecimal.ZERO;
+        if (outstanding.compareTo(total) >= 0) {
+            if (!InvoiceStatus.DRAFT.name().equalsIgnoreCase(invoice.getStatus())) {
+                invoice.setStatus(InvoiceStatus.ISSUED.name());
+            }
+        } else {
             invoice.setStatus(InvoiceStatus.PARTIAL.name());
         }
-        // Keep ISSUED status if no payment applied yet
     }
 
     public void applyCredit(Invoice invoice, BigDecimal amount, String reference) {
@@ -123,9 +129,7 @@ public class InvoiceSettlementPolicy {
         }
         invoice.setOutstandingAmount(restored);
         invoice.getPaymentReferences().remove(reference);
-        invoice.setStatus(restored.compareTo(BigDecimal.ZERO) == 0
-                ? InvoiceStatus.PAID.name()
-                : InvoiceStatus.PARTIAL.name());
+        updateStatusFromOutstanding(invoice, restored);
     }
 
     public void voidInvoice(Invoice invoice) {
@@ -139,7 +143,9 @@ public class InvoiceSettlementPolicy {
     }
 
     private boolean isVoid(Invoice invoice) {
-        return InvoiceStatus.VOID.name().equalsIgnoreCase(invoice.getStatus());
+        String status = invoice.getStatus();
+        return InvoiceStatus.VOID.name().equalsIgnoreCase(status)
+                || InvoiceStatus.REVERSED.name().equalsIgnoreCase(status);
     }
 
     private void validatePositive(BigDecimal amount, String label) {

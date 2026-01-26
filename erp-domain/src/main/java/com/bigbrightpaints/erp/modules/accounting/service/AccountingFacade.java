@@ -1091,10 +1091,8 @@ public class AccountingFacade {
                     .withDetail("dealerId", dealerId);
         }
 
-        // Generate reference number
-        String reference = "CRN-" + invoiceNumber;
-
-        // Check for duplicate
+        // Generate a unique reference number per return (avoid invoice-level de-duplication)
+        String reference = resolveSalesReturnReference(company, "CRN-" + sanitize(invoiceNumber));
         Optional<JournalEntry> existing = journalEntryRepository.findByCompanyAndReferenceNumber(company, reference);
         if (existing.isPresent()) {
             log.info("Sales return journal already exists for reference: {}", reference);
@@ -1447,6 +1445,39 @@ public class AccountingFacade {
         }
         // Preserve hyphens for readability (BBP-2025-00001 stays readable)
         return value.replaceAll("[^A-Za-z0-9-]", "").toUpperCase();
+    }
+
+    private String resolveSalesReturnReference(Company company, String baseReference) {
+        if (!StringUtils.hasText(baseReference)) {
+            return "CRN-GEN";
+        }
+        Optional<JournalEntry> baseEntry = journalEntryRepository.findByCompanyAndReferenceNumber(company, baseReference);
+        if (baseEntry.isEmpty()) {
+            return baseReference;
+        }
+        String prefix = baseReference + "-R";
+        List<JournalEntry> existingReturns = journalEntryRepository
+                .findByCompanyAndReferenceNumberStartingWith(company, prefix);
+        int maxIndex = 0;
+        for (JournalEntry entry : existingReturns) {
+            String ref = entry.getReferenceNumber();
+            if (ref == null || !ref.startsWith(prefix)) {
+                continue;
+            }
+            String suffix = ref.substring(prefix.length());
+            if (suffix.isEmpty()) {
+                continue;
+            }
+            try {
+                int index = Integer.parseInt(suffix);
+                if (index > maxIndex) {
+                    maxIndex = index;
+                }
+            } catch (NumberFormatException ignored) {
+                // skip non-numeric suffixes
+            }
+        }
+        return prefix + (maxIndex + 1);
     }
 
     private JournalEntryDto toSimpleDto(JournalEntry entry) {

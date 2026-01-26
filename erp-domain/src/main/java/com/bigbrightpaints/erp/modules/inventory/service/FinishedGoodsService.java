@@ -466,13 +466,24 @@ public class FinishedGoodsService {
 
         // Build map of batch ID to requested quantity from slip lines
         Map<Long, BigDecimal> slipLineQtyByBatch = new HashMap<>();
+        Map<Long, List<PackagingSlipLine>> slipLinesByBatch = new HashMap<>();
+        Map<PackagingSlipLine, BigDecimal> remainingByLine = new HashMap<>();
         for (var slipLine : slip.getLines()) {
-            if (slipLine.getFinishedGoodBatch() != null && slipLine.getQuantity() != null) {
+            FinishedGoodBatch batch = slipLine.getFinishedGoodBatch();
+            if (batch != null && slipLine.getQuantity() != null) {
                 slipLineQtyByBatch.merge(
-                        slipLine.getFinishedGoodBatch().getId(),
+                        batch.getId(),
                         slipLine.getQuantity(),
                         BigDecimal::add);
+                slipLinesByBatch.computeIfAbsent(batch.getId(), ignored -> new ArrayList<>()).add(slipLine);
             }
+            BigDecimal ordered = slipLine.getOrderedQuantity() != null ? slipLine.getOrderedQuantity() : slipLine.getQuantity();
+            if (ordered == null) {
+                ordered = BigDecimal.ZERO;
+            }
+            slipLine.setShippedQuantity(BigDecimal.ZERO);
+            slipLine.setBackorderQuantity(ordered);
+            remainingByLine.put(slipLine, ordered);
         }
 
         List<InventoryReservation> reservations = inventoryReservationRepository
@@ -547,9 +558,6 @@ public class FinishedGoodsService {
                         "Batch stock insufficient for batch " + batch.getBatchCode()
                                 + " FG " + fg.getProductCode());
                 batch.setQuantityTotal(batchTotal.subtract(shipQty));
-                BigDecimal qtyAvailable = safeQuantity(batch.getQuantityAvailable());
-                BigDecimal updatedAvailable = qtyAvailable.subtract(shipQty.min(qtyAvailable));
-                batch.setQuantityAvailable(updatedAvailable);
                 batchesToSave.add(batch);
             }
             recordMovement(fg, batch, InventoryReference.SALES_ORDER, salesOrderId.toString(), "DISPATCH", shipQty, unitCost);
@@ -559,6 +567,30 @@ public class FinishedGoodsService {
                     .computeIfAbsent(postingKey,
                             key -> new DispatchPostingBuilder(fg.getValuationAccountId(), fg.getCogsAccountId()))
                     .addCost(unitCost.multiply(shipQty));
+
+            if (batch != null) {
+                List<PackagingSlipLine> batchLines = slipLinesByBatch.get(batch.getId());
+                if (batchLines != null && shipQty.compareTo(BigDecimal.ZERO) > 0) {
+                    BigDecimal remainingToAllocate = shipQty;
+                    for (PackagingSlipLine line : batchLines) {
+                        BigDecimal lineRemaining = remainingByLine.getOrDefault(line, BigDecimal.ZERO);
+                        if (lineRemaining.compareTo(BigDecimal.ZERO) <= 0) {
+                            continue;
+                        }
+                        BigDecimal allocation = remainingToAllocate.min(lineRemaining);
+                        if (allocation.compareTo(BigDecimal.ZERO) <= 0) {
+                            continue;
+                        }
+                        BigDecimal shippedSoFar = safeQuantity(line.getShippedQuantity());
+                        line.setShippedQuantity(shippedSoFar.add(allocation));
+                        remainingByLine.put(line, lineRemaining.subtract(allocation));
+                        remainingToAllocate = remainingToAllocate.subtract(allocation);
+                        if (remainingToAllocate.compareTo(BigDecimal.ZERO) <= 0) {
+                            break;
+                        }
+                    }
+                }
+            }
         }
         finishedGoodRepository.saveAll(lockedGoods.values());
         lockedGoods.keySet().forEach(wacCache::remove);
@@ -582,6 +614,14 @@ public class FinishedGoodsService {
             }
         } else {
             slip.setStatus(anyPending ? "PENDING_STOCK" : slip.getStatus());
+        }
+        for (PackagingSlipLine line : slip.getLines()) {
+            BigDecimal ordered = line.getOrderedQuantity() != null ? line.getOrderedQuantity() : line.getQuantity();
+            BigDecimal shipped = safeQuantity(line.getShippedQuantity());
+            if (ordered == null) {
+                ordered = BigDecimal.ZERO;
+            }
+            line.setBackorderQuantity(ordered.subtract(shipped).max(BigDecimal.ZERO));
         }
         packagingSlipRepository.save(slip);
 
