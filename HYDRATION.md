@@ -309,6 +309,8 @@
 - 2026-01-26: `cd erp-domain && mvn -B -ntp verify` (PASS) — Tests run: 448, Failures: 0, Errors: 0, Skipped: 4.
 - 2026-01-27: `cd erp-domain && mvn -B -ntp -Dtest=AccountingServiceTest test` (PASS) — Tests run: 26, Failures: 0, Errors: 0, Skipped: 0.
 - 2026-01-27: Adjusted settlement outstanding logic to use applied amount only; revaluation now distributes across batches; added unit tests covering both.
+- 2026-01-27: `cd erp-domain && mvn -B -ntp -Dtest=AccountingFacadeTest test` (PASS) — Tests run: 1, Failures: 0, Errors: 0, Skipped: 0.
+- 2026-01-27: Sales return idempotency now uses hash reference when base CRN exists; added AccountingFacadeTest coverage.
 
 ## Next Actions (explicit)
 1. Task 00 complete; no further actions queued.

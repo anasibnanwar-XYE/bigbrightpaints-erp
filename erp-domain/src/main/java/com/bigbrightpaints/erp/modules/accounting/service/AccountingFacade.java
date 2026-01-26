@@ -1120,7 +1120,7 @@ public class AccountingFacade {
             return toSimpleDto(existing.get());
         }
 
-        String reference = resolveSalesReturnReference(company, baseReference);
+        String reference = resolveSalesReturnReference(company, baseReference, hashReference);
         Optional<JournalEntry> existingByRef = journalEntryRepository.findByCompanyAndReferenceNumber(company, reference);
         if (existingByRef.isPresent()) {
             log.info("Sales return journal already exists for reference: {}", reference);
@@ -1529,13 +1529,16 @@ public class AccountingFacade {
         return value.stripTrailingZeros().toPlainString();
     }
 
-    private String resolveSalesReturnReference(Company company, String baseReference) {
+    private String resolveSalesReturnReference(Company company, String baseReference, String hashReference) {
         if (!StringUtils.hasText(baseReference)) {
             return "CRN-GEN";
         }
         Optional<JournalEntry> baseEntry = journalEntryRepository.findByCompanyAndReferenceNumber(company, baseReference);
         if (baseEntry.isEmpty()) {
             return baseReference;
+        }
+        if (StringUtils.hasText(hashReference)) {
+            return hashReference.trim();
         }
         String prefix = baseReference + "-R";
         List<JournalEntry> existingReturns = journalEntryRepository
