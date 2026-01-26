@@ -203,7 +203,7 @@ public class AttendanceService {
 
     private boolean isMarkedToday(Company company, Employee employee) {
         return attendanceRepository.existsByCompanyAndEmployeeAndAttendanceDate(
-                company, employee, LocalDate.now());
+                company, employee, companyClock.today(company));
     }
 
     private boolean isWeekend(LocalDate date) {

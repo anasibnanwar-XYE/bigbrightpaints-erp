@@ -2,6 +2,7 @@ package com.bigbrightpaints.erp.modules.hr.service;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
+import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
@@ -25,19 +26,22 @@ public class HrService {
     private final PayrollRunRepository payrollRunRepository;
     private final AttendanceRepository attendanceRepository;
     private final CompanyEntityLookup companyEntityLookup;
+    private final CompanyClock companyClock;
 
     public HrService(CompanyContextService companyContextService,
                      EmployeeRepository employeeRepository,
                      LeaveRequestRepository leaveRequestRepository,
                      PayrollRunRepository payrollRunRepository,
                      AttendanceRepository attendanceRepository,
-                     CompanyEntityLookup companyEntityLookup) {
+                     CompanyEntityLookup companyEntityLookup,
+                     CompanyClock companyClock) {
         this.companyContextService = companyContextService;
         this.employeeRepository = employeeRepository;
         this.leaveRequestRepository = leaveRequestRepository;
         this.payrollRunRepository = payrollRunRepository;
         this.attendanceRepository = attendanceRepository;
         this.companyEntityLookup = companyEntityLookup;
+        this.companyClock = companyClock;
     }
 
     /* Employees */
@@ -302,7 +306,7 @@ public class HrService {
     public AttendanceDto markAttendance(Long employeeId, MarkAttendanceRequest request) {
         Company company = companyContextService.requireCurrentCompany();
         Employee employee = companyEntityLookup.requireEmployee(company, employeeId);
-        java.time.LocalDate date = request.date() != null ? request.date() : java.time.LocalDate.now();
+        java.time.LocalDate date = request.date() != null ? request.date() : companyClock.today(company);
         
         // Check if already marked, update if exists
         Attendance attendance = attendanceRepository.findByCompanyAndEmployeeAndAttendanceDate(company, employee, date)
@@ -371,7 +375,7 @@ public class HrService {
      */
     public AttendanceSummaryDto getTodayAttendanceSummary() {
         Company company = companyContextService.requireCurrentCompany();
-        java.time.LocalDate today = java.time.LocalDate.now();
+        java.time.LocalDate today = companyClock.today(company);
         
         List<Attendance> attendances = attendanceRepository.findByCompanyAndAttendanceDateOrderByEmployeeFirstNameAsc(company, today);
         long totalEmployees = employeeRepository.countByCompanyAndStatus(company, "ACTIVE");

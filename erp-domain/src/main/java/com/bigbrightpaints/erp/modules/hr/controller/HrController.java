@@ -2,6 +2,9 @@ package com.bigbrightpaints.erp.modules.hr.controller;
 
 import com.bigbrightpaints.erp.modules.hr.dto.*;
 import com.bigbrightpaints.erp.modules.hr.service.HrService;
+import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -10,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 import io.swagger.v3.oas.annotations.Operation;
 
 import java.util.List;
+import java.time.LocalDate;
 
 @RestController
 @RequestMapping("/api/v1/hr")
@@ -17,9 +21,15 @@ import java.util.List;
 public class HrController {
 
     private final HrService hrService;
+    private final CompanyContextService companyContextService;
+    private final CompanyClock companyClock;
 
-    public HrController(HrService hrService) {
+    public HrController(HrService hrService,
+                        CompanyContextService companyContextService,
+                        CompanyClock companyClock) {
         this.hrService = hrService;
+        this.companyContextService = companyContextService;
+        this.companyClock = companyClock;
     }
 
     /* Employees */
@@ -79,7 +89,9 @@ public class HrController {
 
     @GetMapping("/attendance/today")
     public ResponseEntity<ApiResponse<List<AttendanceDto>>> attendanceToday() {
-        return ResponseEntity.ok(ApiResponse.success(hrService.listAttendanceByDate(java.time.LocalDate.now())));
+        Company company = companyContextService.requireCurrentCompany();
+        LocalDate today = companyClock.today(company);
+        return ResponseEntity.ok(ApiResponse.success(hrService.listAttendanceByDate(today)));
     }
 
     @GetMapping("/attendance/summary")

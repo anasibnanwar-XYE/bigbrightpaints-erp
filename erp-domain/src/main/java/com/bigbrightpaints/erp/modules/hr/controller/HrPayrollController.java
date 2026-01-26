@@ -3,6 +3,9 @@ package com.bigbrightpaints.erp.modules.hr.controller;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRun;
 import com.bigbrightpaints.erp.modules.hr.service.PayrollService;
 import com.bigbrightpaints.erp.modules.hr.service.PayrollService.*;
+import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -23,9 +26,15 @@ import java.util.Map;
 public class HrPayrollController {
 
     private final PayrollService payrollService;
+    private final CompanyContextService companyContextService;
+    private final CompanyClock companyClock;
 
-    public HrPayrollController(PayrollService payrollService) {
+    public HrPayrollController(PayrollService payrollService,
+                               CompanyContextService companyContextService,
+                               CompanyClock companyClock) {
         this.payrollService = payrollService;
+        this.companyContextService = companyContextService;
+        this.companyClock = companyClock;
     }
 
     // ===== PAYROLL RUNS =====
@@ -128,7 +137,8 @@ public class HrPayrollController {
 
     @GetMapping("/summary/current-week")
     public ResponseEntity<ApiResponse<WeeklyPaySummaryDto>> getCurrentWeekPaySummary() {
-        LocalDate today = LocalDate.now();
+        Company company = companyContextService.requireCurrentCompany();
+        LocalDate today = companyClock.today(company);
         LocalDate saturday = today.plusDays(6 - today.getDayOfWeek().getValue());
         return ResponseEntity.ok(ApiResponse.success("Current week pay summary",
             payrollService.getWeeklyPaySummary(saturday)));
@@ -136,7 +146,8 @@ public class HrPayrollController {
 
     @GetMapping("/summary/current-month")
     public ResponseEntity<ApiResponse<MonthlyPaySummaryDto>> getCurrentMonthPaySummary() {
-        LocalDate today = LocalDate.now();
+        Company company = companyContextService.requireCurrentCompany();
+        LocalDate today = companyClock.today(company);
         return ResponseEntity.ok(ApiResponse.success("Current month pay summary",
             payrollService.getMonthlyPaySummary(today.getYear(), today.getMonthValue())));
     }

@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.sales.service;
 
 import com.bigbrightpaints.erp.modules.accounting.service.DealerLedgerService;
+import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
@@ -35,6 +36,7 @@ public class DealerPortalService {
     private final InvoicePdfService invoicePdfService;
     private final DealerService dealerService;
     private final SalesOrderRepository salesOrderRepository;
+    private final CompanyClock companyClock;
 
     public DealerPortalService(DealerRepository dealerRepository,
                                CompanyContextService companyContextService,
@@ -42,7 +44,8 @@ public class DealerPortalService {
                                InvoiceRepository invoiceRepository,
                                InvoicePdfService invoicePdfService,
                                DealerService dealerService,
-                               SalesOrderRepository salesOrderRepository) {
+                               SalesOrderRepository salesOrderRepository,
+                               CompanyClock companyClock) {
         this.dealerRepository = dealerRepository;
         this.companyContextService = companyContextService;
         this.dealerLedgerService = dealerLedgerService;
@@ -50,6 +53,7 @@ public class DealerPortalService {
         this.invoicePdfService = invoicePdfService;
         this.dealerService = dealerService;
         this.salesOrderRepository = salesOrderRepository;
+        this.companyClock = companyClock;
     }
 
     public Dealer getCurrentDealer() {
@@ -157,7 +161,7 @@ public class DealerPortalService {
         List<Invoice> invoices = invoiceRepository.findByCompanyAndDealerOrderByIssueDateDesc(
                 dealer.getCompany(), dealer);
         
-        LocalDate today = LocalDate.now();
+        LocalDate today = companyClock.today(dealer.getCompany());
         
         BigDecimal current = BigDecimal.ZERO;      // Not yet due
         BigDecimal days1to30 = BigDecimal.ZERO;    // 1-30 days overdue

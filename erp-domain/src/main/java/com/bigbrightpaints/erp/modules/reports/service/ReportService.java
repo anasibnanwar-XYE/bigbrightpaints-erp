@@ -140,7 +140,7 @@ public class ReportService {
         return dealers.stream()
                 .map(dealer -> {
                     BigDecimal outstanding = balances.getOrDefault(dealer.getId(), BigDecimal.ZERO);
-                    return new AccountStatementEntryDto(dealer.getName(), LocalDate.now(),
+                    return new AccountStatementEntryDto(dealer.getName(), companyClock.today(company),
                             "SO-" + dealer.getCode(), outstanding, BigDecimal.ZERO, outstanding);
                 })
                 .toList();

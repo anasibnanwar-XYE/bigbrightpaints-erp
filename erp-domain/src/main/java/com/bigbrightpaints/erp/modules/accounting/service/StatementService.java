@@ -5,6 +5,7 @@ import com.bigbrightpaints.erp.modules.accounting.dto.AgingBucketDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.AgingSummaryResponse;
 import com.bigbrightpaints.erp.modules.accounting.dto.PartnerStatementResponse;
 import com.bigbrightpaints.erp.modules.accounting.dto.StatementTransactionDto;
+import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
@@ -28,25 +29,29 @@ public class StatementService {
     private final SupplierRepository supplierRepository;
     private final DealerLedgerRepository dealerLedgerRepository;
     private final SupplierLedgerRepository supplierLedgerRepository;
+    private final CompanyClock companyClock;
 
     public StatementService(CompanyContextService companyContextService,
                             DealerRepository dealerRepository,
                             SupplierRepository supplierRepository,
                             DealerLedgerRepository dealerLedgerRepository,
-                            SupplierLedgerRepository supplierLedgerRepository) {
+                            SupplierLedgerRepository supplierLedgerRepository,
+                            CompanyClock companyClock) {
         this.companyContextService = companyContextService;
         this.dealerRepository = dealerRepository;
         this.supplierRepository = supplierRepository;
         this.dealerLedgerRepository = dealerLedgerRepository;
         this.supplierLedgerRepository = supplierLedgerRepository;
+        this.companyClock = companyClock;
     }
 
     public PartnerStatementResponse dealerStatement(Long dealerId, LocalDate from, LocalDate to) {
         Company company = companyContextService.requireCurrentCompany();
         Dealer dealer = dealerRepository.findByCompanyAndId(company, dealerId)
                 .orElseThrow(() -> new IllegalArgumentException("Dealer not found"));
-        LocalDate start = from == null ? LocalDate.now().minusMonths(6) : from;
-        LocalDate end = to == null ? LocalDate.now() : to;
+        LocalDate today = companyClock.today(company);
+        LocalDate start = from == null ? today.minusMonths(6) : from;
+        LocalDate end = to == null ? today : to;
 
         BigDecimal opening = dealerLedgerRepository.findByCompanyAndDealerAndEntryDateBeforeOrderByEntryDateAsc(company, dealer, start)
                 .stream()
@@ -85,8 +90,9 @@ public class StatementService {
         Company company = companyContextService.requireCurrentCompany();
         Supplier supplier = supplierRepository.findByCompanyAndId(company, supplierId)
                 .orElseThrow(() -> new IllegalArgumentException("Supplier not found"));
-        LocalDate start = from == null ? LocalDate.now().minusMonths(6) : from;
-        LocalDate end = to == null ? LocalDate.now() : to;
+        LocalDate today = companyClock.today(company);
+        LocalDate start = from == null ? today.minusMonths(6) : from;
+        LocalDate end = to == null ? today : to;
 
         BigDecimal opening = supplierLedgerRepository.findByCompanyAndSupplierAndEntryDateBeforeOrderByEntryDateAsc(company, supplier, start)
                 .stream()
@@ -125,7 +131,7 @@ public class StatementService {
         Company company = companyContextService.requireCurrentCompany();
         Dealer dealer = dealerRepository.findByCompanyAndId(company, dealerId)
                 .orElseThrow(() -> new IllegalArgumentException("Dealer not found"));
-        LocalDate ref = asOf == null ? LocalDate.now() : asOf;
+        LocalDate ref = asOf == null ? companyClock.today(company) : asOf;
         List<int[]> buckets = parseBuckets(bucketParam);
         List<DealerLedgerEntry> entries = dealerLedgerRepository.findByCompanyAndDealerOrderByEntryDateAsc(company, dealer);
         BigDecimal balance = BigDecimal.ZERO;
@@ -164,7 +170,7 @@ public class StatementService {
         Company company = companyContextService.requireCurrentCompany();
         Supplier supplier = supplierRepository.findByCompanyAndId(company, supplierId)
                 .orElseThrow(() -> new IllegalArgumentException("Supplier not found"));
-        LocalDate ref = asOf == null ? LocalDate.now() : asOf;
+        LocalDate ref = asOf == null ? companyClock.today(company) : asOf;
         List<int[]> buckets = parseBuckets(bucketParam);
         List<SupplierLedgerEntry> entries = supplierLedgerRepository.findByCompanyAndSupplierOrderByEntryDateAsc(company, supplier);
         BigDecimal balance = BigDecimal.ZERO;
