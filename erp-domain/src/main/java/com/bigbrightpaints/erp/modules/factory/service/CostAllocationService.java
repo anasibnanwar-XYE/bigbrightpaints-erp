@@ -106,6 +106,8 @@ public class CostAllocationService {
         }
 
         String periodKey = String.format("%04d%02d", request.year(), request.month());
+        List<ProductionLog> allocatable = new ArrayList<>();
+        int skipped = 0;
         for (ProductionLog batch : batches) {
             if (batch.getProductionCode() == null) {
                 continue;
@@ -113,20 +115,23 @@ public class CostAllocationService {
             Optional<String> existingRef = accountingFacade
                     .findExistingCostVarianceReference(batch.getProductionCode(), periodKey);
             if (existingRef.isPresent()) {
-                log.info("Cost allocation skipped for period {} due to existing variance journal {}",
-                        periodKey, existingRef.get());
-                return new CostAllocationResponse(
-                        request.year(),
-                        request.month(),
-                        batches.size(),
-                        totalLitersProduced,
-                        BigDecimal.ZERO,
-                        BigDecimal.ZERO,
-                        BigDecimal.ZERO,
-                        List.of(),
-                        "Cost variance allocation skipped; existing journal " + existingRef.get()
-                );
+                skipped++;
+                continue;
             }
+            allocatable.add(batch);
+        }
+        if (allocatable.isEmpty()) {
+            return new CostAllocationResponse(
+                    request.year(),
+                    request.month(),
+                    0,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    List.of(),
+                    "All batches already have cost variance journals for period " + periodKey
+            );
         }
 
         BigDecimal appliedLabor = batches.stream()
@@ -156,9 +161,6 @@ public class CostAllocationService {
             );
         }
 
-        BigDecimal variancePerLiter = totalVariance
-                .divide(totalLitersProduced, 4, RoundingMode.HALF_UP);
-
         // Find accounting accounts
         Account finishedGoodsAccount = requireAccount(company, request.finishedGoodsAccountId(), AccountType.ASSET);
         Account payrollExpenseAccount = requireAccount(company, request.laborExpenseAccountId(), AccountType.EXPENSE);
@@ -168,9 +170,34 @@ public class CostAllocationService {
         BigDecimal allocatedLabor = BigDecimal.ZERO;
         BigDecimal allocatedOverhead = BigDecimal.ZERO;
 
-        List<ProductionLog> allocatable = batches.stream()
+        allocatable = allocatable.stream()
                 .filter(batch -> batch.getMixedQuantity() != null && batch.getMixedQuantity().compareTo(BigDecimal.ZERO) > 0)
                 .toList();
+        BigDecimal allocatableLiters = allocatable.stream()
+                .map(ProductionLog::getMixedQuantity)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (allocatableLiters.compareTo(BigDecimal.ZERO) <= 0) {
+            return new CostAllocationResponse(
+                    request.year(),
+                    request.month(),
+                    0,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    List.of(),
+                    "No allocatable liters found for cost variance allocation"
+            );
+        }
+        BigDecimal laborVarianceToAllocate = laborVariance
+                .multiply(allocatableLiters)
+                .divide(totalLitersProduced, 4, RoundingMode.HALF_UP);
+        BigDecimal overheadVarianceToAllocate = overheadVariance
+                .multiply(allocatableLiters)
+                .divide(totalLitersProduced, 4, RoundingMode.HALF_UP);
+        BigDecimal totalVarianceToAllocate = laborVarianceToAllocate.add(overheadVarianceToAllocate);
+        BigDecimal variancePerLiter = totalVarianceToAllocate
+                .divide(allocatableLiters, 4, RoundingMode.HALF_UP);
 
         // Allocate variance to each batch
         for (int i = 0; i < allocatable.size(); i++) {
@@ -178,13 +205,13 @@ public class CostAllocationService {
             boolean isLast = i == allocatable.size() - 1;
             BigDecimal batchLiters = batch.getMixedQuantity();
             BigDecimal batchLaborVariance = isLast
-                    ? laborVariance.subtract(allocatedLabor)
-                    : batchLiters.multiply(laborVariance)
-                            .divide(totalLitersProduced, 4, RoundingMode.HALF_UP);
+                    ? laborVarianceToAllocate.subtract(allocatedLabor)
+                    : batchLiters.multiply(laborVarianceToAllocate)
+                            .divide(allocatableLiters, 4, RoundingMode.HALF_UP);
             BigDecimal batchOverheadVariance = isLast
-                    ? overheadVariance.subtract(allocatedOverhead)
-                    : batchLiters.multiply(overheadVariance)
-                            .divide(totalLitersProduced, 4, RoundingMode.HALF_UP);
+                    ? overheadVarianceToAllocate.subtract(allocatedOverhead)
+                    : batchLiters.multiply(overheadVarianceToAllocate)
+                            .divide(allocatableLiters, 4, RoundingMode.HALF_UP);
             allocatedLabor = allocatedLabor.add(batchLaborVariance);
             allocatedOverhead = allocatedOverhead.add(batchOverheadVariance);
 
@@ -237,20 +264,21 @@ public class CostAllocationService {
         }
 
         String summary = String.format(
-                "Allocated variance labor=%s overhead=%s across %d batches (%.2f liters)",
-                laborVariance,
-                overheadVariance,
-                batches.size(),
-                totalLitersProduced
+                "Allocated variance labor=%s overhead=%s across %d batches (%.2f liters); skipped %d",
+                laborVarianceToAllocate,
+                overheadVarianceToAllocate,
+                allocatable.size(),
+                allocatableLiters,
+                skipped
         );
 
         return new CostAllocationResponse(
                 request.year(),
                 request.month(),
-                batches.size(),
-                totalLitersProduced,
-                laborVariance,
-                overheadVariance,
+                allocatable.size(),
+                allocatableLiters,
+                laborVarianceToAllocate,
+                overheadVarianceToAllocate,
                 variancePerLiter,
                 journalEntryIds,
                 summary
