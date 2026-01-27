@@ -145,18 +145,17 @@ public class HrService {
     @Transactional
     public LeaveRequestDto createLeaveRequest(LeaveRequestRequest request) {
         Company company = companyContextService.requireCurrentCompany();
-        if (request.employeeId() != null) {
-            Employee employee = employeeRepository.lockByCompanyAndId(company, request.employeeId())
-                    .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Employee not found"));
-            if (leaveRequestRepository.existsOverlappingByEmployeeIdAndDates(request.employeeId(), request.startDate(), request.endDate())) {
-                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Overlapping leave request exists for employee");
-            }
+        if (request.employeeId() == null) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Employee is required for leave request");
+        }
+        Employee employee = employeeRepository.lockByCompanyAndId(company, request.employeeId())
+                .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Employee not found"));
+        if (leaveRequestRepository.existsOverlappingByEmployeeIdAndDates(request.employeeId(), request.startDate(), request.endDate())) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Overlapping leave request exists for employee");
         }
         LeaveRequest leaveRequest = new LeaveRequest();
         leaveRequest.setCompany(company);
-        if (request.employeeId() != null) {
-            leaveRequest.setEmployee(requireEmployee(request.employeeId()));
-        }
+        leaveRequest.setEmployee(employee);
         leaveRequest.setLeaveType(request.leaveType());
         leaveRequest.setStartDate(request.startDate());
         leaveRequest.setEndDate(request.endDate());

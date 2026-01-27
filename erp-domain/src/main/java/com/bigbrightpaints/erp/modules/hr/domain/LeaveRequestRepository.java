@@ -14,7 +14,8 @@ public interface LeaveRequestRepository extends JpaRepository<LeaveRequest, Long
     Optional<LeaveRequest> findByCompanyAndId(Company company, Long id);
 
     @Query("select case when count(l) > 0 then true else false end from LeaveRequest l " +
-            "where l.employee.id = :employeeId and l.startDate <= :endDate and l.endDate >= :startDate")
+            "where l.employee.id = :employeeId and l.startDate <= :endDate and l.endDate >= :startDate " +
+            "and upper(l.status) not in ('REJECTED', 'CANCELLED')")
     boolean existsOverlappingByEmployeeIdAndDates(@Param("employeeId") Long employeeId,
                                                   @Param("startDate") LocalDate startDate,
                                                   @Param("endDate") LocalDate endDate);
