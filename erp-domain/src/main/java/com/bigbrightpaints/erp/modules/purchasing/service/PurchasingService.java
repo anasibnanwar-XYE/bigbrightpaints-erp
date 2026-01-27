@@ -385,7 +385,7 @@ public class PurchasingService {
                     line.getNotes()
             );
             RawMaterialService.ReceiptContext context = new RawMaterialService.ReceiptContext(
-                    InventoryReference.GOODS_RECEIPT,
+                    InventoryReference.RAW_MATERIAL_PURCHASE,
                     receiptNumber,
                     "Goods receipt " + receiptNumber,
                     false
@@ -705,7 +705,7 @@ public class PurchasingService {
                     });
             List<RawMaterialMovement> receiptMovements = movementRepository
                     .findByRawMaterialCompanyAndReferenceTypeAndReferenceId(company,
-                            InventoryReference.GOODS_RECEIPT,
+                            InventoryReference.RAW_MATERIAL_PURCHASE,
                             goodsReceipt.getReceiptNumber());
             for (RawMaterialMovement movement : receiptMovements) {
                 if (movement.getJournalEntryId() == null || !movement.getJournalEntryId().equals(entryId)) {

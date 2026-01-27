@@ -346,3 +346,4 @@
 - Epic 08: branch `epic-08-reconciliation-controls`, tip `afe04b5561d9d6510d61bce58640da2dfbec5010`.
 - Epic 09: branch `epic-09-operational-readiness`, tip `ca3851aea88ca5b791e65b896a1419a741283c49`.
 - Epic 10: branch `epic-10-cross-module-traceability`, tip `c94755d70bcb5ba452ae64ddd7d8a6b96b50d392`.
+- 2026-01-27: Goods receipt movements now use RAW_MATERIAL_PURCHASE reference to align with accounting expectations and journal linking uses the same reference type (PurchasingService). `cd erp-domain && mvn -B -ntp -Dtest=ProcureToPayE2ETest#purchaseToPayHappyPath test` (PASS) — Tests run: 1, Failures: 0, Errors: 0, Skipped: 0.
