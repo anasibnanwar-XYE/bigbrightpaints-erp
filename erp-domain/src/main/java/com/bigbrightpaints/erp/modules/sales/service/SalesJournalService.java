@@ -1,5 +1,7 @@
 package com.bigbrightpaints.erp.modules.sales.service;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.MoneyUtils;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
@@ -71,6 +73,8 @@ public class SalesJournalService {
                                  LocalDate entryDate,
                                  String memo) {
         Objects.requireNonNull(order, "Sales order is required for journal posting");
+        throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                "Order-truth sales journal posting is disabled (CODE-RED). Use dispatch confirmation.");
 
         Dealer dealer = order.getDealer();
         if (dealer == null) {

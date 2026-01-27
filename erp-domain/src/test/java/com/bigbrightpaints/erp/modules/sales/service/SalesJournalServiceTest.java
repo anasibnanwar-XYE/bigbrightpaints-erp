@@ -17,13 +17,12 @@ import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -87,35 +86,24 @@ class SalesJournalServiceTest {
         when(companyAccountingSettingsService.requireTaxAccounts())
                 .thenReturn(new CompanyAccountingSettingsService.TaxAccountConfiguration(null, 12L, null));
 
-        ArgumentCaptor<Map<Long, BigDecimal>> revenueCaptor = ArgumentCaptor.forClass(Map.class);
-        ArgumentCaptor<Map<Long, BigDecimal>> taxCaptor = ArgumentCaptor.forClass(Map.class);
-        ArgumentCaptor<Map<Long, BigDecimal>> discountCaptor = ArgumentCaptor.forClass(Map.class);
-
-        salesJournalService.postSalesJournal(
-                order,
-                new BigDecimal("198.00"),
-                "INV-REF",
-                LocalDate.of(2024, 4, 8),
-                "Invoice INV-1");
-
-        verify(accountingFacade).postSalesJournal(
+        org.junit.jupiter.api.Assertions.assertThrows(
+                com.bigbrightpaints.erp.core.exception.ApplicationException.class,
+                () -> salesJournalService.postSalesJournal(
+                        order,
+                        new BigDecimal("198.00"),
+                        "INV-REF",
+                        LocalDate.of(2024, 4, 8),
+                        "Invoice INV-1"));
+        verify(accountingFacade, never()).postSalesJournal(
                 eq(42L),
                 eq("SO-1"),
                 eq(LocalDate.of(2024, 4, 8)),
                 eq("Invoice INV-1"),
-                revenueCaptor.capture(),
-                taxCaptor.capture(),
-                discountCaptor.capture(),
+                eq(Map.of()),
+                eq(Map.of()),
+                eq(Map.of()),
                 eq(new BigDecimal("198.00")),
                 eq("INV-REF"));
-
-        Map<Long, BigDecimal> revenueLines = revenueCaptor.getValue();
-        Map<Long, BigDecimal> taxLines = taxCaptor.getValue();
-        Map<Long, BigDecimal> discountLines = discountCaptor.getValue();
-
-        assertThat(revenueLines.get(10L)).isEqualByComparingTo("200.00");
-        assertThat(taxLines.get(12L)).isEqualByComparingTo("18.00");
-        assertThat(discountLines.get(11L)).isEqualByComparingTo("20.00");
     }
 
     @Test
@@ -152,35 +140,24 @@ class SalesJournalServiceTest {
         when(companyAccountingSettingsService.requireTaxAccounts())
                 .thenReturn(new CompanyAccountingSettingsService.TaxAccountConfiguration(null, 22L, null));
 
-        ArgumentCaptor<Map<Long, BigDecimal>> revenueCaptor = ArgumentCaptor.forClass(Map.class);
-        ArgumentCaptor<Map<Long, BigDecimal>> taxCaptor = ArgumentCaptor.forClass(Map.class);
-        ArgumentCaptor<Map<Long, BigDecimal>> discountCaptor = ArgumentCaptor.forClass(Map.class);
-
-        salesJournalService.postSalesJournal(
-                order,
-                new BigDecimal("99.00"),
-                "INV-REF-2",
-                LocalDate.of(2024, 4, 9),
-                "Invoice INV-2");
-
-        verify(accountingFacade).postSalesJournal(
+        org.junit.jupiter.api.Assertions.assertThrows(
+                com.bigbrightpaints.erp.core.exception.ApplicationException.class,
+                () -> salesJournalService.postSalesJournal(
+                        order,
+                        new BigDecimal("99.00"),
+                        "INV-REF-2",
+                        LocalDate.of(2024, 4, 9),
+                        "Invoice INV-2"));
+        verify(accountingFacade, never()).postSalesJournal(
                 eq(77L),
                 eq("SO-2"),
                 eq(LocalDate.of(2024, 4, 9)),
                 eq("Invoice INV-2"),
-                revenueCaptor.capture(),
-                taxCaptor.capture(),
-                discountCaptor.capture(),
+                eq(Map.of()),
+                eq(Map.of()),
+                eq(Map.of()),
                 eq(new BigDecimal("99.00")),
                 eq("INV-REF-2"));
-
-        Map<Long, BigDecimal> revenueLines = revenueCaptor.getValue();
-        Map<Long, BigDecimal> taxLines = taxCaptor.getValue();
-        Map<Long, BigDecimal> discountLines = discountCaptor.getValue();
-
-        assertThat(revenueLines.get(20L)).isEqualByComparingTo("100.00");
-        assertThat(taxLines.get(22L)).isEqualByComparingTo("9.00");
-        assertThat(discountLines.get(21L)).isEqualByComparingTo("10.00");
     }
 
     @Test
@@ -217,34 +194,23 @@ class SalesJournalServiceTest {
         when(companyAccountingSettingsService.requireTaxAccounts())
                 .thenReturn(new CompanyAccountingSettingsService.TaxAccountConfiguration(null, 32L, null));
 
-        ArgumentCaptor<Map<Long, BigDecimal>> revenueCaptor = ArgumentCaptor.forClass(Map.class);
-        ArgumentCaptor<Map<Long, BigDecimal>> taxCaptor = ArgumentCaptor.forClass(Map.class);
-        ArgumentCaptor<Map<Long, BigDecimal>> discountCaptor = ArgumentCaptor.forClass(Map.class);
-
-        salesJournalService.postSalesJournal(
-                order,
-                new BigDecimal("100.00"),
-                "INV-REF-3",
-                LocalDate.of(2024, 4, 10),
-                "Invoice INV-3");
-
-        verify(accountingFacade).postSalesJournal(
+        org.junit.jupiter.api.Assertions.assertThrows(
+                com.bigbrightpaints.erp.core.exception.ApplicationException.class,
+                () -> salesJournalService.postSalesJournal(
+                        order,
+                        new BigDecimal("100.00"),
+                        "INV-REF-3",
+                        LocalDate.of(2024, 4, 10),
+                        "Invoice INV-3"));
+        verify(accountingFacade, never()).postSalesJournal(
                 eq(88L),
                 eq("SO-3"),
                 eq(LocalDate.of(2024, 4, 10)),
                 eq("Invoice INV-3"),
-                revenueCaptor.capture(),
-                taxCaptor.capture(),
-                discountCaptor.capture(),
+                eq(Map.of()),
+                eq(Map.of()),
+                eq(Map.of()),
                 eq(new BigDecimal("100.00")),
                 eq("INV-REF-3"));
-
-        Map<Long, BigDecimal> revenueLines = revenueCaptor.getValue();
-        Map<Long, BigDecimal> taxLines = taxCaptor.getValue();
-        Map<Long, BigDecimal> discountLines = discountCaptor.getValue();
-
-        assertThat(revenueLines.get(30L)).isEqualByComparingTo("84.75");
-        assertThat(taxLines.get(32L)).isEqualByComparingTo("15.25");
-        assertThat(discountLines).isNull();
     }
 }
