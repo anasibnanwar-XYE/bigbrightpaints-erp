@@ -365,3 +365,4 @@
 - 2026-01-27: PackingServiceTest now imports FinishedGoodBatch to compile after wastage handling changes. Tests pending (verify was running).
 - 2026-01-27: Sales order creation now runs inside a programmatic transaction to preserve pessimistic locks while handling idempotency conflicts (SalesService, SalesServiceTest). Tests pending (full verify rerun).
 - 2026-01-27: Full `mvn -B -ntp verify` run interrupted after SalesControllerIT failure (TransactionRequiredException in SalesService.createOrder). Fixed in subsequent commit; full verify needs rerun.
+- 2026-01-27: SalesServiceTest now uses a minimal PlatformTransactionManager stub to satisfy TransactionTemplate in tests (NoopTransactionManager). Full verify rerun pending.

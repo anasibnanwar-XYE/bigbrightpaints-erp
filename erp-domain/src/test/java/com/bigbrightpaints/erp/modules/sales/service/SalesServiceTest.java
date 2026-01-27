@@ -52,7 +52,9 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.support.ResourcelessTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.support.SimpleTransactionStatus;
 
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
@@ -121,7 +123,7 @@ class SalesServiceTest {
     private AuditService auditService;
     @Mock
     private CompanyClock companyClock;
-    private final PlatformTransactionManager transactionManager = new ResourcelessTransactionManager();
+    private final PlatformTransactionManager transactionManager = new NoopTransactionManager();
 
     private SalesService salesService;
     private Company company;
@@ -951,6 +953,21 @@ class SalesServiceTest {
             field.set(target, value);
         } catch (NoSuchFieldException | IllegalAccessException ex) {
             throw new RuntimeException(ex);
+        }
+    }
+
+    private static class NoopTransactionManager implements PlatformTransactionManager {
+        @Override
+        public TransactionStatus getTransaction(TransactionDefinition definition) {
+            return new SimpleTransactionStatus();
+        }
+
+        @Override
+        public void commit(TransactionStatus status) {
+        }
+
+        @Override
+        public void rollback(TransactionStatus status) {
         }
     }
 }
