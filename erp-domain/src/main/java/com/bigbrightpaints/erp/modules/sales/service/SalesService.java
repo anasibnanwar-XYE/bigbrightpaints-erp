@@ -490,6 +490,7 @@ public class SalesService {
     @Transactional
     public SalesOrderDto updateOrder(Long id, SalesOrderRequest request) {
         SalesOrder order = requireOrder(id);
+        assertOrderMutable(order, "update");
         GstTreatment gstTreatment = resolveGstTreatment(request.gstTreatment());
         BigDecimal orderLevelRate = resolveOrderLevelRate(order.getCompany(), gstTreatment, request.gstRate());
         boolean gstInclusive = Boolean.TRUE.equals(request.gstInclusive());
@@ -504,16 +505,29 @@ public class SalesService {
         if (dealer != null) {
             order.setDealer(dealer);
         }
-        order.setCurrency(request.currency());
+        String currency = StringUtils.hasText(request.currency()) ? request.currency() : order.getCurrency();
+        if (!StringUtils.hasText(currency)) {
+            currency = "INR";
+        }
+        order.setCurrency(currency);
         order.setNotes(request.notes());
         order.setGstInclusive(gstInclusive);
         OrderAmountSummary amounts = mapOrderItems(order, items, gstTreatment, orderLevelRate, gstInclusive);
         validateTotalAmount(request.totalAmount(), amounts.total());
+        salesOrderRepository.save(order);
+        FinishedGoodsService.InventoryReservationResult reservationResult = finishedGoodsService.reserveForOrder(order);
+        if (reservationResult != null) {
+            boolean noShortages = reservationResult.shortages() == null || reservationResult.shortages().isEmpty();
+            order.setStatus(noShortages ? "RESERVED" : "PENDING_PRODUCTION");
+        }
         return toDto(order);
     }
 
     public void deleteOrder(Long id) {
         SalesOrder order = requireOrder(id);
+        assertOrderMutable(order, "delete");
+        finishedGoodsService.releaseReservationsForOrder(order.getId());
+        cancelFactoryTasksForOrder(order);
         salesOrderRepository.delete(order);
     }
 
@@ -528,6 +542,10 @@ public class SalesService {
     public SalesOrderDto cancelOrder(Long id, String reason) {
         SalesOrder order = requireOrder(id);
         String currentStatus = order.getStatus();
+        if ("CANCELLED".equalsIgnoreCase(currentStatus)) {
+            return toDto(order);
+        }
+        assertOrderMutable(order, "cancel");
 
         // Release any reserved inventory before cancelling
         if ("RESERVED".equalsIgnoreCase(currentStatus) ||
@@ -559,6 +577,34 @@ public class SalesService {
     private SalesOrder requireOrder(Long id) {
         Company company = companyContextService.requireCurrentCompany();
         return companyEntityLookup.requireSalesOrder(company, id);
+    }
+
+    private void assertOrderMutable(SalesOrder order, String action) {
+        if (order == null) {
+            return;
+        }
+        String status = order.getStatus();
+        if ("CANCELLED".equalsIgnoreCase(status) ||
+            "SHIPPED".equalsIgnoreCase(status) ||
+            "FULFILLED".equalsIgnoreCase(status) ||
+            "COMPLETED".equalsIgnoreCase(status)) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Cannot " + action + " order with status " + status);
+        }
+        if (order.hasInvoiceIssued() || order.hasSalesJournalPosted() || order.hasCogsJournalPosted()) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Cannot " + action + " order with posted accounting entries");
+        }
+        Company company = order.getCompany();
+        if (company != null) {
+            boolean dispatchedSlip = packagingSlipRepository
+                    .findAllByCompanyAndSalesOrderId(company, order.getId()).stream()
+                    .anyMatch(slip -> "DISPATCHED".equalsIgnoreCase(slip.getStatus()));
+            if (dispatchedSlip) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Cannot " + action + " order with dispatched slips");
+            }
+        }
     }
 
     public SalesOrder getOrderWithItems(Long id) {
