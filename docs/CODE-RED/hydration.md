@@ -36,3 +36,7 @@
   - Code: `SalesService.confirmDispatch` now resolves invoices per packaging slip; backorder dispatch creates a new invoice.
   - Tests: `OrderFulfillmentE2ETest.partialDispatch_invoicesShippedQty_andCreatesBackorderSlip`.
   - Command: `scripts/verify_local.sh`.
+- 2026-01-27: EPIC 01 / M01.1 verified.
+  - Code: `SalesFulfillmentService.validateAndNormalizeOptions` now fails closed when `issueInvoice=false`.
+  - Tests: `SalesFulfillmentServiceTest.rejectsFulfillmentWithoutDispatchInvoice`.
+  - Command: `scripts/verify_local.sh`.
