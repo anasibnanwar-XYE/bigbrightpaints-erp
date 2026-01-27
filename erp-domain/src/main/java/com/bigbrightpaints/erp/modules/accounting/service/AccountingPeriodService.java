@@ -186,7 +186,7 @@ public class AccountingPeriodService {
         period.setReopenReason(request != null ? request.reason() : null);
         // Auto-reverse closing journal if present
         if (period.getClosingJournalEntryId() != null) {
-            journalEntryRepository.findById(period.getClosingJournalEntryId()).ifPresent(closing -> {
+            journalEntryRepository.findByCompanyAndId(company, period.getClosingJournalEntryId()).ifPresent(closing -> {
                 createReversalFor(closing, period, now);
             });
             period.setClosingJournalEntryId(null);

@@ -1796,15 +1796,15 @@ public class SalesService {
                         "No revenue or tax account configured for dispatched items");
             }
             LocalDate dispatchDate = dispatchedDate;
-            arPostings.add(toPosting(dealer.getReceivableAccount().getId(), "AR for dispatch " + slipNumber, totalAmount, BigDecimal.ZERO));
+            arPostings.add(toPosting(company, dealer.getReceivableAccount().getId(), "AR for dispatch " + slipNumber, totalAmount, BigDecimal.ZERO));
             for (var entry : revenueByAccount.entrySet()) {
-                arPostings.add(toPosting(entry.getKey(), "Revenue for dispatch " + slipNumber, BigDecimal.ZERO, entry.getValue()));
+                arPostings.add(toPosting(company, entry.getKey(), "Revenue for dispatch " + slipNumber, BigDecimal.ZERO, entry.getValue()));
             }
             for (var entry : discountByAccount.entrySet()) {
-                arPostings.add(toPosting(entry.getKey(), "Discount for dispatch " + slipNumber, entry.getValue(), BigDecimal.ZERO));
+                arPostings.add(toPosting(company, entry.getKey(), "Discount for dispatch " + slipNumber, entry.getValue(), BigDecimal.ZERO));
             }
             for (var entry : taxByAccount.entrySet()) {
-                arPostings.add(toPosting(entry.getKey(), "Tax for dispatch " + slipNumber, BigDecimal.ZERO, entry.getValue()));
+                arPostings.add(toPosting(company, entry.getKey(), "Tax for dispatch " + slipNumber, BigDecimal.ZERO, entry.getValue()));
             }
             var arEntry = accountingFacade.postSalesJournal(
                     dealer.getId(),
@@ -1960,11 +1960,11 @@ public class SalesService {
         return value.replaceAll("[^A-Za-z0-9-]", "").toUpperCase();
     }
 
-    private DispatchConfirmResponse.AccountPostingDto toPosting(Long accountId, String label, BigDecimal debit, BigDecimal credit) {
+    private DispatchConfirmResponse.AccountPostingDto toPosting(Company company, Long accountId, String label, BigDecimal debit, BigDecimal credit) {
         if (accountId == null) {
             return new DispatchConfirmResponse.AccountPostingDto(null, label, debit, credit);
         }
-        String name = accountRepository.findById(accountId)
+        String name = accountRepository.findByCompanyAndId(company, accountId)
                 .map(Account::getName)
                 .orElse("Account " + accountId);
         return new DispatchConfirmResponse.AccountPostingDto(accountId, name, debit, credit);

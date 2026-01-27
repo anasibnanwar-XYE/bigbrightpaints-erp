@@ -895,10 +895,14 @@ public class FinishedGoodsService {
         }
 
         hasBackorder = totalBackorder.compareTo(BigDecimal.ZERO) > 0;
-        // Update slip status (always dispatched; backorders are tracked on a new slip)
-        slip.setStatus("DISPATCHED");
+        boolean anyShipped = totalShipped.compareTo(BigDecimal.ZERO) > 0;
         Instant now = companyClock.now(company);
-        slip.setDispatchedAt(now);
+        if (anyShipped) {
+            slip.setStatus("DISPATCHED");
+            slip.setDispatchedAt(now);
+        } else {
+            slip.setStatus(hasBackorder ? "PENDING_STOCK" : slip.getStatus());
+        }
         slip.setConfirmedAt(now);
         slip.setConfirmedBy(username);
         slip.setDispatchNotes(request.notes());
@@ -911,7 +915,7 @@ public class FinishedGoodsService {
 
         // Handle backorders - create new slip if needed
         Long backorderSlipId = null;
-        if (hasBackorder) {
+        if (hasBackorder && anyShipped) {
             backorderSlipId = createBackorderSlip(slip);
         }
 

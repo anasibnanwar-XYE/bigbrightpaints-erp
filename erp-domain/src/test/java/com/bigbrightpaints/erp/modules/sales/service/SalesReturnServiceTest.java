@@ -139,7 +139,7 @@ class SalesReturnServiceTest {
         when(companyEntityLookup.requireInvoice(company, 10L)).thenReturn(invoice);
         when(finishedGoodRepository.lockByCompanyAndProductCode(company, "FG-1")).thenReturn(Optional.of(fg));
         when(finishedGoodRepository.lockByCompanyAndId(company, 21L)).thenReturn(Optional.of(fg));
-        when(finishedGoodRepository.findById(21L)).thenReturn(Optional.of(fg));
+        when(finishedGoodRepository.findByCompanyAndId(company, 21L)).thenReturn(Optional.of(fg));
         when(finishedGoodRepository.save(any(FinishedGood.class))).thenAnswer(inv -> inv.getArgument(0));
         when(finishedGoodBatchRepository.save(any(FinishedGoodBatch.class))).thenAnswer(inv -> inv.getArgument(0));
         when(batchNumberService.nextFinishedGoodBatchCode(any(), any())).thenReturn("RET-BATCH");
@@ -521,7 +521,7 @@ class SalesReturnServiceTest {
         when(companyEntityLookup.requireInvoice(company, 20L)).thenReturn(invoice);
         when(finishedGoodRepository.lockByCompanyAndProductCode(company, "FG-2")).thenReturn(Optional.of(fg));
         when(finishedGoodRepository.lockByCompanyAndId(company, 22L)).thenReturn(Optional.of(fg));
-        when(finishedGoodRepository.findById(22L)).thenReturn(Optional.of(fg));
+        when(finishedGoodRepository.findByCompanyAndId(company, 22L)).thenReturn(Optional.of(fg));
         when(finishedGoodRepository.save(any(FinishedGood.class))).thenAnswer(inv -> inv.getArgument(0));
         when(finishedGoodBatchRepository.save(any(FinishedGoodBatch.class))).thenAnswer(inv -> inv.getArgument(0));
         when(batchNumberService.nextFinishedGoodBatchCode(any(), any())).thenReturn("RET-BATCH-2");
@@ -557,16 +557,6 @@ class SalesReturnServiceTest {
                 any(BigDecimal.class),
                 anyString())
         ).thenReturn(stubEntry(110L));
-        when(accountingFacade.postInventoryAdjustment(
-                anyString(),
-                anyString(),
-                anyLong(),
-                anyMap(),
-                anyBoolean(),
-                anyBoolean(),
-                anyString())
-        ).thenReturn(stubEntry(111L));
-
         SalesReturnRequest request = new SalesReturnRequest(
                 20L,
                 "Inclusive return",

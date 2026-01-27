@@ -514,7 +514,7 @@ public class SalesReturnService {
                     break;
                 }
             }
-            FinishedGood fg = finishedGoodRepository.findById(fgId).orElse(null);
+            FinishedGood fg = finishedGoodRepository.findByCompanyAndId(invoice.getCompany(), fgId).orElse(null);
             if (fg == null) {
                 continue;
             }
