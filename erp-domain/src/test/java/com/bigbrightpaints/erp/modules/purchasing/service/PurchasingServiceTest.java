@@ -274,12 +274,6 @@ class PurchasingServiceTest {
                 .thenReturn(journalDto);
         when(companyEntityLookup.requireJournalEntry(company, 999L)).thenReturn(journalEntry);
 
-        RawMaterialService.ReceiptResult receiptResult = new RawMaterialService.ReceiptResult(
-                new com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch(),
-                null,
-                null
-        );
-        when(rawMaterialService.recordReceipt(any(), any(), any())).thenReturn(receiptResult);
         when(purchaseRepository.save(any())).thenAnswer(inv -> {
             RawMaterialPurchase p = inv.getArgument(0);
             // Verify journal is already linked when save is called
@@ -320,12 +314,6 @@ class PurchasingServiceTest {
         when(accountingFacade.postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(journalDto);
 
-        RawMaterialService.ReceiptResult receiptResult = new RawMaterialService.ReceiptResult(
-                new com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch(),
-                null,
-                null
-        );
-        when(rawMaterialService.recordReceipt(any(), any(), any())).thenReturn(receiptResult);
         when(purchaseRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         BigDecimal taxAmount = new BigDecimal("9.00");
@@ -373,12 +361,6 @@ class PurchasingServiceTest {
         JournalEntryDto journalDto = dummyJournal("RMP-SUP001-INV004", 1001L);
         when(accountingFacade.postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(journalDto);
-        RawMaterialService.ReceiptResult receiptResult = new RawMaterialService.ReceiptResult(
-                new com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch(),
-                null,
-                null
-        );
-        when(rawMaterialService.recordReceipt(any(), any(), any())).thenReturn(receiptResult);
         when(purchaseRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         RawMaterialPurchaseRequest request = new RawMaterialPurchaseRequest(
@@ -429,12 +411,6 @@ class PurchasingServiceTest {
         JournalEntryDto journalDto = dummyJournal("RMP-SUP001-INV005", 1002L);
         when(accountingFacade.postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(journalDto);
-        RawMaterialService.ReceiptResult receiptResult = new RawMaterialService.ReceiptResult(
-                new com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch(),
-                null,
-                null
-        );
-        when(rawMaterialService.recordReceipt(any(), any(), any())).thenReturn(receiptResult);
         when(purchaseRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         RawMaterialPurchaseRequest request = new RawMaterialPurchaseRequest(
@@ -485,12 +461,6 @@ class PurchasingServiceTest {
         JournalEntryDto journalDto = dummyJournal("RMP-SUP001-INV006", 1003L);
         when(accountingFacade.postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(journalDto);
-        RawMaterialService.ReceiptResult receiptResult = new RawMaterialService.ReceiptResult(
-                new com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch(),
-                null,
-                null
-        );
-        when(rawMaterialService.recordReceipt(any(), any(), any())).thenReturn(receiptResult);
         when(purchaseRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         RawMaterialPurchaseRequest request = new RawMaterialPurchaseRequest(
@@ -585,6 +555,14 @@ class PurchasingServiceTest {
         line.setUnit(material.getUnitType());
         line.setCostPerUnit(costPerUnit);
         line.setLineTotal(quantity.multiply(costPerUnit));
+        RawMaterialBatch batch = new RawMaterialBatch();
+        ReflectionTestUtils.setField(batch, "id", receiptId + 1000);
+        batch.setRawMaterial(material);
+        batch.setBatchCode(line.getBatchCode());
+        batch.setQuantity(quantity);
+        batch.setUnit(material.getUnitType());
+        batch.setCostPerUnit(costPerUnit);
+        line.setRawMaterialBatch(batch);
         receipt.getLines().add(line);
         return receipt;
     }

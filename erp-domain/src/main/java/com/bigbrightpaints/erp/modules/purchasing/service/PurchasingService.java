@@ -653,6 +653,12 @@ public class PurchasingService {
             RawMaterialBatch batch = receiptLine != null ? receiptLine.getRawMaterialBatch() : null;
             String lineReference = invoiceReference(invoiceNumber, lineIndex++);
             if (batch == null) {
+                if (goodsReceipt != null) {
+                    throw new ApplicationException(ErrorCode.BUSINESS_CONSTRAINT_VIOLATION,
+                            "Goods receipt line is missing batch; invoice cannot create inventory movements")
+                            .withDetail("rawMaterialId", rawMaterial.getId())
+                            .withDetail("goodsReceiptId", goodsReceipt.getId());
+                }
                 RawMaterialBatchRequest batchRequest = new RawMaterialBatchRequest(
                         batchCode,
                         quantity,

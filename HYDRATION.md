@@ -364,7 +364,11 @@
 - 2026-01-27: Cost allocation now skips only already-allocated batches and distributes variance across remaining liters (CostAllocationService). Tests not run (logic-only change).
 - 2026-01-27: Restored "skipped" keyword in cost allocation no-op summary to satisfy regression tests (CostAllocationService). Tests pending.
 - 2026-01-27: Order/invoice number generation now uses required propagation to avoid FK failures in transactional tests (OrderNumberService, InvoiceNumberService). Tests pending.
+- 2026-01-27: Order/invoice number generation reverted to REQUIRES_NEW for monotonic non-reused sequences; TestDataSeeder now commits company creation in a separate transaction (OrderNumberService, InvoiceNumberService, TestDataSeeder). Tests pending.
+- 2026-01-27: Added accounting event duplicate pre-check before enforcing unique aggregate sequence index (V115 migration). Tests pending.
+- 2026-01-27: Purchase invoice now rejects missing GRN batch to keep inventory neutral; P2P E2E asserts receipt movements unchanged after invoice (PurchasingService, ProcureToPayE2ETest). Tests pending.
 - 2026-01-27: PackingServiceTest now imports FinishedGoodBatch to compile after wastage handling changes. Tests pending (verify was running).
 - 2026-01-27: Sales order creation now runs inside a programmatic transaction to preserve pessimistic locks while handling idempotency conflicts (SalesService, SalesServiceTest). Tests pending (full verify rerun).
 - 2026-01-27: Full `mvn -B -ntp verify` run interrupted after SalesControllerIT failure (TransactionRequiredException in SalesService.createOrder). Fixed in subsequent commit; full verify needs rerun.
 - 2026-01-27: SalesServiceTest now uses a minimal PlatformTransactionManager stub to satisfy TransactionTemplate in tests (NoopTransactionManager). Full verify rerun pending.
+- 2026-01-27: PurchasingServiceTest goods receipt fixtures now attach a RawMaterialBatch and remove unused receipt stubs to align with GRN inventory-neutral invoice flow. `scripts/task00_async_verify.sh` (PASS) — Tests run: 457, Failures: 0, Errors: 0, Skipped: 4.

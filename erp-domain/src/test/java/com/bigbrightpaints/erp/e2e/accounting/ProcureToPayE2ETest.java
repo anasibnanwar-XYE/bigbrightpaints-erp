@@ -16,6 +16,8 @@ import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchReposito
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovement;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
+import com.bigbrightpaints.erp.modules.purchasing.domain.GoodsReceipt;
+import com.bigbrightpaints.erp.modules.purchasing.domain.GoodsReceiptRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchase;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
@@ -56,6 +58,7 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
     @Autowired private RawMaterialRepository rawMaterialRepository;
     @Autowired private RawMaterialBatchRepository rawMaterialBatchRepository;
     @Autowired private RawMaterialMovementRepository rawMaterialMovementRepository;
+    @Autowired private GoodsReceiptRepository goodsReceiptRepository;
     @Autowired private JournalEntryRepository journalEntryRepository;
     @Autowired private RawMaterialPurchaseRepository purchaseRepository;
     @Autowired private PartnerSettlementAllocationRepository settlementAllocationRepository;
@@ -93,6 +96,13 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
         BigDecimal costPerUnit = new BigDecimal("12.50");
         BigDecimal totalAmount = quantity.multiply(costPerUnit);
         PurchaseWorkflowIds workflow = createPurchaseOrderAndReceipt(supplierId, rawMaterialId, quantity, costPerUnit, entryDate);
+        GoodsReceipt goodsReceipt = goodsReceiptRepository.findById(workflow.goodsReceiptId()).orElseThrow();
+        int receiptMovementsBefore = rawMaterialMovementRepository
+                .findByRawMaterialCompanyAndReferenceTypeAndReferenceId(
+                        company,
+                        InventoryReference.RAW_MATERIAL_PURCHASE,
+                        goodsReceipt.getReceiptNumber())
+                .size();
 
         Map<String, Object> line = new HashMap<>();
         line.put("rawMaterialId", rawMaterialId);
@@ -129,6 +139,13 @@ class ProcureToPayE2ETest extends AbstractIntegrationTest {
         assertThat(movement.getMovementType()).isEqualTo("RECEIPT");
         assertThat(movement.getQuantity()).isEqualByComparingTo(quantity);
         assertThat(movement.getJournalEntryId()).isNotNull();
+        int receiptMovementsAfter = rawMaterialMovementRepository
+                .findByRawMaterialCompanyAndReferenceTypeAndReferenceId(
+                        company,
+                        InventoryReference.RAW_MATERIAL_PURCHASE,
+                        goodsReceipt.getReceiptNumber())
+                .size();
+        assertThat(receiptMovementsAfter).isEqualTo(receiptMovementsBefore);
 
         Map<String, Object> allocation = Map.of(
                 "purchaseId", purchaseId,

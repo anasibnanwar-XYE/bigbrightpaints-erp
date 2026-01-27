@@ -12,6 +12,7 @@ import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderRepository;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -19,7 +20,7 @@ import java.time.ZoneId;
 import java.util.List;
 
 @Component
-@Transactional
+@Transactional(propagation = Propagation.REQUIRES_NEW)
 public class TestDataSeeder {
 
     private final CompanyRepository companyRepository;
