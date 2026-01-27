@@ -24,7 +24,7 @@ public class OrderNumberService {
 
     private final OrderSequenceRepository orderSequenceRepository;
     private final AuditService auditService;
-    private final TransactionTemplate newTxTemplate;
+    private final TransactionTemplate txTemplate;
 
     public OrderNumberService(OrderSequenceRepository orderSequenceRepository,
                               AuditService auditService,
@@ -32,8 +32,8 @@ public class OrderNumberService {
         this.orderSequenceRepository = orderSequenceRepository;
         this.auditService = auditService;
         TransactionTemplate template = new TransactionTemplate(txManager);
-        template.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
-        this.newTxTemplate = template;
+        template.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRED);
+        this.txTemplate = template;
     }
 
     public String nextOrderNumber(Company company) {
@@ -41,7 +41,7 @@ public class OrderNumberService {
         RuntimeException lastError = null;
         for (int attempt = 1; attempt <= MAX_RETRIES; attempt++) {
             try {
-                String orderNumber = newTxTemplate.execute(status -> {
+                String orderNumber = txTemplate.execute(status -> {
                     OrderSequence sequence = orderSequenceRepository.findByCompanyAndFiscalYear(company, fiscalYear)
                             .orElseGet(() -> initializeSequence(company, fiscalYear));
                     long nextNumber = sequence.consumeAndIncrement();

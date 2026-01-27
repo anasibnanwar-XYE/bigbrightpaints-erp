@@ -17,15 +17,15 @@ import java.time.ZoneId;
 public class InvoiceNumberService {
 
     private final InvoiceSequenceRepository sequenceRepository;
-    private final TransactionTemplate newTxTemplate;
+    private final TransactionTemplate txTemplate;
     private static final int MAX_RETRIES = 5;
 
     public InvoiceNumberService(InvoiceSequenceRepository sequenceRepository,
                                 PlatformTransactionManager txManager) {
         this.sequenceRepository = sequenceRepository;
         TransactionTemplate template = new TransactionTemplate(txManager);
-        template.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
-        this.newTxTemplate = template;
+        template.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRED);
+        this.txTemplate = template;
     }
 
     public String nextInvoiceNumber(Company company) {
@@ -33,7 +33,7 @@ public class InvoiceNumberService {
         RuntimeException lastError = null;
         for (int attempt = 1; attempt <= MAX_RETRIES; attempt++) {
             try {
-                String invoiceNumber = newTxTemplate.execute(status -> {
+                String invoiceNumber = txTemplate.execute(status -> {
                     InvoiceSequence sequence = sequenceRepository.findByCompanyAndFiscalYear(company, fiscalYear)
                             .orElseGet(() -> initializeSequence(company, fiscalYear));
                     long next = sequence.consumeAndIncrement();
