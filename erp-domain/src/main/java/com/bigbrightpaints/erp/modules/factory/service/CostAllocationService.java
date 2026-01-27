@@ -130,7 +130,7 @@ public class CostAllocationService {
                     BigDecimal.ZERO,
                     BigDecimal.ZERO,
                     List.of(),
-                    "All batches already have cost variance journals for period " + periodKey
+                    "skipped: all batches already have cost variance journals for period " + periodKey
             );
         }
 
