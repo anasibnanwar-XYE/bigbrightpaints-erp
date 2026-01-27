@@ -44,3 +44,6 @@
   - Code: `SalesJournalService.postSalesJournal` now fails closed (order-truth posting disabled).
   - Tests: `SalesJournalServiceTest` (order-truth posting now rejected).
   - Command: `scripts/verify_local.sh`.
+- 2026-01-28: EPIC 01 / M01.3 verified.
+  - Code: `V116__packaging_slip_journal_unique.sql` enforces slip-level journal uniqueness; `scripts/db_predeploy_scans.sql` adds duplicate slip journal scans.
+  - Tests: `scripts/verify_local.sh`.
