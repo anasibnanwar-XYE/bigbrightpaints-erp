@@ -20,6 +20,7 @@ import com.bigbrightpaints.erp.modules.inventory.domain.InventoryMovementReposit
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReference;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository;
 import com.bigbrightpaints.erp.modules.inventory.service.BatchNumberService;
+import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.junit.jupiter.api.BeforeEach;
@@ -78,6 +79,8 @@ class PackingServiceTest {
     private CompanyEntityLookup companyEntityLookup;
     @Mock
     private PackagingMaterialService packagingMaterialService;
+    @Mock
+    private FinishedGoodsService finishedGoodsService;
 
     private PackingService packingService;
     private Company company;
@@ -98,7 +101,8 @@ class PackingServiceTest {
                 batchNumberService,
                 companyClock,
                 companyEntityLookup,
-                packagingMaterialService
+                packagingMaterialService,
+                finishedGoodsService
         );
         company = new Company();
         company.setTimezone("UTC");
@@ -134,10 +138,32 @@ class PackingServiceTest {
         finishedGood.setCompany(company);
         finishedGood.setProductCode(product.getSkuCode());
         finishedGood.setValuationAccountId(500L);
+        finishedGood.setCurrentStock(BigDecimal.ZERO);
+
+        FinishedGood semiFinished = new FinishedGood();
+        ReflectionTestUtils.setField(semiFinished, "id", 6L);
+        semiFinished.setCompany(company);
+        semiFinished.setProductCode(product.getSkuCode() + "-BULK");
+        semiFinished.setValuationAccountId(700L);
+        semiFinished.setCurrentStock(new BigDecimal("100"));
+
+        FinishedGoodBatch semiBatch = new FinishedGoodBatch();
+        semiBatch.setFinishedGood(semiFinished);
+        semiBatch.setBatchCode(log.getProductionCode());
+        semiBatch.setQuantityAvailable(new BigDecimal("100"));
+        semiBatch.setQuantityTotal(new BigDecimal("100"));
+        semiBatch.setUnitCost(new BigDecimal("10"));
 
         // Use lockProductionLog instead of requireProductionLog for pessimistic locking
         when(companyEntityLookup.lockProductionLog(company, 1L)).thenReturn(log);
         when(finishedGoodRepository.lockByCompanyAndProductCode(company, "SKU-1")).thenReturn(Optional.of(finishedGood));
+        when(finishedGoodRepository.lockByCompanyAndProductCode(company, "SKU-1-BULK"))
+                .thenReturn(Optional.of(semiFinished));
+        when(finishedGoodBatchRepository.lockByFinishedGoodAndBatchCode(semiFinished, "PROD-001"))
+                .thenReturn(Optional.of(semiBatch));
+        when(finishedGoodBatchRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(finishedGoodRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(inventoryMovementRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         JournalEntryDto wasteEntry = stubEntry(11L);
         when(accountingFacade.postSimpleJournal(

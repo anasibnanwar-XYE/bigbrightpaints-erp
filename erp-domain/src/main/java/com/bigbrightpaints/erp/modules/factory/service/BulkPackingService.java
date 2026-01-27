@@ -116,10 +116,10 @@ public class BulkPackingService {
         }
 
         // 3. Consume packaging materials (BOM-based)
-        String packagingReference = "BULK-PACK-" + bulkBatch.getBatchCode();
+        String packReference = "PACK-" + bulkBatch.getBatchCode() + "-" + System.currentTimeMillis();
         PackagingCostSummary packagingCostSummary = new PackagingCostSummary(BigDecimal.ZERO, Map.of(), Map.of());
         if (request.skipPackagingConsumption() == null || !request.skipPackagingConsumption()) {
-            packagingCostSummary = consumePackagingFromMappings(company, request.packs(), packagingReference);
+            packagingCostSummary = consumePackagingFromMappings(company, request.packs(), packReference);
         }
         BigDecimal packagingCost = packagingCostSummary.totalCost();
 
@@ -150,8 +150,8 @@ public class BulkPackingService {
             } else {
                 linePackagingCostPerUnit = fallbackPackagingCostPerUnit;
             }
-            FinishedGoodBatch childBatch = createChildBatch(company, bulkBatch, line, 
-                    bulkUnitCost, linePackagingCostPerUnit, packDate);
+            FinishedGoodBatch childBatch = createChildBatch(company, bulkBatch, line,
+                    bulkUnitCost, linePackagingCostPerUnit, packDate, packReference);
             childBatches.add(childBatch);
             totalChildValue = totalChildValue.add(childBatch.getUnitCost()
                     .multiply(childBatch.getQuantityTotal()));
@@ -173,7 +173,7 @@ public class BulkPackingService {
         bulkIssue.setFinishedGood(bulkFg);
         bulkIssue.setFinishedGoodBatch(bulkBatch);
         bulkIssue.setReferenceType("PACKAGING");
-        bulkIssue.setReferenceId("PACK-" + bulkBatch.getBatchCode());
+        bulkIssue.setReferenceId(packReference);
         bulkIssue.setMovementType("ISSUE");
         bulkIssue.setQuantity(totalVolume);
         bulkIssue.setUnitCost(bulkBatch.getUnitCost());
@@ -183,9 +183,9 @@ public class BulkPackingService {
 
         // 7. Post packaging journal
         Long journalEntryId = postPackagingJournal(company, bulkBatch, childBatches,
-                totalVolume, packagingCostSummary, packDate, request.notes());
+                totalVolume, packagingCostSummary, packDate, request.notes(), packReference);
         if (journalEntryId != null) {
-            linkPackagingMovementsToJournal(company, packagingReference, journalEntryId);
+            linkPackagingMovementsToJournal(company, packReference, journalEntryId);
         }
 
         // 8. Build response
@@ -243,6 +243,10 @@ public class BulkPackingService {
         if (!batch.getFinishedGood().getCompany().getId().equals(company.getId())) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
                     "Batch does not belong to this company");
+        }
+        if (!batch.isBulk()) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Batch " + batch.getBatchCode() + " is not marked as bulk");
         }
         if (batch.getQuantityAvailable().compareTo(BigDecimal.ZERO) <= 0) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
@@ -430,11 +434,6 @@ public class BulkPackingService {
                     reference
             );
 
-            if (!result.mappingFound()) {
-                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
-                        "Packaging BOM missing for size: " + sizeLabel);
-            }
-
             if (!result.isConsumed()) {
                 continue;
             }
@@ -470,11 +469,12 @@ public class BulkPackingService {
     }
 
     private FinishedGoodBatch createChildBatch(Company company,
-                                                FinishedGoodBatch parentBatch,
-                                                BulkPackRequest.PackLine line,
-                                                BigDecimal bulkUnitCost,
-                                                BigDecimal packagingCostPerUnit,
-                                                LocalDate packDate) {
+                                               FinishedGoodBatch parentBatch,
+                                               BulkPackRequest.PackLine line,
+                                               BigDecimal bulkUnitCost,
+                                               BigDecimal packagingCostPerUnit,
+                                               LocalDate packDate,
+                                               String packReference) {
         // Get or create the child SKU (FinishedGood)
         FinishedGood childFg = finishedGoodRepository.lockByCompanyAndId(company, line.childSkuId())
                 .orElseThrow(() -> new ApplicationException(ErrorCode.BUSINESS_ENTITY_NOT_FOUND,
@@ -510,7 +510,7 @@ public class BulkPackingService {
         movement.setFinishedGood(childFg);
         movement.setFinishedGoodBatch(savedBatch);
         movement.setReferenceType("PACKAGING");
-        movement.setReferenceId("PACK-" + parentBatch.getBatchCode());
+        movement.setReferenceId(packReference);
         movement.setMovementType("RECEIPT");
         movement.setQuantity(line.quantity());
         movement.setUnitCost(childUnitCost);
@@ -521,12 +521,13 @@ public class BulkPackingService {
     }
 
     private Long postPackagingJournal(Company company,
-                                       FinishedGoodBatch bulkBatch,
-                                       List<FinishedGoodBatch> childBatches,
-                                       BigDecimal volumeDeducted,
-                                       PackagingCostSummary packagingCostSummary,
-                                       LocalDate entryDate,
-                                       String notes) {
+                                      FinishedGoodBatch bulkBatch,
+                                      List<FinishedGoodBatch> childBatches,
+                                      BigDecimal volumeDeducted,
+                                      PackagingCostSummary packagingCostSummary,
+                                      LocalDate entryDate,
+                                      String notes,
+                                      String packReference) {
         FinishedGood bulkFg = bulkBatch.getFinishedGood();
         Long bulkAccountId = bulkFg.getValuationAccountId();
         
@@ -594,7 +595,7 @@ public class BulkPackingService {
             }
         }
 
-        String reference = "PACK-" + bulkBatch.getBatchCode() + "-" + System.currentTimeMillis();
+        String reference = packReference;
         String memo = "Bulk-to-size packaging: " + bulkBatch.getBatchCode();
         if (notes != null) {
             memo += " - " + notes;

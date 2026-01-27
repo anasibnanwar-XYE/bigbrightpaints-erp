@@ -27,6 +27,7 @@ import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReference;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovement;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository;
 import com.bigbrightpaints.erp.modules.inventory.service.BatchNumberService;
+import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
 import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
@@ -63,6 +64,7 @@ public class PackingService {
     private final BatchNumberService batchNumberService;
     private final CompanyEntityLookup companyEntityLookup;
     private final PackagingMaterialService packagingMaterialService;
+    private final FinishedGoodsService finishedGoodsService;
 
     public PackingService(CompanyContextService companyContextService,
                           ProductionLogRepository productionLogRepository,
@@ -77,7 +79,8 @@ public class PackingService {
                           BatchNumberService batchNumberService,
                           CompanyClock companyClock,
                           CompanyEntityLookup companyEntityLookup,
-                          PackagingMaterialService packagingMaterialService) {
+                          PackagingMaterialService packagingMaterialService,
+                          FinishedGoodsService finishedGoodsService) {
         this.companyContextService = companyContextService;
         this.productionLogRepository = productionLogRepository;
         this.packingRecordRepository = packingRecordRepository;
@@ -92,6 +95,7 @@ public class PackingService {
         this.companyClock = companyClock;
         this.companyEntityLookup = companyEntityLookup;
         this.packagingMaterialService = packagingMaterialService;
+        this.finishedGoodsService = finishedGoodsService;
     }
 
     @Transactional
@@ -144,11 +148,6 @@ public class PackingService {
                     packagingReference
             );
 
-            if (!packagingResult.mappingFound()) {
-                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
-                        "Packaging BOM missing for size: " + line.packagingSize());
-            }
-            
             // Track packaging cost and material
             if (packagingResult.isConsumed()) {
                 record.setPackagingCost(packagingResult.totalCost());
@@ -244,6 +243,9 @@ public class PackingService {
             wastageQty = BigDecimal.ZERO;
         }
         FinishedGood finishedGood = ensureFinishedGood(company, log);
+        if (wastageQty.compareTo(BigDecimal.ZERO) > 0) {
+            consumeSemiFinishedWastage(log, wastageQty);
+        }
         postCompletionEntries(company, log, finishedGood, packedQty, wastageQty);
         log.setStatus(ProductionLogStatus.FULLY_PACKED);
         log.setWastageQuantity(wastageQty);
@@ -310,6 +312,7 @@ public class PackingService {
         BigDecimal current = Optional.ofNullable(finishedGood.getCurrentStock()).orElse(BigDecimal.ZERO);
         finishedGood.setCurrentStock(current.add(quantity));
         finishedGoodRepository.save(finishedGood);
+        finishedGoodsService.invalidateWeightedAverageCost(finishedGood.getId());
 
         InventoryMovement movement = new InventoryMovement();
         movement.setFinishedGood(finishedGood);
@@ -423,10 +426,13 @@ public class PackingService {
         }
 
         batch.allocate(quantity);
+        BigDecimal total = batch.getQuantityTotal() != null ? batch.getQuantityTotal() : BigDecimal.ZERO;
+        batch.setQuantityTotal(total.subtract(quantity));
         finishedGoodBatchRepository.save(batch);
 
         semiFinished.adjustStock(quantity.negate(), "PACKING");
         finishedGoodRepository.save(semiFinished);
+        finishedGoodsService.invalidateWeightedAverageCost(semiFinished.getId());
 
         InventoryMovement issue = new InventoryMovement();
         issue.setFinishedGood(semiFinished);
@@ -439,6 +445,44 @@ public class PackingService {
         InventoryMovement savedIssue = inventoryMovementRepository.save(issue);
 
         return new SemiFinishedConsumption(semiFinished, batch, savedIssue, batch.getUnitCost());
+    }
+
+    private void consumeSemiFinishedWastage(ProductionLog log, BigDecimal wastageQty) {
+        if (wastageQty == null || wastageQty.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+        Company company = companyContextService.requireCurrentCompany();
+        String semiSku = semiFinishedSku(log.getProduct());
+        FinishedGood semiFinished = finishedGoodRepository.lockByCompanyAndProductCode(company, semiSku)
+                .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                        "Semi-finished SKU " + semiSku + " not found for production " + log.getProductionCode()));
+        FinishedGoodBatch batch = finishedGoodBatchRepository
+                .lockByFinishedGoodAndBatchCode(semiFinished, log.getProductionCode())
+                .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                        "Semi-finished batch " + log.getProductionCode() + " not found"));
+        if (batch.getQuantityAvailable().compareTo(wastageQty) < 0) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Insufficient semi-finished stock for wastage on " + log.getProductionCode());
+        }
+
+        batch.allocate(wastageQty);
+        BigDecimal total = batch.getQuantityTotal() != null ? batch.getQuantityTotal() : BigDecimal.ZERO;
+        batch.setQuantityTotal(total.subtract(wastageQty));
+        finishedGoodBatchRepository.save(batch);
+
+        semiFinished.adjustStock(wastageQty.negate(), "PACKING_WASTAGE");
+        finishedGoodRepository.save(semiFinished);
+        finishedGoodsService.invalidateWeightedAverageCost(semiFinished.getId());
+
+        InventoryMovement issue = new InventoryMovement();
+        issue.setFinishedGood(semiFinished);
+        issue.setFinishedGoodBatch(batch);
+        issue.setReferenceType(InventoryReference.PRODUCTION_LOG);
+        issue.setReferenceId(log.getProductionCode());
+        issue.setMovementType("WASTAGE");
+        issue.setQuantity(wastageQty);
+        issue.setUnitCost(batch.getUnitCost());
+        inventoryMovementRepository.save(issue);
     }
 
     private Long requireSemiFinishedAccountId(ProductionProduct product) {
