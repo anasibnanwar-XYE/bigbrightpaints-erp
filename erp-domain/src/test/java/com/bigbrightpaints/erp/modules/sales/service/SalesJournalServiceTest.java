@@ -5,14 +5,12 @@ import com.bigbrightpaints.erp.modules.accounting.service.CompanyAccountingSetti
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
-import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.FinishedGoodAccountingProfile;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProductRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderItem;
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -24,7 +22,6 @@ import org.springframework.test.util.ReflectionTestUtils;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class SalesJournalServiceTest {
@@ -74,18 +71,6 @@ class SalesJournalServiceTest {
         item.setGstAmount(new BigDecimal("18.00"));
         order.getItems().add(item);
 
-        FinishedGoodAccountingProfile profile = new FinishedGoodAccountingProfile(
-                "SKU-1",
-                null,
-                null,
-                10L,
-                11L,
-                12L
-        );
-        when(finishedGoodsService.accountingProfiles(List.of("SKU-1"))).thenReturn(Map.of("SKU-1", profile));
-        when(companyAccountingSettingsService.requireTaxAccounts())
-                .thenReturn(new CompanyAccountingSettingsService.TaxAccountConfiguration(null, 12L, null));
-
         org.junit.jupiter.api.Assertions.assertThrows(
                 com.bigbrightpaints.erp.core.exception.ApplicationException.class,
                 () -> salesJournalService.postSalesJournal(
@@ -128,18 +113,6 @@ class SalesJournalServiceTest {
         item.setGstRate(new BigDecimal("10.00"));
         order.getItems().add(item);
 
-        FinishedGoodAccountingProfile profile = new FinishedGoodAccountingProfile(
-                "SKU-2",
-                null,
-                null,
-                20L,
-                21L,
-                22L
-        );
-        when(finishedGoodsService.accountingProfiles(List.of("SKU-2"))).thenReturn(Map.of("SKU-2", profile));
-        when(companyAccountingSettingsService.requireTaxAccounts())
-                .thenReturn(new CompanyAccountingSettingsService.TaxAccountConfiguration(null, 22L, null));
-
         org.junit.jupiter.api.Assertions.assertThrows(
                 com.bigbrightpaints.erp.core.exception.ApplicationException.class,
                 () -> salesJournalService.postSalesJournal(
@@ -181,18 +154,6 @@ class SalesJournalServiceTest {
         item.setGstAmount(new BigDecimal("15.25"));
         item.setGstRate(new BigDecimal("18.00"));
         order.getItems().add(item);
-
-        FinishedGoodAccountingProfile profile = new FinishedGoodAccountingProfile(
-                "SKU-3",
-                null,
-                null,
-                30L,
-                31L,
-                32L
-        );
-        when(finishedGoodsService.accountingProfiles(List.of("SKU-3"))).thenReturn(Map.of("SKU-3", profile));
-        when(companyAccountingSettingsService.requireTaxAccounts())
-                .thenReturn(new CompanyAccountingSettingsService.TaxAccountConfiguration(null, 32L, null));
 
         org.junit.jupiter.api.Assertions.assertThrows(
                 com.bigbrightpaints.erp.core.exception.ApplicationException.class,

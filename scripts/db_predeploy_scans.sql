@@ -32,6 +32,27 @@ where upper(status) = 'DISPATCHED'
   )
 order by company_id, packaging_slip_id;
 
+-- 2b) Duplicate journal links across packaging slips (violates slip-level idempotency)
+select
+  company_id,
+  journal_entry_id,
+  count(*) as cnt
+from packaging_slips
+where journal_entry_id is not null
+group by company_id, journal_entry_id
+having count(*) > 1
+order by cnt desc, company_id, journal_entry_id;
+
+select
+  company_id,
+  cogs_journal_entry_id,
+  count(*) as cnt
+from packaging_slips
+where cogs_journal_entry_id is not null
+group by company_id, cogs_journal_entry_id
+having count(*) > 1
+order by cnt desc, company_id, cogs_journal_entry_id;
+
 -- 3) Invoices missing journal entry
 select
   company_id,
@@ -97,4 +118,3 @@ where invoice_count > 1
   and fulfillment_invoice_id is not null
   and fulfillment_invoice_id <> max_invoice_id
 order by company_id, sales_order_id;
-
