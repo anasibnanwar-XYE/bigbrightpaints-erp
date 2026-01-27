@@ -1402,19 +1402,10 @@ public class SalesService {
         SalesOrder order = requireOrder(salesOrderId);
         boolean orderTaxInclusive = order.isGstInclusive();
         Map<String, BigDecimal> minPriceBySku = new HashMap<>();
-        if (existingInvoice == null && order.getFulfillmentInvoiceId() != null) {
-            existingInvoice = invoiceRepository.findByCompanyAndId(company, order.getFulfillmentInvoiceId()).orElse(null);
-        }
-        if (existingInvoice == null) {
-            List<Invoice> orderInvoices = invoiceRepository.findAllByCompanyAndSalesOrderId(company, order.getId());
-            if (orderInvoices.size() == 1) {
-                existingInvoice = orderInvoices.getFirst();
-            } else if (orderInvoices.size() > 1) {
-                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
-                        "Multiple invoices exist for order; dispatch requires explicit invoice selection");
-            }
-        }
         boolean alreadyDispatched = "DISPATCHED".equalsIgnoreCase(slip.getStatus());
+        if (existingInvoice == null && alreadyDispatched) {
+            existingInvoice = resolveExistingInvoiceForSlip(company, order, slip, slipNumber);
+        }
         String overrideReason = null;
         if (!alreadyDispatched && hasRequestedOverrides) {
             if (!StringUtils.hasText(request.overrideReason())) {
@@ -1865,7 +1856,14 @@ public class SalesService {
                     .withDetail("invoiceTotal", existingInvoice.getTotalAmount())
                     .withDetail("dispatchTotal", totalAmount);
         }
-        Long preexistingJournalId = order.getSalesJournalEntryId();
+        Long preexistingJournalId = null;
+        if (existingInvoice != null && existingInvoice.getJournalEntry() != null) {
+            preexistingJournalId = existingInvoice.getJournalEntry().getId();
+        } else if (slip.getJournalEntryId() != null) {
+            preexistingJournalId = slip.getJournalEntryId();
+        } else if (alreadyDispatched && order.getSalesJournalEntryId() != null && hasSingleSlipForOrder(company, order)) {
+            preexistingJournalId = order.getSalesJournalEntryId();
+        }
         if (preexistingJournalId != null) {
             validateExistingReceivableJournal(company, preexistingJournalId, dealer, totalAmount);
         }
@@ -2256,6 +2254,52 @@ public class SalesService {
     }
 
     private record LineAmounts(BigDecimal net, BigDecimal tax, BigDecimal total) {}
+
+    private Invoice resolveExistingInvoiceForSlip(Company company,
+                                                  SalesOrder order,
+                                                  PackagingSlip slip,
+                                                  String slipNumber) {
+        if (company == null || order == null || order.getId() == null || slip == null) {
+            return null;
+        }
+        List<Invoice> orderInvoices = invoiceRepository.findAllByCompanyAndSalesOrderId(company, order.getId());
+        if (orderInvoices.isEmpty()) {
+            return null;
+        }
+        if (StringUtils.hasText(slipNumber)) {
+            String dispatchNote = "Dispatch " + slipNumber.trim();
+            List<Invoice> noteMatches = orderInvoices.stream()
+                    .filter(inv -> StringUtils.hasText(inv.getNotes())
+                            && dispatchNote.equalsIgnoreCase(inv.getNotes().trim()))
+                    .toList();
+            if (noteMatches.size() == 1) {
+                return noteMatches.getFirst();
+            }
+            if (noteMatches.size() > 1) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                        "Multiple invoices match dispatch slip; manual reconciliation required")
+                        .withDetail("packingSlipId", slip.getId())
+                        .withDetail("slipNumber", slipNumber);
+            }
+        }
+        if (hasSingleSlipForOrder(company, order)) {
+            if (order.getFulfillmentInvoiceId() != null) {
+                return invoiceRepository.findByCompanyAndId(company, order.getFulfillmentInvoiceId()).orElse(null);
+            }
+            if (orderInvoices.size() == 1) {
+                return orderInvoices.getFirst();
+            }
+        }
+        return null;
+    }
+
+    private boolean hasSingleSlipForOrder(Company company, SalesOrder order) {
+        if (company == null || order == null || order.getId() == null) {
+            return false;
+        }
+        List<PackagingSlip> slips = packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, order.getId());
+        return slips != null && slips.size() == 1;
+    }
 
     private String resolveOrderStatusAfterDispatch(Company company, SalesOrder order) {
         if (order == null || company == null) {

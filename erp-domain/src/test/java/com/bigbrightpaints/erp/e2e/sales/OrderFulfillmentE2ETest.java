@@ -631,13 +631,38 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         assertThat(backorderQty).isEqualByComparingTo(orderedQty.subtract(shippedQty));
 
+        PackagingSlipLine backorderLine = packagingSlipLineRepository.findByPackagingSlipId(backorderSlip.getId()).getFirst();
+        Map<String, Object> backorderDispatchReq = new java.util.HashMap<>();
+        backorderDispatchReq.put("packingSlipId", backorderSlip.getId());
+        backorderDispatchReq.put("confirmedBy", "e2e");
+        backorderDispatchReq.put("lines", List.of(Map.of(
+                "lineId", backorderLine.getId(),
+                "shipQty", backorderQty
+        )));
+
+        ResponseEntity<Map> backorderDispatchResp = rest.exchange("/api/v1/sales/dispatch/confirm",
+                HttpMethod.POST, new HttpEntity<>(backorderDispatchReq, headers), Map.class);
+        assertThat(backorderDispatchResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<?, ?> backorderData = requireData(backorderDispatchResp, "backorder dispatch");
+        Long backorderInvoiceId = ((Number) backorderData.get("finalInvoiceId")).longValue();
+        assertThat(backorderInvoiceId).isNotEqualTo(invoiceId);
+
+        var backorderInvoice = invoiceRepository.findByCompanyAndId(company, backorderInvoiceId).orElseThrow();
+        BigDecimal expectedBackorderTotal = unitPrice.multiply(backorderQty);
+        assertThat(backorderInvoice.getTotalAmount()).isEqualByComparingTo(expectedBackorderTotal);
+
+        PackagingSlip refreshedBackorder = packagingSlipRepository.findById(backorderSlip.getId()).orElseThrow();
+        assertThat(refreshedBackorder.getStatus()).isEqualTo("DISPATCHED");
+        assertThat(refreshedBackorder.getInvoiceId()).isEqualTo(backorderInvoiceId);
+
         BigDecimal dispatchedQty = inventoryMovementRepository
                 .findByReferenceTypeAndReferenceIdOrderByCreatedAtAsc(InventoryReference.SALES_ORDER, orderId.toString())
                 .stream()
                 .filter(m -> "DISPATCH".equalsIgnoreCase(m.getMovementType()))
                 .map(m -> m.getQuantity() != null ? m.getQuantity() : BigDecimal.ZERO)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        assertThat(dispatchedQty).isEqualByComparingTo(shippedQty);
+        BigDecimal expectedTotalDispatched = shippedQty.add(backorderQty);
+        assertThat(dispatchedQty).isEqualByComparingTo(expectedTotalDispatched);
     }
 
     @Test
