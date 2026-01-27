@@ -47,3 +47,7 @@
 - 2026-01-28: EPIC 01 / M01.3 verified.
   - Code: `V116__packaging_slip_journal_unique.sql` enforces slip-level journal uniqueness; `scripts/db_predeploy_scans.sql` adds duplicate slip journal scans.
   - Tests: `scripts/verify_local.sh`.
+- 2026-01-28: EPIC 02 / M02.1 verified.
+  - Code: `AccountingPeriodService.closePeriod` blocks closing when uninvoiced goods receipts exist; month-end checklist now reports uninvoiced receipts.
+  - Tests: `PeriodCloseLockIT.closePeriodRejectsUninvoicedReceipts`.
+  - Command: `scripts/verify_local.sh`.
