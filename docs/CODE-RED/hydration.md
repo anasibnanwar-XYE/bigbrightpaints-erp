@@ -40,3 +40,7 @@
   - Code: `SalesFulfillmentService.validateAndNormalizeOptions` now fails closed when `issueInvoice=false`.
   - Tests: `SalesFulfillmentServiceTest.rejectsFulfillmentWithoutDispatchInvoice`.
   - Command: `scripts/verify_local.sh`.
+- 2026-01-27: EPIC 01 / M01.2 verified.
+  - Code: `SalesJournalService.postSalesJournal` now fails closed (order-truth posting disabled).
+  - Tests: `SalesJournalServiceTest` (order-truth posting now rejected).
+  - Command: `scripts/verify_local.sh`.
