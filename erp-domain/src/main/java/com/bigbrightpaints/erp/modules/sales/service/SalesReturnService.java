@@ -16,6 +16,7 @@ import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReference;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryMovement;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryMovementRepository;
 import com.bigbrightpaints.erp.modules.inventory.service.BatchNumberService;
+import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
 import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceLine;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
@@ -55,6 +56,7 @@ public class SalesReturnService {
     private final AccountingFacade accountingFacade;
     private final CompanyEntityLookup companyEntityLookup;
     private final CompanyAccountingSettingsService companyAccountingSettingsService;
+    private final FinishedGoodsService finishedGoodsService;
 
     public SalesReturnService(CompanyContextService companyContextService,
                               FinishedGoodRepository finishedGoodRepository,
@@ -63,7 +65,8 @@ public class SalesReturnService {
                               BatchNumberService batchNumberService,
                               AccountingFacade accountingFacade,
                               CompanyEntityLookup companyEntityLookup,
-                              CompanyAccountingSettingsService companyAccountingSettingsService) {
+                              CompanyAccountingSettingsService companyAccountingSettingsService,
+                              FinishedGoodsService finishedGoodsService) {
         this.companyContextService = companyContextService;
         this.finishedGoodRepository = finishedGoodRepository;
         this.finishedGoodBatchRepository = finishedGoodBatchRepository;
@@ -72,6 +75,7 @@ public class SalesReturnService {
         this.accountingFacade = accountingFacade;
         this.companyEntityLookup = companyEntityLookup;
         this.companyAccountingSettingsService = companyAccountingSettingsService;
+        this.finishedGoodsService = finishedGoodsService;
     }
 
     @Transactional
@@ -378,6 +382,7 @@ public class SalesReturnService {
         BigDecimal currentStock = fg.getCurrentStock() != null ? fg.getCurrentStock() : BigDecimal.ZERO;
         fg.setCurrentStock(currentStock.add(quantity));
         finishedGoodRepository.save(fg);
+        finishedGoodsService.invalidateWeightedAverageCost(fg.getId());
 
         FinishedGoodBatch returnBatch = new FinishedGoodBatch();
         returnBatch.setFinishedGood(fg);

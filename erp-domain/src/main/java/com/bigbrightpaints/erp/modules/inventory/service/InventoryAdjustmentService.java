@@ -48,6 +48,7 @@ public class InventoryAdjustmentService {
     private final AccountingFacade accountingFacade;
     private final ReferenceNumberService referenceNumberService;
     private final CompanyClock companyClock;
+    private final FinishedGoodsService finishedGoodsService;
 
     public InventoryAdjustmentService(CompanyContextService companyContextService,
                                       FinishedGoodRepository finishedGoodRepository,
@@ -56,7 +57,8 @@ public class InventoryAdjustmentService {
                                       FinishedGoodBatchRepository finishedGoodBatchRepository,
                                       AccountingFacade accountingFacade,
                                       ReferenceNumberService referenceNumberService,
-                                      CompanyClock companyClock) {
+                                      CompanyClock companyClock,
+                                      FinishedGoodsService finishedGoodsService) {
         this.companyContextService = companyContextService;
         this.finishedGoodRepository = finishedGoodRepository;
         this.adjustmentRepository = adjustmentRepository;
@@ -65,6 +67,7 @@ public class InventoryAdjustmentService {
         this.accountingFacade = accountingFacade;
         this.referenceNumberService = referenceNumberService;
         this.companyClock = companyClock;
+        this.finishedGoodsService = finishedGoodsService;
     }
 
     public List<InventoryAdjustmentDto> listAdjustments() {
@@ -162,6 +165,7 @@ public class InventoryAdjustmentService {
             finishedGood.setCurrentStock(currentStock.subtract(line.getQuantity()));
             finishedGoodRepository.save(finishedGood);
             adjustBatchQuantities(finishedGood, line.getQuantity());
+            finishedGoodsService.invalidateWeightedAverageCost(finishedGood.getId());
 
             InventoryMovement movement = new InventoryMovement();
             movement.setFinishedGood(finishedGood);

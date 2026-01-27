@@ -1710,6 +1710,12 @@ public class FinishedGoodsService {
         }
     }
 
+    public void invalidateWeightedAverageCost(Long finishedGoodId) {
+        if (finishedGoodId != null) {
+            wacCache.remove(finishedGoodId);
+        }
+    }
+
     private BigDecimal weightedAverageCost(FinishedGood fg) {
         CachedWac cached = wacCache.get(fg.getId());
         long now = System.currentTimeMillis();

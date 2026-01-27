@@ -14,6 +14,7 @@ import com.bigbrightpaints.erp.modules.factory.dto.BulkPackResponse;
 import com.bigbrightpaints.erp.modules.factory.dto.PackagingConsumptionResult;
 import com.bigbrightpaints.erp.modules.inventory.domain.*;
 import com.bigbrightpaints.erp.modules.inventory.service.BatchNumberService;
+import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
 import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -53,6 +54,7 @@ public class BulkPackingService {
     private final AccountingService accountingService;
     private final BatchNumberService batchNumberService;
     private final PackagingMaterialService packagingMaterialService;
+    private final FinishedGoodsService finishedGoodsService;
     private final CompanyClock companyClock;
 
     public BulkPackingService(CompanyContextService companyContextService,
@@ -65,6 +67,7 @@ public class BulkPackingService {
                               AccountingService accountingService,
                               BatchNumberService batchNumberService,
                               PackagingMaterialService packagingMaterialService,
+                              FinishedGoodsService finishedGoodsService,
                               CompanyClock companyClock) {
         this.companyContextService = companyContextService;
         this.finishedGoodRepository = finishedGoodRepository;
@@ -76,6 +79,7 @@ public class BulkPackingService {
         this.accountingService = accountingService;
         this.batchNumberService = batchNumberService;
         this.packagingMaterialService = packagingMaterialService;
+        this.finishedGoodsService = finishedGoodsService;
         this.companyClock = companyClock;
     }
 
@@ -156,12 +160,26 @@ public class BulkPackingService {
 
         // 6. Deduct from bulk batch
         bulkBatch.setQuantityAvailable(bulkBatch.getQuantityAvailable().subtract(totalVolume));
+        bulkBatch.setQuantityTotal(bulkBatch.getQuantityTotal().subtract(totalVolume));
         finishedGoodBatchRepository.save(bulkBatch);
 
         // Also update the bulk FG stock
         FinishedGood bulkFg = bulkBatch.getFinishedGood();
         bulkFg.setCurrentStock(bulkFg.getCurrentStock().subtract(totalVolume));
         finishedGoodRepository.save(bulkFg);
+
+        // Record issue movement for bulk batch depletion
+        InventoryMovement bulkIssue = new InventoryMovement();
+        bulkIssue.setFinishedGood(bulkFg);
+        bulkIssue.setFinishedGoodBatch(bulkBatch);
+        bulkIssue.setReferenceType("PACKAGING");
+        bulkIssue.setReferenceId("PACK-" + bulkBatch.getBatchCode());
+        bulkIssue.setMovementType("ISSUE");
+        bulkIssue.setQuantity(totalVolume);
+        bulkIssue.setUnitCost(bulkBatch.getUnitCost());
+        inventoryMovementRepository.save(bulkIssue);
+
+        finishedGoodsService.invalidateWeightedAverageCost(bulkFg.getId());
 
         // 7. Post packaging journal
         Long journalEntryId = postPackagingJournal(company, bulkBatch, childBatches,
@@ -497,6 +515,7 @@ public class BulkPackingService {
         movement.setQuantity(line.quantity());
         movement.setUnitCost(childUnitCost);
         inventoryMovementRepository.save(movement);
+        finishedGoodsService.invalidateWeightedAverageCost(childFg.getId());
 
         return savedBatch;
     }

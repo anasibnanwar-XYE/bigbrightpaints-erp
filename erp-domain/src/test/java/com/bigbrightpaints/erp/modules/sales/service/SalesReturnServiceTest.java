@@ -15,6 +15,7 @@ import com.bigbrightpaints.erp.modules.inventory.domain.InventoryMovement;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryMovementRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReference;
 import com.bigbrightpaints.erp.modules.inventory.service.BatchNumberService;
+import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
 import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceLine;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
@@ -67,6 +68,8 @@ class SalesReturnServiceTest {
     private CompanyEntityLookup companyEntityLookup;
     @Mock
     private CompanyAccountingSettingsService companyAccountingSettingsService;
+    @Mock
+    private FinishedGoodsService finishedGoodsService;
 
     private SalesReturnService salesReturnService;
     private Company company;
@@ -81,7 +84,8 @@ class SalesReturnServiceTest {
                 batchNumberService,
                 accountingFacade,
                 companyEntityLookup,
-                companyAccountingSettingsService
+                companyAccountingSettingsService,
+                finishedGoodsService
         );
         company = new Company();
         company.setTimezone("UTC");
