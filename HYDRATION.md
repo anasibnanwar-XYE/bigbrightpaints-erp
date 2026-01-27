@@ -363,3 +363,4 @@
 - 2026-01-27: Production log codes now use company timezone and serialize generation per company to prevent collisions (ProductionLogService, CompanyRepository). Tests not run (logic-only change).
 - 2026-01-27: Cost allocation now skips only already-allocated batches and distributes variance across remaining liters (CostAllocationService). Tests not run (logic-only change).
 - 2026-01-27: PackingServiceTest now imports FinishedGoodBatch to compile after wastage handling changes. Tests pending (verify was running).
+- 2026-01-27: Sales order creation now runs inside a programmatic transaction to preserve pessimistic locks while handling idempotency conflicts (SalesService, SalesServiceTest). Tests pending (full verify rerun).

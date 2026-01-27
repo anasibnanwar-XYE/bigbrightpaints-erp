@@ -43,8 +43,11 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
@@ -94,6 +97,7 @@ public class SalesService {
     private final CompanyAccountingSettingsService companyAccountingSettingsService;
     private final CreditLimitOverrideService creditLimitOverrideService;
     private final AuditService auditService;
+    private final TransactionTemplate transactionTemplate;
 
     public SalesService(CompanyContextService companyContextService,
                         DealerRepository dealerRepository,
@@ -120,7 +124,8 @@ public class SalesService {
                         CompanyAccountingSettingsService companyAccountingSettingsService,
                         CreditLimitOverrideService creditLimitOverrideService,
                         AuditService auditService,
-                        CompanyClock companyClock) {
+                        CompanyClock companyClock,
+                        PlatformTransactionManager transactionManager) {
         this.companyContextService = companyContextService;
         this.dealerRepository = dealerRepository;
         this.salesOrderRepository = salesOrderRepository;
@@ -147,6 +152,10 @@ public class SalesService {
         this.creditLimitOverrideService = creditLimitOverrideService;
         this.auditService = auditService;
         this.companyClock = companyClock;
+        TransactionTemplate template = new TransactionTemplate(transactionManager);
+        template.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRED);
+        template.setIsolationLevel(TransactionDefinition.ISOLATION_REPEATABLE_READ);
+        this.transactionTemplate = template;
     }
 
     /* Dealers */
@@ -312,17 +321,26 @@ public class SalesService {
         String idempotencyKey = request.resolveIdempotencyKey();
         String requestSignature = buildSalesOrderSignature(request);
         try {
-            return createOrderTransactional(company, request, idempotencyKey, requestSignature);
+            SalesOrderDto created = transactionTemplate.execute(status ->
+                    createOrderInternal(company, request, idempotencyKey, requestSignature));
+            if (created == null) {
+                throw new IllegalStateException("Failed to create sales order for " + idempotencyKey);
+            }
+            return created;
         } catch (DataIntegrityViolationException ex) {
-            return resolveIdempotentOrder(company, idempotencyKey, requestSignature, ex);
+            SalesOrderDto resolved = transactionTemplate.execute(status ->
+                    resolveIdempotentOrderInternal(company, idempotencyKey, requestSignature, ex));
+            if (resolved == null) {
+                throw ex;
+            }
+            return resolved;
         }
     }
 
-    @org.springframework.transaction.annotation.Transactional(isolation = Isolation.REPEATABLE_READ)
-    private SalesOrderDto createOrderTransactional(Company company,
-                                                   SalesOrderRequest request,
-                                                   String idempotencyKey,
-                                                   String requestSignature) {
+    private SalesOrderDto createOrderInternal(Company company,
+                                              SalesOrderRequest request,
+                                              String idempotencyKey,
+                                              String requestSignature) {
         Optional<SalesOrder> existing = salesOrderRepository.findByCompanyAndIdempotencyKey(company, idempotencyKey);
         if (existing.isPresent()) {
             SalesOrder order = existing.get();
@@ -392,11 +410,10 @@ public class SalesService {
         return toDto(saved);
     }
 
-    @Transactional
-    private SalesOrderDto resolveIdempotentOrder(Company company,
-                                                 String idempotencyKey,
-                                                 String requestSignature,
-                                                 DataIntegrityViolationException rootCause) {
+    private SalesOrderDto resolveIdempotentOrderInternal(Company company,
+                                                         String idempotencyKey,
+                                                         String requestSignature,
+                                                         DataIntegrityViolationException rootCause) {
         Optional<SalesOrder> existing = salesOrderRepository.findByCompanyAndIdempotencyKey(company, idempotencyKey);
         if (existing.isEmpty()) {
             throw rootCause;

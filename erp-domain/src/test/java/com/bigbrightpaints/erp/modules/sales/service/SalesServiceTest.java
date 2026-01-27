@@ -51,6 +51,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.ResourcelessTransactionManager;
 
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
@@ -119,6 +121,7 @@ class SalesServiceTest {
     private AuditService auditService;
     @Mock
     private CompanyClock companyClock;
+    private final PlatformTransactionManager transactionManager = new ResourcelessTransactionManager();
 
     private SalesService salesService;
     private Company company;
@@ -151,7 +154,8 @@ class SalesServiceTest {
                 companyAccountingSettingsService,
                 creditLimitOverrideService,
                 auditService,
-                companyClock);
+                companyClock,
+                transactionManager);
 
         when(finishedGoodsService.reserveForOrder(any()))
                 .thenReturn(new InventoryReservationResult(null, List.of()));
