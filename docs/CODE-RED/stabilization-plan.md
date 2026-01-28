@@ -17,10 +17,8 @@ Verified (in this repo)
   `PayrollService.createPayrollRun` which never sets `idempotency_key`, so duplicates are possible
   (`erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/controller/HrPayrollController.java:72`,
   `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/service/PayrollService.java:73`).
-- Manual journal namespace guard does not cover company-prefixed invoice numbers (e.g., `BBP-INV-...`):
-  invoice format is `"%s-INV-%d-%05d"` (`erp-domain/src/main/java/com/bigbrightpaints/erp/modules/invoice/service/InvoiceNumberService.java:41`)
-  while reserved prefix checks only match `INV-` and other system prefixes
-  (`erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingFacade.java:94`).
+- Manual journal entry API currently accepts caller-supplied `referenceNumber` values (risking collisions
+  with system references like `BBP-INV-...`); these must be system-generated only.
 - Timezone/business-date violations exist:
   `ZoneId.systemDefault()` used for month windows in Cost Allocation + Reporting
   (`erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/service/CostAllocationService.java:65`,
@@ -67,7 +65,7 @@ Milestones
 - M00.1 (DONE): Freeze invariants + remove obvious double-post/double-dispatch hazards
   - Disable/guard "order-truth" journal posting paths (fail closed).
   - Ensure dispatch confirmation cannot double-call inventory dispatch.
-  - Manual journal namespace protection (reserved prefixes vs MANUAL-), fail closed.
+- Manual journal namespace protection (reserved prefixes), fail closed.
   - Require an audit reason when dispatch overrides are applied (price/discount/tax).
 - M00.2 (BLOCKER): Make CODE-RED scripts executable in CI (no implicit `rg`) and wire gates into CI
   - `scripts/schema_drift_scan.sh`, `scripts/triage_tests.sh`, `scripts/db_predeploy_scans.sql` must run in CI.
@@ -75,7 +73,7 @@ Milestones
 
 Acceptance criteria
 - No endpoint can create a journal entry with arbitrary amounts disconnected from domain state.
-- Manual journal entry cannot use reserved system reference prefixes.
+- Manual journal entry does not accept caller-supplied reference numbers.
 - Dispatch confirmation is idempotent at the packaging slip boundary and cannot be double-applied via controller wiring.
 - Dispatch overrides are impossible without an audit reason.
 - CI gates include CODE-RED scripts (schema drift + predeploy scans + verify_local).
@@ -103,7 +101,7 @@ Milestones
 - M01.1 (DONE): Declare and enforce a single canonical dispatch/invoice path (SalesService.confirmDispatch)
 - M01.2 (DONE): Fail closed on slipless invoice issuance and order-truth postings
 - M01.3 (DONE): Lock idempotency markers at slip + journal reference boundaries
-- M01.4 (BLOCKER): Fail closed when `orderId` maps to multiple slips (require `packingSlipId`)
+- M01.4 (DONE): Fail closed when `orderId` maps to multiple slips (require `packingSlipId`)
   - `SalesService.selectMostRecentSlip` must be replaced with explicit failure or deterministic explicit selection.
 
 Acceptance criteria
@@ -168,13 +166,13 @@ Evidence artifacts
 ## EPIC 05 - Manual Journal Policy + Period Locks (Fail Closed)
 
 Milestones
-- M05.1: Reserved reference prefixes list enforced for manual entries (including company-prefixed invoice refs like `BBP-INV-...`)
-- M05.2: Memo/why required for manual entries
+- M05.1: Manual journal entry API must not accept caller-supplied reference numbers (system-generated only).
+- M05.2: Memo/why required for manual entries.
 - M05.3: Accounting event store is either wired or explicitly removed from claims
   - Wire `AccountingEventStore.recordJournalEntryPosted` inside `AccountingService.createJournalEntry` or remove replay claims.
 
 Acceptance criteria
-- Manual entries never collide with system namespaces; period lock enforced.
+- Manual entries are system-referenced only (no user-supplied reference numbers); period lock enforced.
 
 Evidence artifacts
 - Tests:
