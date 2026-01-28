@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.purchasing.domain;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import jakarta.persistence.*;
@@ -57,7 +58,7 @@ public class Supplier extends VersionedEntity {
             publicId = UUID.randomUUID();
         }
         if (createdAt == null) {
-            createdAt = Instant.now();
+            createdAt = CompanyTime.now(company);
         }
     }
 

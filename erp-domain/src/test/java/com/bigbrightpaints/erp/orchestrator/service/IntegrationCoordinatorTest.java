@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.orchestrator.service;
 
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
+import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
@@ -15,10 +16,12 @@ import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
 import com.bigbrightpaints.erp.modules.sales.service.SalesJournalService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.reports.service.ReportService;
 import com.bigbrightpaints.erp.orchestrator.repository.OrderAutoApprovalState;
 import com.bigbrightpaints.erp.orchestrator.repository.OrderAutoApprovalStateRepository;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
@@ -72,6 +75,10 @@ class IntegrationCoordinatorTest {
     private CompanyEntityLookup companyEntityLookup;
     @Mock
     private CompanyDefaultAccountsService companyDefaultAccountsService;
+    @Mock
+    private CompanyContextService companyContextService;
+    @Mock
+    private CompanyClock companyClock;
 
     private IntegrationCoordinator integrationCoordinator;
     private SalesOrder order;
@@ -93,6 +100,8 @@ class IntegrationCoordinatorTest {
                 accountingFacade,
                 companyEntityLookup,
                 companyDefaultAccountsService,
+                companyContextService,
+                companyClock,
                 new NoOpTransactionManager(),
                 10L,
                 20L);
@@ -100,6 +109,8 @@ class IntegrationCoordinatorTest {
         company = new Company();
         company.setCode(COMPANY_ID);
         company.setTimezone("UTC");
+        lenient().when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        lenient().when(companyClock.today(any())).thenReturn(LocalDate.of(2024, 1, 1));
         order = new SalesOrder();
         order.setCompany(company);
         order.setDealer(new Dealer());

@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.hr.domain;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import jakarta.persistence.*;
 
@@ -50,7 +51,7 @@ public class LeaveRequest extends VersionedEntity {
             publicId = UUID.randomUUID();
         }
         if (createdAt == null) {
-            createdAt = Instant.now();
+            createdAt = CompanyTime.now(company);
         }
     }
 

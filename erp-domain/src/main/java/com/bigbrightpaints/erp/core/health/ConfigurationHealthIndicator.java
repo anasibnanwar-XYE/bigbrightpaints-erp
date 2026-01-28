@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.core.health;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import java.time.Duration;
 import java.time.Instant;
 import org.springframework.beans.factory.annotation.Value;
@@ -49,7 +50,7 @@ public class ConfigurationHealthIndicator implements HealthIndicator {
     }
 
     private ConfigurationHealthService.ConfigurationHealthReport getReport() {
-        Instant now = Instant.now();
+        Instant now = CompanyTime.now();
         Instant last = cachedAt;
         ConfigurationHealthService.ConfigurationHealthReport report = cachedReport;
         if (last != null && report != null && Duration.between(last, now).compareTo(cacheTtl) < 0) {

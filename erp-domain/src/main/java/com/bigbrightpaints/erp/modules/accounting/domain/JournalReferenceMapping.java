@@ -13,6 +13,7 @@ import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import java.time.Instant;
 
 @Entity
@@ -46,7 +47,7 @@ public class JournalReferenceMapping {
     @PrePersist
     public void prePersist() {
         if (createdAt == null) {
-            createdAt = Instant.now();
+            createdAt = CompanyTime.now(company);
         }
     }
 

@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.invoice.domain;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import jakarta.persistence.*;
 
@@ -25,7 +26,7 @@ public class InvoiceSequence extends VersionedEntity {
     private Long nextNumber = 1L;
 
     @Column(name = "updated_at", nullable = false)
-    private Instant updatedAt = Instant.now();
+    private Instant updatedAt = CompanyTime.now(company);
 
     public Long getId() { return id; }
     public Company getCompany() { return company; }
@@ -39,7 +40,7 @@ public class InvoiceSequence extends VersionedEntity {
     public Long consumeAndIncrement() {
         Long current = this.nextNumber;
         this.nextNumber = current + 1;
-        this.updatedAt = Instant.now();
+        this.updatedAt = CompanyTime.now(company);
         return current;
     }
 }

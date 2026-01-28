@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.sales.domain;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.core.domain.VersionedEntity;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
@@ -68,7 +69,7 @@ public class Dealer extends VersionedEntity {
             publicId = UUID.randomUUID();
         }
         if (createdAt == null) {
-            createdAt = Instant.now();
+            createdAt = CompanyTime.now(company);
         }
     }
 

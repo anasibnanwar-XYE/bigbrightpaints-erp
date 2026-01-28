@@ -1,5 +1,7 @@
 package com.bigbrightpaints.erp.modules.factory.domain;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
+import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
 import jakarta.persistence.*;
 
@@ -44,7 +46,8 @@ public class ProductionLogMaterial extends VersionedEntity {
     @PrePersist
     public void prePersist() {
         if (createdAt == null) {
-            createdAt = Instant.now();
+            Company company = log != null ? log.getCompany() : null;
+            createdAt = CompanyTime.now(company);
         }
     }
 

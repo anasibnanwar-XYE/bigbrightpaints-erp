@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.inventory.domain;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import jakarta.persistence.*;
 
 import java.math.BigDecimal;
@@ -46,7 +47,7 @@ public class RawMaterialMovement extends VersionedEntity {
     @PrePersist
     public void prePersist() {
         if (createdAt == null) {
-            createdAt = Instant.now();
+            createdAt = CompanyTime.now(rawMaterial != null ? rawMaterial.getCompany() : null);
         }
     }
 

@@ -17,21 +17,9 @@ Verified (in this repo)
   `PayrollService.createPayrollRun` which never sets `idempotency_key`, so duplicates are possible
   (`erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/controller/HrPayrollController.java:72`,
   `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/service/PayrollService.java:73`).
-- Manual journal entry API currently accepts caller-supplied `referenceNumber` values (risking collisions
-  with system references like `BBP-INV-...`); these must be system-generated only.
-- Timezone/business-date violations exist:
-  `ZoneId.systemDefault()` used for month windows in Cost Allocation + Reporting
-  (`erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/service/CostAllocationService.java:65`,
-  `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/reports/service/ReportService.java:526`);
-  `LocalDate.now()` defaults exist in domain/service code
-  (`erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/domain/PartnerSettlementAllocation.java:100`,
-  `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/StatementService.java:303`,
-  `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/domain/PackingRecord.java:89`,
-  `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/domain/InventoryAdjustment.java:68`,
-  `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/event/InventoryMovementEvent.java:90`).
 - Accounting event store exists but is not wired: `AccountingEventStore` has no call sites
   (`erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/event/AccountingEventStore.java:52`).
-- CI currently gates only on tests: workflow runs `mvn -B -ntp verify` only
+- CI currently gates on schema drift scan + time API scan + tests
   (`.github/workflows/ci.yml:1`).
 - CODE-RED scripts exist but hard-depend on `rg` (missing in some envs):
   `scripts/schema_drift_scan.sh:23`, `scripts/triage_tests.sh:27`.
@@ -41,6 +29,12 @@ Resolved since 2026-01-27
   only for already-dispatched slips via `resolveExistingInvoiceForSlip`
   (`erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/service/SalesService.java:1407`,
   `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/service/SalesService.java:2258`).
+- Manual journal reference numbers are system-generated; caller-supplied `referenceNumber` is treated as a
+  client idempotency key and rejected if it matches reserved/system namespaces (including `*-INV-*`)
+  (`erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/controller/AccountingController.java:141`,
+  `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingFacade.java:94`).
+- Timezone/business-date violations removed: CompanyClock/CompanyTime are now used for business dates and
+  month boundaries (Cost Allocation + Reporting), backed by `scripts/time_api_scan.sh` and CI gate.
 
 Corrections vs earlier audit text (repo reality)
 - The CODE-RED docs/scripts are present here (`docs/CODE-RED/stabilization-plan.md:1`, `scripts/verify_local.sh:1`,
@@ -73,7 +67,8 @@ Milestones
 
 Acceptance criteria
 - No endpoint can create a journal entry with arbitrary amounts disconnected from domain state.
-- Manual journal entry does not accept caller-supplied reference numbers.
+- Manual journal entry reference numbers are system-generated; caller-supplied `referenceNumber` is treated as
+  a client idempotency key and blocked if it matches system namespaces.
 - Dispatch confirmation is idempotent at the packaging slip boundary and cannot be double-applied via controller wiring.
 - Dispatch overrides are impossible without an audit reason.
 - CI gates include CODE-RED scripts (schema drift + predeploy scans + verify_local).
@@ -194,10 +189,12 @@ Evidence artifacts
 ## EPIC 07 - Timezone + Business Date Canonicalization
 
 Milestones
-- M07.1: Replace scattered LocalDate.now()/ZoneId.systemDefault() in business logic with CompanyClock
+- M07.1 (DONE): Replace scattered LocalDate.now()/ZoneId.systemDefault() in business logic with CompanyClock
   - CostAllocationService month windows + ReportService monthlyProductionCosts
   - StatementService aging date fallback
   - Entity defaults: PartnerSettlementAllocation, PackingRecord, InventoryAdjustment, InventoryMovementEvent
+- M07.2 (DONE): Add time API guard in CI and verify_local
+  - `scripts/time_api_scan.sh`, wired in `.github/workflows/ci.yml` and `scripts/verify_local.sh`
 
 Acceptance criteria
 - Business dates (invoice date, journal entry date, payroll period, month boundaries) use company timezone consistently.
@@ -205,6 +202,7 @@ Acceptance criteria
 Evidence artifacts
 - Search evidence:
   - `rg -n \"ZoneId\\.systemDefault\\(\" erp-domain/src/main/java`
+  - `scripts/time_api_scan.sh`
 
 ## EPIC 08 - Schema Convergence / Drift Elimination
 

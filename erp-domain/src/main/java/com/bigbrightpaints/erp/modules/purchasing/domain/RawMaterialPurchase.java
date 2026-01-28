@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.purchasing.domain;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import jakarta.persistence.*;
@@ -80,9 +81,9 @@ public class RawMaterialPurchase extends VersionedEntity {
             publicId = UUID.randomUUID();
         }
         if (createdAt == null) {
-            createdAt = Instant.now();
+            createdAt = CompanyTime.now(company);
         }
-        updatedAt = Instant.now();
+        updatedAt = CompanyTime.now(company);
         if (outstandingAmount == null || outstandingAmount.compareTo(BigDecimal.ZERO) == 0) {
             outstandingAmount = totalAmount != null ? totalAmount : BigDecimal.ZERO;
         }
@@ -90,7 +91,7 @@ public class RawMaterialPurchase extends VersionedEntity {
 
     @PreUpdate
     public void preUpdate() {
-        updatedAt = Instant.now();
+        updatedAt = CompanyTime.now(company);
     }
 
     public Long getId() { return id; }

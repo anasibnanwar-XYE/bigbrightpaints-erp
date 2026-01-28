@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.core.config;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
@@ -76,14 +77,14 @@ public class MockDataInitializer {
             FinishedGood fgLifo = seedFinishedGood(company, finishedGoodRepository, productRepository, accounts, brand, "FG-LIFO", "LIFO", wipPackAccount);
             FinishedGood fgKit = seedFinishedGood(company, finishedGoodRepository, productRepository, accounts, brand, "FG-KIT", "FIFO", wipPackAccount);
             seedRawMaterials(company, rawMaterialRepository, rawMaterialBatchRepository, accounts);
-            seedBatches(batchRepository, finishedGoodRepository, fg, fgLifo, fgKit);
+            seedBatches(company, batchRepository, finishedGoodRepository, fg, fgLifo, fgKit);
 
             // Seed a handful of journals for UI exploration
             CompanyContextHolder.setCompanyId(company.getCode());
-            seedSalesPurchaseAndCogs(accountingService, dealer, supplier, accounts);
+            seedSalesPurchaseAndCogs(accountingService, company, dealer, supplier, accounts);
             // Add some traffic to show balances
             for (int i = 0; i < 10; i++) {
-                postSimpleSale(accountingService, dealer, accounts.get("REV"), accounts.get("GST_OUT"), accounts.get("AR"),
+                postSimpleSale(accountingService, company, dealer, accounts.get("REV"), accounts.get("GST_OUT"), accounts.get("AR"),
                         new BigDecimal("500").add(new BigDecimal(i * 25)));
             }
             CompanyContextHolder.clear();
@@ -296,16 +297,17 @@ public class MockDataInitializer {
         return fg;
     }
 
-    private void seedBatches(FinishedGoodBatchRepository batchRepository,
+    private void seedBatches(Company company,
+                             FinishedGoodBatchRepository batchRepository,
                              FinishedGoodRepository finishedGoodRepository,
                              FinishedGood fgFifo,
                              FinishedGood fgLifo,
                              FinishedGood fgKit) {
-        createBatch(batchRepository, finishedGoodRepository, fgFifo, "B-FIFO-1", new BigDecimal("80"), new BigDecimal("10.00"), Instant.now().minusSeconds(86400));
-        createBatch(batchRepository, finishedGoodRepository, fgFifo, "B-FIFO-2", new BigDecimal("120"), new BigDecimal("12.00"), Instant.now().minusSeconds(3600));
-        createBatch(batchRepository, finishedGoodRepository, fgLifo, "B-LIFO-1", new BigDecimal("60"), new BigDecimal("9.50"), Instant.now().minusSeconds(7200));
-        createBatch(batchRepository, finishedGoodRepository, fgLifo, "B-LIFO-2", new BigDecimal("140"), new BigDecimal("11.25"), Instant.now());
-        createBatch(batchRepository, finishedGoodRepository, fgKit, "B-KIT-1", new BigDecimal("200"), new BigDecimal("8.75"), Instant.now().minusSeconds(5400));
+        createBatch(batchRepository, finishedGoodRepository, fgFifo, "B-FIFO-1", new BigDecimal("80"), new BigDecimal("10.00"), CompanyTime.now(company).minusSeconds(86400));
+        createBatch(batchRepository, finishedGoodRepository, fgFifo, "B-FIFO-2", new BigDecimal("120"), new BigDecimal("12.00"), CompanyTime.now(company).minusSeconds(3600));
+        createBatch(batchRepository, finishedGoodRepository, fgLifo, "B-LIFO-1", new BigDecimal("60"), new BigDecimal("9.50"), CompanyTime.now(company).minusSeconds(7200));
+        createBatch(batchRepository, finishedGoodRepository, fgLifo, "B-LIFO-2", new BigDecimal("140"), new BigDecimal("11.25"), CompanyTime.now(company));
+        createBatch(batchRepository, finishedGoodRepository, fgKit, "B-KIT-1", new BigDecimal("200"), new BigDecimal("8.75"), CompanyTime.now(company).minusSeconds(5400));
     }
 
     private void createBatch(FinishedGoodBatchRepository batchRepository,
@@ -389,6 +391,7 @@ public class MockDataInitializer {
     }
 
     private void seedSalesPurchaseAndCogs(AccountingService accountingService,
+                                          Company company,
                                           Dealer dealer,
                                           Supplier supplier,
                                           Map<String, Account> accounts) {
@@ -398,7 +401,7 @@ public class MockDataInitializer {
         BigDecimal revenue = saleTotal.subtract(tax);
         accountingService.createJournalEntry(new JournalEntryRequest(
                 "MOCK-SALE-1",
-                LocalDate.now().minusDays(10),
+                CompanyTime.today(company).minusDays(10),
                 "Mock GST sale",
                 dealer.getId(),
                 null,
@@ -416,7 +419,7 @@ public class MockDataInitializer {
         BigDecimal inventory = purchaseTotal.subtract(purchaseTax);
         accountingService.createJournalEntry(new JournalEntryRequest(
                 "MOCK-PO-1",
-                LocalDate.now().minusDays(15),
+                CompanyTime.today(company).minusDays(15),
                 "Mock purchase",
                 null,
                 supplier.getId(),
@@ -432,7 +435,7 @@ public class MockDataInitializer {
         BigDecimal cogs = new BigDecimal("320.00");
         accountingService.createJournalEntry(new JournalEntryRequest(
                 "MOCK-COGS-1",
-                LocalDate.now().minusDays(10),
+                CompanyTime.today(company).minusDays(10),
                 "COGS for MOCK-SALE-1",
                 null,
                 null,
@@ -445,6 +448,7 @@ public class MockDataInitializer {
     }
 
     private void postSimpleSale(AccountingService accountingService,
+                                Company company,
                                 Dealer dealer,
                                 Account revenue,
                                 Account gstOut,
@@ -453,7 +457,7 @@ public class MockDataInitializer {
         BigDecimal tax = amount.multiply(new BigDecimal("0.18")).setScale(2, java.math.RoundingMode.HALF_UP);
         accountingService.createJournalEntry(new JournalEntryRequest(
                 "MOCK-SALE-" + UUID.randomUUID(),
-                LocalDate.now(),
+                CompanyTime.today(company),
                 "Mock sale",
                 dealer.getId(),
                 null,

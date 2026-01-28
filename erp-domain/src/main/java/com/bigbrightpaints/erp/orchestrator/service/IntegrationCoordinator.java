@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.orchestrator.service;
 
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
+import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
@@ -10,6 +11,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
+import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.factory.dto.FactoryDashboardDto;
 import com.bigbrightpaints.erp.modules.factory.dto.FactoryTaskDto;
 import com.bigbrightpaints.erp.modules.factory.dto.FactoryTaskRequest;
@@ -76,6 +78,8 @@ public class IntegrationCoordinator {
     private final AccountingFacade accountingFacade;
     private final CompanyEntityLookup companyEntityLookup;
     private final CompanyDefaultAccountsService companyDefaultAccountsService;
+    private final CompanyContextService companyContextService;
+    private final CompanyClock companyClock;
     private final Long dispatchDebitAccountId;
     private final Long dispatchCreditAccountId;
     private final TransactionTemplate txTemplate;
@@ -93,6 +97,8 @@ public class IntegrationCoordinator {
                                   AccountingFacade accountingFacade,
                                   CompanyEntityLookup companyEntityLookup,
                                   CompanyDefaultAccountsService companyDefaultAccountsService,
+                                  CompanyContextService companyContextService,
+                                  CompanyClock companyClock,
                                   PlatformTransactionManager txManager,
                                   @Value("${erp.dispatch.debit-account-id:0}") Long dispatchDebitAccountId,
                                   @Value("${erp.dispatch.credit-account-id:0}") Long dispatchCreditAccountId) {
@@ -108,6 +114,8 @@ public class IntegrationCoordinator {
         this.accountingFacade = accountingFacade;
         this.companyEntityLookup = companyEntityLookup;
         this.companyDefaultAccountsService = companyDefaultAccountsService;
+        this.companyContextService = companyContextService;
+        this.companyClock = companyClock;
         this.dispatchDebitAccountId = normalizeAccount(dispatchDebitAccountId);
         this.dispatchCreditAccountId = normalizeAccount(dispatchCreditAccountId);
         if (this.dispatchDebitAccountId == null || this.dispatchCreditAccountId == null) {
@@ -148,7 +156,7 @@ public class IntegrationCoordinator {
                     "PLAN-" + orderId,
                     "Order " + orderId,
                     1.0,
-                    LocalDate.now().plusDays(1),
+                    companyClock.today(companyContextService.requireCurrentCompany()).plusDays(1),
                     "Auto-generated from orchestrator");
             factoryService.createPlan(request);
             log.info("Queued production plan for order {}", orderId);
@@ -212,7 +220,7 @@ public class IntegrationCoordinator {
         accountingFacade.postCogsJournal(
                 orderNumber,
                 dealerId,
-                LocalDate.now(),
+                companyClock.today(order.getCompany()),
                 "COGS posting for order " + orderNumber,
                 lines
         );
@@ -484,7 +492,7 @@ public class IntegrationCoordinator {
         if (shortages == null || shortages.isEmpty()) {
             return;
         }
-        LocalDate today = LocalDate.now();
+        LocalDate today = companyClock.today(order.getCompany());
         for (InventoryShortage shortage : shortages) {
             ProductionPlanRequest planRequest = new ProductionPlanRequest(
                     "URG-" + order.getId() + "-" + shortage.productCode(),
@@ -606,7 +614,7 @@ public class IntegrationCoordinator {
         BigDecimal postingAmount = amount.abs();
         accountingFacade.postSimpleJournal(
                 reference,
-                LocalDate.now(),
+                companyClock.today(companyContextService.requireCurrentCompany()),
                 memo,
                 debitAccountId,
                 creditAccountId,

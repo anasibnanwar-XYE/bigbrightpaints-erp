@@ -1,5 +1,7 @@
 package com.bigbrightpaints.erp.modules.sales.domain;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
+import com.bigbrightpaints.erp.modules.company.domain.Company;
 import jakarta.persistence.*;
 
 import java.math.BigDecimal;
@@ -47,7 +49,8 @@ public class SalesOrderItem extends VersionedEntity {
     @PrePersist
     public void prePersist() {
         if (createdAt == null) {
-            createdAt = Instant.now();
+            Company company = salesOrder != null ? salesOrder.getCompany() : null;
+            createdAt = CompanyTime.now(company);
         }
     }
 

@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.company.domain;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import jakarta.persistence.*;
 
@@ -79,7 +80,7 @@ public class Company extends VersionedEntity {
             publicId = UUID.randomUUID();
         }
         if (createdAt == null) {
-            createdAt = Instant.now();
+            createdAt = CompanyTime.now();
         }
         if (timezone == null) {
             timezone = "UTC";

@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.factory.service;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
@@ -201,7 +202,7 @@ public class BulkPackingService {
                 packagingCost,
                 childDtos,
                 journalEntryId,
-                Instant.now()
+                CompanyTime.now(company)
         );
     }
 

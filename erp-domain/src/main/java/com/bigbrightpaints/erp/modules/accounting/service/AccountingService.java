@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.accounting.service;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.config.SystemSettingsService;
@@ -94,6 +95,8 @@ public class AccountingService {
     private final DealerRepository dealerRepository;
     private final SupplierRepository supplierRepository;
     private final InvoiceSettlementPolicy invoiceSettlementPolicy;
+    private final JournalReferenceResolver journalReferenceResolver;
+    private final JournalReferenceMappingRepository journalReferenceMappingRepository;
     private final EntityManager entityManager;
     private final SystemSettingsService systemSettingsService;
     private final AuditService auditService;
@@ -126,6 +129,8 @@ public class AccountingService {
                              DealerRepository dealerRepository,
                              SupplierRepository supplierRepository,
                              InvoiceSettlementPolicy invoiceSettlementPolicy,
+                             JournalReferenceResolver journalReferenceResolver,
+                             JournalReferenceMappingRepository journalReferenceMappingRepository,
                              EntityManager entityManager,
                              SystemSettingsService systemSettingsService,
                              AuditService auditService) {
@@ -150,6 +155,8 @@ public class AccountingService {
         this.dealerRepository = dealerRepository;
         this.supplierRepository = supplierRepository;
         this.invoiceSettlementPolicy = invoiceSettlementPolicy;
+        this.journalReferenceResolver = journalReferenceResolver;
+        this.journalReferenceMappingRepository = journalReferenceMappingRepository;
         this.entityManager = entityManager;
         this.systemSettingsService = systemSettingsService;
         this.auditService = auditService;
@@ -464,7 +471,7 @@ public class AccountingService {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
                     "Supplier journal entry has multiple payable lines; admin override required");
         }
-        Instant now = Instant.now();
+        Instant now = CompanyTime.now(company);
         String username = resolveCurrentUsername();
         entry.setCreatedAt(now);
         entry.setUpdatedAt(now);
@@ -634,7 +641,7 @@ public class AccountingService {
                 reversedLines
         );
         if (request != null && request.voidOnly()) {
-            Instant now = Instant.now();
+            Instant now = CompanyTime.now(company);
             JournalEntryDto reversalDto = createJournalEntry(payload);
             JournalEntry reversalEntry = companyEntityLookup.requireJournalEntry(company, reversalDto.id());
             reversalEntry.setReversalOf(entry);
@@ -2059,6 +2066,56 @@ public class AccountingService {
                     .withDetail("allocationTotal", totalApplied)
                     .withDetail("paymentAmount", amount);
         }
+    }
+
+    @Transactional
+    public JournalEntryDto createManualJournalEntry(JournalEntryRequest request, String idempotencyKey) {
+        if (request == null) {
+            throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
+                    "Journal entry request is required");
+        }
+        Company company = companyContextService.requireCurrentCompany();
+        String key = StringUtils.hasText(idempotencyKey) ? idempotencyKey.trim() : null;
+        if (StringUtils.hasText(key)) {
+            if (journalEntryRepository.findByCompanyAndReferenceNumber(company, key).isPresent()) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Idempotency key conflicts with an existing system reference")
+                        .withDetail("referenceNumber", key);
+            }
+            Optional<JournalEntry> existing = journalReferenceResolver.findExistingEntry(company, key);
+            if (existing.isPresent()) {
+                return toDto(existing.get());
+            }
+        }
+        JournalEntryDto created = createJournalEntry(new JournalEntryRequest(
+                null,
+                request.entryDate(),
+                request.memo(),
+                request.dealerId(),
+                request.supplierId(),
+                request.adminOverride(),
+                request.lines(),
+                request.currency(),
+                request.fxRate()
+        ));
+        if (StringUtils.hasText(key) && created != null && StringUtils.hasText(created.referenceNumber())) {
+            try {
+                JournalReferenceMapping mapping = new JournalReferenceMapping();
+                mapping.setCompany(company);
+                mapping.setLegacyReference(key);
+                mapping.setCanonicalReference(created.referenceNumber());
+                mapping.setEntityType("JOURNAL_ENTRY");
+                mapping.setEntityId(created.id());
+                journalReferenceMappingRepository.save(mapping);
+            } catch (DataIntegrityViolationException ex) {
+                Optional<JournalEntry> existing = journalReferenceResolver.findExistingEntry(company, key);
+                if (existing.isPresent()) {
+                    return toDto(existing.get());
+                }
+                throw ex;
+            }
+        }
+        return created;
     }
 
     private void enforceSettlementCurrency(Company company, Invoice invoice) {

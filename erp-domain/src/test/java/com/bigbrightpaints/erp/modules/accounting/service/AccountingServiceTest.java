@@ -12,6 +12,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodStatus;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMappingRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
@@ -107,6 +108,10 @@ class AccountingServiceTest {
     @Mock
     private InvoiceSettlementPolicy invoiceSettlementPolicy;
     @Mock
+    private JournalReferenceResolver journalReferenceResolver;
+    @Mock
+    private JournalReferenceMappingRepository journalReferenceMappingRepository;
+    @Mock
     private AccountingPeriodRepository accountingPeriodRepository;
     @Mock
     private JournalLineRepository journalLineRepository;
@@ -146,6 +151,8 @@ class AccountingServiceTest {
                 dealerRepository,
                 supplierRepository,
                 invoiceSettlementPolicy,
+                journalReferenceResolver,
+                journalReferenceMappingRepository,
                 entityManager,
                 systemSettingsService,
                 auditService

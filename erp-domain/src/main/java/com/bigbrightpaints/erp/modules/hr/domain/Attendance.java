@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.hr.domain;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import jakarta.persistence.*;
 import java.time.Instant;
@@ -84,7 +85,7 @@ public class Attendance {
     @PrePersist
     public void prePersist() {
         if (markedAt == null) {
-            markedAt = Instant.now();
+            markedAt = CompanyTime.now(company);
         }
     }
 

@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.inventory.domain;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.core.domain.VersionedEntity;
 import jakarta.persistence.*;
@@ -62,10 +63,10 @@ public class InventoryAdjustment extends VersionedEntity {
             publicId = UUID.randomUUID();
         }
         if (createdAt == null) {
-            createdAt = Instant.now();
+            createdAt = CompanyTime.now(company);
         }
         if (adjustmentDate == null) {
-            adjustmentDate = LocalDate.now();
+            adjustmentDate = CompanyTime.today(company);
         }
     }
 

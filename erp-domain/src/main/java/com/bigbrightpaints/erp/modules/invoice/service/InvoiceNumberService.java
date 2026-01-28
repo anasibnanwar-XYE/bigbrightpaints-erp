@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.invoice.service;
 
+import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceSequence;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceSequenceRepository;
@@ -10,22 +11,23 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import java.time.LocalDate;
-import java.time.ZoneId;
 
 @Service
 public class InvoiceNumberService {
 
     private final InvoiceSequenceRepository sequenceRepository;
     private final TransactionTemplate newTxTemplate;
+    private final CompanyClock companyClock;
     private static final int MAX_RETRIES = 5;
 
     public InvoiceNumberService(InvoiceSequenceRepository sequenceRepository,
-                                PlatformTransactionManager txManager) {
+                                PlatformTransactionManager txManager,
+                                CompanyClock companyClock) {
         this.sequenceRepository = sequenceRepository;
         TransactionTemplate template = new TransactionTemplate(txManager);
         template.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         this.newTxTemplate = template;
+        this.companyClock = companyClock;
     }
 
     public String nextInvoiceNumber(Company company) {
@@ -68,7 +70,6 @@ public class InvoiceNumberService {
     }
 
     private int resolveFiscalYear(Company company) {
-        ZoneId zone = ZoneId.of(company.getTimezone());
-        return LocalDate.now(zone).getYear();
+        return companyClock.today(company).getYear();
     }
 }

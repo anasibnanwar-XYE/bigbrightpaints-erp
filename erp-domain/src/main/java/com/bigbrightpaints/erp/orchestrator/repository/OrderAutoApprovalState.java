@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.orchestrator.repository;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.core.domain.VersionedEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -64,7 +65,7 @@ public class OrderAutoApprovalState extends VersionedEntity {
 
     @PrePersist
     void prePersist() {
-        Instant now = Instant.now();
+        Instant now = CompanyTime.now();
         if (createdAt == null) {
             createdAt = now;
         }
@@ -76,7 +77,7 @@ public class OrderAutoApprovalState extends VersionedEntity {
 
     @PreUpdate
     void preUpdate() {
-        updatedAt = Instant.now();
+        updatedAt = CompanyTime.now();
     }
 
     public Long getId() {

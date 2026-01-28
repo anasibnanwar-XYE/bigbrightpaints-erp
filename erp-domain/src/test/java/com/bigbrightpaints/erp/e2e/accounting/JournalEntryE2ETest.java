@@ -143,8 +143,8 @@ public class JournalEntryE2ETest extends AbstractIntegrationTest {
     }
 
     @Test
-    @DisplayName("Journal Entry: Manual reference numbers are rejected; system reference is generated")
-    void journalEntry_ManualReferenceRejected_SystemGenerated() {
+    @DisplayName("Journal Entry: Manual idempotency key maps to system reference")
+    void journalEntry_ManualIdempotencyKey_MapsToSystemReference() {
         Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
         Account cashAccount = accountRepository.findByCompanyAndCodeIgnoreCase(company, "CASH").orElseThrow();
         Account revenueAccount = accountRepository.findByCompanyAndCodeIgnoreCase(company, "REVENUE").orElseThrow();
@@ -182,26 +182,24 @@ public class JournalEntryE2ETest extends AbstractIntegrationTest {
         Map<String, Object> manualReq = Map.of(
                 "entryDate", LocalDate.now(),
                 "referenceNumber", manualRef,
-                "memo", "Should be rejected: manual reference not allowed",
+                "memo", "Manual idempotency key",
                 "lines", List.of(debitLine, creditLine)
         );
 
         ResponseEntity<Map> manualResp = rest.exchange("/api/v1/accounting/journal-entries",
                 HttpMethod.POST, new HttpEntity<>(manualReq, headers), Map.class);
 
-        assertThat(manualResp.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-
-        Map<String, Object> systemReq = Map.of(
-                "entryDate", LocalDate.now(),
-                "memo", "System-generated reference",
-                "lines", List.of(debitLine, creditLine)
-        );
-        ResponseEntity<Map> systemResp = rest.exchange("/api/v1/accounting/journal-entries",
-                HttpMethod.POST, new HttpEntity<>(systemReq, headers), Map.class);
-        assertThat(systemResp.getStatusCode()).isEqualTo(HttpStatus.OK);
-        Map<?, ?> data = (Map<?, ?>) systemResp.getBody().get("data");
+        assertThat(manualResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<?, ?> data = (Map<?, ?>) manualResp.getBody().get("data");
         assertThat(data).isNotNull();
         assertThat(((String) data.get("referenceNumber"))).startsWith("JRN-");
+
+        ResponseEntity<Map> retryResp = rest.exchange("/api/v1/accounting/journal-entries",
+                HttpMethod.POST, new HttpEntity<>(manualReq, headers), Map.class);
+        assertThat(retryResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<?, ?> retryData = (Map<?, ?>) retryResp.getBody().get("data");
+        assertThat(((Number) retryData.get("id")).longValue())
+                .isEqualTo(((Number) data.get("id")).longValue());
     }
 
     @Test

@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.sales.service;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.util.MoneyUtils;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
@@ -29,7 +30,6 @@ import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.LocalDate;
-import java.time.ZoneOffset;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -386,11 +386,11 @@ public class SalesReturnService {
 
         FinishedGoodBatch returnBatch = new FinishedGoodBatch();
         returnBatch.setFinishedGood(fg);
-        returnBatch.setBatchCode(batchNumberService.nextFinishedGoodBatchCode(fg, LocalDate.now(ZoneOffset.UTC)));
+        returnBatch.setBatchCode(batchNumberService.nextFinishedGoodBatchCode(fg, CompanyTime.today(fg.getCompany())));
         returnBatch.setQuantityTotal(quantity);
         returnBatch.setQuantityAvailable(quantity);
         returnBatch.setUnitCost(unitCost);
-        returnBatch.setManufacturedAt(java.time.Instant.now());
+        returnBatch.setManufacturedAt(CompanyTime.now(fg.getCompany()));
         FinishedGoodBatch savedBatch = finishedGoodBatchRepository.save(returnBatch);
 
         InventoryMovement movement = new InventoryMovement();

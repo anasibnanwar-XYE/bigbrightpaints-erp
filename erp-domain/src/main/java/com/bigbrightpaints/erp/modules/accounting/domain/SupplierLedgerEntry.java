@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.accounting.domain;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
 import jakarta.persistence.*;
@@ -56,7 +57,7 @@ public class SupplierLedgerEntry extends VersionedEntity {
             throw new IllegalStateException("Supplier ledger entry date must be set before persisting");
         }
         if (createdAt == null) {
-            createdAt = Instant.now();
+            createdAt = CompanyTime.now(company);
         }
     }
 

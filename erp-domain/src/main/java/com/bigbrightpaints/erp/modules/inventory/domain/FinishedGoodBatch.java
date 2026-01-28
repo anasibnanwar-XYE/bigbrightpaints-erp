@@ -1,5 +1,7 @@
 package com.bigbrightpaints.erp.modules.inventory.domain;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
+import com.bigbrightpaints.erp.modules.company.domain.Company;
 import jakarta.persistence.*;
 
 import java.math.BigDecimal;
@@ -64,11 +66,12 @@ public class FinishedGoodBatch extends VersionedEntity {
         if (publicId == null) {
             publicId = UUID.randomUUID();
         }
+        Company company = finishedGood != null ? finishedGood.getCompany() : null;
         if (manufacturedAt == null) {
-            manufacturedAt = Instant.now();
+            manufacturedAt = CompanyTime.now(company);
         }
         if (createdAt == null) {
-            createdAt = Instant.now();
+            createdAt = CompanyTime.now(company);
         }
     }
 

@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.factory.service;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
@@ -129,7 +130,7 @@ public class ProductionLogService {
         log.setStatus(ProductionLogStatus.READY_TO_PACK);
         log.setTotalPackedQuantity(BigDecimal.ZERO);
         log.setWastageQuantity(mixedQty);
-        log.setProducedAt(resolveProducedAt(request.producedAt()));
+        log.setProducedAt(resolveProducedAt(company, request.producedAt()));
         log.setNotes(clean(request.notes()));
         log.setCreatedBy(clean(request.createdBy()));
         if (request.salesOrderId() != null) {
@@ -538,9 +539,9 @@ public class ProductionLogService {
         }
     }
 
-    private Instant resolveProducedAt(String producedAt) {
+    private Instant resolveProducedAt(Company company, String producedAt) {
         if (!StringUtils.hasText(producedAt)) {
-            return Instant.now();
+            return CompanyTime.now(company);
         }
         // Accept common UI formats: ISO_OFFSET_DATE_TIME, ISO_INSTANT, yyyy-MM-dd, dd-MM-yyyy HH:mm[:ss]
         try {

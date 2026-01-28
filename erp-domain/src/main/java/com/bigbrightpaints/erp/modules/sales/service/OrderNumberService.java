@@ -2,11 +2,10 @@ package com.bigbrightpaints.erp.modules.sales.service;
 
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
+import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.sales.domain.OrderSequence;
 import com.bigbrightpaints.erp.modules.sales.domain.OrderSequenceRepository;
-import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.HashMap;
 import java.util.Map;
 import org.springframework.stereotype.Service;
@@ -25,15 +24,18 @@ public class OrderNumberService {
     private final OrderSequenceRepository orderSequenceRepository;
     private final AuditService auditService;
     private final TransactionTemplate newTxTemplate;
+    private final CompanyClock companyClock;
 
     public OrderNumberService(OrderSequenceRepository orderSequenceRepository,
                               AuditService auditService,
-                              PlatformTransactionManager txManager) {
+                              PlatformTransactionManager txManager,
+                              CompanyClock companyClock) {
         this.orderSequenceRepository = orderSequenceRepository;
         this.auditService = auditService;
         TransactionTemplate template = new TransactionTemplate(txManager);
         template.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         this.newTxTemplate = template;
+        this.companyClock = companyClock;
     }
 
     public String nextOrderNumber(Company company) {
@@ -77,8 +79,7 @@ public class OrderNumberService {
     }
 
     private int resolveFiscalYear(Company company) {
-        ZoneId zone = ZoneId.of(company.getTimezone());
-        return LocalDate.now(zone).getYear();
+        return companyClock.today(company).getYear();
     }
 
     private String formatOrderNumber(String companyCode, int fiscalYear, long sequenceNumber) {

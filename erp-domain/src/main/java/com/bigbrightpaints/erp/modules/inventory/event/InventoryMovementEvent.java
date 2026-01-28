@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.inventory.event;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -87,8 +88,8 @@ public record InventoryMovementEvent(
             return new InventoryMovementEvent(
                     companyId, movementType, inventoryType, itemId, itemCode, itemName,
                     quantity, unitCost, totalCost, sourceAccountId, destinationAccountId, movementId,
-                    referenceNumber, movementDate != null ? movementDate : LocalDate.now(),
-                    memo, relatedEntityId, relatedEntityType, Instant.now()
+                    referenceNumber, movementDate != null ? movementDate : CompanyTime.today(),
+                    memo, relatedEntityId, relatedEntityType, CompanyTime.now()
             );
         }
     }

@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.sales.domain;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import jakarta.persistence.*;
 
@@ -96,7 +97,7 @@ public class SalesOrder extends VersionedEntity {
         if (publicId == null) {
             publicId = UUID.randomUUID();
         }
-        Instant now = Instant.now();
+        Instant now = CompanyTime.now(company);
         if (createdAt == null) {
             createdAt = now;
         }
@@ -105,7 +106,7 @@ public class SalesOrder extends VersionedEntity {
 
     @PreUpdate
     public void preUpdate() {
-        updatedAt = Instant.now();
+        updatedAt = CompanyTime.now(company);
     }
 
     public Long getId() { return id; }

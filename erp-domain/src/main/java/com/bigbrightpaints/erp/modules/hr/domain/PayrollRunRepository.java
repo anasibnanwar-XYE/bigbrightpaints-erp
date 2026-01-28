@@ -21,6 +21,11 @@ public interface PayrollRunRepository extends JpaRepository<PayrollRun, Long> {
     Optional<PayrollRun> findByCompanyAndId(Company company, Long id);
     
     Optional<PayrollRun> findByCompanyAndRunNumber(Company company, String runNumber);
+
+    Optional<PayrollRun> findByCompanyAndRunTypeAndPeriodStartAndPeriodEnd(Company company,
+                                                                           PayrollRun.RunType runType,
+                                                                           LocalDate periodStart,
+                                                                           LocalDate periodEnd);
     
     @Query("SELECT pr FROM PayrollRun pr WHERE pr.company = :company " +
            "AND pr.periodStart <= :date AND pr.periodEnd >= :date")

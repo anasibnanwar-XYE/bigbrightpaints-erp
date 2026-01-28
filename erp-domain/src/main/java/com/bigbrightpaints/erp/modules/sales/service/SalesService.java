@@ -2325,7 +2325,7 @@ public class SalesService {
     }
 
     private LocalDate currentDate(Company company) {
-        return LocalDate.now(ZoneId.of(company.getTimezone()));
+        return companyClock.today(company);
     }
 
 }

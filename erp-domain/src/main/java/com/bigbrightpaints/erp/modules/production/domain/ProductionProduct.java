@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.production.domain;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import jakarta.persistence.*;
 import org.hibernate.annotations.JdbcTypeCode;
@@ -83,7 +84,7 @@ public class ProductionProduct extends VersionedEntity {
         if (publicId == null) {
             publicId = UUID.randomUUID();
         }
-        Instant now = Instant.now();
+        Instant now = CompanyTime.now(company);
         if (createdAt == null) {
             createdAt = now;
         }
@@ -92,7 +93,7 @@ public class ProductionProduct extends VersionedEntity {
 
     @PreUpdate
     public void preUpdate() {
-        updatedAt = Instant.now();
+        updatedAt = CompanyTime.now(company);
     }
 
     public Long getId() {

@@ -26,27 +26,28 @@ Enforcement:
 
 ## 2026-01-27 - Manual Journal Reference Namespace
 Decision:
-- Manual journals must not use system-reserved reference prefixes.
-- Manual journals should use the `MANUAL-` prefix (recommended) and must include a memo/reason.
+- Manual journal idempotency keys must not use system-reserved reference prefixes.
+- Manual journal idempotency keys should use the `MANUAL-` prefix (recommended) and must include a memo/reason.
 
 Rationale:
 - Prevents collisions with system-generated references (SALE-/INV-/COGS-/RMP-/etc).
 - Improves auditability and replay/idempotency safety.
 
 Enforcement:
-- Reserved prefix list is centralized and validated on manual journal creation.
+- Reserved prefix list is centralized and validated on manual journal creation (idempotency key only).
 
 ## 2026-01-28 - Manual Journal References Are System-Generated Only
 Decision:
-- Manual journal entry API must not accept caller-supplied `referenceNumber` values.
-- Reference numbers for manual journals are always system-generated.
+- Manual journal entry API treats caller-supplied `referenceNumber` as an idempotency key only.
+- Canonical reference numbers for manual journals are always system-generated.
 
 Rationale:
 - Prevents any collision with system reference namespaces (including company-prefixed invoice numbers).
 - Eliminates audit/log integrity risks from user-selected references.
 
 Enforcement:
-- Manual journal creation fails closed if `referenceNumber` is provided.
+- Manual journal creation fails closed if the idempotency key matches a system-reserved namespace
+  (including company-prefixed invoice numbers like `*-INV-*`).
 
 ## 2026-01-27 - CompanyClock Is Canonical For Business Dates
 Decision:

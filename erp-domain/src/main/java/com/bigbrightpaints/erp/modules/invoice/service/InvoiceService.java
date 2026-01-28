@@ -2,6 +2,7 @@ package com.bigbrightpaints.erp.modules.invoice.service;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
+import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.util.MoneyUtils;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
@@ -32,7 +33,6 @@ import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 
@@ -49,6 +49,7 @@ public class InvoiceService {
     private final JournalReferenceResolver journalReferenceResolver;
     private final DealerLedgerService dealerLedgerService;
     private final PackagingSlipRepository packagingSlipRepository;
+    private final CompanyClock companyClock;
 
     public InvoiceService(CompanyContextService companyContextService,
                           InvoiceRepository invoiceRepository,
@@ -59,7 +60,8 @@ public class InvoiceService {
                           CompanyEntityLookup companyEntityLookup,
                           JournalReferenceResolver journalReferenceResolver,
                           DealerLedgerService dealerLedgerService,
-                          PackagingSlipRepository packagingSlipRepository) {
+                          PackagingSlipRepository packagingSlipRepository,
+                          CompanyClock companyClock) {
         this.companyContextService = companyContextService;
         this.invoiceRepository = invoiceRepository;
         this.salesService = salesService;
@@ -70,6 +72,7 @@ public class InvoiceService {
         this.journalReferenceResolver = journalReferenceResolver;
         this.dealerLedgerService = dealerLedgerService;
         this.packagingSlipRepository = packagingSlipRepository;
+        this.companyClock = companyClock;
     }
 
     @Transactional
@@ -227,8 +230,7 @@ public class InvoiceService {
     }
 
     private LocalDate currentDate(Company company) {
-        ZoneId zone = ZoneId.of(company.getTimezone());
-        return LocalDate.now(zone);
+        return companyClock.today(company);
     }
 
     public record InvoiceWithEmail(InvoiceDto invoice, String dealerEmail, String companyName) {}

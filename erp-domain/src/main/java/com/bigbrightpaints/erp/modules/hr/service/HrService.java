@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.hr.service;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
@@ -327,7 +328,7 @@ public class HrService {
         attendance.setWeekend(request.weekend());
         if (request.remarks() != null) attendance.setRemarks(request.remarks());
         attendance.setMarkedBy(getCurrentUser());
-        attendance.setMarkedAt(java.time.Instant.now());
+        attendance.setMarkedAt(CompanyTime.now(company));
         
         return toAttendanceDto(attendanceRepository.save(attendance));
     }
@@ -339,7 +340,7 @@ public class HrService {
     public List<AttendanceDto> bulkMarkAttendance(BulkMarkAttendanceRequest request) {
         Company company = companyContextService.requireCurrentCompany();
         String markedBy = getCurrentUser();
-        java.time.Instant markedAt = java.time.Instant.now();
+        java.time.Instant markedAt = CompanyTime.now(company);
         
         return request.employeeIds().stream()
                 .map(employeeId -> {

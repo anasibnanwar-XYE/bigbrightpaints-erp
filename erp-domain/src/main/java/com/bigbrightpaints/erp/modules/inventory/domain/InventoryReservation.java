@@ -1,5 +1,7 @@
 package com.bigbrightpaints.erp.modules.inventory.domain;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
+import com.bigbrightpaints.erp.modules.company.domain.Company;
 import jakarta.persistence.*;
 
 import java.math.BigDecimal;
@@ -50,7 +52,11 @@ public class InventoryReservation extends VersionedEntity {
     @PrePersist
     public void prePersist() {
         if (createdAt == null) {
-            createdAt = Instant.now();
+            Company company = finishedGood != null ? finishedGood.getCompany() : null;
+            if (company == null && rawMaterial != null) {
+                company = rawMaterial.getCompany();
+            }
+            createdAt = CompanyTime.now(company);
         }
     }
 

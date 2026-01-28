@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.hr.service;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
@@ -17,6 +18,7 @@ import com.bigbrightpaints.erp.modules.hr.domain.*;
 import jakarta.transaction.Transactional;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.util.StringUtils;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -93,7 +95,22 @@ public class PayrollService {
         String idempotencyKey = buildIdempotencyKey(request);
         Optional<PayrollRun> existing = payrollRunRepository.findByCompanyAndIdempotencyKey(company, idempotencyKey);
         if (existing.isPresent()) {
-            return toDto(existing.get());
+            PayrollRun run = existing.get();
+            if (run.getIdempotencyKey() == null) {
+                run.setIdempotencyKey(idempotencyKey);
+                payrollRunRepository.save(run);
+            }
+            return toDto(run);
+        }
+        Optional<PayrollRun> legacy = payrollRunRepository.findByCompanyAndRunTypeAndPeriodStartAndPeriodEnd(
+                company, request.runType(), request.periodStart(), request.periodEnd());
+        if (legacy.isPresent()) {
+            PayrollRun run = legacy.get();
+            if (run.getIdempotencyKey() == null) {
+                run.setIdempotencyKey(idempotencyKey);
+                payrollRunRepository.save(run);
+            }
+            return toDto(run);
         }
 
         String currentUser = getCurrentUser();
@@ -117,6 +134,16 @@ public class PayrollService {
             Optional<PayrollRun> concurrent = payrollRunRepository.findByCompanyAndIdempotencyKey(company, idempotencyKey);
             if (concurrent.isPresent()) {
                 return toDto(concurrent.get());
+            }
+            Optional<PayrollRun> legacyConcurrent = payrollRunRepository.findByCompanyAndRunTypeAndPeriodStartAndPeriodEnd(
+                    company, request.runType(), request.periodStart(), request.periodEnd());
+            if (legacyConcurrent.isPresent()) {
+                PayrollRun existingRun = legacyConcurrent.get();
+                if (existingRun.getIdempotencyKey() == null) {
+                    existingRun.setIdempotencyKey(idempotencyKey);
+                    payrollRunRepository.save(existingRun);
+                }
+                return toDto(existingRun);
             }
             throw ex;
         }
@@ -326,7 +353,7 @@ public class PayrollService {
 
         run.setStatus(PayrollRun.PayrollStatus.APPROVED);
         run.setApprovedBy(getCurrentUser());
-        run.setApprovedAt(Instant.now());
+        run.setApprovedAt(CompanyTime.now(company));
 
         payrollRunRepository.save(run);
         return toDto(run);
@@ -397,15 +424,20 @@ public class PayrollService {
         if (postingDate == null || postingDate.isAfter(today)) {
             postingDate = today;
         }
-        String memo = "Payroll - " + run.getRunNumber();
-        JournalEntryDto journal = accountingFacade.postPayrollRun(run.getRunNumber(), postingDate, memo, lines);
+        String runNumber = run.getRunNumber();
+        if (!StringUtils.hasText(runNumber) && run.getId() != null) {
+            runNumber = "LEGACY-" + run.getId();
+            run.setRunNumber(runNumber);
+        }
+        String memo = "Payroll - " + (runNumber != null ? runNumber : "RUN");
+        JournalEntryDto journal = accountingFacade.postPayrollRun(runNumber, run.getId(), postingDate, memo, lines);
 
         // Update run status
         run.setJournalEntryId(journal.id());
         run.setJournalEntry(companyEntityLookup.requireJournalEntry(company, journal.id()));
         run.setStatus(PayrollRun.PayrollStatus.POSTED);
         run.setPostedBy(getCurrentUser());
-        run.setPostedAt(Instant.now());
+        run.setPostedAt(CompanyTime.now(company));
 
         // Link attendance records to this payroll run
         for (PayrollRunLine line : runLines) {

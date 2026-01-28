@@ -99,6 +99,9 @@ public class AccountingFacade {
         if (normalized.startsWith(MANUAL_REFERENCE_PREFIX)) {
             return false;
         }
+        if (normalized.contains("-INV-")) {
+            return true;
+        }
         for (String prefix : RESERVED_REFERENCE_PREFIXES) {
             if (normalized.startsWith(prefix)) {
                 return true;
@@ -1415,17 +1418,21 @@ public class AccountingFacade {
     /**
      * Record payroll payment via AccountingService wrapper.
      */
-    public JournalEntryDto postPayrollRun(String runNumber, LocalDate postingDate, String memo,
+    public JournalEntryDto postPayrollRun(String runNumber, Long runId, LocalDate postingDate, String memo,
                                           List<JournalEntryRequest.JournalLineRequest> lines) {
-        if (!StringUtils.hasText(runNumber)) {
-            throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
-                    "Payroll run number is required for posting");
+        String token = StringUtils.hasText(runNumber) ? runNumber.trim() : null;
+        if (!StringUtils.hasText(token)) {
+            if (runId == null) {
+                throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
+                        "Payroll run number or id is required for posting");
+            }
+            token = "LEGACY-" + runId;
         }
         Company company = companyContextService.requireCurrentCompany();
         LocalDate entryDate = postingDate != null ? postingDate : companyClock.today(company);
-        String resolvedMemo = StringUtils.hasText(memo) ? memo : "Payroll - " + runNumber;
+        String resolvedMemo = StringUtils.hasText(memo) ? memo : "Payroll - " + token;
         JournalEntryRequest request = new JournalEntryRequest(
-                "PAYROLL-" + runNumber,
+                "PAYROLL-" + token,
                 entryDate,
                 resolvedMemo,
                 null,

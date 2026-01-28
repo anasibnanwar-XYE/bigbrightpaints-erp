@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.orchestrator.repository;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.core.domain.VersionedEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -69,7 +70,7 @@ public class OutboxEvent extends VersionedEntity {
         this.eventType = eventType;
         this.payload = payload;
         this.status = Status.PENDING;
-        this.createdAt = Instant.now();
+        this.createdAt = CompanyTime.now();
         this.nextAttemptAt = this.createdAt;
         this.retryCount = 0;
         this.deadLetter = false;
@@ -131,7 +132,7 @@ public class OutboxEvent extends VersionedEntity {
             this.deadLetter = true;
             this.status = Status.FAILED;
         } else {
-            this.nextAttemptAt = Instant.now().plusSeconds(delaySeconds);
+            this.nextAttemptAt = CompanyTime.now().plusSeconds(delaySeconds);
         }
     }
 }

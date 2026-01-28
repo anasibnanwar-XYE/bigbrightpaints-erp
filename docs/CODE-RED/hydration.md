@@ -19,6 +19,7 @@
 4) Timezone invariants
    - Business dates use CompanyClock + company timezone.
    - No ZoneId.systemDefault() in business logic.
+   - CI enforces time API scan for banned time calls in business modules.
 
 ## Required Evidence for Every PR
 - Code references (file + method) for every business rule touched.
@@ -59,10 +60,14 @@
   - Tests: `SalesServiceTest.confirmDispatchRequiresPackingSlipIdWhenMultipleSlipsExist`.
   - Command: `mvn -B -ntp -Dtest=SalesServiceTest test`.
 - 2026-01-28: EPIC 05 / M05.1 verified.
-  - Code: `AccountingController.createJournalEntry` rejects caller-supplied `referenceNumber`; references are system-generated.
+  - Code: `AccountingController.createJournalEntry` treats `referenceNumber` as idempotency key only; canonical references are system-generated via mapping. Reserved namespaces block system prefixes including `*-INV-*`.
   - Tests: `JournalEntryE2ETest`, `PeriodCloseLockIT`, `CreditDebitNoteIT`, `SettlementE2ETest`.
   - Command: `mvn -B -ntp -Dtest=JournalEntryE2ETest,PeriodCloseLockIT,CreditDebitNoteIT,SettlementE2ETest test`.
 - 2026-01-28: EPIC 04 / M04.0–M04.2 verified.
   - Code: `PayrollService.createPayrollRun` enforces idempotency by runType+period; `PayrollService.postPayrollToAccounting` routes through `AccountingFacade.postPayrollRun`.
   - Tests: `PayrollRunApiIdempotencyIT`, `ErpInvariantsSuiteIT`.
   - Command: `mvn -B -ntp -Dtest=PayrollRunApiIdempotencyIT,ErpInvariantsSuiteIT test`.
+- 2026-01-28: EPIC 07 / M07.0 verified.
+  - Code: All business dates use `CompanyClock`/`CompanyTime`; removed system clock/timezone usage across services/domains. `CostAllocationService` now uses company timezone for month boundaries.
+  - Gate: `scripts/time_api_scan.sh` (wired into CI and `scripts/verify_local.sh`).
+  - Command: `scripts/verify_local.sh`.

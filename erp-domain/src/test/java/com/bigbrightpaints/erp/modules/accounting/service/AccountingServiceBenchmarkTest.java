@@ -94,6 +94,10 @@ class AccountingServiceBenchmarkTest {
     @Mock
     private InvoiceSettlementPolicy invoiceSettlementPolicy;
     @Mock
+    private JournalReferenceResolver journalReferenceResolver;
+    @Mock
+    private com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMappingRepository journalReferenceMappingRepository;
+    @Mock
     private AccountingPeriodRepository accountingPeriodRepository;
     @Mock
     private JournalLineRepository journalLineRepository;
@@ -133,6 +137,8 @@ class AccountingServiceBenchmarkTest {
                 dealerRepository,
                 supplierRepository,
                 invoiceSettlementPolicy,
+                journalReferenceResolver,
+                journalReferenceMappingRepository,
                 entityManager,
                 systemSettingsService,
                 auditService

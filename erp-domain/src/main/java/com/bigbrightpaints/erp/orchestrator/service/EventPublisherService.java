@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.orchestrator.service;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.orchestrator.event.DomainEvent;
 import com.bigbrightpaints.erp.orchestrator.repository.OutboxEvent;
 import com.bigbrightpaints.erp.orchestrator.repository.OutboxEventRepository;
@@ -73,7 +74,7 @@ public class EventPublisherService {
         try {
             List<OutboxEvent> pending = outboxEventRepository
                     .findTop10ByStatusAndDeadLetterFalseAndNextAttemptAtLessThanEqualOrderByCreatedAtAsc(
-                            OutboxEvent.Status.PENDING, Instant.now());
+                            OutboxEvent.Status.PENDING, CompanyTime.now());
             for (OutboxEvent event : pending) {
                 try {
                     rabbitTemplate.convertAndSend("bbp.orchestrator.events", event.getEventType(), event.getPayload());

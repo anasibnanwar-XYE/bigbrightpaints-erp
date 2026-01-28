@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.inventory.domain;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import jakarta.persistence.*;
 
@@ -80,14 +81,14 @@ public class RawMaterial extends VersionedEntity {
             sku = "RM-" + System.currentTimeMillis() % 100000000;
         }
         if (createdAt == null) {
-            createdAt = Instant.now();
+            createdAt = CompanyTime.now(company);
         }
-        updatedAt = Instant.now();
+        updatedAt = CompanyTime.now(company);
     }
 
     @PreUpdate
     public void preUpdate() {
-        updatedAt = Instant.now();
+        updatedAt = CompanyTime.now(company);
     }
 
     public Long getId() {

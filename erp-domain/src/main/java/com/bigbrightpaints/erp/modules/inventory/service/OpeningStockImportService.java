@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.inventory.service;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.MoneyUtils;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
@@ -256,7 +257,7 @@ public class OpeningStockImportService {
         batch.setQuantityTotal(quantity);
         batch.setQuantityAvailable(quantity);
         batch.setUnitCost(unitCost);
-        batch.setManufacturedAt(manufacturedAt != null ? manufacturedAt : Instant.now());
+        batch.setManufacturedAt(manufacturedAt != null ? manufacturedAt : CompanyTime.now(company));
         FinishedGoodBatch savedBatch = finishedGoodBatchRepository.save(batch);
 
         BigDecimal currentStock = Optional.ofNullable(finishedGood.getCurrentStock()).orElse(BigDecimal.ZERO);

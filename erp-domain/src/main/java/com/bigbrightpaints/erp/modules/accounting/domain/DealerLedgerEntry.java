@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.accounting.domain;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import jakarta.persistence.Column;
@@ -78,7 +79,7 @@ public class DealerLedgerEntry extends VersionedEntity {
     @PrePersist
     public void prePersist() {
         if (createdAt == null) {
-            createdAt = Instant.now();
+            createdAt = CompanyTime.now(company);
         }
         if (entryDate == null) {
             throw new IllegalStateException("Dealer ledger entry date must be set before persisting");

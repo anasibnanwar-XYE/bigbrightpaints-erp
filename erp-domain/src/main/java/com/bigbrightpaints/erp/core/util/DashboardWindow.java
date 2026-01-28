@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.core.util;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -22,7 +23,7 @@ public record DashboardWindow(
                                           String timezone,
                                           String fallbackTimezone) {
         ZoneId zone = parseZone(timezone, fallbackTimezone);
-        LocalDate today = LocalDate.now(zone);
+        LocalDate today = LocalDate.ofInstant(CompanyTime.now(), zone);
         WindowRange range = resolveRange(window, today);
         int days = (int) ChronoUnit.DAYS.between(range.start(), range.end()) + 1;
         LocalDate compareStart = null;

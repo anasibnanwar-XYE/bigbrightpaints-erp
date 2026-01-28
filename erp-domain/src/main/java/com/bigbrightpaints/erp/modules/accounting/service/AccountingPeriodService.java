@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.accounting.service;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
@@ -118,7 +119,7 @@ public class AccountingPeriodService {
             JournalEntry closingJe = postClosingJournal(company, period, netIncome, note);
             closingJournalId = closingJe.getId();
         }
-        Instant now = Instant.now();
+        Instant now = CompanyTime.now(company);
         String user = resolveCurrentUsername();
         period.setStatus(AccountingPeriodStatus.CLOSED);
         period.setClosedAt(now);
@@ -137,7 +138,7 @@ public class AccountingPeriodService {
         Company company = companyContextService.requireCurrentCompany();
         AccountingPeriod period = resolvePeriod(company, periodId, referenceDate);
         period.setBankReconciled(true);
-        period.setBankReconciledAt(Instant.now());
+        period.setBankReconciledAt(CompanyTime.now(company));
         period.setBankReconciledBy(resolveCurrentUsername());
         if (StringUtils.hasText(note)) {
             period.setChecklistNotes(note.trim());
@@ -150,7 +151,7 @@ public class AccountingPeriodService {
         Company company = companyContextService.requireCurrentCompany();
         AccountingPeriod period = resolvePeriod(company, periodId, referenceDate);
         period.setInventoryCounted(true);
-        period.setInventoryCountedAt(Instant.now());
+        period.setInventoryCountedAt(CompanyTime.now(company));
         period.setInventoryCountedBy(resolveCurrentUsername());
         if (StringUtils.hasText(note)) {
             period.setChecklistNotes(note.trim());
@@ -166,7 +167,7 @@ public class AccountingPeriodService {
             return toDto(period);
         }
         period.setStatus(AccountingPeriodStatus.LOCKED);
-        period.setLockedAt(Instant.now());
+        period.setLockedAt(CompanyTime.now(company));
         period.setLockedBy(resolveCurrentUsername());
         if (request != null && StringUtils.hasText(request.reason())) {
             period.setLockReason(request.reason().trim());
@@ -184,7 +185,7 @@ public class AccountingPeriodService {
         if (request == null || !StringUtils.hasText(request.reason())) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Reopen reason is required");
         }
-        Instant now = Instant.now();
+        Instant now = CompanyTime.now(company);
         period.setStatus(AccountingPeriodStatus.OPEN);
         period.setReopenedAt(now);
         period.setReopenedBy(resolveCurrentUsername());
@@ -338,7 +339,7 @@ public class AccountingPeriodService {
         entry.setMemo(note != null ? note : "Period close " + period.getLabel());
         entry.setStatus("POSTED");
         entry.setAccountingPeriod(period);
-        Instant now = Instant.now();
+        Instant now = CompanyTime.now(company);
         String username = resolveCurrentUsername();
         entry.setCreatedAt(now);
         entry.setUpdatedAt(now);

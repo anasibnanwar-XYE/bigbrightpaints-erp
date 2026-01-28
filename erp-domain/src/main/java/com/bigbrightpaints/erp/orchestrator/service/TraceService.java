@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.orchestrator.service;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
@@ -27,9 +28,10 @@ public class TraceService {
     }
 
     public void record(String traceId, String eventType, String companyCode, Map<String, Object> details) {
-        Long companyId = resolveCompanyId(companyCode);
+        Company company = resolveCompany(companyCode);
+        Long companyId = company != null ? company.getId() : null;
         String payload = details != null ? details.toString() : "{}";
-        AuditRecord record = new AuditRecord(traceId, eventType, Instant.now(), payload, companyId);
+        AuditRecord record = new AuditRecord(traceId, eventType, CompanyTime.now(company), payload, companyId);
         auditRepository.save(record);
     }
 
@@ -38,12 +40,10 @@ public class TraceService {
         return auditRepository.findByTraceIdAndCompanyIdOrderByTimestampAsc(traceId, company.getId());
     }
 
-    private Long resolveCompanyId(String companyCode) {
+    private Company resolveCompany(String companyCode) {
         if (!StringUtils.hasText(companyCode)) {
             return null;
         }
-        return companyRepository.findByCodeIgnoreCase(companyCode)
-                .map(Company::getId)
-                .orElse(null);
+        return companyRepository.findByCodeIgnoreCase(companyCode).orElse(null);
     }
 }

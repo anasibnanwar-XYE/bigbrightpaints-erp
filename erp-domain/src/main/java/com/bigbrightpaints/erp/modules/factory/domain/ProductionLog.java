@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.factory.domain;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionBrand;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
@@ -105,7 +106,7 @@ public class ProductionLog extends VersionedEntity {
         if (publicId == null) {
             publicId = UUID.randomUUID();
         }
-        Instant now = Instant.now();
+        Instant now = CompanyTime.now(company);
         if (createdAt == null) {
             createdAt = now;
         }
@@ -117,7 +118,7 @@ public class ProductionLog extends VersionedEntity {
 
     @PreUpdate
     public void preUpdate() {
-        updatedAt = Instant.now();
+        updatedAt = CompanyTime.now(company);
     }
 
     public Long getId() {

@@ -138,12 +138,25 @@ public class AccountingController {
     @PostMapping("/journal-entries")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
     public ResponseEntity<ApiResponse<JournalEntryDto>> createJournalEntry(@Valid @RequestBody JournalEntryRequest request) {
-        if (request != null && org.springframework.util.StringUtils.hasText(request.referenceNumber())) {
+        String idempotencyKey = request != null ? request.referenceNumber() : null;
+        if (AccountingFacade.isReservedReferenceNamespace(idempotencyKey)) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
-                    "Manual journal entries must not include referenceNumber; it is system-generated")
-                    .withDetail("referenceNumber", request.referenceNumber());
+                    "Reference number is reserved for system journals; use a client idempotency key without system prefixes")
+                    .withDetail("referenceNumber", idempotencyKey);
         }
-        return ResponseEntity.ok(ApiResponse.success("Journal entry posted", accountingService.createJournalEntry(request)));
+        JournalEntryRequest sanitized = request == null ? null : new JournalEntryRequest(
+                null,
+                request.entryDate(),
+                request.memo(),
+                request.dealerId(),
+                request.supplierId(),
+                request.adminOverride(),
+                request.lines(),
+                request.currency(),
+                request.fxRate()
+        );
+        return ResponseEntity.ok(ApiResponse.success("Journal entry posted",
+                accountingService.createManualJournalEntry(sanitized, idempotencyKey)));
     }
 
     @PostMapping("/journal-entries/{entryId}/reverse")

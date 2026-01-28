@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.shared.dto;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import java.time.Instant;
 
@@ -11,7 +12,7 @@ public record ApiResponse<T>(
         Instant timestamp
 ) {
     public static <T> ApiResponse<T> success(String message, T data) {
-        return new ApiResponse<>(true, message, data, Instant.now());
+        return new ApiResponse<>(true, message, data, CompanyTime.now());
     }
 
     public static <T> ApiResponse<T> success(T data) {
@@ -19,10 +20,10 @@ public record ApiResponse<T>(
     }
 
     public static <T> ApiResponse<T> failure(String message) {
-        return new ApiResponse<>(false, message, null, Instant.now());
+        return new ApiResponse<>(false, message, null, CompanyTime.now());
     }
 
     public static <T> ApiResponse<T> failure(String message, T data) {
-        return new ApiResponse<>(false, message, data, Instant.now());
+        return new ApiResponse<>(false, message, data, CompanyTime.now());
     }
 }

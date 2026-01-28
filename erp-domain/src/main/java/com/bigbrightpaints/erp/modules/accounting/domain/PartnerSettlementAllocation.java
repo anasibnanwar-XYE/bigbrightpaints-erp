@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.accounting.domain;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.core.domain.VersionedEntity;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
@@ -94,10 +95,10 @@ public class PartnerSettlementAllocation extends VersionedEntity {
     @PrePersist
     public void prePersist() {
         if (createdAt == null) {
-            createdAt = Instant.now();
+            createdAt = CompanyTime.now(company);
         }
         if (settlementDate == null) {
-            settlementDate = LocalDate.now();
+            settlementDate = CompanyTime.today(company);
         }
     }
 

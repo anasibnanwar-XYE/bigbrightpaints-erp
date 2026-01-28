@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.factory.service;
 
+import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
@@ -40,17 +41,20 @@ public class CostAllocationService {
     private final FinishedGoodBatchRepository finishedGoodBatchRepository;
     private final AccountingFacade accountingFacade;
     private final CompanyEntityLookup companyEntityLookup;
+    private final CompanyClock companyClock;
 
     public CostAllocationService(CompanyContextService companyContextService,
                                  ProductionLogRepository productionLogRepository,
                                  FinishedGoodBatchRepository finishedGoodBatchRepository,
                                  AccountingFacade accountingFacade,
-                                 CompanyEntityLookup companyEntityLookup) {
+                                 CompanyEntityLookup companyEntityLookup,
+                                 CompanyClock companyClock) {
         this.companyContextService = companyContextService;
         this.productionLogRepository = productionLogRepository;
         this.finishedGoodBatchRepository = finishedGoodBatchRepository;
         this.accountingFacade = accountingFacade;
         this.companyEntityLookup = companyEntityLookup;
+        this.companyClock = companyClock;
     }
 
     @Transactional
@@ -62,8 +66,9 @@ public class CostAllocationService {
         LocalDate startDate = yearMonth.atDay(1);
         LocalDate endDate = yearMonth.atEndOfMonth().plusDays(1);
 
-        Instant startInstant = startDate.atStartOfDay(ZoneId.systemDefault()).toInstant();
-        Instant endInstant = endDate.atStartOfDay(ZoneId.systemDefault()).toInstant();
+        ZoneId zone = companyClock.zoneId(company);
+        Instant startInstant = startDate.atStartOfDay(zone).toInstant();
+        Instant endInstant = endDate.atStartOfDay(zone).toInstant();
 
         // Find all fully packed batches in this month
         List<ProductionLog> batches = productionLogRepository.findFullyPackedBatchesByMonth(

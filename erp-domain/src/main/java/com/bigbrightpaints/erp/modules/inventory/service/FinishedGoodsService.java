@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.inventory.service;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
@@ -212,7 +213,9 @@ public class FinishedGoodsService {
         batch.setQuantityTotal(quantity);
         batch.setQuantityAvailable(quantity);
         batch.setUnitCost(unitCost);
-        batch.setManufacturedAt(request.manufacturedAt() == null ? Instant.now() : request.manufacturedAt());
+        batch.setManufacturedAt(request.manufacturedAt() == null
+                ? CompanyTime.now(finishedGood.getCompany())
+                : request.manufacturedAt());
         batch.setExpiryDate(request.expiryDate());
         FinishedGoodBatch savedBatch = finishedGoodBatchRepository.save(batch);
 
@@ -1306,7 +1309,7 @@ public class FinishedGoodsService {
 
         slip.setStatus("CANCELLED");
         slip.setDispatchNotes(reason != null ? reason : "Backorder canceled by " + (username != null ? username : "system"));
-        slip.setConfirmedAt(Instant.now());
+        slip.setConfirmedAt(CompanyTime.now(company));
         slip.setConfirmedBy(username != null ? username : "system");
         return toSlipDto(packagingSlipRepository.save(slip));
     }

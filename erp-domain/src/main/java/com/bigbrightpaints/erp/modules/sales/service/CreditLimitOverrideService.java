@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.sales.service;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.modules.accounting.service.DealerLedgerService;
@@ -125,14 +126,14 @@ public class CreditLimitOverrideService {
         }
         overrideRequest.setStatus(STATUS_APPROVED);
         overrideRequest.setReviewedBy(reviewedBy);
-        overrideRequest.setReviewedAt(Instant.now());
+        overrideRequest.setReviewedAt(CompanyTime.now(overrideRequest.getCompany()));
         if (request != null && request.reason() != null && !request.reason().isBlank()) {
             overrideRequest.setReason(request.reason());
         }
         if (request != null && request.expiresAt() != null) {
             overrideRequest.setExpiresAt(request.expiresAt());
         } else if (overrideRequest.getExpiresAt() == null) {
-            overrideRequest.setExpiresAt(Instant.now().plus(1, ChronoUnit.DAYS));
+            overrideRequest.setExpiresAt(CompanyTime.now(overrideRequest.getCompany()).plus(1, ChronoUnit.DAYS));
         }
         return toDto(overrideRequest);
     }
@@ -146,7 +147,7 @@ public class CreditLimitOverrideService {
         }
         overrideRequest.setStatus(STATUS_REJECTED);
         overrideRequest.setReviewedBy(reviewedBy);
-        overrideRequest.setReviewedAt(Instant.now());
+        overrideRequest.setReviewedAt(CompanyTime.now(overrideRequest.getCompany()));
         if (request != null && request.reason() != null && !request.reason().isBlank()) {
             overrideRequest.setReason(request.reason());
         }
@@ -172,7 +173,7 @@ public class CreditLimitOverrideService {
         if (!STATUS_APPROVED.equalsIgnoreCase(overrideRequest.getStatus())) {
             return false;
         }
-        if (overrideRequest.getExpiresAt() != null && overrideRequest.getExpiresAt().isBefore(Instant.now())) {
+        if (overrideRequest.getExpiresAt() != null && overrideRequest.getExpiresAt().isBefore(CompanyTime.now(company))) {
             overrideRequest.setStatus(STATUS_EXPIRED);
             creditLimitOverrideRequestRepository.save(overrideRequest);
             return false;

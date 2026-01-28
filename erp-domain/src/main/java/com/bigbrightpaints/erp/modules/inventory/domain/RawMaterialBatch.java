@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.inventory.domain;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
 import jakarta.persistence.*;
 
@@ -57,7 +58,7 @@ public class RawMaterialBatch extends VersionedEntity {
             publicId = UUID.randomUUID();
         }
         if (receivedAt == null) {
-            receivedAt = Instant.now();
+            receivedAt = CompanyTime.now(rawMaterial != null ? rawMaterial.getCompany() : null);
         }
     }
 

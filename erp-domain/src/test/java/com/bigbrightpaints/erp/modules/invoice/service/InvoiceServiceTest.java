@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.invoice.service;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.service.DealerLedgerService;
 import com.bigbrightpaints.erp.modules.accounting.service.JournalReferenceResolver;
@@ -18,6 +19,7 @@ import com.bigbrightpaints.erp.modules.sales.dto.DispatchConfirmRequest;
 import com.bigbrightpaints.erp.modules.sales.dto.DispatchConfirmResponse;
 import com.bigbrightpaints.erp.modules.sales.service.SalesJournalService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesService;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -58,6 +60,8 @@ class InvoiceServiceTest {
     private DealerLedgerService dealerLedgerService;
     @Mock
     private PackagingSlipRepository packagingSlipRepository;
+    @Mock
+    private CompanyClock companyClock;
 
     private InvoiceService invoiceService;
     private Company company;
@@ -74,7 +78,8 @@ class InvoiceServiceTest {
                 companyEntityLookup,
                 journalReferenceResolver,
                 dealerLedgerService,
-                packagingSlipRepository
+                packagingSlipRepository,
+                companyClock
         );
         company = new Company();
         company.setTimezone("UTC");

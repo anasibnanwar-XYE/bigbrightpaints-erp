@@ -26,6 +26,11 @@ jobs:
           set -euo pipefail
           bash scripts/schema_drift_scan.sh
 
+      - name: CODE-RED time API scan
+        run: |
+          set -euo pipefail
+          bash scripts/time_api_scan.sh
+
       - name: Run tests (erp-domain)
         working-directory: erp-domain
         run: |

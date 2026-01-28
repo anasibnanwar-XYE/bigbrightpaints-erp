@@ -28,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -523,8 +524,9 @@ public class ReportService {
         java.time.LocalDate startDate = yearMonth.atDay(1);
         java.time.LocalDate endDate = yearMonth.atEndOfMonth().plusDays(1);
 
-        java.time.Instant startInstant = startDate.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant();
-        java.time.Instant endInstant = endDate.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant();
+        ZoneId zone = companyClock.zoneId(company);
+        java.time.Instant startInstant = startDate.atStartOfDay(zone).toInstant();
+        java.time.Instant endInstant = endDate.atStartOfDay(zone).toInstant();
 
         List<ProductionLog> logs = productionLogRepository.findFullyPackedBatchesByMonth(
                 company, startInstant, endInstant);

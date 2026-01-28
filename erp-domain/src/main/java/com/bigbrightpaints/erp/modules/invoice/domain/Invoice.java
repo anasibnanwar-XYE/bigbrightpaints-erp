@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.invoice.domain;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
@@ -91,7 +92,7 @@ public class Invoice extends VersionedEntity {
         if (publicId == null) {
             publicId = UUID.randomUUID();
         }
-        Instant now = Instant.now();
+        Instant now = CompanyTime.now(company);
         if (createdAt == null) {
             createdAt = now;
         }
@@ -106,7 +107,7 @@ public class Invoice extends VersionedEntity {
 
     @PreUpdate
     public void preUpdate() {
-        updatedAt = Instant.now();
+        updatedAt = CompanyTime.now(company);
     }
 
     public Long getId() { return id; }

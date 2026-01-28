@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.hr.domain;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import jakarta.persistence.*;
 import java.math.BigDecimal;
@@ -119,7 +120,7 @@ public class PayrollRun {
     @PrePersist
     public void prePersist() {
         if (publicId == null) publicId = UUID.randomUUID();
-        if (createdAt == null) createdAt = Instant.now();
+        if (createdAt == null) createdAt = CompanyTime.now(company);
     }
 
     // Getters and Setters

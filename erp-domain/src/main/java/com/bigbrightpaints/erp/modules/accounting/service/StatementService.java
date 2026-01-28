@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.accounting.service;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.accounting.domain.*;
 import com.bigbrightpaints.erp.modules.accounting.dto.AgingBucketDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.AgingSummaryResponse;
@@ -300,7 +301,8 @@ public class StatementService {
 
     private LocalDate resolveAgingDate(DealerLedgerEntry entry) {
         if (entry == null) {
-            return LocalDate.now();
+            Company company = companyContextService.requireCurrentCompany();
+            return CompanyTime.today(company);
         }
         return entry.getDueDate() != null ? entry.getDueDate() : entry.getEntryDate();
     }

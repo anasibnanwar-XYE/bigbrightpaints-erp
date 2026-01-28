@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.inventory.event;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
@@ -98,7 +99,7 @@ public record InventoryValuationChangedEvent(
                     companyId, inventoryType, itemId, itemCode, itemName,
                     inventoryAccountId, oldValue, newValue, quantity,
                     oldUnitCost, newUnitCost, reason, referenceNumber, memo,
-                    Instant.now()
+                    CompanyTime.now()
             );
         }
     }

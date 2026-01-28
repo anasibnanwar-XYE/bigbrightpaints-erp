@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.factory.domain;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import jakarta.persistence.*;
 
@@ -45,7 +46,7 @@ public class ProductionBatch extends VersionedEntity {
             publicId = UUID.randomUUID();
         }
         if (producedAt == null) {
-            producedAt = Instant.now();
+            producedAt = CompanyTime.now(company);
         }
     }
 

@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.orchestrator.event;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -16,6 +17,6 @@ public record DomainEvent(
     public static DomainEvent of(String eventType, String companyId, String userId, String entity,
                                  String entityId, Object payload) {
         return new DomainEvent(UUID.randomUUID(), eventType, companyId, userId, entity, entityId,
-            Instant.now(), payload);
+            CompanyTime.now(), payload);
     }
 }

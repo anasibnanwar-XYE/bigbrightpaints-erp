@@ -11,9 +11,11 @@ import static org.mockito.Mockito.when;
 
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
+import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.sales.domain.OrderSequence;
 import com.bigbrightpaints.erp.modules.sales.domain.OrderSequenceRepository;
+import java.time.LocalDate;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,13 +34,16 @@ class OrderNumberServiceTest {
     private AuditService auditService;
     @Mock
     private PlatformTransactionManager txManager;
+    @Mock
+    private CompanyClock companyClock;
 
     private OrderNumberService orderNumberService;
 
     @BeforeEach
     void setup() {
         when(txManager.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
-        orderNumberService = new OrderNumberService(orderSequenceRepository, auditService, txManager);
+        when(companyClock.today(any())).thenReturn(LocalDate.of(2024, 1, 1));
+        orderNumberService = new OrderNumberService(orderSequenceRepository, auditService, txManager, companyClock);
         when(orderSequenceRepository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
     }
 

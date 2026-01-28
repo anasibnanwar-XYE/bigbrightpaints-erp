@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.accounting.event;
 
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import jakarta.persistence.*;
 import java.math.BigDecimal;
@@ -93,8 +94,8 @@ public class AccountingEvent {
     @PrePersist
     protected void onCreate() {
         if (eventId == null) eventId = UUID.randomUUID();
-        if (createdAt == null) createdAt = Instant.now();
-        if (eventTimestamp == null) eventTimestamp = Instant.now();
+        if (createdAt == null) createdAt = CompanyTime.now(company);
+        if (eventTimestamp == null) eventTimestamp = CompanyTime.now(company);
     }
 
     // Getters and setters
