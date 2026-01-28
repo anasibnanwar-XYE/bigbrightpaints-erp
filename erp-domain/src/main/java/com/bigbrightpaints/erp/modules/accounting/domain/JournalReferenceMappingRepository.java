@@ -24,11 +24,12 @@ public interface JournalReferenceMappingRepository extends JpaRepository<Journal
                 entity_type,
                 created_at
             )
-            VALUES (:companyId, :legacyReference, :canonicalReference, :entityType, NOW())
+            VALUES (:companyId, :legacyReference, :canonicalReference, :entityType, :createdAt)
             ON CONFLICT (company_id, legacy_reference) DO NOTHING
             """, nativeQuery = true)
     int reserveManualReference(@Param("companyId") Long companyId,
                                @Param("legacyReference") String legacyReference,
                                @Param("canonicalReference") String canonicalReference,
-                               @Param("entityType") String entityType);
+                               @Param("entityType") String entityType,
+                               @Param("createdAt") java.time.Instant createdAt);
 }

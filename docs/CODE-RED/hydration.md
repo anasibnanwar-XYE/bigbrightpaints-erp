@@ -72,6 +72,6 @@
   - Gate: `scripts/time_api_scan.sh` (wired into CI and `scripts/verify_local.sh`).
   - Command: `scripts/verify_local.sh`.
 - 2026-01-28: EPIC 05 / M05.2 verified.
-  - Code: `AccountingService.createManualJournalEntry` now reserves idempotency keys via `JournalReferenceMappingRepository.reserveManualReference` before journal creation; concurrent requests return the same journal entry.
+  - Code: `AccountingService.createManualJournalEntry` now reserves idempotency keys via `JournalReferenceMappingRepository.reserveManualReference` before journal creation; concurrent requests return the same journal entry. Reservation timestamps use `CompanyTime`.
   - Tests: `JournalEntryE2ETest.journalEntry_ManualIdempotencyKey_ConcurrencySafe`.
-  - Command: `scripts/verify_local.sh`.
+  - Command: `mvn -B -ntp -Dtest=JournalEntryE2ETest test`.

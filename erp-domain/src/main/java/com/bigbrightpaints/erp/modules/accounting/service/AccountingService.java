@@ -2093,7 +2093,8 @@ public class AccountingService {
                     company.getId(),
                     key,
                     reservedManualReference(key),
-                    "JOURNAL_ENTRY"
+                    "JOURNAL_ENTRY",
+                    CompanyTime.now(company)
             );
             if (reserved == 0) {
                 Optional<JournalEntry> already = journalReferenceResolver.findExistingEntry(company, key);
