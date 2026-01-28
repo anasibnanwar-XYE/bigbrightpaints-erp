@@ -58,3 +58,7 @@
   - Code: `SalesService.confirmDispatch` fails closed when multiple slips exist for an order and no `packingSlipId` is provided.
   - Tests: `SalesServiceTest.confirmDispatchRequiresPackingSlipIdWhenMultipleSlipsExist`.
   - Command: `mvn -B -ntp -Dtest=SalesServiceTest test`.
+- 2026-01-28: EPIC 05 / M05.1 verified.
+  - Code: `AccountingController.createJournalEntry` rejects caller-supplied `referenceNumber`; references are system-generated.
+  - Tests: `JournalEntryE2ETest`, `PeriodCloseLockIT`, `CreditDebitNoteIT`, `SettlementE2ETest`.
+  - Command: `mvn -B -ntp -Dtest=JournalEntryE2ETest,PeriodCloseLockIT,CreditDebitNoteIT,SettlementE2ETest test`.
