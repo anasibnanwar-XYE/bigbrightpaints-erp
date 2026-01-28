@@ -1369,7 +1369,11 @@ public class SalesService {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
                         "Packing slip not found for order " + request.orderId());
             }
-            PackagingSlip selected = slips.size() == 1 ? slips.get(0) : selectMostRecentSlip(slips, request.orderId());
+            if (slips.size() > 1) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Multiple packing slips found for order " + request.orderId() + "; provide packingSlipId");
+            }
+            PackagingSlip selected = slips.get(0);
             Long slipId = selected.getId();
             slip = packagingSlipRepository.findAndLockByIdAndCompany(slipId, company)
                     .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,

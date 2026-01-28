@@ -246,6 +246,31 @@ class SalesServiceTest {
     }
 
     @Test
+    void confirmDispatchRequiresPackingSlipIdWhenMultipleSlipsExist() {
+        SalesOrder order = new SalesOrder();
+        setField(order, "id", 10L);
+
+        PackagingSlip slipA = new PackagingSlip();
+        slipA.setCompany(company);
+        slipA.setSalesOrder(order);
+        slipA.setStatus("PENDING");
+        setField(slipA, "id", 55L);
+
+        PackagingSlip slipB = new PackagingSlip();
+        slipB.setCompany(company);
+        slipB.setSalesOrder(order);
+        slipB.setStatus("BACKORDER");
+        setField(slipB, "id", 56L);
+
+        when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, 10L))
+                .thenReturn(List.of(slipA, slipB));
+
+        DispatchConfirmRequest request = new DispatchConfirmRequest(null, 10L, List.of(), null, null, false, null, null);
+
+        assertThrows(ApplicationException.class, () -> salesService.confirmDispatch(request));
+    }
+
+    @Test
     void confirmDispatchBlocksWhenCreditLimitExceededWithoutOverride() {
         Dealer dealer = dealerWithCreditLimit(42L, BigDecimal.valueOf(100));
         Account receivable = new Account();
