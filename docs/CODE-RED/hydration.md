@@ -62,3 +62,7 @@
   - Code: `AccountingController.createJournalEntry` rejects caller-supplied `referenceNumber`; references are system-generated.
   - Tests: `JournalEntryE2ETest`, `PeriodCloseLockIT`, `CreditDebitNoteIT`, `SettlementE2ETest`.
   - Command: `mvn -B -ntp -Dtest=JournalEntryE2ETest,PeriodCloseLockIT,CreditDebitNoteIT,SettlementE2ETest test`.
+- 2026-01-28: EPIC 04 / M04.0–M04.2 verified.
+  - Code: `PayrollService.createPayrollRun` enforces idempotency by runType+period; `PayrollService.postPayrollToAccounting` routes through `AccountingFacade.postPayrollRun`.
+  - Tests: `PayrollRunApiIdempotencyIT`, `ErpInvariantsSuiteIT`.
+  - Command: `mvn -B -ntp -Dtest=PayrollRunApiIdempotencyIT,ErpInvariantsSuiteIT test`.
