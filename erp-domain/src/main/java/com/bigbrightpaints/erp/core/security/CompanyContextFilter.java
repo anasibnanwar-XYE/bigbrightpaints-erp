@@ -31,13 +31,16 @@ public class CompanyContextFilter extends OncePerRequestFilter {
                 companyId = claims.get("cid", String.class);
             }
             if (companyId != null) {
-                // Validate user has access to this company
-                if (!validateCompanyAccess(companyId)) {
+                // Only set company context for authenticated users with access
+                if (validateCompanyAccess(companyId)) {
+                    CompanyContextHolder.setCompanyId(companyId);
+                } else if (isAuthenticated()) {
+                    // Authenticated but unauthorized
                     log.warn("User attempted to access unauthorized company: {}", companyId);
                     response.sendError(HttpServletResponse.SC_FORBIDDEN, "Access denied to company: " + companyId);
                     return;
                 }
-                CompanyContextHolder.setCompanyId(companyId);
+                // If unauthenticated, we do not set context, effectively ignoring the header.
             }
             filterChain.doFilter(request, response);
         } finally {
@@ -48,7 +51,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     private boolean validateCompanyAccess(String companyCode) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated()) {
-            return true; // Let other filters handle unauthenticated requests
+            return false;
         }
         Object principal = auth.getPrincipal();
         if (principal instanceof UserPrincipal userPrincipal) {
@@ -62,6 +65,11 @@ public class CompanyContextFilter extends OncePerRequestFilter {
         }
         // For non-UserPrincipal (e.g., service accounts), allow access
         return true;
+    }
+
+    private boolean isAuthenticated() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        return auth != null && auth.isAuthenticated();
     }
 
     @Override

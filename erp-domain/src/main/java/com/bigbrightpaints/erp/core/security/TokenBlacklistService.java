@@ -185,7 +185,9 @@ public class TokenBlacklistService {
         int removedTokens = blacklistedTokenRepository.deleteExpiredTokens(now);
 
         // Keep user revocations at least as long as refresh tokens remain valid.
-        Instant cutoff = now.minusSeconds(jwtProperties.getRefreshTokenTtlSeconds());
+        // Use a safety floor of 30 days (2592000s) to prevent premature deletion if TTL is reduced.
+        long retentionSeconds = Math.max(jwtProperties.getRefreshTokenTtlSeconds(), 2592000L);
+        Instant cutoff = now.minusSeconds(retentionSeconds);
         int removedRevocations = userTokenRevocationRepository.deleteOldRevocations(cutoff);
 
         if (removedTokens > 0 || removedRevocations > 0) {
