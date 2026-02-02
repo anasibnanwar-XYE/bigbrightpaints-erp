@@ -121,6 +121,10 @@ public class OpeningStockImportService {
         List<RawMaterialMovement> rawMovements = new ArrayList<>();
         List<InventoryMovement> finishedMovements = new ArrayList<>();
 
+        // Cache materials/goods by SKU to avoid N+1 queries when multiple rows refer to the same item
+        Map<String, RawMaterial> rawMaterialCache = new HashMap<>();
+        Map<String, FinishedGood> finishedGoodCache = new HashMap<>();
+
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8));
              CSVParser parser = CSVFormat.DEFAULT.builder()
@@ -145,13 +149,13 @@ public class OpeningStockImportService {
                 try {
                     OpeningMovementResult movementResult;
                     if (row.type == StockType.RAW_MATERIAL) {
-                        movementResult = handleRawMaterial(company, row);
+                        movementResult = handleRawMaterial(company, row, rawMaterialCache);
                         if (row.createdNew) {
                             rawMaterialsCreated++;
                         }
                         rawMaterialBatchesCreated++;
                     } else {
-                        movementResult = handleFinishedGood(company, row);
+                        movementResult = handleFinishedGood(company, row, finishedGoodCache);
                         if (row.createdNew) {
                             finishedGoodsCreated++;
                         }
@@ -197,8 +201,8 @@ public class OpeningStockImportService {
         }
     }
 
-    private OpeningMovementResult handleRawMaterial(Company company, OpeningRow row) {
-        RawMaterial material = resolveRawMaterial(company, row);
+    private OpeningMovementResult handleRawMaterial(Company company, OpeningRow row, Map<String, RawMaterial> cache) {
+        RawMaterial material = resolveRawMaterial(company, row, cache);
         String unit = firstNonBlank(row.unitType, row.unit, material.getUnitType());
         if (!StringUtils.hasText(unit)) {
             throw new IllegalArgumentException("Unit is required for raw material " + row.displayKey());
@@ -238,8 +242,8 @@ public class OpeningStockImportService {
                 null);
     }
 
-    private OpeningMovementResult handleFinishedGood(Company company, OpeningRow row) {
-        FinishedGood finishedGood = resolveFinishedGood(company, row);
+    private OpeningMovementResult handleFinishedGood(Company company, OpeningRow row, Map<String, FinishedGood> cache) {
+        FinishedGood finishedGood = resolveFinishedGood(company, row, cache);
         BigDecimal quantity = requirePositive(row.quantity, "quantity");
         BigDecimal unitCost = requirePositive(row.unitCost, "unit_cost");
         Long inventoryAccountId = resolveInventoryAccountId(company, finishedGood);
@@ -319,11 +323,17 @@ public class OpeningStockImportService {
         return material.getId() != null ? material.getId().toString() : "unknown";
     }
 
-    private RawMaterial resolveRawMaterial(Company company, OpeningRow row) {
-        if (StringUtils.hasText(row.sku)) {
-            Optional<RawMaterial> existing = rawMaterialRepository.findByCompanyAndSku(company, row.sku.trim());
+    private RawMaterial resolveRawMaterial(Company company, OpeningRow row, Map<String, RawMaterial> cache) {
+        String skuKey = StringUtils.hasText(row.sku) ? row.sku.trim() : null;
+        if (skuKey != null) {
+            if (cache.containsKey(skuKey)) {
+                return cache.get(skuKey);
+            }
+            Optional<RawMaterial> existing = rawMaterialRepository.findByCompanyAndSku(company, skuKey);
             if (existing.isPresent()) {
-                return existing.get();
+                RawMaterial material = existing.get();
+                cache.put(skuKey, material);
+                return material;
             }
         }
         if (!StringUtils.hasText(row.name)) {
@@ -335,7 +345,7 @@ public class OpeningStockImportService {
         }
         RawMaterialRequest request = new RawMaterialRequest(
                 row.name.trim(),
-                StringUtils.hasText(row.sku) ? row.sku.trim() : null,
+                skuKey,
                 unitType.trim(),
                 BigDecimal.ZERO,
                 BigDecimal.ZERO,
@@ -350,22 +360,31 @@ public class OpeningStockImportService {
             material.setMaterialType(row.materialType);
             rawMaterialRepository.save(material);
         }
+        if (skuKey != null) {
+            cache.put(skuKey, material);
+        }
         row.markCreated();
         return material;
     }
 
-    private FinishedGood resolveFinishedGood(Company company, OpeningRow row) {
+    private FinishedGood resolveFinishedGood(Company company, OpeningRow row, Map<String, FinishedGood> cache) {
         if (!StringUtils.hasText(row.sku)) {
             throw new IllegalArgumentException("Finished good SKU is required");
         }
-        Optional<FinishedGood> existing = finishedGoodRepository.findByCompanyAndProductCode(company, row.sku.trim());
-        if (existing.isPresent()) {
-            return existing.get();
+        String skuKey = row.sku.trim();
+        if (cache.containsKey(skuKey)) {
+            return cache.get(skuKey);
         }
-        String name = StringUtils.hasText(row.name) ? row.name.trim() : row.sku.trim();
+        Optional<FinishedGood> existing = finishedGoodRepository.findByCompanyAndProductCode(company, skuKey);
+        if (existing.isPresent()) {
+            FinishedGood finishedGood = existing.get();
+            cache.put(skuKey, finishedGood);
+            return finishedGood;
+        }
+        String name = StringUtils.hasText(row.name) ? row.name.trim() : skuKey;
         String unit = StringUtils.hasText(row.unit) ? row.unit.trim() : "PCS";
         FinishedGoodRequest request = new FinishedGoodRequest(
-                row.sku.trim(),
+                skuKey,
                 name,
                 unit,
                 null,
@@ -378,6 +397,8 @@ public class OpeningStockImportService {
         FinishedGoodDto created = finishedGoodsService.createFinishedGood(request);
         FinishedGood finishedGood = finishedGoodRepository.findByCompanyAndId(company, created.id())
                 .orElseThrow(() -> new IllegalStateException("Finished good creation failed"));
+
+        cache.put(skuKey, finishedGood);
         row.markCreated();
         return finishedGood;
     }
