@@ -32,4 +32,22 @@ public interface JournalReferenceMappingRepository extends JpaRepository<Journal
                                @Param("canonicalReference") String canonicalReference,
                                @Param("entityType") String entityType,
                                @Param("createdAt") java.time.Instant createdAt);
+
+    @Modifying
+    @Query(value = """
+            INSERT INTO journal_reference_mappings (
+                company_id,
+                legacy_reference,
+                canonical_reference,
+                entity_type,
+                created_at
+            )
+            VALUES (:companyId, :legacyReference, :canonicalReference, :entityType, :createdAt)
+            ON CONFLICT (company_id, legacy_reference) DO NOTHING
+            """, nativeQuery = true)
+    int reserveReferenceMapping(@Param("companyId") Long companyId,
+                                @Param("legacyReference") String legacyReference,
+                                @Param("canonicalReference") String canonicalReference,
+                                @Param("entityType") String entityType,
+                                @Param("createdAt") java.time.Instant createdAt);
 }

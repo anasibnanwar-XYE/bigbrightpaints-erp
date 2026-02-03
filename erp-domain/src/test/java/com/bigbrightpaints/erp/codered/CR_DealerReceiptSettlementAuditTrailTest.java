@@ -121,6 +121,7 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
         Invoice invoice = invoiceRepository.findByCompanyAndId(company, dispatch.finalInvoiceId()).orElseThrow();
         BigDecimal outstanding = invoice.getOutstandingAmount();
         String referenceNumber = "DR-" + UUID.randomUUID();
+        String idempotencyKey = "DR-IDEMP-" + UUID.randomUUID();
 
         DealerReceiptRequest receiptRequest = new DealerReceiptRequest(
                 dealer.getId(),
@@ -128,6 +129,7 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
                 outstanding,
                 referenceNumber,
                 "CODE-RED receipt",
+                idempotencyKey,
                 List.of(new SettlementAllocationRequest(
                         invoice.getId(),
                         null,
@@ -167,6 +169,9 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
 
         assertThat(settlementAllocationRepository.findByCompanyAndIdempotencyKey(company, referenceNumber))
                 .as("single settlement allocation")
+                .hasSize(0);
+        assertThat(settlementAllocationRepository.findByCompanyAndIdempotencyKey(company, idempotencyKey))
+                .as("single settlement allocation")
                 .hasSize(1);
 
         Invoice refreshed = invoiceRepository.findByCompanyAndId(company, invoice.getId()).orElseThrow();
@@ -188,6 +193,36 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
                 .isTrue();
 
         CoderedDbAssertions.assertNoNegativeInventory(jdbcTemplate, company.getId());
+
+        CompanyContextHolder.setCompanyId(companyCode);
+        try {
+            JournalEntryDto retry = accountingService.recordDealerReceipt(receiptRequest);
+            assertThat(retry.id()).as("retry returns same receipt").isEqualTo(journalId);
+            BigDecimal halfOutstanding = outstanding.divide(new BigDecimal("2"), 2, java.math.RoundingMode.HALF_UP);
+            DealerReceiptRequest conflictRequest = new DealerReceiptRequest(
+                    dealer.getId(),
+                    accounts.get("BANK").getId(),
+                    halfOutstanding,
+                    referenceNumber,
+                    "CODE-RED receipt",
+                    idempotencyKey,
+                    List.of(new SettlementAllocationRequest(
+                            invoice.getId(),
+                            null,
+                            halfOutstanding,
+                            BigDecimal.ZERO,
+                            BigDecimal.ZERO,
+                            null,
+                            "Apply to invoice"))
+            );
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> accountingService.recordDealerReceipt(conflictRequest))
+                    .isInstanceOf(com.bigbrightpaints.erp.core.exception.ApplicationException.class)
+                    .satisfies(error -> org.assertj.core.api.Assertions.assertThat(
+                            ((com.bigbrightpaints.erp.core.exception.ApplicationException) error).getErrorCode())
+                            .isEqualTo(com.bigbrightpaints.erp.core.exception.ErrorCode.CONCURRENCY_CONFLICT));
+        } finally {
+            CompanyContextHolder.clear();
+        }
     }
 
     private Company bootstrapCompany(String companyCode, String timezone) {

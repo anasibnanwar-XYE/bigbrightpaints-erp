@@ -1,6 +1,6 @@
 # CODE-RED P0 Deploy Blockers (Must Fix or Prod-Gate)
 
-Last updated: 2026-02-03
+Last updated: 2026-02-04
 
 Purpose: a single, concrete list of **P0** items that block a safe enterprise deploy. For details, see:
 - `docs/CODE-RED/plan-v2.md`
@@ -70,6 +70,8 @@ Purpose: a single, concrete list of **P0** items that block a safe enterprise de
   - Packing record retries must not double-consume packaging or double-post journals.
   - Opening stock import must have an import idempotency key; retry must not create new batches/movements/journals.
 - Dealer receipts/settlements must be idempotent (caller idempotency key enforced; allocations deterministic).
+  - Status (2026-02-04): ✅ dealer receipt idempotency reserve-first + mismatch-safe; tests: `CR_DealerReceiptSettlementAuditTrailTest`.
+  - Status (2026-02-04): ⏳ dealer settlement idempotency + allocation uniqueness in progress (Block D).
 - Add DB uniqueness where needed to prevent duplicate reservations/batches under concurrency.
   - Packaging slips must not duplicate per order under concurrency (guard at DB and service layer).
 - Idempotency must be mismatch-safe:

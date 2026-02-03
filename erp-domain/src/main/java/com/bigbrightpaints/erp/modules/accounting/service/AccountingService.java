@@ -51,6 +51,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -75,6 +76,10 @@ public class AccountingService {
     private static final BigDecimal FX_RATE_MAX = new BigDecimal("100000");
     private static final BigDecimal FX_ROUNDING_TOLERANCE = new BigDecimal("0.05");
     private static final BigDecimal ALLOCATION_TOLERANCE = new BigDecimal("0.01");
+    private static final Duration IDEMPOTENCY_WAIT_TIMEOUT = Duration.ofSeconds(8);
+    private static final long IDEMPOTENCY_WAIT_SLEEP_MS = 50L;
+    private static final String ENTITY_TYPE_DEALER_RECEIPT = "DEALER_RECEIPT";
+    private static final String ENTITY_TYPE_DEALER_RECEIPT_SPLIT = "DEALER_RECEIPT_SPLIT";
 
     private final CompanyContextService companyContextService;
     private final AccountRepository accountRepository;
@@ -730,6 +735,31 @@ public class AccountingService {
         String reference = StringUtils.hasText(request.referenceNumber())
                 ? request.referenceNumber().trim()
                 : buildDealerReceiptReference(company, dealer, request);
+        String idempotencyKey = resolveReceiptIdempotencyKey(request.idempotencyKey(), reference, "dealer receipt");
+        IdempotencyReservation reservation = reserveReferenceMapping(company, idempotencyKey, reference, ENTITY_TYPE_DEALER_RECEIPT);
+
+        if (!reservation.leader()) {
+            JournalEntry existingEntry = awaitJournalEntry(company, reference, idempotencyKey);
+            List<PartnerSettlementAllocation> existingAllocations = awaitAllocations(company, idempotencyKey);
+            if (!existingAllocations.isEmpty()) {
+                JournalEntry entry = existingEntry != null ? existingEntry : existingAllocations.getFirst().getJournalEntry();
+                validateDealerReceiptIdempotency(idempotencyKey, dealer, cashAccount, receivableAccount, amount, memo, entry,
+                        existingAllocations, allocations);
+                return toDto(entry);
+            }
+            throw new ApplicationException(ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
+                    "Dealer receipt idempotency key is reserved but allocation not found")
+                    .withDetail("idempotencyKey", idempotencyKey);
+        }
+
+        List<PartnerSettlementAllocation> existingAllocations = settlementAllocationRepository
+                .findByCompanyAndIdempotencyKey(company, idempotencyKey);
+        if (!existingAllocations.isEmpty()) {
+            JournalEntry entry = existingAllocations.getFirst().getJournalEntry();
+            validateDealerReceiptIdempotency(idempotencyKey, dealer, cashAccount, receivableAccount, amount, memo, entry,
+                    existingAllocations, allocations);
+            return toDto(entry);
+        }
         JournalEntryRequest payload = new JournalEntryRequest(
                 reference,
                 currentDate(company),
@@ -744,10 +774,12 @@ public class AccountingService {
         );
         JournalEntryDto entryDto = createJournalEntry(payload);
         JournalEntry entry = companyEntityLookup.requireJournalEntry(company, entryDto.id());
-        String idempotencyKey = entry.getReferenceNumber();
-        List<PartnerSettlementAllocation> existing = settlementAllocationRepository
+        linkReferenceMapping(company, idempotencyKey, entry, ENTITY_TYPE_DEALER_RECEIPT);
+        existingAllocations = settlementAllocationRepository
                 .findByCompanyAndIdempotencyKey(company, idempotencyKey);
-        if (!existing.isEmpty()) {
+        if (!existingAllocations.isEmpty()) {
+            validateDealerReceiptIdempotency(idempotencyKey, dealer, cashAccount, receivableAccount, amount, memo, entry,
+                    existingAllocations, allocations);
             return entryDto;
         }
         LocalDate entryDate = entry.getEntryDate();
@@ -778,7 +810,7 @@ public class AccountingService {
                         .withDetail("outstanding", currentOutstanding)
                         .withDetail("applied", applied);
             }
-            String settlementRef = idempotencyKey + "-INV-" + invoice.getId();
+            String settlementRef = reference + "-INV-" + invoice.getId();
             invoiceSettlementPolicy.applySettlement(invoice, applied, settlementRef);
             dealerLedgerService.syncInvoiceLedger(invoice, entryDate);
             touchedInvoices.add(invoice);
@@ -804,7 +836,19 @@ public class AccountingService {
         if (!touchedInvoices.isEmpty()) {
             invoiceRepository.saveAll(touchedInvoices);
         }
-        settlementAllocationRepository.saveAll(settlementRows);
+        try {
+            settlementAllocationRepository.saveAll(settlementRows);
+        } catch (DataIntegrityViolationException ex) {
+            List<PartnerSettlementAllocation> concurrent = settlementAllocationRepository
+                    .findByCompanyAndIdempotencyKey(company, idempotencyKey);
+            if (!concurrent.isEmpty()) {
+                JournalEntry existingEntry = concurrent.getFirst().getJournalEntry();
+                validateDealerReceiptIdempotency(idempotencyKey, dealer, cashAccount, receivableAccount, amount, memo, existingEntry,
+                        concurrent, allocations);
+                return toDto(existingEntry);
+            }
+            throw ex;
+        }
         return entryDto;
     }
 
@@ -834,6 +878,27 @@ public class AccountingService {
         String reference = StringUtils.hasText(request.referenceNumber())
                 ? request.referenceNumber().trim()
                 : buildDealerReceiptReference(company, dealer, request);
+        String idempotencyKey = resolveReceiptIdempotencyKey(request.idempotencyKey(), reference, "dealer receipt");
+        IdempotencyReservation reservation = reserveReferenceMapping(company, idempotencyKey, reference, ENTITY_TYPE_DEALER_RECEIPT_SPLIT);
+        if (!reservation.leader()) {
+            JournalEntry existingEntry = awaitJournalEntry(company, reference, idempotencyKey);
+            List<PartnerSettlementAllocation> existingAllocations = awaitAllocations(company, idempotencyKey);
+            if (!existingAllocations.isEmpty()) {
+                JournalEntry entry = existingEntry != null ? existingEntry : existingAllocations.getFirst().getJournalEntry();
+                validateSplitReceiptIdempotency(idempotencyKey, dealer, memo, entry, lines);
+                return toDto(entry);
+            }
+            throw new ApplicationException(ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
+                    "Dealer receipt idempotency key is reserved but allocation not found")
+                    .withDetail("idempotencyKey", idempotencyKey);
+        }
+        List<PartnerSettlementAllocation> existingAllocations = settlementAllocationRepository
+                .findByCompanyAndIdempotencyKey(company, idempotencyKey);
+        if (!existingAllocations.isEmpty()) {
+            JournalEntry entry = existingAllocations.getFirst().getJournalEntry();
+            validateSplitReceiptIdempotency(idempotencyKey, dealer, memo, entry, lines);
+            return toDto(entry);
+        }
 
         JournalEntryRequest payload = new JournalEntryRequest(
                 reference,
@@ -846,10 +911,11 @@ public class AccountingService {
         );
         JournalEntryDto entryDto = createJournalEntry(payload);
         JournalEntry entry = companyEntityLookup.requireJournalEntry(company, entryDto.id());
-        String idempotencyKey = entry.getReferenceNumber();
-        List<PartnerSettlementAllocation> existing = settlementAllocationRepository
+        linkReferenceMapping(company, idempotencyKey, entry, ENTITY_TYPE_DEALER_RECEIPT_SPLIT);
+        existingAllocations = settlementAllocationRepository
                 .findByCompanyAndIdempotencyKey(company, idempotencyKey);
-        if (!existing.isEmpty()) {
+        if (!existingAllocations.isEmpty()) {
+            validateSplitReceiptIdempotency(idempotencyKey, dealer, memo, entry, lines);
             return entryDto;
         }
         LocalDate entryDate = entry.getEntryDate();
@@ -887,7 +953,7 @@ public class AccountingService {
                 continue;
             }
             enforceSettlementCurrency(company, invoice);
-            String settlementRef = idempotencyKey + "-INV-" + invoice.getId();
+            String settlementRef = reference + "-INV-" + invoice.getId();
             invoiceSettlementPolicy.applySettlement(invoice, applied, settlementRef);
             dealerLedgerService.syncInvoiceLedger(invoice, entryDate);
             touchedInvoices.add(invoice);
@@ -919,7 +985,18 @@ public class AccountingService {
         if (!touchedInvoices.isEmpty()) {
             invoiceRepository.saveAll(touchedInvoices);
         }
-        settlementAllocationRepository.saveAll(settlementRows);
+        try {
+            settlementAllocationRepository.saveAll(settlementRows);
+        } catch (DataIntegrityViolationException ex) {
+            List<PartnerSettlementAllocation> concurrent = settlementAllocationRepository
+                    .findByCompanyAndIdempotencyKey(company, idempotencyKey);
+            if (!concurrent.isEmpty()) {
+                JournalEntry existingEntry = concurrent.getFirst().getJournalEntry();
+                validateSplitReceiptIdempotency(idempotencyKey, dealer, memo, existingEntry, lines);
+                return toDto(existingEntry);
+            }
+            throw ex;
+        }
         return entryDto;
     }
 
@@ -2166,6 +2243,214 @@ public class AccountingService {
         String hash = org.springframework.util.DigestUtils.md5DigestAsHex(
                 idempotencyKey.getBytes(java.nio.charset.StandardCharsets.UTF_8));
         return "RESERVED-" + hash;
+    }
+
+    private String resolveReceiptIdempotencyKey(String provided, String reference, String label) {
+        if (StringUtils.hasText(provided)) {
+            return provided.trim();
+        }
+        if (StringUtils.hasText(reference)) {
+            return reference.trim();
+        }
+        throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
+                "Idempotency key or reference number is required for " + label);
+    }
+
+    private IdempotencyReservation reserveReferenceMapping(Company company,
+                                                           String idempotencyKey,
+                                                           String canonicalReference,
+                                                           String entityType) {
+        if (company == null || !StringUtils.hasText(idempotencyKey) || !StringUtils.hasText(canonicalReference)) {
+            throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
+                    "Idempotency key and reference number are required to reserve journal mapping");
+        }
+        String key = idempotencyKey.trim();
+        String canonical = canonicalReference.trim();
+        int reserved = journalReferenceMappingRepository.reserveReferenceMapping(
+                company.getId(),
+                key,
+                canonical,
+                entityType,
+                CompanyTime.now(company)
+        );
+        if (reserved == 1) {
+            return new IdempotencyReservation(true, canonical);
+        }
+        JournalReferenceMapping mapping = journalReferenceMappingRepository
+                .findByCompanyAndLegacyReferenceIgnoreCase(company, key)
+                .orElseThrow(() -> new ApplicationException(ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
+                        "Idempotency key already reserved but mapping not found")
+                        .withDetail("idempotencyKey", key));
+        if (StringUtils.hasText(mapping.getCanonicalReference())
+                && !mapping.getCanonicalReference().equalsIgnoreCase(canonical)) {
+            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
+                    "Idempotency key already used for another reference")
+                    .withDetail("idempotencyKey", key)
+                    .withDetail("referenceNumber", mapping.getCanonicalReference());
+        }
+        return new IdempotencyReservation(false, canonical);
+    }
+
+    private void linkReferenceMapping(Company company, String idempotencyKey, JournalEntry entry, String entityType) {
+        if (company == null || !StringUtils.hasText(idempotencyKey) || entry == null) {
+            return;
+        }
+        String key = idempotencyKey.trim();
+        JournalReferenceMapping mapping = journalReferenceMappingRepository
+                .findByCompanyAndLegacyReferenceIgnoreCase(company, key)
+                .orElseThrow(() -> new ApplicationException(ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
+                        "Journal reference mapping missing for idempotency key")
+                        .withDetail("idempotencyKey", key));
+        if (StringUtils.hasText(mapping.getCanonicalReference())
+                && !mapping.getCanonicalReference().equalsIgnoreCase(entry.getReferenceNumber())) {
+            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
+                    "Idempotency key maps to a different journal reference")
+                    .withDetail("idempotencyKey", key)
+                    .withDetail("referenceNumber", mapping.getCanonicalReference());
+        }
+        mapping.setCanonicalReference(entry.getReferenceNumber());
+        mapping.setEntityId(entry.getId());
+        if (StringUtils.hasText(entityType)) {
+            mapping.setEntityType(entityType);
+        }
+        journalReferenceMappingRepository.save(mapping);
+    }
+
+    private JournalEntry awaitJournalEntry(Company company, String reference, String idempotencyKey) {
+        JournalEntry existing = findExistingEntry(company, reference, idempotencyKey);
+        if (existing != null) {
+            return existing;
+        }
+        long deadline = System.nanoTime() + IDEMPOTENCY_WAIT_TIMEOUT.toNanos();
+        while (System.nanoTime() < deadline) {
+            sleepBriefly();
+            existing = findExistingEntry(company, reference, idempotencyKey);
+            if (existing != null) {
+                return existing;
+            }
+        }
+        return null;
+    }
+
+    private JournalEntry findExistingEntry(Company company, String reference, String idempotencyKey) {
+        if (company == null) {
+            return null;
+        }
+        if (StringUtils.hasText(reference)) {
+            Optional<JournalEntry> byReference = journalReferenceResolver.findExistingEntry(company, reference);
+            if (byReference.isPresent()) {
+                return byReference.get();
+            }
+        }
+        if (StringUtils.hasText(idempotencyKey)) {
+            Optional<JournalEntry> byKey = journalReferenceResolver.findExistingEntry(company, idempotencyKey);
+            return byKey.orElse(null);
+        }
+        return null;
+    }
+
+    private List<PartnerSettlementAllocation> awaitAllocations(Company company, String idempotencyKey) {
+        if (company == null || !StringUtils.hasText(idempotencyKey)) {
+            return List.of();
+        }
+        List<PartnerSettlementAllocation> existing = settlementAllocationRepository
+                .findByCompanyAndIdempotencyKey(company, idempotencyKey);
+        if (!existing.isEmpty()) {
+            return existing;
+        }
+        long deadline = System.nanoTime() + IDEMPOTENCY_WAIT_TIMEOUT.toNanos();
+        while (System.nanoTime() < deadline) {
+            sleepBriefly();
+            existing = settlementAllocationRepository.findByCompanyAndIdempotencyKey(company, idempotencyKey);
+            if (!existing.isEmpty()) {
+                return existing;
+            }
+        }
+        return existing;
+    }
+
+    private void sleepBriefly() {
+        try {
+            Thread.sleep(IDEMPOTENCY_WAIT_SLEEP_MS);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private void validateDealerReceiptIdempotency(String idempotencyKey,
+                                                  Dealer dealer,
+                                                  Account cashAccount,
+                                                  Account receivableAccount,
+                                                  BigDecimal amount,
+                                                  String memo,
+                                                  JournalEntry entry,
+                                                  List<PartnerSettlementAllocation> existingAllocations,
+                                                  List<SettlementAllocationRequest> allocations) {
+        validateSettlementIdempotencyKey(idempotencyKey, PartnerType.DEALER, dealer.getId(), existingAllocations, allocations);
+        List<JournalEntryRequest.JournalLineRequest> expectedLines = List.of(
+                new JournalEntryRequest.JournalLineRequest(cashAccount.getId(), memo, amount, BigDecimal.ZERO),
+                new JournalEntryRequest.JournalLineRequest(receivableAccount.getId(), memo, BigDecimal.ZERO, amount)
+        );
+        validateReceiptJournalLines(idempotencyKey, dealer, memo, entry, expectedLines);
+    }
+
+    private void validateSplitReceiptIdempotency(String idempotencyKey,
+                                                 Dealer dealer,
+                                                 String memo,
+                                                 JournalEntry entry,
+                                                 List<JournalEntryRequest.JournalLineRequest> expectedLines) {
+        validateReceiptJournalLines(idempotencyKey, dealer, memo, entry, expectedLines);
+    }
+
+    private void validateReceiptJournalLines(String idempotencyKey,
+                                             Dealer dealer,
+                                             String memo,
+                                             JournalEntry entry,
+                                             List<JournalEntryRequest.JournalLineRequest> expectedLines) {
+        if (entry == null) {
+            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
+                    "Idempotency key already used but journal entry is missing")
+                    .withDetail("idempotencyKey", idempotencyKey);
+        }
+        if (entry.getDealer() == null || !Objects.equals(entry.getDealer().getId(), dealer.getId())) {
+            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
+                    "Idempotency key already used for another dealer")
+                    .withDetail("idempotencyKey", idempotencyKey);
+        }
+        if (StringUtils.hasText(memo) && !Objects.equals(entry.getMemo(), memo)) {
+            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
+                    "Idempotency key already used with a different memo")
+                    .withDetail("idempotencyKey", idempotencyKey);
+        }
+        Map<JournalLineSignature, Integer> existingLines = lineSignatureCounts(entry.getLines());
+        Map<JournalLineSignature, Integer> expected = lineSignatureCountsFromRequests(expectedLines);
+        if (!existingLines.equals(expected)) {
+            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
+                    "Idempotency key already used for a different receipt payload")
+                    .withDetail("idempotencyKey", idempotencyKey);
+        }
+    }
+
+    private Map<JournalLineSignature, Integer> lineSignatureCountsFromRequests(
+            List<JournalEntryRequest.JournalLineRequest> lines) {
+        Map<JournalLineSignature, Integer> counts = new HashMap<>();
+        if (lines == null) {
+            return counts;
+        }
+        for (JournalEntryRequest.JournalLineRequest line : lines) {
+            if (line.accountId() == null) {
+                continue;
+            }
+            JournalLineSignature signature = new JournalLineSignature(
+                    line.accountId(),
+                    normalizeAmount(line.debit()),
+                    normalizeAmount(line.credit()));
+            counts.merge(signature, 1, Integer::sum);
+        }
+        return counts;
+    }
+
+    private record IdempotencyReservation(boolean leader, String canonicalReference) {
     }
 
     private void enforceSettlementCurrency(Company company, Invoice invoice) {

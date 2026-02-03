@@ -14,7 +14,8 @@ public record DealerReceiptSplitRequest(
         @NotNull Long dealerId,
         @NotEmpty List<@Valid IncomingLine> incomingLines,
         String referenceNumber,
-        String memo
+        String memo,
+        String idempotencyKey
 ) {
     public record IncomingLine(
             @NotNull Long accountId,

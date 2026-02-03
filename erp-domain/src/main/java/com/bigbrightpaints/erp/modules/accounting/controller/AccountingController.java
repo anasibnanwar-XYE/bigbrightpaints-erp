@@ -27,6 +27,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
 import java.time.YearMonth;
@@ -178,14 +179,20 @@ public class AccountingController {
 
     @PostMapping("/receipts/dealer")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-    public ResponseEntity<ApiResponse<JournalEntryDto>> recordDealerReceipt(@Valid @RequestBody DealerReceiptRequest request) {
-        return ResponseEntity.ok(ApiResponse.success("Receipt recorded", accountingService.recordDealerReceipt(request)));
+    public ResponseEntity<ApiResponse<JournalEntryDto>> recordDealerReceipt(
+            @Valid @RequestBody DealerReceiptRequest request,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
+        DealerReceiptRequest resolved = applyIdempotencyKey(request, idempotencyKey);
+        return ResponseEntity.ok(ApiResponse.success("Receipt recorded", accountingService.recordDealerReceipt(resolved)));
     }
 
     @PostMapping("/receipts/dealer/hybrid")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-    public ResponseEntity<ApiResponse<JournalEntryDto>> recordDealerHybridReceipt(@Valid @RequestBody DealerReceiptSplitRequest request) {
-        return ResponseEntity.ok(ApiResponse.success("Receipt recorded", accountingService.recordDealerReceiptSplit(request)));
+    public ResponseEntity<ApiResponse<JournalEntryDto>> recordDealerHybridReceipt(
+            @Valid @RequestBody DealerReceiptSplitRequest request,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
+        DealerReceiptSplitRequest resolved = applyIdempotencyKey(request, idempotencyKey);
+        return ResponseEntity.ok(ApiResponse.success("Receipt recorded", accountingService.recordDealerReceiptSplit(resolved)));
     }
 
     @PostMapping("/settlements/dealers")
@@ -228,6 +235,40 @@ public class AccountingController {
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
     public ResponseEntity<ApiResponse<JournalEntryDto>> postAccrual(@Valid @RequestBody AccrualRequest request) {
         return ResponseEntity.ok(ApiResponse.success("Accrual posted", accountingService.postAccrual(request)));
+    }
+
+    private DealerReceiptRequest applyIdempotencyKey(DealerReceiptRequest request, String idempotencyKey) {
+        if (request == null) {
+            return request;
+        }
+        if (StringUtils.hasText(request.idempotencyKey()) || !StringUtils.hasText(idempotencyKey)) {
+            return request;
+        }
+        return new DealerReceiptRequest(
+                request.dealerId(),
+                request.cashAccountId(),
+                request.amount(),
+                request.referenceNumber(),
+                request.memo(),
+                idempotencyKey,
+                request.allocations()
+        );
+    }
+
+    private DealerReceiptSplitRequest applyIdempotencyKey(DealerReceiptSplitRequest request, String idempotencyKey) {
+        if (request == null) {
+            return request;
+        }
+        if (StringUtils.hasText(request.idempotencyKey()) || !StringUtils.hasText(idempotencyKey)) {
+            return request;
+        }
+        return new DealerReceiptSplitRequest(
+                request.dealerId(),
+                request.incomingLines(),
+                request.referenceNumber(),
+                request.memo(),
+                idempotencyKey
+        );
     }
 
     @GetMapping("/gst/return")
