@@ -392,5 +392,28 @@
                 <jacoco.skip>true</jacoco.skip>
             </properties>
         </profile>
+
+        <!-- CODE-RED: run only the isolated parallel test suite under src/test/java/**/codered/ -->
+        <profile>
+            <id>codered</id>
+            <properties>
+                <skipTests>false</skipTests>
+                <!-- Coverage gates are not meaningful for CODE-RED invariants; keep suite fast and isolated. -->
+                <jacoco.skip>true</jacoco.skip>
+            </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <includes combine.self="override">
+                                <include>**/codered/**/CR_*.java</include>
+                            </includes>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
     </profiles>
 </project>

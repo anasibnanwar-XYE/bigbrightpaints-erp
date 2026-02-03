@@ -86,6 +86,7 @@ class BulkPackingSkipPackagingConsumptionRegressionIT extends AbstractIntegratio
                 true,
                 LocalDate.now(),
                 "packer",
+                null,
                 null
         ));
 

@@ -7,6 +7,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -34,6 +35,14 @@ public class AuditService {
     private AuditLogRepository auditLogRepository;
     @Autowired
     private CompanyRepository companyRepository;
+    /**
+     * Self-reference to ensure @Async/@Transactional proxies apply even when calling from within this class.
+     * Without this, calls like logSuccess() -> logEvent() become self-invocations and run in the caller's
+     * transaction, making business operations susceptible to audit logging failures under SERIALIZABLE load.
+     */
+    @Autowired
+    @Lazy
+    private AuditService self;
 
     /**
      * Logs an audit event with full context.
@@ -144,14 +153,14 @@ public class AuditService {
      * Logs a successful event.
      */
     public void logSuccess(AuditEvent event) {
-        logEvent(event, AuditStatus.SUCCESS, null);
+        self.logEvent(event, AuditStatus.SUCCESS, null);
     }
 
     /**
      * Logs a successful event with metadata.
      */
     public void logSuccess(AuditEvent event, Map<String, String> metadata) {
-        logEvent(event, AuditStatus.SUCCESS, metadata);
+        self.logEvent(event, AuditStatus.SUCCESS, metadata);
     }
 
     /**
@@ -160,14 +169,14 @@ public class AuditService {
     public void logFailure(AuditEvent event, String reason) {
         Map<String, String> metadata = new HashMap<>();
         metadata.put("reason", safeString(reason));
-        logEvent(event, AuditStatus.FAILURE, metadata);
+        self.logEvent(event, AuditStatus.FAILURE, metadata);
     }
 
     /**
      * Logs a failed event with metadata.
      */
     public void logFailure(AuditEvent event, Map<String, String> metadata) {
-        logEvent(event, AuditStatus.FAILURE, metadata);
+        self.logEvent(event, AuditStatus.FAILURE, metadata);
     }
 
     /**
@@ -176,7 +185,7 @@ public class AuditService {
     public void logWarning(AuditEvent event, String message) {
         Map<String, String> metadata = new HashMap<>();
         metadata.put("message", safeString(message));
-        logEvent(event, AuditStatus.WARNING, metadata);
+        self.logEvent(event, AuditStatus.WARNING, metadata);
     }
 
     /**
@@ -185,7 +194,7 @@ public class AuditService {
     public void logInfo(AuditEvent event, String message) {
         Map<String, String> metadata = new HashMap<>();
         metadata.put("message", safeString(message));
-        logEvent(event, AuditStatus.INFO, metadata);
+        self.logEvent(event, AuditStatus.INFO, metadata);
     }
 
     /**
@@ -198,7 +207,7 @@ public class AuditService {
         if (details != null) {
             metadata.putAll(details);
         }
-        logEvent(AuditEvent.SECURITY_ALERT, AuditStatus.WARNING, metadata);
+        self.logEvent(AuditEvent.SECURITY_ALERT, AuditStatus.WARNING, metadata);
     }
 
     /**
@@ -222,7 +231,7 @@ public class AuditService {
         metadata.put("resourceType", safeString(resourceType));
         metadata.put("resourceId", safeString(resourceId));
         metadata.put("operation", normalizedOperation);
-        logEvent(event, AuditStatus.SUCCESS, metadata);
+        self.logEvent(event, AuditStatus.SUCCESS, metadata);
     }
 
     /**
@@ -232,7 +241,7 @@ public class AuditService {
         Map<String, String> metadata = new HashMap<>();
         metadata.put("dataType", safeString(dataType));
         metadata.put("reason", reason != null ? reason : "Not specified");
-        logEvent(AuditEvent.SENSITIVE_DATA_ACCESSED, AuditStatus.INFO, metadata);
+        self.logEvent(AuditEvent.SENSITIVE_DATA_ACCESSED, AuditStatus.INFO, metadata);
     }
 
     private String safeString(String value) {

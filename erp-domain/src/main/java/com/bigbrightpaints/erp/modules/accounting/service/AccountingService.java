@@ -49,6 +49,8 @@ import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -727,7 +729,7 @@ public class AccountingService {
                 : "Receipt for dealer " + dealer.getName();
         String reference = StringUtils.hasText(request.referenceNumber())
                 ? request.referenceNumber().trim()
-                : referenceNumberService.dealerReceiptReference(company, dealer);
+                : buildDealerReceiptReference(company, dealer, request);
         JournalEntryRequest payload = new JournalEntryRequest(
                 reference,
                 currentDate(company),
@@ -831,7 +833,7 @@ public class AccountingService {
         String memo = StringUtils.hasText(request.memo()) ? request.memo().trim() : "Receipt for dealer " + dealer.getName();
         String reference = StringUtils.hasText(request.referenceNumber())
                 ? request.referenceNumber().trim()
-                : referenceNumberService.dealerReceiptReference(company, dealer);
+                : buildDealerReceiptReference(company, dealer, request);
 
         JournalEntryRequest payload = new JournalEntryRequest(
                 reference,
@@ -924,42 +926,74 @@ public class AccountingService {
     @Transactional
     public JournalEntryDto recordPayrollPayment(PayrollPaymentRequest request) {
         Company company = companyContextService.requireCurrentCompany();
-        PayrollRun run = companyEntityLookup.requirePayrollRun(company, request.payrollRunId());
-        
-        // Idempotency check: if already paid, return existing journal entry
-        if ("PAID".equals(run.getStatus())) {
+        PayrollRun run = companyEntityLookup.lockPayrollRun(company, request.payrollRunId());
+
+        // Idempotency check: if already paid, return existing payment journal entry
+        if (run.getPaymentJournalEntryId() != null) {
+            JournalEntry paid = companyEntityLookup.requireJournalEntry(company, run.getPaymentJournalEntryId());
+            log.info("Payroll run {} already has payment journal {}, returning existing", run.getId(), paid.getReferenceNumber());
+            return toDto(paid);
+        }
+        if (run.getStatus() == PayrollRun.PayrollStatus.PAID) {
             if (run.getJournalEntry() != null) {
-                log.info("Payroll run {} already paid with journal {}, returning existing", 
-                    run.getId(), run.getJournalEntry().getReferenceNumber());
+                log.info("Payroll run {} already marked PAID with journal {}, returning existing",
+                        run.getId(), run.getJournalEntry().getReferenceNumber());
                 return toDto(run.getJournalEntry());
             }
-            throw new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE, 
-                "Payroll run already marked PAID but journal entry reference is missing");
+            if (run.getJournalEntryId() != null) {
+                return toDto(companyEntityLookup.requireJournalEntry(company, run.getJournalEntryId()));
+            }
+            throw new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE,
+                    "Payroll run already marked PAID but payment journal reference is missing");
         }
-        
-        // Block if in processing state (concurrent request guard)
-        if ("PROCESSING".equals(run.getStatus())) {
-            throw new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE, 
-                "Payroll run is currently being processed, please wait");
+
+        if (run.getStatus() != PayrollRun.PayrollStatus.POSTED || run.getJournalEntryId() == null) {
+            throw new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE,
+                    "Payroll must be posted to accounting before recording payment")
+                    .withDetail("requiredStatus", PayrollRun.PayrollStatus.POSTED.name());
         }
-        
+
         Account cashAccount = requireAccount(company, request.cashAccountId());
-        Account expenseAccount = requireAccount(company, request.expenseAccountId());
         BigDecimal amount = requirePositive(request.amount(), "amount");
-        BigDecimal recordedTotal = run.getTotalAmount() == null ? BigDecimal.ZERO : run.getTotalAmount();
-        if (recordedTotal.compareTo(BigDecimal.ZERO) > 0 &&
-                recordedTotal.subtract(amount).abs().compareTo(JOURNAL_BALANCE_TOLERANCE) > 0) {
-            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Payroll payment amount does not match recorded run total");
+
+        Account salaryPayableAccount = accountRepository.findByCompanyAndCodeIgnoreCase(company, "SALARY-PAYABLE")
+                .orElseThrow(() -> new ApplicationException(ErrorCode.SYSTEM_CONFIGURATION_ERROR,
+                        "Salary payable account (SALARY-PAYABLE) is required to record payroll payments"));
+
+        JournalEntry postingJournal = companyEntityLookup.requireJournalEntry(company, run.getJournalEntryId());
+        BigDecimal payableAmount = BigDecimal.ZERO;
+        if (postingJournal.getLines() != null) {
+            for (var line : postingJournal.getLines()) {
+                if (line.getAccount() == null || line.getAccount().getId() == null) {
+                    continue;
+                }
+                if (!salaryPayableAccount.getId().equals(line.getAccount().getId())) {
+                    continue;
+                }
+                BigDecimal credit = MoneyUtils.zeroIfNull(line.getCredit());
+                BigDecimal debit = MoneyUtils.zeroIfNull(line.getDebit());
+                payableAmount = payableAmount.add(credit.subtract(debit));
+            }
         }
-        if (recordedTotal.compareTo(BigDecimal.ZERO) == 0) {
-            run.setTotalAmount(amount);
+        if (payableAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ApplicationException(ErrorCode.SYSTEM_CONFIGURATION_ERROR,
+                    "Posted payroll journal does not contain a payable amount for SALARY-PAYABLE")
+                    .withDetail("postingJournalId", postingJournal.getId());
         }
+        if (payableAmount.subtract(amount).abs().compareTo(ALLOCATION_TOLERANCE) > 0) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Payroll payment amount does not match salary payable from the posted payroll journal")
+                    .withDetail("expectedAmount", payableAmount)
+                    .withDetail("requestAmount", amount);
+        }
+
         String memo = StringUtils.hasText(request.memo())
                 ? request.memo().trim()
                 : "Payroll payment for " + run.getRunDate();
         String reference = StringUtils.hasText(request.referenceNumber())
                 ? request.referenceNumber().trim()
                 : referenceNumberService.payrollPaymentReference(company);
+
         JournalEntryRequest payload = new JournalEntryRequest(
                 reference,
                 currentDate(company),
@@ -968,19 +1002,14 @@ public class AccountingService {
                 null,
                 Boolean.FALSE,
                 List.of(
-                        new JournalEntryRequest.JournalLineRequest(expenseAccount.getId(), memo, amount, BigDecimal.ZERO),
-                        new JournalEntryRequest.JournalLineRequest(cashAccount.getId(), memo, BigDecimal.ZERO, amount)
+                        new JournalEntryRequest.JournalLineRequest(salaryPayableAccount.getId(), memo, payableAmount, BigDecimal.ZERO),
+                        new JournalEntryRequest.JournalLineRequest(cashAccount.getId(), memo, BigDecimal.ZERO, payableAmount)
                 )
         );
-        // Set PROCESSING before journal to guard against orphans
-        run.setStatus("PROCESSING");
-        payrollRunRepository.save(run);
-
         JournalEntryDto entry = createJournalEntry(payload);
-        JournalEntry payrollEntry = companyEntityLookup.requireJournalEntry(company, entry.id());
-        run.setStatus("PAID");
-        run.setJournalEntryId(payrollEntry.getId());
-        run.setJournalEntry(payrollEntry);
+        JournalEntry paymentJournal = companyEntityLookup.requireJournalEntry(company, entry.id());
+
+        run.setPaymentJournalEntryId(paymentJournal.getId());
         payrollRunRepository.save(run);
         return entry;
     }
@@ -1348,7 +1377,7 @@ public class AccountingService {
         Company company = companyContextService.requireCurrentCompany();
         String trimmedIdempotencyKey = StringUtils.hasText(request.idempotencyKey())
                 ? request.idempotencyKey().trim()
-                : (StringUtils.hasText(request.referenceNumber()) ? request.referenceNumber().trim() : UUID.randomUUID().toString());
+                : (StringUtils.hasText(request.referenceNumber()) ? request.referenceNumber().trim() : buildDealerSettlementIdempotencyKey(request));
         Dealer dealer = dealerRepository.lockByCompanyAndId(company, request.dealerId())
                 .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Dealer not found"));
         Account receivableAccount = requireDealerReceivable(dealer);
@@ -1662,7 +1691,7 @@ public class AccountingService {
         Company company = companyContextService.requireCurrentCompany();
         String trimmedIdempotencyKey = StringUtils.hasText(request.idempotencyKey())
                 ? request.idempotencyKey().trim()
-                : (StringUtils.hasText(request.referenceNumber()) ? request.referenceNumber().trim() : UUID.randomUUID().toString());
+                : (StringUtils.hasText(request.referenceNumber()) ? request.referenceNumber().trim() : buildSupplierSettlementIdempotencyKey(request));
         Supplier supplier = supplierRepository.lockByCompanyAndId(company, request.supplierId())
                 .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Supplier not found"));
         Account payableAccount = requireSupplierPayable(supplier);
@@ -2558,6 +2587,128 @@ public class AccountingService {
             return "";
         }
         return value.trim().toUpperCase(Locale.ROOT);
+    }
+
+    private String buildDealerReceiptReference(Company company, Dealer dealer, DealerReceiptRequest request) {
+        String dealerToken = sanitizeToken(dealer != null ? dealer.getCode() : null);
+        if (request == null) {
+            return referenceNumberService.nextJournalReference(company);
+        }
+        StringBuilder fingerprint = new StringBuilder();
+        fingerprint.append("dealerId=").append(dealer != null ? dealer.getId() : "null")
+                .append("|cashAccountId=").append(request.cashAccountId() != null ? request.cashAccountId() : "null")
+                .append("|amount=").append(normalizeDecimal(request.amount()));
+        List<SettlementAllocationRequest> allocations = request.allocations() != null
+                ? request.allocations().stream()
+                .sorted(Comparator.comparing(SettlementAllocationRequest::invoiceId, Comparator.nullsLast(Long::compareTo)))
+                .toList()
+                : List.of();
+        for (SettlementAllocationRequest allocation : allocations) {
+            fingerprint.append("|inv=").append(allocation.invoiceId() != null ? allocation.invoiceId() : "null")
+                    .append(":").append(normalizeDecimal(allocation.appliedAmount()));
+        }
+        String hash = sha256Hex(fingerprint.toString(), 12);
+        return "RCPT-%s-%s".formatted(dealerToken, hash);
+    }
+
+    private String buildDealerReceiptReference(Company company, Dealer dealer, DealerReceiptSplitRequest request) {
+        String dealerToken = sanitizeToken(dealer != null ? dealer.getCode() : null);
+        if (request == null) {
+            return referenceNumberService.nextJournalReference(company);
+        }
+        StringBuilder fingerprint = new StringBuilder();
+        fingerprint.append("dealerId=").append(dealer != null ? dealer.getId() : "null");
+        List<DealerReceiptSplitRequest.IncomingLine> lines = request.incomingLines() != null
+                ? request.incomingLines().stream()
+                .sorted(Comparator.comparing(DealerReceiptSplitRequest.IncomingLine::accountId, Comparator.nullsLast(Long::compareTo)))
+                .toList()
+                : List.of();
+        for (DealerReceiptSplitRequest.IncomingLine line : lines) {
+            fingerprint.append("|acc=").append(line.accountId() != null ? line.accountId() : "null")
+                    .append(":").append(normalizeDecimal(line.amount()));
+        }
+        String hash = sha256Hex(fingerprint.toString(), 12);
+        return "RCPT-%s-%s".formatted(dealerToken, hash);
+    }
+
+    private String buildDealerSettlementIdempotencyKey(DealerSettlementRequest request) {
+        if (request == null) {
+            return UUID.randomUUID().toString();
+        }
+        StringBuilder fingerprint = new StringBuilder();
+        fingerprint.append("dealerId=").append(request.dealerId() != null ? request.dealerId() : "null");
+        List<SettlementAllocationRequest> allocations = request.allocations() != null
+                ? request.allocations().stream()
+                .sorted(Comparator.comparing(SettlementAllocationRequest::invoiceId, Comparator.nullsLast(Long::compareTo)))
+                .toList()
+                : List.of();
+        for (SettlementAllocationRequest allocation : allocations) {
+            fingerprint.append("|inv=").append(allocation.invoiceId() != null ? allocation.invoiceId() : "null")
+                    .append(":").append(normalizeDecimal(allocation.appliedAmount()))
+                    .append(":disc=").append(normalizeDecimal(allocation.discountAmount()))
+                    .append(":woff=").append(normalizeDecimal(allocation.writeOffAmount()))
+                    .append(":fx=").append(normalizeDecimal(allocation.fxAdjustment()));
+        }
+        List<SettlementPaymentRequest> payments = request.payments() != null
+                ? request.payments().stream()
+                .sorted(Comparator.comparing(SettlementPaymentRequest::accountId, Comparator.nullsLast(Long::compareTo)))
+                .toList()
+                : List.of();
+        for (SettlementPaymentRequest payment : payments) {
+            fingerprint.append("|pay=").append(payment.accountId() != null ? payment.accountId() : "null")
+                    .append(":").append(normalizeDecimal(payment.amount()));
+        }
+        String hash = sha256Hex(fingerprint.toString(), 12);
+        return "DEALER-SETTLEMENT-" + hash;
+    }
+
+    private String buildSupplierSettlementIdempotencyKey(SupplierSettlementRequest request) {
+        if (request == null) {
+            return UUID.randomUUID().toString();
+        }
+        StringBuilder fingerprint = new StringBuilder();
+        fingerprint.append("supplierId=").append(request.supplierId() != null ? request.supplierId() : "null")
+                .append("|cashAccountId=").append(request.cashAccountId() != null ? request.cashAccountId() : "null");
+        List<SettlementAllocationRequest> allocations = request.allocations() != null
+                ? request.allocations().stream()
+                .sorted(Comparator.comparing(SettlementAllocationRequest::purchaseId, Comparator.nullsLast(Long::compareTo)))
+                .toList()
+                : List.of();
+        for (SettlementAllocationRequest allocation : allocations) {
+            fingerprint.append("|pur=").append(allocation.purchaseId() != null ? allocation.purchaseId() : "null")
+                    .append(":").append(normalizeDecimal(allocation.appliedAmount()))
+                    .append(":disc=").append(normalizeDecimal(allocation.discountAmount()))
+                    .append(":woff=").append(normalizeDecimal(allocation.writeOffAmount()))
+                    .append(":fx=").append(normalizeDecimal(allocation.fxAdjustment()));
+        }
+        String hash = sha256Hex(fingerprint.toString(), 12);
+        return "SUPPLIER-SETTLEMENT-" + hash;
+    }
+
+    private String normalizeDecimal(BigDecimal value) {
+        if (value == null) {
+            return "0";
+        }
+        return value.stripTrailingZeros().toPlainString();
+    }
+
+    private String sanitizeToken(String value) {
+        String normalized = normalizeToken(value).replaceAll("[^A-Z0-9]", "");
+        if (normalized.isBlank()) {
+            return "TOKEN";
+        }
+        return normalized.length() > 16 ? normalized.substring(0, 16) : normalized;
+    }
+
+    private String sha256Hex(String input, int length) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
+            String fullHex = java.util.HexFormat.of().formatHex(hash);
+            return fullHex.substring(0, Math.min(length, fullHex.length()));
+        } catch (Exception ex) {
+            return Integer.toHexString(input.hashCode());
+        }
     }
 
     private String resolveJournalReference(Company company, String provided) {

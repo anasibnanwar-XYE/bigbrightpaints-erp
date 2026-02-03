@@ -42,10 +42,23 @@ Expected linkage checks:
 - Production log references packing record and produced batch.
 - Packing record links to finished goods batch and inventory movements.
 - Inventory movements reference production/packing and journal entry when posted.
+ - Bulk-to-size packing preserves parent/child batch identity for audit.
 
 Test expectations (current + to enforce):
 - Production cycle E2E should assert production log -> batch -> movement linkage.
 - Inventory GL reconciliation E2E should assert movement -> journal linkage.
+
+## Orchestrator (Cross-Module Automation)
+Chain: Orchestrator Command -> Canonical Module Write Path -> Canonical Linkage Chain.
+
+Expected linkage checks:
+- Orchestrator must not “fake” business truth by writing only statuses for shipping/dispatch:
+  - `SHIPPED`/`DISPATCHED` must only be reachable via the canonical dispatch confirmation flow.
+- Any orchestrator path that triggers a business event must result in the same cross-module linkage as the canonical API
+  (slip/invoice/journal/ledger for O2C; purchase/journal/ledger for P2P; etc).
+
+Test expectations (current + to enforce):
+- Orchestrator integration tests should assert it cannot set SHIPPED/DISPATCHED without the slip/invoice/journal chain.
 
 ## Payroll
 Chain: Payroll Run -> Journal Entry -> Mark-paid/Payment -> Payroll Reports.
@@ -103,7 +116,8 @@ Linkage keys observed in entities (primary keys, FK columns, and reference field
 - `production_logs.production_code` is used as `inventory_movements.reference_id` when `reference_type=PRODUCTION_LOG`.
 - `packing_records.production_log_id` -> `production_logs.id`.
 - `packing_records.finished_good_batch_id` -> `finished_good_batches.id`.
-- `inventory_movements.reference_type=PACKING_RECORD` uses `reference_id = <production_code>-PACK-<lineIndex>`.
+- `raw_material_movements.reference_type=PACKING_RECORD` uses `reference_id = <production_code>-PACK-<packingRecordId>` (packing record reference).
+- `inventory_movements.reference_type=PACKING_RECORD` uses `reference_id = <packReference>` (bulk pack reference).
 - `inventory_movements.journal_entry_id` -> `journal_entries.id`.
 - `finished_good_batches.parent_batch_id` links bulk-to-size child batches.
 - `inventory_movements.reference_type=MANUFACTURING_ORDER` uses `reference_id = finished_good_batches.public_id`.

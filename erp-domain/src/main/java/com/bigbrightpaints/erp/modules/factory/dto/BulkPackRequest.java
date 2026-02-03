@@ -35,7 +35,12 @@ public record BulkPackRequest(
 
     LocalDate packDate,
     String packedBy,
-    String notes
+    String notes,
+    /**
+     * Optional idempotency key. If omitted, the server derives a deterministic key from the request payload.
+     * Supplying a key allows callers to intentionally create multiple identical pack operations safely.
+     */
+    String idempotencyKey
 ) {
     /**
      * A single packing line: creates child batches for a specific size SKU.

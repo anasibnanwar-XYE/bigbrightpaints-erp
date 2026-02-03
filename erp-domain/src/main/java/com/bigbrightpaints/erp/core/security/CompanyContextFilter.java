@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
@@ -25,11 +26,25 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
         try {
-            String companyId = request.getHeader("X-Company-Id");
+            String headerCompanyId = request.getHeader("X-Company-Id");
             Object claimsAttr = request.getAttribute("jwtClaims");
             if (claimsAttr instanceof Claims claims) {
-                companyId = claims.get("cid", String.class);
+                String tokenCompanyId = claims.get("cid", String.class);
+                if (StringUtils.hasText(tokenCompanyId) && StringUtils.hasText(headerCompanyId)
+                        && !tokenCompanyId.trim().equalsIgnoreCase(headerCompanyId.trim())) {
+                    log.warn("Rejecting X-Company-Id mismatch. tokenCid={}, headerCid={}, path={}",
+                            tokenCompanyId, headerCompanyId, request.getRequestURI());
+                    response.sendError(HttpServletResponse.SC_FORBIDDEN, "X-Company-Id does not match authenticated company context");
+                    return;
+                }
+                if (StringUtils.hasText(tokenCompanyId)) {
+                    headerCompanyId = tokenCompanyId;
+                }
+            } else {
+                // Do not allow unauthenticated requests to set tenant context via header.
+                headerCompanyId = null;
             }
+            String companyId = StringUtils.hasText(headerCompanyId) ? headerCompanyId.trim() : null;
             if (companyId != null) {
                 // Validate user has access to this company
                 if (!validateCompanyAccess(companyId)) {
@@ -48,7 +63,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     private boolean validateCompanyAccess(String companyCode) {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || !auth.isAuthenticated()) {
-            return true; // Let other filters handle unauthenticated requests
+            return false;
         }
         Object principal = auth.getPrincipal();
         if (principal instanceof UserPrincipal userPrincipal) {
@@ -60,8 +75,8 @@ public class CompanyContextFilter extends OncePerRequestFilter {
             return user.getCompanies().stream()
                     .anyMatch(c -> c.getCode().equalsIgnoreCase(companyCode));
         }
-        // For non-UserPrincipal (e.g., service accounts), allow access
-        return true;
+        // Fail closed for unknown principal types.
+        return false;
     }
 
     @Override

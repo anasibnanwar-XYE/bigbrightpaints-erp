@@ -1176,7 +1176,9 @@ public class FinishedGoodsService {
     }
 
     /**
-     * Update packaging slip status (e.g., PENDING -> PACKING -> READY).
+     * Update packaging slip status for operational visibility.
+     *
+     * CODE-RED: this must not become a bypass path for inventory/accounting truth.
      */
     @Transactional
     public PackagingSlipDto updateSlipStatus(Long slipId, String newStatus) {
@@ -1193,6 +1195,10 @@ public class FinishedGoodsService {
         String normalized = newStatus.trim().toUpperCase();
         if ("DISPATCHED".equalsIgnoreCase(normalized)) {
             throw new IllegalStateException("Use dispatch confirmation to mark a slip as dispatched");
+        }
+        // Fail-closed: only allow known operational statuses. CANCELLED/BACKORDER require dedicated workflows.
+        if (!List.of("PENDING", "PENDING_PRODUCTION", "RESERVED", "PENDING_STOCK").contains(normalized)) {
+            throw new IllegalArgumentException("Unsupported slip status: " + normalized);
         }
         slip.setStatus(normalized);
         packagingSlipRepository.save(slip);

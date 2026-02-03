@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.orchestrator.service;
 
 import com.bigbrightpaints.erp.core.util.CompanyTime;
+import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.orchestrator.event.DomainEvent;
 import com.bigbrightpaints.erp.orchestrator.repository.OutboxEvent;
 import com.bigbrightpaints.erp.orchestrator.repository.OutboxEventRepository;
@@ -41,12 +42,15 @@ public class EventPublisherService {
     private final RabbitTemplate rabbitTemplate;
     private final ObjectMapper objectMapper;
     private final MeterRegistry meterRegistry;
+    private final CompanyContextService companyContextService;
 
     public EventPublisherService(OutboxEventRepository outboxEventRepository, RabbitTemplate rabbitTemplate,
+                                 CompanyContextService companyContextService,
                                  ObjectMapper objectMapper,
                                  @Nullable MeterRegistry meterRegistry) {
         this.outboxEventRepository = outboxEventRepository;
         this.rabbitTemplate = rabbitTemplate;
+        this.companyContextService = companyContextService;
         this.objectMapper = objectMapper;
         this.meterRegistry = meterRegistry;
         registerMetrics();
@@ -56,7 +60,8 @@ public class EventPublisherService {
     public void enqueue(DomainEvent event) {
         try {
             String payload = objectMapper.writeValueAsString(event);
-            OutboxEvent outboxEvent = new OutboxEvent(event.entity(), event.entityId(), event.eventType(), payload);
+            Long companyId = companyContextService.requireCurrentCompany().getId();
+            OutboxEvent outboxEvent = new OutboxEvent(event.entity(), event.entityId(), event.eventType(), payload, companyId);
             outboxEventRepository.save(outboxEvent);
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("Failed to serialize event", e);

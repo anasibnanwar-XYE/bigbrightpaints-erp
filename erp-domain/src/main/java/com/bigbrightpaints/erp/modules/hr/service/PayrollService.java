@@ -489,7 +489,14 @@ public class PayrollService {
             .orElseThrow(() -> new IllegalArgumentException("Payroll run not found"));
 
         if (run.getStatus() != PayrollRun.PayrollStatus.POSTED) {
-            throw new IllegalStateException("Can only mark posted payroll as paid");
+            throw new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE,
+                    "Can only mark posted payroll as paid");
+        }
+
+        if (run.getPaymentJournalEntryId() == null) {
+            throw new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE,
+                    "Payroll payment journal is required before marking payroll as PAID")
+                    .withDetail("canonicalPath", "/api/v1/accounting/payroll/payments");
         }
 
         // Update all lines to paid

@@ -37,5 +37,7 @@
 ## Notable Design Notes
 - JWT auth enforced via method-level security, with public auth endpoints and actuator health.
 - Flyway migrations are extensive (91 files) with additive forward migrations for payroll and performance indexes.
-- Multi-company support via company context filter and `X-Company-Id` header on orchestrator flows.
+- Multi-company support via company context filter and authenticated company context:
+  - `companyId` is derived from JWT (`cid`) via `CompanyContextHolder`.
+  - `X-Company-Id` may be present for client UX, but must match the authenticated context (fail-closed on mismatch).
 - Accounting posting contract documented in `docs/ACCOUNTING_MODEL_AND_POSTING_CONTRACT.md`.

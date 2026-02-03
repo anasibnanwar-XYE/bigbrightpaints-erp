@@ -68,6 +68,7 @@ class BulkPackingFractionalQuantityRegressionIT extends AbstractIntegrationTest 
                 true,
                 LocalDate.now(),
                 "packer",
+                null,
                 null
         );
 

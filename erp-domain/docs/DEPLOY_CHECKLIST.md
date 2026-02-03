@@ -13,7 +13,9 @@
 - `SPRING_PROFILES_ACTIVE` (dev|test|prod)
 - `SPRING_RABBITMQ_HOST`, `SPRING_RABBITMQ_PORT`, `SPRING_RABBITMQ_USERNAME`, `SPRING_RABBITMQ_PASSWORD`
 - `KAFKA_BOOTSTRAP_SERVERS`
-- `SPRING_MAIL_HOST`, `SPRING_MAIL_PORT`, `SPRING_MAIL_USERNAME`, `SPRING_MAIL_PASSWORD`
+- Mail (prod config uses `SMTP_*`; `SPRING_MAIL_*` still works as a Spring override):
+  - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD` (must be overridden; must not be `changeme`)
+  - Optional override: `SPRING_MAIL_HOST`, `SPRING_MAIL_PORT`, `SPRING_MAIL_USERNAME`, `SPRING_MAIL_PASSWORD`
 - `ERP_CORS_ALLOWED_ORIGINS`
 - `ERP_MAIL_BASE_URL`, `ERP_MAIL_FROM`
 - `ERP_SECURITY_AUDIT_PRIVATE_KEY`
@@ -29,6 +31,19 @@
 - Flyway runs on startup; ensure DB user has DDL privileges.
 - For existing DBs: do NOT rewrite migrations; use forward-fix if needed.
 - Optional: `flyway repair` only if checksum drift is known-safe.
+
+## CODE-RED Predeploy Scans (Required For Safe Deploy)
+
+CODE-RED policy: deploy is **NO-SHIP** if any predeploy scan returns rows.
+
+- Scan file: `scripts/db_predeploy_scans.sql` (repo root; read-only)
+- Run against:
+  - staging with a prod-like dataset (preferred: a recent prod snapshot restore)
+  - production before/after release if you have access
+
+If any rows are returned:
+- stop the deployment
+- create a controlled repair plan (admin-only repair endpoint or forward migration), not ad-hoc SQL
 
 ## Operational Runbook (Boot/Migrate/Backup/Restore)
 - Boot (prod-like): `JWT_SECRET=... ERP_SECURITY_ENCRYPTION_KEY=... docker compose up -d --build`
@@ -46,6 +61,17 @@
   - Data backfills: write idempotent forward fixes; document compensating steps.
   - Destructive changes: restore from backup and re-apply forward fixes in a new migration.
 
+## Staging Snapshot Procedure (Prod-Like Validation)
+
+Goal: validate the release on production-like data before shipping to prod.
+
+1) Take a production backup (or obtain the latest approved backup file).
+2) Restore it into staging (isolated DB/schema).
+3) Deploy the candidate release to staging and let Flyway migrate.
+4) Run CODE-RED predeploy scans (must return zero rows): `scripts/db_predeploy_scans.sql`
+5) Run smoke checks: `erp-domain/scripts/ops_smoke.sh`
+6) Monitor outbox/event health endpoints and error logs for a soak period.
+
 ## Startup Commands
 - Build: `mvn package`
 - Run (dev): `mvn spring-boot:run`
@@ -56,6 +82,7 @@
 - `/api/integration/health`
 - `/api/v1/orchestrator/health/integrations`
 - `/api/v1/orchestrator/health/events`
+  - Note: orchestrator health endpoints must be authenticated/authorized in production (ops/admin).
 
 ## Outbox Operations
 - Retry policy: exponential backoff (30s * 2^retry), max 5 attempts; then status=FAILED and dead_letter=true.

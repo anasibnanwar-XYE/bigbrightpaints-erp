@@ -79,6 +79,10 @@ public class PayrollRun {
     @JoinColumn(name = "journal_entry_ref_id")
     private com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry journalEntry;
 
+    // Payment journal entry reference (separate from posting journal)
+    @Column(name = "payment_journal_entry_id")
+    private Long paymentJournalEntryId;
+
     // Backward compatibility fields from old PayrollRun
     @Column(name = "run_date")
     private java.time.LocalDate runDate;
@@ -168,6 +172,8 @@ public class PayrollRun {
     public void setTotalNetPay(BigDecimal totalNetPay) { this.totalNetPay = totalNetPay; }
     public Long getJournalEntryId() { return journalEntryId; }
     public void setJournalEntryId(Long journalEntryId) { this.journalEntryId = journalEntryId; }
+    public Long getPaymentJournalEntryId() { return paymentJournalEntryId; }
+    public void setPaymentJournalEntryId(Long paymentJournalEntryId) { this.paymentJournalEntryId = paymentJournalEntryId; }
     public String getCreatedBy() { return createdBy; }
     public void setCreatedBy(String createdBy) { this.createdBy = createdBy; }
     public Instant getCreatedAt() { return createdAt; }

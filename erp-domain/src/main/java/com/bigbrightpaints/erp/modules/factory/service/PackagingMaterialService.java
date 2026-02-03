@@ -70,14 +70,9 @@ public class PackagingMaterialService {
         Company company = companyContextService.requireCurrentCompany();
         String normalizedSize = normalizePackagingSize(request.packagingSize());
         
-        RawMaterial rawMaterial = rawMaterialRepository.findById(request.rawMaterialId())
+        RawMaterial rawMaterial = rawMaterialRepository.findByCompanyAndId(company, request.rawMaterialId())
                 .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
                         "Raw material not found"));
-        
-        if (!rawMaterial.getCompany().getId().equals(company.getId())) {
-            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
-                    "Raw material does not belong to this company");
-        }
 
         if (mappingRepository.existsByCompanyAndPackagingSizeIgnoreCaseAndRawMaterial(company, normalizedSize, rawMaterial)) {
             throw new ApplicationException(ErrorCode.DUPLICATE_ENTITY,
@@ -103,13 +98,9 @@ public class PackagingMaterialService {
                 .orElseThrow(() -> new ApplicationException(ErrorCode.BUSINESS_ENTITY_NOT_FOUND, "Mapping not found"));
 
         if (request.rawMaterialId() != null) {
-            RawMaterial rawMaterial = rawMaterialRepository.findById(request.rawMaterialId())
+            RawMaterial rawMaterial = rawMaterialRepository.findByCompanyAndId(company, request.rawMaterialId())
                     .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
                             "Raw material not found"));
-            if (!rawMaterial.getCompany().getId().equals(company.getId())) {
-                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
-                        "Raw material does not belong to this company");
-            }
             if (mappingRepository.existsByCompanyAndPackagingSizeIgnoreCaseAndRawMaterialAndIdNot(
                     company, mapping.getPackagingSize(), rawMaterial, mapping.getId())) {
                 throw new ApplicationException(ErrorCode.DUPLICATE_ENTITY,

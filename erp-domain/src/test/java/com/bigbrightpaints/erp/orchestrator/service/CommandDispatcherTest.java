@@ -5,6 +5,7 @@ import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.In
 import com.bigbrightpaints.erp.orchestrator.dto.ApproveOrderRequest;
 import com.bigbrightpaints.erp.orchestrator.event.DomainEvent;
 import com.bigbrightpaints.erp.orchestrator.policy.PolicyEnforcer;
+import com.bigbrightpaints.erp.orchestrator.repository.OrchestratorCommand;
 import com.bigbrightpaints.erp.orchestrator.workflow.WorkflowService;
 import java.math.BigDecimal;
 import java.util.List;
@@ -34,6 +35,8 @@ class CommandDispatcherTest {
     private TraceService traceService;
     @Mock
     private PolicyEnforcer policyEnforcer;
+    @Mock
+    private OrchestratorIdempotencyService idempotencyService;
 
     private CommandDispatcher commandDispatcher;
 
@@ -44,18 +47,25 @@ class CommandDispatcherTest {
                 integrationCoordinator,
                 eventPublisherService,
                 traceService,
-                policyEnforcer);
+                policyEnforcer,
+                idempotencyService);
     }
 
     @Test
     void approveOrderQueuesProductionAndPublishesAwaitingProductionEvent() {
-        when(workflowService.startWorkflow("order-approval")).thenReturn("trace-123");
+        OrchestratorCommand command = new OrchestratorCommand(1L, "ORCH.ORDER.APPROVE", "idem-1", "hash", "trace-123");
         ApproveOrderRequest request = new ApproveOrderRequest("101", "approver@bbp.com", new BigDecimal("5000"));
         InventoryShortage shortage = new InventoryShortage("SKU-1", BigDecimal.ONE, "Red Paint");
         InventoryReservationResult reservation = new InventoryReservationResult(null, List.of(shortage));
         when(integrationCoordinator.reserveInventory("101", "COMP")).thenReturn(reservation);
+        when(idempotencyService.start(
+                ArgumentMatchers.eq("ORCH.ORDER.APPROVE"),
+                ArgumentMatchers.eq("idem-1"),
+                ArgumentMatchers.eq(request),
+                ArgumentMatchers.any()))
+                .thenReturn(new OrchestratorIdempotencyService.CommandLease("trace-123", command, true));
 
-        String traceId = commandDispatcher.approveOrder(request, "COMP", "user-1");
+        String traceId = commandDispatcher.approveOrder(request, "idem-1", "COMP", "user-1");
 
         assertThat(traceId).isEqualTo("trace-123");
         verify(policyEnforcer).checkOrderApprovalPermissions("user-1", "COMP");
@@ -73,12 +83,16 @@ class CommandDispatcherTest {
                 .containsEntry("awaitingProduction", true)
                 .containsEntry("orderStatus", "PENDING_PRODUCTION")
                 .containsEntry("approvedBy", "approver@bbp.com")
-                .containsEntry("totalAmount", new BigDecimal("5000"));
+                .containsEntry("totalAmount", new BigDecimal("5000"))
+                .containsEntry("traceId", "trace-123");
 
         verify(traceService).record(
                 ArgumentMatchers.eq("trace-123"),
                 ArgumentMatchers.eq("ORDER_APPROVED"),
                 ArgumentMatchers.eq("COMP"),
-                ArgumentMatchers.<Map<String, Object>>argThat(map -> "101".equals(map.get("orderId"))));
+                ArgumentMatchers.<Map<String, Object>>argThat(map ->
+                        "101".equals(map.get("orderId")) && "idem-1".equals(map.get("idempotencyKey"))));
+
+        verify(idempotencyService).markSuccess(command);
     }
 }

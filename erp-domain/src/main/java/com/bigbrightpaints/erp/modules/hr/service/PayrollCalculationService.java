@@ -103,6 +103,7 @@ public class PayrollCalculationService {
         // Get all active labourers
         List<Employee> labourers = employeeRepository.findByCompanyAndPaymentScheduleAndStatus(
                 company, Employee.PaymentSchedule.WEEKLY, "ACTIVE");
+        Map<Long, List<Attendance>> attendanceByEmployeeId = loadAttendanceByEmployeeId(company, labourers, weekStart, weekEnd);
         
         List<PayrollLineItem> lineItems = new ArrayList<>();
         BigDecimal totalGross = BigDecimal.ZERO;
@@ -110,7 +111,7 @@ public class PayrollCalculationService {
         BigDecimal totalNet = BigDecimal.ZERO;
         
         for (Employee labourer : labourers) {
-            PayrollLineItem item = calculateEmployeePay(company, labourer, weekStart, weekEnd);
+            PayrollLineItem item = calculateEmployeePay(labourer, attendanceByEmployeeId.get(labourer.getId()));
             if (item.netPay().compareTo(BigDecimal.ZERO) <= 0) {
                 continue;
             }
@@ -121,8 +122,10 @@ public class PayrollCalculationService {
         }
         
         // Create payroll run
+        Map<Long, Employee> employeesById = labourers.stream()
+                .collect(Collectors.toMap(Employee::getId, employee -> employee));
         PayrollRun run = createPayrollRun(company, reference, PayrollRun.RunType.WEEKLY,
-                weekStart, weekEnd, today, totalGross, totalAdvances, totalNet, lineItems);
+                weekStart, weekEnd, today, totalGross, totalAdvances, totalNet, lineItems, employeesById);
         
         PayrollSummary summary = new PayrollSummary(
                 run.getId(),
@@ -164,6 +167,7 @@ public class PayrollCalculationService {
         // Get all active staff
         List<Employee> staff = employeeRepository.findByCompanyAndPaymentScheduleAndStatus(
                 company, Employee.PaymentSchedule.MONTHLY, "ACTIVE");
+        Map<Long, List<Attendance>> attendanceByEmployeeId = loadAttendanceByEmployeeId(company, staff, monthStart, monthEnd);
         
         List<PayrollLineItem> lineItems = new ArrayList<>();
         BigDecimal totalGross = BigDecimal.ZERO;
@@ -171,7 +175,7 @@ public class PayrollCalculationService {
         BigDecimal totalNet = BigDecimal.ZERO;
         
         for (Employee employee : staff) {
-            PayrollLineItem item = calculateEmployeePay(company, employee, monthStart, monthEnd);
+            PayrollLineItem item = calculateEmployeePay(employee, attendanceByEmployeeId.get(employee.getId()));
             if (item.netPay().compareTo(BigDecimal.ZERO) <= 0) {
                 continue;
             }
@@ -182,8 +186,10 @@ public class PayrollCalculationService {
         }
         
         // Create payroll run
+        Map<Long, Employee> employeesById = staff.stream()
+                .collect(Collectors.toMap(Employee::getId, employee -> employee));
         PayrollRun run = createPayrollRun(company, reference, PayrollRun.RunType.MONTHLY,
-                monthStart, monthEnd, today, totalGross, totalAdvances, totalNet, lineItems);
+                monthStart, monthEnd, today, totalGross, totalAdvances, totalNet, lineItems, employeesById);
         
         PayrollSummary summary = new PayrollSummary(
                 run.getId(),
@@ -205,10 +211,8 @@ public class PayrollCalculationService {
     /**
      * Calculate pay for a single employee based on attendance
      */
-    private PayrollLineItem calculateEmployeePay(Company company, Employee employee, 
-                                                  LocalDate startDate, LocalDate endDate) {
-        List<Attendance> attendance = attendanceRepository.findByEmployeeAndAttendanceDateBetween(
-                employee, startDate, endDate);
+    private PayrollLineItem calculateEmployeePay(Employee employee, List<Attendance> attendance) {
+        List<Attendance> attendanceRecords = attendance != null ? attendance : List.of();
 
         BigDecimal presentDays = BigDecimal.ZERO;
         BigDecimal halfDays = BigDecimal.ZERO;
@@ -217,7 +221,7 @@ public class PayrollCalculationService {
         BigDecimal overtimeHours = BigDecimal.ZERO;
         BigDecimal doubleOtHours = BigDecimal.ZERO;
 
-        for (Attendance att : attendance) {
+        for (Attendance att : attendanceRecords) {
             switch (att.getStatus()) {
                 case PRESENT -> presentDays = presentDays.add(BigDecimal.ONE);
                 case HALF_DAY -> halfDays = halfDays.add(BigDecimal.ONE);
@@ -304,8 +308,9 @@ public class PayrollCalculationService {
         BigDecimal totalAdvances = BigDecimal.ZERO;
         BigDecimal totalNet = BigDecimal.ZERO;
         
+        Map<Long, List<Attendance>> attendanceByEmployeeId = loadAttendanceByEmployeeId(company, employees, startDate, endDate);
         for (Employee employee : employees) {
-            PayrollLineItem item = calculateEmployeePay(company, employee, startDate, endDate);
+            PayrollLineItem item = calculateEmployeePay(employee, attendanceByEmployeeId.get(employee.getId()));
             lineItems.add(item);
             totalGross = totalGross.add(item.grossPay());
             totalAdvances = totalAdvances.add(item.advanceDeduction());
@@ -341,14 +346,35 @@ public class PayrollCalculationService {
         employee.setAdvanceBalance(newBalance);
         employeeRepository.save(employee);
         
-        log.info("Recorded advance payment of {} for {}. New balance: {}", 
+        log.info("Recorded advance payment of {} for {}. New balance: {}",
                 amount, employee.getFullName(), newBalance);
     }
 
+    private Map<Long, List<Attendance>> loadAttendanceByEmployeeId(Company company,
+                                                                   List<Employee> employees,
+                                                                   LocalDate startDate,
+                                                                   LocalDate endDate) {
+        if (employees == null || employees.isEmpty()) {
+            return Map.of();
+        }
+        List<Long> employeeIds = employees.stream()
+                .map(Employee::getId)
+                .filter(Objects::nonNull)
+                .toList();
+        if (employeeIds.isEmpty()) {
+            return Map.of();
+        }
+        List<Attendance> attendance = attendanceRepository.findByCompanyAndEmployeeIdsAndDateRange(
+                company, employeeIds, startDate, endDate);
+        return attendance.stream()
+                .collect(Collectors.groupingBy(record -> record.getEmployee().getId()));
+    }
+
     private PayrollRun createPayrollRun(Company company, String reference, PayrollRun.RunType runType,
-                                         LocalDate periodStart, LocalDate periodEnd, LocalDate runDate,
-                                         BigDecimal totalGross, BigDecimal totalAdvances, BigDecimal totalNet,
-                                         List<PayrollLineItem> lineItems) {
+                                        LocalDate periodStart, LocalDate periodEnd, LocalDate runDate,
+                                        BigDecimal totalGross, BigDecimal totalAdvances, BigDecimal totalNet,
+                                        List<PayrollLineItem> lineItems,
+                                        Map<Long, Employee> employeesById) {
         Optional<PayrollRun> existing = payrollRunRepository.findByCompanyAndIdempotencyKey(company, reference);
         if (existing.isPresent()) {
             return existing.get();
@@ -370,13 +396,16 @@ public class PayrollCalculationService {
         run.setApprovedBy(null);
         run.setApprovedAt(null);
         payrollRunRepository.save(run);
-        
+
         // Create line items
+        List<PayrollRunLine> lines = new ArrayList<>();
         for (PayrollLineItem item : lineItems) {
             PayrollRunLine line = new PayrollRunLine();
             line.setPayrollRun(run);
-            Employee employee = employeeRepository.findByCompanyAndId(company, item.employeeId())
-                    .orElseThrow(() -> new IllegalStateException("Employee not found for payroll run line: " + item.employeeId()));
+            Employee employee = employeesById.get(item.employeeId());
+            if (employee == null) {
+                throw new IllegalStateException("Employee not found for payroll run line: " + item.employeeId());
+            }
             line.setEmployee(employee);
             line.setName(item.employeeName());
             BigDecimal effectiveDays = item.presentDays().add(item.halfDays().multiply(new BigDecimal("0.5")));
@@ -396,9 +425,10 @@ public class PayrollCalculationService {
             line.setNetPay(item.netPay());
             line.setLineTotal(item.netPay());
             line.setNotes(item.employeeType() + " - " + item.presentDays() + " full + " + item.halfDays() + " half days");
-            payrollRunLineRepository.save(line);
+            lines.add(line);
         }
-        
+        payrollRunLineRepository.saveAll(lines);
+
         return run;
     }
 

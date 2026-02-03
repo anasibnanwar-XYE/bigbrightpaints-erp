@@ -64,6 +64,17 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Long> {
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate);
 
+    @Query("SELECT a FROM Attendance a JOIN FETCH a.employee e "
+           + "WHERE a.company = :company "
+           + "AND e.id IN :employeeIds "
+           + "AND a.attendanceDate BETWEEN :startDate AND :endDate "
+           + "ORDER BY e.id, a.attendanceDate")
+    List<Attendance> findByCompanyAndEmployeeIdsAndDateRange(
+            @Param("company") Company company,
+            @Param("employeeIds") List<Long> employeeIds,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate);
+
     // Check if attendance already marked for today
     boolean existsByCompanyAndEmployeeAndAttendanceDate(Company company, Employee employee, LocalDate date);
 

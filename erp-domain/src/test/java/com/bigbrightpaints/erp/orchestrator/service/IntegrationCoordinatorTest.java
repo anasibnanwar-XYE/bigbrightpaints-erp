@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.orchestrator.service;
 
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
@@ -161,14 +162,10 @@ class IntegrationCoordinatorTest {
     }
 
     @Test
-    void updateFulfillmentDispatchAcceptedAsShipped() {
-        IntegrationCoordinator.AutoApprovalResult result =
-                integrationCoordinator.updateFulfillment(String.valueOf(ORDER_ID), "DISPATCHED", COMPANY_ID);
-
-        assertThat(result.orderStatus()).isEqualTo("SHIPPED");
-        assertThat(state.isOrderStatusUpdated()).isTrue();
-        assertThat(state.isCompleted()).isTrue();
-        verify(salesService).updateStatusInternal(ORDER_ID, "SHIPPED");
+    void updateFulfillmentDispatchFailsClosed() {
+        assertThrows(ApplicationException.class,
+                () -> integrationCoordinator.updateFulfillment(String.valueOf(ORDER_ID), "DISPATCHED", COMPANY_ID));
+        verify(salesService, never()).updateStatusInternal(eq(ORDER_ID), anyString());
     }
 
     @Test

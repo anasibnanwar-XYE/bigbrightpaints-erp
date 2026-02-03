@@ -1,11 +1,14 @@
 package com.bigbrightpaints.erp.modules.inventory.service;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.MoneyUtils;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
@@ -38,6 +41,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -73,6 +77,7 @@ public class OpeningStockImportService {
     private final AccountingService accountingService;
     private final AccountRepository accountRepository;
     private final ReferenceNumberService referenceNumberService;
+    private final JournalEntryRepository journalEntryRepository;
     private final CompanyClock companyClock;
 
     public OpeningStockImportService(CompanyContextService companyContextService,
@@ -88,6 +93,7 @@ public class OpeningStockImportService {
                                      AccountingService accountingService,
                                      AccountRepository accountRepository,
                                      ReferenceNumberService referenceNumberService,
+                                     JournalEntryRepository journalEntryRepository,
                                      CompanyClock companyClock) {
         this.companyContextService = companyContextService;
         this.rawMaterialRepository = rawMaterialRepository;
@@ -102,6 +108,7 @@ public class OpeningStockImportService {
         this.accountingService = accountingService;
         this.accountRepository = accountRepository;
         this.referenceNumberService = referenceNumberService;
+        this.journalEntryRepository = journalEntryRepository;
         this.companyClock = companyClock;
     }
 
@@ -110,6 +117,12 @@ public class OpeningStockImportService {
         Company company = companyContextService.requireCurrentCompany();
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("CSV file is required");
+        }
+        String importReference = resolveImportReference(company, file);
+        if (journalEntryRepository.findByCompanyAndReferenceNumber(company, importReference).isPresent()) {
+            throw new ApplicationException(ErrorCode.BUSINESS_DUPLICATE_ENTRY,
+                    "Opening stock import already processed for this file")
+                    .withDetail("referenceNumber", importReference);
         }
 
         int rowsProcessed = 0;
@@ -173,7 +186,7 @@ public class OpeningStockImportService {
                 }
             }
 
-            Long journalEntryId = postOpeningStockJournal(company, inventoryTotals);
+            Long journalEntryId = postOpeningStockJournal(company, inventoryTotals, importReference);
             if (journalEntryId != null) {
                 rawMovements.forEach(movement -> movement.setJournalEntryId(journalEntryId));
                 finishedMovements.forEach(movement -> movement.setJournalEntryId(journalEntryId));
@@ -195,6 +208,33 @@ public class OpeningStockImportService {
             );
         } catch (IOException ex) {
             throw new IllegalStateException("Failed to read CSV file", ex);
+        }
+    }
+
+    private String resolveImportReference(Company company, MultipartFile file) {
+        String companyCode = sanitizeCompanyCode(company != null ? company.getCode() : null);
+        String fileHash = sha256Hex(file, 12);
+        return "OPEN-STOCK-%s-%s".formatted(companyCode, fileHash);
+    }
+
+    private String sanitizeCompanyCode(String code) {
+        if (!StringUtils.hasText(code)) {
+            return "COMPANY";
+        }
+        String normalized = code.trim().toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "");
+        return normalized.isBlank() ? "COMPANY" : normalized;
+    }
+
+    private String sha256Hex(MultipartFile file, int length) {
+        try {
+            byte[] bytes = file.getBytes();
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(bytes);
+            String fullHex = java.util.HexFormat.of().formatHex(hash);
+            return fullHex.substring(0, Math.min(length, fullHex.length()));
+        } catch (Exception ex) {
+            // Fallback: stable-ish hash for common IO failures (still protects against accidental retries)
+            return Integer.toHexString(file.getOriginalFilename() != null ? file.getOriginalFilename().hashCode() : 0);
         }
     }
 
@@ -434,7 +474,7 @@ public class OpeningStockImportService {
         return accountId;
     }
 
-    private Long postOpeningStockJournal(Company company, Map<Long, BigDecimal> inventoryTotals) {
+    private Long postOpeningStockJournal(Company company, Map<Long, BigDecimal> inventoryTotals, String reference) {
         if (inventoryTotals == null || inventoryTotals.isEmpty()) {
             return null;
         }
@@ -464,7 +504,6 @@ public class OpeningStockImportService {
                 "Opening stock offset",
                 BigDecimal.ZERO,
                 total));
-        String reference = referenceNumberService.openingStockReference(company);
         JournalEntryDto journalEntry = accountingService.createJournalEntry(new JournalEntryRequest(
                 reference,
                 companyClock.today(company),

@@ -3,6 +3,8 @@ package com.bigbrightpaints.erp.modules.factory.service;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest.JournalLineRequest;
@@ -22,9 +24,12 @@ import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -52,6 +57,7 @@ public class BulkPackingService {
     private final RawMaterialBatchRepository rawMaterialBatchRepository;
     private final InventoryMovementRepository inventoryMovementRepository;
     private final RawMaterialMovementRepository rawMaterialMovementRepository;
+    private final JournalEntryRepository journalEntryRepository;
     private final AccountingService accountingService;
     private final BatchNumberService batchNumberService;
     private final PackagingMaterialService packagingMaterialService;
@@ -65,6 +71,7 @@ public class BulkPackingService {
                               RawMaterialBatchRepository rawMaterialBatchRepository,
                               InventoryMovementRepository inventoryMovementRepository,
                               RawMaterialMovementRepository rawMaterialMovementRepository,
+                              JournalEntryRepository journalEntryRepository,
                               AccountingService accountingService,
                               BatchNumberService batchNumberService,
                               PackagingMaterialService packagingMaterialService,
@@ -77,6 +84,7 @@ public class BulkPackingService {
         this.rawMaterialBatchRepository = rawMaterialBatchRepository;
         this.inventoryMovementRepository = inventoryMovementRepository;
         this.rawMaterialMovementRepository = rawMaterialMovementRepository;
+        this.journalEntryRepository = journalEntryRepository;
         this.accountingService = accountingService;
         this.batchNumberService = batchNumberService;
         this.packagingMaterialService = packagingMaterialService;
@@ -96,12 +104,17 @@ public class BulkPackingService {
         Company company = companyContextService.requireCurrentCompany();
 
         // 1. Load and lock the bulk batch
-        FinishedGoodBatch bulkBatch = finishedGoodBatchRepository.lockById(request.bulkBatchId())
+        FinishedGoodBatch bulkBatch = finishedGoodBatchRepository.lockByCompanyAndId(company, request.bulkBatchId())
                 .orElseThrow(() -> new ApplicationException(ErrorCode.BUSINESS_ENTITY_NOT_FOUND,
                         "Bulk batch not found: " + request.bulkBatchId()));
 
         validateBulkBatch(bulkBatch, company);
         int totalPacks = resolveTotalPacks(request.packs());
+        String packReference = buildPackReference(bulkBatch, request);
+        BulkPackResponse idempotent = resolveIdempotentPack(company, bulkBatch, packReference);
+        if (idempotent != null) {
+            return idempotent;
+        }
 
         if (request.packagingMaterials() != null && !request.packagingMaterials().isEmpty()) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
@@ -117,7 +130,6 @@ public class BulkPackingService {
         }
 
         // 3. Consume packaging materials (BOM-based)
-        String packReference = "PACK-" + bulkBatch.getBatchCode() + "-" + System.currentTimeMillis();
         PackagingCostSummary packagingCostSummary = new PackagingCostSummary(BigDecimal.ZERO, Map.of(), Map.of());
         if (request.skipPackagingConsumption() == null || !request.skipPackagingConsumption()) {
             packagingCostSummary = consumePackagingFromMappings(company, request.packs(), packReference);
@@ -206,6 +218,86 @@ public class BulkPackingService {
         );
     }
 
+    private BulkPackResponse resolveIdempotentPack(Company company, FinishedGoodBatch bulkBatch, String packReference) {
+        List<InventoryMovement> movements = inventoryMovementRepository
+                .findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
+                        company, InventoryReference.PACKING_RECORD, packReference);
+        if (movements.isEmpty()) {
+            return null;
+        }
+        BigDecimal volumeDeducted = movements.stream()
+                .filter(movement -> "ISSUE".equalsIgnoreCase(movement.getMovementType()))
+                .map(InventoryMovement::getQuantity)
+                .filter(qty -> qty != null && qty.compareTo(BigDecimal.ZERO) > 0)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        List<RawMaterialMovement> rawMovements = rawMaterialMovementRepository
+                .findByRawMaterialCompanyAndReferenceTypeAndReferenceId(
+                        company, InventoryReference.PACKING_RECORD, packReference);
+        BigDecimal packagingCost = rawMovements.stream()
+                .map(movement -> safe(movement.getQuantity()).multiply(safe(movement.getUnitCost())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, COST_ROUNDING);
+
+        List<BulkPackResponse.ChildBatchDto> childDtos = movements.stream()
+                .filter(movement -> "RECEIPT".equalsIgnoreCase(movement.getMovementType()))
+                .map(this::toChildBatchDto)
+                .toList();
+
+        Long journalEntryId = journalEntryRepository.findByCompanyAndReferenceNumber(company, packReference)
+                .map(JournalEntry::getId)
+                .orElse(null);
+
+        return new BulkPackResponse(
+                bulkBatch.getId(),
+                bulkBatch.getBatchCode(),
+                volumeDeducted,
+                bulkBatch.getQuantityAvailable(),
+                packagingCost,
+                childDtos,
+                journalEntryId,
+                CompanyTime.now(company)
+        );
+    }
+
+    private BigDecimal safe(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
+    }
+
+    private String buildPackReference(FinishedGoodBatch bulkBatch, BulkPackRequest request) {
+        String batchCode = StringUtils.hasText(bulkBatch.getBatchCode())
+                ? bulkBatch.getBatchCode().trim().toUpperCase()
+                : String.valueOf(bulkBatch.getId());
+        StringBuilder fingerprint = new StringBuilder();
+        fingerprint.append("bulkBatchId=").append(bulkBatch.getId() != null ? bulkBatch.getId() : "null")
+                .append("|skipPackaging=").append(Boolean.TRUE.equals(request.skipPackagingConsumption()));
+        List<BulkPackRequest.PackLine> lines = request.packs().stream()
+                .sorted(Comparator.comparing(BulkPackRequest.PackLine::childSkuId))
+                .toList();
+        for (BulkPackRequest.PackLine line : lines) {
+            fingerprint.append("|")
+                    .append(line.childSkuId() != null ? line.childSkuId() : "null")
+                    .append("=")
+                    .append(line.quantity() != null ? line.quantity().stripTrailingZeros().toPlainString() : "0");
+        }
+        String idempotencyKey = StringUtils.hasText(request.idempotencyKey())
+                ? request.idempotencyKey().trim().toUpperCase()
+                : "";
+        String hash = sha256Hex(fingerprint + "|" + idempotencyKey, 12);
+        return "PACK-" + batchCode + "-" + hash;
+    }
+
+    private String sha256Hex(String input, int length) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
+            String fullHex = java.util.HexFormat.of().formatHex(hash);
+            return fullHex.substring(0, Math.min(length, fullHex.length()));
+        } catch (Exception ex) {
+            return Integer.toHexString(input.hashCode());
+        }
+    }
+
     /**
      * List available bulk batches for a finished good.
      */
@@ -227,13 +319,9 @@ public class BulkPackingService {
     @Transactional
     public List<BulkPackResponse.ChildBatchDto> listChildBatches(Long parentBatchId) {
         Company company = companyContextService.requireCurrentCompany();
-        FinishedGoodBatch parentBatch = finishedGoodBatchRepository.findById(parentBatchId)
+        FinishedGoodBatch parentBatch = finishedGoodBatchRepository.findByFinishedGood_CompanyAndId(company, parentBatchId)
                 .orElseThrow(() -> new ApplicationException(ErrorCode.BUSINESS_ENTITY_NOT_FOUND,
                         "Parent batch not found"));
-        if (!parentBatch.getFinishedGood().getCompany().getId().equals(company.getId())) {
-            throw new ApplicationException(ErrorCode.BUSINESS_ENTITY_NOT_FOUND,
-                    "Parent batch not found");
-        }
         
         return finishedGoodBatchRepository.findByParentBatch(parentBatch).stream()
                 .map(this::toChildBatchDto)
@@ -614,8 +702,29 @@ public class BulkPackingService {
         return journal.id();
     }
 
+    private BulkPackResponse.ChildBatchDto toChildBatchDto(InventoryMovement movement) {
+        FinishedGoodBatch batch = movement != null ? movement.getFinishedGoodBatch() : null;
+        FinishedGood fg = batch != null ? batch.getFinishedGood() : null;
+        BigDecimal quantity = safe(movement != null ? movement.getQuantity() : null);
+        BigDecimal unitCost = safe(movement != null ? movement.getUnitCost() : null);
+        return new BulkPackResponse.ChildBatchDto(
+                batch != null ? batch.getId() : null,
+                batch != null ? batch.getPublicId() : null,
+                batch != null ? batch.getBatchCode() : null,
+                fg != null ? fg.getId() : null,
+                fg != null ? fg.getProductCode() : null,
+                fg != null ? fg.getName() : null,
+                batch != null ? batch.getSizeLabel() : null,
+                quantity,
+                unitCost,
+                unitCost.multiply(quantity)
+        );
+    }
+
     private BulkPackResponse.ChildBatchDto toChildBatchDto(FinishedGoodBatch batch) {
         FinishedGood fg = batch.getFinishedGood();
+        BigDecimal quantity = safe(batch.getQuantityAvailable());
+        BigDecimal unitCost = safe(batch.getUnitCost());
         return new BulkPackResponse.ChildBatchDto(
                 batch.getId(),
                 batch.getPublicId(),
@@ -624,9 +733,9 @@ public class BulkPackingService {
                 fg.getProductCode(),
                 fg.getName(),
                 batch.getSizeLabel(),
-                batch.getQuantityAvailable(),
-                batch.getUnitCost(),
-                batch.getUnitCost().multiply(batch.getQuantityAvailable())
+                quantity,
+                unitCost,
+                unitCost.multiply(quantity)
         );
     }
 }

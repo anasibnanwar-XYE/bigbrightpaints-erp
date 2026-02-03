@@ -5,7 +5,7 @@ below to avoid data loss and ensure repeatable CI/debugging runs.
 
 ## Scope
 - Primary service: `erp-domain`
-- CI entrypoint: `mvn -B -ntp verify` (see `.github/workflows/ci.yml`)
+- CI entrypoint: `.github/workflows/ci.yml` (runs CODE-RED scans + `mvn -B -ntp verify`; local equivalent: `bash scripts/verify_local.sh`)
 - Debugging plan: `docs/codex-cloud-ci-debugging-plan.md`
 
 ## Safety rules (do not deviate)

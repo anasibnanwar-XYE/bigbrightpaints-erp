@@ -1,0 +1,360 @@
+package com.bigbrightpaints.erp.codered;
+
+import com.bigbrightpaints.erp.codered.support.CoderedConcurrencyHarness;
+import com.bigbrightpaints.erp.codered.support.CoderedDbAssertions;
+import com.bigbrightpaints.erp.codered.support.CoderedRetry;
+import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
+import com.bigbrightpaints.erp.modules.accounting.domain.Account;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
+import com.bigbrightpaints.erp.modules.accounting.service.ReconciliationService;
+import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReference;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
+import com.bigbrightpaints.erp.modules.purchasing.domain.GoodsReceipt;
+import com.bigbrightpaints.erp.modules.purchasing.domain.GoodsReceiptRepository;
+import com.bigbrightpaints.erp.modules.purchasing.domain.PurchaseOrder;
+import com.bigbrightpaints.erp.modules.purchasing.domain.PurchaseOrderRepository;
+import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchase;
+import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
+import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
+import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
+import com.bigbrightpaints.erp.modules.purchasing.dto.GoodsReceiptLineRequest;
+import com.bigbrightpaints.erp.modules.purchasing.dto.GoodsReceiptRequest;
+import com.bigbrightpaints.erp.modules.purchasing.dto.GoodsReceiptResponse;
+import com.bigbrightpaints.erp.modules.purchasing.dto.PurchaseOrderLineRequest;
+import com.bigbrightpaints.erp.modules.purchasing.dto.PurchaseOrderRequest;
+import com.bigbrightpaints.erp.modules.purchasing.dto.PurchaseOrderResponse;
+import com.bigbrightpaints.erp.modules.purchasing.dto.RawMaterialPurchaseLineRequest;
+import com.bigbrightpaints.erp.modules.purchasing.dto.RawMaterialPurchaseRequest;
+import com.bigbrightpaints.erp.modules.purchasing.dto.RawMaterialPurchaseResponse;
+import com.bigbrightpaints.erp.modules.purchasing.service.PurchasingService;
+import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
+import com.bigbrightpaints.erp.test.support.TestDateUtils;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
+
+import java.math.BigDecimal;
+import java.time.Duration;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class CR_PurchasingToApAccountingTest extends AbstractIntegrationTest {
+
+    @Autowired private CompanyRepository companyRepository;
+    @Autowired private AccountRepository accountRepository;
+    @Autowired private SupplierRepository supplierRepository;
+    @Autowired private RawMaterialRepository rawMaterialRepository;
+    @Autowired private PurchaseOrderRepository purchaseOrderRepository;
+    @Autowired private GoodsReceiptRepository goodsReceiptRepository;
+    @Autowired private RawMaterialPurchaseRepository purchaseRepository;
+    @Autowired private PurchasingService purchasingService;
+    @Autowired private JournalEntryRepository journalEntryRepository;
+    @Autowired private ReconciliationService reconciliationService;
+    @Autowired private JdbcTemplate jdbcTemplate;
+
+    @AfterEach
+    void clearCompanyContext() {
+        CompanyContextHolder.clear();
+    }
+
+    @Test
+    void purchaseFlow_postsBalancedJournal_linksMovements_andReconcilesAp() {
+        String companyCode = "CR-AP-" + shortId();
+        Company company = bootstrapCompany(companyCode);
+        Map<String, Account> accounts = ensurePurchasingAccounts(company);
+
+        Supplier supplier = ensureSupplier(company, accounts.get("AP"));
+        RawMaterial rm = ensureRawMaterial(company, accounts.get("RM_INV"));
+
+        LocalDate today = TestDateUtils.safeDate(company);
+        String orderNumber = "PO-" + shortId();
+        String receiptNumber = "GRN-" + shortId();
+        String invoiceNumber = "INV-" + shortId();
+
+        CompanyContextHolder.setCompanyId(companyCode);
+        PurchaseOrderResponse po = purchasingService.createPurchaseOrder(new PurchaseOrderRequest(
+                supplier.getId(),
+                orderNumber,
+                today,
+                "CODE-RED PO",
+                List.of(new PurchaseOrderLineRequest(
+                        rm.getId(),
+                        new BigDecimal("10"),
+                        rm.getUnitType(),
+                        new BigDecimal("12.50"),
+                        "RM line"))
+        ));
+
+        GoodsReceiptResponse grn = purchasingService.createGoodsReceipt(new GoodsReceiptRequest(
+                po.id(),
+                receiptNumber,
+                today,
+                "CODE-RED GRN",
+                List.of(new GoodsReceiptLineRequest(
+                        rm.getId(),
+                        "RM-BATCH-" + shortId(),
+                        new BigDecimal("10"),
+                        rm.getUnitType(),
+                        new BigDecimal("12.50"),
+                        "GRN line"))
+        ));
+
+        RawMaterialPurchaseResponse purchase = purchasingService.createPurchase(new RawMaterialPurchaseRequest(
+                supplier.getId(),
+                invoiceNumber,
+                today,
+                "CODE-RED Purchase",
+                po.id(),
+                grn.id(),
+                null,
+                List.of(new RawMaterialPurchaseLineRequest(
+                        rm.getId(),
+                        null,
+                        new BigDecimal("10"),
+                        rm.getUnitType(),
+                        new BigDecimal("12.50"),
+                        null,
+                        null,
+                        "Invoice line"))
+        ));
+        CompanyContextHolder.clear();
+
+        RawMaterialPurchase persisted = purchaseRepository.findById(purchase.id()).orElseThrow();
+        assertThat(persisted.getJournalEntry()).as("purchase journal").isNotNull();
+
+        Long journalId = persisted.getJournalEntry().getId();
+        CoderedDbAssertions.assertBalancedJournal(journalEntryRepository, journalId);
+        CoderedDbAssertions.assertSupplierLedgerEntriesLinkedToJournal(jdbcTemplate, company.getId(), journalId);
+        CoderedDbAssertions.assertAuditLogRecordedForJournal(jdbcTemplate, journalId);
+
+        GoodsReceipt grnEntity = goodsReceiptRepository.findById(grn.id()).orElseThrow();
+        assertThat(grnEntity.getStatus()).as("grn invoiced").isEqualTo("INVOICED");
+
+        PurchaseOrder poEntity = purchaseOrderRepository.findById(po.id()).orElseThrow();
+        assertThat(poEntity.getStatus()).as("po closed").isEqualTo("CLOSED");
+
+        CoderedDbAssertions.assertRawMaterialMovementsLinkedToJournal(
+                jdbcTemplate,
+                company.getId(),
+                InventoryReference.RAW_MATERIAL_PURCHASE,
+                grn.receiptNumber(),
+                journalId
+        );
+        CoderedDbAssertions.assertNoNegativeInventory(jdbcTemplate, company.getId());
+
+        CompanyContextHolder.setCompanyId(companyCode);
+        ReconciliationService.SupplierReconciliationResult reconciliation = reconciliationService.reconcileApWithSupplierLedger();
+        CompanyContextHolder.clear();
+        assertThat(reconciliation.isReconciled())
+                .as("ap reconciled (gl=%s ledger=%s variance=%s)",
+                        reconciliation.glApBalance(),
+                        reconciliation.supplierLedgerTotal(),
+                        reconciliation.variance())
+                .isTrue();
+    }
+
+    @Test
+    void concurrentPurchaseInvoice_createsSinglePurchase_andSingleJournal() {
+        String companyCode = "CR-AP-CONC-" + shortId();
+        Company company = bootstrapCompany(companyCode);
+        Map<String, Account> accounts = ensurePurchasingAccounts(company);
+
+        Supplier supplier = ensureSupplier(company, accounts.get("AP"));
+        RawMaterial rm = ensureRawMaterial(company, accounts.get("RM_INV"));
+
+        LocalDate today = TestDateUtils.safeDate(company);
+        String orderNumber = "PO-" + shortId();
+        String receiptNumber = "GRN-" + shortId();
+        String invoiceNumber = "INV-" + shortId();
+
+        CompanyContextHolder.setCompanyId(companyCode);
+        PurchaseOrderResponse po = purchasingService.createPurchaseOrder(new PurchaseOrderRequest(
+                supplier.getId(),
+                orderNumber,
+                today,
+                "CODE-RED PO",
+                List.of(new PurchaseOrderLineRequest(
+                        rm.getId(),
+                        new BigDecimal("5"),
+                        rm.getUnitType(),
+                        new BigDecimal("8.75"),
+                        "RM line"))
+        ));
+
+        GoodsReceiptResponse grn = purchasingService.createGoodsReceipt(new GoodsReceiptRequest(
+                po.id(),
+                receiptNumber,
+                today,
+                "CODE-RED GRN",
+                List.of(new GoodsReceiptLineRequest(
+                        rm.getId(),
+                        "RM-BATCH-" + shortId(),
+                        new BigDecimal("5"),
+                        rm.getUnitType(),
+                        new BigDecimal("8.75"),
+                        "GRN line"))
+        ));
+        CompanyContextHolder.clear();
+
+        RawMaterialPurchaseRequest request = new RawMaterialPurchaseRequest(
+                supplier.getId(),
+                invoiceNumber,
+                today,
+                "CODE-RED Purchase",
+                po.id(),
+                grn.id(),
+                null,
+                List.of(new RawMaterialPurchaseLineRequest(
+                        rm.getId(),
+                        null,
+                        new BigDecimal("5"),
+                        rm.getUnitType(),
+                        new BigDecimal("8.75"),
+                        null,
+                        null,
+                        "Invoice line"))
+        );
+
+        CoderedConcurrencyHarness.RunResult<RawMaterialPurchaseResponse> result = CoderedConcurrencyHarness.run(
+                3,
+                3,
+                Duration.ofSeconds(45),
+                threadIndex -> () -> {
+                    CompanyContextHolder.setCompanyId(companyCode);
+                    try {
+                        return purchasingService.createPurchase(request);
+                    } finally {
+                        CompanyContextHolder.clear();
+                    }
+                },
+                CoderedRetry::isRetryable
+        );
+
+        List<RawMaterialPurchaseResponse> successes = result.outcomes().stream()
+                .filter(outcome -> outcome instanceof CoderedConcurrencyHarness.Outcome.Success<?>)
+                .map(outcome -> ((CoderedConcurrencyHarness.Outcome.Success<RawMaterialPurchaseResponse>) outcome).value())
+                .toList();
+        assertThat(successes).as("single purchase wins").hasSize(1);
+
+        Integer purchaseCount = jdbcTemplate.queryForObject(
+                """
+                select count(*)
+                from raw_material_purchases
+                where company_id = ?
+                  and lower(invoice_number) = lower(?)
+                """,
+                Integer.class,
+                company.getId(),
+                invoiceNumber
+        );
+        assertThat(purchaseCount).as("single purchase row").isEqualTo(1);
+
+        RawMaterialPurchase saved = purchaseRepository.findByCompanyAndInvoiceNumberIgnoreCase(company, invoiceNumber)
+                .orElseThrow();
+        assertThat(saved.getJournalEntry()).as("journal posted once").isNotNull();
+
+        Long journalId = saved.getJournalEntry().getId();
+        CoderedDbAssertions.assertBalancedJournal(journalEntryRepository, journalId);
+        CoderedDbAssertions.assertSupplierLedgerEntriesLinkedToJournal(jdbcTemplate, company.getId(), journalId);
+
+        CoderedDbAssertions.assertRawMaterialMovementsLinkedToJournal(
+                jdbcTemplate,
+                company.getId(),
+                InventoryReference.RAW_MATERIAL_PURCHASE,
+                receiptNumber,
+                journalId
+        );
+    }
+
+    private Company bootstrapCompany(String companyCode) {
+        dataSeeder.ensureCompany(companyCode, companyCode + " Ltd");
+        CompanyContextHolder.setCompanyId(companyCode);
+        Company company = companyRepository.findByCodeIgnoreCase(companyCode).orElseThrow();
+        company.setTimezone("UTC");
+        company.setBaseCurrency("INR");
+        return companyRepository.save(company);
+    }
+
+    private Map<String, Account> ensurePurchasingAccounts(Company company) {
+        Account ap = ensureAccount(company, "AP", "Accounts Payable", AccountType.LIABILITY);
+        Account inv = ensureAccount(company, "RM_INV", "Raw Material Inventory", AccountType.ASSET);
+        Account gstIn = ensureAccount(company, "GST_IN", "GST Input", AccountType.ASSET);
+
+        Company fresh = companyRepository.findById(company.getId()).orElseThrow();
+        if (fresh.getDefaultInventoryAccountId() == null) {
+            fresh.setDefaultInventoryAccountId(inv.getId());
+        }
+        if (fresh.getGstInputTaxAccountId() == null) {
+            fresh.setGstInputTaxAccountId(gstIn.getId());
+        }
+        companyRepository.save(fresh);
+
+        return Map.of(
+                "AP", ap,
+                "RM_INV", inv,
+                "GST_IN", gstIn
+        );
+    }
+
+    private Account ensureAccount(Company company, String code, String name, AccountType type) {
+        return accountRepository.findByCompanyAndCodeIgnoreCase(company, code)
+                .orElseGet(() -> {
+                    Account account = new Account();
+                    account.setCompany(company);
+                    account.setCode(code);
+                    account.setName(name);
+                    account.setType(type);
+                    account.setActive(true);
+                    account.setBalance(BigDecimal.ZERO);
+                    return accountRepository.save(account);
+                });
+    }
+
+    private Supplier ensureSupplier(Company company, Account apAccount) {
+        return supplierRepository.findByCompanyAndCodeIgnoreCase(company, "CR-SUP")
+                .map(existing -> {
+                    if (existing.getPayableAccount() == null) {
+                        existing.setPayableAccount(apAccount);
+                        return supplierRepository.save(existing);
+                    }
+                    return existing;
+                })
+                .orElseGet(() -> {
+                    Supplier supplier = new Supplier();
+                    supplier.setCompany(company);
+                    supplier.setCode("CR-SUP");
+                    supplier.setName("Code-Red Supplier");
+                    supplier.setStatus("ACTIVE");
+                    supplier.setPayableAccount(apAccount);
+                    return supplierRepository.save(supplier);
+                });
+    }
+
+    private RawMaterial ensureRawMaterial(Company company, Account inventoryAccount) {
+        return rawMaterialRepository.findByCompanyAndSku(company, "CR-RM")
+                .orElseGet(() -> {
+                    RawMaterial rm = new RawMaterial();
+                    rm.setCompany(company);
+                    rm.setSku("CR-RM");
+                    rm.setName("Code-Red Raw Material");
+                    rm.setUnitType("KG");
+                    rm.setInventoryAccountId(inventoryAccount.getId());
+                    rm.setCurrentStock(BigDecimal.ZERO);
+                    return rawMaterialRepository.save(rm);
+                });
+    }
+
+    private static String shortId() {
+        return UUID.randomUUID().toString().substring(0, 8);
+    }
+}

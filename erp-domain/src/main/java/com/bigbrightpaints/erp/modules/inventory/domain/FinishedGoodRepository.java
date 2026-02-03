@@ -22,6 +22,10 @@ public interface FinishedGoodRepository extends JpaRepository<FinishedGood, Long
     Optional<FinishedGood> lockByCompanyAndId(@Param("company") Company company, @Param("id") Long id);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select fg from FinishedGood fg where fg.company = :company and fg.id in :ids order by fg.id")
+    List<FinishedGood> lockByCompanyAndIdInOrderById(@Param("company") Company company, @Param("ids") Collection<Long> ids);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select fg from FinishedGood fg where fg.company = :company and fg.productCode = :productCode")
     Optional<FinishedGood> lockByCompanyAndProductCode(@Param("company") Company company,
                                                        @Param("productCode") String productCode);

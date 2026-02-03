@@ -36,7 +36,11 @@ Transitions (current behavior):
   - outstanding == total -> `POSTED`
 
 ## Go-Live Limitations (current behavior)
-- Thin PO/GRN scaffolding is implemented for workflow visibility only; PO/GRN do not post journals or inventory.
+- Thin PO scaffolding is implemented for workflow visibility; PO does not post journals.
+- GRN (goods receipt) **does** record inventory:
+  - raw material batches are created/updated
+  - raw material movements are recorded (stock increases)
+  - no GL journal is posted at GRN time (GL/AP post at supplier invoice time)
 - Supplier invoices are still captured via `raw-material-purchases`, but now require a matching PO + GRN.
 - `raw-materials/intake` and manual batch creation are adjustment-only paths. They are disabled by default
   (`erp.raw-material.intake.enabled=false`) and should not be used to bypass supplier invoices.
@@ -59,6 +63,20 @@ Flow:
   - Optional discount/write-off/FX lines as provided.
 - Purchases linked in allocations have `outstandingAmount` reduced by the cleared amount.
 
+## Supplier Payments vs Settlements (Two APIs)
+Source: `AccountingController`, `AccountingService`.
+
+Current surface area includes both:
+- Supplier payments: `POST /api/v1/accounting/suppliers/payments`
+- Supplier settlements: `POST /api/v1/accounting/settlements/suppliers`
+
+Behavior (current):
+- Both allocate to supplier purchases and reduce `outstandingAmount`.
+- Settlements support non-cash adjustments (discount/write-off/FX) while payments are a simpler “cash-only” shape.
+
+CODE-RED rule:
+- Both paths must be idempotent under retries and must never double-apply allocations.
+
 ## Cross-Module Invariants
 These invariants must hold for a canonical P2P flow:
 - Purchase Order → Goods Receipt:
@@ -76,6 +94,8 @@ These invariants must hold for a canonical P2P flow:
 - Purchase returns:
   - create a `RETURN` movement and a purchase return journal (Dr AP / Cr inventory).
   - stock decreases by return quantity.
+  - policy note: if returns exceed outstanding, the system can represent a supplier credit; this must be documented and
+    enforced consistently (avoid silent negative-outstanding drift).
 
 ## Idempotency and Retry Safety
 - Purchase invoices are unique per company (`invoice_number` constraint).

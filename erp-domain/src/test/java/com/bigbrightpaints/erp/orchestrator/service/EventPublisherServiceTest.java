@@ -3,6 +3,8 @@ package com.bigbrightpaints.erp.orchestrator.service;
 import com.bigbrightpaints.erp.orchestrator.event.DomainEvent;
 import com.bigbrightpaints.erp.orchestrator.repository.OutboxEvent;
 import com.bigbrightpaints.erp.orchestrator.repository.OutboxEventRepository;
+import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
@@ -39,9 +41,16 @@ class EventPublisherServiceTest {
     @Mock
     private ObjectMapper objectMapper;
 
+    @Mock
+    private CompanyContextService companyContextService;
+
     @Test
     void enqueue_serializesAndPersistsOutboxEvent() throws Exception {
-        EventPublisherService service = new EventPublisherService(outboxEventRepository, rabbitTemplate, objectMapper, null);
+        EventPublisherService service = new EventPublisherService(outboxEventRepository, rabbitTemplate, companyContextService, objectMapper, null);
+
+        Company company = new Company();
+        ReflectionTestUtils.setField(company, "id", 1L);
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
 
         DomainEvent event = DomainEvent.of(
                 "OrderApprovedEvent",
@@ -67,7 +76,7 @@ class EventPublisherServiceTest {
 
     @Test
     void enqueue_failsClosedWhenSerializationFails() throws Exception {
-        EventPublisherService service = new EventPublisherService(outboxEventRepository, rabbitTemplate, objectMapper, null);
+        EventPublisherService service = new EventPublisherService(outboxEventRepository, rabbitTemplate, companyContextService, objectMapper, null);
 
         DomainEvent event = DomainEvent.of("X", "COMP", "user-1", "Entity", "1", Map.of());
         when(objectMapper.writeValueAsString(event)).thenThrow(new JsonProcessingException("boom") {});
@@ -78,7 +87,7 @@ class EventPublisherServiceTest {
 
     @Test
     void publishPendingEvents_marksPublishedOnSuccess() {
-        EventPublisherService service = new EventPublisherService(outboxEventRepository, rabbitTemplate, objectMapper, null);
+        EventPublisherService service = new EventPublisherService(outboxEventRepository, rabbitTemplate, companyContextService, objectMapper, null);
 
         OutboxEvent pending = new OutboxEvent("SalesOrder", "42", "OrderApprovedEvent", "{\"ok\":true}");
         when(outboxEventRepository
@@ -94,7 +103,7 @@ class EventPublisherServiceTest {
 
     @Test
     void publishPendingEvents_schedulesRetryOnFailureAndReleasesMutex() {
-        EventPublisherService service = new EventPublisherService(outboxEventRepository, rabbitTemplate, objectMapper, null);
+        EventPublisherService service = new EventPublisherService(outboxEventRepository, rabbitTemplate, companyContextService, objectMapper, null);
 
         OutboxEvent pending = new OutboxEvent("SalesOrder", "42", "OrderApprovedEvent", "{\"ok\":true}");
         when(outboxEventRepository
@@ -119,7 +128,7 @@ class EventPublisherServiceTest {
 
     @Test
     void publishPendingEvents_returnsEarlyWhenAlreadyPublishing() {
-        EventPublisherService service = new EventPublisherService(outboxEventRepository, rabbitTemplate, objectMapper, null);
+        EventPublisherService service = new EventPublisherService(outboxEventRepository, rabbitTemplate, companyContextService, objectMapper, null);
         AtomicBoolean mutex = (AtomicBoolean) ReflectionTestUtils.getField(service, "publishingInProgress");
         assertThat(mutex).isNotNull();
         mutex.set(true);

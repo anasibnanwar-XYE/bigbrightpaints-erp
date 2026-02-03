@@ -46,6 +46,9 @@ public class OutboxEvent extends VersionedEntity {
     @Column(nullable = false)
     private Status status;
 
+    @Column(name = "company_id")
+    private Long companyId;
+
     @Column(nullable = false)
     private Instant createdAt;
 
@@ -76,6 +79,11 @@ public class OutboxEvent extends VersionedEntity {
         this.deadLetter = false;
     }
 
+    public OutboxEvent(String aggregateType, String aggregateId, String eventType, String payload, Long companyId) {
+        this(aggregateType, aggregateId, eventType, payload);
+        this.companyId = companyId;
+    }
+
     public UUID getId() {
         return id;
     }
@@ -98,6 +106,10 @@ public class OutboxEvent extends VersionedEntity {
 
     public Status getStatus() {
         return status;
+    }
+
+    public Long getCompanyId() {
+        return companyId;
     }
 
     public Instant getCreatedAt() {

@@ -8,6 +8,9 @@ echo "[verify_local] root=$ROOT_DIR"
 echo "[verify_local] schema drift scan"
 bash "$ROOT_DIR/scripts/schema_drift_scan.sh"
 
+echo "[verify_local] flyway overlap scan (heuristic)"
+bash "$ROOT_DIR/scripts/flyway_overlap_scan.sh"
+
 echo "[verify_local] time api scan"
 bash "$ROOT_DIR/scripts/time_api_scan.sh"
 

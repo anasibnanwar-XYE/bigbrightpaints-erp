@@ -19,6 +19,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -79,6 +80,7 @@ public class OrchestratorControllerIT extends AbstractIntegrationTest {
     void approve_order_creates_outbox_event() {
         String token = loginToken();
         HttpHeaders headers = authHeaders(token);
+        headers.add("Idempotency-Key", UUID.randomUUID().toString());
         long before = outboxEventRepository.count();
 
         Map<String, Object> body = Map.of(
@@ -121,8 +123,56 @@ public class OrchestratorControllerIT extends AbstractIntegrationTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.GONE);
         assertThat(response.getBody()).containsKey("message");
         assertThat(response.getBody()).containsKey("canonicalPath");
-        assertThat(response.getBody().get("canonicalPath")).isEqualTo("/api/v1/hr/payroll-runs");
+        assertThat(response.getBody().get("canonicalPath")).isEqualTo("/api/v1/payroll/runs");
         assertThat(payrollRunRepository.count()).isEqualTo(beforeRuns);
+    }
+
+    @Test
+    void fulfillment_rejects_shipped_status_updates_without_dispatch_confirmation() {
+        String token = loginToken();
+        HttpHeaders headers = authHeaders(token);
+        headers.add("Idempotency-Key", UUID.randomUUID().toString());
+
+        Map<String, Object> body = Map.of(
+                "status", "DISPATCHED",
+                "notes", "test");
+
+        ResponseEntity<Map> response = rest.exchange(
+                "/api/v1/orchestrator/orders/" + seededOrderId + "/fulfillment",
+                HttpMethod.POST,
+                new HttpEntity<>(body, headers),
+                Map.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(response.getBody()).containsEntry("success", false);
+        Object payload = response.getBody().get("data");
+        assertThat(payload).isInstanceOf(Map.class);
+        Map<?, ?> error = (Map<?, ?>) payload;
+        assertThat(error.get("code")).isEqualTo("BUS_001");
+    }
+
+    @Test
+    void rejects_x_company_id_mismatch_against_token_company() {
+        dataSeeder.ensureCompany("EVIL", "Evil Corp");
+        String token = loginToken();
+
+        HttpHeaders headers = authHeaders(token);
+        headers.set("X-Company-Id", "EVIL");
+        headers.add("Idempotency-Key", UUID.randomUUID().toString());
+
+        Map<String, Object> body = Map.of(
+                "orderId", String.valueOf(seededOrderId),
+                "approvedBy", "orch@bbp.com",
+                "totalAmount", new BigDecimal("5000")
+        );
+
+        ResponseEntity<String> approveResponse = rest.exchange(
+                "/api/v1/orchestrator/orders/" + seededOrderId + "/approve",
+                HttpMethod.POST,
+                new HttpEntity<>(body, headers),
+                String.class);
+
+        assertThat(approveResponse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
     }
 
     private String loginToken() {

@@ -1,6 +1,8 @@
 package com.bigbrightpaints.erp.orchestrator.service;
 
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountDto;
@@ -313,11 +315,11 @@ public class IntegrationCoordinator {
                     return autoApproveOrder(orderId, null, companyId);
                 case "SHIPPED":
                 case "DISPATCHED":
-                    salesService.updateStatusInternal(id, "SHIPPED");
-                    OrderAutoApprovalState approvalState = lockAutoApprovalState(companyId, id);
-                    approvalState.markOrderStatusUpdated();
-                    approvalState.markCompleted();
-                    return new AutoApprovalResult("SHIPPED", false);
+                    throw new ApplicationException(
+                            ErrorCode.BUSINESS_INVALID_STATE,
+                            "Orchestrator cannot mark orders SHIPPED/DISPATCHED. Use the canonical dispatch confirm endpoint."
+                    ).withDetail("canonicalPath", "/api/v1/sales/dispatch/confirm")
+                            .withDetail("requestedStatus", requestedStatus);
                 default:
                     throw new IllegalArgumentException("Unsupported fulfillment status: " + requestedStatus);
             }
@@ -345,15 +347,10 @@ public class IntegrationCoordinator {
             Long debitAccountId = dispatchDebitAccountId;
             Long creditAccountId = dispatchCreditAccountId;
             if (debitAccountId == null || creditAccountId == null) {
-                try {
-                    var defaults = companyDefaultAccountsService.requireDefaults();
-                    debitAccountId = defaults.cogsAccountId();
-                    creditAccountId = defaults.inventoryAccountId();
-                    log.warn("Dispatch accounts not configured; using company default COGS/Inventory for batch {}", batchId);
-                } catch (RuntimeException ex) {
-                    log.warn("Skipping dispatch journal for batch {} - dispatch accounts and company defaults not configured", batchId);
-                    return;
-                }
+                var defaults = companyDefaultAccountsService.requireDefaults();
+                debitAccountId = defaults.cogsAccountId();
+                creditAccountId = defaults.inventoryAccountId();
+                log.warn("Dispatch accounts not configured; using company default COGS/Inventory for batch {}", batchId);
             }
             postJournal("DISPATCH-" + batchId, amount, "Dispatch journal for batch " + batchId, debitAccountId, creditAccountId);
         });

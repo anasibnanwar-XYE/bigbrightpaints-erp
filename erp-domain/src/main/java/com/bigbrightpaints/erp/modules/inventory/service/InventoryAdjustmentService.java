@@ -87,6 +87,21 @@ public class InventoryAdjustmentService {
                 .sorted(Comparator.comparing(InventoryAdjustmentRequest.LineRequest::finishedGoodId))
                 .toList();
         Company company = companyContextService.requireCurrentCompany();
+        List<Long> finishedGoodIds = sortedLines.stream()
+                .map(InventoryAdjustmentRequest.LineRequest::finishedGoodId)
+                .toList();
+        if (finishedGoodIds.stream().anyMatch(id -> id == null)) {
+            throw new IllegalArgumentException("Finished good not found");
+        }
+        List<Long> uniqueFinishedGoodIds = finishedGoodIds.stream().distinct().toList();
+        List<FinishedGood> lockedFinishedGoods = finishedGoodRepository.lockByCompanyAndIdInOrderById(company, uniqueFinishedGoodIds);
+        Map<Long, FinishedGood> finishedGoodsById = new HashMap<>();
+        for (FinishedGood finishedGood : lockedFinishedGoods) {
+            finishedGoodsById.put(finishedGood.getId(), finishedGood);
+        }
+        if (finishedGoodsById.size() != uniqueFinishedGoodIds.size()) {
+            throw new IllegalArgumentException("Finished good not found");
+        }
         InventoryAdjustmentType type = request.type() == null ? InventoryAdjustmentType.DAMAGED : request.type();
         InventoryAdjustment adjustment = new InventoryAdjustment();
         adjustment.setCompany(company);
@@ -98,7 +113,11 @@ public class InventoryAdjustmentService {
         Map<Long, BigDecimal> inventoryCredits = new HashMap<>();
         BigDecimal totalAmount = BigDecimal.ZERO;
         for (InventoryAdjustmentRequest.LineRequest lineRequest : sortedLines) {
-            InventoryAdjustmentLine line = buildLine(company, adjustment, lineRequest);
+            FinishedGood finishedGood = finishedGoodsById.get(lineRequest.finishedGoodId());
+            if (finishedGood == null) {
+                throw new IllegalArgumentException("Finished good not found");
+            }
+            InventoryAdjustmentLine line = buildLine(adjustment, finishedGood, lineRequest);
             Long valuationAccountId = line.getFinishedGood().getValuationAccountId();
             if (valuationAccountId == null) {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
@@ -134,11 +153,9 @@ public class InventoryAdjustmentService {
         return toDto(posted);
     }
 
-    private InventoryAdjustmentLine buildLine(Company company,
-                                              InventoryAdjustment adjustment,
+    private InventoryAdjustmentLine buildLine(InventoryAdjustment adjustment,
+                                              FinishedGood finishedGood,
                                               InventoryAdjustmentRequest.LineRequest lineRequest) {
-        FinishedGood finishedGood = finishedGoodRepository.lockByCompanyAndId(company, lineRequest.finishedGoodId())
-                .orElseThrow(() -> new IllegalArgumentException("Finished good not found"));
         BigDecimal quantity = requirePositive(lineRequest.quantity(), "quantity");
         BigDecimal unitCost = requirePositive(lineRequest.unitCost(), "unitCost");
         BigDecimal currentStock = finishedGood.getCurrentStock() == null ? BigDecimal.ZERO : finishedGood.getCurrentStock();
@@ -163,7 +180,6 @@ public class InventoryAdjustmentService {
             FinishedGood finishedGood = line.getFinishedGood();
             BigDecimal currentStock = finishedGood.getCurrentStock() == null ? BigDecimal.ZERO : finishedGood.getCurrentStock();
             finishedGood.setCurrentStock(currentStock.subtract(line.getQuantity()));
-            finishedGoodRepository.save(finishedGood);
             adjustBatchQuantities(finishedGood, line.getQuantity());
             finishedGoodsService.invalidateWeightedAverageCost(finishedGood.getId());
 
@@ -197,7 +213,6 @@ public class InventoryAdjustmentService {
             BigDecimal total = safeQuantity(batch.getQuantityTotal());
             batch.setQuantityAvailable(available.subtract(delta));
             batch.setQuantityTotal(total.subtract(delta));
-            finishedGoodBatchRepository.save(batch);
             remaining = remaining.subtract(delta);
         }
         if (remaining.compareTo(BigDecimal.ZERO) > 0) {

@@ -69,6 +69,315 @@ Rationale:
 - Removes ambiguous bulk/size mapping and ensures traceable, auditable cost flow.
 - Aligns inventory and accounting with real factory operations.
 
+Status (important):
+- This is a *target* model (Plan B) and is not fully implemented in the current codebase.
+- CODE-RED stabilization work must preserve existing packing behavior and focus on safety hardening first.
+
 Enforcement:
-- Hard cutover to the canonical flow defined in `docs/CODE-RED/packaging-flow.md`.
-- Packing fails closed if any variant or BOM is missing.
+- Stabilization (Scope A): keep current packing flows, but harden them (idempotency + deterministic references +
+  AccountingFacade-only posting).
+- Full canonicalization (Scope B): when explicitly approved, hard cutover to the canonical flow in
+  `docs/CODE-RED/packaging-flow.md` and fail closed if variant/BOM configuration is missing.
+
+## 2026-01-30 - AP Reconciliation Sign Convention
+Decision:
+- AP reconciliation compares "what we owe" consistently by normalizing the GL liability balance to match the supplier
+  ledger sign convention (credit - debit) before comparing.
+
+Rationale:
+- `Account.balance` is maintained with a debit-positive convention; liability "credit balances" show as negative numbers.
+  Without normalization, reconciliations appear "off by 2x" even when both sides agree.
+
+Enforcement:
+- `ReconciliationService` applies the sign normalization for AP reconciliations; CODE-RED reconciliation tests must pass.
+
+## 2026-01-30 - Audit Logging Must Not Participate In Business Transactions
+Decision:
+- Audit logging is non-blocking: audit writes run `@Async` and in `REQUIRES_NEW`.
+- Any public wrapper method in `AuditService` must call the proxied bean (not `this`) so Spring AOP actually applies the
+  async/transactional behavior.
+
+Rationale:
+- Prevents SERIALIZABLE business transactions (dispatch) from taking unnecessary locks/contention and failing under
+  concurrency due to audit table writes.
+
+Enforcement:
+- `AuditService` uses self-proxy injection for wrapper -> `logEvent(...)` calls; CODE-RED dispatch concurrency tests must pass.
+
+## 2026-01-30 - CODE-RED Scope Split: Stabilization vs Full Canonicalization
+Decision:
+- CODE-RED work is split into:
+  - Scope A: stabilize current behavior ("betterment only": idempotency, determinism, locks, invariants, migrations)
+  - Scope B: full canonicalization (higher-risk behavior changes; only after stabilization)
+
+Rationale:
+- Prevents scope creep and accidental behavior changes while the priority is deploy safety.
+
+Enforcement:
+- Scope is documented in `docs/CODE-RED/scope.md`.
+- New behavior changes require an explicit decision entry + QA sign-off before merge.
+
+## 2026-01-30 - Inventory->GL Auto-Posting Must Be Enterprise-Grade
+Decision:
+- Inventory->GL auto-posting is allowed, but only if it is enterprise-grade:
+  - durable (outbox + retry), observable (no silent swallow), and exactly-once (reserve-first references)
+  - posts via `AccountingFacade` (period locks, date validation, cache invalidation)
+  - uses the true business date of the operation (never defaults to UTC "today")
+
+Rationale:
+- The existing listener behavior can leave inventory and GL out of sync when posting fails or dates are wrong.
+
+Enforcement:
+- Implement an outbox table + worker; block period close/deploy if any inventory->GL outbox rows are FAILED/PENDING.
+
+## 2026-01-30 - Sales Returns Use Separate Dealer Credit Balance (Redeem On Future Dispatch)
+Decision:
+- Sales returns create a dealer credit balance (credit note) and do NOT reduce the original invoice outstanding at return time.
+- Dealer credit must be linked to dealerId, visible in portal, and redeemable on future dispatch confirmations (reduces the
+  new invoice outstanding without a cash journal).
+
+Rationale:
+- Matches operational reality: returns create credits that can be used on future purchases.
+
+Enforcement:
+- Add `dealer_credit_notes` (or equivalent) open-item tracking and idempotent credit allocation on dispatch.
+
+## 2026-01-30 - Invoice Numbering Uses Indian Financial Year From Issue Date
+Decision:
+- Invoice numbering derives its year bucket from invoice issueDate (dispatch date), not "today" at generation time.
+- For India, the financial year boundary is 1 April -> 31 March, so invoice numbering is fiscal-year based.
+
+Rationale:
+- Prevents backdated invoices from being numbered into the wrong year.
+- Aligns invoice numbering with Indian FY boundaries used in accounting.
+
+Enforcement:
+- Invoice number generator must accept issueDate (or dispatch date) as input and derive fiscal year from it.
+
+FY label format:
+- Use a two-year label `YYYY-YY` (e.g., `2025-26`). (See 2026-02-01 decision.)
+
+## 2026-01-30 - Dealer Credit Redemption + Credit Limit Visibility
+Decision:
+- Dealer credit redemption is manual by amount: user provides an `applyCreditAmount` at dispatch confirmation.
+- Credit allocation is system-selected and deterministic (recommended: FIFO by oldest OPEN credit notes).
+- Credit limit visibility:
+  - show "available credit" and "remaining headroom" at proforma stage (before dispatch)
+  - after dispatch is posted, show invoice outstanding + credit applied (not credit-limit headroom) on that invoice
+
+Rationale:
+- Keeps sales workflow simple (they type how much to use).
+- Keeps posting invariant stable: dispatch creates invoice + journals once, and credit reduces outstanding without new cash journals.
+- Prevents credit-limit confusion after the invoice is finalized and posted.
+
+## 2026-01-31 - Dealer (and Supplier) Onboarding Creates Subledger Accounts
+Decision:
+- If a dealer is not found, the salesperson creates the dealer explicitly (directory/search → create), before creating a sales order.
+- Creating a dealer must automatically create and link:
+  - a receivable account (code pattern: `AR-<dealerCode>`)
+  - a dealer portal user (if the email is not already registered), with `ROLE_DEALER`
+- Creating a supplier must automatically create and link:
+  - a payable account (code pattern: `AP-<supplierCode>`)
+
+Rationale:
+- Avoids silent duplicate dealers and duplicate receivable/payable accounts caused by typos, retries, or partial failures.
+- Ensures every order/invoice/journal can be traced back to a stable partner id and the correct subledger account.
+
+Enforcement:
+- Dealer creation already enforces this via `DealerService.createDealer(...)`.
+- Supplier creation already enforces this via `SupplierService.createSupplier(...)`.
+- Dealer onboarding must not call the legacy helper `SalesService.createDealer(...)` (it does not match canonical onboarding behavior).
+
+## 2026-01-31 - Orchestrator Company Isolation + Health Endpoint Security
+Decision:
+- Orchestrator must derive the active `companyId` from the authenticated company context (JWT + `CompanyContextHolder`).
+- Any mismatch between authenticated company context and a caller-provided `X-Company-Id` must fail closed (403).
+- Orchestrator health endpoints must not be public in non-dev environments (require auth/ops role or be moved under secured actuator health).
+
+Rationale:
+- Prevents cross-company actions via header spoofing (tenant isolation).
+- Prevents exposing internal operational details via unauthenticated health endpoints.
+
+## 2026-02-02 - Query Count Reductions (Inventory Adjustments + Payroll Auto-Calculation)
+Decision:
+- Apply low-risk query-count reductions that do not change business semantics.
+  - Inventory adjustments lock all referenced finished goods up front (deterministic pessimistic lock) and avoid redundant per-line `save(...)` calls.
+  - Payroll auto-calculation prefetches attendance in one query and bulk inserts payroll run lines.
+
+Rationale:
+- Reduces DB round-trips and lock overhead under load without changing accounting/inventory outcomes.
+
+Enforcement:
+- Must pass `bash scripts/verify_local.sh` and existing CODE-RED test suite.
+
+Enforcement:
+- Add method-level authorization on orchestrator health endpoints.
+- Add tests: header mismatch rejected; anonymous health endpoints rejected.
+
+---
+
+## 2026-02-01 - Period Close Uses Period-End Snapshots (As-Of Truth)
+Decision:
+- Period close and reporting use **period-end snapshots** as the source-of-truth for closed periods:
+  - trial balance
+  - inventory valuation
+  - subledger totals (AR/AP)
+- Open periods may continue to support “as-of” views, but **closed means closed**: closed period numbers must not change
+  when “today” changes or when later postings occur.
+
+Rationale:
+- Strongest “enterprise” guarantee for auditability and correctness under backdated/late postings.
+- Makes FIFO/WAC inventory valuation safer and cheaper to report for historical periods.
+
+Enforcement:
+- Closing a period must persist the snapshot atomically (company + period).
+- Reports and reconciliation must read snapshot results for CLOSED periods.
+
+## 2026-02-01 - AccountingEventStore Is Not Accounting Truth
+Decision:
+- `accounting_events` / `AccountingEventStore` is **not** a source-of-truth for temporal accounting.
+- Journals + period locks + period snapshots are the accounting truth.
+- If `accounting_events` remains in the schema, it is treated as an internal audit/diagnostic log only (no correctness guarantees).
+
+Rationale:
+- A partially wired event store is worse than none: it creates a false sense of as-of correctness.
+- CODE-RED favors deploy safety and audit clarity over theoretical elegance.
+
+Enforcement:
+- Remove “temporal truth” claims from docs and any reporting code paths.
+- Do not build critical reports on `accounting_events`.
+
+## 2026-02-01 - Invoice FY Label Format Uses Two-Year Label
+Decision:
+- Invoice numbers print the fiscal year as a two-year label: `YYYY-YY` (e.g., `2025-26`).
+
+Rationale:
+- Minimizes ambiguity and matches common Indian FY expectations in audit/compliance contexts.
+
+Enforcement:
+- Invoice numbering must derive the FY bucket from invoice `issueDate` (dispatch date) and render the label as `YYYY-YY`.
+
+---
+
+## 2026-02-02 - Orchestrator Cannot Set SHIPPED/DISPATCHED (Fail-Closed)
+Decision:
+- Orchestrator fulfillment/status endpoints must **not** set `SHIPPED`/`DISPATCHED` directly.
+- Dispatch truth must come from the canonical dispatch confirmation path: `POST /api/v1/sales/dispatch/confirm`.
+
+Rationale:
+- Prevents “status says shipped” while inventory/journals/ledger are missing or inconsistent.
+- Keeps orchestrator as a **strong arm** (automation + orchestration), not a parallel truth source.
+
+Enforcement:
+- Orchestrator fulfillment update rejects `SHIPPED/DISPATCHED` with a business invalid-state error and canonicalPath hint.
+- Add/keep tests ensuring orchestrator cannot bypass dispatch truth.
+
+## 2026-02-02 - Release Scans Can Be Enforced (FAIL_ON_FINDINGS)
+Decision:
+- CODE-RED scan scripts support `FAIL_ON_FINDINGS=true` for release commits (fail deployment if drift/overlaps are detected).
+- The local+CI pipeline must not swallow scan failures (scan infra failures must fail the gate).
+
+Rationale:
+- Prevents shipping with known schema drift risks unless explicitly waived.
+- Keeps the release gate deterministic and repeatable.
+
+Enforcement:
+- On release commits, run `FAIL_ON_FINDINGS=true bash scripts/verify_local.sh` (or record an explicit waiver).
+
+## 2026-02-02 - Orchestrator Command Idempotency Is Mandatory
+Decision:
+- Every orchestrator write command requires `Idempotency-Key` and must be exactly-once under retries.
+- Orchestrator persists a scope reservation in `orchestrator_commands` with `(company_id, command_name, idempotency_key)` and a `request_hash`.
+
+Rationale:
+- Orchestrator sits at the integration boundary; retries/double-clicks are normal and must never double-post inventory/accounting side effects.
+
+Enforcement:
+- Missing `Idempotency-Key` fails validation.
+- Same key + different payload hash returns a concurrency conflict (409).
+
+## 2026-02-02 - Payroll Payments Clear Salary Payable (Not Expense)
+Decision:
+- Payroll payment recording is a **liability clearing** entry: **Dr SALARY-PAYABLE / Cr CASH** (not a second payroll expense).
+- Payment journals are linked separately on the payroll run via `payroll_runs.payment_journal_entry_id`.
+- HR “mark paid” is blocked unless a payment journal exists (no “PAID with no evidence”).
+
+Rationale:
+- Prevents double-expensing and enforces a traceable audit chain: Run posting (expense/liability) → payment clearing (liability/cash).
+
+Enforcement:
+- `POST /api/v1/accounting/payroll/payments` requires a POSTED payroll run and validates the payment amount against the posted journal’s SALARY-PAYABLE credit.
+- `POST /api/v1/payroll/runs/{id}/mark-paid` fails closed unless a payment journal exists.
+
+---
+
+## 2026-02-02 - AccountingFacade Is The Canonical Posting Boundary (“Posting Firewall”)
+Decision:
+- `AccountingFacade` is the canonical module-level posting boundary for journals in CODE-RED (sales, purchasing, inventory adjustments, payroll).
+
+Rationale:
+- Centralizes reference namespace rules, dedupe behavior, and posting invariants so we do not “accidentally” create parallel posting logic across services.
+- Makes audits and incident response simpler: one place to reason about posting semantics and safety checks.
+
+Enforcement:
+- New module-level posting work must be added to `AccountingFacade` (or an explicitly reviewed alternative) instead of calling `createJournalEntry` ad-hoc.
+- Any legacy/direct posting paths must either be aliased into `AccountingFacade` or prod-gated if they can double-post.
+
+## 2026-02-02 - Idempotency Must Be Mismatch-Safe (Fail Closed On Conflicts)
+Decision:
+- If a retry/replay hits an existing idempotency scope (key or reference) but the payload differs materially (amount/accounts/lines), the system must fail closed with a conflict (409).
+
+Rationale:
+- Returning an “existing” document that doesn’t match the caller’s intent is silent corruption: it creates operational/financial drift without an obvious error.
+
+Enforcement:
+- Idempotency implementations must compare request hashes (or a normalized equivalent) and reject mismatches.
+- Reference-based dedupe that cannot validate payload must be treated as unsafe and tightened or prod-gated.
+
+## 2026-02-02 - Prod Feature Flags Must Be Enforced In Service Layer (Defense In Depth)
+Decision:
+- Any prod-gated capability must enforce gating in the service layer too (not only controller-level checks).
+
+Rationale:
+- Controllers are not a complete security boundary (internal calls, tests, refactors, or alternate invocations can bypass controller gates).
+- Defense-in-depth reduces the risk of accidental production activation.
+
+Enforcement:
+- `CommandDispatcher` / `IntegrationCoordinator` must fail closed when orchestrator flags are off, even if invoked internally.
+- Denied attempts should still be auditable (trace/audit record), without producing business side effects.
+
+---
+
+## 2026-02-03 - Tenant Context Uses companyCode (Not companyId)
+Decision:
+- The tenant context selector is `companyCode` (string) and must not be represented as `companyId` in APIs, headers, JWT claims, or thread-local context.
+
+Rationale:
+- Avoids a high-risk code smell where `companyId` sometimes means numeric DB id and sometimes means company code string.
+- Reduces tenant isolation bugs caused by engineers passing the wrong identifier into repository lookups or security checks.
+
+Enforcement:
+- Canonical vocabulary lives in `docs/CODE-RED/IDENTITY_AND_NAMING.md`.
+- Deprecate misleading legacy names (`X-Company-Id`, JWT `cid`, DTO fields named `companyId` for code strings) with a backward compatible parsing window.
+- New code must use explicit `companyCode` naming for context.
+
+## 2026-02-03 - Enterprise Observability Identifiers Are Standardized
+Decision:
+- The system standardizes identifiers across modules:
+  - `requestId` (HTTP ingress), `traceId` (end-to-end business flow), `correlationId` (async fan-out), `idempotencyKey` (exactly-once), `referenceNumber` (business doc reference).
+
+Rationale:
+- Enables enterprise-grade audit (“what happened and who did it”) across sales/inventory/accounting/payroll/orchestrator without parsing payloads.
+
+Enforcement:
+- Canonical contract lives in `docs/CODE-RED/OBSERVABILITY_IDENTIFIERS.md`.
+- Outbox/audit/event writers must persist identifiers in queryable columns (payload parsing is not an operations strategy).
+- Exception handling must reuse existing identifiers; do not generate fresh traceIds when one exists.
+
+---
+
+## Open Decisions (Must Be Resolved Before We Claim “Enterprise Deploy-Ready”)
+
+These are intentionally listed here so new agents don’t implement conflicting behavior.
+
+None currently (as of 2026-02-03). Add new items here if/when we hit true ambiguity that could cause conflicting implementations.

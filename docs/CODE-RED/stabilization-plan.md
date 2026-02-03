@@ -1,29 +1,56 @@
 
 # CODE-RED Stabilization Plan (V1)
 
+For the full detailed execution plan (V2), see:
+- `docs/CODE-RED/plan-v2.md`
+
 Constraints (non-negotiable):
 - No new features. No experiments. No refactors unless required for correctness/idempotency.
 - Production code is source of truth; every change must be enforced by tests + invariants (fail closed).
 
-## Verified Repo Findings (as of 2026-01-28)
+## Status Snapshot (as of 2026-01-30)
+
+- Local release gate: `bash scripts/verify_local.sh` (schema drift scan + Flyway overlap scan + time API scan + `mvn verify`).
+- CI gate: `.github/workflows/ci.yml` must run the same steps as `scripts/verify_local.sh` (scans + `mvn verify`, plus triage on failures).
+
+## Verified Repo Findings (as of 2026-01-30)
 
 These are repo-verified facts and blockers that must be addressed by the EPIC milestones below.
 
 Verified (in this repo)
-- Dispatch by `orderId` is nondeterministic when multiple slips exist (selects "most recent" and only warns):
-  `SalesService.selectMostRecentSlip` and `SalesService.confirmDispatch`
-  (`erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/service/SalesService.java:738`,
-  `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/service/SalesService.java:1372`).
-- Payroll run creation is not idempotent on the public payroll API: `/api/v1/payroll/runs` uses
-  `PayrollService.createPayrollRun` which never sets `idempotency_key`, so duplicates are possible
-  (`erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/controller/HrPayrollController.java:72`,
-  `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/service/PayrollService.java:73`).
+- Inventory "slip lookup by order" is unsafe:
+  - `DispatchController.getPackagingSlipByOrder` is a mutating GET (`/api/v1/dispatch/order/{orderId}`) because it can
+    lazily create slips/reservations (`FinishedGoodsService.getPackagingSlipByOrder` -> `reserveForOrder`) and, when
+    multiple slips exist, it selects the "most recent" slip (nondeterministic).
+    (`erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/controller/DispatchController.java:83`,
+    `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/service/FinishedGoodsService.java:1154`).
+- Orchestrator fulfillment can mark orders `SHIPPED`/`DISPATCHED` without slip dispatch/invoice/journals by calling
+  `SalesService.updateStatusInternal` (bypasses dispatch invariants). This must remain disabled in prod until routed
+  through the canonical dispatch workflow.
+  (`erp-domain/src/main/java/com/bigbrightpaints/erp/orchestrator/service/IntegrationCoordinator.java:296`,
+  `erp-domain/src/main/java/com/bigbrightpaints/erp/orchestrator/service/IntegrationCoordinator.java:316`).
+- Packing still bypasses `AccountingFacade` by posting journals directly via `AccountingService.createJournalEntry`:
+  `PackingService` + `BulkPackingService`.
+  (`erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/service/PackingService.java:401`,
+  `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/service/BulkPackingService.java:613`).
+- Bulk packing is not idempotent at the API boundary: `BulkPackRequest` has no idempotency key and bulk pack journaling
+  is not reserve-first.
+  (`erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/dto/BulkPackRequest.java:17`).
+- Packaging variants/BOM hard-cutover schema is not implemented yet: no `product_packaging_variants` /
+  `product_packaging_components` tables exist; the current implementation uses packaging size mappings (legacy model).
 - Accounting event store exists but is not wired: `AccountingEventStore` has no call sites
   (`erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/event/AccountingEventStore.java:52`).
+  Decision: it is explicitly not relied upon for temporal truth; closed-period reporting will use period-end snapshots.
+- Production log producedAt parsing ignores company timezone for common local date/time inputs (UTC conversion bug):
+  `ProductionLogService.resolveProducedAt(...)` uses `ZoneOffset.UTC` for LocalDate/LocalDateTime parsing, which can shift
+  journal dates/periods for non-UTC companies.
+  (`erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/service/ProductionLogService.java:542`).
+- Inventory->GL auto-posting is enabled-by-default and swallows failures:
+  `InventoryAccountingEventListener` posts via `AccountingService` directly and logs-and-continues on errors, creating
+  inventory/GL drift risk under period locks/date validation.
+  (`erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/event/InventoryAccountingEventListener.java:1`).
 - CI currently gates on schema drift scan + time API scan + tests
-  (`.github/workflows/ci.yml:1`).
-- CODE-RED scripts exist but hard-depend on `rg` (missing in some envs):
-  `scripts/schema_drift_scan.sh:23`, `scripts/triage_tests.sh:27`.
+  (must mirror `scripts/verify_local.sh`; see `.github/workflows/ci.yml`).
 
 Resolved since 2026-01-27
 - Backorder/partial dispatch invoice-per-slip behavior is fixed: `confirmDispatch` now resolves an existing invoice
@@ -37,19 +64,27 @@ Resolved since 2026-01-27
 - Timezone/business-date violations removed: CompanyClock/CompanyTime are now used for business dates and
   month boundaries (Cost Allocation + Reporting), backed by `scripts/time_api_scan.sh` and CI gate.
 
+Resolved since 2026-01-30
+- AP reconciliation mismatch fixed: `ReconciliationService` now normalizes AP GL balances to the supplier ledger sign
+  convention before comparing.
+  (`erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/ReconciliationService.java:1`).
+- Audit logging is made non-blocking for SERIALIZABLE business transactions: async + REQUIRES_NEW now applies by calling
+  the proxied bean (self-injection), preventing audit rows from participating in caller transactions.
+  (`erp-domain/src/main/java/com/bigbrightpaints/erp/core/audit/AuditService.java:1`).
+- `PayrollBatchPaymentIT` no longer assumes an empty database when running as part of the full suite (scoped to the run).
+  (`erp-domain/src/test/java/com/bigbrightpaints/erp/e2e/accounting/PayrollBatchPaymentIT.java:1`).
+
 Corrections vs earlier audit text (repo reality)
 - The CODE-RED docs/scripts are present here (`docs/CODE-RED/stabilization-plan.md:1`, `scripts/verify_local.sh:1`,
-  `scripts/db_predeploy_scans.sql:1`), but the drift/triage scripts currently assume `rg` is available
-  (`scripts/schema_drift_scan.sh:23`, `scripts/triage_tests.sh:27`).
+  `scripts/db_predeploy_scans.sql:1`); scripts have an `rg` -> `grep` fallback and can run in CI.
 - "`SalesService.createOrder` not transactional / no idempotency handling" is not true in this code: it's wrapped in a
   `TransactionTemplate` and catches `DataIntegrityViolationException`
   (`erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/service/SalesService.java:350`,
   `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/service/SalesService.java:355`).
 - "`SalesService.cancelOrder` is not transactional" is not true: it is transactional
   (`erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/service/SalesService.java:600`).
-- Manual journal namespace protection exists, but it likely doesn't block company-prefixed invoice refs like
-  `BBP-INV-...` (`erp-domain/src/main/java/com/bigbrightpaints/erp/modules/invoice/service/InvoiceNumberService.java:41`,
-  `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingFacade.java:94`).
+- Manual journal namespace protection blocks any reference containing `-INV-` (including company-prefixed invoice refs).
+  (`erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingFacade.java:94`).
 - Prior plan text implying dispatch reused `order.fulfillmentInvoiceId` for backorders is stale; current code resolves
   existing invoices only for already-dispatched slips via `resolveExistingInvoiceForSlip`
   (`erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/service/SalesService.java:1407`).
@@ -62,9 +97,9 @@ Milestones
   - Ensure dispatch confirmation cannot double-call inventory dispatch.
 - Manual journal namespace protection (reserved prefixes), fail closed.
   - Require an audit reason when dispatch overrides are applied (price/discount/tax).
-- M00.2 (BLOCKER): Make CODE-RED scripts executable in CI (no implicit `rg`) and wire gates into CI
-  - `scripts/schema_drift_scan.sh`, `scripts/triage_tests.sh`, `scripts/db_predeploy_scans.sql` must run in CI.
-  - `.github/workflows/ci.yml` must fail if script gates fail.
+- M00.2 (DONE): Make CODE-RED scripts executable in CI (no implicit `rg`) and wire gates into CI
+  - CI runs `scripts/schema_drift_scan.sh` + `scripts/time_api_scan.sh` + `mvn verify`.
+  - CI runs `scripts/triage_tests.sh` on failure.
 
 Acceptance criteria
 - No endpoint can create a journal entry with arbitrary amounts disconnected from domain state.
@@ -72,7 +107,7 @@ Acceptance criteria
   a client idempotency key and blocked if it matches system namespaces.
 - Dispatch confirmation is idempotent at the packaging slip boundary and cannot be double-applied via controller wiring.
 - Dispatch overrides are impossible without an audit reason.
-- CI gates include CODE-RED scripts (schema drift + predeploy scans + verify_local).
+- CI gates include CODE-RED scripts (schema drift + time API scan) + tests; `scripts/verify_local.sh` mirrors CI locally.
 
 Evidence artifacts
 - Tests:
@@ -131,29 +166,35 @@ Evidence artifacts
 
 ## EPIC 03 - Manufacturing/WIP + Packaging Canonicalization (Bulk -> Size SKUs)
 
+Scope note:
+- Stabilization (Scope A): keep existing packing flows/endpoints and harden them (idempotency + AccountingFacade-only
+  posting + timezone correctness).
+- Full canonicalization (Scope B): variants/BOM hard cutover is Plan B and is tracked in
+  `docs/CODE-RED/full-v1-cutover-plan.md`.
+
 Milestones
-- M03.0: Define per-product packaging variants + BOM (hard cutover)
-  - Add product_packaging_variants + product_packaging_components tables.
-  - Variants and BOM are required for packing (fail closed).
-  - Canonical flow: `docs/CODE-RED/packaging-flow.md`.
-- M03.1: Hard cutover packing algorithm to bulk -> size SKUs
-  - Packing is batch-based, deterministic, idempotent, and uses BOM.
-  - Remove legacy packaging size mapping endpoints and code paths.
-- M03.2: Route all factory postings through AccountingFacade (no direct AccountingService posting)
-- M03.3: Fix timezone boundary bugs (CompanyClock everywhere)
+- M03.A (Scope A): Route all factory postings through AccountingFacade (no direct AccountingService posting)
+- M03.B (Scope A): Add request-level idempotency + deterministic references for:
+  - `/api/v1/factory/production/logs/*`
+  - `/api/v1/factory/packing-records/*`
+  - `/api/v1/factory/pack/*`
+- M03.C (Scope A): Fix timezone boundary bugs (CompanyClock everywhere; producedAt parsing must not drift)
+- M03.D (Scope A): Add retry + concurrency tests for packing/production so double-clicks/timeouts cannot double-consume stock
 
 Acceptance criteria
-- Packing converts bulk liters to size SKUs using per-product variants + BOM (no legacy fallback).
-- Packing is deterministic and idempotent; bulk batch identity is preserved.
-- WIP journals always balance; no posting bypasses accounting policy.
-- Month boundary calculations use company timezone, not server timezone.
+- Existing manufacturing endpoints remain available, but retries are safe:
+  - no duplicate batches/movements/journals on retry
+  - deterministic references per business event
+- WIP/packing journals always balance and follow the posting boundary (AccountingFacade-owned).
+- Company timezone is canonical for producedAt/entryDate (no server-time drift).
+- Bulk batch identity is preserved (parent/child batch linkage remains auditable).
 
 Evidence artifacts
 - Tests:
-  - `erp-domain/src/test/java/com/bigbrightpaints/erp/e2e/production/CR_BulkPackingVariantIT.java`
-  - `erp-domain/src/test/java/com/bigbrightpaints/erp/e2e/production/CR_PackagingBOMRoundingIT.java`
-  - `erp-domain/src/test/java/com/bigbrightpaints/erp/e2e/production/CostAllocationVariancePolicyIT.java`
-  - `erp-domain/src/test/java/com/bigbrightpaints/erp/e2e/accounting/WipToFinishedCostIT.java`
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/codered/CR_ManufacturingWipCostingTest.java`
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/codered/CR_BulkPackagingCrossModuleTest.java`
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/e2e/production/CompleteProductionCycleTest.java`
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/e2e/production/FactoryPackagingCostingIT.java`
 
 ## EPIC 04 - HR / Payroll Canonicalization (Single Path)
 
@@ -174,9 +215,11 @@ Evidence artifacts
 
 Milestones
 - M05.1 (DONE): Manual journal entry API must not accept caller-supplied reference numbers (system-generated only).
-- M05.2: Memo/why required for manual entries.
-- M05.3: Accounting event store is either wired or explicitly removed from claims
-  - Wire `AccountingEventStore.recordJournalEntryPosted` inside `AccountingService.createJournalEntry` or remove replay claims.
+- M05.2 (DONE): Manual journal idempotency is concurrency-safe (reserve-first idempotency mapping).
+- M05.3: Memo/why required for manual entries.
+- M05.4: AccountingEventStore is explicitly not relied upon for temporal truth
+  - Remove/demote “temporal truth / replay” claims from docs and reporting paths.
+  - Closed-period reporting uses period-end snapshots (journals + snapshots are truth).
 
 Acceptance criteria
 - Manual entries are system-referenced only (no user-supplied reference numbers); period lock enforced.
@@ -206,7 +249,7 @@ Milestones
   - StatementService aging date fallback
   - Entity defaults: PartnerSettlementAllocation, PackingRecord, InventoryAdjustment, InventoryMovementEvent
 - M07.2 (DONE): Add time API guard in CI and verify_local
-  - `scripts/time_api_scan.sh`, wired in `.github/workflows/ci.yml` and `scripts/verify_local.sh`
+  - `scripts/time_api_scan.sh`, wired into `scripts/verify_local.sh` and required for CI parity
 
 Acceptance criteria
 - Business dates (invoice date, journal entry date, payroll period, month boundaries) use company timezone consistently.
@@ -233,7 +276,7 @@ Evidence artifacts
 ## EPIC 09 - Deploy Gates + Observability + Rollback Discipline
 
 Milestones
-- M09.0 (BLOCKER): Wire CODE-RED scripts into CI and make them robust on ubuntu-latest (no implicit `rg` dependency)
+- M09.0 (DONE): Wire CODE-RED scripts into CI and make them robust on ubuntu-latest (no implicit `rg` dependency)
 - M09.1: Pre-deploy scan gate (must be zero violations)
 - M09.2: Rollback plan documented and rehearsed
 
@@ -243,12 +286,11 @@ Acceptance criteria
 
 ## Deploy Gates / DO-NOT-SHIP
 - Must pass: `cd erp-domain && mvn -B -ntp verify` (CI gate today).
-- Must pass (after fixing `rg` dependency): `bash scripts/verify_local.sh`.
+- Must pass: `bash scripts/verify_local.sh`.
 - Must be clean: run every query in `scripts/db_predeploy_scans.sql`; any returned rows = NO-SHIP.
 - NO-SHIP if unresolved:
-  - Payroll run idempotency on public API (`PayrollService.createPayrollRun` missing `idempotency_key`).
-  - Manual journal collision hole with company-prefixed invoice refs (`BBP-INV-...` vs reserved prefixes).
-  - Nondeterministic dispatch by `orderId` when multiple slips exist.
+  - Mutating/nondeterministic slip lookup by `orderId` (`/api/v1/dispatch/order/{orderId}` selects "most recent" and can create slips).
+  - Orchestrator order status updates to SHIPPED/DISPATCHED without canonical dispatch invariants (must be disabled or routed).
   - Any ZoneId/systemDefault or LocalDate.now business-date usages remaining.
 
 Evidence artifacts

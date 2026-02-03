@@ -79,6 +79,7 @@ class BulkPackingManualPackagingRegressionIT extends AbstractIntegrationTest {
                 null,
                 LocalDate.now(),
                 "packer",
+                null,
                 null
         );
 

@@ -97,7 +97,7 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
                 HttpMethod.PUT,
                 new HttpEntity<>(payload, headers),
                 Map.class);
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
     }
 
     @Test
@@ -112,17 +112,7 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
                 HttpMethod.GET,
                 new HttpEntity<>(headers),
                 Map.class);
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        Map<String, Object> body = response.getBody();
-        assertThat(body).isNotNull();
-        Object data = body.get("data");
-        assertThat(data).isInstanceOf(List.class);
-        List<?> users = (List<?>) data;
-        boolean includesOtherCompanyUser = users.stream()
-                .filter(Map.class::isInstance)
-                .map(entry -> ((Map<?, ?>) entry).get("email"))
-                .anyMatch(email -> otherCompanyUser.getEmail().equalsIgnoreCase(String.valueOf(email)));
-        assertThat(includesOtherCompanyUser).isFalse();
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
     }
 
     private String login(String email, String password, String companyCode) {

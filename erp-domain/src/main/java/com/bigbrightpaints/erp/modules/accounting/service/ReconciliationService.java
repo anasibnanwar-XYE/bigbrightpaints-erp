@@ -163,6 +163,9 @@ public class ReconciliationService {
                 .map(Account::getBalance)
                 .filter(b -> b != null)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+        // Account.balance uses a debit-positive convention (debit - credit). For AP we reconcile against the
+        // supplier sub-ledger which is aggregated as (credit - debit), so normalize the GL balance here.
+        BigDecimal glApBalance = totalApBalance.negate();
 
         List<Long> supplierIds = suppliers.stream().map(Supplier::getId).toList();
 
@@ -174,7 +177,7 @@ public class ReconciliationService {
         BigDecimal totalSupplierLedgerBalance = supplierBalances.values().stream()
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        BigDecimal variance = totalApBalance.subtract(totalSupplierLedgerBalance);
+        BigDecimal variance = glApBalance.subtract(totalSupplierLedgerBalance);
         boolean isReconciled = variance.abs().compareTo(TOLERANCE) <= 0;
 
         List<SupplierDiscrepancy> discrepancies = new ArrayList<>();
@@ -199,10 +202,10 @@ public class ReconciliationService {
         }
 
         log.info("AP Reconciliation: GL={}, SupplierLedger={}, Variance={}, Reconciled={}",
-                totalApBalance, totalSupplierLedgerBalance, variance, isReconciled);
+                glApBalance, totalSupplierLedgerBalance, variance, isReconciled);
 
         return new SupplierReconciliationResult(
-                totalApBalance,
+                glApBalance,
                 totalSupplierLedgerBalance,
                 variance,
                 isReconciled,

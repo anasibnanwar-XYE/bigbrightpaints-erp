@@ -4,6 +4,21 @@ This document captures the current O2C (sales) state machines and the invariants
 that must hold for traceability and ERP-grade correctness. It reflects existing
 behavior only; no new flows are introduced.
 
+## Dealer Onboarding (Prerequisite)
+Source: `DealerService`, `DealerController`.
+
+Dealers are first-class partners in O2C. Before creating a dealer-based sales order:
+- Sales can search the dealer directory (`GET /api/v1/dealers/search`).
+- If the dealer is not found, sales can create the dealer (`POST /api/v1/dealers`).
+
+On dealer creation, the system automatically:
+- creates and links the dealer’s receivable account (code pattern: `AR-<dealerCode>`)
+- creates/links a dealer portal user (if the email is not already registered) and grants `ROLE_DEALER`
+
+CODE-RED note:
+- Dealer onboarding must be performed via `DealerService.createDealer(...)`. A legacy helper `SalesService.createDealer(...)`
+  exists but does not match canonical onboarding behavior; do not call it from controllers/orchestrator.
+
 ## Sales Order Statuses
 Source: `SalesService`, `SalesFulfillmentService`.
 
@@ -43,7 +58,8 @@ States:
 - `PARTIAL`: some inventory shipped, some still pending/backordered.
 - `DISPATCHED`: inventory issued and slip confirmed.
 - `CANCELLED`: slip cancelled (including backorder cancellations).
-- Manual/update-only: `PACKING`, `READY` (set by `updateSlipStatus`).
+- Manual/update-only (restricted): `updateSlipStatus` only allows safe pre-dispatch statuses:
+  `PENDING`, `RESERVED`, `PENDING_PRODUCTION`, `PENDING_STOCK`.
 
 Transitions (current behavior):
 - Reserve order:

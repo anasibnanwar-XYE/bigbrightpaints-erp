@@ -64,7 +64,7 @@
   - Code: `AccountingController.createJournalEntry` treats `referenceNumber` as idempotency key only; canonical references are system-generated via mapping. Reserved namespaces block system prefixes including `*-INV-*`.
   - Tests: `JournalEntryE2ETest`, `PeriodCloseLockIT`, `CreditDebitNoteIT`, `SettlementE2ETest`.
   - Command: `mvn -B -ntp -Dtest=JournalEntryE2ETest,PeriodCloseLockIT,CreditDebitNoteIT,SettlementE2ETest test`.
-- 2026-01-28: EPIC 04 / M04.0–M04.2 verified.
+- 2026-01-28: EPIC 04 / M04.0-M04.2 verified.
   - Code: `PayrollService.createPayrollRun` enforces idempotency by runType+period; `PayrollService.postPayrollToAccounting` routes through `AccountingFacade.postPayrollRun`.
   - Tests: `PayrollRunApiIdempotencyIT`, `ErpInvariantsSuiteIT`.
   - Command: `mvn -B -ntp -Dtest=PayrollRunApiIdempotencyIT,ErpInvariantsSuiteIT test`.
@@ -76,3 +76,8 @@
   - Code: `AccountingService.createManualJournalEntry` now reserves idempotency keys via `JournalReferenceMappingRepository.reserveManualReference` before journal creation; concurrent requests return the same journal entry. Reservation timestamps use `CompanyTime`.
   - Tests: `JournalEntryE2ETest.journalEntry_ManualIdempotencyKey_ConcurrencySafe`.
   - Command: `mvn -B -ntp -Dtest=JournalEntryE2ETest test`.
+- 2026-01-30: Local release gate verified (full suite + CODE-RED tests).
+  - Fix: AP reconciliation sign normalization (GL liability vs supplier ledger convention).
+  - Fix: Audit logging no longer participates in caller SERIALIZABLE transactions (async + REQUIRES_NEW applies via proxy).
+  - Fix: `PayrollBatchPaymentIT` scoped to the payroll run under test (suite-safe).
+  - Command: `bash scripts/verify_local.sh`.

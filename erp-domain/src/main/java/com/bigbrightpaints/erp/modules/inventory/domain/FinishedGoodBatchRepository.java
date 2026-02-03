@@ -72,6 +72,16 @@ public interface FinishedGoodBatchRepository extends JpaRepository<FinishedGoodB
     @Query("select b from FinishedGoodBatch b where b.id = :id")
     java.util.Optional<FinishedGoodBatch> lockById(@Param("id") Long id);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select b from FinishedGoodBatch b
+            where b.finishedGood.company = :company
+              and b.id = :id
+            """)
+    java.util.Optional<FinishedGoodBatch> lockByCompanyAndId(@Param("company") Company company, @Param("id") Long id);
+
+    java.util.Optional<FinishedGoodBatch> findByFinishedGood_CompanyAndId(Company company, Long id);
+
     List<FinishedGoodBatch> findByParentBatch(FinishedGoodBatch parentBatch);
 
     @Query("select b from FinishedGoodBatch b where b.finishedGood = :finishedGood and b.bulk = true and b.quantityAvailable > 0")

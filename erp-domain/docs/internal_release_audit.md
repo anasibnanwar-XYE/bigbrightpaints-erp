@@ -14,14 +14,14 @@
 | Raw material intake receipt | `AccountingFacade.postPurchaseJournal` | `batchCode` (receipt context) | `RawMaterialService.recordReceipt` |
 | Purchase return | `AccountingFacade.postPurchaseReturn` | `ReferenceNumberService.purchaseReturnReference` or provided | `PurchasingService.processReturn` |
 | Inventory adjustment | `AccountingFacade.postInventoryAdjustment` | Provided `referenceId` or generated `inventoryAdjustmentReference` | `InventoryAdjustmentService` |
-| Opening stock import | `AccountingService.createJournalEntry` | `ReferenceNumberService.openingStockReference` | `OpeningStockImportService` |
+| Opening stock import | `AccountingService.createJournalEntry` | `OPEN-STOCK-<company>-<fileHash>` (deterministic; retries rejected) | `OpeningStockImportService` |
 | Material consumption (WIP) | `AccountingFacade.postMaterialConsumption` | `<productionCode>-RM` | `ProductionLogService` |
 | Labor/overhead applied (WIP) | `AccountingFacade.postLaborOverheadApplied` | `<productionCode>-LABOH` | `ProductionLogService` |
 | Cost variance allocation | `AccountingFacade.postCostVarianceAllocation` | `CVAR-<batchCode>-<periodKey>` | `CostAllocationService` |
 | WIP → FG receipt (packing session) | `AccountingService.createJournalEntry` | `<productionCode>-PACK-<movementId>` | `PackingService.postPackingSessionJournal` |
 | Packaging material consumption | `AccountingService.createJournalEntry` | `<packRef>-PACKMAT` | `PackingService.postPackagingMaterialJournal` |
 | Manufacturing wastage | `AccountingFacade.postSimpleJournal` | `<productionCode>-WASTE` | `PackingService.postCompletionEntries` |
-| Bulk packing (bulk → sized FG) | `AccountingService.createJournalEntry` | `PACK-<bulkBatchCode>-<timestamp>` | `BulkPackingService` |
+| Bulk packing (bulk → sized FG) | `AccountingService.createJournalEntry` | `PACK-<bulkBatchCode>-<hash>` (deterministic) | `BulkPackingService` |
 | Factory dispatch journal | `AccountingFacade.postSimpleJournal` | `DISPATCH-<batchId>` | `IntegrationCoordinator.postDispatchJournal` |
 | Dealer receipt | `AccountingService.recordDealerReceipt` | `ReferenceNumberService.dealerReceiptReference` or provided | Accounting controller/service |
 | Supplier payment | `AccountingService.recordSupplierPayment` | `ReferenceNumberService.supplierPaymentReference` or provided | Accounting controller/service |

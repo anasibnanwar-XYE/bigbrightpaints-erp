@@ -40,7 +40,8 @@ and where to validate them in tests. It is **descriptive** (no new features).
 
 **Expected sequence**
 1) **Purchase Order** recorded.
-2) **Goods Receipt** recorded (full or partial).
+2) **Goods Receipt (GRN)** recorded (full or partial).
+   - GRN records inventory (raw material batches + stock movements), but does **not** post GL journals.
 3) **Raw Material Purchase** (supplier invoice) recorded.
 4) **Purchase Journal** posted (`AccountingFacade.postPurchaseJournal(...)`).
 5) **Supplier Ledger** updated and **Settlement** applied.
@@ -93,6 +94,7 @@ and where to validate them in tests. It is **descriptive** (no new features).
 **Policy**
 - Posting requires an **OPEN** period (`AccountingPeriodService.requireOpenPeriod(...)`).
 - Close/reopen flows produce reversing journals and must be idempotent.
+- Closed-period reporting uses **period-end snapshots** (closed means closed; no “today” drift).
 
 **Validation tests**
 - `PeriodCloseLockIT`

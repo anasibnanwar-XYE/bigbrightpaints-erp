@@ -13,6 +13,8 @@ public class WorkflowService {
 
     public WorkflowService() {
         workflowDefinitions.put("order-approval", List.of("VALIDATE_CREDIT", "RESERVE_STOCK", "QUEUE_PRODUCTION"));
+        workflowDefinitions.put("order-auto-approval", List.of("RESERVE_STOCK", "QUEUE_PRODUCTION", "UPDATE_STATUS"));
+        workflowDefinitions.put("order-fulfillment", List.of("VALIDATE_STATUS", "UPDATE_STATUS", "EMIT_EVENT"));
         workflowDefinitions.put("dispatch", List.of("ALLOCATE_BATCH", "BOOK_LEDGER", "NOTIFY_CUSTOMER"));
         workflowDefinitions.put("payroll", List.of("COLLECT_EMPLOYEES", "CALCULATE", "POST_JOURNAL"));
     }

@@ -409,8 +409,7 @@ public class ProductionCatalogService {
 
     private BrandResolution resolveBrand(Company company, Long brandId, String brandName, String providedCode) {
         if (brandId != null) {
-            ProductionBrand brand = brandRepository.findById(brandId)
-                    .filter(existing -> existing.getCompany().getId().equals(company.getId()))
+            ProductionBrand brand = brandRepository.findByCompanyAndId(company, brandId)
                     .orElseThrow(() -> new IllegalArgumentException("Brand not found"));
             if (StringUtils.hasText(brandName) && !brandName.equalsIgnoreCase(brand.getName())) {
                 brand.setName(brandName.trim());

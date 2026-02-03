@@ -247,8 +247,8 @@
 - `GET /api/v1/sales/dealers` -> `GET /api/v1/dealers`
 - `GET /api/v1/sales/dealers/search` -> `GET /api/v1/dealers/search`
 - `POST /api/v1/hr/payroll-runs` -> `POST /api/v1/payroll/runs`
-- `POST /api/v1/orchestrator/dispatch` -> `POST /api/v1/sales/dispatch/confirm` (disabled by default; feature flag `orchestrator.order-dispatch.enabled`)
-- `POST /api/v1/orchestrator/dispatch/{orderId}` -> `POST /api/v1/sales/dispatch/confirm`
+- `POST /api/v1/orchestrator/dispatch` -> `POST /api/v1/sales/dispatch/confirm` (hard deprecated; always 410 + canonicalPath)
+- `POST /api/v1/orchestrator/dispatch/{orderId}` -> `POST /api/v1/sales/dispatch/confirm` (hard deprecated; always 410 + canonicalPath)
 
 ## Response and Error Conventions
 - `ApiResponse<T>` wraps responses with `success`, `message`, `data`, `timestamp`.

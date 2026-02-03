@@ -3,6 +3,11 @@
 This document is the single source of truth for manufacturing/packaging behavior in V1.
 All implementation, tests, and ops procedures must align with this flow.
 
+Implementation status (as of 2026-01-30)
+- This is the target V1 model (hard cutover spec).
+- The required schema (`product_packaging_variants`, `product_packaging_components`) is not implemented yet; current code
+  uses packaging size mappings (legacy model). Tracking: EPIC 03 / M03.0 in `docs/CODE-RED/stabilization-plan.md`.
+
 ## 1) Conceptual Model (Locked)
 Product Hierarchy (Tree View)
 
@@ -216,4 +221,3 @@ Legacy size-only mappings are removed and must not be referenced.
 - No fallback to legacy mappings.
 - If a variant or BOM is missing, packing fails closed.
 - All packing requests require a pack idempotency key.
-

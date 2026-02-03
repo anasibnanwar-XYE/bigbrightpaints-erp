@@ -1,0 +1,390 @@
+package com.bigbrightpaints.erp.codered;
+
+import com.bigbrightpaints.erp.codered.support.CoderedConcurrencyHarness;
+import com.bigbrightpaints.erp.codered.support.CoderedDbAssertions;
+import com.bigbrightpaints.erp.codered.support.CoderedRetry;
+import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
+import com.bigbrightpaints.erp.modules.accounting.domain.Account;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocationRepository;
+import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
+import com.bigbrightpaints.erp.modules.accounting.dto.SettlementAllocationRequest;
+import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
+import com.bigbrightpaints.erp.modules.accounting.service.ReconciliationService;
+import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
+import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlip;
+import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipRepository;
+import com.bigbrightpaints.erp.modules.inventory.dto.FinishedGoodBatchRequest;
+import com.bigbrightpaints.erp.modules.inventory.dto.FinishedGoodRequest;
+import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
+import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
+import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
+import com.bigbrightpaints.erp.modules.production.domain.ProductionBrand;
+import com.bigbrightpaints.erp.modules.production.domain.ProductionBrandRepository;
+import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
+import com.bigbrightpaints.erp.modules.production.domain.ProductionProductRepository;
+import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
+import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
+import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
+import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderRepository;
+import com.bigbrightpaints.erp.modules.sales.dto.DispatchConfirmRequest;
+import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderItemRequest;
+import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderRequest;
+import com.bigbrightpaints.erp.modules.sales.service.SalesService;
+import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
+
+import java.math.BigDecimal;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
+
+    @Autowired private CompanyRepository companyRepository;
+    @Autowired private AccountRepository accountRepository;
+    @Autowired private DealerRepository dealerRepository;
+    @Autowired private ProductionBrandRepository productionBrandRepository;
+    @Autowired private ProductionProductRepository productionProductRepository;
+    @Autowired private FinishedGoodsService finishedGoodsService;
+    @Autowired private FinishedGoodRepository finishedGoodRepository;
+    @Autowired private SalesService salesService;
+    @Autowired private SalesOrderRepository salesOrderRepository;
+    @Autowired private PackagingSlipRepository packagingSlipRepository;
+    @Autowired private InvoiceRepository invoiceRepository;
+    @Autowired private AccountingService accountingService;
+    @Autowired private JournalEntryRepository journalEntryRepository;
+    @Autowired private PartnerSettlementAllocationRepository settlementAllocationRepository;
+    @Autowired private ReconciliationService reconciliationService;
+    @Autowired private JdbcTemplate jdbcTemplate;
+
+    @AfterEach
+    void clearCompanyContext() {
+        CompanyContextHolder.clear();
+    }
+
+    @Test
+    void dealerReceipt_isIdempotent_underConcurrency_andWritesAuditTrail() {
+        String companyCode = "CR-AR-" + shortId();
+        Company company = bootstrapCompany(companyCode, "UTC");
+        Map<String, Account> accounts = ensureCoreAccounts(company);
+        Dealer dealer = ensureDealer(company, accounts.get("AR"));
+
+        FinishedGood fg = ensureFinishedGoodWithCatalog(company, accounts, "FG-" + shortId(), BigDecimal.ZERO);
+        CompanyContextHolder.setCompanyId(companyCode);
+        finishedGoodsService.registerBatch(new FinishedGoodBatchRequest(
+                fg.getId(), "BATCH-1", new BigDecimal("20"), new BigDecimal("10.00"), Instant.now(), null));
+        CompanyContextHolder.clear();
+
+        SalesOrder order = createOrder(company, dealer, fg.getProductCode(), new BigDecimal("5"), new BigDecimal("15.50"));
+        PackagingSlip slip = packagingSlipRepository.findByCompanyAndSalesOrderId(company, order.getId()).orElseThrow();
+
+        DispatchConfirmRequest request = new DispatchConfirmRequest(
+                slip.getId(),
+                order.getId(),
+                slip.getLines().stream()
+                        .map(line -> new DispatchConfirmRequest.DispatchLine(
+                                line.getId(),
+                                null,
+                                line.getOrderedQuantity() != null ? line.getOrderedQuantity() : line.getQuantity(),
+                                null,
+                                null,
+                                null,
+                                null,
+                                null))
+                        .toList(),
+                "CODE-RED dispatch",
+                "codered",
+                false,
+                null,
+                null
+        );
+
+        CompanyContextHolder.setCompanyId(companyCode);
+        var dispatch = salesService.confirmDispatch(request);
+        CompanyContextHolder.clear();
+
+        Invoice invoice = invoiceRepository.findByCompanyAndId(company, dispatch.finalInvoiceId()).orElseThrow();
+        BigDecimal outstanding = invoice.getOutstandingAmount();
+        String referenceNumber = "DR-" + UUID.randomUUID();
+
+        DealerReceiptRequest receiptRequest = new DealerReceiptRequest(
+                dealer.getId(),
+                accounts.get("BANK").getId(),
+                outstanding,
+                referenceNumber,
+                "CODE-RED receipt",
+                List.of(new SettlementAllocationRequest(
+                        invoice.getId(),
+                        null,
+                        outstanding,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        null,
+                        "Apply to invoice"))
+        );
+
+        CoderedConcurrencyHarness.RunResult<JournalEntryDto> result = CoderedConcurrencyHarness.run(
+                2,
+                3,
+                Duration.ofSeconds(30),
+                threadIndex -> () -> {
+                    CompanyContextHolder.setCompanyId(companyCode);
+                    try {
+                        return accountingService.recordDealerReceipt(receiptRequest);
+                    } finally {
+                        CompanyContextHolder.clear();
+                    }
+                },
+                CoderedRetry::isRetryable
+        );
+
+        assertThat(result.outcomes())
+                .as("receipt calls succeed")
+                .allMatch(outcome -> outcome instanceof CoderedConcurrencyHarness.Outcome.Success<?>);
+
+        List<Long> journalIds = result.outcomes().stream()
+                .map(outcome -> ((CoderedConcurrencyHarness.Outcome.Success<JournalEntryDto>) outcome).value())
+                .map(JournalEntryDto::id)
+                .distinct()
+                .toList();
+        assertThat(journalIds).as("single receipt journal").hasSize(1);
+        Long journalId = journalIds.getFirst();
+
+        assertThat(settlementAllocationRepository.findByCompanyAndIdempotencyKey(company, referenceNumber))
+                .as("single settlement allocation")
+                .hasSize(1);
+
+        Invoice refreshed = invoiceRepository.findByCompanyAndId(company, invoice.getId()).orElseThrow();
+        assertThat(refreshed.getOutstandingAmount()).as("invoice settled")
+                .isEqualByComparingTo(BigDecimal.ZERO);
+
+        CoderedDbAssertions.assertBalancedJournal(journalEntryRepository, journalId);
+        CoderedDbAssertions.assertDealerLedgerEntriesLinkedToJournal(jdbcTemplate, company.getId(), journalId);
+        CoderedDbAssertions.assertAuditLogRecordedForJournal(jdbcTemplate, journalId);
+
+        CompanyContextHolder.setCompanyId(companyCode);
+        ReconciliationService.ReconciliationResult reconciliation = reconciliationService.reconcileArWithDealerLedger();
+        CompanyContextHolder.clear();
+        assertThat(reconciliation.isReconciled())
+                .as("ar reconciled (gl=%s ledger=%s variance=%s)",
+                        reconciliation.glArBalance(),
+                        reconciliation.dealerLedgerTotal(),
+                        reconciliation.variance())
+                .isTrue();
+
+        CoderedDbAssertions.assertNoNegativeInventory(jdbcTemplate, company.getId());
+    }
+
+    private Company bootstrapCompany(String companyCode, String timezone) {
+        dataSeeder.ensureCompany(companyCode, companyCode + " Ltd");
+        CompanyContextHolder.setCompanyId(companyCode);
+        Company company = companyRepository.findByCodeIgnoreCase(companyCode).orElseThrow();
+        company.setTimezone(timezone);
+        company.setBaseCurrency("INR");
+        companyRepository.save(company);
+        return company;
+    }
+
+    private Map<String, Account> ensureCoreAccounts(Company company) {
+        Account ar = ensureAccount(company, "AR", "Accounts Receivable", AccountType.ASSET);
+        Account inv = ensureAccount(company, "INV", "Inventory", AccountType.ASSET);
+        Account cogs = ensureAccount(company, "COGS", "COGS", AccountType.COGS);
+        Account rev = ensureAccount(company, "REV", "Revenue", AccountType.REVENUE);
+        Account disc = ensureAccount(company, "DISC", "Discounts", AccountType.EXPENSE);
+        Account gstOut = ensureAccount(company, "GST_OUT", "GST Output", AccountType.LIABILITY);
+        Account bank = ensureAccount(company, "BANK", "Bank", AccountType.ASSET);
+
+        updateCompanyDefaults(company, inv, cogs, rev, disc, gstOut);
+
+        return Map.of(
+                "AR", ar,
+                "INV", inv,
+                "COGS", cogs,
+                "REV", rev,
+                "DISC", disc,
+                "GST_OUT", gstOut,
+                "BANK", bank
+        );
+    }
+
+    private void updateCompanyDefaults(Company company,
+                                       Account inv,
+                                       Account cogs,
+                                       Account rev,
+                                       Account disc,
+                                       Account gstOut) {
+        if (company == null || company.getId() == null) {
+            return;
+        }
+        for (int attempt = 0; attempt < 2; attempt++) {
+            Company fresh = companyRepository.findById(company.getId()).orElseThrow();
+            boolean updated = false;
+            if (fresh.getDefaultInventoryAccountId() == null) {
+                fresh.setDefaultInventoryAccountId(inv.getId());
+                updated = true;
+            }
+            if (fresh.getDefaultCogsAccountId() == null) {
+                fresh.setDefaultCogsAccountId(cogs.getId());
+                updated = true;
+            }
+            if (fresh.getDefaultRevenueAccountId() == null) {
+                fresh.setDefaultRevenueAccountId(rev.getId());
+                updated = true;
+            }
+            if (fresh.getDefaultDiscountAccountId() == null) {
+                fresh.setDefaultDiscountAccountId(disc.getId());
+                updated = true;
+            }
+            if (fresh.getDefaultTaxAccountId() == null) {
+                fresh.setDefaultTaxAccountId(gstOut.getId());
+                updated = true;
+            }
+            if (fresh.getGstOutputTaxAccountId() == null) {
+                fresh.setGstOutputTaxAccountId(gstOut.getId());
+                updated = true;
+            }
+            if (fresh.getGstPayableAccountId() == null) {
+                fresh.setGstPayableAccountId(gstOut.getId());
+                updated = true;
+            }
+            if (!updated) {
+                return;
+            }
+            try {
+                companyRepository.save(fresh);
+                return;
+            } catch (ObjectOptimisticLockingFailureException ex) {
+                if (attempt == 1) {
+                    throw ex;
+                }
+            }
+        }
+    }
+
+    private Account ensureAccount(Company company, String code, String name, AccountType type) {
+        return accountRepository.findByCompanyAndCodeIgnoreCase(company, code)
+                .orElseGet(() -> {
+                    Account account = new Account();
+                    account.setCompany(company);
+                    account.setCode(code);
+                    account.setName(name);
+                    account.setType(type);
+                    account.setActive(true);
+                    account.setBalance(BigDecimal.ZERO);
+                    return accountRepository.save(account);
+                });
+    }
+
+    private Dealer ensureDealer(Company company, Account arAccount) {
+        return dealerRepository.findByCompanyAndCodeIgnoreCase(company, "CR-DEALER")
+                .map(existing -> {
+                    if (existing.getReceivableAccount() == null) {
+                        existing.setReceivableAccount(arAccount);
+                        return dealerRepository.save(existing);
+                    }
+                    return existing;
+                })
+                .orElseGet(() -> {
+                    Dealer dealer = new Dealer();
+                    dealer.setCompany(company);
+                    dealer.setCode("CR-DEALER");
+                    dealer.setName("Code-Red Dealer");
+                    dealer.setStatus("ACTIVE");
+                    dealer.setReceivableAccount(arAccount);
+                    return dealerRepository.save(dealer);
+                });
+    }
+
+    private FinishedGood ensureFinishedGoodWithCatalog(Company company,
+                                                       Map<String, Account> accounts,
+                                                       String sku,
+                                                       BigDecimal gstRate) {
+        FinishedGoodRequest req = new FinishedGoodRequest(
+                sku,
+                sku + " Name",
+                "UNIT",
+                "FIFO",
+                accounts.get("INV").getId(),
+                accounts.get("COGS").getId(),
+                accounts.get("REV").getId(),
+                accounts.get("DISC").getId(),
+                accounts.get("GST_OUT").getId()
+        );
+        FinishedGood fg = finishedGoodRepository.findByCompanyAndProductCode(company, sku)
+                .orElseGet(() -> {
+                    CompanyContextHolder.setCompanyId(company.getCode());
+                    var dto = finishedGoodsService.createFinishedGood(req);
+                    CompanyContextHolder.clear();
+                    return finishedGoodRepository.findById(dto.id()).orElseThrow();
+                });
+        ensureCatalogProduct(company, fg, gstRate);
+        return fg;
+    }
+
+    private void ensureCatalogProduct(Company company, FinishedGood fg, BigDecimal gstRate) {
+        ProductionBrand brand = productionBrandRepository.findByCompanyAndCodeIgnoreCase(company, "CR-BRAND")
+                .orElseGet(() -> {
+                    ProductionBrand b = new ProductionBrand();
+                    b.setCompany(company);
+                    b.setCode("CR-BRAND");
+                    b.setName("Code-Red Brand");
+                    return productionBrandRepository.save(b);
+                });
+        productionProductRepository.findByCompanyAndSkuCode(company, fg.getProductCode())
+                .orElseGet(() -> {
+                    ProductionProduct p = new ProductionProduct();
+                    p.setCompany(company);
+                    p.setBrand(brand);
+                    p.setSkuCode(fg.getProductCode());
+                    p.setProductName(fg.getName());
+                    p.setBasePrice(new BigDecimal("10.00"));
+                    p.setCategory("GENERAL");
+                    p.setSizeLabel("STD");
+                    p.setDefaultColour("NA");
+                    p.setMinDiscountPercent(BigDecimal.ZERO);
+                    p.setMinSellingPrice(BigDecimal.ZERO);
+                    p.setMetadata(new java.util.HashMap<>());
+                    p.setGstRate(gstRate);
+                    p.setUnitOfMeasure("UNIT");
+                    p.setActive(true);
+                    return productionProductRepository.save(p);
+                });
+    }
+
+    private SalesOrder createOrder(Company company, Dealer dealer, String productCode, BigDecimal quantity, BigDecimal unitPrice) {
+        CompanyContextHolder.setCompanyId(company.getCode());
+        BigDecimal totalAmount = unitPrice.multiply(quantity).setScale(2, java.math.RoundingMode.HALF_UP);
+        var orderDto = salesService.createOrder(new SalesOrderRequest(
+                dealer.getId(),
+                totalAmount,
+                "INR",
+                "CODE-RED order",
+                List.of(new SalesOrderItemRequest(productCode, "Item", quantity, unitPrice, BigDecimal.ZERO)),
+                "EXCLUSIVE",
+                null,
+                null,
+                UUID.randomUUID().toString()
+        ));
+        CompanyContextHolder.clear();
+        return salesOrderRepository.findById(orderDto.id()).orElseThrow();
+    }
+
+    private static String shortId() {
+        return UUID.randomUUID().toString().substring(0, 8);
+    }
+}

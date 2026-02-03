@@ -6,7 +6,8 @@ with the current CI entrypoint and existing accounting services.
 
 ## Scope and current CI entrypoint (static review)
 - CI runs `mvn -B -ntp verify` from `erp-domain` and publishes Surefire + JaCoCo
-  artifacts for debugging. See `.github/workflows/ci.yml`.
+  artifacts for debugging (see `.github/workflows/ci.yml`). Local gate: `bash scripts/verify_local.sh` (must stay in sync
+  with CI).
 
 ## CI failure investigation checklist (Codex Cloud)
 1. Locate the failing tests

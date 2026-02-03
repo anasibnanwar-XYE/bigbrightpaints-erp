@@ -201,6 +201,11 @@ public class CompanyEntityLookup {
                 .orElseThrow(() -> new IllegalArgumentException("Payroll run not found: id=" + payrollRunId));
     }
 
+    public PayrollRun lockPayrollRun(Company company, Long payrollRunId) {
+        return payrollRunRepository.lockByCompanyAndId(company, payrollRunId)
+                .orElseThrow(() -> new IllegalArgumentException("Payroll run not found: id=" + payrollRunId));
+    }
+
     public RawMaterialPurchase requireRawMaterialPurchase(Company company, Long purchaseId) {
         return rawMaterialPurchaseRepository.findByCompanyAndId(company, purchaseId)
                 .orElseThrow(() -> new IllegalArgumentException("Raw material purchase not found: id=" + purchaseId));
