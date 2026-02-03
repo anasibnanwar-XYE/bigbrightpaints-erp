@@ -44,8 +44,9 @@ Purpose: a single, concrete list of **P0** items that block a safe enterprise de
 - Sales COGS posting must be single-truth:
   - COGS/Inventory relief must only be posted by dispatch-confirm (per-slip reference), not by any alternate “order fulfillment” helper.
 - Sales AR/Revenue posting must be single-truth:
-  - Sales journals must dedupe across the canonical `INV-<orderNumber>` reference and any custom invoice-number reference.
-  - Dispatch confirm must not create a second AR/Revenue journal if an `INV-<orderNumber>` journal already exists (even if not linked on the order).
+  - Sales journals must dedupe across the canonical dispatch reference (`INV-<orderNumber>` for single-slip, `INV-<orderNumber>-<slipNumber>` for multi-slip) and any custom invoice-number reference.
+  - Dispatch confirm must not create a second AR/Revenue journal if the canonical dispatch reference already exists (even if not linked on the order).
+  - Status (2026-02-03): ✅ canonical sales journal reference enforced with invoice-number alias mapping + mismatch-safe idempotency; tests: `CriticalAccountingAxesIT.salesJournalIdempotentAcrossReferenceVariants`, `CriticalAccountingAxesIT.salesJournalIdempotencyRejectsMismatchedAliasPayload`, `CriticalAccountingAxesIT.salesJournalConcurrentDedupesAcrossReferences`.
 - Orchestrator “non-final” status writes must still be guarded:
   - `PROCESSING/CANCELLED/READY_TO_SHIP` updates must respect the sales state machine and must not be free-form status setters.
 - Mutating/nondeterministic “finder” endpoints must not exist (read-only GET must have no side effects and must fail-closed on ambiguity).

@@ -25,6 +25,8 @@ import com.bigbrightpaints.erp.modules.sales.util.SalesOrderReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.event.EventListener;
+import org.springframework.dao.CannotAcquireLockException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Retryable;
@@ -168,11 +170,13 @@ public class AccountingFacade {
      * @param revenueLines     map of revenue account ID to amount
      * @param taxLines         map of tax account ID to amount
      * @param totalAmount      the total receivable amount
-     * @param referenceNumber  optional custom reference (null = auto-generated)
+     * @param referenceNumber  optional alias reference (mapped to canonical INV-<orderNumber>)
      * @return the created journal entry DTO
      */
     @Transactional(isolation = Isolation.REPEATABLE_READ)
-    @Retryable(value = OptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 100))
+    @Retryable(value = {OptimisticLockingFailureException.class, CannotAcquireLockException.class},
+            maxAttempts = 3,
+            backoff = @Backoff(delay = 100))
     public JournalEntryDto postSalesJournal(Long dealerId,
                                             String orderNumber,
                                             LocalDate entryDate,
@@ -195,11 +199,13 @@ public class AccountingFacade {
      * @param taxLines         map of tax account ID to amount
      * @param discountLines    map of discount account ID to amount (debit)
      * @param totalAmount      the total receivable amount
-     * @param referenceNumber  optional custom reference (null = auto-generated)
+     * @param referenceNumber  optional alias reference (mapped to canonical INV-<orderNumber>)
      * @return the created journal entry DTO
      */
     @Transactional(isolation = Isolation.REPEATABLE_READ)
-    @Retryable(value = OptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 100))
+    @Retryable(value = {OptimisticLockingFailureException.class, CannotAcquireLockException.class},
+            maxAttempts = 3,
+            backoff = @Backoff(delay = 100))
     public JournalEntryDto postSalesJournal(Long dealerId,
                                             String orderNumber,
                                             LocalDate entryDate,
@@ -225,20 +231,15 @@ public class AccountingFacade {
         }
 
         String canonicalReference = SalesOrderReference.invoiceReference(orderNumber);
-        String reference = StringUtils.hasText(referenceNumber)
+        String aliasReference = StringUtils.hasText(referenceNumber)
                 ? referenceNumber.trim()
-                : canonicalReference;
-
-        // Check for duplicate (canonical reference first, then legacy SALE- prefix)
-        Optional<JournalEntry> existing = journalReferenceResolver.findExistingEntry(company, reference);
-        if (existing.isEmpty() && !StringUtils.hasText(referenceNumber)) {
-            existing = journalReferenceResolver.findExistingEntry(company, canonicalReference);
+                : null;
+        if (StringUtils.hasText(aliasReference) && aliasReference.equalsIgnoreCase(canonicalReference)) {
+            aliasReference = null;
         }
-        if (existing.isPresent()) {
-            log.info("Sales journal already exists for reference: {}", reference);
-            JournalEntry entry = existing.get();
-            ensureSalesJournalReferenceMapping(company, entry, canonicalReference);
-            return toSimpleDto(entry);
+        Optional<JournalEntry> existing = journalReferenceResolver.findExistingEntry(company, canonicalReference);
+        if (existing.isEmpty() && StringUtils.hasText(aliasReference)) {
+            existing = journalReferenceResolver.findExistingEntry(company, aliasReference);
         }
 
         // Build journal lines
@@ -308,9 +309,10 @@ public class AccountingFacade {
         }
 
         LocalDate postingDate = entryDate != null ? entryDate : companyClock.today(company);
+        String requestReference = existing.map(JournalEntry::getReferenceNumber).orElse(canonicalReference);
 
         JournalEntryRequest request = new JournalEntryRequest(
-                reference,
+                requestReference,
                 postingDate,
                 resolvedMemo,
                 dealer.getId(),
@@ -318,13 +320,19 @@ public class AccountingFacade {
                 Boolean.FALSE,
                 lines);
 
+        if (existing.isPresent()) {
+            JournalEntryDto idempotent = accountingService.createJournalEntry(request);
+            ensureSalesJournalReferenceMapping(company, existing.get(), canonicalReference, aliasReference);
+            return idempotent;
+        }
+
         log.info("Posting sales journal: reference={}, dealer={}, amount={}",
-                reference, dealer.getName(), totalAmount);
+                requestReference, dealer.getName(), totalAmount);
 
         JournalEntryDto created = accountingService.createJournalEntry(request);
         if (created != null && created.id() != null) {
             JournalEntry entry = companyEntityLookup.requireJournalEntry(company, created.id());
-            ensureSalesJournalReferenceMapping(company, entry, canonicalReference);
+            ensureSalesJournalReferenceMapping(company, entry, canonicalReference, aliasReference);
         }
         return created;
     }
@@ -1476,24 +1484,45 @@ public class AccountingFacade {
 
     // ===== Helper Methods =====
 
-    private void ensureSalesJournalReferenceMapping(Company company, JournalEntry entry, String canonicalReference) {
+    private void ensureSalesJournalReferenceMapping(Company company,
+                                                    JournalEntry entry,
+                                                    String canonicalReference,
+                                                    String aliasReference) {
         if (company == null || entry == null || !StringUtils.hasText(canonicalReference)) {
             return;
         }
-        String legacyReference = entry.getReferenceNumber();
-        if (!StringUtils.hasText(legacyReference) || legacyReference.equalsIgnoreCase(canonicalReference)) {
+        String canonical = canonicalReference.trim();
+        if (StringUtils.hasText(aliasReference) && !aliasReference.equalsIgnoreCase(canonical)) {
+            upsertJournalReferenceMapping(company, aliasReference, canonical, entry);
+        }
+        String entryReference = entry.getReferenceNumber();
+        if (StringUtils.hasText(entryReference) && !entryReference.equalsIgnoreCase(canonical)) {
+            upsertJournalReferenceMapping(company, entryReference, canonical, entry);
+        }
+    }
+
+    private void upsertJournalReferenceMapping(Company company,
+                                               String legacyReference,
+                                               String canonicalReference,
+                                               JournalEntry entry) {
+        if (company == null || entry == null || !StringUtils.hasText(legacyReference) || !StringUtils.hasText(canonicalReference)) {
             return;
         }
-        if (journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(company, legacyReference).isPresent()) {
+        String normalizedLegacy = legacyReference.trim();
+        if (journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(company, normalizedLegacy).isPresent()) {
             return;
         }
         JournalReferenceMapping mapping = new JournalReferenceMapping();
         mapping.setCompany(company);
-        mapping.setLegacyReference(legacyReference.trim());
+        mapping.setLegacyReference(normalizedLegacy);
         mapping.setCanonicalReference(canonicalReference.trim());
         mapping.setEntityType("JOURNAL_ENTRY");
         mapping.setEntityId(entry.getId());
-        journalReferenceMappingRepository.save(mapping);
+        try {
+            journalReferenceMappingRepository.save(mapping);
+        } catch (DataIntegrityViolationException ex) {
+            // Ignore concurrent insert attempts for the same legacy reference
+        }
     }
 
     private void ensurePurchaseReferenceMapping(Company company, String baseReference, JournalEntry entry) {

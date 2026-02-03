@@ -2002,6 +2002,7 @@ public class SalesService {
         if (arJournalEntryId == null && preexistingJournalId != null) {
             arJournalEntryId = preexistingJournalId;
         }
+        boolean singleSlipForOrder = hasSingleSlipForOrder(company, order);
         List<DispatchConfirmResponse.AccountPostingDto> arPostings = new ArrayList<>();
         if (arJournalEntryId == null && totalAmount.compareTo(BigDecimal.ZERO) > 0) {
             if (revenueByAccount.isEmpty()) {
@@ -2019,9 +2020,10 @@ public class SalesService {
             for (var entry : taxByAccount.entrySet()) {
                 arPostings.add(toPosting(company, entry.getKey(), "Tax for dispatch " + slipNumber, BigDecimal.ZERO, entry.getValue()));
             }
+            String salesJournalOrderKey = resolveSalesJournalOrderKey(order, slipNumber, singleSlipForOrder);
             var arEntry = accountingFacade.postSalesJournal(
                     dealer.getId(),
-                    order.getOrderNumber(),
+                    salesJournalOrderKey,
                     dispatchDate,
                     "Dispatch " + slipNumber,
                     revenueByAccount,
@@ -2072,7 +2074,7 @@ public class SalesService {
         }
         packagingSlipRepository.save(slip);
 
-        if (arJournalEntryId != null && order.getSalesJournalEntryId() == null) {
+        if (arJournalEntryId != null && order.getSalesJournalEntryId() == null && singleSlipForOrder) {
             order.setSalesJournalEntryId(arJournalEntryId);
         }
         if (cogsJournalId != null && order.getCogsJournalEntryId() == null) {
@@ -2195,6 +2197,20 @@ public class SalesService {
 
     private String buildCogsReference(String slipNumber) {
         return "COGS-" + normalizeReferenceToken(slipNumber);
+    }
+
+    private String resolveSalesJournalOrderKey(SalesOrder order, String slipNumber, boolean singleSlip) {
+        String base = order != null ? order.getOrderNumber() : null;
+        if (!StringUtils.hasText(base) && order != null && order.getId() != null) {
+            base = order.getId().toString();
+        }
+        if (!StringUtils.hasText(base)) {
+            base = "UNKNOWN";
+        }
+        if (!singleSlip && StringUtils.hasText(slipNumber)) {
+            return base + "-" + slipNumber.trim();
+        }
+        return base;
     }
 
     private String normalizeReferenceToken(String value) {

@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.e2e.accounting;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
@@ -20,6 +21,7 @@ import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryReversalReques
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyAccountingSettingsService;
+import com.bigbrightpaints.erp.modules.accounting.service.JournalReferenceResolver;
 import com.bigbrightpaints.erp.modules.accounting.service.TaxService;
 import com.bigbrightpaints.erp.modules.accounting.service.ReconciliationService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -57,6 +59,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -110,6 +113,7 @@ class CriticalAccountingAxesIT extends AbstractIntegrationTest {
     @Autowired private CompanyAccountingSettingsService companyAccountingSettingsService;
     @Autowired private ReconciliationService reconciliationService;
     @Autowired private ReportService reportService;
+    @Autowired private JournalReferenceResolver journalReferenceResolver;
     @Autowired private TestRestTemplate restTemplate;
 
     private Company company;
@@ -397,6 +401,7 @@ class CriticalAccountingAxesIT extends AbstractIntegrationTest {
 
         assertThat(second.id()).isEqualTo(first.id());
 
+        String aliasReference = "INV-" + UUID.randomUUID();
         JournalEntryDto third = accountingFacade.postSalesJournal(
                 dealer.getId(),
                 orderNumber,
@@ -405,9 +410,127 @@ class CriticalAccountingAxesIT extends AbstractIntegrationTest {
                 Map.of(accounts.get("REV").getId(), base),
                 Map.of(accounts.get("GST_OUT").getId(), tax),
                 total,
-                "INV-" + UUID.randomUUID());
+                aliasReference);
 
-        assertThat(third.id()).isNotEqualTo(first.id());
+        assertThat(third.id()).isEqualTo(first.id());
+        assertThat(journalReferenceResolver.findExistingEntry(company, aliasReference))
+                .isPresent()
+                .get()
+                .extracting(JournalEntry::getId)
+                .isEqualTo(first.id());
+    }
+
+    @Test
+    @DisplayName("Sales journal idempotency rejects mismatched payloads across reference aliases")
+    @Transactional
+    void salesJournalIdempotencyRejectsMismatchedAliasPayload() {
+        LocalDate today = LocalDate.now();
+        String orderNumber = "SO-IDEMP-MISMATCH-" + UUID.randomUUID();
+        BigDecimal base = new BigDecimal("250.00");
+        BigDecimal tax = new BigDecimal("45.00");
+        BigDecimal total = base.add(tax);
+
+        accountingFacade.postSalesJournal(
+                dealer.getId(),
+                orderNumber,
+                today,
+                "Idempotent sale",
+                Map.of(accounts.get("REV").getId(), base),
+                Map.of(accounts.get("GST_OUT").getId(), tax),
+                total,
+                null);
+
+        BigDecimal changedBase = new BigDecimal("260.00");
+        BigDecimal changedTax = new BigDecimal("40.00");
+        BigDecimal changedTotal = changedBase.add(changedTax);
+        String aliasReference = "INV-" + UUID.randomUUID();
+
+        assertThatThrownBy(() -> accountingFacade.postSalesJournal(
+                dealer.getId(),
+                orderNumber,
+                today,
+                "Idempotent sale",
+                Map.of(accounts.get("REV").getId(), changedBase),
+                Map.of(accounts.get("GST_OUT").getId(), changedTax),
+                changedTotal,
+                aliasReference))
+                .isInstanceOf(ApplicationException.class)
+                .satisfies(ex -> assertThat(((ApplicationException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.BUSINESS_DUPLICATE_ENTRY));
+    }
+
+    @Test
+    @DisplayName("Concurrent sales journal posts converge on one canonical entry")
+    void salesJournalConcurrentDedupesAcrossReferences() {
+        LocalDate today = LocalDate.now();
+        String orderNumber = "SO-IDEMP-CONCURRENT-" + UUID.randomUUID();
+        BigDecimal base = new BigDecimal("125.00");
+        BigDecimal tax = new BigDecimal("22.50");
+        BigDecimal total = base.add(tax);
+        String aliasReference = "INV-" + UUID.randomUUID();
+
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        CompletableFuture<JournalEntryDto> canonicalFuture = CompletableFuture.supplyAsync(() -> {
+            CompanyContextHolder.setCompanyId(COMPANY_CODE);
+            try {
+                return postSalesJournalWithRetry(orderNumber, today, base, tax, total, null);
+            } finally {
+                CompanyContextHolder.clear();
+            }
+        }, pool);
+        CompletableFuture<JournalEntryDto> aliasFuture = CompletableFuture.supplyAsync(() -> {
+            CompanyContextHolder.setCompanyId(COMPANY_CODE);
+            try {
+                return postSalesJournalWithRetry(orderNumber, today, base, tax, total, aliasReference);
+            } finally {
+                CompanyContextHolder.clear();
+            }
+        }, pool);
+
+        JournalEntryDto canonical = canonicalFuture.join();
+        JournalEntryDto alias = aliasFuture.join();
+        pool.shutdown();
+
+        assertThat(canonical.id()).isEqualTo(alias.id());
+        String canonicalReference = SalesOrderReference.invoiceReference(orderNumber);
+        assertThat(journalEntryRepository.findByCompanyAndReferenceNumber(company, canonicalReference))
+                .isPresent()
+                .get()
+                .extracting(JournalEntry::getId)
+                .isEqualTo(canonical.id());
+    }
+
+    private JournalEntryDto postSalesJournalWithRetry(String orderNumber,
+                                                      LocalDate today,
+                                                      BigDecimal base,
+                                                      BigDecimal tax,
+                                                      BigDecimal total,
+                                                      String reference) {
+        int attempts = 0;
+        while (true) {
+            try {
+                return accountingFacade.postSalesJournal(
+                        dealer.getId(),
+                        orderNumber,
+                        today,
+                        "Concurrent sale",
+                        Map.of(accounts.get("REV").getId(), base),
+                        Map.of(accounts.get("GST_OUT").getId(), tax),
+                        total,
+                        reference);
+            } catch (CannotAcquireLockException ex) {
+                attempts++;
+                if (attempts >= 5) {
+                    throw ex;
+                }
+                try {
+                    Thread.sleep(50L * attempts);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw ex;
+                }
+            }
+        }
     }
 
     @Test

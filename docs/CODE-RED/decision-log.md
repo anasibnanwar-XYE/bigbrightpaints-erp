@@ -1,5 +1,21 @@
 # Decision Log (CODE-RED)
 
+## 2026-02-03 - Sales Journal Canonical Reference + Alias Mapping
+Decision:
+- Dispatch-truth AR/Revenue journals use `INV-<orderNumber>` when a single slip exists, and
+  `INV-<orderNumber>-<slipNumber>` once multiple slips exist, preserving slip-level idempotency on backorders.
+- Invoice-number references are treated as aliases and mapped via `journal_reference_mappings`.
+- Idempotency is mismatch-safe across canonical/alias references (replay with different payload fails closed).
+
+Rationale:
+- Prevents duplicate AR/Revenue journals across reference namespaces while avoiding collisions across multiple slips.
+- Ensures a single, auditable source of financial truth per dispatch slip.
+
+Enforcement:
+- `SalesService.confirmDispatch(...)` derives a slip-scoped order key and passes it to `AccountingFacade.postSalesJournal(...)`.
+- `AccountingFacade.postSalesJournal(...)` canonicalizes the reference and maps invoice aliases.
+- CODE-RED tests enforce idempotency across reference variants.
+
 ## 2026-01-27 - Dispatch-Truth Invoicing + Posting
 Decision:
 - Canonical path for shipping/invoicing/posting is `SalesService.confirmDispatch(...)`.

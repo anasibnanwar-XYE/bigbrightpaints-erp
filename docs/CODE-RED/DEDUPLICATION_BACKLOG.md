@@ -32,12 +32,12 @@ Reference docs:
   - Additional P0 guard: forbid any alternate COGS posting path that can double-post with a different reference namespace.
     - Risk: `SalesFulfillmentService` can post COGS by order number, while dispatch confirm posts COGS by slip number.
     - Action: remove/prod-gate non-canonical COGS posting and standardize COGS idempotency reference to per-slip (`COGS-<slipNumber>`).
-  - Additional P0 guard: forbid AR/Revenue double-posting when a canonical sales journal already exists.
-    - Risk: `AccountingFacade.postSalesJournal(...)` only checks the canonical `INV-<orderNumber>` reference when a custom `referenceNumber`
-      is NOT provided; dispatch confirm may provide `invoiceNumber` and unintentionally create a second AR/Revenue journal even if `INV-<orderNumber>`
-      already exists (but isn’t linked on the order).
-    - Action: sales journal dedupe must check both the requested reference and the canonical `INV-<orderNumber>` reference and then ensure
+  - Additional P0 guard: forbid AR/Revenue double-posting when a canonical dispatch sales journal already exists.
+    - Risk: dispatch confirm may provide `invoiceNumber` and unintentionally create a second AR/Revenue journal even if the canonical dispatch
+      reference already exists (`INV-<orderNumber>` for single-slip, `INV-<orderNumber>-<slipNumber>` for multi-slip).
+    - Action: sales journal dedupe must check both the requested reference and the canonical dispatch reference and then ensure
       `journal_reference_mappings` link the canonical reference to the actual stored reference.
+    - Status (2026-02-03): ✅ sales journals canonicalize with invoice-number alias mapping + mismatch-safe idempotency; tests: `CriticalAccountingAxesIT` sales journal idempotency coverage.
   - Additional P0 guard: idempotency must be mismatch-safe (no silent divergence).
     - Rule: if a replay hits an existing reference but payload differs materially (amount/accounts), fail closed with a conflict instead of returning
       an incompatible existing journal/document.

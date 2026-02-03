@@ -7,6 +7,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.DealerLedgerEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.DealerLedgerRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLine;
+import com.bigbrightpaints.erp.modules.accounting.service.JournalReferenceResolver;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
@@ -68,6 +69,7 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
     @Autowired private InventoryMovementRepository inventoryMovementRepository;
     @Autowired private InvoiceRepository invoiceRepository;
     @Autowired private JournalEntryRepository journalEntryRepository;
+    @Autowired private JournalReferenceResolver journalReferenceResolver;
     @Autowired private InventoryReservationRepository inventoryReservationRepository;
     @Autowired private DealerLedgerRepository dealerLedgerRepository;
     @Autowired private AccountRepository accountRepository;
@@ -462,7 +464,7 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
         assertThat(dispatchMovementsAfter).isEqualTo(dispatchMovementsBefore);
 
         String invoiceNumber = invoiceRepository.findByCompanyAndId(company, invoiceId).orElseThrow().getInvoiceNumber();
-        assertThat(journalEntryRepository.findByCompanyAndReferenceNumber(company, invoiceNumber))
+        assertThat(journalReferenceResolver.findExistingEntry(company, invoiceNumber))
                 .isPresent()
                 .get()
                 .extracting(entry -> entry.getId())
