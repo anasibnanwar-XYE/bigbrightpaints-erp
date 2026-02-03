@@ -49,6 +49,7 @@ Purpose: a single, concrete list of **P0** items that block a safe enterprise de
 - Orchestrator “non-final” status writes must still be guarded:
   - `PROCESSING/CANCELLED/READY_TO_SHIP` updates must respect the sales state machine and must not be free-form status setters.
 - Mutating/nondeterministic “finder” endpoints must not exist (read-only GET must have no side effects and must fail-closed on ambiguity).
+  - Status (2026-02-03): ✅ `/api/v1/dispatch/order/{orderId}` is now read-only + fails closed on ambiguity; tests: `CR_DispatchOrderLookupReadOnlyIT` (other finder endpoints still under review).
 - Packaging slip status updates must enforce a real state machine (no free-form statuses that skip reservation/inventory unwind).
 
 ## P0 - Idempotency / Deterministic References

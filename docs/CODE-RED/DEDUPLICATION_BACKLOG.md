@@ -63,6 +63,7 @@ Reference docs:
   - Duplicates/anti-pattern: `/api/v1/dispatch/order/{orderId}` acts like a “finder” but can create slips/reservations and selects “most recent”
   - Canonical: explicit slipId operations; reservation is a write event, not a GET side-effect
   - Action: make GET read-only and fail-closed on ambiguity; add an admin-only repair endpoint if needed.
+  - Status (2026-02-03): ✅ GET now read-only + fails closed on multi-slip; tests: `CR_DispatchOrderLookupReadOnlyIT` (admin-only repair endpoint TBD).
 - Payroll entrypoints
   - Duplicates: `/api/v1/hr/payroll-runs` vs `/api/v1/payroll/*` and accounting payroll payments endpoints
   - Canonical: HR payroll run workflow + accounting posting/payment via `AccountingFacade`
