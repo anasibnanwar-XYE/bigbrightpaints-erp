@@ -48,6 +48,12 @@ public class InventoryAdjustment extends VersionedEntity {
     @Column(name = "total_amount", nullable = false)
     private BigDecimal totalAmount = BigDecimal.ZERO;
 
+    @Column(name = "idempotency_key", length = 128)
+    private String idempotencyKey;
+
+    @Column(name = "idempotency_hash", length = 64)
+    private String idempotencyHash;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -132,6 +138,22 @@ public class InventoryAdjustment extends VersionedEntity {
 
     public void setJournalEntryId(Long journalEntryId) {
         this.journalEntryId = journalEntryId;
+    }
+
+    public String getIdempotencyKey() {
+        return idempotencyKey;
+    }
+
+    public void setIdempotencyKey(String idempotencyKey) {
+        this.idempotencyKey = idempotencyKey;
+    }
+
+    public String getIdempotencyHash() {
+        return idempotencyHash;
+    }
+
+    public void setIdempotencyHash(String idempotencyHash) {
+        this.idempotencyHash = idempotencyHash;
     }
 
     public BigDecimal getTotalAmount() {

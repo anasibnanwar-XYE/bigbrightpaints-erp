@@ -7,6 +7,7 @@ import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatch;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryAdjustment;
@@ -15,16 +16,18 @@ import com.bigbrightpaints.erp.modules.inventory.domain.InventoryAdjustmentRepos
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryAdjustmentType;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryMovement;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryMovementRepository;
-import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatch;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatchRepository;
 import com.bigbrightpaints.erp.modules.inventory.dto.InventoryAdjustmentDto;
 import com.bigbrightpaints.erp.modules.inventory.dto.InventoryAdjustmentLineDto;
 import com.bigbrightpaints.erp.modules.inventory.dto.InventoryAdjustmentRequest;
 import com.bigbrightpaints.erp.modules.accounting.service.ReferenceNumberService;
+import org.apache.commons.codec.digest.DigestUtils;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Retryable;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -49,6 +52,7 @@ public class InventoryAdjustmentService {
     private final ReferenceNumberService referenceNumberService;
     private final CompanyClock companyClock;
     private final FinishedGoodsService finishedGoodsService;
+    private final TransactionTemplate transactionTemplate;
 
     public InventoryAdjustmentService(CompanyContextService companyContextService,
                                       FinishedGoodRepository finishedGoodRepository,
@@ -58,7 +62,8 @@ public class InventoryAdjustmentService {
                                       AccountingFacade accountingFacade,
                                       ReferenceNumberService referenceNumberService,
                                       CompanyClock companyClock,
-                                      FinishedGoodsService finishedGoodsService) {
+                                      FinishedGoodsService finishedGoodsService,
+                                      PlatformTransactionManager transactionManager) {
         this.companyContextService = companyContextService;
         this.finishedGoodRepository = finishedGoodRepository;
         this.adjustmentRepository = adjustmentRepository;
@@ -68,6 +73,7 @@ public class InventoryAdjustmentService {
         this.referenceNumberService = referenceNumberService;
         this.companyClock = companyClock;
         this.finishedGoodsService = finishedGoodsService;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
     public List<InventoryAdjustmentDto> listAdjustments() {
@@ -77,8 +83,8 @@ public class InventoryAdjustmentService {
                 .toList();
     }
 
-    @Transactional
-    @Retryable(value = OptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 100))
+    @Retryable(value = {OptimisticLockingFailureException.class, DataIntegrityViolationException.class},
+            maxAttempts = 3, backoff = @Backoff(delay = 100))
     public InventoryAdjustmentDto createAdjustment(InventoryAdjustmentRequest request) {
         if (request == null || request.lines() == null || request.lines().isEmpty()) {
             throw new IllegalArgumentException("Adjustment lines are required");
@@ -87,6 +93,41 @@ public class InventoryAdjustmentService {
                 .sorted(Comparator.comparing(InventoryAdjustmentRequest.LineRequest::finishedGoodId))
                 .toList();
         Company company = companyContextService.requireCurrentCompany();
+        String idempotencyKey = normalizeIdempotencyKey(request.idempotencyKey());
+        if (!StringUtils.hasText(idempotencyKey)) {
+            throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
+                    "Idempotency key is required for inventory adjustments");
+        }
+        LocalDate resolvedAdjustmentDate = request.adjustmentDate() != null
+                ? request.adjustmentDate()
+                : resolveCurrentDate(company);
+        String requestSignature = buildAdjustmentSignature(request, sortedLines, resolvedAdjustmentDate);
+        InventoryAdjustment existing = adjustmentRepository.findWithLinesByCompanyAndIdempotencyKey(company, idempotencyKey)
+                .orElse(null);
+        if (existing != null) {
+            assertIdempotencyMatch(existing, requestSignature, idempotencyKey);
+            return toDto(existing);
+        }
+        try {
+            return transactionTemplate.execute(status ->
+                    createAdjustmentInternal(request, sortedLines, company, resolvedAdjustmentDate, idempotencyKey, requestSignature));
+        } catch (RuntimeException ex) {
+            if (!isDataIntegrityViolation(ex)) {
+                throw ex;
+            }
+            InventoryAdjustment concurrent = adjustmentRepository.findWithLinesByCompanyAndIdempotencyKey(company, idempotencyKey)
+                    .orElseThrow(() -> ex);
+            assertIdempotencyMatch(concurrent, requestSignature, idempotencyKey);
+            return toDto(concurrent);
+        }
+    }
+
+    private InventoryAdjustmentDto createAdjustmentInternal(InventoryAdjustmentRequest request,
+                                                            List<InventoryAdjustmentRequest.LineRequest> sortedLines,
+                                                            Company company,
+                                                            LocalDate resolvedAdjustmentDate,
+                                                            String idempotencyKey,
+                                                            String requestSignature) {
         List<Long> finishedGoodIds = sortedLines.stream()
                 .map(InventoryAdjustmentRequest.LineRequest::finishedGoodId)
                 .toList();
@@ -106,10 +147,12 @@ public class InventoryAdjustmentService {
         InventoryAdjustment adjustment = new InventoryAdjustment();
         adjustment.setCompany(company);
         adjustment.setReferenceNumber(resolveReference(company, type));
-        adjustment.setAdjustmentDate(request.adjustmentDate() != null ? request.adjustmentDate() : resolveCurrentDate(company));
+        adjustment.setAdjustmentDate(resolvedAdjustmentDate);
         adjustment.setType(type);
         adjustment.setReason(request.reason());
         adjustment.setCreatedBy(resolveCurrentUser());
+        adjustment.setIdempotencyKey(idempotencyKey);
+        adjustment.setIdempotencyHash(requestSignature);
         Map<Long, BigDecimal> inventoryCredits = new HashMap<>();
         BigDecimal totalAmount = BigDecimal.ZERO;
         for (InventoryAdjustmentRequest.LineRequest lineRequest : sortedLines) {
@@ -141,7 +184,8 @@ public class InventoryAdjustmentService {
                 Map.copyOf(inventoryCredits),
                 false,
                 adminOverride,
-                memo);
+                memo,
+                savedDraft.getAdjustmentDate());
         if (journalEntry == null) {
             throw new IllegalStateException("Inventory adjustment journal was not created");
         }
@@ -262,6 +306,66 @@ public class InventoryAdjustmentService {
 
     private BigDecimal safeQuantity(BigDecimal value) {
         return value != null ? value : BigDecimal.ZERO;
+    }
+
+    private String normalizeIdempotencyKey(String raw) {
+        return StringUtils.hasText(raw) ? raw.trim() : null;
+    }
+
+    private void assertIdempotencyMatch(InventoryAdjustment adjustment,
+                                        String expectedSignature,
+                                        String idempotencyKey) {
+        String storedSignature = adjustment.getIdempotencyHash();
+        if (StringUtils.hasText(storedSignature)) {
+            if (!storedSignature.equals(expectedSignature)) {
+                throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
+                        "Idempotency key already used with different payload")
+                        .withDetail("idempotencyKey", idempotencyKey);
+            }
+            return;
+        }
+        adjustment.setIdempotencyHash(expectedSignature);
+        adjustmentRepository.save(adjustment);
+    }
+
+    private String buildAdjustmentSignature(InventoryAdjustmentRequest request,
+                                            List<InventoryAdjustmentRequest.LineRequest> sortedLines,
+                                            LocalDate resolvedDate) {
+        StringBuilder signature = new StringBuilder();
+        signature.append(resolvedDate != null ? resolvedDate : "")
+                .append('|').append(request.type() != null ? request.type().name() : "")
+                .append('|').append(request.adjustmentAccountId() != null ? request.adjustmentAccountId() : "")
+                .append('|').append(normalizeToken(request.reason()))
+                .append('|').append(Boolean.TRUE.equals(request.adminOverride()));
+        for (InventoryAdjustmentRequest.LineRequest line : sortedLines) {
+            signature.append('|').append(line.finishedGoodId() != null ? line.finishedGoodId() : "")
+                    .append(':').append(normalizeAmount(line.quantity()))
+                    .append(':').append(normalizeAmount(line.unitCost()))
+                    .append(':').append(normalizeToken(line.note()));
+        }
+        return DigestUtils.sha256Hex(signature.toString());
+    }
+
+    private String normalizeToken(String value) {
+        return value != null ? value.trim() : "";
+    }
+
+    private String normalizeAmount(BigDecimal value) {
+        if (value == null) {
+            return "";
+        }
+        return value.stripTrailingZeros().toPlainString();
+    }
+
+    private boolean isDataIntegrityViolation(Throwable error) {
+        Throwable cursor = error;
+        while (cursor != null) {
+            if (cursor instanceof DataIntegrityViolationException) {
+                return true;
+            }
+            cursor = cursor.getCause();
+        }
+        return false;
     }
 
     private String memoFor(InventoryAdjustment adjustment, String reason) {

@@ -33,6 +33,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -221,6 +222,7 @@ public class InventoryGlReconciliationIT extends AbstractIntegrationTest {
                 variance.getId(),
                 "Damage write-off",
                 true,
+                "INV-ADJ-" + UUID.randomUUID(),
                 List.of(new InventoryAdjustmentRequest.LineRequest(
                         finishedGood.getId(),
                         new BigDecimal("5"),

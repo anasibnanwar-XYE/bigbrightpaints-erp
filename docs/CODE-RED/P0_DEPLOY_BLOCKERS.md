@@ -69,6 +69,9 @@ Purpose: a single, concrete list of **P0** items that block a safe enterprise de
   - Bulk pack reference must be deterministic (no `System.currentTimeMillis()`); retries must not double-consume packaging.
   - Packing record retries must not double-consume packaging or double-post journals.
   - Opening stock import must have an import idempotency key; retry must not create new batches/movements/journals.
+- Inventory adjustments must be retry-safe and use the adjustment date for posting:
+  - `Idempotency-Key` required; mismatch-safe on replay; journal entry date must equal `adjustmentDate`.
+  - Status (2026-02-04): ✅ idempotency + date enforcement; tests: `CR_INV_AdjustmentIdempotencyTest`.
 - Dealer receipts/settlements must be idempotent (caller idempotency key enforced; allocations deterministic).
   - Status (2026-02-04): ✅ dealer receipt idempotency reserve-first + mismatch-safe; tests: `CR_DealerReceiptSettlementAuditTrailTest`.
   - Status (2026-02-04): ✅ dealer settlement idempotency reserve-first + allocation uniqueness; tests: `CR_DealerReceiptSettlementAuditTrailTest`, `AccountingServiceTest`.

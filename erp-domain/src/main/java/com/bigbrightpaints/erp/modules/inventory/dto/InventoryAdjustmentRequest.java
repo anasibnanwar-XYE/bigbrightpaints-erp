@@ -14,6 +14,7 @@ public record InventoryAdjustmentRequest(LocalDate adjustmentDate,
                                          @NotNull Long adjustmentAccountId,
                                          String reason,
                                          Boolean adminOverride,
+                                         String idempotencyKey,
                                          @NotEmpty List<@Valid LineRequest> lines) {
 
     public record LineRequest(@NotNull Long finishedGoodId,

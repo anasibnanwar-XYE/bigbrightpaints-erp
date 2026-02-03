@@ -1,0 +1,299 @@
+package com.bigbrightpaints.erp.codered;
+
+import com.bigbrightpaints.erp.codered.support.CoderedConcurrencyHarness;
+import com.bigbrightpaints.erp.codered.support.CoderedRetry;
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
+import com.bigbrightpaints.erp.modules.accounting.domain.Account;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
+import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
+import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.InventoryAdjustment;
+import com.bigbrightpaints.erp.modules.inventory.domain.InventoryAdjustmentRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.InventoryAdjustmentType;
+import com.bigbrightpaints.erp.modules.inventory.dto.FinishedGoodBatchRequest;
+import com.bigbrightpaints.erp.modules.inventory.dto.FinishedGoodRequest;
+import com.bigbrightpaints.erp.modules.inventory.dto.InventoryAdjustmentDto;
+import com.bigbrightpaints.erp.modules.inventory.dto.InventoryAdjustmentRequest;
+import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
+import com.bigbrightpaints.erp.modules.inventory.service.InventoryAdjustmentService;
+import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
+import com.bigbrightpaints.erp.test.support.TestDateUtils;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+
+import java.math.BigDecimal;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+class CR_INV_AdjustmentIdempotencyTest extends AbstractIntegrationTest {
+
+    @Autowired private CompanyRepository companyRepository;
+    @Autowired private AccountRepository accountRepository;
+    @Autowired private FinishedGoodsService finishedGoodsService;
+    @Autowired private FinishedGoodRepository finishedGoodRepository;
+    @Autowired private InventoryAdjustmentService inventoryAdjustmentService;
+    @Autowired private InventoryAdjustmentRepository inventoryAdjustmentRepository;
+    @Autowired private JournalEntryRepository journalEntryRepository;
+
+    @AfterEach
+    void clearCompanyContext() {
+        CompanyContextHolder.clear();
+    }
+
+    @Test
+    void adjustment_usesAdjustmentDate_forJournal() {
+        String companyCode = "CR-INV-ADJ-DATE-" + shortId();
+        Company company = bootstrapCompany(companyCode);
+        Map<String, Account> accounts = ensureAccounts(company);
+
+        FinishedGood fg = ensureFinishedGood(company, "FG-ADJ-DATE-" + shortId(), accounts);
+        seedBatch(company, fg, new BigDecimal("50"), new BigDecimal("12.50"));
+
+        LocalDate adjustmentDate = TestDateUtils.safeDate(company);
+        InventoryAdjustmentRequest request = new InventoryAdjustmentRequest(
+                adjustmentDate,
+                InventoryAdjustmentType.DAMAGED,
+                accounts.get("VAR").getId(),
+                "CODE-RED adjustment date",
+                false,
+                "INV-ADJ-" + UUID.randomUUID(),
+                List.of(new InventoryAdjustmentRequest.LineRequest(
+                        fg.getId(),
+                        new BigDecimal("5"),
+                        new BigDecimal("12.50"),
+                        "Damaged batch"
+                ))
+        );
+
+        CompanyContextHolder.setCompanyId(companyCode);
+        InventoryAdjustmentDto result = inventoryAdjustmentService.createAdjustment(request);
+        CompanyContextHolder.clear();
+
+        JournalEntry journal = journalEntryRepository.findById(result.journalEntryId()).orElseThrow();
+        assertThat(journal.getEntryDate()).isEqualTo(adjustmentDate);
+    }
+
+    @Test
+    void adjustment_idempotentOnRetry_andMismatchFailsClosed() {
+        String companyCode = "CR-INV-ADJ-IDEMP-" + shortId();
+        Company company = bootstrapCompany(companyCode);
+        Map<String, Account> accounts = ensureAccounts(company);
+
+        FinishedGood fg = ensureFinishedGood(company, "FG-ADJ-IDEMP-" + shortId(), accounts);
+        seedBatch(company, fg, new BigDecimal("80"), new BigDecimal("10.00"));
+
+        String idempotencyKey = "INV-ADJ-" + UUID.randomUUID();
+        LocalDate adjustmentDate = TestDateUtils.safeDate(company);
+        InventoryAdjustmentRequest baseRequest = new InventoryAdjustmentRequest(
+                adjustmentDate,
+                InventoryAdjustmentType.DAMAGED,
+                accounts.get("VAR").getId(),
+                "CODE-RED adjustment",
+                false,
+                idempotencyKey,
+                List.of(new InventoryAdjustmentRequest.LineRequest(
+                        fg.getId(),
+                        new BigDecimal("4"),
+                        new BigDecimal("10.00"),
+                        "Damaged"
+                ))
+        );
+
+        CompanyContextHolder.setCompanyId(companyCode);
+        InventoryAdjustmentDto first = inventoryAdjustmentService.createAdjustment(baseRequest);
+        InventoryAdjustmentDto second = inventoryAdjustmentService.createAdjustment(baseRequest);
+        CompanyContextHolder.clear();
+
+        assertThat(second.id()).isEqualTo(first.id());
+        InventoryAdjustment stored = inventoryAdjustmentRepository
+                .findByCompanyAndIdempotencyKey(company, idempotencyKey)
+                .orElseThrow();
+        assertThat(stored.getJournalEntryId()).isEqualTo(first.journalEntryId());
+
+        InventoryAdjustmentRequest mismatch = new InventoryAdjustmentRequest(
+                adjustmentDate,
+                InventoryAdjustmentType.DAMAGED,
+                accounts.get("VAR").getId(),
+                "CODE-RED adjustment",
+                false,
+                idempotencyKey,
+                List.of(new InventoryAdjustmentRequest.LineRequest(
+                        fg.getId(),
+                        new BigDecimal("5"),
+                        new BigDecimal("10.00"),
+                        "Damaged"
+                ))
+        );
+
+        CompanyContextHolder.setCompanyId(companyCode);
+        assertThatThrownBy(() -> inventoryAdjustmentService.createAdjustment(mismatch))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Idempotency key already used");
+        CompanyContextHolder.clear();
+    }
+
+    @Test
+    void adjustment_idempotentUnderConcurrency_returnsSingleAdjustment() {
+        String companyCode = "CR-INV-ADJ-CONC-" + shortId();
+        Company company = bootstrapCompany(companyCode);
+        Map<String, Account> accounts = ensureAccounts(company);
+
+        FinishedGood fg = ensureFinishedGood(company, "FG-ADJ-CONC-" + shortId(), accounts);
+        seedBatch(company, fg, new BigDecimal("100"), new BigDecimal("8.00"));
+
+        String idempotencyKey = "INV-ADJ-" + UUID.randomUUID();
+        InventoryAdjustmentRequest request = new InventoryAdjustmentRequest(
+                TestDateUtils.safeDate(company),
+                InventoryAdjustmentType.DAMAGED,
+                accounts.get("VAR").getId(),
+                "CODE-RED concurrent adjustment",
+                false,
+                idempotencyKey,
+                List.of(new InventoryAdjustmentRequest.LineRequest(
+                        fg.getId(),
+                        new BigDecimal("6"),
+                        new BigDecimal("8.00"),
+                        "Damaged"
+                ))
+        );
+
+        var result = CoderedConcurrencyHarness.run(
+                2,
+                3,
+                Duration.ofSeconds(30),
+                idx -> () -> {
+                    CompanyContextHolder.setCompanyId(companyCode);
+                    try {
+                        return inventoryAdjustmentService.createAdjustment(request);
+                    } finally {
+                        CompanyContextHolder.clear();
+                    }
+                },
+                CoderedRetry::isRetryable
+        );
+
+        assertThat(result.outcomes())
+                .allMatch(outcome -> outcome instanceof CoderedConcurrencyHarness.Outcome.Success<?>);
+
+        List<Long> adjustmentIds = result.outcomes().stream()
+                .map(outcome -> ((CoderedConcurrencyHarness.Outcome.Success<InventoryAdjustmentDto>) outcome).value())
+                .map(InventoryAdjustmentDto::id)
+                .distinct()
+                .toList();
+        assertThat(adjustmentIds).as("Concurrent callers converge on one adjustment").hasSize(1);
+
+        InventoryAdjustment stored = inventoryAdjustmentRepository
+                .findByCompanyAndIdempotencyKey(company, idempotencyKey)
+                .orElseThrow();
+        assertThat(stored.getId()).isEqualTo(adjustmentIds.getFirst());
+    }
+
+    private Company bootstrapCompany(String companyCode) {
+        dataSeeder.ensureCompany(companyCode, companyCode + " Ltd");
+        CompanyContextHolder.setCompanyId(companyCode);
+        Company company = companyRepository.findByCodeIgnoreCase(companyCode).orElseThrow();
+        company.setTimezone("UTC");
+        company.setBaseCurrency("INR");
+        return companyRepository.save(company);
+    }
+
+    private Map<String, Account> ensureAccounts(Company company) {
+        Account inventory = ensureAccount(company, "FG_INV", "Finished Goods Inventory", AccountType.ASSET);
+        Account variance = ensureAccount(company, "INV_VAR", "Inventory Variance", AccountType.EXPENSE);
+        Account cogs = ensureAccount(company, "COGS", "Cost of Goods Sold", AccountType.COGS);
+        Account revenue = ensureAccount(company, "REV", "Revenue", AccountType.REVENUE);
+        Account tax = ensureAccount(company, "GST_OUT", "GST Output", AccountType.LIABILITY);
+
+        CompanyContextHolder.setCompanyId(company.getCode());
+        Company fresh = companyRepository.findById(company.getId()).orElseThrow();
+        if (fresh.getDefaultInventoryAccountId() == null) {
+            fresh.setDefaultInventoryAccountId(inventory.getId());
+        }
+        if (fresh.getDefaultCogsAccountId() == null) {
+            fresh.setDefaultCogsAccountId(cogs.getId());
+        }
+        if (fresh.getDefaultRevenueAccountId() == null) {
+            fresh.setDefaultRevenueAccountId(revenue.getId());
+        }
+        if (fresh.getDefaultTaxAccountId() == null) {
+            fresh.setDefaultTaxAccountId(tax.getId());
+        }
+        companyRepository.save(fresh);
+        CompanyContextHolder.clear();
+
+        return Map.of(
+                "INV", inventory,
+                "VAR", variance,
+                "COGS", cogs,
+                "REV", revenue,
+                "TAX", tax
+        );
+    }
+
+    private Account ensureAccount(Company company, String code, String name, AccountType type) {
+        return accountRepository.findByCompanyAndCodeIgnoreCase(company, code)
+                .orElseGet(() -> {
+                    Account account = new Account();
+                    account.setCompany(company);
+                    account.setCode(code);
+                    account.setName(name);
+                    account.setType(type);
+                    account.setActive(true);
+                    account.setBalance(BigDecimal.ZERO);
+                    return accountRepository.save(account);
+                });
+    }
+
+    private FinishedGood ensureFinishedGood(Company company, String sku, Map<String, Account> accounts) {
+        CompanyContextHolder.setCompanyId(company.getCode());
+        FinishedGoodRequest request = new FinishedGoodRequest(
+                sku,
+                sku,
+                "PCS",
+                "FIFO",
+                accounts.get("INV").getId(),
+                accounts.get("COGS").getId(),
+                accounts.get("REV").getId(),
+                null,
+                accounts.get("TAX").getId()
+        );
+        FinishedGood fg = finishedGoodRepository.findByCompanyAndProductCode(company, sku)
+                .orElseGet(() -> {
+                    var dto = finishedGoodsService.createFinishedGood(request);
+                    return finishedGoodRepository.findById(dto.id()).orElseThrow();
+                });
+        CompanyContextHolder.clear();
+        return fg;
+    }
+
+    private void seedBatch(Company company, FinishedGood finishedGood, BigDecimal quantity, BigDecimal unitCost) {
+        CompanyContextHolder.setCompanyId(company.getCode());
+        finishedGoodsService.registerBatch(new FinishedGoodBatchRequest(
+                finishedGood.getId(),
+                "BATCH-" + shortId(),
+                quantity,
+                unitCost,
+                Instant.now(),
+                null
+        ));
+        CompanyContextHolder.clear();
+    }
+
+    private static String shortId() {
+        return UUID.randomUUID().toString().substring(0, 8);
+    }
+}

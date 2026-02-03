@@ -1263,7 +1263,8 @@ public class AccountingFacade {
                 inventoryLines,
                 increaseInventory,
                 false,
-                memo);
+                memo,
+                null);
     }
 
     /**
@@ -1278,6 +1279,23 @@ public class AccountingFacade {
                                                    boolean increaseInventory,
                                                    boolean adminOverride,
                                                    String memo) {
+        return postInventoryAdjustment(adjustmentType, referenceId, varianceAcctId, inventoryLines,
+                increaseInventory, adminOverride, memo, null);
+    }
+
+    /**
+     * Post inventory adjustment journal entry with multiple inventory lines and explicit business date.
+     */
+    @Transactional(isolation = Isolation.REPEATABLE_READ)
+    @Retryable(value = OptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 100))
+    public JournalEntryDto postInventoryAdjustment(String adjustmentType,
+                                                   String referenceId,
+                                                   Long varianceAcctId,
+                                                   Map<Long, BigDecimal> inventoryLines,
+                                                   boolean increaseInventory,
+                                                   boolean adminOverride,
+                                                   String memo,
+                                                   LocalDate entryDate) {
         Objects.requireNonNull(adjustmentType, "Adjustment type is required");
         Objects.requireNonNull(referenceId, "Reference ID is required");
         Objects.requireNonNull(varianceAcctId, "Variance account ID is required");
@@ -1349,9 +1367,10 @@ public class AccountingFacade {
             });
         }
 
+        LocalDate postingDate = entryDate != null ? entryDate : companyClock.today(company);
         JournalEntryRequest request = new JournalEntryRequest(
                 reference,
-                companyClock.today(company),
+                postingDate,
                 resolvedMemo,
                 null,
                 null,

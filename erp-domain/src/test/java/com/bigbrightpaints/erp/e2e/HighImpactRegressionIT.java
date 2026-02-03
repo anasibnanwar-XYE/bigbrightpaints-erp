@@ -414,6 +414,7 @@ class HighImpactRegressionIT extends AbstractIntegrationTest {
                     accountsA.get("SHRINKAGE").getId(),
                     "Concurrent test 1",
                     Boolean.FALSE,
+                    "INV-ADJ-" + UUID.randomUUID(),
                     List.of(
                             new InventoryAdjustmentRequest.LineRequest(fg1.getId(), adj1Qty, unitCost, "Adj 1 fg1"),
                             new InventoryAdjustmentRequest.LineRequest(fg2.getId(), adj1Qty, unitCost, "Adj 1 fg2")
@@ -433,6 +434,7 @@ class HighImpactRegressionIT extends AbstractIntegrationTest {
                     accountsA.get("SHRINKAGE").getId(),
                     "Concurrent test 2",
                     Boolean.FALSE,
+                    "INV-ADJ-" + UUID.randomUUID(),
                     List.of(
                             new InventoryAdjustmentRequest.LineRequest(fg2.getId(), adj2Qty, unitCost, "Adj 2 fg2"),
                             new InventoryAdjustmentRequest.LineRequest(fg1.getId(), adj2Qty, unitCost, "Adj 2 fg1")

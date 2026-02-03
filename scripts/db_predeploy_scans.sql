@@ -131,3 +131,18 @@ where invoice_count > 1
   and fulfillment_invoice_id is not null
   and fulfillment_invoice_id <> max_invoice_id
 order by company_id, sales_order_id;
+
+-- 8) Inventory adjustments posted on a different date than the adjustment date
+select
+  ia.company_id,
+  ia.id as adjustment_id,
+  ia.reference_number,
+  ia.adjustment_date,
+  je.entry_date,
+  ia.journal_entry_id
+from inventory_adjustments ia
+join journal_entries je
+  on je.id = ia.journal_entry_id
+where ia.journal_entry_id is not null
+  and ia.adjustment_date <> je.entry_date
+order by ia.company_id, ia.id;
