@@ -23,26 +23,26 @@ public class DashboardController {
     @GetMapping("/admin")
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<Map<String, Object>> adminDashboard() {
-        return ResponseEntity.ok(dashboardAggregationService.adminDashboard(requireCompanyId()));
+        return ResponseEntity.ok(dashboardAggregationService.adminDashboard(requireCompanyCode()));
     }
 
     @GetMapping("/factory")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_FACTORY')")
     public ResponseEntity<Map<String, Object>> factoryDashboard() {
-        return ResponseEntity.ok(dashboardAggregationService.factoryDashboard(requireCompanyId()));
+        return ResponseEntity.ok(dashboardAggregationService.factoryDashboard(requireCompanyCode()));
     }
 
     @GetMapping("/finance")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
     public ResponseEntity<Map<String, Object>> financeDashboard() {
-        return ResponseEntity.ok(dashboardAggregationService.financeDashboard(requireCompanyId()));
+        return ResponseEntity.ok(dashboardAggregationService.financeDashboard(requireCompanyCode()));
     }
 
-    private String requireCompanyId() {
-        String companyId = CompanyContextHolder.getCompanyId();
-        if (!StringUtils.hasText(companyId)) {
+    private String requireCompanyCode() {
+        String companyCode = CompanyContextHolder.getCompanyCode();
+        if (!StringUtils.hasText(companyCode)) {
             throw new IllegalStateException("Company context is required");
         }
-        return companyId.trim();
+        return companyCode.trim();
     }
 }

@@ -26,33 +26,58 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
         try {
-            String headerCompanyId = request.getHeader("X-Company-Id");
+            String headerCompanyCode = request.getHeader("X-Company-Code");
+            String legacyHeaderCompanyId = request.getHeader("X-Company-Id");
+            if (StringUtils.hasText(headerCompanyCode) && StringUtils.hasText(legacyHeaderCompanyId)
+                    && !headerCompanyCode.trim().equalsIgnoreCase(legacyHeaderCompanyId.trim())) {
+                log.warn("Rejecting mismatched company headers. X-Company-Code={}, X-Company-Id={}, path={}",
+                        headerCompanyCode, legacyHeaderCompanyId, request.getRequestURI());
+                response.sendError(HttpServletResponse.SC_FORBIDDEN, "Company headers do not match");
+                return;
+            }
+            String requestedCompany = StringUtils.hasText(headerCompanyCode)
+                    ? headerCompanyCode
+                    : legacyHeaderCompanyId;
             Object claimsAttr = request.getAttribute("jwtClaims");
             if (claimsAttr instanceof Claims claims) {
-                String tokenCompanyId = claims.get("cid", String.class);
-                if (StringUtils.hasText(tokenCompanyId) && StringUtils.hasText(headerCompanyId)
-                        && !tokenCompanyId.trim().equalsIgnoreCase(headerCompanyId.trim())) {
-                    log.warn("Rejecting X-Company-Id mismatch. tokenCid={}, headerCid={}, path={}",
-                            tokenCompanyId, headerCompanyId, request.getRequestURI());
-                    response.sendError(HttpServletResponse.SC_FORBIDDEN, "X-Company-Id does not match authenticated company context");
+                String tokenCompanyCode = claims.get("companyCode", String.class);
+                String legacyTokenCompanyId = claims.get("cid", String.class);
+                if (StringUtils.hasText(tokenCompanyCode) && StringUtils.hasText(legacyTokenCompanyId)
+                        && !tokenCompanyCode.trim().equalsIgnoreCase(legacyTokenCompanyId.trim())) {
+                    log.warn("Rejecting mismatched token company claims. companyCode={}, cid={}, path={}",
+                            tokenCompanyCode, legacyTokenCompanyId, request.getRequestURI());
+                    response.sendError(HttpServletResponse.SC_FORBIDDEN, "Token company claims do not match");
                     return;
                 }
-                if (StringUtils.hasText(tokenCompanyId)) {
-                    headerCompanyId = tokenCompanyId;
+                String resolvedTokenCompany = StringUtils.hasText(tokenCompanyCode)
+                        ? tokenCompanyCode
+                        : legacyTokenCompanyId;
+                if (!StringUtils.hasText(resolvedTokenCompany)) {
+                    log.warn("Rejecting authenticated request without company claim. path={}", request.getRequestURI());
+                    response.sendError(HttpServletResponse.SC_FORBIDDEN, "Authenticated token missing company context");
+                    return;
                 }
+                if (StringUtils.hasText(requestedCompany)
+                        && !resolvedTokenCompany.trim().equalsIgnoreCase(requestedCompany.trim())) {
+                    log.warn("Rejecting company header mismatch. tokenCompanyCode={}, headerCompanyCode={}, path={}",
+                            resolvedTokenCompany, requestedCompany, request.getRequestURI());
+                    response.sendError(HttpServletResponse.SC_FORBIDDEN, "Company header does not match authenticated company context");
+                    return;
+                }
+                requestedCompany = resolvedTokenCompany;
             } else {
                 // Do not allow unauthenticated requests to set tenant context via header.
-                headerCompanyId = null;
+                requestedCompany = null;
             }
-            String companyId = StringUtils.hasText(headerCompanyId) ? headerCompanyId.trim() : null;
-            if (companyId != null) {
+            String companyCode = StringUtils.hasText(requestedCompany) ? requestedCompany.trim() : null;
+            if (companyCode != null) {
                 // Validate user has access to this company
-                if (!validateCompanyAccess(companyId)) {
-                    log.warn("User attempted to access unauthorized company: {}", companyId);
-                    response.sendError(HttpServletResponse.SC_FORBIDDEN, "Access denied to company: " + companyId);
+                if (!validateCompanyAccess(companyCode)) {
+                    log.warn("User attempted to access unauthorized company: {}", companyCode);
+                    response.sendError(HttpServletResponse.SC_FORBIDDEN, "Access denied to company: " + companyCode);
                     return;
                 }
-                CompanyContextHolder.setCompanyId(companyId);
+                CompanyContextHolder.setCompanyCode(companyCode);
             }
             filterChain.doFilter(request, response);
         } finally {

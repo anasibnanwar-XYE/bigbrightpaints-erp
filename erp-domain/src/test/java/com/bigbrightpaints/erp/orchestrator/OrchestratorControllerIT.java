@@ -157,6 +157,28 @@ public class OrchestratorControllerIT extends AbstractIntegrationTest {
         String token = loginToken();
 
         HttpHeaders headers = authHeaders(token);
+        headers.set("X-Company-Code", "EVIL");
+        headers.add("Idempotency-Key", UUID.randomUUID().toString());
+
+        Map<String, Object> body = Map.of(
+                "orderId", String.valueOf(seededOrderId),
+                "approvedBy", "orch@bbp.com",
+                "totalAmount", new BigDecimal("5000")
+        );
+
+        ResponseEntity<String> approveResponse = rest.exchange(
+                "/api/v1/orchestrator/orders/" + seededOrderId + "/approve",
+                HttpMethod.POST,
+                new HttpEntity<>(body, headers),
+                String.class);
+
+        assertThat(approveResponse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void rejects_mismatched_company_header_aliases() {
+        String token = loginToken();
+        HttpHeaders headers = authHeaders(token);
         headers.set("X-Company-Id", "EVIL");
         headers.add("Idempotency-Key", UUID.randomUUID().toString());
 
@@ -188,7 +210,7 @@ public class OrchestratorControllerIT extends AbstractIntegrationTest {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token);
         headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.add("X-Company-Id", COMPANY_CODE);
+        headers.add("X-Company-Code", COMPANY_CODE);
         return headers;
     }
 }

@@ -66,9 +66,9 @@ Hard rules
 - If a field contains an external UUID, it must be named `companyPublicId`.
 
 Known mismatches to fix (plan items)
-- Auth DTOs: `/auth/me` currently returns `companyId` but it is a code string; rename to `companyCode` in OpenAPI + DTO.
-- Orchestrator controllers/services use `requireCompanyId()` returning a code string; rename to `requireCompanyCode()`.
-- `JwtTokenService.generateAccessToken(subject, companyId, ...)` uses a misleading param name; it is a company code string.
+- Auth DTOs: `/auth/me` currently returns `companyId` but it is a code string; rename to `companyCode` in OpenAPI + DTO. (Done 2026-02-03)
+- Orchestrator controllers/services use `requireCompanyId()` returning a code string; rename to `requireCompanyCode()`. (Done 2026-02-03)
+- `JwtTokenService.generateAccessToken(subject, companyId, ...)` uses a misleading param name; it is a company code string. (Done 2026-02-03)
 
 ---
 
@@ -79,12 +79,16 @@ P0 (security/clarity)
    - rename context holder APIs to `*CompanyCode*` (keep deprecated alias for compatibility during migration).
    - align JWT claim naming (`companyCode`), accept legacy `cid`.
    - document/introduce `X-Company-Code` header, accept legacy `X-Company-Id`.
+   - Status (2026-02-03): ✅ implemented with backward compatible aliases.
 2) Align orchestrator parameter naming:
    - `companyId` string parameters become `companyCode`.
+   - Status (2026-02-03): ✅ controller-level renames complete.
 3) Align OpenAPI schema + DTOs:
    - `MeResponse.companyId` → `companyCode` (and update any other mismatches).
+   - Status (2026-02-03): ✅ `/auth/me` now returns `companyCode` + legacy `companyId`.
 4) Add guardrails:
    - add a lightweight lint/static check (or CI grep rule) preventing new usage of `cid`, `tenantId`, or `companyId` for code strings in `core.security`, `auth`, and `orchestrator`.
+   - Status (2026-02-03): ⏳ pending.
 
 P1 (cleanup)
 - Migrate remaining DTOs and internal naming to match the contract; remove deprecated aliases after the deprecation window.
@@ -96,4 +100,3 @@ P1 (cleanup)
 - It is impossible to confuse “company code” with “company id” by reading code or OpenAPI.
 - Every “company selector” value is validated against authenticated membership (fail closed).
 - New code cannot introduce `companyId` variables that store `companyCode` strings (guardrail enforced).
-

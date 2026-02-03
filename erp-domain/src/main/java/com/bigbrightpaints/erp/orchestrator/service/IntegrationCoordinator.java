@@ -533,17 +533,17 @@ public class IntegrationCoordinator {
 
     private <T> T withCompanyContext(String companyId, Supplier<T> callback) {
         String normalizedCompanyId = normalizeCompanyId(companyId);
-        String previousCompany = CompanyContextHolder.getCompanyId();
+        String previousCompany = CompanyContextHolder.getCompanyCode();
         boolean changed = normalizedCompanyId != null && !Objects.equals(previousCompany, normalizedCompanyId);
         if (changed) {
-            CompanyContextHolder.setCompanyId(normalizedCompanyId);
+            CompanyContextHolder.setCompanyCode(normalizedCompanyId);
         }
         try {
             return callback.get();
         } finally {
             if (changed) {
                 if (previousCompany != null) {
-                    CompanyContextHolder.setCompanyId(previousCompany);
+                    CompanyContextHolder.setCompanyCode(previousCompany);
                 } else {
                     CompanyContextHolder.clear();
                 }

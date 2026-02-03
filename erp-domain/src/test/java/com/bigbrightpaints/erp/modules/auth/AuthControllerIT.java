@@ -45,6 +45,7 @@ public class AuthControllerIT extends AbstractIntegrationTest {
         Map data = (Map) meResp.getBody().get("data");
         assertThat(data).isNotNull();
         assertThat(data.get("email")).isEqualTo(ADMIN_EMAIL);
+        assertThat(data.get("companyCode")).isEqualTo(COMPANY_CODE);
         assertThat(data.get("companyId")).isEqualTo(COMPANY_CODE);
         List<String> roles = (List<String>) data.get("roles");
         assertThat(roles).isNotNull();

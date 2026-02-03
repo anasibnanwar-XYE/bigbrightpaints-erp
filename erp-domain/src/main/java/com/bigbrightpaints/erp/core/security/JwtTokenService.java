@@ -36,14 +36,15 @@ public class JwtTokenService {
         return bytes;
     }
 
-    public String generateAccessToken(String subject, String companyId, Map<String, Object> claims) {
+    public String generateAccessToken(String subject, String companyCode, Map<String, Object> claims) {
         Instant now = Instant.now();
         Instant expiry = now.plusSeconds(properties.getAccessTokenTtlSeconds());
         return Jwts.builder()
                 .setSubject(subject)
                 .setId(UUID.randomUUID().toString())
                 .addClaims(claims)
-                .claim("cid", companyId)
+                .claim("companyCode", companyCode)
+                .claim("cid", companyCode)
                 .setIssuedAt(Date.from(now))
                 .setExpiration(Date.from(expiry))
                 .signWith(signingKey, SignatureAlgorithm.HS256)

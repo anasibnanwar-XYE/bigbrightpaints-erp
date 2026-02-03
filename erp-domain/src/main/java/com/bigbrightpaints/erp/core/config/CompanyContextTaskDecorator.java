@@ -14,14 +14,14 @@ public class CompanyContextTaskDecorator implements TaskDecorator {
     @Override
     public Runnable decorate(Runnable runnable) {
         // Capture context from the calling thread
-        String companyId = CompanyContextHolder.getCompanyId();
+        String companyCode = CompanyContextHolder.getCompanyCode();
         SecurityContext securityContext = SecurityContextHolder.getContext();
 
         return () -> {
             try {
                 // Restore context in the async thread
-                if (companyId != null) {
-                    CompanyContextHolder.setCompanyId(companyId);
+                if (companyCode != null) {
+                    CompanyContextHolder.setCompanyCode(companyCode);
                 }
                 SecurityContextHolder.setContext(securityContext);
                 

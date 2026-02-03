@@ -9,25 +9,26 @@ class CompanyContextHolderTest {
 
     @Test
     void setGetClear_cycle() {
-        CompanyContextHolder.setCompanyId("ACME");
+        CompanyContextHolder.setCompanyCode("ACME");
+        assertThat(CompanyContextHolder.getCompanyCode()).isEqualTo("ACME");
         assertThat(CompanyContextHolder.getCompanyId()).isEqualTo("ACME");
         CompanyContextHolder.clear();
-        assertThat(CompanyContextHolder.getCompanyId()).isNull();
+        assertThat(CompanyContextHolder.getCompanyCode()).isNull();
     }
 
     @Test
     void threadIsolation_doesNotLeakBetweenThreads() throws InterruptedException {
-        CompanyContextHolder.setCompanyId("MAIN");
+        CompanyContextHolder.setCompanyCode("MAIN");
         AtomicReference<String> workerValue = new AtomicReference<>();
         Thread worker = new Thread(() -> {
-            CompanyContextHolder.setCompanyId("WORKER");
-            workerValue.set(CompanyContextHolder.getCompanyId());
+            CompanyContextHolder.setCompanyCode("WORKER");
+            workerValue.set(CompanyContextHolder.getCompanyCode());
             CompanyContextHolder.clear();
         });
         worker.start();
         worker.join();
         assertThat(workerValue.get()).isEqualTo("WORKER");
-        assertThat(CompanyContextHolder.getCompanyId()).isEqualTo("MAIN");
+        assertThat(CompanyContextHolder.getCompanyCode()).isEqualTo("MAIN");
         CompanyContextHolder.clear();
     }
 }

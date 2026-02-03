@@ -89,14 +89,14 @@ public class AuditService {
             }
 
             // Add company context
-            String companyIdStr = (companyCodeOverride != null && !companyCodeOverride.isBlank())
+            String companyToken = (companyCodeOverride != null && !companyCodeOverride.isBlank())
                     ? companyCodeOverride
-                    : CompanyContextHolder.getCompanyId();
-            Long companyId = resolveCompanyId(companyIdStr);
+                    : CompanyContextHolder.getCompanyCode();
+            Long companyId = resolveCompanyId(companyToken);
             if (companyId != null) {
                 builder.companyId(companyId);
-            } else if (companyIdStr != null) {
-                logger.warn("Invalid company ID format: {}", companyIdStr);
+            } else if (companyToken != null) {
+                logger.warn("Invalid company identifier format: {}", companyToken);
             }
 
             // Add request context

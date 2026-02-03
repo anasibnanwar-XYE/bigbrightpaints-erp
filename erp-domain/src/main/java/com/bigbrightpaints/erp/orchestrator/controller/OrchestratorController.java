@@ -50,7 +50,7 @@ public class OrchestratorController {
                                                              @org.springframework.web.bind.annotation.RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
                                                              Principal principal) {
         ApproveOrderRequest normalized = new ApproveOrderRequest(orderId, request.approvedBy(), request.totalAmount());
-        String traceId = commandDispatcher.approveOrder(normalized, requireIdempotencyKey(idempotencyKey), requireCompanyId(), principal.getName());
+        String traceId = commandDispatcher.approveOrder(normalized, requireIdempotencyKey(idempotencyKey), requireCompanyCode(), principal.getName());
         return ResponseEntity.accepted().body(Map.of("traceId", traceId));
     }
 
@@ -61,7 +61,7 @@ public class OrchestratorController {
                                                              @org.springframework.web.bind.annotation.RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
                                                              Principal principal) {
         String traceId = commandDispatcher.updateOrderFulfillment(orderId, request, requireIdempotencyKey(idempotencyKey),
-                requireCompanyId(), principal.getName());
+                requireCompanyCode(), principal.getName());
         return ResponseEntity.accepted().body(Map.of("traceId", traceId));
     }
 
@@ -80,7 +80,7 @@ public class OrchestratorController {
         DispatchRequest normalized = new DispatchRequest(batchId,
                 request.requestedBy(),
                 request.postingAmount());
-        String traceId = commandDispatcher.dispatchBatch(normalized, requireIdempotencyKey(idempotencyKey), requireCompanyId(), principal.getName());
+        String traceId = commandDispatcher.dispatchBatch(normalized, requireIdempotencyKey(idempotencyKey), requireCompanyCode(), principal.getName());
         return ResponseEntity.accepted().body(Map.of("traceId", traceId));
     }
 
@@ -113,7 +113,7 @@ public class OrchestratorController {
                             "message", "Orchestrator payroll run is disabled (CODE-RED).",
                             "canonicalPath", "/api/v1/payroll/runs"));
         }
-        String traceId = commandDispatcher.runPayroll(request, requireIdempotencyKey(idempotencyKey), requireCompanyId(), principal.getName());
+        String traceId = commandDispatcher.runPayroll(request, requireIdempotencyKey(idempotencyKey), requireCompanyCode(), principal.getName());
         return ResponseEntity.accepted().body(Map.of("traceId", traceId));
     }
 
@@ -143,12 +143,12 @@ public class OrchestratorController {
                         "canonicalPath", "/api/v1/sales/dispatch/confirm"));
     }
 
-    private String requireCompanyId() {
-        String companyId = CompanyContextHolder.getCompanyId();
-        if (!StringUtils.hasText(companyId)) {
+    private String requireCompanyCode() {
+        String companyCode = CompanyContextHolder.getCompanyCode();
+        if (!StringUtils.hasText(companyCode)) {
             throw new IllegalStateException("Company context is required");
         }
-        return companyId.trim();
+        return companyCode.trim();
     }
 
     private String requireIdempotencyKey(String idempotencyKey) {

@@ -15,7 +15,7 @@ public class CompanyContextService {
     }
 
     public Company requireCurrentCompany() {
-        String code = CompanyContextHolder.getCompanyId();
+        String code = CompanyContextHolder.getCompanyCode();
         if (code == null) {
             throw new IllegalStateException("No active company in context");
         }

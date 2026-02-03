@@ -11,9 +11,11 @@ Purpose: a single, concrete list of **P0** items that block a safe enterprise de
 - Orchestrator must not accept a caller-controlled company override (`X-Company-Id`) that can diverge from the authenticated company context.
   - Fix: derive companyId from JWT/company context, or enforce header == JWT companyId and fail-closed (403) on mismatch.
   - Add tests for header spoofing attempts on orchestrator endpoints.
+  - Status (2026-02-03): ✅ company header/claim mismatch fails closed; tests: `OrchestratorControllerIT`.
 - Orchestrator health endpoints must require ops/admin authorization in non-dev environments.
 - Company context must not be header-only for unauthenticated requests:
   - Fix: do not set `CompanyContextHolder` from `X-Company-Id` unless the request is authenticated (JWT `cid`).
+  - Status (2026-02-03): ✅ unauthenticated headers ignored; authenticated requests require company claim (fail closed).
 - Public health surfaces must be intentional:
   - `/api/integration/health` should be secured (prefer actuator health) or proven safe as an unauthenticated surface.
 - Actuator + docs must be prod-hardened (public attack surface):
@@ -29,6 +31,7 @@ Purpose: a single, concrete list of **P0** items that block a safe enterprise de
 - Identity vocabulary must be unambiguous (prevent future tenant isolation bugs):
   - `companyCode` is the tenant context string; reserve `companyId` for numeric DB ids.
   - Deprecate misleading header/claim/DTO names where `companyId` actually means `companyCode` (backward compatible parsing window).
+  - Status (2026-02-03): ✅ `X-Company-Code` + `companyCode` claim introduced (legacy aliases accepted); `/auth/me` now returns `companyCode` + legacy `companyId`.
 
 ## P0 - Workflow “Truth” (Status Must Not Bypass Financial/Inventory Truth)
 - Orchestrator must not be able to mark orders `SHIPPED/DISPATCHED` without the canonical dispatch chain:
