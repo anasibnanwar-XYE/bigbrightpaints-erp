@@ -10,7 +10,9 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocationRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.DealerSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
+import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementResponse;
 import com.bigbrightpaints.erp.modules.accounting.dto.SettlementAllocationRequest;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
 import com.bigbrightpaints.erp.modules.accounting.service.ReconciliationService;
@@ -216,6 +218,154 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
                             "Apply to invoice"))
             );
             org.assertj.core.api.Assertions.assertThatThrownBy(() -> accountingService.recordDealerReceipt(conflictRequest))
+                    .isInstanceOf(com.bigbrightpaints.erp.core.exception.ApplicationException.class)
+                    .satisfies(error -> org.assertj.core.api.Assertions.assertThat(
+                            ((com.bigbrightpaints.erp.core.exception.ApplicationException) error).getErrorCode())
+                            .isEqualTo(com.bigbrightpaints.erp.core.exception.ErrorCode.CONCURRENCY_CONFLICT));
+        } finally {
+            CompanyContextHolder.clear();
+        }
+    }
+
+    @Test
+    void dealerSettlement_isIdempotent_underConcurrency_andRejectsMismatch() {
+        String companyCode = "CR-SETTLE-" + shortId();
+        Company company = bootstrapCompany(companyCode, "UTC");
+        Map<String, Account> accounts = ensureCoreAccounts(company);
+        Dealer dealer = ensureDealer(company, accounts.get("AR"));
+
+        FinishedGood fg = ensureFinishedGoodWithCatalog(company, accounts, "FG-" + shortId(), BigDecimal.ZERO);
+        CompanyContextHolder.setCompanyId(companyCode);
+        finishedGoodsService.registerBatch(new FinishedGoodBatchRequest(
+                fg.getId(), "BATCH-1", new BigDecimal("20"), new BigDecimal("10.00"), Instant.now(), null));
+        CompanyContextHolder.clear();
+
+        SalesOrder order = createOrder(company, dealer, fg.getProductCode(), new BigDecimal("5"), new BigDecimal("15.50"));
+        PackagingSlip slip = packagingSlipRepository.findByCompanyAndSalesOrderId(company, order.getId()).orElseThrow();
+
+        DispatchConfirmRequest request = new DispatchConfirmRequest(
+                slip.getId(),
+                order.getId(),
+                slip.getLines().stream()
+                        .map(line -> new DispatchConfirmRequest.DispatchLine(
+                                line.getId(),
+                                null,
+                                line.getOrderedQuantity() != null ? line.getOrderedQuantity() : line.getQuantity(),
+                                null,
+                                null,
+                                null,
+                                null,
+                                null))
+                        .toList(),
+                "CODE-RED dispatch",
+                "codered",
+                false,
+                null,
+                null
+        );
+
+        CompanyContextHolder.setCompanyId(companyCode);
+        var dispatch = salesService.confirmDispatch(request);
+        CompanyContextHolder.clear();
+
+        Invoice invoice = invoiceRepository.findByCompanyAndId(company, dispatch.finalInvoiceId()).orElseThrow();
+        BigDecimal outstanding = invoice.getOutstandingAmount();
+        String referenceNumber = "DS-" + UUID.randomUUID();
+        String idempotencyKey = "DS-IDEMP-" + UUID.randomUUID();
+
+        DealerSettlementRequest settlementRequest = new DealerSettlementRequest(
+                dealer.getId(),
+                accounts.get("BANK").getId(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                referenceNumber,
+                "CODE-RED settlement",
+                idempotencyKey,
+                Boolean.FALSE,
+                List.of(new SettlementAllocationRequest(
+                        invoice.getId(),
+                        null,
+                        outstanding,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        null,
+                        "Apply to invoice")),
+                null
+        );
+
+        CoderedConcurrencyHarness.RunResult<PartnerSettlementResponse> result = CoderedConcurrencyHarness.run(
+                2,
+                3,
+                Duration.ofSeconds(30),
+                threadIndex -> () -> {
+                    CompanyContextHolder.setCompanyId(companyCode);
+                    try {
+                        return accountingService.settleDealerInvoices(settlementRequest);
+                    } finally {
+                        CompanyContextHolder.clear();
+                    }
+                },
+                CoderedRetry::isRetryable
+        );
+
+        assertThat(result.outcomes())
+                .as("settlement calls succeed")
+                .allMatch(outcome -> outcome instanceof CoderedConcurrencyHarness.Outcome.Success<?>);
+
+        List<Long> journalIds = result.outcomes().stream()
+                .map(outcome -> ((CoderedConcurrencyHarness.Outcome.Success<PartnerSettlementResponse>) outcome).value())
+                .map(response -> response.journalEntry().id())
+                .distinct()
+                .toList();
+        assertThat(journalIds).as("single settlement journal").hasSize(1);
+        Long journalId = journalIds.getFirst();
+
+        assertThat(settlementAllocationRepository.findByCompanyAndIdempotencyKey(company, referenceNumber))
+                .as("reference number not used as idempotency key")
+                .isEmpty();
+        assertThat(settlementAllocationRepository.findByCompanyAndIdempotencyKey(company, idempotencyKey))
+                .as("single settlement allocation")
+                .hasSize(1);
+
+        Invoice refreshed = invoiceRepository.findByCompanyAndId(company, invoice.getId()).orElseThrow();
+        assertThat(refreshed.getOutstandingAmount()).as("invoice settled")
+                .isEqualByComparingTo(BigDecimal.ZERO);
+
+        CoderedDbAssertions.assertBalancedJournal(journalEntryRepository, journalId);
+        CoderedDbAssertions.assertDealerLedgerEntriesLinkedToJournal(jdbcTemplate, company.getId(), journalId);
+        CoderedDbAssertions.assertAuditLogRecordedForJournal(jdbcTemplate, journalId);
+
+        CompanyContextHolder.setCompanyId(companyCode);
+        try {
+            PartnerSettlementResponse retry = accountingService.settleDealerInvoices(settlementRequest);
+            assertThat(retry.journalEntry().id()).as("retry returns same settlement").isEqualTo(journalId);
+            BigDecimal halfOutstanding = outstanding.divide(new BigDecimal("2"), 2, java.math.RoundingMode.HALF_UP);
+            DealerSettlementRequest conflictRequest = new DealerSettlementRequest(
+                    dealer.getId(),
+                    accounts.get("BANK").getId(),
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    referenceNumber,
+                    "CODE-RED settlement",
+                    idempotencyKey,
+                    Boolean.FALSE,
+                    List.of(new SettlementAllocationRequest(
+                            invoice.getId(),
+                            null,
+                            halfOutstanding,
+                            BigDecimal.ZERO,
+                            BigDecimal.ZERO,
+                            null,
+                            "Apply to invoice")),
+                    null
+            );
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> accountingService.settleDealerInvoices(conflictRequest))
                     .isInstanceOf(com.bigbrightpaints.erp.core.exception.ApplicationException.class)
                     .satisfies(error -> org.assertj.core.api.Assertions.assertThat(
                             ((com.bigbrightpaints.erp.core.exception.ApplicationException) error).getErrorCode())

@@ -11,3 +11,14 @@
   - `bash scripts/verify_local.sh`
 - Notes:
   - Full `verify_local` gate passed (schema/flyway/time scans + mvn verify).
+
+- Scope: Block D (P0) Dealer AR safety — dealer settlements idempotency + allocation uniqueness (commit 2).
+- Changes:
+  - Dealer settlement now reserves idempotency key + canonical reference before posting; mismatch-safe validation enforced.
+  - Settlement journal lines are built centrally; invoice settlement reference uses canonical reference.
+  - Allocation validation fails early for missing invoice/purchase mismatches.
+- Tests:
+  - `mvn -B -ntp -Dtest=CR_DealerReceiptSettlementAuditTrailTest,AccountingServiceTest test`
+  - `bash scripts/verify_local.sh`
+- Notes:
+  - Full `verify_local` gate passed (schema/flyway/time scans + mvn verify).

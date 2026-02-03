@@ -12,6 +12,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodStatus;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMapping;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMappingRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
@@ -164,6 +165,11 @@ class AccountingServiceTest {
         lenient().when(accountingPeriodService.requireOpenPeriod(any(), any())).thenReturn(new AccountingPeriod());
         lenient().when(dealerRepository.findAllByCompanyAndReceivableAccount(any(), any())).thenReturn(List.of());
         lenient().when(supplierRepository.findAllByCompanyAndPayableAccount(any(), any())).thenReturn(List.of());
+        lenient().when(referenceNumberService.dealerReceiptReference(any(), any())).thenReturn("REF-SETTLE");
+        lenient().when(journalReferenceMappingRepository.reserveReferenceMapping(any(), any(), any(), any(), any()))
+                .thenReturn(1);
+        lenient().when(journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(any(), any()))
+                .thenAnswer(invocation -> Optional.of(new JournalReferenceMapping()));
     }
 
     @Test
@@ -1041,7 +1047,7 @@ class AccountingServiceTest {
         service.settleDealerInvoices(request);
 
         ArgumentCaptor<BigDecimal> amountCaptor = ArgumentCaptor.forClass(BigDecimal.class);
-        verify(invoiceSettlementPolicy).applySettlement(eq(invoice), amountCaptor.capture(), eq("IDEMP-AR-1-INV-5"));
+        verify(invoiceSettlementPolicy).applySettlement(eq(invoice), amountCaptor.capture(), eq("REF-AR-1-INV-5"));
         assertThat(amountCaptor.getValue()).isEqualByComparingTo("500.00");
     }
 
@@ -1127,8 +1133,6 @@ class AccountingServiceTest {
         invoice.setTotalAmount(new BigDecimal("100.00"));
 
         when(dealerRepository.lockByCompanyAndId(eq(company), eq(1L))).thenReturn(Optional.of(dealer));
-        when(invoiceRepository.lockByCompanyAndId(eq(company), eq(3L))).thenReturn(Optional.of(invoice));
-        when(settlementAllocationRepository.findByCompanyAndIdempotencyKey(any(), any())).thenReturn(List.of());
         when(referenceNumberService.dealerReceiptReference(eq(company), eq(dealer))).thenReturn("REF-1");
 
         // Allocation requires an invoice reference
@@ -1180,7 +1184,6 @@ class AccountingServiceTest {
         ReflectionTestUtils.setField(arAccount, "id", 10L);
 
         when(dealerRepository.lockByCompanyAndId(eq(company), eq(1L))).thenReturn(Optional.of(dealer));
-        when(settlementAllocationRepository.findByCompanyAndIdempotencyKey(any(), any())).thenReturn(List.of());
 
         SettlementAllocationRequest allocation = new SettlementAllocationRequest(
                 null,

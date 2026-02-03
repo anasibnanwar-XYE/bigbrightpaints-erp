@@ -71,7 +71,7 @@ Purpose: a single, concrete list of **P0** items that block a safe enterprise de
   - Opening stock import must have an import idempotency key; retry must not create new batches/movements/journals.
 - Dealer receipts/settlements must be idempotent (caller idempotency key enforced; allocations deterministic).
   - Status (2026-02-04): ✅ dealer receipt idempotency reserve-first + mismatch-safe; tests: `CR_DealerReceiptSettlementAuditTrailTest`.
-  - Status (2026-02-04): ⏳ dealer settlement idempotency + allocation uniqueness in progress (Block D).
+  - Status (2026-02-04): ✅ dealer settlement idempotency reserve-first + allocation uniqueness; tests: `CR_DealerReceiptSettlementAuditTrailTest`, `AccountingServiceTest`.
 - Add DB uniqueness where needed to prevent duplicate reservations/batches under concurrency.
   - Packaging slips must not duplicate per order under concurrency (guard at DB and service layer).
 - Idempotency must be mismatch-safe:
