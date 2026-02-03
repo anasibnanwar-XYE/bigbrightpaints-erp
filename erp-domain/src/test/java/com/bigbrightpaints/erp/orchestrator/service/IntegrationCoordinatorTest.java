@@ -19,6 +19,7 @@ import com.bigbrightpaints.erp.modules.sales.service.SalesService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.reports.service.ReportService;
+import com.bigbrightpaints.erp.orchestrator.config.OrchestratorFeatureFlags;
 import com.bigbrightpaints.erp.orchestrator.repository.OrderAutoApprovalState;
 import com.bigbrightpaints.erp.orchestrator.repository.OrderAutoApprovalStateRepository;
 import java.math.BigDecimal;
@@ -103,6 +104,7 @@ class IntegrationCoordinatorTest {
                 companyDefaultAccountsService,
                 companyContextService,
                 companyClock,
+                new OrchestratorFeatureFlags(true, true),
                 new NoOpTransactionManager(),
                 10L,
                 20L);
@@ -244,6 +246,87 @@ class IntegrationCoordinatorTest {
     void createAccountingEntryFailsClosedInCodeRed() {
         assertThrows(IllegalStateException.class, () ->
                 integrationCoordinator.createAccountingEntry(String.valueOf(ORDER_ID), COMPANY_ID));
+    }
+
+    @Test
+    void updateProductionStatusFailsClosedWhenFactoryDispatchDisabled() {
+        IntegrationCoordinator disabled = new IntegrationCoordinator(
+                salesService,
+                factoryService,
+                finishedGoodsService,
+                invoiceService,
+                accountingService,
+                salesJournalService,
+                hrService,
+                reportService,
+                orderAutoApprovalStateRepository,
+                accountingFacade,
+                companyEntityLookup,
+                companyDefaultAccountsService,
+                companyContextService,
+                companyClock,
+                new OrchestratorFeatureFlags(true, false),
+                new NoOpTransactionManager(),
+                10L,
+                20L);
+
+        assertThrows(ApplicationException.class,
+                () -> disabled.updateProductionStatus("101", COMPANY_ID));
+        verify(factoryService, never()).updatePlanStatus(any(), anyString());
+    }
+
+    @Test
+    void generatePayrollFailsClosedWhenPayrollDisabled() {
+        IntegrationCoordinator disabled = new IntegrationCoordinator(
+                salesService,
+                factoryService,
+                finishedGoodsService,
+                invoiceService,
+                accountingService,
+                salesJournalService,
+                hrService,
+                reportService,
+                orderAutoApprovalStateRepository,
+                accountingFacade,
+                companyEntityLookup,
+                companyDefaultAccountsService,
+                companyContextService,
+                companyClock,
+                new OrchestratorFeatureFlags(false, true),
+                new NoOpTransactionManager(),
+                10L,
+                20L);
+
+        assertThrows(ApplicationException.class,
+                () -> disabled.generatePayroll(LocalDate.now(), new BigDecimal("1000"), COMPANY_ID));
+        verify(hrService, never()).createPayrollRun(any());
+    }
+
+    @Test
+    void recordPayrollPaymentFailsClosedWhenPayrollDisabled() {
+        IntegrationCoordinator disabled = new IntegrationCoordinator(
+                salesService,
+                factoryService,
+                finishedGoodsService,
+                invoiceService,
+                accountingService,
+                salesJournalService,
+                hrService,
+                reportService,
+                orderAutoApprovalStateRepository,
+                accountingFacade,
+                companyEntityLookup,
+                companyDefaultAccountsService,
+                companyContextService,
+                companyClock,
+                new OrchestratorFeatureFlags(false, true),
+                new NoOpTransactionManager(),
+                10L,
+                20L);
+
+        assertThrows(ApplicationException.class,
+                () -> disabled.recordPayrollPayment(1L, new BigDecimal("1000"), 1L, 2L, COMPANY_ID));
+        verify(accountingFacade, never()).recordPayrollPayment(any());
     }
 
     private static class NoOpTransactionManager extends AbstractPlatformTransactionManager {

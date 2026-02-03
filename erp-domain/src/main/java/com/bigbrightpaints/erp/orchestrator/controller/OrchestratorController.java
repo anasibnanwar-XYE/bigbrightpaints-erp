@@ -7,15 +7,16 @@ import com.bigbrightpaints.erp.orchestrator.dto.ApproveOrderRequest;
 import com.bigbrightpaints.erp.orchestrator.dto.DispatchRequest;
 import com.bigbrightpaints.erp.orchestrator.dto.OrderFulfillmentRequest;
 import com.bigbrightpaints.erp.orchestrator.dto.PayrollRunRequest;
+import com.bigbrightpaints.erp.orchestrator.exception.OrchestratorFeatureDisabledException;
 import com.bigbrightpaints.erp.orchestrator.service.CommandDispatcher;
 import com.bigbrightpaints.erp.orchestrator.service.TraceService;
 import jakarta.validation.Valid;
 import java.security.Principal;
 import java.util.Map;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -30,17 +31,11 @@ public class OrchestratorController {
 
     private final CommandDispatcher commandDispatcher;
     private final TraceService traceService;
-    private final boolean payrollEnabled;
-    private final boolean factoryDispatchEnabled;
 
     public OrchestratorController(CommandDispatcher commandDispatcher,
-                                  TraceService traceService,
-                                  @Value("${orchestrator.payroll.enabled:false}") boolean payrollEnabled,
-                                  @Value("${orchestrator.factory-dispatch.enabled:false}") boolean factoryDispatchEnabled) {
+                                  TraceService traceService) {
         this.commandDispatcher = commandDispatcher;
         this.traceService = traceService;
-        this.payrollEnabled = payrollEnabled;
-        this.factoryDispatchEnabled = factoryDispatchEnabled;
     }
 
     @PostMapping("/orders/{orderId}/approve")
@@ -71,12 +66,6 @@ public class OrchestratorController {
                                                          @Valid @RequestBody DispatchRequest request,
                                                          @org.springframework.web.bind.annotation.RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
                                                          Principal principal) {
-        if (!factoryDispatchEnabled) {
-            return ResponseEntity.status(HttpStatus.GONE)
-                    .body(Map.of(
-                            "message", "Orchestrator factory dispatch is disabled (CODE-RED).",
-                            "canonicalPath", "/api/v1/factory"));
-        }
         DispatchRequest normalized = new DispatchRequest(batchId,
                 request.requestedBy(),
                 request.postingAmount());
@@ -107,12 +96,6 @@ public class OrchestratorController {
     public ResponseEntity<Map<String, Object>> runPayroll(@Valid @RequestBody PayrollRunRequest request,
                                                            @org.springframework.web.bind.annotation.RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
                                                            Principal principal) {
-        if (!payrollEnabled) {
-            return ResponseEntity.status(HttpStatus.GONE)
-                    .body(Map.of(
-                            "message", "Orchestrator payroll run is disabled (CODE-RED).",
-                            "canonicalPath", "/api/v1/payroll/runs"));
-        }
         String traceId = commandDispatcher.runPayroll(request, requireIdempotencyKey(idempotencyKey), requireCompanyCode(), principal.getName());
         return ResponseEntity.accepted().body(Map.of("traceId", traceId));
     }
@@ -157,5 +140,13 @@ public class OrchestratorController {
                     "Idempotency-Key header is required");
         }
         return idempotencyKey.trim();
+    }
+
+    @ExceptionHandler(OrchestratorFeatureDisabledException.class)
+    public ResponseEntity<Map<String, Object>> handleFeatureDisabled(OrchestratorFeatureDisabledException ex) {
+        return ResponseEntity.status(HttpStatus.GONE)
+                .body(Map.of(
+                        "message", ex.getMessage(),
+                        "canonicalPath", ex.getCanonicalPath()));
     }
 }

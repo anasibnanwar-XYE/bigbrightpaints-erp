@@ -1,6 +1,6 @@
 # CODE-RED P0 Deploy Blockers (Must Fix or Prod-Gate)
 
-Last updated: 2026-02-03
+Last updated: 2026-02-04
 
 Purpose: a single, concrete list of **P0** items that block a safe enterprise deploy. For details, see:
 - `docs/CODE-RED/plan-v2.md`
@@ -59,6 +59,7 @@ Purpose: a single, concrete list of **P0** items that block a safe enterprise de
   - `Idempotency-Key` is required and reserved in `orchestrator_commands` (scope: company + command + key).
 - Orchestrator feature flags must be enforced in the service layer too (defense-in-depth):
   - If `orchestrator.factory-dispatch.enabled=false` or `orchestrator.payroll.enabled=false`, service invocation must fail closed even if the controller is bypassed.
+  - Status (2026-02-04): ✅ service-layer gating added; tests: `CommandDispatcherTest.dispatchBatchFailsClosedWhenFactoryDispatchDisabled`, `CommandDispatcherTest.runPayrollFailsClosedWhenPayrollDisabled`, `IntegrationCoordinatorTest.updateProductionStatusFailsClosedWhenFactoryDispatchDisabled`, `IntegrationCoordinatorTest.generatePayrollFailsClosedWhenPayrollDisabled`, `IntegrationCoordinatorTest.recordPayrollPaymentFailsClosedWhenPayrollDisabled`.
 - Manufacturing/packing endpoints must be retry-safe at the API boundary (double-click/network/orchestrator retries must not double-consume or double-post).
   - Bulk pack reference must be deterministic (no `System.currentTimeMillis()`); retries must not double-consume packaging.
   - Packing record retries must not double-consume packaging or double-post journals.

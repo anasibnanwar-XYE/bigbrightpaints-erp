@@ -123,6 +123,11 @@ P0 tests (must pass before enabling orchestrator command flags):
 - Orchestrator health endpoints require admin/ops auth.
 - Orchestrator idempotency: same `Idempotency-Key` replays return the same `traceId` and do not enqueue duplicate outbox events.
 - Feature flags are enforced in the service layer (flag-off must fail-closed even if invoked internally).
+  - Tests: `CommandDispatcherTest.dispatchBatchFailsClosedWhenFactoryDispatchDisabled`,
+    `CommandDispatcherTest.runPayrollFailsClosedWhenPayrollDisabled`,
+    `IntegrationCoordinatorTest.updateProductionStatusFailsClosedWhenFactoryDispatchDisabled`,
+    `IntegrationCoordinatorTest.generatePayrollFailsClosedWhenPayrollDisabled`,
+    `IntegrationCoordinatorTest.recordPayrollPaymentFailsClosedWhenPayrollDisabled`.
 - Dispatch journal replay safety: same reference with a mismatched amount/account set must fail closed (409/conflict),
   not silently return an incompatible existing journal.
 

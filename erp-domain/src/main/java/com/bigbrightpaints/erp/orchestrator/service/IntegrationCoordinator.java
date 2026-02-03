@@ -39,6 +39,7 @@ import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderDto;
 import com.bigbrightpaints.erp.modules.sales.service.SalesJournalService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesService;
 import com.bigbrightpaints.erp.modules.sales.util.SalesOrderReference;
+import com.bigbrightpaints.erp.orchestrator.config.OrchestratorFeatureFlags;
 import com.bigbrightpaints.erp.orchestrator.repository.OrderAutoApprovalState;
 import com.bigbrightpaints.erp.orchestrator.repository.OrderAutoApprovalStateRepository;
 import java.math.BigDecimal;
@@ -81,6 +82,7 @@ public class IntegrationCoordinator {
     private final CompanyDefaultAccountsService companyDefaultAccountsService;
     private final CompanyContextService companyContextService;
     private final CompanyClock companyClock;
+    private final OrchestratorFeatureFlags featureFlags;
     private final Long dispatchDebitAccountId;
     private final Long dispatchCreditAccountId;
     private final TransactionTemplate txTemplate;
@@ -100,6 +102,7 @@ public class IntegrationCoordinator {
                                   CompanyDefaultAccountsService companyDefaultAccountsService,
                                   CompanyContextService companyContextService,
                                   CompanyClock companyClock,
+                                  OrchestratorFeatureFlags featureFlags,
                                   PlatformTransactionManager txManager,
                                   @Value("${erp.dispatch.debit-account-id:0}") Long dispatchDebitAccountId,
                                   @Value("${erp.dispatch.credit-account-id:0}") Long dispatchCreditAccountId) {
@@ -117,6 +120,7 @@ public class IntegrationCoordinator {
         this.companyDefaultAccountsService = companyDefaultAccountsService;
         this.companyContextService = companyContextService;
         this.companyClock = companyClock;
+        this.featureFlags = featureFlags;
         this.dispatchDebitAccountId = normalizeAccount(dispatchDebitAccountId);
         this.dispatchCreditAccountId = normalizeAccount(dispatchCreditAccountId);
         if (this.dispatchDebitAccountId == null || this.dispatchCreditAccountId == null) {
@@ -221,6 +225,7 @@ public class IntegrationCoordinator {
 
     @Transactional
     public void updateProductionStatus(String planId, String companyId) {
+        requireFactoryDispatchEnabled();
         runWithCompanyContext(companyId, () -> {
             Long id = parseNumericId(planId);
             if (id != null) {
@@ -270,6 +275,7 @@ public class IntegrationCoordinator {
 
     @Transactional
     public void releaseInventory(String batchId, String companyId) {
+        requireFactoryDispatchEnabled();
         runWithCompanyContext(companyId, () -> {
             ProductionBatchRequest request = new ProductionBatchRequest(
                     batchId + "-DISPATCH",
@@ -285,6 +291,7 @@ public class IntegrationCoordinator {
     public void postDispatchJournal(String batchId,
                                     String companyId,
                                     BigDecimal amount) {
+        requireFactoryDispatchEnabled();
         runWithCompanyContext(companyId, () -> {
             Long debitAccountId = dispatchDebitAccountId;
             Long creditAccountId = dispatchCreditAccountId;
@@ -300,6 +307,7 @@ public class IntegrationCoordinator {
 
     @Transactional(readOnly = true)
     public void syncEmployees(String companyId) {
+        requirePayrollEnabled();
         runWithCompanyContext(companyId, () -> {
             hrService.listEmployees();
             log.info("Synced employees view for company {}", companyId);
@@ -310,6 +318,7 @@ public class IntegrationCoordinator {
     public PayrollRunDto generatePayroll(LocalDate payrollDate,
                                          BigDecimal totalAmount,
                                          String companyId) {
+        requirePayrollEnabled();
         return withCompanyContext(companyId, () -> {
             PayrollRunDto run = hrService.createPayrollRun(new PayrollRunRequest(
                     payrollDate,
@@ -327,6 +336,7 @@ public class IntegrationCoordinator {
                                                 Long expenseAccountId,
                                                 Long cashAccountId,
                                                 String companyId) {
+        requirePayrollEnabled();
         return withCompanyContext(companyId, () -> accountingFacade.recordPayrollPayment(
                 new PayrollPaymentRequest(payrollRunId, cashAccountId, expenseAccountId, amount, null, null)));
     }
@@ -568,6 +578,24 @@ public class IntegrationCoordinator {
         } catch (NumberFormatException ex) {
             log.warn("Value {} is not a numeric identifier", id);
             return null;
+        }
+    }
+
+    private void requireFactoryDispatchEnabled() {
+        if (featureFlags != null && !featureFlags.isFactoryDispatchEnabled()) {
+            throw new ApplicationException(
+                    ErrorCode.BUSINESS_INVALID_STATE,
+                    "Orchestrator factory dispatch is disabled (CODE-RED).")
+                    .withDetail("canonicalPath", "/api/v1/factory");
+        }
+    }
+
+    private void requirePayrollEnabled() {
+        if (featureFlags != null && !featureFlags.isPayrollEnabled()) {
+            throw new ApplicationException(
+                    ErrorCode.BUSINESS_INVALID_STATE,
+                    "Orchestrator payroll run is disabled (CODE-RED).")
+                    .withDetail("canonicalPath", "/api/v1/payroll/runs");
         }
     }
 

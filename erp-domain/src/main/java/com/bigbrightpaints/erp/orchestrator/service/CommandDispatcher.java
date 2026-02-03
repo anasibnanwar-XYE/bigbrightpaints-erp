@@ -1,10 +1,12 @@
 package com.bigbrightpaints.erp.orchestrator.service;
 
+import com.bigbrightpaints.erp.orchestrator.config.OrchestratorFeatureFlags;
 import com.bigbrightpaints.erp.orchestrator.dto.ApproveOrderRequest;
 import com.bigbrightpaints.erp.orchestrator.dto.DispatchRequest;
 import com.bigbrightpaints.erp.orchestrator.dto.OrderFulfillmentRequest;
 import com.bigbrightpaints.erp.orchestrator.dto.PayrollRunRequest;
 import com.bigbrightpaints.erp.orchestrator.event.DomainEvent;
+import com.bigbrightpaints.erp.orchestrator.exception.OrchestratorFeatureDisabledException;
 import com.bigbrightpaints.erp.orchestrator.policy.PolicyEnforcer;
 import com.bigbrightpaints.erp.orchestrator.workflow.WorkflowService;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.InventoryReservationResult;
@@ -28,17 +30,20 @@ public class CommandDispatcher {
     private final TraceService traceService;
     private final PolicyEnforcer policyEnforcer;
     private final OrchestratorIdempotencyService idempotencyService;
+    private final OrchestratorFeatureFlags featureFlags;
 
     public CommandDispatcher(WorkflowService workflowService, IntegrationCoordinator integrationCoordinator,
                              EventPublisherService eventPublisherService, TraceService traceService,
                              PolicyEnforcer policyEnforcer,
-                             OrchestratorIdempotencyService idempotencyService) {
+                             OrchestratorIdempotencyService idempotencyService,
+                             OrchestratorFeatureFlags featureFlags) {
         this.workflowService = workflowService;
         this.integrationCoordinator = integrationCoordinator;
         this.eventPublisherService = eventPublisherService;
         this.traceService = traceService;
         this.policyEnforcer = policyEnforcer;
         this.idempotencyService = idempotencyService;
+        this.featureFlags = featureFlags;
     }
 
     @Transactional
@@ -126,12 +131,9 @@ public class CommandDispatcher {
         }
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = OrchestratorFeatureDisabledException.class)
     public String dispatchBatch(DispatchRequest request, String idempotencyKey, String companyId, String userId) {
         policyEnforcer.checkDispatchPermissions(userId, companyId);
-        if (request.postingAmount() == null || request.postingAmount().compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException("Posting amount must be greater than zero for dispatch");
-        }
         OrchestratorIdempotencyService.CommandLease lease = idempotencyService.start(
                 "ORCH.FACTORY.BATCH.DISPATCH",
                 idempotencyKey,
@@ -139,6 +141,17 @@ public class CommandDispatcher {
                 () -> workflowService.startWorkflow("dispatch"));
         if (!lease.shouldExecute()) {
             return lease.traceId();
+        }
+        if (!featureFlags.isFactoryDispatchEnabled()) {
+            recordDeniedCommand(lease, "ORCH.FACTORY.BATCH.DISPATCH", companyId, userId, idempotencyKey,
+                    "/api/v1/factory", "Orchestrator factory dispatch is disabled (CODE-RED).",
+                    "Batch", request.batchId());
+            throw new OrchestratorFeatureDisabledException(
+                    "Orchestrator factory dispatch is disabled (CODE-RED).",
+                    "/api/v1/factory");
+        }
+        if (request.postingAmount() == null || request.postingAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Posting amount must be greater than zero for dispatch");
         }
         try {
             String traceId = lease.traceId();
@@ -160,12 +173,9 @@ public class CommandDispatcher {
         }
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = OrchestratorFeatureDisabledException.class)
     public String runPayroll(PayrollRunRequest request, String idempotencyKey, String companyId, String userId) {
         policyEnforcer.checkPayrollPermissions(userId, companyId);
-        if (request.postingAmount() == null || request.postingAmount().compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException("Posting amount must be greater than zero for payroll");
-        }
         OrchestratorIdempotencyService.CommandLease lease = idempotencyService.start(
                 "ORCH.PAYROLL.RUN",
                 idempotencyKey,
@@ -173,6 +183,17 @@ public class CommandDispatcher {
                 () -> workflowService.startWorkflow("payroll"));
         if (!lease.shouldExecute()) {
             return lease.traceId();
+        }
+        if (!featureFlags.isPayrollEnabled()) {
+            recordDeniedCommand(lease, "ORCH.PAYROLL.RUN", companyId, userId, idempotencyKey,
+                    "/api/v1/payroll/runs", "Orchestrator payroll run is disabled (CODE-RED).",
+                    "Payroll", request.payrollDate() != null ? request.payrollDate().toString() : null);
+            throw new OrchestratorFeatureDisabledException(
+                    "Orchestrator payroll run is disabled (CODE-RED).",
+                    "/api/v1/payroll/runs");
+        }
+        if (request.postingAmount() == null || request.postingAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Posting amount must be greater than zero for payroll");
         }
         try {
             String traceId = lease.traceId();
@@ -213,5 +234,35 @@ public class CommandDispatcher {
 
     public String generateTraceId() {
         return UUID.randomUUID().toString();
+    }
+
+    private void recordDeniedCommand(OrchestratorIdempotencyService.CommandLease lease,
+                                     String commandName,
+                                     String companyId,
+                                     String userId,
+                                     String idempotencyKey,
+                                     String canonicalPath,
+                                     String message,
+                                     String entity,
+                                     String entityId) {
+        String traceId = lease.traceId();
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("commandName", commandName);
+        payload.put("reason", message);
+        payload.put("canonicalPath", canonicalPath);
+        payload.put("idempotencyKey", idempotencyKey);
+        payload.put("traceId", traceId);
+        DomainEvent event = DomainEvent.of("OrchestratorCommandDenied", companyId, userId,
+                entity, entityId != null ? entityId : commandName, payload);
+        eventPublisherService.enqueue(event);
+        traceService.record(traceId, "ORCH_COMMAND_DENIED", companyId, Map.of(
+                "commandName", commandName,
+                "reason", message,
+                "canonicalPath", canonicalPath,
+                "idempotencyKey", idempotencyKey,
+                "entity", entity,
+                "entityId", entityId
+        ));
+        idempotencyService.markFailed(lease.command(), new RuntimeException(message));
     }
 }

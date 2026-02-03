@@ -2,12 +2,17 @@ package com.bigbrightpaints.erp.orchestrator.service;
 
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.InventoryReservationResult;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.InventoryShortage;
+import com.bigbrightpaints.erp.orchestrator.config.OrchestratorFeatureFlags;
 import com.bigbrightpaints.erp.orchestrator.dto.ApproveOrderRequest;
+import com.bigbrightpaints.erp.orchestrator.dto.DispatchRequest;
+import com.bigbrightpaints.erp.orchestrator.dto.PayrollRunRequest;
 import com.bigbrightpaints.erp.orchestrator.event.DomainEvent;
+import com.bigbrightpaints.erp.orchestrator.exception.OrchestratorFeatureDisabledException;
 import com.bigbrightpaints.erp.orchestrator.policy.PolicyEnforcer;
 import com.bigbrightpaints.erp.orchestrator.repository.OrchestratorCommand;
 import com.bigbrightpaints.erp.orchestrator.workflow.WorkflowService;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -19,6 +24,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -39,16 +46,19 @@ class CommandDispatcherTest {
     private OrchestratorIdempotencyService idempotencyService;
 
     private CommandDispatcher commandDispatcher;
+    private OrchestratorFeatureFlags featureFlags;
 
     @BeforeEach
     void setUp() {
+        featureFlags = new OrchestratorFeatureFlags(true, true);
         commandDispatcher = new CommandDispatcher(
                 workflowService,
                 integrationCoordinator,
                 eventPublisherService,
                 traceService,
                 policyEnforcer,
-                idempotencyService);
+                idempotencyService,
+                featureFlags);
     }
 
     @Test
@@ -94,5 +104,79 @@ class CommandDispatcherTest {
                         "101".equals(map.get("orderId")) && "idem-1".equals(map.get("idempotencyKey"))));
 
         verify(idempotencyService).markSuccess(command);
+    }
+
+    @Test
+    void dispatchBatchFailsClosedWhenFactoryDispatchDisabled() {
+        CommandDispatcher disabledDispatcher = new CommandDispatcher(
+                workflowService,
+                integrationCoordinator,
+                eventPublisherService,
+                traceService,
+                policyEnforcer,
+                idempotencyService,
+                new OrchestratorFeatureFlags(true, false));
+
+        OrchestratorCommand command = new OrchestratorCommand(1L, "ORCH.FACTORY.BATCH.DISPATCH", "idem-2", "hash", "trace-456");
+        DispatchRequest request = new DispatchRequest("77", "orch@bbp.com", new BigDecimal("100"));
+        when(idempotencyService.start(
+                ArgumentMatchers.eq("ORCH.FACTORY.BATCH.DISPATCH"),
+                ArgumentMatchers.eq("idem-2"),
+                ArgumentMatchers.eq(request),
+                ArgumentMatchers.any()))
+                .thenReturn(new OrchestratorIdempotencyService.CommandLease("trace-456", command, true));
+
+        assertThatThrownBy(() -> disabledDispatcher.dispatchBatch(request, "idem-2", "COMP", "user-1"))
+                .isInstanceOf(OrchestratorFeatureDisabledException.class);
+
+        verify(integrationCoordinator, never()).updateProductionStatus(ArgumentMatchers.anyString(), ArgumentMatchers.anyString());
+        verify(integrationCoordinator, never()).releaseInventory(ArgumentMatchers.anyString(), ArgumentMatchers.anyString());
+        verify(integrationCoordinator, never()).postDispatchJournal(ArgumentMatchers.anyString(), ArgumentMatchers.anyString(), ArgumentMatchers.any());
+        verify(eventPublisherService).enqueue(ArgumentMatchers.argThat(event ->
+                "OrchestratorCommandDenied".equals(event.eventType())));
+        verify(traceService).record(
+                ArgumentMatchers.eq("trace-456"),
+                ArgumentMatchers.eq("ORCH_COMMAND_DENIED"),
+                ArgumentMatchers.eq("COMP"),
+                ArgumentMatchers.<Map<String, Object>>argThat(map ->
+                        "ORCH.FACTORY.BATCH.DISPATCH".equals(map.get("commandName"))));
+        verify(idempotencyService).markFailed(ArgumentMatchers.eq(command), ArgumentMatchers.any(RuntimeException.class));
+    }
+
+    @Test
+    void runPayrollFailsClosedWhenPayrollDisabled() {
+        CommandDispatcher disabledDispatcher = new CommandDispatcher(
+                workflowService,
+                integrationCoordinator,
+                eventPublisherService,
+                traceService,
+                policyEnforcer,
+                idempotencyService,
+                new OrchestratorFeatureFlags(false, true));
+
+        OrchestratorCommand command = new OrchestratorCommand(1L, "ORCH.PAYROLL.RUN", "idem-3", "hash", "trace-789");
+        PayrollRunRequest request = new PayrollRunRequest(LocalDate.now(), "orch", 11L, 22L, new BigDecimal("1000"));
+        when(idempotencyService.start(
+                ArgumentMatchers.eq("ORCH.PAYROLL.RUN"),
+                ArgumentMatchers.eq("idem-3"),
+                ArgumentMatchers.eq(request),
+                ArgumentMatchers.any()))
+                .thenReturn(new OrchestratorIdempotencyService.CommandLease("trace-789", command, true));
+
+        assertThatThrownBy(() -> disabledDispatcher.runPayroll(request, "idem-3", "COMP", "user-1"))
+                .isInstanceOf(OrchestratorFeatureDisabledException.class);
+
+        verify(integrationCoordinator, never()).syncEmployees(ArgumentMatchers.anyString());
+        verify(integrationCoordinator, never()).generatePayroll(ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.anyString());
+        verify(integrationCoordinator, never()).recordPayrollPayment(ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.anyString());
+        verify(eventPublisherService).enqueue(ArgumentMatchers.argThat(event ->
+                "OrchestratorCommandDenied".equals(event.eventType())));
+        verify(traceService).record(
+                ArgumentMatchers.eq("trace-789"),
+                ArgumentMatchers.eq("ORCH_COMMAND_DENIED"),
+                ArgumentMatchers.eq("COMP"),
+                ArgumentMatchers.<Map<String, Object>>argThat(map ->
+                        "ORCH.PAYROLL.RUN".equals(map.get("commandName"))));
+        verify(idempotencyService).markFailed(ArgumentMatchers.eq(command), ArgumentMatchers.any(RuntimeException.class));
     }
 }

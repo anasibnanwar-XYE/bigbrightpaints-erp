@@ -104,6 +104,7 @@ public class OrchestratorControllerIT extends AbstractIntegrationTest {
     void payroll_run_is_disabled_by_default_in_code_red() {
         String token = loginToken();
         HttpHeaders headers = authHeaders(token);
+        headers.add("Idempotency-Key", UUID.randomUUID().toString());
         long beforeRuns = payrollRunRepository.count();
 
         Map<String, Object> body = Map.of(
