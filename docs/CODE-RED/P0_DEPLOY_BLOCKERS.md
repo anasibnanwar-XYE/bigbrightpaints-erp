@@ -69,6 +69,9 @@ Purpose: a single, concrete list of **P0** items that block a safe enterprise de
   - Bulk pack reference must be deterministic (no `System.currentTimeMillis()`); retries must not double-consume packaging.
   - Packing record retries must not double-consume packaging or double-post journals.
   - Opening stock import must have an import idempotency key; retry must not create new batches/movements/journals.
+    - Status (2026-02-04): ✅ opening stock import idempotent + prod gated; tests: `CR_OpeningStockImportIdempotencyIT`, `CR_OpeningStockImportProdGatingIT`.
+- Manual raw material intake must be disabled by default and require idempotency key when enabled (fail closed with canonical path).
+  - Status (2026-02-04): ✅ feature-flag gating + idempotency record; tests: `CR_RawMaterialIntakeIdempotencyIT`, `ProcureToPayE2ETest.rawMaterialIntakeDisabledByDefault`.
 - Inventory adjustments must be retry-safe and use the adjustment date for posting:
   - `Idempotency-Key` required; mismatch-safe on replay; journal entry date must equal `adjustmentDate`.
   - Status (2026-02-04): ✅ idempotency + date enforcement; tests: `CR_INV_AdjustmentIdempotencyTest`.

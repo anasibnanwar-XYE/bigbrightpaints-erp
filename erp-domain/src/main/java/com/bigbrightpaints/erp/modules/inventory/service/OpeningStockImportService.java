@@ -1,5 +1,7 @@
 package com.bigbrightpaints.erp.modules.inventory.service;
 
+import com.bigbrightpaints.erp.core.audit.AuditEvent;
+import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
@@ -10,9 +12,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
-import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
-import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
-import com.bigbrightpaints.erp.modules.accounting.service.ReferenceNumberService;
+import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
@@ -23,19 +23,22 @@ import com.bigbrightpaints.erp.modules.inventory.domain.InventoryMovement;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryMovementRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReference;
 import com.bigbrightpaints.erp.modules.inventory.domain.MaterialType;
+import com.bigbrightpaints.erp.modules.inventory.domain.OpeningStockImport;
+import com.bigbrightpaints.erp.modules.inventory.domain.OpeningStockImportRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovement;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
-import com.bigbrightpaints.erp.modules.inventory.dto.FinishedGoodBatchRequest;
 import com.bigbrightpaints.erp.modules.inventory.dto.FinishedGoodDto;
 import com.bigbrightpaints.erp.modules.inventory.dto.FinishedGoodRequest;
 import com.bigbrightpaints.erp.modules.inventory.dto.OpeningStockImportResponse;
 import com.bigbrightpaints.erp.modules.inventory.dto.OpeningStockImportResponse.ImportError;
 import com.bigbrightpaints.erp.modules.inventory.dto.RawMaterialRequest;
 import com.bigbrightpaints.erp.modules.inventory.dto.RawMaterialDto;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -51,11 +54,16 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -74,11 +82,16 @@ public class OpeningStockImportService {
     private final BatchNumberService batchNumberService;
     private final RawMaterialService rawMaterialService;
     private final FinishedGoodsService finishedGoodsService;
-    private final AccountingService accountingService;
+    private final AccountingFacade accountingFacade;
     private final AccountRepository accountRepository;
-    private final ReferenceNumberService referenceNumberService;
     private final JournalEntryRepository journalEntryRepository;
+    private final OpeningStockImportRepository openingStockImportRepository;
+    private final AuditService auditService;
+    private final ObjectMapper objectMapper;
     private final CompanyClock companyClock;
+    private final boolean openingStockImportEnabled;
+    private final Environment environment;
+    private final TransactionTemplate transactionTemplate;
 
     public OpeningStockImportService(CompanyContextService companyContextService,
                                      RawMaterialRepository rawMaterialRepository,
@@ -90,11 +103,16 @@ public class OpeningStockImportService {
                                      BatchNumberService batchNumberService,
                                      RawMaterialService rawMaterialService,
                                      FinishedGoodsService finishedGoodsService,
-                                     AccountingService accountingService,
+                                     AccountingFacade accountingFacade,
                                      AccountRepository accountRepository,
-                                     ReferenceNumberService referenceNumberService,
                                      JournalEntryRepository journalEntryRepository,
-                                     CompanyClock companyClock) {
+                                     OpeningStockImportRepository openingStockImportRepository,
+                                     AuditService auditService,
+                                     ObjectMapper objectMapper,
+                                     CompanyClock companyClock,
+                                     Environment environment,
+                                     PlatformTransactionManager transactionManager,
+                                     @Value("${erp.inventory.opening-stock.enabled:false}") boolean openingStockImportEnabled) {
         this.companyContextService = companyContextService;
         this.rawMaterialRepository = rawMaterialRepository;
         this.rawMaterialBatchRepository = rawMaterialBatchRepository;
@@ -105,26 +123,103 @@ public class OpeningStockImportService {
         this.batchNumberService = batchNumberService;
         this.rawMaterialService = rawMaterialService;
         this.finishedGoodsService = finishedGoodsService;
-        this.accountingService = accountingService;
+        this.accountingFacade = accountingFacade;
         this.accountRepository = accountRepository;
-        this.referenceNumberService = referenceNumberService;
         this.journalEntryRepository = journalEntryRepository;
+        this.openingStockImportRepository = openingStockImportRepository;
+        this.auditService = auditService;
+        this.objectMapper = objectMapper;
         this.companyClock = companyClock;
+        this.environment = environment;
+        this.openingStockImportEnabled = openingStockImportEnabled;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
-    @Transactional
     public OpeningStockImportResponse importOpeningStock(MultipartFile file) {
+        return importOpeningStock(file, null);
+    }
+
+    public OpeningStockImportResponse importOpeningStock(MultipartFile file, String idempotencyKey) {
         Company company = companyContextService.requireCurrentCompany();
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("CSV file is required");
         }
-        String importReference = resolveImportReference(company, file);
+        assertImportAllowed();
+        String fileHash = sha256Hex(file);
+        String normalizedKey = normalizeIdempotencyKey(idempotencyKey, fileHash);
+        String importReference = resolveImportReference(company, fileHash);
+
+        OpeningStockImport existing = openingStockImportRepository.findByCompanyAndIdempotencyKey(company, normalizedKey)
+                .orElse(null);
+        if (existing != null) {
+            assertIdempotencyMatch(existing, fileHash, normalizedKey);
+            return toResponse(existing);
+        }
+
         if (journalEntryRepository.findByCompanyAndReferenceNumber(company, importReference).isPresent()) {
             throw new ApplicationException(ErrorCode.BUSINESS_DUPLICATE_ENTRY,
                     "Opening stock import already processed for this file")
                     .withDetail("referenceNumber", importReference);
         }
 
+        try {
+            OpeningStockImportResponse response = transactionTemplate.execute(status ->
+                    importOpeningStockInternal(company, file, normalizedKey, fileHash, importReference));
+            if (response == null) {
+                throw new IllegalStateException("Opening stock import failed to return a response");
+            }
+            return response;
+        } catch (RuntimeException ex) {
+            if (!isDataIntegrityViolation(ex)) {
+                throw ex;
+            }
+            OpeningStockImport concurrent = openingStockImportRepository.findByCompanyAndIdempotencyKey(company, normalizedKey)
+                    .orElseThrow(() -> ex);
+            assertIdempotencyMatch(concurrent, fileHash, normalizedKey);
+            return toResponse(concurrent);
+        }
+    }
+
+    private OpeningStockImportResponse importOpeningStockInternal(Company company,
+                                                                  MultipartFile file,
+                                                                  String idempotencyKey,
+                                                                  String fileHash,
+                                                                  String importReference) {
+        OpeningStockImport record = new OpeningStockImport();
+        record.setCompany(company);
+        record.setIdempotencyKey(idempotencyKey);
+        record.setIdempotencyHash(fileHash);
+        record.setReferenceNumber(importReference);
+        record.setFileHash(fileHash);
+        record.setFileName(file.getOriginalFilename());
+        record = openingStockImportRepository.saveAndFlush(record);
+
+        ImportResult result = processImport(company, file, importReference);
+        OpeningStockImportResponse response = result.response();
+
+        record.setRowsProcessed(response.rowsProcessed());
+        record.setRawMaterialsCreated(response.rawMaterialsCreated());
+        record.setRawMaterialBatchesCreated(response.rawMaterialBatchesCreated());
+        record.setFinishedGoodsCreated(response.finishedGoodsCreated());
+        record.setFinishedGoodBatchesCreated(response.finishedGoodBatchesCreated());
+        record.setErrorsJson(serializeErrors(response.errors()));
+        record.setJournalEntryId(result.journalEntryId());
+        openingStockImportRepository.save(record);
+
+        Map<String, String> auditMetadata = new HashMap<>();
+        auditMetadata.put("operation", "opening-stock-import");
+        auditMetadata.put("idempotencyKey", idempotencyKey);
+        auditMetadata.put("referenceNumber", importReference);
+        auditMetadata.put("fileHash", fileHash);
+        auditMetadata.put("rowsProcessed", Integer.toString(response.rowsProcessed()));
+        if (result.journalEntryId() != null) {
+            auditMetadata.put("journalEntryId", result.journalEntryId().toString());
+        }
+        auditService.logSuccess(AuditEvent.DATA_CREATE, auditMetadata);
+        return response;
+    }
+
+    private ImportResult processImport(Company company, MultipartFile file, String importReference) {
         int rowsProcessed = 0;
         int rawMaterialsCreated = 0;
         int rawMaterialBatchesCreated = 0;
@@ -198,7 +293,7 @@ public class OpeningStockImportService {
                 }
             }
 
-            return new OpeningStockImportResponse(
+            OpeningStockImportResponse response = new OpeningStockImportResponse(
                     rowsProcessed,
                     rawMaterialsCreated,
                     rawMaterialBatchesCreated,
@@ -206,15 +301,104 @@ public class OpeningStockImportService {
                     finishedGoodBatchesCreated,
                     errors
             );
+            return new ImportResult(response, journalEntryId);
         } catch (IOException ex) {
             throw new IllegalStateException("Failed to read CSV file", ex);
         }
     }
 
-    private String resolveImportReference(Company company, MultipartFile file) {
+    private void assertImportAllowed() {
+        if (isProdProfile() && !openingStockImportEnabled) {
+            throw new ApplicationException(ErrorCode.BUSINESS_CONSTRAINT_VIOLATION,
+                    "Opening stock import is disabled; enable migration mode to proceed.")
+                    .withDetail("setting", "erp.inventory.opening-stock.enabled")
+                    .withDetail("canonicalPath", "/api/v1/inventory/opening-stock");
+        }
+    }
+
+    private boolean isProdProfile() {
+        return environment != null && environment.acceptsProfiles(Profiles.of("prod"));
+    }
+
+    private String normalizeIdempotencyKey(String idempotencyKey, String fileHash) {
+        String trimmed = StringUtils.hasText(idempotencyKey) ? idempotencyKey.trim() : null;
+        String resolved = StringUtils.hasText(trimmed) ? trimmed : fileHash;
+        if (!StringUtils.hasText(resolved)) {
+            throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
+                    "Idempotency key is required for opening stock imports");
+        }
+        if (resolved.length() > 128) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Idempotency key exceeds 128 characters");
+        }
+        return resolved;
+    }
+
+    private void assertIdempotencyMatch(OpeningStockImport record, String expectedHash, String idempotencyKey) {
+        String storedSignature = StringUtils.hasText(record.getIdempotencyHash())
+                ? record.getIdempotencyHash()
+                : record.getFileHash();
+        if (StringUtils.hasText(storedSignature)) {
+            if (!storedSignature.equals(expectedHash)) {
+                throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
+                        "Idempotency key already used with different payload")
+                        .withDetail("idempotencyKey", idempotencyKey);
+            }
+            return;
+        }
+        record.setIdempotencyHash(expectedHash);
+        openingStockImportRepository.save(record);
+    }
+
+    private OpeningStockImportResponse toResponse(OpeningStockImport record) {
+        List<ImportError> errors = deserializeErrors(record.getErrorsJson());
+        return new OpeningStockImportResponse(
+                record.getRowsProcessed(),
+                record.getRawMaterialsCreated(),
+                record.getRawMaterialBatchesCreated(),
+                record.getFinishedGoodsCreated(),
+                record.getFinishedGoodBatchesCreated(),
+                errors
+        );
+    }
+
+    private String serializeErrors(List<ImportError> errors) {
+        if (errors == null || errors.isEmpty()) {
+            return null;
+        }
+        try {
+            return objectMapper.writeValueAsString(errors);
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    private List<ImportError> deserializeErrors(String errorsJson) {
+        if (!StringUtils.hasText(errorsJson)) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readValue(errorsJson, new TypeReference<List<ImportError>>() {});
+        } catch (Exception ex) {
+            return List.of();
+        }
+    }
+
+    private boolean isDataIntegrityViolation(Throwable error) {
+        Throwable cursor = error;
+        while (cursor != null) {
+            if (cursor instanceof DataIntegrityViolationException) {
+                return true;
+            }
+            cursor = cursor.getCause();
+        }
+        return false;
+    }
+
+    private String resolveImportReference(Company company, String fileHash) {
         String companyCode = sanitizeCompanyCode(company != null ? company.getCode() : null);
-        String fileHash = sha256Hex(file, 12);
-        return "OPEN-STOCK-%s-%s".formatted(companyCode, fileHash);
+        String shortHash = StringUtils.hasText(fileHash) ? fileHash.substring(0, Math.min(12, fileHash.length())) : "UNKNOWN";
+        return "OPEN-STOCK-%s-%s".formatted(companyCode, shortHash);
     }
 
     private String sanitizeCompanyCode(String code) {
@@ -225,13 +409,12 @@ public class OpeningStockImportService {
         return normalized.isBlank() ? "COMPANY" : normalized;
     }
 
-    private String sha256Hex(MultipartFile file, int length) {
+    private String sha256Hex(MultipartFile file) {
         try {
             byte[] bytes = file.getBytes();
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hash = digest.digest(bytes);
-            String fullHex = java.util.HexFormat.of().formatHex(hash);
-            return fullHex.substring(0, Math.min(length, fullHex.length()));
+            return java.util.HexFormat.of().formatHex(hash);
         } catch (Exception ex) {
             // Fallback: stable-ish hash for common IO failures (still protects against accidental retries)
             return Integer.toHexString(file.getOriginalFilename() != null ? file.getOriginalFilename().hashCode() : 0);
@@ -478,7 +661,7 @@ public class OpeningStockImportService {
         if (inventoryTotals == null || inventoryTotals.isEmpty()) {
             return null;
         }
-        List<JournalEntryRequest.JournalLineRequest> lines = new ArrayList<>();
+        Map<Long, BigDecimal> filteredLines = new HashMap<>();
         BigDecimal total = BigDecimal.ZERO;
         List<Map.Entry<Long, BigDecimal>> sortedEntries = inventoryTotals.entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
@@ -489,30 +672,22 @@ public class OpeningStockImportService {
                 continue;
             }
             total = total.add(amount);
-            lines.add(new JournalEntryRequest.JournalLineRequest(
-                    entry.getKey(),
-                    "Opening stock import",
-                    amount,
-                    BigDecimal.ZERO));
+            filteredLines.put(entry.getKey(), amount);
         }
-        if (total.compareTo(BigDecimal.ZERO) <= 0) {
+        if (total.compareTo(BigDecimal.ZERO) <= 0 || filteredLines.isEmpty()) {
             return null;
         }
         Account openingBalance = resolveOpeningBalanceAccount(company);
-        lines.add(new JournalEntryRequest.JournalLineRequest(
-                openingBalance.getId(),
-                "Opening stock offset",
-                BigDecimal.ZERO,
-                total));
-        JournalEntryDto journalEntry = accountingService.createJournalEntry(new JournalEntryRequest(
+        JournalEntryDto journalEntry = accountingFacade.postInventoryAdjustment(
+                "OPENING_STOCK",
                 reference,
-                companyClock.today(company),
+                openingBalance.getId(),
+                filteredLines,
+                true,
+                false,
                 "Opening stock import",
-                null,
-                null,
-                Boolean.FALSE,
-                lines));
-        return journalEntry.id();
+                companyClock.today(company));
+        return journalEntry != null ? journalEntry.id() : null;
     }
 
     private Account resolveOpeningBalanceAccount(Company company) {
@@ -540,6 +715,8 @@ public class OpeningStockImportService {
                                          BigDecimal amount,
                                          RawMaterialMovement rawMovement,
                                          InventoryMovement inventoryMovement) {}
+
+    private record ImportResult(OpeningStockImportResponse response, Long journalEntryId) {}
 
     private static final class OpeningRow {
         private final StockType type;

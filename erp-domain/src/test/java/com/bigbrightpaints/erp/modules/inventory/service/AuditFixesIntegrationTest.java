@@ -424,10 +424,10 @@ class AuditFixesIntegrationTest extends AbstractIntegrationTest {
                 null
         );
 
-        rawMaterialService.createBatch(material.id(), request);
+        rawMaterialService.createBatch(material.id(), request, "RM-DUP-KEY-1");
 
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-                () -> rawMaterialService.createBatch(material.id(), request));
+                () -> rawMaterialService.createBatch(material.id(), request, "RM-DUP-KEY-2"));
         assertTrue(ex.getMessage().contains("Batch code"));
     }
 }

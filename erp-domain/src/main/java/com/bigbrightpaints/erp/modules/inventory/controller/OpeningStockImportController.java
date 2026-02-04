@@ -7,6 +7,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
@@ -24,8 +25,10 @@ public class OpeningStockImportController {
 
     @PostMapping(value = "/opening-stock", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING','ROLE_FACTORY')")
-    public ResponseEntity<ApiResponse<OpeningStockImportResponse>> importOpeningStock(@RequestPart("file") MultipartFile file) {
-        OpeningStockImportResponse response = openingStockImportService.importOpeningStock(file);
+    public ResponseEntity<ApiResponse<OpeningStockImportResponse>> importOpeningStock(
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            @RequestPart("file") MultipartFile file) {
+        OpeningStockImportResponse response = openingStockImportService.importOpeningStock(file, idempotencyKey);
         return ResponseEntity.ok(ApiResponse.success("Opening stock import processed", response));
     }
 }

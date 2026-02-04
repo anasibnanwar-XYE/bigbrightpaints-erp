@@ -1,5 +1,7 @@
 package com.bigbrightpaints.erp.modules.inventory.service;
 
+import com.bigbrightpaints.erp.core.audit.AuditEvent;
+import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
@@ -14,6 +16,8 @@ import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReference;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialIntakeRecord;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialIntakeRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovement;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
@@ -24,8 +28,14 @@ import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProductRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
 import jakarta.transaction.Transactional;
+import org.apache.commons.codec.digest.DigestUtils;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
@@ -41,6 +51,7 @@ public class RawMaterialService {
     private final RawMaterialRepository rawMaterialRepository;
     private final RawMaterialBatchRepository batchRepository;
     private final RawMaterialMovementRepository movementRepository;
+    private final RawMaterialIntakeRepository rawMaterialIntakeRepository;
     private final CompanyContextService companyContextService;
     private final ProductionProductRepository productionProductRepository;
     private final ProductionBrandRepository productionBrandRepository;
@@ -49,11 +60,15 @@ public class RawMaterialService {
     private final ReferenceNumberService referenceNumberService;
     private final CompanyClock companyClock;
     private final CompanyEntityLookup companyEntityLookup;
+    private final AuditService auditService;
+    private final Environment environment;
+    private final TransactionTemplate transactionTemplate;
     private final boolean rawMaterialIntakeEnabled;
 
     public RawMaterialService(RawMaterialRepository rawMaterialRepository,
                               RawMaterialBatchRepository batchRepository,
                               RawMaterialMovementRepository movementRepository,
+                              RawMaterialIntakeRepository rawMaterialIntakeRepository,
                               CompanyContextService companyContextService,
                               ProductionProductRepository productionProductRepository,
                               ProductionBrandRepository productionBrandRepository,
@@ -62,10 +77,14 @@ public class RawMaterialService {
                               ReferenceNumberService referenceNumberService,
                               CompanyClock companyClock,
                               CompanyEntityLookup companyEntityLookup,
+                              AuditService auditService,
+                              Environment environment,
+                              PlatformTransactionManager transactionManager,
                               @Value("${erp.raw-material.intake.enabled:false}") boolean rawMaterialIntakeEnabled) {
         this.rawMaterialRepository = rawMaterialRepository;
         this.batchRepository = batchRepository;
         this.movementRepository = movementRepository;
+        this.rawMaterialIntakeRepository = rawMaterialIntakeRepository;
         this.companyContextService = companyContextService;
         this.productionProductRepository = productionProductRepository;
         this.productionBrandRepository = productionBrandRepository;
@@ -74,6 +93,9 @@ public class RawMaterialService {
         this.referenceNumberService = referenceNumberService;
         this.companyClock = companyClock;
         this.companyEntityLookup = companyEntityLookup;
+        this.auditService = auditService;
+        this.environment = environment;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.rawMaterialIntakeEnabled = rawMaterialIntakeEnabled;
     }
 
@@ -185,16 +207,43 @@ public class RawMaterialService {
                 .toList();
     }
 
-    @Transactional
-    public RawMaterialBatchDto createBatch(Long rawMaterialId, RawMaterialBatchRequest request) {
+    public RawMaterialBatchDto createBatch(Long rawMaterialId, RawMaterialBatchRequest request, String idempotencyKey) {
         if (!rawMaterialIntakeEnabled) {
             throw new ApplicationException(ErrorCode.BUSINESS_CONSTRAINT_VIOLATION,
                     "Manual raw material batch creation is disabled; use raw material purchases for supplier receipts.")
                     .withDetail("endpoint", "/api/v1/purchasing/raw-material-purchases")
+                    .withDetail("canonicalPath", "/api/v1/purchasing/raw-material-purchases")
                     .withDetail("setting", "erp.raw-material.intake.enabled");
         }
-        ReceiptResult receipt = recordReceipt(rawMaterialId, request, null);
-        return toBatchDto(receipt.batch());
+        if (request == null) {
+            throw new IllegalArgumentException("Raw material batch request is required");
+        }
+        Company company = companyContextService.requireCurrentCompany();
+        String normalizedKey = requireIdempotencyKey(idempotencyKey, "manual raw material batch creation");
+        String signature = buildManualIntakeSignature(rawMaterialId, request);
+
+        RawMaterialIntakeRecord existing = rawMaterialIntakeRepository.findByCompanyAndIdempotencyKey(company, normalizedKey)
+                .orElse(null);
+        if (existing != null) {
+            assertIdempotencyMatch(existing, signature, normalizedKey);
+            return resolveExistingBatch(existing, normalizedKey);
+        }
+        try {
+            RawMaterialBatchDto response = transactionTemplate.execute(status ->
+                    createManualIntakeInternal(company, rawMaterialId, request, normalizedKey, signature));
+            if (response == null) {
+                throw new IllegalStateException("Manual raw material intake failed to return a batch");
+            }
+            return response;
+        } catch (RuntimeException ex) {
+            if (!isDataIntegrityViolation(ex)) {
+                throw ex;
+            }
+            RawMaterialIntakeRecord concurrent = rawMaterialIntakeRepository.findByCompanyAndIdempotencyKey(company, normalizedKey)
+                    .orElseThrow(() -> ex);
+            assertIdempotencyMatch(concurrent, signature, normalizedKey);
+            return resolveExistingBatch(concurrent, normalizedKey);
+        }
     }
 
     @Transactional
@@ -232,22 +281,26 @@ public class RawMaterialService {
         return new ReceiptResult(savedBatch, receiptMovement, journalEntryId);
     }
 
-    @Transactional
-    public RawMaterialBatchDto intake(RawMaterialIntakeRequest request) {
+    public RawMaterialBatchDto intake(RawMaterialIntakeRequest request, String idempotencyKey) {
         if (!rawMaterialIntakeEnabled) {
             throw new ApplicationException(ErrorCode.BUSINESS_CONSTRAINT_VIOLATION,
                     "Raw material intake is disabled; use raw material purchases for supplier invoices.")
                     .withDetail("endpoint", "/api/v1/purchasing/raw-material-purchases")
+                    .withDetail("canonicalPath", "/api/v1/purchasing/raw-material-purchases")
                     .withDetail("setting", "erp.raw-material.intake.enabled");
         }
-        return createBatch(request.rawMaterialId(), new RawMaterialBatchRequest(
+        if (request == null) {
+            throw new IllegalArgumentException("Raw material intake request is required");
+        }
+        RawMaterialBatchRequest batchRequest = new RawMaterialBatchRequest(
                 request.batchCode(),
                 request.quantity(),
                 request.unit(),
                 request.costPerUnit(),
                 request.supplierId(),
                 request.notes()
-        ));
+        );
+        return createBatch(request.rawMaterialId(), batchRequest, idempotencyKey);
     }
 
     private BigDecimal requirePositive(BigDecimal value, String fieldName) {
@@ -480,6 +533,122 @@ public class RawMaterialService {
             return prefix + "-" + context.referenceId();
         }
         return referenceNumberService.rawMaterialReceiptReference(material.getCompany(), batch.getBatchCode());
+    }
+
+    private RawMaterialBatchDto createManualIntakeInternal(Company company,
+                                                           Long rawMaterialId,
+                                                           RawMaterialBatchRequest request,
+                                                           String idempotencyKey,
+                                                           String requestSignature) {
+        RawMaterialIntakeRecord record = new RawMaterialIntakeRecord();
+        record.setCompany(company);
+        record.setIdempotencyKey(idempotencyKey);
+        record.setIdempotencyHash(requestSignature);
+        record.setRawMaterialId(rawMaterialId);
+        record = rawMaterialIntakeRepository.saveAndFlush(record);
+
+        ReceiptResult receipt = recordReceipt(rawMaterialId, request, null);
+        RawMaterialBatch batch = receipt.batch();
+        record.setRawMaterialBatchId(batch != null ? batch.getId() : null);
+        record.setRawMaterialMovementId(receipt.movement() != null ? receipt.movement().getId() : null);
+        record.setJournalEntryId(receipt.journalEntryId());
+        rawMaterialIntakeRepository.save(record);
+
+        Map<String, String> auditMetadata = new HashMap<>();
+        auditMetadata.put("operation", "manual-raw-material-intake");
+        auditMetadata.put("idempotencyKey", idempotencyKey);
+        if (rawMaterialId != null) {
+            auditMetadata.put("rawMaterialId", rawMaterialId.toString());
+        }
+        if (batch != null && batch.getId() != null) {
+            auditMetadata.put("batchId", batch.getId().toString());
+        }
+        if (receipt.journalEntryId() != null) {
+            auditMetadata.put("journalEntryId", receipt.journalEntryId().toString());
+        }
+        auditService.logSuccess(AuditEvent.DATA_CREATE, auditMetadata);
+
+        return toBatchDto(batch);
+    }
+
+    private RawMaterialBatchDto resolveExistingBatch(RawMaterialIntakeRecord record, String idempotencyKey) {
+        Long batchId = record.getRawMaterialBatchId();
+        if (batchId == null) {
+            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
+                    "Idempotency key already used but batch record is missing")
+                    .withDetail("idempotencyKey", idempotencyKey);
+        }
+        RawMaterialBatch batch = batchRepository.findById(batchId)
+                .orElseThrow(() -> new IllegalStateException("Raw material batch not found for idempotency key"));
+        return toBatchDto(batch);
+    }
+
+    private void assertIdempotencyMatch(RawMaterialIntakeRecord record, String expectedSignature, String idempotencyKey) {
+        String storedSignature = record.getIdempotencyHash();
+        if (StringUtils.hasText(storedSignature)) {
+            if (!storedSignature.equals(expectedSignature)) {
+                throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
+                        "Idempotency key already used with different payload")
+                        .withDetail("idempotencyKey", idempotencyKey);
+            }
+            return;
+        }
+        record.setIdempotencyHash(expectedSignature);
+        rawMaterialIntakeRepository.save(record);
+    }
+
+    private String requireIdempotencyKey(String idempotencyKey, String label) {
+        if (!StringUtils.hasText(idempotencyKey)) {
+            throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
+                    "Idempotency key is required for " + label);
+        }
+        String trimmed = idempotencyKey.trim();
+        if (trimmed.length() > 128) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Idempotency key exceeds 128 characters");
+        }
+        return trimmed;
+    }
+
+    private String buildManualIntakeSignature(Long rawMaterialId, RawMaterialBatchRequest request) {
+        if (request == null) {
+            return DigestUtils.sha256Hex("");
+        }
+        StringBuilder signature = new StringBuilder();
+        signature.append(rawMaterialId != null ? rawMaterialId : "")
+                .append('|').append(normalizeToken(request.batchCode()))
+                .append('|').append(normalizeAmount(request.quantity()))
+                .append('|').append(normalizeToken(request.unit()))
+                .append('|').append(normalizeAmount(request.costPerUnit()))
+                .append('|').append(request.supplierId() != null ? request.supplierId() : "")
+                .append('|').append(normalizeToken(request.notes()));
+        return DigestUtils.sha256Hex(signature.toString());
+    }
+
+    private String normalizeToken(String value) {
+        return value != null ? value.trim() : "";
+    }
+
+    private String normalizeAmount(BigDecimal value) {
+        if (value == null) {
+            return "";
+        }
+        return value.stripTrailingZeros().toPlainString();
+    }
+
+    private boolean isDataIntegrityViolation(Throwable error) {
+        Throwable cursor = error;
+        while (cursor != null) {
+            if (cursor instanceof DataIntegrityViolationException) {
+                return true;
+            }
+            cursor = cursor.getCause();
+        }
+        return false;
+    }
+
+    private boolean isProdProfile() {
+        return environment != null && environment.acceptsProfiles(Profiles.of("prod"));
     }
 
     public record ReceiptContext(String referenceType, String referenceId, String memo, boolean postJournal) {

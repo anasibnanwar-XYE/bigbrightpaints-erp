@@ -65,13 +65,18 @@ public class RawMaterialController {
 
     @PostMapping("/raw-material-batches/{rawMaterialId}")
     public ResponseEntity<ApiResponse<RawMaterialBatchDto>> createBatch(@PathVariable Long rawMaterialId,
+                                                                        @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
                                                                         @Valid @RequestBody RawMaterialBatchRequest request) {
-        return ResponseEntity.ok(ApiResponse.success("Batch recorded", rawMaterialService.createBatch(rawMaterialId, request)));
+        return ResponseEntity.ok(ApiResponse.success("Batch recorded",
+                rawMaterialService.createBatch(rawMaterialId, request, idempotencyKey)));
     }
 
     @PostMapping("/raw-materials/intake")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-    public ResponseEntity<ApiResponse<RawMaterialBatchDto>> intake(@Valid @RequestBody RawMaterialIntakeRequest request) {
-        return ResponseEntity.ok(ApiResponse.success("Intake recorded", rawMaterialService.intake(request)));
+    public ResponseEntity<ApiResponse<RawMaterialBatchDto>> intake(
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            @Valid @RequestBody RawMaterialIntakeRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Intake recorded",
+                rawMaterialService.intake(request, idempotencyKey)));
     }
 }
