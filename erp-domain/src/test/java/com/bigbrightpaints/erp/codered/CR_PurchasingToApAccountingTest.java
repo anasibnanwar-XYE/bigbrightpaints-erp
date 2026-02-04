@@ -16,6 +16,8 @@ import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAlloca
 import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocationRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodCloseRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementResponse;
+import com.bigbrightpaints.erp.modules.accounting.dto.MonthEndChecklistDto;
+import com.bigbrightpaints.erp.modules.accounting.dto.MonthEndChecklistItemDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.SettlementAllocationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.SupplierPaymentRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.SupplierSettlementRequest;
@@ -668,6 +670,65 @@ class CR_PurchasingToApAccountingTest extends AbstractIntegrationTest {
                         .isEqualTo(ErrorCode.CONCURRENCY_CONFLICT));
     }
 
+    @Test
+    void periodChecklist_treatsPartialAndPaidPurchasesAsPosted() {
+        String companyCode = "CR-PERIOD-P2P-PARTIAL-" + shortId();
+        Company company = bootstrapCompany(companyCode);
+        Map<String, Account> accounts = ensurePurchasingAccounts(company);
+
+        Supplier supplier = ensureSupplier(company, accounts.get("AP"));
+        RawMaterial rm = ensureRawMaterial(company, accounts.get("RM_INV"));
+        LocalDate today = TestDateUtils.safeDate(company);
+
+        CompanyContextHolder.setCompanyId(companyCode);
+        RawMaterialPurchaseResponse purchase = createPurchaseFlow(supplier, rm, today);
+        RawMaterialPurchase persisted = purchaseRepository.findById(purchase.id()).orElseThrow();
+        persisted.setStatus("PARTIAL");
+        purchaseRepository.save(persisted);
+
+        accountingPeriodService.listPeriods();
+        AccountingPeriod period = accountingPeriodRepository.findByCompanyAndYearAndMonth(
+                company, today.getYear(), today.getMonthValue()).orElseThrow();
+        MonthEndChecklistDto checklist = accountingPeriodService.getMonthEndChecklist(period.getId());
+
+        MonthEndChecklistItemDto unposted = findChecklistItem(checklist, "unpostedDocuments");
+        assertThat(unposted.completed()).as("partial purchases are treated as posted").isTrue();
+        assertThat(unposted.detail()).contains("All documents posted");
+
+        MonthEndChecklistItemDto unlinked = findChecklistItem(checklist, "unlinkedDocuments");
+        assertThat(unlinked.completed()).as("journal link still required").isTrue();
+    }
+
+    @Test
+    void periodChecklist_flagsPostedishPurchaseMissingJournalLink() {
+        String companyCode = "CR-PERIOD-P2P-UNLINKED-" + shortId();
+        Company company = bootstrapCompany(companyCode);
+        Map<String, Account> accounts = ensurePurchasingAccounts(company);
+
+        Supplier supplier = ensureSupplier(company, accounts.get("AP"));
+        RawMaterial rm = ensureRawMaterial(company, accounts.get("RM_INV"));
+        LocalDate today = TestDateUtils.safeDate(company);
+
+        CompanyContextHolder.setCompanyId(companyCode);
+        RawMaterialPurchaseResponse purchase = createPurchaseFlow(supplier, rm, today);
+        RawMaterialPurchase persisted = purchaseRepository.findById(purchase.id()).orElseThrow();
+        persisted.setStatus("PAID");
+        persisted.setJournalEntry(null);
+        purchaseRepository.save(persisted);
+
+        accountingPeriodService.listPeriods();
+        AccountingPeriod period = accountingPeriodRepository.findByCompanyAndYearAndMonth(
+                company, today.getYear(), today.getMonthValue()).orElseThrow();
+        MonthEndChecklistDto checklist = accountingPeriodService.getMonthEndChecklist(period.getId());
+
+        MonthEndChecklistItemDto unposted = findChecklistItem(checklist, "unpostedDocuments");
+        assertThat(unposted.completed()).as("paid purchases are treated as posted").isTrue();
+
+        MonthEndChecklistItemDto unlinked = findChecklistItem(checklist, "unlinkedDocuments");
+        assertThat(unlinked.completed()).as("missing journal link is a blocker").isFalse();
+        assertThat(unlinked.detail()).contains("missing journal links");
+    }
+
     private Company bootstrapCompany(String companyCode) {
         dataSeeder.ensureCompany(companyCode, companyCode + " Ltd");
         CompanyContextHolder.setCompanyId(companyCode);
@@ -798,6 +859,13 @@ class CR_PurchasingToApAccountingTest extends AbstractIntegrationTest {
                         null,
                         "Invoice line"))
         ));
+    }
+
+    private MonthEndChecklistItemDto findChecklistItem(MonthEndChecklistDto checklist, String key) {
+        return checklist.items().stream()
+                .filter(item -> key.equals(item.key()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("Checklist item missing: " + key));
     }
 
     private static String shortId() {

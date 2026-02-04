@@ -43,8 +43,18 @@ public interface RawMaterialPurchaseRepository extends JpaRepository<RawMaterial
                                                          LocalDate end,
                                                          String status);
 
+    long countByCompanyAndInvoiceDateBetweenAndStatusNotIn(Company company,
+                                                           LocalDate start,
+                                                           LocalDate end,
+                                                           List<String> statuses);
+
     long countByCompanyAndInvoiceDateBetweenAndStatusAndJournalEntryIsNull(Company company,
                                                                            LocalDate start,
                                                                            LocalDate end,
                                                                            String status);
+
+    long countByCompanyAndInvoiceDateBetweenAndStatusInAndJournalEntryIsNull(Company company,
+                                                                             LocalDate start,
+                                                                             LocalDate end,
+                                                                             List<String> statuses);
 }

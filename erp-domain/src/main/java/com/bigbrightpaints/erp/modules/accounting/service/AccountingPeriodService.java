@@ -686,11 +686,11 @@ public class AccountingPeriodService {
                 period.getStartDate(),
                 period.getEndDate(),
                 List.of("DRAFT"));
-        long purchaseUnposted = rawMaterialPurchaseRepository.countByCompanyAndInvoiceDateBetweenAndStatusNot(
+        long purchaseUnposted = rawMaterialPurchaseRepository.countByCompanyAndInvoiceDateBetweenAndStatusNotIn(
                 company,
                 period.getStartDate(),
                 period.getEndDate(),
-                "POSTED");
+                List.of("POSTED", "PARTIAL", "PAID"));
         long payrollUnposted = payrollRunRepository.countByCompanyAndPeriodBetweenAndStatusIn(
                 company,
                 period.getStartDate(),
@@ -715,11 +715,11 @@ public class AccountingPeriodService {
                 period.getStartDate(),
                 period.getEndDate(),
                 "DRAFT");
-        long purchaseUnlinked = rawMaterialPurchaseRepository.countByCompanyAndInvoiceDateBetweenAndStatusAndJournalEntryIsNull(
+        long purchaseUnlinked = rawMaterialPurchaseRepository.countByCompanyAndInvoiceDateBetweenAndStatusInAndJournalEntryIsNull(
                 company,
                 period.getStartDate(),
                 period.getEndDate(),
-                "POSTED");
+                List.of("POSTED", "PARTIAL", "PAID"));
         long payrollUnlinked = payrollRunRepository.countByCompanyAndPeriodBetweenAndStatusInAndJournalMissing(
                 company,
                 period.getStartDate(),

@@ -66,6 +66,33 @@ from invoices
 where journal_entry_id is null
 order by company_id, invoice_id;
 
+-- 3b) Posted-ish purchases missing journal entry (status alone is not proof)
+select
+  company_id,
+  id as purchase_id,
+  invoice_number,
+  status,
+  journal_entry_id,
+  invoice_date
+from raw_material_purchases
+where upper(status) in ('POSTED', 'PARTIAL', 'PAID')
+  and journal_entry_id is null
+order by company_id, purchase_id;
+
+-- 3c) Duplicate supplier allocations within a single settlement journal
+select
+  company_id,
+  purchase_id,
+  journal_entry_id,
+  count(*) as cnt
+from partner_settlement_allocations
+where partner_type = 'SUPPLIER'
+  and purchase_id is not null
+  and journal_entry_id is not null
+group by company_id, purchase_id, journal_entry_id
+having count(*) > 1
+order by cnt desc, company_id, purchase_id, journal_entry_id;
+
 -- 4) Packaging slips pointing to missing invoices (or cross-company mismatch)
 select
   p.company_id,

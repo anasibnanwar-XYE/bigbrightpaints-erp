@@ -108,6 +108,10 @@ Purpose: a single, concrete list of **P0** items that block a safe enterprise de
 - Payroll payments must clear Salary Payable (no double-expensing).
   - `POST /api/v1/accounting/payroll/payments` now requires POSTED runs, posts **Dr SALARY-PAYABLE / Cr CASH**, and stores `payroll_runs.payment_journal_entry_id`.
   - HR `POST /api/v1/payroll/runs/{id}/mark-paid` is blocked unless a payment journal exists (prevents “PAID with no payment evidence”).
+- Period close must treat posted-ish purchases as posted (POSTED|PARTIAL|PAID) while still requiring journal linkage.
+  - Status (2026-02-04): ✅ checklist counts fixed for purchases; tests:
+    `CR_PurchasingToApAccountingTest.periodChecklist_treatsPartialAndPaidPurchasesAsPosted`,
+    `CR_PurchasingToApAccountingTest.periodChecklist_flagsPostedishPurchaseMissingJournalLink`.
 - Closed-period reporting must use **period-end snapshots** as the source of truth.
   - Fix: persist period-end snapshots at close, and make report paths read snapshots for CLOSED periods.
 - Fix FIFO valuation to use remaining/available quantities (not total quantities) so depleted batches don’t inflate valuation.
