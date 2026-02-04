@@ -513,13 +513,7 @@ public class PayrollService {
     @Transactional
     public PayrollRunDto markAsPaid(Long payrollRunId, String paymentReference) {
         Company company = companyContextService.requireCurrentCompany();
-        PayrollRun run = payrollRunRepository.findByCompanyAndId(company, payrollRunId)
-            .orElseThrow(() -> new IllegalArgumentException("Payroll run not found"));
-
-        if (run.getStatus() != PayrollRun.PayrollStatus.POSTED) {
-            throw new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE,
-                    "Can only mark posted payroll as paid");
-        }
+        PayrollRun run = companyEntityLookup.lockPayrollRun(company, payrollRunId);
 
         if (run.getPaymentJournalEntryId() == null) {
             throw new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE,
@@ -527,11 +521,22 @@ public class PayrollService {
                     .withDetail("canonicalPath", "/api/v1/accounting/payroll/payments");
         }
 
+        if (run.getStatus() != PayrollRun.PayrollStatus.POSTED
+                && run.getStatus() != PayrollRun.PayrollStatus.PAID) {
+            throw new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE,
+                    "Can only mark posted payroll as paid");
+        }
+
         // Update all lines to paid
         List<PayrollRunLine> lines = payrollRunLineRepository.findByPayrollRun(run);
+        List<PayrollRunLine> dirtyLines = new ArrayList<>();
         for (PayrollRunLine line : lines) {
+            if (line.getPaymentStatus() == PayrollRunLine.PaymentStatus.PAID) {
+                continue;
+            }
             line.setPaymentStatus(PayrollRunLine.PaymentStatus.PAID);
             line.setPaymentReference(paymentReference);
+            dirtyLines.add(line);
             
             // Deduct advance from employee if applicable
             BigDecimal advances = line.getAdvances() != null ? line.getAdvances() : BigDecimal.ZERO;
@@ -542,14 +547,20 @@ public class PayrollService {
                 if (newBalance.compareTo(BigDecimal.ZERO) < 0) {
                     newBalance = BigDecimal.ZERO;
                 }
-                emp.setAdvanceBalance(newBalance);
-                employeeRepository.save(emp);
+                if (newBalance.compareTo(currentBalance) != 0) {
+                    emp.setAdvanceBalance(newBalance);
+                    employeeRepository.save(emp);
+                }
             }
         }
-        payrollRunLineRepository.saveAll(lines);
+        if (!dirtyLines.isEmpty()) {
+            payrollRunLineRepository.saveAll(dirtyLines);
+        }
 
-        run.setStatus(PayrollRun.PayrollStatus.PAID);
-        payrollRunRepository.save(run);
+        if (run.getStatus() != PayrollRun.PayrollStatus.PAID) {
+            run.setStatus(PayrollRun.PayrollStatus.PAID);
+            payrollRunRepository.save(run);
+        }
         return toDto(run);
     }
 

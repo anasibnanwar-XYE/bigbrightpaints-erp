@@ -11,6 +11,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
+import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.PayrollPaymentRequest;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -271,6 +272,13 @@ class CR_PayrollIdempotencyConcurrencyTest extends AbstractIntegrationTest {
         assertThat(posted.getJournalEntryId()).as("posting journal stored").isNotNull();
         assertThat(posted.getPaymentJournalEntryId()).as("payment journal not yet recorded").isNull();
 
+        CompanyContextHolder.setCompanyId(companyCode);
+        assertThatThrownBy(() -> payrollService.markAsPaid(posted.getId(), "PAYMENT-MISSING"))
+                .isInstanceOf(ApplicationException.class)
+                .extracting(ex -> ((ApplicationException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.BUSINESS_INVALID_STATE);
+        CompanyContextHolder.clear();
+
         BigDecimal expectedPayable = new BigDecimal("2000");
         CompanyContextHolder.setCompanyId(companyCode);
         var payment = accountingService.recordPayrollPayment(new PayrollPaymentRequest(
@@ -320,6 +328,187 @@ class CR_PayrollIdempotencyConcurrencyTest extends AbstractIntegrationTest {
         assertThat(paid.getStatus()).isEqualTo(PayrollRun.PayrollStatus.PAID);
         assertThat(payrollRunLineRepository.findByPayrollRun(paid))
                 .allSatisfy(line -> assertThat(line.getPaymentStatus()).isEqualTo(PayrollRunLine.PaymentStatus.PAID));
+    }
+
+    @Test
+    void payrollPayment_idempotentUnderConcurrency() {
+        String companyCode = "CR-PAY-PMT-CONC-" + shortId();
+        Company company = bootstrapCompany(companyCode);
+        ensurePayrollAccounts(company);
+
+        Account cash = ensureAccount(company, "BANK", "Bank", AccountType.ASSET);
+
+        LocalDate anchor = TestDateUtils.safeDate(company);
+        LocalDate start = anchor.minusDays(30);
+        LocalDate end = anchor.minusDays(1);
+
+        CompanyContextHolder.setCompanyId(companyCode);
+        var runDto = payrollService.createPayrollRun(new PayrollService.CreatePayrollRunRequest(
+                PayrollRun.RunType.MONTHLY,
+                start,
+                end,
+                "CODE-RED payroll payment"
+        ));
+        CompanyContextHolder.clear();
+
+        PayrollRun run = payrollRunRepository.findByCompanyAndId(company, runDto.id()).orElseThrow();
+        run.setStatus(PayrollRun.PayrollStatus.APPROVED);
+        payrollRunRepository.save(run);
+        seedMinimalPayrollLines(company, run, BigDecimal.valueOf(1000));
+
+        CompanyContextHolder.setCompanyId(companyCode);
+        payrollService.postPayrollToAccounting(run.getId());
+        CompanyContextHolder.clear();
+
+        PayrollPaymentRequest request = new PayrollPaymentRequest(
+                run.getId(),
+                cash.getId(),
+                cash.getId(),
+                new BigDecimal("2000"),
+                null,
+                "CODE-RED payroll payment"
+        );
+
+        var concurrent = CoderedConcurrencyHarness.run(
+                2,
+                3,
+                Duration.ofSeconds(30),
+                threadIndex -> () -> {
+                    CompanyContextHolder.setCompanyId(companyCode);
+                    try {
+                        return accountingService.recordPayrollPayment(request);
+                    } finally {
+                        CompanyContextHolder.clear();
+                    }
+                },
+                CoderedRetry::isRetryable
+        );
+
+        assertThat(concurrent.outcomes())
+                .allMatch(outcome -> outcome instanceof CoderedConcurrencyHarness.Outcome.Success<?>);
+        List<Long> journalIds = concurrent.outcomes().stream()
+                .map(outcome -> ((CoderedConcurrencyHarness.Outcome.Success<JournalEntryDto>) outcome).value())
+                .map(JournalEntryDto::id)
+                .distinct()
+                .toList();
+        assertThat(journalIds).as("Concurrent payroll payments converge on one journal").hasSize(1);
+
+        PayrollRun afterPayment = payrollRunRepository.findByCompanyAndId(company, run.getId()).orElseThrow();
+        assertThat(afterPayment.getPaymentJournalEntryId()).isNotNull();
+    }
+
+    @Test
+    void payrollPayment_mismatchConflictsOnReplay() {
+        String companyCode = "CR-PAY-PMT-MISMATCH-" + shortId();
+        Company company = bootstrapCompany(companyCode);
+        ensurePayrollAccounts(company);
+
+        Account cash = ensureAccount(company, "BANK", "Bank", AccountType.ASSET);
+        Account altCash = ensureAccount(company, "BANK-ALT", "Bank Alt", AccountType.ASSET);
+
+        LocalDate anchor = TestDateUtils.safeDate(company);
+        LocalDate start = anchor.minusDays(30);
+        LocalDate end = anchor.minusDays(1);
+
+        CompanyContextHolder.setCompanyId(companyCode);
+        var runDto = payrollService.createPayrollRun(new PayrollService.CreatePayrollRunRequest(
+                PayrollRun.RunType.MONTHLY,
+                start,
+                end,
+                "CODE-RED payroll payment"
+        ));
+        CompanyContextHolder.clear();
+
+        PayrollRun run = payrollRunRepository.findByCompanyAndId(company, runDto.id()).orElseThrow();
+        run.setStatus(PayrollRun.PayrollStatus.APPROVED);
+        payrollRunRepository.save(run);
+        seedMinimalPayrollLines(company, run, BigDecimal.valueOf(1000));
+
+        CompanyContextHolder.setCompanyId(companyCode);
+        payrollService.postPayrollToAccounting(run.getId());
+        accountingService.recordPayrollPayment(new PayrollPaymentRequest(
+                run.getId(),
+                cash.getId(),
+                cash.getId(),
+                new BigDecimal("2000"),
+                null,
+                "CODE-RED payroll payment"
+        ));
+        CompanyContextHolder.clear();
+
+        CompanyContextHolder.setCompanyId(companyCode);
+        assertThatThrownBy(() -> accountingService.recordPayrollPayment(new PayrollPaymentRequest(
+                run.getId(),
+                altCash.getId(),
+                altCash.getId(),
+                new BigDecimal("2000"),
+                null,
+                "CODE-RED payroll payment"
+        )))
+                .isInstanceOf(ApplicationException.class)
+                .extracting(ex -> ((ApplicationException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.CONCURRENCY_CONFLICT);
+        CompanyContextHolder.clear();
+    }
+
+    @Test
+    void markAsPaid_idempotent_doesNotDoubleApplyAdvances() {
+        String companyCode = "CR-PAY-MARK-IDEMP-" + shortId();
+        Company company = bootstrapCompany(companyCode);
+        ensurePayrollAccounts(company);
+
+        Account cash = ensureAccount(company, "BANK", "Bank", AccountType.ASSET);
+
+        LocalDate anchor = TestDateUtils.safeDate(company);
+        LocalDate start = anchor.minusDays(30);
+        LocalDate end = anchor.minusDays(1);
+
+        CompanyContextHolder.setCompanyId(companyCode);
+        var runDto = payrollService.createPayrollRun(new PayrollService.CreatePayrollRunRequest(
+                PayrollRun.RunType.MONTHLY,
+                start,
+                end,
+                "CODE-RED payroll payment"
+        ));
+        CompanyContextHolder.clear();
+
+        PayrollRun run = payrollRunRepository.findByCompanyAndId(company, runDto.id()).orElseThrow();
+        run.setStatus(PayrollRun.PayrollStatus.APPROVED);
+        payrollRunRepository.save(run);
+        seedMinimalPayrollLines(company, run, BigDecimal.valueOf(1000), BigDecimal.valueOf(100));
+
+        payrollRunLineRepository.findByPayrollRunWithEmployeeOrderByEmployeeFirstNameAsc(run).forEach(line -> {
+            Employee employee = line.getEmployee();
+            employee.setAdvanceBalance(new BigDecimal("500"));
+            employeeRepository.save(employee);
+        });
+
+        CompanyContextHolder.setCompanyId(companyCode);
+        payrollService.postPayrollToAccounting(run.getId());
+        accountingService.recordPayrollPayment(new PayrollPaymentRequest(
+                run.getId(),
+                cash.getId(),
+                cash.getId(),
+                new BigDecimal("1800"),
+                null,
+                "CODE-RED payroll payment"
+        ));
+        payrollService.markAsPaid(run.getId(), "PAYROLL-PAID-REF");
+        CompanyContextHolder.clear();
+
+        payrollRunLineRepository.findByPayrollRunWithEmployeeOrderByEmployeeFirstNameAsc(run).forEach(line -> {
+            Employee reloaded = employeeRepository.findById(line.getEmployee().getId()).orElseThrow();
+            assertThat(reloaded.getAdvanceBalance()).as("advance balance reduced once").isEqualByComparingTo("400");
+        });
+
+        CompanyContextHolder.setCompanyId(companyCode);
+        payrollService.markAsPaid(run.getId(), "PAYROLL-PAID-REF-RETRY");
+        CompanyContextHolder.clear();
+
+        payrollRunLineRepository.findByPayrollRunWithEmployeeOrderByEmployeeFirstNameAsc(run).forEach(line -> {
+            Employee reloaded = employeeRepository.findById(line.getEmployee().getId()).orElseThrow();
+            assertThat(reloaded.getAdvanceBalance()).as("advance balance not double deducted").isEqualByComparingTo("400");
+        });
     }
 
     private Company bootstrapCompany(String companyCode) {

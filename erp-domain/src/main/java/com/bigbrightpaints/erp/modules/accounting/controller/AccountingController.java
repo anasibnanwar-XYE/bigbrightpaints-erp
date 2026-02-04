@@ -37,6 +37,7 @@ import java.time.YearMonth;
 public class AccountingController {
 
     private final AccountingService accountingService;
+    private final AccountingFacade accountingFacade;
     private final SalesReturnService salesReturnService;
     private final AccountingPeriodService accountingPeriodService;
     private final ReconciliationService reconciliationService;
@@ -48,6 +49,7 @@ public class AccountingController {
     private final CompanyDefaultAccountsService companyDefaultAccountsService;
 
     public AccountingController(AccountingService accountingService,
+                                AccountingFacade accountingFacade,
                                 SalesReturnService salesReturnService,
                                 AccountingPeriodService accountingPeriodService,
                                 ReconciliationService reconciliationService,
@@ -58,6 +60,7 @@ public class AccountingController {
                                 AgingReportService agingReportService,
                                 CompanyDefaultAccountsService companyDefaultAccountsService) {
         this.accountingService = accountingService;
+        this.accountingFacade = accountingFacade;
         this.salesReturnService = salesReturnService;
         this.accountingPeriodService = accountingPeriodService;
         this.reconciliationService = reconciliationService;
@@ -204,7 +207,7 @@ public class AccountingController {
     @PostMapping("/payroll/payments")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
     public ResponseEntity<ApiResponse<JournalEntryDto>> recordPayrollPayment(@Valid @RequestBody PayrollPaymentRequest request) {
-        return ResponseEntity.ok(ApiResponse.success("Payroll payment recorded", accountingService.recordPayrollPayment(request)));
+        return ResponseEntity.ok(ApiResponse.success("Payroll payment recorded", accountingFacade.recordPayrollPayment(request)));
     }
 
     @PostMapping("/suppliers/payments")

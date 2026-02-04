@@ -1009,26 +1009,18 @@ public class AccountingService {
         Company company = companyContextService.requireCurrentCompany();
         PayrollRun run = companyEntityLookup.lockPayrollRun(company, request.payrollRunId());
 
-        // Idempotency check: if already paid, return existing payment journal entry
-        if (run.getPaymentJournalEntryId() != null) {
-            JournalEntry paid = companyEntityLookup.requireJournalEntry(company, run.getPaymentJournalEntryId());
-            log.info("Payroll run {} already has payment journal {}, returning existing", run.getId(), paid.getReferenceNumber());
-            return toDto(paid);
-        }
-        if (run.getStatus() == PayrollRun.PayrollStatus.PAID) {
-            if (run.getJournalEntry() != null) {
-                log.info("Payroll run {} already marked PAID with journal {}, returning existing",
-                        run.getId(), run.getJournalEntry().getReferenceNumber());
-                return toDto(run.getJournalEntry());
-            }
-            if (run.getJournalEntryId() != null) {
-                return toDto(companyEntityLookup.requireJournalEntry(company, run.getJournalEntryId()));
-            }
+        if (run.getStatus() == PayrollRun.PayrollStatus.PAID && run.getPaymentJournalEntryId() == null) {
             throw new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE,
-                    "Payroll run already marked PAID but payment journal reference is missing");
+                    "Payroll run already marked PAID but payment journal reference is missing")
+                    .withDetail("payrollRunId", run.getId());
         }
 
-        if (run.getStatus() != PayrollRun.PayrollStatus.POSTED || run.getJournalEntryId() == null) {
+        if (run.getStatus() != PayrollRun.PayrollStatus.POSTED && run.getStatus() != PayrollRun.PayrollStatus.PAID) {
+            throw new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE,
+                    "Payroll must be posted to accounting before recording payment")
+                    .withDetail("requiredStatus", PayrollRun.PayrollStatus.POSTED.name());
+        }
+        if (run.getJournalEntryId() == null) {
             throw new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE,
                     "Payroll must be posted to accounting before recording payment")
                     .withDetail("requiredStatus", PayrollRun.PayrollStatus.POSTED.name());
@@ -1068,12 +1060,17 @@ public class AccountingService {
                     .withDetail("requestAmount", amount);
         }
 
+        if (run.getPaymentJournalEntryId() != null) {
+            JournalEntry paid = companyEntityLookup.requireJournalEntry(company, run.getPaymentJournalEntryId());
+            validatePayrollPaymentIdempotency(request, paid, salaryPayableAccount, cashAccount, amount);
+            log.info("Payroll run {} already has payment journal {}, returning existing", run.getId(), paid.getReferenceNumber());
+            return toDto(paid);
+        }
+
         String memo = StringUtils.hasText(request.memo())
                 ? request.memo().trim()
                 : "Payroll payment for " + run.getRunDate();
-        String reference = StringUtils.hasText(request.referenceNumber())
-                ? request.referenceNumber().trim()
-                : referenceNumberService.payrollPaymentReference(company);
+        String reference = resolvePayrollPaymentReference(run, request, company);
 
         JournalEntryRequest payload = new JournalEntryRequest(
                 reference,
@@ -1093,6 +1090,59 @@ public class AccountingService {
         run.setPaymentJournalEntryId(paymentJournal.getId());
         payrollRunRepository.save(run);
         return entry;
+    }
+
+    private String resolvePayrollPaymentReference(PayrollRun run, PayrollPaymentRequest request, Company company) {
+        if (StringUtils.hasText(request.referenceNumber())) {
+            return request.referenceNumber().trim();
+        }
+        String runToken = StringUtils.hasText(run.getRunNumber())
+                ? run.getRunNumber().trim()
+                : (run.getId() != null ? "LEGACY-" + run.getId() : null);
+        if (!StringUtils.hasText(runToken)) {
+            return referenceNumberService.payrollPaymentReference(company);
+        }
+        return "PAYROLL-PAY-" + runToken;
+    }
+
+    private void validatePayrollPaymentIdempotency(PayrollPaymentRequest request,
+                                                   JournalEntry existing,
+                                                   Account salaryPayableAccount,
+                                                   Account cashAccount,
+                                                   BigDecimal amount) {
+        List<String> mismatches = new ArrayList<>();
+        if (StringUtils.hasText(request.referenceNumber())
+                && existing.getReferenceNumber() != null
+                && !request.referenceNumber().trim().equalsIgnoreCase(existing.getReferenceNumber())) {
+            mismatches.add("referenceNumber");
+        }
+        BigDecimal payableDebit = BigDecimal.ZERO;
+        BigDecimal cashCredit = BigDecimal.ZERO;
+        if (existing.getLines() != null) {
+            for (JournalLine line : existing.getLines()) {
+                if (line.getAccount() == null || line.getAccount().getId() == null) {
+                    continue;
+                }
+                if (salaryPayableAccount.getId().equals(line.getAccount().getId())) {
+                    payableDebit = payableDebit.add(MoneyUtils.zeroIfNull(line.getDebit()));
+                }
+                if (cashAccount.getId().equals(line.getAccount().getId())) {
+                    cashCredit = cashCredit.add(MoneyUtils.zeroIfNull(line.getCredit()));
+                }
+            }
+        }
+        if (payableDebit.subtract(amount).abs().compareTo(ALLOCATION_TOLERANCE) > 0) {
+            mismatches.add("salaryPayableDebit");
+        }
+        if (cashCredit.subtract(amount).abs().compareTo(ALLOCATION_TOLERANCE) > 0) {
+            mismatches.add("cashCredit");
+        }
+        if (!mismatches.isEmpty()) {
+            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
+                    "Payroll payment already recorded with different details")
+                    .withDetail("payrollRunId", request.payrollRunId())
+                    .withDetail("mismatches", mismatches);
+        }
     }
 
     /**

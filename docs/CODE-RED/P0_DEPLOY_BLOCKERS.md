@@ -116,6 +116,11 @@ Purpose: a single, concrete list of **P0** items that block a safe enterprise de
 - Payroll payments must clear Salary Payable (no double-expensing).
   - `POST /api/v1/accounting/payroll/payments` now requires POSTED runs, posts **Dr SALARY-PAYABLE / Cr CASH**, and stores `payroll_runs.payment_journal_entry_id`.
   - HR `POST /api/v1/payroll/runs/{id}/mark-paid` is blocked unless a payment journal exists (prevents “PAID with no payment evidence”).
+  - Status (2026-02-04): ✅ payment idempotency + mark-paid safety; tests:
+    `CR_PayrollIdempotencyConcurrencyTest.payrollPayment_idempotentUnderConcurrency`,
+    `CR_PayrollIdempotencyConcurrencyTest.payrollPayment_mismatchConflictsOnReplay`,
+    `CR_PayrollIdempotencyConcurrencyTest.markAsPaid_idempotent_doesNotDoubleApplyAdvances`,
+    `CR_PayrollIdempotencyConcurrencyTest.payrollPayment_clearsSalaryPayable_andRequiresPaymentJournal_beforeMarkPaid`.
 - Period close must treat posted-ish purchases as posted (POSTED|PARTIAL|PAID) while still requiring journal linkage.
   - Status (2026-02-04): ✅ checklist counts fixed for purchases; tests:
     `CR_PurchasingToApAccountingTest.periodChecklist_treatsPartialAndPaidPurchasesAsPosted`,
