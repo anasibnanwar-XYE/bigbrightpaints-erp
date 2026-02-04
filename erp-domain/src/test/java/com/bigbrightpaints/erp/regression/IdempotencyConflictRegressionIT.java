@@ -4,8 +4,8 @@ import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
-import com.bigbrightpaints.erp.modules.hr.dto.PayrollRunRequest;
-import com.bigbrightpaints.erp.modules.hr.service.HrService;
+import com.bigbrightpaints.erp.modules.hr.service.PayrollService;
+import com.bigbrightpaints.erp.modules.hr.domain.PayrollRun;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
@@ -40,7 +40,7 @@ class IdempotencyConflictRegressionIT extends AbstractIntegrationTest {
     private FinishedGoodRepository finishedGoodRepository;
 
     @Autowired
-    private HrService hrService;
+    private PayrollService payrollService;
 
     private Company company;
     private Dealer dealer;
@@ -104,22 +104,21 @@ class IdempotencyConflictRegressionIT extends AbstractIntegrationTest {
 
     @Test
     void payrollRunConflictingPayloadThrows() {
-        PayrollRunRequest base = new PayrollRunRequest(
-                LocalDate.of(2026, 1, 10),
-                new BigDecimal("1500.00"),
-                "Initial payroll",
-                "IDEMP-PAYROLL-1"
-        );
-        hrService.createPayrollRun(base);
+        LocalDate start = LocalDate.of(2026, 1, 1);
+        LocalDate end = LocalDate.of(2026, 1, 31);
+        payrollService.createPayrollRun(new PayrollService.CreatePayrollRunRequest(
+                PayrollRun.RunType.MONTHLY,
+                start,
+                end,
+                "Initial payroll"
+        ));
 
-        PayrollRunRequest conflict = new PayrollRunRequest(
-                LocalDate.of(2026, 1, 10),
-                new BigDecimal("1750.00"),
-                "Adjusted payroll",
-                "IDEMP-PAYROLL-1"
-        );
-
-        assertThatThrownBy(() -> hrService.createPayrollRun(conflict))
+        assertThatThrownBy(() -> payrollService.createPayrollRun(new PayrollService.CreatePayrollRunRequest(
+                PayrollRun.RunType.MONTHLY,
+                start,
+                end,
+                "Adjusted payroll"
+        )))
                 .isInstanceOf(ApplicationException.class)
                 .extracting(ex -> ((ApplicationException) ex).getErrorCode())
                 .isEqualTo(ErrorCode.CONCURRENCY_CONFLICT);

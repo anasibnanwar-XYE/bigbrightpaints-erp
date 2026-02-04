@@ -9,14 +9,11 @@ import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.hr.domain.*;
 import com.bigbrightpaints.erp.modules.hr.dto.*;
-import org.apache.commons.codec.digest.DigestUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.util.List;
-import java.util.Optional;
 
 @Service
 public class HrService {
@@ -195,48 +192,12 @@ public class HrService {
         return payrollRunRepository.findByCompanyOrderByRunDateDesc(company).stream().map(this::toDto).toList();
     }
 
+    @Deprecated
     @Transactional
     public PayrollRunDto createPayrollRun(PayrollRunRequest request) {
-        Company company = companyContextService.requireCurrentCompany();
-        String idempotencyKey = request.idempotencyKey();
-        String requestSignature = null;
-        if (StringUtils.hasText(idempotencyKey)) {
-            requestSignature = buildPayrollRunSignature(request);
-            Optional<PayrollRun> existing = payrollRunRepository.findByCompanyAndIdempotencyKey(company, idempotencyKey);
-            if (existing.isPresent()) {
-                PayrollRun run = existing.get();
-                String storedSignature = run.getIdempotencyHash();
-                if (!StringUtils.hasText(storedSignature)) {
-                    String derivedSignature = buildPayrollRunSignature(run);
-                    if (!derivedSignature.equals(requestSignature)) {
-                        throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
-                                "Idempotency key already used with different payload")
-                                .withDetail("idempotencyKey", idempotencyKey);
-                    }
-                    run.setIdempotencyHash(requestSignature);
-                    payrollRunRepository.save(run);
-                    return toDto(run);
-                }
-                if (!storedSignature.equals(requestSignature)) {
-                    throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
-                            "Idempotency key already used with different payload")
-                            .withDetail("idempotencyKey", idempotencyKey);
-                }
-                return toDto(run);
-            }
-        }
-        PayrollRun run = new PayrollRun();
-        run.setCompany(company);
-        run.setRunDate(request.runDate());
-        run.setNotes(request.notes());
-        if (request.totalAmount() != null) {
-            run.setTotalAmount(request.totalAmount());
-        }
-        run.setStatus("DRAFT");
-        run.setIdempotencyKey(idempotencyKey);
-        run.setIdempotencyHash(requestSignature);
-        PayrollRun savedRun = payrollRunRepository.save(run);
-        return toDto(savedRun);
+        throw new ApplicationException(ErrorCode.BUSINESS_CONSTRAINT_VIOLATION,
+                "Legacy payroll run creation is deprecated; use /api/v1/payroll/runs")
+                .withDetail("canonicalPath", "/api/v1/payroll/runs");
     }
 
     private PayrollRunDto toDto(PayrollRun run) {
@@ -253,24 +214,6 @@ public class HrService {
                 run.getTotalAmount(),
                 journalEntryId,
                 run.getIdempotencyKey());
-    }
-
-    private String buildPayrollRunSignature(PayrollRunRequest request) {
-        StringBuilder signature = new StringBuilder();
-        signature.append(request.runDate() != null ? request.runDate() : "")
-                .append('|').append(amountToken(request.totalAmount()));
-        return DigestUtils.sha256Hex(signature.toString());
-    }
-
-    private String buildPayrollRunSignature(PayrollRun run) {
-        StringBuilder signature = new StringBuilder();
-        signature.append(run.getRunDate() != null ? run.getRunDate() : "")
-                .append('|').append(amountToken(run.getTotalAmount()));
-        return DigestUtils.sha256Hex(signature.toString());
-    }
-
-    private String amountToken(BigDecimal value) {
-        return value == null ? "0" : value.stripTrailingZeros().toPlainString();
     }
 
     /* ===== Attendance Management ===== */

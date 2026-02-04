@@ -47,13 +47,17 @@ public class HrControllerIT extends AbstractIntegrationTest {
                 Map.class);
         assertThat(createEmployee.getStatusCode()).isEqualTo(HttpStatus.OK);
 
+        LocalDate periodEnd = LocalDate.now();
+        LocalDate periodStart = periodEnd.minusDays(6);
         Map<String, Object> payrollRequest = Map.of(
-                "runDate", LocalDate.now(),
-                "notes", "Test payroll run"
+                "runType", "WEEKLY",
+                "periodStart", periodStart,
+                "periodEnd", periodEnd,
+                "remarks", "Test payroll run"
         );
 
         ResponseEntity<Map> payrollResp = rest.exchange(
-                "/api/v1/hr/payroll-runs",
+                "/api/v1/payroll/runs",
                 HttpMethod.POST,
                 new HttpEntity<>(payrollRequest, headers),
                 Map.class);
@@ -95,4 +99,3 @@ public class HrControllerIT extends AbstractIntegrationTest {
         return headers;
     }
 }
-

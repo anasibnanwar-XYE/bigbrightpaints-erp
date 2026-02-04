@@ -93,9 +93,15 @@ public class PayrollCalculationService {
         LocalDate weekStart = weekEnd.minusDays(5); // Monday
 
         String reference = "WEEKLY-" + weekEnd.format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-        Optional<PayrollRun> existing = payrollRunRepository.findByCompanyAndIdempotencyKey(company, reference);
+        String idempotencyKey = PayrollService.buildIdempotencyKey(PayrollRun.RunType.WEEKLY, weekStart, weekEnd);
+        Optional<PayrollRun> existing = payrollRunRepository.findByCompanyAndRunTypeAndPeriodStartAndPeriodEnd(
+                company, PayrollRun.RunType.WEEKLY, weekStart, weekEnd);
         if (existing.isPresent()) {
-            return buildSummaryFromRun(existing.get());
+            return buildSummaryFromRun(ensureIdempotencyMetadata(existing.get(), idempotencyKey));
+        }
+        Optional<PayrollRun> existingByKey = payrollRunRepository.findByCompanyAndIdempotencyKey(company, idempotencyKey);
+        if (existingByKey.isPresent()) {
+            return buildSummaryFromRun(ensureIdempotencyMetadata(existingByKey.get(), idempotencyKey));
         }
         
         log.info("Calculating weekly payroll for {} to {}", weekStart, weekEnd);
@@ -157,9 +163,15 @@ public class PayrollCalculationService {
         LocalDate monthEnd = today.with(TemporalAdjusters.lastDayOfMonth());
 
         String reference = "MONTHLY-" + monthEnd.format(DateTimeFormatter.ofPattern("yyyyMM"));
-        Optional<PayrollRun> existing = payrollRunRepository.findByCompanyAndIdempotencyKey(company, reference);
+        String idempotencyKey = PayrollService.buildIdempotencyKey(PayrollRun.RunType.MONTHLY, monthStart, monthEnd);
+        Optional<PayrollRun> existing = payrollRunRepository.findByCompanyAndRunTypeAndPeriodStartAndPeriodEnd(
+                company, PayrollRun.RunType.MONTHLY, monthStart, monthEnd);
         if (existing.isPresent()) {
-            return buildSummaryFromRun(existing.get());
+            return buildSummaryFromRun(ensureIdempotencyMetadata(existing.get(), idempotencyKey));
+        }
+        Optional<PayrollRun> existingByKey = payrollRunRepository.findByCompanyAndIdempotencyKey(company, idempotencyKey);
+        if (existingByKey.isPresent()) {
+            return buildSummaryFromRun(ensureIdempotencyMetadata(existingByKey.get(), idempotencyKey));
         }
         
         log.info("Calculating monthly payroll for {} to {}", monthStart, monthEnd);
@@ -375,9 +387,15 @@ public class PayrollCalculationService {
                                         BigDecimal totalGross, BigDecimal totalAdvances, BigDecimal totalNet,
                                         List<PayrollLineItem> lineItems,
                                         Map<Long, Employee> employeesById) {
-        Optional<PayrollRun> existing = payrollRunRepository.findByCompanyAndIdempotencyKey(company, reference);
+        String idempotencyKey = PayrollService.buildIdempotencyKey(runType, periodStart, periodEnd);
+        Optional<PayrollRun> existing = payrollRunRepository.findByCompanyAndRunTypeAndPeriodStartAndPeriodEnd(
+                company, runType, periodStart, periodEnd);
         if (existing.isPresent()) {
-            return existing.get();
+            return ensureIdempotencyMetadata(existing.get(), idempotencyKey);
+        }
+        Optional<PayrollRun> existingByKey = payrollRunRepository.findByCompanyAndIdempotencyKey(company, idempotencyKey);
+        if (existingByKey.isPresent()) {
+            return ensureIdempotencyMetadata(existingByKey.get(), idempotencyKey);
         }
         PayrollRun run = new PayrollRun();
         run.setCompany(company);
@@ -390,8 +408,9 @@ public class PayrollCalculationService {
         run.setTotalNetPay(totalNet);
         run.setTotalDeductions(totalAdvances);
         run.setStatus(PayrollRun.PayrollStatus.DRAFT);
-        run.setIdempotencyKey(reference);
+        run.setIdempotencyKey(idempotencyKey);
         run.setNotes("Auto-calculated from attendance");
+        run.setIdempotencyHash(PayrollService.buildRunSignature(runType, periodStart, periodEnd, run.getNotes()));
         run.setTotalEmployees(lineItems.size());
         run.setApprovedBy(null);
         run.setApprovedAt(null);
@@ -429,6 +448,25 @@ public class PayrollCalculationService {
         }
         payrollRunLineRepository.saveAll(lines);
 
+        return run;
+    }
+
+    private PayrollRun ensureIdempotencyMetadata(PayrollRun run, String idempotencyKey) {
+        boolean changed = false;
+        if (run.getIdempotencyKey() == null) {
+            run.setIdempotencyKey(idempotencyKey);
+            changed = true;
+        }
+        if (run.getIdempotencyHash() == null) {
+            String signature = PayrollService.buildRunSignature(run);
+            if (signature != null) {
+                run.setIdempotencyHash(signature);
+                changed = true;
+            }
+        }
+        if (changed) {
+            payrollRunRepository.save(run);
+        }
         return run;
     }
 

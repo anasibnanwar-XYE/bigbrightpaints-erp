@@ -7,12 +7,14 @@ import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import io.swagger.v3.oas.annotations.Operation;
 
 import java.util.List;
+import java.util.Map;
 import java.time.LocalDate;
 
 @RestController
@@ -128,7 +130,10 @@ public class HrController {
     }
 
     @PostMapping("/payroll-runs")
-    public ResponseEntity<ApiResponse<PayrollRunDto>> createPayrollRun(@Valid @RequestBody PayrollRunRequest request) {
-        return ResponseEntity.ok(ApiResponse.success("Payroll run created", hrService.createPayrollRun(request)));
+    public ResponseEntity<ApiResponse<Map<String, Object>>> createPayrollRun(@Valid @RequestBody PayrollRunRequest request) {
+        return ResponseEntity.status(HttpStatus.GONE)
+                .body(ApiResponse.failure(
+                        "Legacy payroll run creation is deprecated; use /api/v1/payroll/runs",
+                        Map.of("canonicalPath", "/api/v1/payroll/runs")));
     }
 }

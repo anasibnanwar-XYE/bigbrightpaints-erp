@@ -92,6 +92,10 @@ Purpose: a single, concrete list of **P0** items that block a safe enterprise de
     `CR_PurchasingToApAccountingTest.supplierSettlement_idempotencyMismatch_conflicts`.
 - Sales returns/credit notes must be retry-safe and mismatch-safe (no duplicate credit journals or return movements).
   - Status (2026-02-04): ✅ sales return invoice lock + credit note reserve-first idempotency; tests: `CR_SalesReturnCreditNoteIdempotencyTest`, `SalesReturnServiceTest`, `CreditDebitNoteIT`.
+- Payroll run creation must be single-truth per period:
+  - One run per (company, runType, periodStart, periodEnd); deterministic idempotency + mismatch-safe replay.
+  - Legacy HR payroll run endpoint is deprecated (410 + canonicalPath) to prevent missing period fields.
+  - Status (2026-02-04): ✅ unique identity enforced + legacy endpoint gated; tests: `CR_PayrollIdempotencyConcurrencyTest`, `CR_PayrollLegacyEndpointGatedIT`.
 - Add DB uniqueness where needed to prevent duplicate reservations/batches under concurrency.
   - Packaging slips must not duplicate per order under concurrency (guard at DB and service layer).
 - Idempotency must be mismatch-safe:

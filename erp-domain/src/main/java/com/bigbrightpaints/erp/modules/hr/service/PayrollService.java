@@ -16,6 +16,7 @@ import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.modules.hr.domain.*;
 import jakarta.transaction.Transactional;
+import org.apache.commons.codec.digest.DigestUtils;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.util.StringUtils;
@@ -92,24 +93,21 @@ public class PayrollService {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
                     "Payroll period end date cannot be before start date");
         }
-        String idempotencyKey = buildIdempotencyKey(request);
+        String idempotencyKey = buildIdempotencyKey(request.runType(), request.periodStart(), request.periodEnd());
+        String requestSignature = buildRunSignature(request.runType(), request.periodStart(), request.periodEnd(), request.remarks());
         Optional<PayrollRun> existing = payrollRunRepository.findByCompanyAndIdempotencyKey(company, idempotencyKey);
         if (existing.isPresent()) {
             PayrollRun run = existing.get();
-            if (run.getIdempotencyKey() == null) {
-                run.setIdempotencyKey(idempotencyKey);
-                payrollRunRepository.save(run);
-            }
+            assertRunSignatureMatches(run, requestSignature, idempotencyKey);
+            ensureIdempotencyMetadata(run, idempotencyKey, requestSignature);
             return toDto(run);
         }
         Optional<PayrollRun> legacy = payrollRunRepository.findByCompanyAndRunTypeAndPeriodStartAndPeriodEnd(
                 company, request.runType(), request.periodStart(), request.periodEnd());
         if (legacy.isPresent()) {
             PayrollRun run = legacy.get();
-            if (run.getIdempotencyKey() == null) {
-                run.setIdempotencyKey(idempotencyKey);
-                payrollRunRepository.save(run);
-            }
+            assertRunSignatureMatches(run, requestSignature, idempotencyKey);
+            ensureIdempotencyMetadata(run, idempotencyKey, requestSignature);
             return toDto(run);
         }
 
@@ -126,6 +124,7 @@ public class PayrollService {
         run.setCreatedBy(currentUser);
         run.setRemarks(request.remarks());
         run.setIdempotencyKey(idempotencyKey);
+        run.setIdempotencyHash(requestSignature);
 
         try {
             run = payrollRunRepository.save(run);
@@ -133,16 +132,17 @@ public class PayrollService {
         } catch (DataIntegrityViolationException ex) {
             Optional<PayrollRun> concurrent = payrollRunRepository.findByCompanyAndIdempotencyKey(company, idempotencyKey);
             if (concurrent.isPresent()) {
-                return toDto(concurrent.get());
+                PayrollRun existingRun = concurrent.get();
+                assertRunSignatureMatches(existingRun, requestSignature, idempotencyKey);
+                ensureIdempotencyMetadata(existingRun, idempotencyKey, requestSignature);
+                return toDto(existingRun);
             }
             Optional<PayrollRun> legacyConcurrent = payrollRunRepository.findByCompanyAndRunTypeAndPeriodStartAndPeriodEnd(
                     company, request.runType(), request.periodStart(), request.periodEnd());
             if (legacyConcurrent.isPresent()) {
                 PayrollRun existingRun = legacyConcurrent.get();
-                if (existingRun.getIdempotencyKey() == null) {
-                    existingRun.setIdempotencyKey(idempotencyKey);
-                    payrollRunRepository.save(existingRun);
-                }
+                assertRunSignatureMatches(existingRun, requestSignature, idempotencyKey);
+                ensureIdempotencyMetadata(existingRun, idempotencyKey, requestSignature);
                 return toDto(existingRun);
             }
             throw ex;
@@ -743,12 +743,70 @@ public class PayrollService {
 
     // ===== HELPER METHODS =====
 
-    private String buildIdempotencyKey(CreatePayrollRunRequest request) {
+    static String buildIdempotencyKey(PayrollRun.RunType runType, LocalDate periodStart, LocalDate periodEnd) {
         return "PAYROLL:%s:%s:%s".formatted(
-                request.runType().name(),
-                request.periodStart(),
-                request.periodEnd()
+                runType.name(),
+                periodStart,
+                periodEnd
         );
+    }
+
+    static String buildRunSignature(PayrollRun.RunType runType,
+                                    LocalDate periodStart,
+                                    LocalDate periodEnd,
+                                    String remarks) {
+        String normalizedRemarks = StringUtils.hasText(remarks) ? remarks.trim() : "";
+        String signature = "%s|%s|%s|%s".formatted(runType.name(), periodStart, periodEnd, normalizedRemarks);
+        return DigestUtils.sha256Hex(signature);
+    }
+
+    static String buildRunSignature(PayrollRun run) {
+        if (run == null || run.getRunType() == null || run.getPeriodStart() == null || run.getPeriodEnd() == null) {
+            return null;
+        }
+        return buildRunSignature(run.getRunType(), run.getPeriodStart(), run.getPeriodEnd(), run.getNotes());
+    }
+
+    private void assertRunSignatureMatches(PayrollRun run, String expectedSignature, String idempotencyKey) {
+        if (run == null) {
+            return;
+        }
+        if (run.getRunType() == null || run.getPeriodStart() == null || run.getPeriodEnd() == null) {
+            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
+                    "Existing payroll run is missing canonical period fields")
+                    .withDetail("payrollRunId", run.getId())
+                    .withDetail("idempotencyKey", idempotencyKey);
+        }
+        String storedSignature = run.getIdempotencyHash();
+        if (!StringUtils.hasText(storedSignature)) {
+            String derivedSignature = buildRunSignature(run);
+            if (StringUtils.hasText(derivedSignature) && !derivedSignature.equals(expectedSignature)) {
+                throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
+                        "Idempotency key already used with different payload")
+                        .withDetail("idempotencyKey", idempotencyKey);
+            }
+            return;
+        }
+        if (!storedSignature.equals(expectedSignature)) {
+            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
+                    "Idempotency key already used with different payload")
+                    .withDetail("idempotencyKey", idempotencyKey);
+        }
+    }
+
+    private void ensureIdempotencyMetadata(PayrollRun run, String idempotencyKey, String signature) {
+        boolean changed = false;
+        if (!StringUtils.hasText(run.getIdempotencyKey())) {
+            run.setIdempotencyKey(idempotencyKey);
+            changed = true;
+        }
+        if (!StringUtils.hasText(run.getIdempotencyHash()) && StringUtils.hasText(signature)) {
+            run.setIdempotencyHash(signature);
+            changed = true;
+        }
+        if (changed) {
+            payrollRunRepository.save(run);
+        }
     }
 
     private String generateRunNumber(Company company, PayrollRun.RunType runType, LocalDate periodStart) {

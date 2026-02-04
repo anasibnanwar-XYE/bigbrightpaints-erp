@@ -27,7 +27,6 @@ import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.In
 import com.bigbrightpaints.erp.modules.invoice.service.InvoiceService;
 import com.bigbrightpaints.erp.modules.hr.dto.EmployeeDto;
 import com.bigbrightpaints.erp.modules.hr.dto.PayrollRunDto;
-import com.bigbrightpaints.erp.modules.hr.dto.PayrollRunRequest;
 import com.bigbrightpaints.erp.modules.hr.service.HrService;
 import com.bigbrightpaints.erp.modules.reports.dto.AgedDebtorDto;
 import com.bigbrightpaints.erp.modules.reports.dto.CashFlowDto;
@@ -326,15 +325,9 @@ public class IntegrationCoordinator {
                                          BigDecimal totalAmount,
                                          String companyId) {
         requirePayrollEnabled();
-        return withCompanyContext(companyId, () -> {
-            PayrollRunDto run = hrService.createPayrollRun(new PayrollRunRequest(
-                    payrollDate,
-                    totalAmount,
-                    "Auto payroll run",
-                    "AUTO-" + payrollDate));
-            log.info("Triggered payroll run {} for {}", run.id(), payrollDate);
-            return run;
-        });
+        throw new ApplicationException(ErrorCode.BUSINESS_CONSTRAINT_VIOLATION,
+                "Orchestrator payroll run is deprecated; use /api/v1/payroll/runs")
+                .withDetail("canonicalPath", "/api/v1/payroll/runs");
     }
 
     @Transactional
