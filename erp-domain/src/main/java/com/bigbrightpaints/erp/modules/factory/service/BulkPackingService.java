@@ -8,7 +8,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest.JournalLineRequest;
-import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
+import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
@@ -58,7 +58,7 @@ public class BulkPackingService {
     private final InventoryMovementRepository inventoryMovementRepository;
     private final RawMaterialMovementRepository rawMaterialMovementRepository;
     private final JournalEntryRepository journalEntryRepository;
-    private final AccountingService accountingService;
+    private final AccountingFacade accountingFacade;
     private final BatchNumberService batchNumberService;
     private final PackagingMaterialService packagingMaterialService;
     private final FinishedGoodsService finishedGoodsService;
@@ -72,7 +72,7 @@ public class BulkPackingService {
                               InventoryMovementRepository inventoryMovementRepository,
                               RawMaterialMovementRepository rawMaterialMovementRepository,
                               JournalEntryRepository journalEntryRepository,
-                              AccountingService accountingService,
+                              AccountingFacade accountingFacade,
                               BatchNumberService batchNumberService,
                               PackagingMaterialService packagingMaterialService,
                               FinishedGoodsService finishedGoodsService,
@@ -85,7 +85,7 @@ public class BulkPackingService {
         this.inventoryMovementRepository = inventoryMovementRepository;
         this.rawMaterialMovementRepository = rawMaterialMovementRepository;
         this.journalEntryRepository = journalEntryRepository;
-        this.accountingService = accountingService;
+        this.accountingFacade = accountingFacade;
         this.batchNumberService = batchNumberService;
         this.packagingMaterialService = packagingMaterialService;
         this.finishedGoodsService = finishedGoodsService;
@@ -710,16 +710,8 @@ public class BulkPackingService {
             memo += " - " + notes;
         }
 
-        JournalEntryRequest journalRequest = new JournalEntryRequest(
-                reference,
-                entryDate,
-                memo,
-                null, null, false,
-                lines
-        );
-
-        JournalEntryDto journal = accountingService.createJournalEntry(journalRequest);
-        return journal.id();
+        JournalEntryDto journal = accountingFacade.postPackingJournal(reference, entryDate, memo, lines);
+        return journal != null ? journal.id() : null;
     }
 
     private BulkPackResponse.ChildBatchDto toChildBatchDto(InventoryMovement movement) {

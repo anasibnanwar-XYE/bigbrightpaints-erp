@@ -778,6 +778,43 @@ public class AccountingFacade {
     }
 
     /**
+     * Post packing/bulk-pack journal entries through the canonical facade boundary.
+     */
+    @Transactional(isolation = Isolation.REPEATABLE_READ)
+    @Retryable(value = OptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 100))
+    public JournalEntryDto postPackingJournal(String reference,
+                                              LocalDate entryDate,
+                                              String memo,
+                                              List<JournalEntryRequest.JournalLineRequest> lines) {
+        if (!StringUtils.hasText(reference) || lines == null || lines.isEmpty()) {
+            return null;
+        }
+        Company company = companyContextService.requireCurrentCompany();
+        String resolvedReference = reference.trim();
+
+        Optional<JournalEntry> existing = journalEntryRepository.findByCompanyAndReferenceNumber(company, resolvedReference);
+        if (existing.isPresent()) {
+            log.info("Packing journal already exists for reference: {}", resolvedReference);
+            return existing.map(this::toSimpleDto).orElseThrow();
+        }
+
+        LocalDate postingDate = entryDate != null ? entryDate : companyClock.today(company);
+        String resolvedMemo = StringUtils.hasText(memo) ? memo : "Packing journal " + resolvedReference;
+        JournalEntryRequest request = new JournalEntryRequest(
+                resolvedReference,
+                postingDate,
+                resolvedMemo,
+                null,
+                null,
+                Boolean.FALSE,
+                lines
+        );
+
+        log.info("Posting packing journal: reference={}, lines={}", resolvedReference, lines.size());
+        return accountingService.createJournalEntry(request);
+    }
+
+    /**
      * Post cost allocation journal entry (Dr Finished Goods / Cr Labor/Overhead Expense).
      *
      * @param batchCode          the batch code for reference

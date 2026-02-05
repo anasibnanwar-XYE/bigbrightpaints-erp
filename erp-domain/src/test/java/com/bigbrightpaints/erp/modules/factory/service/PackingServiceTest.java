@@ -4,13 +4,15 @@ import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
-import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.factory.domain.PackingRecordRepository;
 import com.bigbrightpaints.erp.modules.factory.domain.ProductionLog;
 import com.bigbrightpaints.erp.modules.factory.domain.ProductionLogRepository;
 import com.bigbrightpaints.erp.modules.factory.domain.ProductionLogStatus;
+import com.bigbrightpaints.erp.modules.factory.dto.PackingLineRequest;
+import com.bigbrightpaints.erp.modules.factory.dto.PackingRequest;
+import com.bigbrightpaints.erp.modules.factory.dto.PackagingConsumptionResult;
 import com.bigbrightpaints.erp.modules.factory.dto.ProductionLogDetailDto;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatch;
@@ -42,6 +44,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -69,8 +72,6 @@ class PackingServiceTest {
     @Mock
     private AccountingFacade accountingFacade;
     @Mock
-    private AccountingService accountingService;
-    @Mock
     private ProductionLogService productionLogService;
     @Mock
     private BatchNumberService batchNumberService;
@@ -97,7 +98,6 @@ class PackingServiceTest {
                 inventoryMovementRepository,
                 rawMaterialMovementRepository,
                 accountingFacade,
-                accountingService,
                 productionLogService,
                 batchNumberService,
                 companyClock,
@@ -218,6 +218,119 @@ class PackingServiceTest {
                 eq(false)
         );
         assertThat(wasteAmount.getValue()).isEqualByComparingTo("200.00");
+    }
+
+    @Test
+    void recordPacking_postsViaAccountingFacade() {
+        ProductionProduct product = new ProductionProduct();
+        product.setSkuCode("SKU-1");
+        product.setProductName("Primer");
+        Map<String, Object> metadata = new HashMap<>();
+        metadata.put("wipAccountId", 900L);
+        metadata.put("semiFinishedAccountId", 700L);
+        product.setMetadata(metadata);
+
+        ProductionLog log = new ProductionLog();
+        ReflectionTestUtils.setField(log, "id", 1L);
+        log.setCompany(company);
+        log.setProduct(product);
+        log.setProductionCode("PROD-001");
+        log.setMixedQuantity(new BigDecimal("10"));
+        log.setTotalPackedQuantity(new BigDecimal("0"));
+        log.setUnitCost(new BigDecimal("5.00"));
+        log.setProducedAt(Instant.parse("2024-01-01T00:00:00Z"));
+        log.setStatus(ProductionLogStatus.READY_TO_PACK);
+
+        FinishedGood finishedGood = new FinishedGood();
+        ReflectionTestUtils.setField(finishedGood, "id", 5L);
+        finishedGood.setCompany(company);
+        finishedGood.setProductCode(product.getSkuCode());
+        finishedGood.setValuationAccountId(500L);
+        finishedGood.setCurrentStock(BigDecimal.ZERO);
+
+        FinishedGood semiFinished = new FinishedGood();
+        ReflectionTestUtils.setField(semiFinished, "id", 6L);
+        semiFinished.setCompany(company);
+        semiFinished.setProductCode(product.getSkuCode() + "-BULK");
+        semiFinished.setValuationAccountId(700L);
+        semiFinished.setCurrentStock(new BigDecimal("10"));
+
+        FinishedGoodBatch semiBatch = new FinishedGoodBatch();
+        semiBatch.setFinishedGood(semiFinished);
+        semiBatch.setBatchCode(log.getProductionCode());
+        semiBatch.setQuantityAvailable(new BigDecimal("10"));
+        semiBatch.setQuantityTotal(new BigDecimal("10"));
+        semiBatch.setUnitCost(new BigDecimal("5.00"));
+
+        when(companyEntityLookup.lockProductionLog(company, 1L)).thenReturn(log);
+        when(companyEntityLookup.requireProductionLog(company, 1L)).thenReturn(log);
+        when(finishedGoodRepository.lockByCompanyAndProductCode(company, "SKU-1"))
+                .thenReturn(Optional.of(finishedGood));
+        when(finishedGoodRepository.lockByCompanyAndProductCode(company, "SKU-1-BULK"))
+                .thenReturn(Optional.of(semiFinished));
+        when(finishedGoodBatchRepository.lockByFinishedGoodAndBatchCode(semiFinished, "PROD-001"))
+                .thenReturn(Optional.of(semiBatch));
+        when(packingRecordRepository.save(any())).thenAnswer(invocation -> {
+            var record = invocation.getArgument(0);
+            ReflectionTestUtils.setField(record, "id", 88L);
+            return record;
+        });
+        when(finishedGoodBatchRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(finishedGoodRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(inventoryMovementRepository.save(any())).thenAnswer(invocation -> {
+            InventoryMovement movement = invocation.getArgument(0);
+            ReflectionTestUtils.setField(movement, "id", 77L);
+            return movement;
+        });
+        when(packagingMaterialService.consumePackagingMaterial(anyString(), anyInt(), anyString()))
+                .thenReturn(new PackagingConsumptionResult(false, BigDecimal.ZERO, BigDecimal.ZERO, Map.of(), null));
+        when(productionLogRepository.incrementPackedQuantityAtomic(eq(1L), any())).thenReturn(1);
+        when(productionLogRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(accountingFacade.postPackingJournal(anyString(), any(LocalDate.class), anyString(), any()))
+                .thenReturn(stubEntry(11L));
+
+        ProductionLogDetailDto detailDto = new ProductionLogDetailDto(
+                log.getId(),
+                null,
+                log.getProductionCode(),
+                log.getProducedAt(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                log.getMixedQuantity(),
+                log.getTotalPackedQuantity(),
+                log.getWastageQuantity(),
+                log.getStatus().name(),
+                log.getMaterialCostTotal(),
+                null,
+                null,
+                log.getUnitCost(),
+                null,
+                null,
+                null,
+                null,
+                List.of()
+        );
+        when(productionLogService.getLog(1L)).thenReturn(detailDto);
+
+        PackingRequest request = new PackingRequest(
+                log.getId(),
+                LocalDate.of(2024, 1, 1),
+                "packer",
+                List.of(new PackingLineRequest("1L", new BigDecimal("1"), 1, null, null))
+        );
+
+        packingService.recordPacking(request);
+
+        verify(accountingFacade, times(1)).postPackingJournal(
+                eq("PROD-001-PACK-77"),
+                eq(LocalDate.of(2024, 1, 1)),
+                anyString(),
+                any()
+        );
     }
 
     private JournalEntryDto stubEntry(long id) {

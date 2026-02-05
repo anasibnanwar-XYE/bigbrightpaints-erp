@@ -1,5 +1,7 @@
 package com.bigbrightpaints.erp.modules.factory.service;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
@@ -9,6 +11,9 @@ import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
 import com.bigbrightpaints.erp.modules.inventory.dto.FinishedGoodBatchRequest;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
 import jakarta.transaction.Transactional;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -24,19 +29,25 @@ public class FactoryService {
     private final FactoryTaskRepository taskRepository;
     private final FinishedGoodsService finishedGoodsService;
     private final CompanyEntityLookup companyEntityLookup;
+    private final Environment environment;
+    private final boolean legacyBatchLoggingEnabled;
 
     public FactoryService(CompanyContextService companyContextService,
                           ProductionPlanRepository planRepository,
                           ProductionBatchRepository batchRepository,
                           FactoryTaskRepository taskRepository,
                           FinishedGoodsService finishedGoodsService,
-                          CompanyEntityLookup companyEntityLookup) {
+                          CompanyEntityLookup companyEntityLookup,
+                          Environment environment,
+                          @Value("${erp.factory.legacy-batch.enabled:false}") boolean legacyBatchLoggingEnabled) {
         this.companyContextService = companyContextService;
         this.planRepository = planRepository;
         this.batchRepository = batchRepository;
         this.taskRepository = taskRepository;
         this.finishedGoodsService = finishedGoodsService;
         this.companyEntityLookup = companyEntityLookup;
+        this.environment = environment;
+        this.legacyBatchLoggingEnabled = legacyBatchLoggingEnabled;
     }
 
     public List<ProductionPlanDto> listPlans() {
@@ -117,6 +128,7 @@ public class FactoryService {
     @Deprecated
     @Transactional
     public ProductionBatchDto logBatch(Long planId, ProductionBatchRequest request) {
+        assertLegacyBatchLoggingAllowed();
         Company company = companyContextService.requireCurrentCompany();
         if (StringUtils.hasText(request.batchNumber())) {
             String normalized = request.batchNumber().trim();
@@ -225,5 +237,19 @@ public class FactoryService {
         double efficiency = plans.isEmpty() ? 0 : (double) batches.size() / plans.size();
         return new FactoryDashboardDto(efficiency, plans.stream().filter(p -> "COMPLETED".equals(p.status())).count(),
                 batches.size(), List.of());
+    }
+
+    private void assertLegacyBatchLoggingAllowed() {
+        if (isProdProfile() && !legacyBatchLoggingEnabled) {
+            throw new ApplicationException(ErrorCode.BUSINESS_CONSTRAINT_VIOLATION,
+                    "Legacy production batch logging is disabled; use production logs.")
+                    .withDetail("endpoint", "/api/v1/factory/production-batches")
+                    .withDetail("canonicalPath", "/api/v1/factory/production/logs")
+                    .withDetail("setting", "erp.factory.legacy-batch.enabled");
+        }
+    }
+
+    private boolean isProdProfile() {
+        return environment != null && environment.acceptsProfiles(Profiles.of("prod"));
     }
 }

@@ -8,7 +8,6 @@ import com.bigbrightpaints.erp.core.util.MoneyUtils;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
-import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.factory.domain.PackingRecord;
@@ -58,7 +57,6 @@ public class PackingService {
     private final InventoryMovementRepository inventoryMovementRepository;
     private final RawMaterialMovementRepository rawMaterialMovementRepository;
     private final AccountingFacade accountingFacade;
-    private final AccountingService accountingService;
     private final CompanyClock companyClock;
     private final ProductionLogService productionLogService;
     private final BatchNumberService batchNumberService;
@@ -74,7 +72,6 @@ public class PackingService {
                           InventoryMovementRepository inventoryMovementRepository,
                           RawMaterialMovementRepository rawMaterialMovementRepository,
                           AccountingFacade accountingFacade,
-                          AccountingService accountingService,
                           ProductionLogService productionLogService,
                           BatchNumberService batchNumberService,
                           CompanyClock companyClock,
@@ -89,7 +86,6 @@ public class PackingService {
         this.inventoryMovementRepository = inventoryMovementRepository;
         this.rawMaterialMovementRepository = rawMaterialMovementRepository;
         this.accountingFacade = accountingFacade;
-        this.accountingService = accountingService;
         this.productionLogService = productionLogService;
         this.batchNumberService = batchNumberService;
         this.companyClock = companyClock;
@@ -388,22 +384,14 @@ public class PackingService {
                     packagingValue));
         }
 
-        JournalEntryRequest request = new JournalEntryRequest(
-                reference,
-                packedDate,
-                memo,
-                null,
-                null,
-                false,
-                lines
-        );
-
-        JournalEntryDto entry = accountingService.createJournalEntry(request);
-        movement.setJournalEntryId(entry.id());
-        inventoryMovementRepository.save(movement);
-        if (semiFinished != null && semiFinished.movement() != null) {
-            semiFinished.movement().setJournalEntryId(entry.id());
-            inventoryMovementRepository.save(semiFinished.movement());
+        JournalEntryDto entry = accountingFacade.postPackingJournal(reference, packedDate, memo, lines);
+        if (entry != null) {
+            movement.setJournalEntryId(entry.id());
+            inventoryMovementRepository.save(movement);
+            if (semiFinished != null && semiFinished.movement() != null) {
+                semiFinished.movement().setJournalEntryId(entry.id());
+                inventoryMovementRepository.save(semiFinished.movement());
+            }
         }
     }
 
@@ -552,17 +540,7 @@ public class PackingService {
                     debitLine.credit()));
         }
 
-        JournalEntryRequest request = new JournalEntryRequest(
-                reference,
-                packedDate,
-                memo,
-                null,
-                null,
-                false,
-                lines
-        );
-
-        JournalEntryDto entry = accountingService.createJournalEntry(request);
+        JournalEntryDto entry = accountingFacade.postPackingJournal(reference, packedDate, memo, lines);
         if (entry != null) {
             linkPackagingMovementsToJournal(log.getCompany(), referenceId, entry.id());
         }

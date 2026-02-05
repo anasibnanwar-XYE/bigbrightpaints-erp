@@ -70,6 +70,10 @@ Purpose: a single, concrete list of **P0** items that block a safe enterprise de
     - Status (2026-02-05): ✅ deterministic reference + idempotent retry/concurrency; tests:
       `CR_BulkPackagingCrossModuleTest.bulkPack_idempotentRetry_doesNotDoubleConsumeOrPost`,
       `CR_BulkPackagingCrossModuleTest.bulkPack_idempotentConcurrent_returnsSameJournal`.
+  - Packing/bulk-pack journals must post via `AccountingFacade` (canonical posting boundary).
+    - Status (2026-02-05): ✅ packing/bulk-pack posting routed through facade; test: `PackingServiceTest.recordPacking_postsViaAccountingFacade`.
+  - Legacy factory batch logging + manual FG batch injection must be prod-gated (no bypass of production logs).
+    - Status (2026-02-05): ✅ prod gating enforced; tests: `CR_FactoryLegacyBatchProdGatingIT`, `CR_FinishedGoodBatchProdGatingIT`.
   - Packing record retries must not double-consume packaging or double-post journals.
   - Opening stock import must have an import idempotency key; retry must not create new batches/movements/journals.
     - Status (2026-02-04): ✅ opening stock import idempotent + prod gated; tests: `CR_OpeningStockImportIdempotencyIT`, `CR_OpeningStockImportProdGatingIT`.

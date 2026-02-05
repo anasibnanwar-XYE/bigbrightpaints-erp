@@ -18,7 +18,10 @@ import com.bigbrightpaints.erp.modules.factory.event.PackagingSlipEvent;
 import jakarta.transaction.Transactional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -52,6 +55,8 @@ public class FinishedGoodsService {
     private final CompanyDefaultAccountsService companyDefaultAccountsService;
     private final org.springframework.context.ApplicationEventPublisher eventPublisher;
     private final CompanyClock companyClock;
+    private final Environment environment;
+    private final boolean manualBatchEnabled;
     private final Map<Long, CachedWac> wacCache = new ConcurrentHashMap<>();
     private static final long WAC_CACHE_MILLIS = 5 * 60 * 1000; // 5 minutes TTL
 
@@ -65,7 +70,9 @@ public class FinishedGoodsService {
                                 SalesOrderRepository salesOrderRepository,
                                 CompanyDefaultAccountsService companyDefaultAccountsService,
                                 org.springframework.context.ApplicationEventPublisher eventPublisher,
-                                CompanyClock companyClock) {
+                                CompanyClock companyClock,
+                                Environment environment,
+                                @Value("${erp.inventory.finished-goods.batch.enabled:false}") boolean manualBatchEnabled) {
         this.companyContextService = companyContextService;
         this.finishedGoodRepository = finishedGoodRepository;
         this.finishedGoodBatchRepository = finishedGoodBatchRepository;
@@ -77,6 +84,8 @@ public class FinishedGoodsService {
         this.companyDefaultAccountsService = companyDefaultAccountsService;
         this.eventPublisher = eventPublisher;
         this.companyClock = companyClock;
+        this.environment = environment;
+        this.manualBatchEnabled = manualBatchEnabled;
     }
 
     public List<FinishedGoodDto> listFinishedGoods() {
@@ -200,6 +209,7 @@ public class FinishedGoodsService {
 
     @Transactional
     public FinishedGoodBatchDto registerBatch(FinishedGoodBatchRequest request) {
+        assertManualBatchAllowed();
         FinishedGood finishedGood = lockFinishedGood(request.finishedGoodId());
         BigDecimal quantity = safeQuantity(request.quantity());
         if (quantity.compareTo(BigDecimal.ZERO) <= 0) {
@@ -229,6 +239,20 @@ public class FinishedGoodsService {
                 "RECEIPT", quantity, unitCost, null);
 
         return toBatchDto(savedBatch);
+    }
+
+    private void assertManualBatchAllowed() {
+        if (isProdProfile() && !manualBatchEnabled) {
+            throw new ApplicationException(ErrorCode.BUSINESS_CONSTRAINT_VIOLATION,
+                    "Manual finished good batch registration is disabled; use production logs and packing.")
+                    .withDetail("endpoint", "/api/v1/finished-goods/{id}/batches")
+                    .withDetail("canonicalPath", "/api/v1/factory/production/logs")
+                    .withDetail("setting", "erp.inventory.finished-goods.batch.enabled");
+        }
+    }
+
+    private boolean isProdProfile() {
+        return environment != null && environment.acceptsProfiles(Profiles.of("prod"));
     }
 
     public List<PackagingSlipDto> listPackagingSlips() {
