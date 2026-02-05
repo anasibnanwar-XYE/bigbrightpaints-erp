@@ -143,6 +143,39 @@ class CR_PeriodCloseDriftScansTest extends AbstractIntegrationTest {
             order by company_id, accounting_period_id, account_id
             """;
 
+    private static final String SNAPSHOT_TOTALS_SCAN = """
+            with snapshot_totals as (
+              select
+                s.id as snapshot_id,
+                s.company_id,
+                s.accounting_period_id,
+                coalesce(sum(l.debit), 0) as line_debit,
+                coalesce(sum(l.credit), 0) as line_credit
+              from accounting_period_snapshots s
+              join accounting_periods p
+                on p.id = s.accounting_period_id
+               and p.company_id = s.company_id
+              left join accounting_period_trial_balance_lines l
+                on l.snapshot_id = s.id
+              where p.status = 'CLOSED'
+              group by s.id, s.company_id, s.accounting_period_id
+            )
+            select
+              s.company_id,
+              s.accounting_period_id,
+              s.id as snapshot_id,
+              s.trial_balance_total_debit,
+              s.trial_balance_total_credit,
+              st.line_debit,
+              st.line_credit
+            from accounting_period_snapshots s
+            join snapshot_totals st
+              on st.snapshot_id = s.id
+            where abs(coalesce(s.trial_balance_total_debit, 0) - coalesce(st.line_debit, 0)) > 0.01
+               or abs(coalesce(s.trial_balance_total_credit, 0) - coalesce(st.line_credit, 0)) > 0.01
+            order by s.company_id, s.accounting_period_id, s.id
+            """;
+
     @Autowired private AccountingPeriodService accountingPeriodService;
     @Autowired private AccountingService accountingService;
     @Autowired private AccountRepository accountRepository;
@@ -176,6 +209,7 @@ class CR_PeriodCloseDriftScansTest extends AbstractIntegrationTest {
             assertScanEmpty(MISSING_SNAPSHOT_SCAN, company.getId());
             assertScanEmpty(LATE_POSTING_SCAN, company.getId());
             assertScanEmpty(DRIFT_SCAN, company.getId());
+            assertScanEmpty(SNAPSHOT_TOTALS_SCAN, company.getId());
         } finally {
             CompanyContextHolder.clear();
         }
@@ -235,6 +269,38 @@ class CR_PeriodCloseDriftScansTest extends AbstractIntegrationTest {
             jdbcTemplate.update("delete from accounting_period_snapshots where accounting_period_id = ?", period.getId());
 
             assertScanHasRows(MISSING_SNAPSHOT_SCAN, company.getId());
+        } finally {
+            CompanyContextHolder.clear();
+        }
+    }
+
+    @Test
+    void predeployScans_detectSnapshotTotalsMismatch() {
+        String companyCode = "CR-SCAN-SNAP-TOTAL-" + System.nanoTime();
+        Company company = dataSeeder.ensureCompany(companyCode, companyCode + " Ltd");
+        CompanyContextHolder.setCompanyId(companyCode);
+        try {
+            LocalDate today = TestDateUtils.safeDate(company);
+            LocalDate periodDate = today.minusMonths(1);
+            AccountingPeriod period = accountingPeriodService.ensurePeriod(company, periodDate);
+            Account cash = ensureAccount(company, "CASH-SNAP-TOTAL", "Cash", AccountType.ASSET);
+            Account revenue = ensureAccount(company, "REV-SNAP-TOTAL", "Revenue", AccountType.REVENUE);
+
+            postJournal(period.getEndDate().minusDays(1), List.of(
+                    line(cash.getId(), new BigDecimal("125.00"), BigDecimal.ZERO),
+                    line(revenue.getId(), BigDecimal.ZERO, new BigDecimal("125.00"))
+            ));
+
+            accountingPeriodService.closePeriod(period.getId(),
+                    new AccountingPeriodCloseRequest(true, "CODE-RED scan snapshot totals"));
+
+            jdbcTemplate.update(
+                    "update accounting_period_snapshots set trial_balance_total_debit = trial_balance_total_debit + 1 "
+                            + "where accounting_period_id = ? and company_id = ?",
+                    period.getId(),
+                    company.getId());
+
+            assertScanHasRows(SNAPSHOT_TOTALS_SCAN, company.getId());
         } finally {
             CompanyContextHolder.clear();
         }

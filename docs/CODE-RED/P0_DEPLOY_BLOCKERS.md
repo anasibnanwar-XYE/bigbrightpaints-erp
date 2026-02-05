@@ -161,7 +161,8 @@ Purpose: a single, concrete list of **P0** items that block a safe enterprise de
   - Status (2026-02-05): ✅ drift scans + tests:
     `CR_PeriodCloseDriftScansTest.predeployScans_areCleanForClosedPeriod`,
     `CR_PeriodCloseDriftScansTest.predeployScans_detectLatePostingAndDrift`,
-    `CR_PeriodCloseDriftScansTest.predeployScans_detectMissingSnapshot`.
+    `CR_PeriodCloseDriftScansTest.predeployScans_detectMissingSnapshot`,
+    `CR_PeriodCloseDriftScansTest.predeployScans_detectSnapshotTotalsMismatch`.
 - Fix FIFO valuation to use remaining/available quantities (not total quantities) so depleted batches don’t inflate valuation.
 - Period-close postings must not bypass accounting posting boundaries (no direct account balance mutation outside `AccountingFacade`/`AccountingService` invariants).
 

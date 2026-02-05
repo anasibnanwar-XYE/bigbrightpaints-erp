@@ -124,6 +124,36 @@ class CR_PeriodCloseSnapshotsTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void trialBalanceReportAsOf_includesSnapshotMetadata() {
+        String companyCode = "CR-SNAP-TB-" + System.nanoTime();
+        Company company = dataSeeder.ensureCompany(companyCode, companyCode + " Ltd");
+        CompanyContextHolder.setCompanyId(companyCode);
+        try {
+            LocalDate today = TestDateUtils.safeDate(company);
+            LocalDate periodDate = today.minusMonths(1);
+            AccountingPeriod period = accountingPeriodService.ensurePeriod(company, periodDate);
+            Account cash = ensureAccount(company, "CASH-SNAP-TB", "Cash", AccountType.ASSET);
+            Account revenue = ensureAccount(company, "REV-SNAP-TB", "Revenue", AccountType.REVENUE);
+
+            postJournal(period.getEndDate().minusDays(1), List.of(
+                    line(cash.getId(), new BigDecimal("80.00"), BigDecimal.ZERO),
+                    line(revenue.getId(), BigDecimal.ZERO, new BigDecimal("80.00"))
+            ));
+
+            accountingPeriodService.closePeriod(period.getId(), new AccountingPeriodCloseRequest(true, "snapshot close"));
+
+            com.bigbrightpaints.erp.modules.reports.dto.TrialBalanceDto report =
+                    reportService.trialBalance(period.getEndDate());
+
+            assertThat(report.metadata().source()).isEqualTo(ReportSource.SNAPSHOT);
+            assertThat(report.metadata().snapshotId()).isNotNull();
+            assertThat(report.metadata().accountingPeriodId()).isEqualTo(period.getId());
+        } finally {
+            CompanyContextHolder.clear();
+        }
+    }
+
+    @Test
     void inventoryValuationAsOf_usesSnapshotForClosedPeriod() {
         String companyCode = "CR-SNAP-INV-" + System.nanoTime();
         Company company = dataSeeder.ensureCompany(companyCode, companyCode + " Ltd");

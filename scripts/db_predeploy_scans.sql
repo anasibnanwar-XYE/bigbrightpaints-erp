@@ -302,6 +302,38 @@ where abs(coalesce(e.expected_debit, 0) - coalesce(sl.snap_debit, 0)) > 0.01
    or abs(coalesce(e.expected_credit, 0) - coalesce(sl.snap_credit, 0)) > 0.01
 order by company_id, accounting_period_id, account_id;
 
+-- 11b) Closed-period snapshot totals mismatch (NO-GO)
+with snapshot_totals as (
+  select
+    s.id as snapshot_id,
+    s.company_id,
+    s.accounting_period_id,
+    coalesce(sum(l.debit), 0) as line_debit,
+    coalesce(sum(l.credit), 0) as line_credit
+  from accounting_period_snapshots s
+  join accounting_periods p
+    on p.id = s.accounting_period_id
+   and p.company_id = s.company_id
+  left join accounting_period_trial_balance_lines l
+    on l.snapshot_id = s.id
+  where p.status = 'CLOSED'
+  group by s.id, s.company_id, s.accounting_period_id
+)
+select
+  s.company_id,
+  s.accounting_period_id,
+  s.id as snapshot_id,
+  s.trial_balance_total_debit,
+  s.trial_balance_total_credit,
+  st.line_debit,
+  st.line_credit
+from accounting_period_snapshots s
+join snapshot_totals st
+  on st.snapshot_id = s.id
+where abs(coalesce(s.trial_balance_total_debit, 0) - coalesce(st.line_debit, 0)) > 0.01
+   or abs(coalesce(s.trial_balance_total_credit, 0) - coalesce(st.line_credit, 0)) > 0.01
+order by s.company_id, s.accounting_period_id, s.id;
+
 -- 12) Flyway history mismatch vs repo expectations (NO-GO)
 -- Update expected values on each release commit.
 with expected as (
