@@ -1,0 +1,19 @@
+# Flyway overlap scan allowlist (legacy overlap due to convergence migrations).
+# Reviewed: 2026-02-05
+# Format: <kind>:<name> where kind is table|constraint|index.
+
+# Duplicate tables (legacy vs convergence migrations)
+table:payroll_run_lines
+table:payroll_runs
+
+# Duplicate constraints (legacy vs convergence migrations)
+constraint:uk_aggregate_sequence
+constraint:uk_journal_company_reference
+
+# Duplicate indexes (legacy vs convergence migrations)
+index:idx_finished_good_batches_qty_available
+index:idx_finished_goods_current_stock
+index:idx_invoices_dealer
+index:idx_journal_lines_account_id
+index:idx_partner_settlement_idempotency
+index:uk_payroll_runs_company_idempotency

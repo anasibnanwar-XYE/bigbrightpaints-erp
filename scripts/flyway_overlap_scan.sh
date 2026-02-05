@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MIGRATIONS_DIR="$ROOT_DIR/erp-domain/src/main/resources/db/migration"
+ALLOWLIST_FILE="$ROOT_DIR/scripts/flyway_overlap_allowlist.txt"
 
 FAIL_ON_FINDINGS="${FAIL_ON_FINDINGS:-false}"
 
@@ -11,7 +12,7 @@ if [[ ! -d "$MIGRATIONS_DIR" ]]; then
   exit 2
 fi
 
-export MIGRATIONS_DIR FAIL_ON_FINDINGS
+export MIGRATIONS_DIR FAIL_ON_FINDINGS ALLOWLIST_FILE
 
 python3 - <<'PY'
 import collections
@@ -22,6 +23,19 @@ import sys
 
 migrations_dir = os.environ["MIGRATIONS_DIR"]
 fail_on_findings = os.environ.get("FAIL_ON_FINDINGS", "false").lower() == "true"
+allowlist_file = os.environ.get("ALLOWLIST_FILE", "")
+
+allowlist: set[tuple[str, str]] = set()
+if allowlist_file and os.path.exists(allowlist_file):
+    with open(allowlist_file, "r", encoding="utf-8") as fh:
+        for raw in fh:
+            line = raw.split("#", 1)[0].strip()
+            if not line:
+                continue
+            if ":" not in line:
+                continue
+            kind, name = line.split(":", 1)
+            allowlist.add((kind.strip().lower(), name.strip().lower()))
 
 files = sorted(glob.glob(os.path.join(migrations_dir, "V*__*.sql")))
 if not files:
@@ -64,11 +78,17 @@ for path in files:
 
 findings = 0
 print(f"[flyway_overlap_scan] scanning: {migrations_dir}")
+if allowlist:
+    print(f"[flyway_overlap_scan] allowlist entries: {len(allowlist)}")
 
 for kind in ("table", "constraint", "index"):
     print()
     print(f"[flyway_overlap_scan] duplicate {kind} definitions (heuristic)")
-    dups = {name: sorted(list(fs)) for name, fs in found[kind].items() if len(fs) > 1}
+    dups = {
+        name: sorted(list(fs))
+        for name, fs in found[kind].items()
+        if len(fs) > 1 and (kind, name) not in allowlist
+    }
     if not dups:
         print("  (none)")
         continue

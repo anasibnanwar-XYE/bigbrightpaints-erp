@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MIGRATIONS_DIR="$ROOT_DIR/erp-domain/src/main/resources/db/migration"
+ALLOWLIST_FILE="$ROOT_DIR/scripts/schema_drift_scan_allowlist.txt"
 
 FAIL_ON_FINDINGS="${FAIL_ON_FINDINGS:-false}"
 
@@ -21,6 +22,32 @@ echo "[schema_drift_scan] scanning: $MIGRATIONS_DIR"
 echo "[schema_drift_scan] using: $SEARCH_TOOL"
 
 findings=0
+allowlist=()
+
+if [[ -f "$ALLOWLIST_FILE" ]]; then
+  while IFS= read -r raw; do
+    # Strip comments and trim whitespace.
+    line="${raw%%#*}"
+    line="$(echo "$line" | xargs)"
+    if [[ -n "$line" ]]; then
+      allowlist+=("$line")
+    fi
+  done < "$ALLOWLIST_FILE"
+  echo "[schema_drift_scan] allowlist entries: ${#allowlist[@]}"
+fi
+
+is_allowlisted() {
+  local file="$1"
+  if [[ "${#allowlist[@]}" -eq 0 ]]; then
+    return 1
+  fi
+  for entry in "${allowlist[@]}"; do
+    if [[ "$file" == *"$entry" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
 
 scan_pattern() {
   local label="$1"
@@ -33,8 +60,20 @@ scan_pattern() {
     grep -RIn --include='*.sql' -e "$pattern" "$MIGRATIONS_DIR" >/tmp/schema_drift_scan.tmp 2>/dev/null || true
   fi
   if [[ -s /tmp/schema_drift_scan.tmp ]]; then
-    cat /tmp/schema_drift_scan.tmp
-    findings=1
+    local printed=false
+    while IFS= read -r line; do
+      local file="${line%%:*}"
+      if is_allowlisted "$file"; then
+        continue
+      fi
+      printed=true
+      echo "$line"
+    done < /tmp/schema_drift_scan.tmp
+    if [[ "$printed" == "true" ]]; then
+      findings=1
+    else
+      echo "  (none)"
+    fi
   else
     echo "  (none)"
   fi
@@ -75,6 +114,9 @@ else
       fi
     fi
     if [[ "$has_from" == "true" ]]; then
+      if is_allowlisted "$f"; then
+        continue
+      fi
       flagged=true
       findings=1
       echo "  $f"

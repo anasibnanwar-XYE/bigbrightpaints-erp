@@ -429,6 +429,32 @@ Rationale:
 Enforcement:
 - On release commits, run `FAIL_ON_FINDINGS=true bash scripts/verify_local.sh` (or record an explicit waiver).
 
+## 2026-02-05 - Schema Drift Scan Waiver File (Legacy Migrations)
+Decision:
+- Legacy migrations containing `CREATE TABLE/INDEX IF NOT EXISTS` or deterministic
+  `UPDATE ... FROM` backfills are explicitly waived via a reviewed allowlist.
+
+Rationale:
+- Historical migrations cannot be edited; waivers keep `FAIL_ON_FINDINGS` strict
+  for new work while acknowledging legacy patterns.
+
+Enforcement:
+- Allowed files are listed in `scripts/schema_drift_scan_allowlist.txt`.
+- Waiver rationale is documented in `docs/CODE-RED/SCHEMA_DRIFT_SCAN_WAIVER.md`.
+
+## 2026-02-05 - Flyway Overlap Scan Waiver (Convergence Migrations)
+Decision:
+- Known duplicate table/constraint/index names created by convergence migrations
+  are explicitly waived via a reviewed allowlist.
+
+Rationale:
+- Convergence migrations intentionally re-declare constraints/indexes to align
+  drifted schemas without editing historical migrations.
+
+Enforcement:
+- Allowed overlap names are listed in `scripts/flyway_overlap_allowlist.txt`.
+- Waiver rationale is documented in `docs/CODE-RED/FLYWAY_OVERLAP_SCAN_WAIVER.md`.
+
 ## 2026-02-02 - Orchestrator Command Idempotency Is Mandatory
 Decision:
 - Every orchestrator write command requires `Idempotency-Key` and must be exactly-once under retries.
