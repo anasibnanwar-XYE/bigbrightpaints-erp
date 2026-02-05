@@ -162,6 +162,8 @@ Purpose: a single, concrete list of **P0** items that block a safe enterprise de
 
 ## P0 - Deploy Gates / Flyway Discipline
 - Flyway must be forward-only: do not edit applied migrations; repair only when it is known-safe.
+- Convergence migrations added for drift-heavy payroll/journal/events/indexes (V128-V131).
+  - Status (2026-02-05): ✅ forward-only convergence migrations with data guards.
 - Add a staging deploy gate for Flyway history drift:
   - DB `flyway_schema_history` count and max version must match repo expectations.
 - Ensure prod mail config is correct (prod uses `SMTP_*` placeholders; `SMTP_PASSWORD` must not be left as `changeme`).

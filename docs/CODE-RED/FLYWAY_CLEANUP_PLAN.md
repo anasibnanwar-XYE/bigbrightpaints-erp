@@ -17,9 +17,9 @@ If you want fewer migrations for **brand-new installs**, use a **squashed baseli
 
 ## Current Inventory (Repo Reality)
 
-As of **2026-02-02**, this repo contains **119** Flyway migrations:
+As of **2026-02-05**, this repo contains **131** Flyway migrations:
 - Location: `erp-domain/src/main/resources/db/migration`
-- Versions: `V1__...` through `V116__...` (placeholders/gap fillers are intentional and must remain)
+- Versions: `V1__...` through `V131__...` (placeholders/gap fillers are intentional and must remain)
 
 Reference docs:
 - Audit summary: `erp-domain/docs/FLYWAY_AUDIT_AND_STRATEGY.md`
@@ -54,28 +54,28 @@ Rule: **Never edit applied migrations.** Add new migrations only.
 ### The four “convergence migrations”
 
 These are already documented as the CODE-RED convergence plan:
-- `V117__payroll_convergence.sql`
-- `V118__journal_uniqueness_convergence.sql`
-- `V119__accounting_events_uniqueness_convergence.sql`
-- `V120__index_consolidation.sql`
+- `V128__converge_payroll_schema.sql`
+- `V129__converge_journal_uniqueness.sql`
+- `V130__converge_accounting_events.sql`
+- `V131__index_consolidation.sql`
 
 What each one should do:
 
-1) `V117__payroll_convergence.sql`
+1) `V128__converge_payroll_schema.sql`
    - Ensure payroll tables (`payroll_runs`, `payroll_run_lines`) have one final canonical shape.
    - Remove redundant indexes/constraints created by duplicate guarded DDL (drop extra indexes safely if present).
 
-2) `V118__journal_uniqueness_convergence.sql`
+2) `V129__converge_journal_uniqueness.sql`
    - Ensure exactly one uniqueness mechanism exists for `(company_id, reference_number)` on `journal_entries`.
    - If both constraints exist (one auto-generated from table DDL + the explicit `uk_journal_company_reference`),
      drop the redundant one **conditionally**.
 
-3) `V119__accounting_events_uniqueness_convergence.sql`
+3) `V130__converge_accounting_events.sql`
    - Ensure only one uniqueness enforcement exists for `(aggregate_id, sequence_number)` on `accounting_events`
      (constraint OR index; not both).
    - Keep the chosen one and drop the redundant one conditionally.
 
-4) `V120__index_consolidation.sql`
+4) `V131__index_consolidation.sql`
    - Remove duplicate “performance indexes” that were created in multiple migrations (guarded duplicates).
    - Ensure the intended final index set exists exactly once.
 
@@ -98,7 +98,7 @@ Run two validations:
 1) Clean DB install (all migrations apply from scratch)
    - App boots cleanly, no Flyway errors.
 2) Upgrade simulation (start from a DB that represents the real staging/prod history)
-   - Apply new release; Flyway applies `V117..V120`; final schema matches clean DB.
+   - Apply new release; Flyway applies `V128..V131`; final schema matches clean DB.
 
 Required gates:
 - `bash scripts/verify_local.sh`

@@ -160,7 +160,13 @@ public class PortalInsightsControllerIT extends AbstractIntegrationTest {
 
         PayrollRun payrollRun = new PayrollRun();
         payrollRun.setCompany(company);
-        payrollRun.setRunDate(LocalDate.now().plusDays(3));
+        LocalDate payrollStart = LocalDate.now().minusDays(30);
+        LocalDate payrollEnd = LocalDate.now().minusDays(1);
+        payrollRun.setRunType(PayrollRun.RunType.MONTHLY);
+        payrollRun.setPeriodStart(payrollStart);
+        payrollRun.setPeriodEnd(payrollEnd);
+        payrollRun.setRunDate(payrollEnd);
+        payrollRun.setRunNumber("PR-M-" + payrollEnd);
         payrollRun.setStatus("DRAFT");
         payrollRunRepository.save(payrollRun);
 

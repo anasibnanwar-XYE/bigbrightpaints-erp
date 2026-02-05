@@ -1047,30 +1047,34 @@ Hard rules
 Convergence targets (from audit)
 1) Payroll schema drift
    - `V7__hr_tables.sql` creates payroll_runs minimal columns; `V78__payroll_enhancement.sql` conditionally recreates/extends.
-   - Add: `V117__converge_payroll_schema.sql`
+   - Add: `V128__converge_payroll_schema.sql`
      - Ensure column set, types, nullability match JPA entities.
      - Backfill required fields for legacy rows (runType/runNumber/periodStart/periodEnd).
      - Ensure idempotency constraints match canonical scope.
 
 2) Accounting uniqueness drift
    - Journal reference uniqueness defined multiple times (`V5`, `V66`) and packaging slip journal uniqueness in `V116`.
-   - Add: `V118__converge_accounting_uniques.sql`
+   - Add: `V129__converge_journal_uniqueness.sql`
      - Keep exactly one unique mechanism per intent; drop redundant constraints/indexes if safe.
 
 3) Accounting event store uniqueness drift
    - `V70` vs `V115` uniqueness overlap.
-   - Add: `V119__converge_accounting_events.sql`
+   - Add: `V130__converge_accounting_events.sql`
+
+3b) Index consolidation (performance drift)
+   - Duplicate indexes created with different names (finished goods + batches).
+   - Add: `V131__index_consolidation.sql`
 
 4) MFA recovery codes drift (decision required)
    - Migrations currently leave two sources of truth (column + table) due to a commented-out drop.
-   - Add: `V120__converge_mfa_recovery_codes.sql`
+   - Add: `V132__converge_mfa_recovery_codes.sql`
      - Decide canonical storage (recommended: table).
      - Backfill table from column if needed.
      - Keep backward compatibility for one release; only then drop/ignore the old column.
 
 5) Token lifecycle drift (decision required)
    - Token lifecycle is split across parallel tables (refresh_tokens vs blacklist/revocations).
-   - Add: `V121__converge_auth_tokens.sql`
+   - Add: `V133__converge_auth_tokens.sql`
      - Decide canonical tables and enforce constraints so there is one source of truth.
 
 6) Sequence mechanisms drift (non-breaking)

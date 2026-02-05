@@ -1304,11 +1304,22 @@ public class AccountingService {
         BigDecimal employerPfAmount = totalGross.multiply(employerPfRate).setScale(2, RoundingMode.HALF_UP);
         BigDecimal totalEmployerCost = totalGross.add(employerTaxAmount).add(employerPfAmount);
 
+        String memo = StringUtils.hasText(request.memo())
+                ? request.memo().trim()
+                : "Payroll batch for " + request.runDate();
+        String reference = StringUtils.hasText(request.referenceNumber())
+                ? request.referenceNumber().trim()
+                : referenceNumberService.payrollPaymentReference(company);
+
         // Create PayrollRun
         PayrollRun run = new PayrollRun();
         run.setCompany(company);
+        run.setRunType(PayrollRun.RunType.MONTHLY);
+        run.setPeriodStart(request.runDate());
+        run.setPeriodEnd(request.runDate());
         run.setRunDate(request.runDate());
-        run.setNotes(request.memo());
+        run.setRunNumber(reference);
+        run.setNotes(memo);
         run.setTotalAmount(totalGross); // Store gross amount
         run.setStatus("DRAFT");
         run.setProcessedBy(resolveCurrentUsername());
@@ -1328,13 +1339,6 @@ public class AccountingService {
             persistedLines.add(entity);
         }
         payrollRunLineRepository.saveAll(persistedLines);
-
-        String memo = StringUtils.hasText(request.memo())
-                ? request.memo().trim()
-                : "Payroll batch for " + request.runDate();
-        String reference = StringUtils.hasText(request.referenceNumber())
-                ? request.referenceNumber().trim()
-                : referenceNumberService.payrollPaymentReference(company);
 
         // Build journal entry lines for main payroll entry
         // The journal must balance, so we calculate total credits first:

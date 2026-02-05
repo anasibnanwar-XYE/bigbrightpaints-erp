@@ -1,8 +1,8 @@
 # Flyway Audit and Strategy
 
 ## Inventory
-- Total migrations: 116 (`src/main/resources/db/migration`)
-- Naming pattern: `V{version}__{description}.sql` with incremental versions 1-116.
+- Total migrations: 131 (`src/main/resources/db/migration`)
+- Naming pattern: `V{version}__{description}.sql` with incremental versions 1-131.
 - Placeholder/gap fillers exist (example: `V25__fill_migration_gap.sql`, `V42__placeholder.sql`). These are intentional and
   should remain explicit in audit/review so the version history stays stable.
 
@@ -57,17 +57,17 @@ Principles
 - Add new "convergence" migrations that declare the final intended table shape and constraints.
 - Prefer deterministic backfills over "IF NOT EXISTS" drift patterns.
 
-Recommended convergence migrations (proposed, forward-only)
-- `V117__payroll_convergence.sql`
+Recommended convergence migrations (forward-only, implemented)
+- `V128__converge_payroll_schema.sql`
   - converge `payroll_runs` + `payroll_run_lines` to the entity-driven shape
-  - remove redundant/overlapping indexes/constraints introduced by guarded duplicates
-- `V118__journal_uniqueness_convergence.sql`
+  - add deterministic backfills + fail-closed guards before NOT NULL enforcement
+- `V129__converge_journal_uniqueness.sql`
   - ensure exactly one uniqueness mechanism exists for `(company_id, reference_number)` on `journal_entries`
-- `V119__accounting_events_uniqueness_convergence.sql`
+- `V130__converge_accounting_events.sql`
   - normalize `accounting_events` uniqueness so only one mechanism remains (constraint or index, not both)
-- `V120__index_consolidation.sql`
+- `V131__index_consolidation.sql`
   - remove duplicate “performance” indexes that exist in multiple versions (fresh DB vs upgraded DB drift)
-- Optional: `V121__auth_token_mfa_convergence.sql`
+- Optional: `V132__auth_token_mfa_convergence.sql`
   - only if/when auth token + MFA storage is converged to a single canonical source-of-truth
 
 ## Environment Validation Steps
@@ -93,4 +93,4 @@ Notes
 - This does not remove the need for forward migrations; it just reduces the starting cost for greenfield environments.
 
 ## Changes in This Pass
-- No Flyway file edits; only audit and documentation updates.
+- Added forward-only convergence migrations for payroll, journal uniqueness, accounting events, and index consolidation.
