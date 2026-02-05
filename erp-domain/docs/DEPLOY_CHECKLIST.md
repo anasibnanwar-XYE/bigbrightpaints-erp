@@ -1,5 +1,8 @@
 # Deploy Checklist
 
+Authoritative release procedure:
+- `docs/CODE-RED/RELEASE_RUNBOOK.md`
+
 ## Required Env Vars (Prod)
 - `SPRING_DATASOURCE_URL`
 - `SPRING_DATASOURCE_USERNAME`
@@ -44,38 +47,6 @@ CODE-RED policy: deploy is **NO-SHIP** if any predeploy scan returns rows.
 If any rows are returned:
 - stop the deployment
 - create a controlled repair plan (admin-only repair endpoint or forward migration), not ad-hoc SQL
-
-## Operational Runbook (Boot/Migrate/Backup/Restore)
-- Boot (prod-like): `JWT_SECRET=... ERP_SECURITY_ENCRYPTION_KEY=... docker compose up -d --build`
-- Migrate:
-  - Flyway runs automatically on startup; watch logs for `Flyway` migrate output.
-  - Verify applied migrations: `SELECT version, description, success FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 5;`
-- Backup (Postgres):
-  - `pg_dump --format=custom --no-owner --no-acl --file=backup_$(date +%F).dump "$SPRING_DATASOURCE_URL"`
-  - Store backups off-host and encrypt at rest.
-- Restore (Postgres):
-  - Stop app, restore into a clean DB: `pg_restore --clean --if-exists --no-owner --dbname "$SPRING_DATASOURCE_URL" backup_YYYY-MM-DD.dump`
-  - Start app to re-run health checks and confirm `/actuator/health`.
-- Rollback guidance:
-  - Schema additions: add a forward migration to revert or neutralize (do not edit applied migrations).
-  - Data backfills: write idempotent forward fixes; document compensating steps.
-  - Destructive changes: restore from backup and re-apply forward fixes in a new migration.
-
-## Staging Snapshot Procedure (Prod-Like Validation)
-
-Goal: validate the release on production-like data before shipping to prod.
-
-1) Take a production backup (or obtain the latest approved backup file).
-2) Restore it into staging (isolated DB/schema).
-3) Deploy the candidate release to staging and let Flyway migrate.
-4) Run CODE-RED predeploy scans (must return zero rows): `scripts/db_predeploy_scans.sql`
-5) Run smoke checks: `erp-domain/scripts/ops_smoke.sh`
-6) Monitor outbox/event health endpoints and error logs for a soak period.
-
-## Startup Commands
-- Build: `mvn package`
-- Run (dev): `mvn spring-boot:run`
-- Run (prod): `mvn -Dspring-boot.run.profiles=prod spring-boot:run`
 
 ## Health Checks
 - `/actuator/health`

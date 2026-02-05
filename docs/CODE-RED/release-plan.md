@@ -134,55 +134,15 @@ If the priority is "deploy soon", do this order:
 
 ## 5) Go / No-Go Checklist (Deploy Gate)
 
-Go (all required):
-- `bash scripts/verify_local.sh` is green on the release commit.
-- On the release commit, run CODE-RED scans in fail-on-findings mode (or record an explicit waiver): `FAIL_ON_FINDINGS=true bash scripts/verify_local.sh`
-- CI is green on the same commit.
-- `scripts/db_predeploy_scans.sql` returns zero rows on staging (and on prod snapshot if available).
-- Dangerous bypass paths are disabled in prod config:
-  - Orchestrator status updates to SHIPPED/DISPATCHED without canonical dispatch are OFF.
-  - Mutating GET slip lookup by orderId is OFF or safe.
-  - Packing endpoints are OFF unless EPIC 03 safety requirements are met.
+Authoritative gate: `docs/CODE-RED/GO_NO_GO_CHECKLIST.md`
 
-No-Go (any one blocks deployment):
-- Any predeploy scan returns rows (unlinked slips/invoices/journals, duplicates, negative stock, etc.).
-- Any endpoint can still create journals without passing through the canonical posting policy.
-- Any workflow allows "status says shipped" but inventory/journals disagree.
+## 6) Release Runbook (Authoritative)
 
-## 6) Rollback Plan (Minimal, Safe)
+Authoritative release procedure (commands, expected outputs, and failure criteria):
+`docs/CODE-RED/RELEASE_RUNBOOK.md`
 
-Principle: rollback the application first; do not "fix prod" with manual SQL edits under pressure.
-
-If deployment is bad:
-1) Roll back the app to the previous release.
-2) Disable any risky feature flags (orchestrator/packing).
-3) Run `scripts/db_predeploy_scans.sql` again to assess state; if data corruption is detected, stop and create a controlled
-   repair plan (admin-only repair endpoints or audited migration), not ad-hoc SQL.
-4) Restore from a known-good backup only via the rehearsed restore procedure (verify restore time and integrity before attempting).
-
-## 6.1) Staging Snapshot Procedure (Concrete)
-
-Goal: validate on production-like data before shipping to prod.
-
-1) Restore a recent prod backup into staging (isolated DB/schema).
-1.1) Verify restore integrity (basic row counts + app boots + login works) and record restore time-to-restore (TTR).
-2) Deploy the candidate release to staging and let Flyway migrate.
-2.1) Flyway drift gate (NO-SHIP on mismatch):
-   - On the release commit, record repo expectations:
-     - migration count: `ls -1 erp-domain/src/main/resources/db/migration | wc -l`
-     - latest version: `ls -1 erp-domain/src/main/resources/db/migration | sed -n 's/^V\\([0-9]\\+\\)__.*$/\\1/p' | sort -n | tail -n 1`
-     - expected values for this release: count=131, max version=131
-   - On staging DB, confirm `flyway_schema_history` matches:
-     - `SELECT count(*) FROM flyway_schema_history WHERE success = true;`
-     - `SELECT max(version) FROM flyway_schema_history WHERE success = true;`
-3) Run CODE-RED predeploy scans (NO-SHIP if any rows): `scripts/db_predeploy_scans.sql`
-4) Run smoke checks: `erp-domain/scripts/ops_smoke.sh`
-5) Soak/monitor:
-   - outbox health endpoints (pending/retrying/dead-letter counts)
-   - error logs (especially posting/idempotency failures)
-6) Only after scans + smoke + soak are green, ship to prod.
-
-Reference: `erp-domain/docs/DEPLOY_CHECKLIST.md`.
+Reference-only checklist (env vars + endpoints):
+`erp-domain/docs/DEPLOY_CHECKLIST.md`
 
 ## 7) Ownership (RACI-lite)
 

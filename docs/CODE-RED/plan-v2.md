@@ -1110,7 +1110,9 @@ Acceptance criteria
 ### EPIC 09 - Release Runbook / Monitoring / Rollback
 
 Deliverables
-1) Go/No-Go checklist (already partially in `docs/CODE-RED/release-plan.md`)
+1) Go/No-Go checklist + release runbook (authoritative):
+   - Gate: `docs/CODE-RED/GO_NO_GO_CHECKLIST.md`
+   - Runbook: `docs/CODE-RED/RELEASE_RUNBOOK.md`
    - Add explicit "feature flags to check" list for prod.
 2) Monitoring
    - Alert on:
