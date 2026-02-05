@@ -36,6 +36,9 @@ public class PackagingSlip extends VersionedEntity {
     @Column(nullable = false)
     private String status = "PENDING";
 
+    @Column(name = "is_backorder", nullable = false)
+    private boolean isBackorder;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -83,6 +86,8 @@ public class PackagingSlip extends VersionedEntity {
     public void setSlipNumber(String slipNumber) { this.slipNumber = slipNumber; }
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+    public boolean isBackorder() { return isBackorder; }
+    public void setBackorder(boolean backorder) { isBackorder = backorder; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getDispatchedAt() { return dispatchedAt; }
     public void setDispatchedAt(Instant dispatchedAt) { this.dispatchedAt = dispatchedAt; }

@@ -2,11 +2,14 @@ package com.bigbrightpaints.erp.modules.factory.service;
 
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.factory.domain.PackingRecordRepository;
+import com.bigbrightpaints.erp.modules.factory.domain.PackingRequestRecord;
+import com.bigbrightpaints.erp.modules.factory.domain.PackingRequestRecordRepository;
 import com.bigbrightpaints.erp.modules.factory.domain.ProductionLog;
 import com.bigbrightpaints.erp.modules.factory.domain.ProductionLogRepository;
 import com.bigbrightpaints.erp.modules.factory.domain.ProductionLogStatus;
@@ -41,6 +44,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -49,6 +53,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -61,6 +66,8 @@ class PackingServiceTest {
     private ProductionLogRepository productionLogRepository;
     @Mock
     private PackingRecordRepository packingRecordRepository;
+    @Mock
+    private PackingRequestRecordRepository packingRequestRecordRepository;
     @Mock
     private FinishedGoodRepository finishedGoodRepository;
     @Mock
@@ -93,6 +100,7 @@ class PackingServiceTest {
                 companyContextService,
                 productionLogRepository,
                 packingRecordRepository,
+                packingRequestRecordRepository,
                 finishedGoodRepository,
                 finishedGoodBatchRepository,
                 inventoryMovementRepository,
@@ -108,7 +116,6 @@ class PackingServiceTest {
         company = new Company();
         company.setTimezone("UTC");
         when(companyContextService.requireCurrentCompany()).thenReturn(company);
-        when(productionLogRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
     }
 
     @Test
@@ -165,6 +172,7 @@ class PackingServiceTest {
         when(finishedGoodBatchRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(finishedGoodRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(inventoryMovementRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(productionLogRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         JournalEntryDto wasteEntry = stubEntry(11L);
         when(accountingFacade.postSimpleJournal(
@@ -286,6 +294,10 @@ class PackingServiceTest {
                 .thenReturn(new PackagingConsumptionResult(false, BigDecimal.ZERO, BigDecimal.ZERO, Map.of(), null));
         when(productionLogRepository.incrementPackedQuantityAtomic(eq(1L), any())).thenReturn(1);
         when(productionLogRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(packingRequestRecordRepository.findByCompanyAndIdempotencyKey(company, "pack-key-1"))
+                .thenReturn(Optional.empty());
+        when(packingRequestRecordRepository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(packingRequestRecordRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(accountingFacade.postPackingJournal(anyString(), any(LocalDate.class), anyString(), any()))
                 .thenReturn(stubEntry(11L));
 
@@ -320,6 +332,7 @@ class PackingServiceTest {
                 log.getId(),
                 LocalDate.of(2024, 1, 1),
                 "packer",
+                "pack-key-1",
                 List.of(new PackingLineRequest("1L", new BigDecimal("1"), 1, null, null))
         );
 
@@ -331,6 +344,66 @@ class PackingServiceTest {
                 anyString(),
                 any()
         );
+    }
+
+    @Test
+    void recordPacking_idempotentReplayDoesNotConsumeOrPostAgain() {
+        PackingRequestRecord existing = new PackingRequestRecord();
+        existing.setCompany(company);
+        existing.setIdempotencyKey("pack-replay");
+        existing.setIdempotencyHash(null);
+        existing.setProductionLogId(1L);
+        existing.setPackingRecordId(99L);
+
+        when(packingRequestRecordRepository.findByCompanyAndIdempotencyKey(company, "pack-replay"))
+                .thenReturn(Optional.of(existing));
+        ProductionLogDetailDto detailDto = new ProductionLogDetailDto(
+                1L, null, "PROD-001", Instant.parse("2024-01-01T00:00:00Z"), null, null, null, null,
+                null, null, null, BigDecimal.ONE, null, "READY_TO_PACK", null, null, null,
+                null, null, null, null, null, List.of()
+        );
+        when(productionLogService.getLog(1L)).thenReturn(detailDto);
+        when(companyEntityLookup.lockProductionLog(company, 1L)).thenReturn(new ProductionLog());
+
+        PackingRequest request = new PackingRequest(
+                1L,
+                LocalDate.of(2024, 1, 1),
+                "packer",
+                "pack-replay",
+                List.of(new PackingLineRequest("1L", new BigDecimal("1"), 1, null, null))
+        );
+
+        ProductionLogDetailDto result = packingService.recordPacking(request);
+
+        assertThat(result.id()).isEqualTo(1L);
+        verify(packagingMaterialService, never()).consumePackagingMaterial(anyString(), anyInt(), anyString());
+        verify(accountingFacade, never()).postPackingJournal(anyString(), any(LocalDate.class), anyString(), any());
+        verify(packingRecordRepository, never()).save(any());
+    }
+
+    @Test
+    void recordPacking_idempotencyMismatchConflicts() {
+        PackingRequestRecord existing = new PackingRequestRecord();
+        existing.setCompany(company);
+        existing.setIdempotencyKey("pack-mismatch");
+        existing.setIdempotencyHash("aaaaaaaa");
+        existing.setProductionLogId(1L);
+
+        when(packingRequestRecordRepository.findByCompanyAndIdempotencyKey(company, "pack-mismatch"))
+                .thenReturn(Optional.of(existing));
+        when(companyEntityLookup.lockProductionLog(company, 1L)).thenReturn(new ProductionLog());
+
+        PackingRequest request = new PackingRequest(
+                1L,
+                LocalDate.of(2024, 1, 1),
+                "packer",
+                "pack-mismatch",
+                List.of(new PackingLineRequest("1L", new BigDecimal("1"), 1, null, null))
+        );
+
+        assertThatThrownBy(() -> packingService.recordPacking(request))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Idempotency payload mismatch");
     }
 
     private JournalEntryDto stubEntry(long id) {

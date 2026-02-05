@@ -4,8 +4,12 @@ import com.bigbrightpaints.erp.modules.company.domain.Company;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
+import jakarta.persistence.LockModeType;
+import jakarta.persistence.QueryHint;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.QueryHints;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
@@ -52,6 +56,12 @@ public interface SalesOrderRepository extends JpaRepository<SalesOrder, Long> {
 
     @EntityGraph(attributePaths = {"items", "dealer"})
     Optional<SalesOrder> findWithItemsByCompanyAndId(Company company, Long id);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @QueryHints({@QueryHint(name = "jakarta.persistence.lock.timeout", value = "5000")})
+    @EntityGraph(attributePaths = {"items", "dealer"})
+    @Query("select o from SalesOrder o where o.company = :company and o.id = :id")
+    Optional<SalesOrder> findWithItemsByCompanyAndIdForUpdate(@Param("company") Company company, @Param("id") Long id);
 
     @EntityGraph(attributePaths = {"company", "dealer"})
     List<SalesOrder> findAll();

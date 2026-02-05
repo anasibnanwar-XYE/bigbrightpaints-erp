@@ -3,10 +3,13 @@ package com.bigbrightpaints.erp.modules.factory.controller;
 import com.bigbrightpaints.erp.modules.factory.dto.*;
 import com.bigbrightpaints.erp.modules.factory.service.BulkPackingService;
 import com.bigbrightpaints.erp.modules.factory.service.PackingService;
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -24,8 +27,11 @@ public class PackingController {
     }
 
     @PostMapping("/packing-records")
-    public ResponseEntity<ApiResponse<ProductionLogDetailDto>> recordPacking(@Valid @RequestBody PackingRequest request) {
-        return ResponseEntity.ok(ApiResponse.success("Packing recorded", packingService.recordPacking(request)));
+    public ResponseEntity<ApiResponse<ProductionLogDetailDto>> recordPacking(
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            @Valid @RequestBody PackingRequest request) {
+        PackingRequest resolved = applyIdempotencyKey(request, idempotencyKey);
+        return ResponseEntity.ok(ApiResponse.success("Packing recorded", packingService.recordPacking(resolved)));
     }
 
     @PostMapping("/packing-records/{productionLogId}/complete")
@@ -73,5 +79,36 @@ public class PackingController {
     public ResponseEntity<ApiResponse<List<BulkPackResponse.ChildBatchDto>>> listChildBatches(
             @PathVariable Long parentBatchId) {
         return ResponseEntity.ok(ApiResponse.success(bulkPackingService.listChildBatches(parentBatchId)));
+    }
+
+    private PackingRequest applyIdempotencyKey(PackingRequest request, String headerKey) {
+        if (request == null) {
+            throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
+                    "Packing request is required");
+        }
+        String bodyKey = request.idempotencyKey();
+        if (!StringUtils.hasText(bodyKey) && !StringUtils.hasText(headerKey)) {
+            throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
+                    "Idempotency-Key header or request.idempotencyKey is required");
+        }
+        if (StringUtils.hasText(bodyKey)) {
+            if (StringUtils.hasText(headerKey) && !bodyKey.trim().equals(headerKey.trim())) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Idempotency key mismatch between header and request body")
+                        .withDetail("headerKey", headerKey)
+                        .withDetail("bodyKey", bodyKey);
+            }
+            return request;
+        }
+        if (!StringUtils.hasText(headerKey)) {
+            return request;
+        }
+        return new PackingRequest(
+                request.productionLogId(),
+                request.packedDate(),
+                request.packedBy(),
+                headerKey.trim(),
+                request.lines()
+        );
     }
 }

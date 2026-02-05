@@ -798,6 +798,7 @@ public class ErpInvariantsSuiteIT extends AbstractIntegrationTest {
         packingRequest.put("productionLogId", logId);
         packingRequest.put("packedDate", entryDate);
         packingRequest.put("packedBy", "packer");
+        packingRequest.put("idempotencyKey", "INV-PACK-" + logId + "-" + System.nanoTime());
         packingRequest.put("lines", List.of(packingLine));
 
         ResponseEntity<Map> packingResp = rest.exchange("/api/v1/factory/packing-records",

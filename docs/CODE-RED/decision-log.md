@@ -455,6 +455,22 @@ Enforcement:
 - Allowed overlap names are listed in `scripts/flyway_overlap_allowlist.txt`.
 - Waiver rationale is documented in `docs/CODE-RED/FLYWAY_OVERLAP_SCAN_WAIVER.md`.
 
+## 2026-02-06 - Packing Record Idempotency Key Is Mandatory
+Decision:
+- `POST /api/v1/factory/packing-records` requires an idempotency key
+  (header `Idempotency-Key` or `request.idempotencyKey`).
+- Replays with the same key must return the same outcome, and payload mismatches
+  fail closed with conflict.
+
+Rationale:
+- Packing retries must never double-consume packaging materials or double-post
+  conversion journals.
+
+Enforcement:
+- Controller rejects requests missing idempotency key material.
+- `PackingRequestRecord` reserves key usage per `(company_id, idempotency_key)`
+  before side effects.
+
 ## 2026-02-02 - Orchestrator Command Idempotency Is Mandatory
 Decision:
 - Every orchestrator write command requires `Idempotency-Key` and must be exactly-once under retries.

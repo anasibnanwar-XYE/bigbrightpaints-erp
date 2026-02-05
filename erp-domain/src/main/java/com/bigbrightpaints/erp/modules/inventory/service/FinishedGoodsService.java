@@ -22,6 +22,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.core.env.Environment;
 import org.springframework.core.env.Profiles;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -34,6 +35,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -266,31 +268,36 @@ public class FinishedGoodsService {
     @Transactional
     public InventoryReservationResult reserveForOrder(SalesOrder order) {
         Company company = companyContextService.requireCurrentCompany();
-        SalesOrder managedOrder = salesOrderRepository.findWithItemsByCompanyAndId(company, order.getId())
+        SalesOrder managedOrder = salesOrderRepository.findWithItemsByCompanyAndIdForUpdate(company, order.getId())
                 .orElseThrow(() -> new IllegalArgumentException("Sales order not found: " + order.getId()));
-        List<PackagingSlip> existingSlips = packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, order.getId());
-        PackagingSlip slip;
-        if (existingSlips.isEmpty()) {
-            slip = createSlip(managedOrder);
-        } else {
-            if (existingSlips.size() > 1) {
-                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
-                        "Multiple packaging slips found for order " + managedOrder.getId() + "; provide packagingSlipId");
+        Optional<PackagingSlip> primarySlip = packagingSlipRepository.findAndLockPrimaryBySalesOrderId(order.getId(), company);
+        if (primarySlip.isEmpty()) {
+            List<PackagingSlip> backorderSlips = packagingSlipRepository
+                    .findAllByCompanyAndSalesOrderIdAndIsBackorderTrue(company, order.getId()).stream()
+                    .filter(existing -> !"CANCELLED".equalsIgnoreCase(existing.getStatus()))
+                    .toList();
+            if (backorderSlips.size() > 1) {
+                throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
+                        "Multiple backorder slips found for order " + order.getId() + "; provide packingSlipId");
             }
-            slip = existingSlips.get(0);
+            if (!backorderSlips.isEmpty()) {
+                PackagingSlip backorderSlip = packagingSlipRepository
+                        .findAndLockByIdAndCompany(backorderSlips.getFirst().getId(), company)
+                        .orElseThrow(() -> new IllegalArgumentException("Backorder slip not found"));
+                return reserveForBackorder(managedOrder, backorderSlip);
+            }
         }
+        PackagingSlip slip = primarySlip.orElseGet(() -> createPrimarySlip(managedOrder));
 
         if ("CANCELLED".equalsIgnoreCase(slip.getStatus())) {
             releaseReservationsForOrder(managedOrder.getId());
             slip.getLines().clear();
             slip.setStatus("PENDING");
+            slip.setBackorder(false);
             packagingSlipRepository.save(slip);
         }
 
         if (!slip.getLines().isEmpty()) {
-            if ("BACKORDER".equalsIgnoreCase(slip.getStatus())) {
-                return reserveForBackorder(managedOrder, slip);
-            }
             if (slipLinesMatchOrder(slip, managedOrder)) {
                 updateSlipStatusBasedOnAvailability(slip, List.of());
                 return new InventoryReservationResult(toSlipDto(slip), List.of());
@@ -299,6 +306,7 @@ public class FinishedGoodsService {
                 releaseReservationsForOrder(order.getId());
                 slip.getLines().clear();
                 slip.setStatus("PENDING");
+                slip.setBackorder(false);
                 packagingSlipRepository.save(slip);
             }
         }
@@ -484,7 +492,7 @@ public class FinishedGoodsService {
     @Transactional
     public List<DispatchPosting> markSlipDispatched(Long salesOrderId) {
         Company company = companyContextService.requireCurrentCompany();
-        List<PackagingSlip> slips = packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, salesOrderId);
+        List<PackagingSlip> slips = packagingSlipRepository.findAllByCompanyAndSalesOrderIdAndIsBackorderFalse(company, salesOrderId);
         if (slips.isEmpty()) {
             throw new IllegalArgumentException("Packaging slip not found for order " + salesOrderId);
         }
@@ -1082,8 +1090,8 @@ public class FinishedGoodsService {
 
         Long backorderSlipId = null;
         if (hasBackorder && slip.getSalesOrder() != null) {
-            backorderSlipId = packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, slip.getSalesOrder().getId()).stream()
-                    .filter(existing -> "BACKORDER".equalsIgnoreCase(existing.getStatus()))
+            backorderSlipId = packagingSlipRepository
+                    .findAllByCompanyAndSalesOrderIdAndIsBackorderTrue(company, slip.getSalesOrder().getId()).stream()
                     .findFirst()
                     .map(PackagingSlip::getId)
                     .orElse(null);
@@ -1132,11 +1140,10 @@ public class FinishedGoodsService {
             return null;
         }
 
-        Long existingId = packagingSlipRepository.findAllByCompanyAndSalesOrderId(
-                        originalSlip.getCompany(),
-                        originalSlip.getSalesOrder().getId())
+        Long existingId = packagingSlipRepository
+                .findAllByCompanyAndSalesOrderIdAndIsBackorderTrue(
+                        originalSlip.getCompany(), originalSlip.getSalesOrder().getId())
                 .stream()
-                .filter(existing -> "BACKORDER".equalsIgnoreCase(existing.getStatus()))
                 .map(PackagingSlip::getId)
                 .findFirst()
                 .orElse(null);
@@ -1149,6 +1156,7 @@ public class FinishedGoodsService {
         backorderSlip.setSalesOrder(originalSlip.getSalesOrder());
         backorderSlip.setSlipNumber(generateSlipNumber(originalSlip.getCompany()) + "-BO");
         backorderSlip.setStatus("BACKORDER");
+        backorderSlip.setBackorder(true);
         backorderSlip.setDispatchNotes("Backorder from " + originalSlip.getSlipNumber());
 
         // Create lines for backorder quantities
@@ -1166,8 +1174,18 @@ public class FinishedGoodsService {
             }
         }
 
-        PackagingSlip saved = packagingSlipRepository.saveAndFlush(backorderSlip);
-        return saved.getId();
+        try {
+            PackagingSlip saved = packagingSlipRepository.saveAndFlush(backorderSlip);
+            return saved.getId();
+        } catch (DataIntegrityViolationException ex) {
+            return packagingSlipRepository
+                    .findAllByCompanyAndSalesOrderIdAndIsBackorderTrue(
+                            originalSlip.getCompany(), originalSlip.getSalesOrder().getId())
+                    .stream()
+                    .findFirst()
+                    .map(PackagingSlip::getId)
+                    .orElseThrow(() -> ex);
+        }
     }
 
     /**
@@ -1185,7 +1203,8 @@ public class FinishedGoodsService {
      */
     public PackagingSlipDto getPackagingSlipByOrder(Long salesOrderId) {
         Company company = companyContextService.requireCurrentCompany();
-        List<PackagingSlip> slips = packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, salesOrderId);
+        List<PackagingSlip> slips = packagingSlipRepository
+                .findAllByCompanyAndSalesOrderIdAndIsBackorderFalse(company, salesOrderId);
         if (slips.isEmpty()) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
                     "Packaging slip not found for order " + salesOrderId);
@@ -1212,6 +1231,9 @@ public class FinishedGoodsService {
         PackagingSlip slip = packagingSlipRepository.findByIdAndCompany(slipId, company)
                 .orElseThrow(() -> new IllegalArgumentException("Packaging slip not found"));
         
+        if (slip.isBackorder()) {
+            throw new IllegalStateException("Backorder slips can only be changed via backorder workflows");
+        }
         if ("DISPATCHED".equalsIgnoreCase(slip.getStatus())) {
             throw new IllegalStateException("Cannot update status of dispatched slip");
         }
@@ -1226,6 +1248,9 @@ public class FinishedGoodsService {
         if (!List.of("PENDING", "PENDING_PRODUCTION", "RESERVED", "PENDING_STOCK").contains(normalized)) {
             throw new IllegalArgumentException("Unsupported slip status: " + normalized);
         }
+        if (!canTransitionStatus(slip.getStatus(), normalized)) {
+            throw new IllegalStateException("Invalid slip status transition: " + slip.getStatus() + " -> " + normalized);
+        }
         slip.setStatus(normalized);
         packagingSlipRepository.save(slip);
         return toSlipDto(slip);
@@ -1239,7 +1264,7 @@ public class FinishedGoodsService {
         Company company = companyContextService.requireCurrentCompany();
         PackagingSlip slip = packagingSlipRepository.findByIdAndCompany(slipId, company)
                 .orElseThrow(() -> new IllegalArgumentException("Packaging slip not found"));
-        if (!"BACKORDER".equalsIgnoreCase(slip.getStatus())) {
+        if (!slip.isBackorder() || !"BACKORDER".equalsIgnoreCase(slip.getStatus())) {
             throw new IllegalStateException("Only BACKORDER slips can be canceled");
         }
 
@@ -1347,13 +1372,23 @@ public class FinishedGoodsService {
     }
 
     private PackagingSlip createSlip(SalesOrder order) {
+        return createPrimarySlip(order);
+    }
+
+    private PackagingSlip createPrimarySlip(SalesOrder order) {
         Company company = companyContextService.requireCurrentCompany();
         PackagingSlip slip = new PackagingSlip();
         slip.setCompany(company);
         slip.setSalesOrder(order);
         slip.setSlipNumber(generateSlipNumber(company));
         slip.setStatus("PENDING");
-        return packagingSlipRepository.save(slip);
+        slip.setBackorder(false);
+        try {
+            return packagingSlipRepository.saveAndFlush(slip);
+        } catch (DataIntegrityViolationException ex) {
+            return packagingSlipRepository.findAndLockPrimaryBySalesOrderId(order.getId(), company)
+                    .orElseThrow(() -> ex);
+        }
     }
 
     private void allocateItem(SalesOrder order,
@@ -1751,6 +1786,18 @@ public class FinishedGoodsService {
 
     private String generateSlipNumber(Company company) {
         return company.getCode() + "-PS-" + batchNumberService.nextPackagingSlipNumber(company);
+    }
+
+    private boolean canTransitionStatus(String current, String target) {
+        String from = current == null ? "PENDING" : current.trim().toUpperCase();
+        String to = target == null ? "" : target.trim().toUpperCase();
+        return switch (from) {
+            case "PENDING" -> List.of("PENDING", "PENDING_STOCK", "PENDING_PRODUCTION", "RESERVED").contains(to);
+            case "PENDING_STOCK" -> List.of("PENDING_STOCK", "PENDING_PRODUCTION", "RESERVED").contains(to);
+            case "PENDING_PRODUCTION" -> List.of("PENDING_PRODUCTION", "RESERVED").contains(to);
+            case "RESERVED" -> List.of("RESERVED", "PENDING_STOCK", "PENDING_PRODUCTION").contains(to);
+            default -> false;
+        };
     }
 
     private void updateSlipStatusBasedOnAvailability(PackagingSlip slip, List<InventoryShortage> shortages) {

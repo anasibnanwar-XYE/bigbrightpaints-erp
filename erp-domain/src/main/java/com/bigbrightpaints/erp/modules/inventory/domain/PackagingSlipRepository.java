@@ -22,13 +22,25 @@ public interface PackagingSlipRepository extends JpaRepository<PackagingSlip, Lo
     @EntityGraph(attributePaths = {"salesOrder", "salesOrder.dealer", "lines", "lines.finishedGoodBatch", "lines.finishedGoodBatch.finishedGood"})
     Optional<PackagingSlip> findByCompanyAndSalesOrderId(Company company, Long orderId);
     List<PackagingSlip> findAllByCompanyAndSalesOrderId(Company company, Long orderId);
+    List<PackagingSlip> findAllByCompanyAndSalesOrderIdAndIsBackorderFalse(Company company, Long orderId);
+    List<PackagingSlip> findAllByCompanyAndSalesOrderIdAndIsBackorderTrue(Company company, Long orderId);
     List<PackagingSlip> findByCompanyAndDispatchedAtBetween(Company company, Instant start, Instant end);
     long countByCompanyAndStatusInAndCreatedAtBefore(Company company, Set<String> statuses, Instant cutoff);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @QueryHints({@QueryHint(name = "javax.persistence.lock.timeout", value = "5000")})
+    @QueryHints({@QueryHint(name = "jakarta.persistence.lock.timeout", value = "5000")})
     @Query("select p from PackagingSlip p left join fetch p.salesOrder where p.salesOrder.id = :orderId and p.company = :company")
     Optional<PackagingSlip> findAndLockBySalesOrderId(@Param("orderId") Long orderId, @Param("company") Company company);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @QueryHints({@QueryHint(name = "jakarta.persistence.lock.timeout", value = "5000")})
+    @Query("""
+            select p from PackagingSlip p left join fetch p.salesOrder
+            where p.salesOrder.id = :orderId
+              and p.company = :company
+              and p.isBackorder = false
+            """)
+    Optional<PackagingSlip> findAndLockPrimaryBySalesOrderId(@Param("orderId") Long orderId, @Param("company") Company company);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select p from PackagingSlip p where p.id = :id and p.company = :company")

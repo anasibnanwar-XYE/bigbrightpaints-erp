@@ -272,6 +272,32 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void updateSlipStatusRejectsInvalidStateTransition() {
+        Company company = seedCompany("SLIP-STATE");
+        FinishedGood fg = createFinishedGood(company, "FG-STATE", new BigDecimal("5"), new BigDecimal("5"), "FIFO");
+        FinishedGoodBatch batch = createBatch(fg, "BATCH-STATE", new BigDecimal("5"), new BigDecimal("5"), new BigDecimal("6"));
+        SalesOrder order = createOrder(company, "SO-STATE-" + UUID.randomUUID(), fg.getProductCode(), new BigDecimal("5"));
+        PackagingSlip slip = createSlip(company, order, "PENDING_PRODUCTION", batch, new BigDecimal("5"));
+
+        assertThatThrownBy(() -> finishedGoodsService.updateSlipStatus(slip.getId(), "PENDING_STOCK"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Invalid slip status transition");
+    }
+
+    @Test
+    void updateSlipStatusRejectsBackorderSlip() {
+        Company company = seedCompany("SLIP-STATE-BO");
+        FinishedGood fg = createFinishedGood(company, "FG-STATE-BO", new BigDecimal("5"), new BigDecimal("5"), "FIFO");
+        FinishedGoodBatch batch = createBatch(fg, "BATCH-STATE-BO", new BigDecimal("5"), new BigDecimal("5"), new BigDecimal("6"));
+        SalesOrder order = createOrder(company, "SO-STATE-BO-" + UUID.randomUUID(), fg.getProductCode(), new BigDecimal("5"));
+        PackagingSlip slip = createSlip(company, order, "BACKORDER", batch, new BigDecimal("5"));
+
+        assertThatThrownBy(() -> finishedGoodsService.updateSlipStatus(slip.getId(), "RESERVED"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Backorder slips can only be changed via backorder workflows");
+    }
+
+    @Test
     void registerBatchRejectsNegativeQuantity() {
         Company company = seedCompany("BATCH-NEG-QTY");
         FinishedGood fg = createFinishedGood(company, "FG-NEG-QTY", new BigDecimal("0"), BigDecimal.ZERO, "FIFO");
@@ -410,6 +436,7 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
         slip.setSalesOrder(order);
         slip.setSlipNumber(order.getOrderNumber() + "-PS");
         slip.setStatus(status);
+        slip.setBackorder("BACKORDER".equalsIgnoreCase(status));
 
         PackagingSlipLine line = new PackagingSlipLine();
         line.setPackagingSlip(slip);

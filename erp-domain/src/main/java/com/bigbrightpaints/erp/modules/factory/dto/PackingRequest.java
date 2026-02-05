@@ -12,7 +12,15 @@ public record PackingRequest(
         Long productionLogId,
         LocalDate packedDate,
         String packedBy,
+        String idempotencyKey,
         @Valid
         @NotEmpty(message = "At least one packing line is required")
         List<PackingLineRequest> lines
-) {}
+) {
+    public PackingRequest(Long productionLogId,
+                          LocalDate packedDate,
+                          String packedBy,
+                          List<PackingLineRequest> lines) {
+        this(productionLogId, packedDate, packedBy, null, lines);
+    }
+}

@@ -82,8 +82,12 @@ class CR_DispatchOrderLookupReadOnlyIT extends AbstractIntegrationTest {
         SalesOrder order = dataSeeder.ensureSalesOrder(COMPANY_CODE, "SO-" + shortId(), new BigDecimal("250.00"));
         Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
 
-        packagingSlipRepository.save(buildSlip(company, order, "PS-" + shortId()));
-        packagingSlipRepository.save(buildSlip(company, order, "PS-" + shortId()));
+        PackagingSlip cancelledA = buildSlip(company, order, "PS-" + shortId());
+        cancelledA.setStatus("CANCELLED");
+        PackagingSlip cancelledB = buildSlip(company, order, "PS-" + shortId());
+        cancelledB.setStatus("CANCELLED");
+        packagingSlipRepository.save(cancelledA);
+        packagingSlipRepository.save(cancelledB);
 
         HttpHeaders headers = authHeaders(loginToken());
         ResponseEntity<Map> response = rest.exchange(

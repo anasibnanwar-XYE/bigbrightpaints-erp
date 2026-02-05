@@ -12,6 +12,8 @@ import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.factory.domain.PackingRecord;
 import com.bigbrightpaints.erp.modules.factory.domain.PackingRecordRepository;
+import com.bigbrightpaints.erp.modules.factory.domain.PackingRequestRecord;
+import com.bigbrightpaints.erp.modules.factory.domain.PackingRequestRecordRepository;
 import com.bigbrightpaints.erp.modules.factory.domain.ProductionLog;
 import com.bigbrightpaints.erp.modules.factory.domain.ProductionLogRepository;
 import com.bigbrightpaints.erp.modules.factory.domain.ProductionLogStatus;
@@ -29,7 +31,11 @@ import com.bigbrightpaints.erp.modules.inventory.service.BatchNumberService;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
 import jakarta.transaction.Transactional;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import org.springframework.stereotype.Service;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
@@ -52,6 +58,7 @@ public class PackingService {
     private final CompanyContextService companyContextService;
     private final ProductionLogRepository productionLogRepository;
     private final PackingRecordRepository packingRecordRepository;
+    private final PackingRequestRecordRepository packingRequestRecordRepository;
     private final FinishedGoodRepository finishedGoodRepository;
     private final FinishedGoodBatchRepository finishedGoodBatchRepository;
     private final InventoryMovementRepository inventoryMovementRepository;
@@ -67,6 +74,7 @@ public class PackingService {
     public PackingService(CompanyContextService companyContextService,
                           ProductionLogRepository productionLogRepository,
                           PackingRecordRepository packingRecordRepository,
+                          PackingRequestRecordRepository packingRequestRecordRepository,
                           FinishedGoodRepository finishedGoodRepository,
                           FinishedGoodBatchRepository finishedGoodBatchRepository,
                           InventoryMovementRepository inventoryMovementRepository,
@@ -81,6 +89,7 @@ public class PackingService {
         this.companyContextService = companyContextService;
         this.productionLogRepository = productionLogRepository;
         this.packingRecordRepository = packingRecordRepository;
+        this.packingRequestRecordRepository = packingRequestRecordRepository;
         this.finishedGoodRepository = finishedGoodRepository;
         this.finishedGoodBatchRepository = finishedGoodBatchRepository;
         this.inventoryMovementRepository = inventoryMovementRepository;
@@ -106,11 +115,26 @@ public class PackingService {
         if (request.lines() == null || request.lines().isEmpty()) {
             throw new IllegalArgumentException("Packing lines are required");
         }
-        FinishedGood finishedGood = ensureFinishedGood(company, log);
         LocalDate packedDate = request.packedDate() != null ? request.packedDate() : resolveCurrentDate(company);
+        String idempotencyKey = clean(request.idempotencyKey());
+        String idempotencyHash = idempotencyKey != null ? packingRequestHash(request, packedDate) : null;
+        PackingRequestRecord reservedRecord = null;
+        if (idempotencyKey != null) {
+            IdempotencyReservation reservation = reserveIdempotencyRecord(
+                    company,
+                    request.productionLogId(),
+                    idempotencyKey,
+                    idempotencyHash
+            );
+            if (reservation.replayResult() != null) {
+                return reservation.replayResult();
+            }
+            reservedRecord = reservation.record();
+        }
+        FinishedGood finishedGood = ensureFinishedGood(company, log);
 
         BigDecimal sessionQuantity = BigDecimal.ZERO;
-        BigDecimal sessionPackagingCost = BigDecimal.ZERO;
+        Long firstPackingRecordId = null;
         int lineIndex = 0;
         for (PackingLineRequest line : request.lines()) {
             lineIndex++;
@@ -135,6 +159,9 @@ public class PackingService {
             record.setPackedBy(clean(request.packedBy()));
 
             PackingRecord savedRecord = packingRecordRepository.save(record);
+            if (firstPackingRecordId == null) {
+                firstPackingRecordId = savedRecord.getId();
+            }
             String packagingReference = log.getProductionCode() + "-PACK-" + savedRecord.getId();
 
             // Consume packaging materials (buckets) - auto-deducts from RM stock
@@ -148,7 +175,6 @@ public class PackingService {
             if (packagingResult.isConsumed()) {
                 record.setPackagingCost(packagingResult.totalCost());
                 record.setPackagingQuantity(packagingResult.quantity());
-                sessionPackagingCost = sessionPackagingCost.add(packagingResult.totalCost());
             }
             
             if (packagingResult.isConsumed()
@@ -181,7 +207,105 @@ public class PackingService {
         ProductionLog refreshedLog = companyEntityLookup.requireProductionLog(company, log.getId());
         updateStatus(refreshedLog, refreshedLog.getTotalPackedQuantity());
         productionLogRepository.save(refreshedLog);
+        if (reservedRecord != null) {
+            reservedRecord.setPackingRecordId(firstPackingRecordId);
+            packingRequestRecordRepository.save(reservedRecord);
+        }
         return productionLogService.getLog(log.getId());
+    }
+
+    private IdempotencyReservation reserveIdempotencyRecord(Company company,
+                                                            Long productionLogId,
+                                                            String idempotencyKey,
+                                                            String idempotencyHash) {
+        Optional<PackingRequestRecord> existing = packingRequestRecordRepository
+                .findByCompanyAndIdempotencyKey(company, idempotencyKey);
+        if (existing.isPresent()) {
+            return resolveExistingIdempotency(existing.get(), productionLogId, idempotencyHash);
+        }
+
+        PackingRequestRecord record = new PackingRequestRecord();
+        record.setCompany(company);
+        record.setIdempotencyKey(idempotencyKey);
+        record.setIdempotencyHash(idempotencyHash);
+        record.setProductionLogId(productionLogId);
+        try {
+            PackingRequestRecord saved = packingRequestRecordRepository.saveAndFlush(record);
+            return new IdempotencyReservation(saved, null);
+        } catch (DataIntegrityViolationException ex) {
+            PackingRequestRecord collided = packingRequestRecordRepository
+                    .findByCompanyAndIdempotencyKey(company, idempotencyKey)
+                    .orElseThrow(() -> ex);
+            return resolveExistingIdempotency(collided, productionLogId, idempotencyHash);
+        }
+    }
+
+    private IdempotencyReservation resolveExistingIdempotency(PackingRequestRecord record,
+                                                              Long productionLogId,
+                                                              String idempotencyHash) {
+        if (!productionLogId.equals(record.getProductionLogId())) {
+            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
+                    "Idempotency key already used for a different production log")
+                    .withDetail("idempotencyKey", record.getIdempotencyKey())
+                    .withDetail("existingProductionLogId", record.getProductionLogId())
+                    .withDetail("requestedProductionLogId", productionLogId);
+        }
+
+        if (StringUtils.hasText(record.getIdempotencyHash())
+                && !record.getIdempotencyHash().equals(idempotencyHash)) {
+            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
+                    "Idempotency payload mismatch for packing request")
+                    .withDetail("idempotencyKey", record.getIdempotencyKey())
+                    .withDetail("productionLogId", productionLogId);
+        }
+
+        ProductionLogDetailDto replay = productionLogService.getLog(record.getProductionLogId());
+        return new IdempotencyReservation(record, replay);
+    }
+
+    private String packingRequestHash(PackingRequest request, LocalDate packedDate) {
+        StringBuilder payload = new StringBuilder();
+        payload.append("log=").append(request.productionLogId())
+                .append("|date=").append(packedDate)
+                .append("|by=").append(clean(request.packedBy()));
+        if (request.lines() != null) {
+            int idx = 0;
+            for (PackingLineRequest line : request.lines()) {
+                idx++;
+                payload.append("|line").append(idx).append(':')
+                        .append(clean(line.packagingSize()))
+                        .append(':').append(decimalToken(line.quantityLiters()))
+                        .append(':').append(line.piecesCount())
+                        .append(':').append(line.boxesCount())
+                        .append(':').append(line.piecesPerBox());
+            }
+        }
+        return sha256Hex(payload.toString());
+    }
+
+    private String decimalToken(BigDecimal value) {
+        if (value == null) {
+            return "";
+        }
+        return value.stripTrailingZeros().toPlainString();
+    }
+
+    private String sha256Hex(String value) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] bytes = digest.digest(value.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(bytes.length * 2);
+            for (byte b : bytes) {
+                hex.append(String.format("%02x", b));
+            }
+            return hex.toString();
+        } catch (NoSuchAlgorithmException ex) {
+            throw new ApplicationException(ErrorCode.SYSTEM_INTERNAL_ERROR, "Failed to hash packing request");
+        }
+    }
+
+    private record IdempotencyReservation(PackingRequestRecord record,
+                                          ProductionLogDetailDto replayResult) {
     }
 
     @Transactional

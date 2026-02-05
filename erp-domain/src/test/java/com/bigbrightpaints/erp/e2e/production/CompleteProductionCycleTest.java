@@ -171,6 +171,7 @@ public class CompleteProductionCycleTest extends AbstractIntegrationTest {
                 "productionLogId", productionLogId,
                 "packedDate", LocalDate.now(),
                 "packedBy", "Packing Bot",
+                "idempotencyKey", "PACK-CYCLE-1-" + System.nanoTime(),
                 "lines", List.of(packingLine)
         );
 
@@ -260,6 +261,7 @@ public class CompleteProductionCycleTest extends AbstractIntegrationTest {
                 "productionLogId", logId,
                 "packedDate", LocalDate.now(),
                 "packedBy", "Supervisor",
+                "idempotencyKey", "PACK-WASTE-1-" + System.nanoTime(),
                 "lines", List.of(
                         Map.of("packagingSize", "5L Can",
                                 "quantityLiters", new BigDecimal("800.00"),
@@ -309,6 +311,7 @@ public class CompleteProductionCycleTest extends AbstractIntegrationTest {
                 "productionLogId", logId,
                 "packedDate", LocalDate.now(),
                 "packedBy", "Supervisor",
+                "idempotencyKey", "PACK-PARTIAL-1-" + System.nanoTime(),
                 "lines", List.of(
                         Map.of("packagingSize", "10L",
                                 "quantityLiters", new BigDecimal("400.00"),
@@ -331,6 +334,7 @@ public class CompleteProductionCycleTest extends AbstractIntegrationTest {
                 "productionLogId", logId,
                 "packedDate", LocalDate.now(),
                 "packedBy", "Supervisor",
+                "idempotencyKey", "PACK-PARTIAL-2-" + System.nanoTime(),
                 "lines", List.of(
                         Map.of("packagingSize", "10L",
                                 "quantityLiters", new BigDecimal("500.00"),
@@ -408,6 +412,7 @@ public class CompleteProductionCycleTest extends AbstractIntegrationTest {
                 "productionLogId", log1Id,
                 "packedDate", LocalDate.now().minusDays(2),
                 "packedBy", "Supervisor",
+                "idempotencyKey", "PACK-FIFO-1-" + System.nanoTime(),
                 "lines", List.of(
                         Map.of("packagingSize", "5L",
                                 "quantityLiters", new BigDecimal("90.00"),
@@ -441,6 +446,7 @@ public class CompleteProductionCycleTest extends AbstractIntegrationTest {
                 "productionLogId", log2Id,
                 "packedDate", LocalDate.now(),
                 "packedBy", "Supervisor",
+                "idempotencyKey", "PACK-FIFO-2-" + System.nanoTime(),
                 "lines", List.of(
                         Map.of("packagingSize", "5L",
                                 "quantityLiters", new BigDecimal("90.00"),

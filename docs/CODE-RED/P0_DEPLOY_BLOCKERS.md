@@ -1,6 +1,6 @@
 # CODE-RED P0 Deploy Blockers (Must Fix or Prod-Gate)
 
-Last updated: 2026-02-05
+Last updated: 2026-02-06
 
 Purpose: a single, concrete list of **P0** items that block a safe enterprise deploy. For details, see:
 - `docs/CODE-RED/plan-v2.md`
@@ -58,6 +58,9 @@ Purpose: a single, concrete list of **P0** items that block a safe enterprise de
 - Mutating/nondeterministic “finder” endpoints must not exist (read-only GET must have no side effects and must fail-closed on ambiguity).
   - Status (2026-02-03): ✅ `/api/v1/dispatch/order/{orderId}` is now read-only + fails closed on ambiguity; tests: `CR_DispatchOrderLookupReadOnlyIT` (other finder endpoints still under review).
 - Packaging slip status updates must enforce a real state machine (no free-form statuses that skip reservation/inventory unwind).
+  - Status (2026-02-06): ✅ fail-closed status transition guard enforced; tests:
+    `FinishedGoodsServiceTest.updateSlipStatusRejectsInvalidStateTransition`,
+    `FinishedGoodsServiceTest.updateSlipStatusRejectsBackorderSlip`.
 
 ## P0 - Idempotency / Deterministic References
 - Orchestrator write commands must be idempotent at the boundary.
@@ -75,6 +78,9 @@ Purpose: a single, concrete list of **P0** items that block a safe enterprise de
   - Legacy factory batch logging + manual FG batch injection must be prod-gated (no bypass of production logs).
     - Status (2026-02-05): ✅ prod gating enforced; tests: `CR_FactoryLegacyBatchProdGatingIT`, `CR_FinishedGoodBatchProdGatingIT`.
   - Packing record retries must not double-consume packaging or double-post journals.
+    - Status (2026-02-06): ✅ idempotency key required at API boundary with reserve-first replay/mismatch safety; tests:
+      `PackingServiceTest.recordPacking_idempotentReplayDoesNotConsumeOrPostAgain`,
+      `PackingServiceTest.recordPacking_idempotencyMismatchConflicts`.
   - Opening stock import must have an import idempotency key; retry must not create new batches/movements/journals.
     - Status (2026-02-04): ✅ opening stock import idempotent + prod gated; tests: `CR_OpeningStockImportIdempotencyIT`, `CR_OpeningStockImportProdGatingIT`.
   - Catalog imports must resolve entities deterministically within company scope (no duplicate SKUs when `sku_code` is blank; cross-tenant brand IDs rejected).
@@ -113,6 +119,8 @@ Purpose: a single, concrete list of **P0** items that block a safe enterprise de
   - Status (2026-02-04): ✅ unique identity enforced + legacy endpoint gated; tests: `CR_PayrollIdempotencyConcurrencyTest`, `CR_PayrollLegacyEndpointGatedIT`.
 - Add DB uniqueness where needed to prevent duplicate reservations/batches under concurrency.
   - Packaging slips must not duplicate per order under concurrency (guard at DB and service layer).
+    - Status (2026-02-06): ✅ active primary/backorder uniqueness + concurrent reserve dedupe; tests:
+      `CR_PackagingSlipConcurrencyIT.reserveForOrder_concurrentCalls_createSinglePrimarySlip`.
 - Idempotency must be mismatch-safe:
   - If a replay hits an existing reference but payload differs materially (amount/accounts), fail closed with a conflict (no silent reuse).
 - Status (2026-02-03): ✅ orchestrator boundary enforces mismatch-safe idempotency (409 on replay); tests:
