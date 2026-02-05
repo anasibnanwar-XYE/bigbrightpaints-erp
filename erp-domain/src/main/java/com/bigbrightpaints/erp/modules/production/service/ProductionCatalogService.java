@@ -358,12 +358,20 @@ public class ProductionCatalogService {
         }
         String productName = row.productName().trim();
         String sizeLabel = StringUtils.hasText(row.sizeLabel()) ? row.sizeLabel() : row.unitOfMeasure();
-        String sku = determineSku(company, brand, category, row.defaultColour(), sizeLabel, row.skuCode());
-
-        Optional<ProductionProduct> existing = productRepository.findByCompanyAndSkuCode(company, sku);
+        String providedSku = row.skuCode();
+        String sanitizedSku = StringUtils.hasText(providedSku) ? sanitizeSku(providedSku) : null;
+        Optional<ProductionProduct> existing = Optional.empty();
+        if (StringUtils.hasText(sanitizedSku)) {
+            existing = productRepository.findByCompanyAndSkuCode(company, sanitizedSku);
+        } else {
+            existing = productRepository.findByBrandAndProductNameIgnoreCase(brand, productName);
+        }
         boolean created = existing.isEmpty();
         ProductionProduct product = existing.orElseGet(ProductionProduct::new);
         if (created) {
+            String sku = StringUtils.hasText(sanitizedSku)
+                    ? sanitizedSku
+                    : determineSku(company, brand, category, row.defaultColour(), sizeLabel, null);
             product.setCompany(company);
             product.setBrand(brand);
             product.setSkuCode(sku);
@@ -399,7 +407,7 @@ public class ProductionCatalogService {
             }
         }
         if (!isRawMaterialCategory(category)) {
-            metadata = ensureFinishedGoodAccounts(company, sku, metadata);
+            metadata = ensureFinishedGoodAccounts(company, product.getSkuCode(), metadata);
         }
         product.setMetadata(metadata);
         ProductionProduct saved = productRepository.save(product);
@@ -409,8 +417,7 @@ public class ProductionCatalogService {
 
     private BrandResolution resolveBrand(Company company, Long brandId, String brandName, String providedCode) {
         if (brandId != null) {
-            ProductionBrand brand = brandRepository.findByCompanyAndId(company, brandId)
-                    .orElseThrow(() -> new IllegalArgumentException("Brand not found"));
+            ProductionBrand brand = companyEntityLookup.requireProductionBrand(company, brandId);
             if (StringUtils.hasText(brandName) && !brandName.equalsIgnoreCase(brand.getName())) {
                 brand.setName(brandName.trim());
             }
