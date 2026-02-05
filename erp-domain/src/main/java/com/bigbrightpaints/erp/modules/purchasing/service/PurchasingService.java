@@ -265,11 +265,12 @@ public class PurchasingService {
             throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
                     "Receipt date is required");
         }
-        accountingPeriodService.requireOpenPeriod(company, receiptDate);
-
         try {
             return transactionTemplate.execute(status ->
-                    createGoodsReceiptInternal(request, company, idempotencyKey, requestSignature));
+                    {
+                        accountingPeriodService.requireOpenPeriod(company, receiptDate);
+                        return createGoodsReceiptInternal(request, company, idempotencyKey, requestSignature);
+                    });
         } catch (RuntimeException ex) {
             if (!isDataIntegrityViolation(ex)) {
                 throw ex;

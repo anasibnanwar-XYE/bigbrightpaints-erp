@@ -589,7 +589,37 @@ public class AccountingService {
     public JournalEntryDto reverseJournalEntry(Long entryId, JournalEntryReversalRequest request) {
         Company company = companyContextService.requireCurrentCompany();
         JournalEntry entry = companyEntityLookup.requireJournalEntry(company, entryId);
-        
+        return reverseJournalEntryInternal(company, entry, request, false);
+    }
+
+    @Transactional
+    JournalEntryDto reverseClosingEntryForPeriodReopen(JournalEntry entry, AccountingPeriod period, String reason) {
+        if (entry == null) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Closing journal entry is required");
+        }
+        Company company = companyContextService.requireCurrentCompany();
+        LocalDate reversalDate = entry.getEntryDate() != null
+                ? entry.getEntryDate()
+                : (period != null ? period.getEndDate() : currentDate(company));
+        LocalDate today = currentDate(company);
+        if (reversalDate != null && reversalDate.isAfter(today)) {
+            reversalDate = today;
+        }
+        String memo = "Reopen reversal of " + entry.getReferenceNumber();
+        JournalEntryReversalRequest request = new JournalEntryReversalRequest(
+                reversalDate,
+                false,
+                StringUtils.hasText(reason) ? reason.trim() : "Period reopen",
+                memo,
+                Boolean.TRUE
+        );
+        return reverseJournalEntryInternal(company, entry, request, true);
+    }
+
+    private JournalEntryDto reverseJournalEntryInternal(Company company,
+                                                       JournalEntry entry,
+                                                       JournalEntryReversalRequest request,
+                                                       boolean allowClosedPeriodOverride) {
         // Validate entry state
         if ("VOIDED".equalsIgnoreCase(entry.getStatus())) {
             throw new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE, "Entry is already voided");
@@ -597,15 +627,18 @@ public class AccountingService {
         if ("REVERSED".equalsIgnoreCase(entry.getStatus())) {
             throw new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE, "Entry has already been reversed");
         }
-        
+
         // Determine reversal date and authorization
         LocalDate reversalDate = request != null && request.reversalDate() != null
                 ? request.reversalDate()
                 : currentDate(company);
         boolean overrideRequested = request != null && Boolean.TRUE.equals(request.adminOverride());
         boolean overrideAuthorized = overrideRequested && hasEntryDateOverrideAuthority();
+        if (allowClosedPeriodOverride) {
+            overrideAuthorized = true;
+        }
         validateEntryDate(company, reversalDate, overrideRequested, overrideAuthorized);
-        
+
         // PERIOD LOCK CHECK: Strictly enforce period status
         AccountingPeriod postingPeriod = systemSettingsService.isPeriodLockEnforced()
                 ? accountingPeriodService.requireOpenPeriod(company, reversalDate)
@@ -614,15 +647,15 @@ public class AccountingService {
         if (originalPeriod != null) {
             if (originalPeriod.getStatus() == AccountingPeriodStatus.LOCKED) {
                 throw new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE,
-                        "Cannot reverse entry from LOCKED period " + originalPeriod.getYear() + "-" + 
-                        originalPeriod.getMonth() + ". Period must be unlocked first.");
+                        "Cannot reverse entry from LOCKED period " + originalPeriod.getYear() + "-" +
+                                originalPeriod.getMonth() + ". Period must be unlocked first.");
             }
             if (originalPeriod.getStatus() == AccountingPeriodStatus.CLOSED && !overrideAuthorized) {
                 throw new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE,
                         "Entry belongs to CLOSED period. Administrator override with audit approval required.");
             }
         }
-        
+
         // Build audit trail reason
         String sanitizedReason = buildAuditReason(request, entry);
         String memo = request != null && StringUtils.hasText(request.memo())
@@ -634,7 +667,7 @@ public class AccountingService {
                 : BigDecimal.ONE;
         boolean isPartial = request != null && request.isPartialReversal();
         String partialNote = isPartial ? " (" + request.getEffectivePercentage() + "% partial)" : "";
-        
+
         List<JournalEntryRequest.JournalLineRequest> reversedLines = entry.getLines().stream()
                 .map(line -> new JournalEntryRequest.JournalLineRequest(
                         line.getAccount().getId(),

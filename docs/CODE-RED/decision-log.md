@@ -1,5 +1,63 @@
 # Decision Log (CODE-RED)
 
+## 2026-02-05 - Period Close Is Atomic + Uses Canonical Posting
+Decision:
+- Period close acquires a DB lock on the accounting period row; concurrent postings block until the close commits.
+- Closing/reopen journals are posted via `AccountingService` (canonical posting boundary), not direct balance mutation.
+
+Rationale:
+- Eliminates race windows and ensures close/reopen runs through the same validation/audit path as other postings.
+
+Enforcement:
+- `AccountingPeriodService.closePeriod(...)` locks the period and uses `AccountingService.createJournalEntry(...)`.
+- `AccountingPeriodService.reopenPeriod(...)` reverses closing entries via `AccountingService.reverseJournalEntry(...)`.
+- Tests: `CR_PeriodCloseAtomicityTest`.
+
+## 2026-02-05 - Payroll Run Identity Uniqueness Is Deploy-Blocking
+Decision:
+- The `V125` unique index on `(company_id, run_type, period_start, period_end)` is intentional and must not auto-delete or merge data.
+- Predeploy scan #6 in `scripts/db_predeploy_scans.sql` must return zero rows before applying V125; duplicates must be deduped in staging/prod snapshots first.
+
+Rationale:
+- Failing closed prevents ambiguous payroll history and preserves idempotency guarantees.
+
+Enforcement:
+- `V125__payroll_run_identity_unique.sql` creates the unique index.
+- `scripts/db_predeploy_scans.sql` query #6 surfaces duplicates (NO-SHIP if any rows).
+
+## 2026-02-05 - Legacy HR Payroll Run Creation Is Hard-Gated
+Decision:
+- `/api/v1/hr/payroll-runs` creation remains 410 (with canonicalPath) to prevent legacy runs without period identity.
+- Any migration window should be feature-flagged aliasing in non-prod only; prod remains gated.
+
+Rationale:
+- Prevents schema-drift runs that violate period identity requirements.
+
+Enforcement:
+- `HrController.createPayrollRun(...)` returns 410.
+- Tests: `CR_PayrollLegacyEndpointGatedIT`.
+
+## 2026-02-05 - Payroll Run Idempotency Treats Remarks As Material
+Decision:
+- Payroll run idempotency signatures include `remarks`. Retries with different remarks fail closed (409).
+
+Rationale:
+- Aligns with mismatch-safe idempotency; remarks are part of the material payload.
+
+Enforcement:
+- `PayrollService.buildRunSignature(...)` includes remarks; mismatches raise a conflict.
+
+## 2026-02-05 - Payroll Mark-Paid Is Immutable On Retries
+Decision:
+- `markAsPaid` does not update payment reference or paid lines on retries; corrections require a separate admin repair path.
+
+Rationale:
+- Prevents mutation of historical payroll lines under idempotent retries.
+
+Enforcement:
+- `PayrollService.markAsPaid(...)` skips already-PAID lines.
+- Test: `CR_PayrollIdempotencyConcurrencyTest.markAsPaid_idempotent_doesNotDoubleApplyAdvances`.
+
 ## 2026-02-04 - Credit Note Idempotency Is Mandatory (Reference or Idempotency Key)
 Decision:
 - Credit note creation requires an idempotency key or explicit reference number; replays are mismatch-safe (409 on payload drift).

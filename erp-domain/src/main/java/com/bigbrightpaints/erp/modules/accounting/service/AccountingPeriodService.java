@@ -10,6 +10,8 @@ import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodCloseReque
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodLockRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodReopenRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
+import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.MonthEndChecklistDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.MonthEndChecklistItemDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.MonthEndChecklistUpdateRequest;
@@ -23,6 +25,7 @@ import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepo
 import com.bigbrightpaints.erp.modules.reports.dto.ReconciliationSummaryDto;
 import com.bigbrightpaints.erp.modules.reports.service.ReportService;
 import jakarta.transaction.Transactional;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -54,6 +57,8 @@ public class AccountingPeriodService {
     private final GoodsReceiptRepository goodsReceiptRepository;
     private final RawMaterialPurchaseRepository rawMaterialPurchaseRepository;
     private final PayrollRunRepository payrollRunRepository;
+    private final ObjectProvider<AccountingService> accountingServiceProvider;
+    private final PeriodCloseHook periodCloseHook;
 
     public AccountingPeriodService(AccountingPeriodRepository accountingPeriodRepository,
                                    CompanyContextService companyContextService,
@@ -67,7 +72,9 @@ public class AccountingPeriodService {
                                    InvoiceRepository invoiceRepository,
                                    GoodsReceiptRepository goodsReceiptRepository,
                                    RawMaterialPurchaseRepository rawMaterialPurchaseRepository,
-                                   PayrollRunRepository payrollRunRepository) {
+                                   PayrollRunRepository payrollRunRepository,
+                                   ObjectProvider<AccountingService> accountingServiceProvider,
+                                   PeriodCloseHook periodCloseHook) {
         this.accountingPeriodRepository = accountingPeriodRepository;
         this.companyContextService = companyContextService;
         this.journalEntryRepository = journalEntryRepository;
@@ -81,6 +88,8 @@ public class AccountingPeriodService {
         this.goodsReceiptRepository = goodsReceiptRepository;
         this.rawMaterialPurchaseRepository = rawMaterialPurchaseRepository;
         this.payrollRunRepository = payrollRunRepository;
+        this.accountingServiceProvider = accountingServiceProvider;
+        this.periodCloseHook = periodCloseHook;
     }
 
     public List<AccountingPeriodDto> listPeriods() {
@@ -100,10 +109,13 @@ public class AccountingPeriodService {
     @Transactional
     public AccountingPeriodDto closePeriod(Long periodId, AccountingPeriodCloseRequest request) {
         Company company = companyContextService.requireCurrentCompany();
-        AccountingPeriod period = companyEntityLookup.requireAccountingPeriod(company, periodId);
+        AccountingPeriod period = accountingPeriodRepository.lockByCompanyAndId(company, periodId)
+                .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                        "Accounting period not found"));
         if (period.getStatus() == AccountingPeriodStatus.CLOSED || period.getStatus() == AccountingPeriodStatus.LOCKED) {
             return toDto(period);
         }
+        periodCloseHook.onPeriodCloseLocked(company, period);
         boolean force = request != null && Boolean.TRUE.equals(request.force());
         assertNoUninvoicedReceipts(company, period);
         if (!force) {
@@ -162,7 +174,9 @@ public class AccountingPeriodService {
     @Transactional
     public AccountingPeriodDto lockPeriod(Long periodId, AccountingPeriodLockRequest request) {
         Company company = companyContextService.requireCurrentCompany();
-        AccountingPeriod period = companyEntityLookup.requireAccountingPeriod(company, periodId);
+        AccountingPeriod period = accountingPeriodRepository.lockByCompanyAndId(company, periodId)
+                .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                        "Accounting period not found"));
         if (period.getStatus() == AccountingPeriodStatus.LOCKED || period.getStatus() == AccountingPeriodStatus.CLOSED) {
             return toDto(period);
         }
@@ -178,7 +192,9 @@ public class AccountingPeriodService {
     @Transactional
     public AccountingPeriodDto reopenPeriod(Long periodId, AccountingPeriodReopenRequest request) {
         Company company = companyContextService.requireCurrentCompany();
-        AccountingPeriod period = companyEntityLookup.requireAccountingPeriod(company, periodId);
+        AccountingPeriod period = accountingPeriodRepository.lockByCompanyAndId(company, periodId)
+                .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                        "Accounting period not found"));
         if (period.getStatus() == AccountingPeriodStatus.OPEN) {
             return toDto(period);
         }
@@ -192,9 +208,8 @@ public class AccountingPeriodService {
         period.setReopenReason(request != null ? request.reason() : null);
         // Auto-reverse closing journal if present
         if (period.getClosingJournalEntryId() != null) {
-            journalEntryRepository.findByCompanyAndId(company, period.getClosingJournalEntryId()).ifPresent(closing -> {
-                createReversalFor(closing, period, now);
-            });
+            journalEntryRepository.findByCompanyAndId(company, period.getClosingJournalEntryId())
+                    .ifPresent(closing -> reverseClosingJournalIfNeeded(closing, period, request.reason()));
             period.setClosingJournalEntryId(null);
         }
         return toDto(accountingPeriodRepository.save(period));
@@ -226,13 +241,25 @@ public class AccountingPeriodService {
     }
 
     public AccountingPeriod requireOpenPeriod(Company company, LocalDate referenceDate) {
-        AccountingPeriod period = ensurePeriod(company, referenceDate);
+        AccountingPeriod period = lockOrCreatePeriod(company, referenceDate);
         if (period.getStatus() != AccountingPeriodStatus.OPEN) {
             throw new ApplicationException(
                     ErrorCode.VALIDATION_INVALID_INPUT,
                     "Accounting period " + period.getLabel() + " is locked/closed");
         }
         return period;
+    }
+
+    private AccountingPeriod lockOrCreatePeriod(Company company, LocalDate referenceDate) {
+        LocalDate baseDate = referenceDate == null ? resolveCurrentDate(company) : referenceDate;
+        LocalDate safeDate = baseDate.withDayOfMonth(1);
+        int year = safeDate.getYear();
+        int month = safeDate.getMonthValue();
+        Optional<AccountingPeriod> locked = accountingPeriodRepository.lockByCompanyAndYearAndMonth(company, year, month);
+        if (locked.isPresent()) {
+            return locked.get();
+        }
+        return ensurePeriod(company, safeDate);
     }
 
     /**
@@ -324,50 +351,35 @@ public class AccountingPeriodService {
         Account retained = ensureEquityAccount(company, "RETAINED_EARNINGS", "Retained Earnings");
         Account periodResult = ensureEquityAccount(company, "PERIOD_RESULT", "Period Result");
         BigDecimal amount = netIncome.abs();
-        List<JournalLineSpec> specs = List.of(
-                netIncome.compareTo(BigDecimal.ZERO) > 0
-                        ? new JournalLineSpec(periodResult, amount, BigDecimal.ZERO, "Close P&L to retained earnings")
-                        : new JournalLineSpec(retained, amount, BigDecimal.ZERO, "Close P&L loss to retained earnings"),
-                netIncome.compareTo(BigDecimal.ZERO) > 0
-                        ? new JournalLineSpec(retained, BigDecimal.ZERO, amount, "Transfer profit to retained earnings")
-                        : new JournalLineSpec(periodResult, BigDecimal.ZERO, amount, "Transfer loss to period result")
+        String memo = note != null ? note : "Period close " + period.getLabel();
+        boolean profit = netIncome.compareTo(BigDecimal.ZERO) > 0;
+        Long debitAccountId = profit ? periodResult.getId() : retained.getId();
+        Long creditAccountId = profit ? retained.getId() : periodResult.getId();
+        String debitDesc = profit ? "Close P&L to retained earnings" : "Close P&L loss to retained earnings";
+        String creditDesc = profit ? "Transfer profit to retained earnings" : "Transfer loss to period result";
+
+        LocalDate entryDate = period.getEndDate();
+        LocalDate today = companyClock.today(company);
+        if (entryDate.isAfter(today)) {
+            entryDate = today;
+        }
+        JournalEntryRequest request = new JournalEntryRequest(
+                reference,
+                entryDate,
+                memo,
+                null,
+                null,
+                Boolean.TRUE,
+                List.of(
+                        new JournalEntryRequest.JournalLineRequest(debitAccountId, debitDesc, amount, BigDecimal.ZERO),
+                        new JournalEntryRequest.JournalLineRequest(creditAccountId, creditDesc, BigDecimal.ZERO, amount)
+                )
         );
-        JournalEntry entry = new JournalEntry();
-        entry.setCompany(company);
-        entry.setReferenceNumber(reference);
-        entry.setEntryDate(period.getEndDate());
-        entry.setMemo(note != null ? note : "Period close " + period.getLabel());
-        entry.setStatus("POSTED");
-        entry.setAccountingPeriod(period);
-        Instant now = CompanyTime.now(company);
-        String username = resolveCurrentUsername();
-        entry.setCreatedAt(now);
-        entry.setUpdatedAt(now);
-        entry.setPostedAt(now);
-        entry.setCreatedBy(username);
-        entry.setLastModifiedBy(username);
-        entry.setPostedBy(username);
-        Map<Account, BigDecimal> deltas = new java.util.HashMap<>();
-        for (JournalLineSpec spec : specs) {
-            JournalLine line = new JournalLine();
-            line.setJournalEntry(entry);
-            line.setAccount(spec.account());
-            line.setDescription(spec.description());
-            line.setDebit(spec.debit());
-            line.setCredit(spec.credit());
-            entry.getLines().add(line);
-            deltas.merge(spec.account(), spec.debit().subtract(spec.credit()), BigDecimal::add);
-        }
-        JournalEntry saved = journalEntryRepository.save(entry);
-        if (!deltas.isEmpty()) {
-            for (Map.Entry<Account, BigDecimal> delta : deltas.entrySet()) {
-                Account account = delta.getKey();
-                BigDecimal current = account.getBalance() == null ? BigDecimal.ZERO : account.getBalance();
-                account.setBalance(current.add(delta.getValue()));
-            }
-            accountRepository.saveAll(deltas.keySet());
-        }
-        return saved;
+        AccountingService accountingService = accountingServiceProvider.getObject();
+        JournalEntryDto posted = accountingService.createJournalEntry(request);
+        return journalEntryRepository.findByCompanyAndId(company, posted.id())
+                .orElseThrow(() -> new ApplicationException(ErrorCode.SYSTEM_INTERNAL_ERROR,
+                        "Closing journal entry not found after posting"));
     }
 
     private Account ensureEquityAccount(Company company, String code, String name) {
@@ -382,57 +394,18 @@ public class AccountingPeriodService {
                 });
     }
 
-    private record JournalLineSpec(Account account, BigDecimal debit, BigDecimal credit, String description) {}
-
-    private void createReversalFor(JournalEntry source, AccountingPeriod period, Instant timestamp) {
-        String reversalReference = source.getReferenceNumber() + "-REOPEN";
-        Optional<JournalEntry> existingReversal = journalEntryRepository.findByCompanyAndReferenceNumber(
-                source.getCompany(), reversalReference);
-        if (existingReversal.isPresent()) {
-            if (source.getReversalEntry() == null) {
-                source.setReversalEntry(existingReversal.get());
-                source.setStatus("REVERSED");
-                journalEntryRepository.save(source);
-            }
+    private void reverseClosingJournalIfNeeded(JournalEntry closing,
+                                               AccountingPeriod period,
+                                               String reason) {
+        if (closing == null) {
             return;
         }
-        JournalEntry reversal = new JournalEntry();
-        reversal.setCompany(source.getCompany());
-        reversal.setReferenceNumber(reversalReference);
-        reversal.setEntryDate(period.getEndDate());
-        reversal.setMemo("Reversal of closing entry " + source.getReferenceNumber());
-        reversal.setStatus("POSTED");
-        reversal.setAccountingPeriod(period);
-        String user = resolveCurrentUsername();
-        reversal.setCreatedAt(timestamp);
-        reversal.setUpdatedAt(timestamp);
-        reversal.setPostedAt(timestamp);
-        reversal.setCreatedBy(user);
-        reversal.setLastModifiedBy(user);
-        reversal.setPostedBy(user);
-        Map<Account, BigDecimal> deltas = new java.util.HashMap<>();
-        for (JournalLine line : source.getLines()) {
-            JournalLine rev = new JournalLine();
-            rev.setJournalEntry(reversal);
-            rev.setAccount(line.getAccount());
-            rev.setDescription("Reopen reversal");
-            rev.setDebit(line.getCredit());
-            rev.setCredit(line.getDebit());
-            reversal.getLines().add(rev);
-            deltas.merge(line.getAccount(), rev.getDebit().subtract(rev.getCredit()), BigDecimal::add);
+        String status = closing.getStatus() != null ? closing.getStatus().toUpperCase() : null;
+        if ("REVERSED".equals(status) || "VOIDED".equals(status) || closing.getReversalEntry() != null) {
+            return;
         }
-        JournalEntry saved = journalEntryRepository.save(reversal);
-        if (!deltas.isEmpty()) {
-            for (Map.Entry<Account, BigDecimal> delta : deltas.entrySet()) {
-                Account account = delta.getKey();
-                BigDecimal current = account.getBalance() == null ? BigDecimal.ZERO : account.getBalance();
-                account.setBalance(current.add(delta.getValue()));
-            }
-            accountRepository.saveAll(deltas.keySet());
-        }
-        source.setReversalEntry(saved);
-        source.setStatus("REVERSED");
-        journalEntryRepository.save(source);
+        AccountingService accountingService = accountingServiceProvider.getObject();
+        accountingService.reverseClosingEntryForPeriodReopen(closing, period, reason);
     }
 
     @Transactional

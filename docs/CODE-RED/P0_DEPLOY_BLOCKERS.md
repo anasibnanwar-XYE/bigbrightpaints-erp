@@ -113,9 +113,16 @@ Purpose: a single, concrete list of **P0** items that block a safe enterprise de
   - Status (2026-02-04): ✅ AccountingFacade posting enforced; tests:
     `CR_PayrollIdempotencyConcurrencyTest.payrollPosting_isIdempotent_andCreatesExpensePayableLines`,
     `CR_PayrollIdempotencyConcurrencyTest.payrollPosting_mismatchConflictOnReplay`.
+- Period close must be atomic and canonical (no race window, no direct balance mutation).
+  - Close/reopen must run through AccountingService so validations/audit apply; concurrent postings block during close.
+  - Status (2026-02-05): ✅ period close lock + canonical posting; tests:
+    `CR_PeriodCloseAtomicityTest.closePeriod_blocksConcurrentPosting`,
+    `CR_PeriodCloseAtomicityTest.closeAndReopen_areIdempotent`.
 - Payroll payments must clear Salary Payable (no double-expensing).
   - `POST /api/v1/accounting/payroll/payments` now requires POSTED runs, posts **Dr SALARY-PAYABLE / Cr CASH**, and stores `payroll_runs.payment_journal_entry_id`.
   - HR `POST /api/v1/payroll/runs/{id}/mark-paid` is blocked unless a payment journal exists (prevents “PAID with no payment evidence”).
+  - Deploy readiness: every company must have `SALARY-PAYABLE` configured. If a legacy tenant used a different
+    payable account, create `SALARY-PAYABLE` or add a mapping before deploy.
   - Status (2026-02-04): ✅ payment idempotency + mark-paid safety; tests:
     `CR_PayrollIdempotencyConcurrencyTest.payrollPayment_idempotentUnderConcurrency`,
     `CR_PayrollIdempotencyConcurrencyTest.payrollPayment_mismatchConflictsOnReplay`,

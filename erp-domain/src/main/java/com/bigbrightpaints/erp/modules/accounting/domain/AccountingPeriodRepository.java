@@ -1,7 +1,11 @@
 package com.bigbrightpaints.erp.modules.accounting.domain;
 
 import com.bigbrightpaints.erp.modules.company.domain.Company;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
@@ -12,4 +16,14 @@ public interface AccountingPeriodRepository extends JpaRepository<AccountingPeri
     Optional<AccountingPeriod> findByCompanyAndYearAndMonth(Company company, int year, int month);
     Optional<AccountingPeriod> findFirstByCompanyAndStatusOrderByStartDateDesc(Company company, AccountingPeriodStatus status);
     Optional<AccountingPeriod> findFirstByCompanyOrderByStartDateDesc(Company company);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select p from AccountingPeriod p where p.company = :company and p.id = :periodId")
+    Optional<AccountingPeriod> lockByCompanyAndId(@Param("company") Company company, @Param("periodId") Long periodId);
+
+    @Lock(LockModeType.PESSIMISTIC_READ)
+    @Query("select p from AccountingPeriod p where p.company = :company and p.year = :year and p.month = :month")
+    Optional<AccountingPeriod> lockByCompanyAndYearAndMonth(@Param("company") Company company,
+                                                            @Param("year") int year,
+                                                            @Param("month") int month);
 }
