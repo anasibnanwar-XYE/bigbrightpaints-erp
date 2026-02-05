@@ -33,7 +33,9 @@ import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.UnexpectedRollbackException;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
@@ -44,13 +46,18 @@ import java.io.InputStreamReader;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.Collection;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -90,6 +97,7 @@ public class ProductionCatalogService {
     private final CatalogImportRepository catalogImportRepository;
     private final AuditService auditService;
     private final TransactionTemplate transactionTemplate;
+    private final TransactionTemplate rowTransactionTemplate;
 
     public ProductionCatalogService(CompanyContextService companyContextService,
                                     ProductionBrandRepository brandRepository,
@@ -109,6 +117,8 @@ public class ProductionCatalogService {
         this.catalogImportRepository = catalogImportRepository;
         this.auditService = auditService;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
+        this.rowTransactionTemplate = new TransactionTemplate(transactionManager);
+        this.rowTransactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     public CatalogImportResponse importCatalog(MultipartFile file) {
@@ -186,6 +196,7 @@ public class ProductionCatalogService {
         AtomicInteger productsUpdated = new AtomicInteger();
         AtomicInteger rawMaterialsSeeded = new AtomicInteger();
         List<CatalogImportResponse.ImportError> errors = new ArrayList<>();
+        List<ImportRow> importRows = new ArrayList<>();
 
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8));
@@ -209,7 +220,16 @@ public class ProductionCatalogService {
                     continue;
                 }
                 try {
-                    ProcessOutcome outcome = upsertProduct(company, row);
+                    importRows.add(ImportRow.from(record, row));
+                } catch (IllegalArgumentException ex) {
+                    errors.add(new CatalogImportResponse.ImportError(record.getRecordNumber(), ex.getMessage()));
+                }
+            }
+
+            ImportContext context = buildImportContext(company, importRows);
+            for (ImportRow importRow : importRows) {
+                try {
+                    ProcessOutcome outcome = processCatalogRowWithRetry(company, importRow, context);
                     rows.incrementAndGet();
                     if (outcome.brandCreated()) {
                         brandsCreated.incrementAndGet();
@@ -223,9 +243,9 @@ public class ProductionCatalogService {
                         rawMaterialsSeeded.incrementAndGet();
                     }
                 } catch (IllegalArgumentException ex) {
-                    errors.add(new CatalogImportResponse.ImportError(record.getRecordNumber(), ex.getMessage()));
+                    errors.add(new CatalogImportResponse.ImportError(importRow.recordNumber(), ex.getMessage()));
                 } catch (Exception ex) {
-                    errors.add(new CatalogImportResponse.ImportError(record.getRecordNumber(), "Unexpected error: " + ex.getMessage()));
+                    errors.add(new CatalogImportResponse.ImportError(importRow.recordNumber(), "Unexpected error: " + ex.getMessage()));
                 }
             }
 
@@ -233,6 +253,40 @@ public class ProductionCatalogService {
                     productsUpdated.get(), rawMaterialsSeeded.get(), errors);
         } catch (IOException ex) {
             throw new IllegalStateException("Failed to read CSV file", ex);
+        }
+    }
+
+    private ProcessOutcome processCatalogRowWithRetry(Company company, ImportRow importRow, ImportContext context) {
+        RuntimeException lastError = null;
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            try {
+                ProcessOutcome outcome = rowTransactionTemplate.execute(status ->
+                        upsertProduct(company, importRow, context));
+                if (outcome == null) {
+                    throw new IllegalStateException("Catalog import row did not return an outcome");
+                }
+                return outcome;
+            } catch (RuntimeException ex) {
+                lastError = ex;
+                evictRowCache(importRow, context);
+                if (!isRetryableImportFailure(ex) || attempt == 2) {
+                    throw ex;
+                }
+            }
+        }
+        throw lastError;
+    }
+
+    private void evictRowCache(ImportRow importRow, ImportContext context) {
+        if (importRow.brandKey() != null) {
+            context.brandsByName().remove(importRow.brandKey());
+        }
+        if (StringUtils.hasText(importRow.sanitizedSku())) {
+            context.productsBySku().remove(normalizeSkuKey(importRow.sanitizedSku()));
+        }
+        if (importRow.productKey() != null) {
+            context.productsByBrandName().entrySet()
+                    .removeIf(entry -> importRow.productKey().equals(entry.getKey().productNameKey()));
         }
     }
 
@@ -430,8 +484,9 @@ public class ProductionCatalogService {
         return toProductDto(saved);
     }
 
-    private ProcessOutcome upsertProduct(Company company, CatalogRow row) {
-        BrandResolution resolution = resolveBrand(company, null, row.brand(), null);
+    private ProcessOutcome upsertProduct(Company company, ImportRow importRow, ImportContext context) {
+        CatalogRow row = importRow.row();
+        BrandResolution resolution = resolveBrandForImport(company, row.brand(), context);
         ProductionBrand brand = resolution.brand();
         String category = normalizeCategory(row.category());
         if (!StringUtils.hasText(row.productName())) {
@@ -439,16 +494,21 @@ public class ProductionCatalogService {
         }
         String productName = row.productName().trim();
         String sizeLabel = StringUtils.hasText(row.sizeLabel()) ? row.sizeLabel() : row.unitOfMeasure();
-        String providedSku = row.skuCode();
-        String sanitizedSku = StringUtils.hasText(providedSku) ? sanitizeSku(providedSku) : null;
-        Optional<ProductionProduct> existing = Optional.empty();
+        String sanitizedSku = importRow.sanitizedSku();
+        ProductionProduct existing = null;
         if (StringUtils.hasText(sanitizedSku)) {
-            existing = productRepository.findByCompanyAndSkuCode(company, sanitizedSku);
-        } else {
-            existing = productRepository.findByBrandAndProductNameIgnoreCase(brand, productName);
+            existing = context.productsBySku().get(normalizeSkuKey(sanitizedSku));
+        } else if (importRow.productKey() != null) {
+            existing = context.productsByBrandName().get(new ProductKey(brand.getId(), importRow.productKey()));
         }
-        boolean created = existing.isEmpty();
-        ProductionProduct product = existing.orElseGet(ProductionProduct::new);
+        if (existing == null) {
+            existing = findExistingProduct(company, brand, productName, sanitizedSku);
+            if (existing != null) {
+                cacheProduct(context, existing);
+            }
+        }
+        boolean created = existing == null;
+        ProductionProduct product = created ? new ProductionProduct() : existing;
         if (created) {
             String sku = StringUtils.hasText(sanitizedSku)
                     ? sanitizedSku
@@ -457,9 +517,146 @@ public class ProductionCatalogService {
             product.setBrand(brand);
             product.setSkuCode(sku);
             product.setActive(true);
-        } else if (!product.getBrand().getId().equals(brand.getId())) {
+        } else if (product.getBrand() != null && !product.getBrand().getId().equals(brand.getId())) {
             // Avoid accidental brand switching when reusing SKU
             brand = product.getBrand();
+        }
+        applyRowToProduct(product, company, brand, row, productName, category, sizeLabel, created);
+        ProductionProduct saved = productRepository.save(product);
+        cacheProduct(context, saved);
+        boolean seeded = syncRawMaterial(company, saved);
+        return new ProcessOutcome(resolution.created(), created, seeded);
+    }
+
+    private BrandResolution resolveBrandForImport(Company company, String brandName, ImportContext context) {
+        if (!StringUtils.hasText(brandName)) {
+            throw new IllegalArgumentException("Brand is required");
+        }
+        String normalizedName = normalizeKey(brandName);
+        if (normalizedName != null) {
+            ProductionBrand cached = context.brandsByName().get(normalizedName);
+            if (cached != null) {
+                return new BrandResolution(cached, false);
+            }
+        }
+        String effectiveName = brandName.trim();
+        ProductionBrand existing = brandRepository.findByCompanyAndNameIgnoreCase(company, effectiveName).orElse(null);
+        if (existing != null) {
+            cacheBrand(context, existing);
+            return new BrandResolution(existing, false);
+        }
+        String uniqueCode = nextBrandCode(company, effectiveName);
+        ProductionBrand brand = new ProductionBrand();
+        brand.setCompany(company);
+        brand.setName(effectiveName);
+        brand.setCode(uniqueCode);
+        boolean created = true;
+        brand = brandRepository.save(brand);
+        cacheBrand(context, brand);
+        return new BrandResolution(brand, created);
+    }
+
+    private ImportContext buildImportContext(Company company, List<ImportRow> rows) {
+        Set<String> brandKeys = new HashSet<>();
+        Set<String> skuKeys = new HashSet<>();
+        Set<String> productKeys = new HashSet<>();
+        for (ImportRow row : rows) {
+            if (row.brandKey() != null) {
+                brandKeys.add(row.brandKey());
+            }
+            if (StringUtils.hasText(row.sanitizedSku())) {
+                skuKeys.add(normalizeSkuKey(row.sanitizedSku()));
+            } else if (row.productKey() != null) {
+                productKeys.add(row.productKey());
+            }
+        }
+
+        Map<String, ProductionBrand> brandsByName = new HashMap<>();
+        if (!brandKeys.isEmpty()) {
+            List<ProductionBrand> brands = brandRepository.findByCompanyAndNameInIgnoreCase(company, brandKeys);
+            for (ProductionBrand brand : brands) {
+                String key = normalizeKey(brand.getName());
+                if (key != null) {
+                    brandsByName.put(key, brand);
+                }
+            }
+        }
+
+        Map<String, ProductionProduct> productsBySku = new HashMap<>();
+        if (!skuKeys.isEmpty()) {
+            List<ProductionProduct> products = productRepository.findByCompanyAndSkuCodeIn(company, skuKeys);
+            for (ProductionProduct product : products) {
+                String key = normalizeSkuKey(product.getSkuCode());
+                if (key != null) {
+                    productsBySku.put(key, product);
+                }
+            }
+        }
+
+        Map<ProductKey, ProductionProduct> productsByBrandName = new HashMap<>();
+        if (!productKeys.isEmpty() && !brandsByName.isEmpty()) {
+            Collection<ProductionBrand> brands = brandsByName.values();
+            List<ProductionProduct> products = productRepository.findByBrandInAndProductNameInIgnoreCase(brands, productKeys);
+            for (ProductionProduct product : products) {
+                String key = normalizeKey(product.getProductName());
+                if (key != null && product.getBrand() != null) {
+                    productsByBrandName.put(new ProductKey(product.getBrand().getId(), key), product);
+                }
+            }
+        }
+
+        return new ImportContext(brandsByName, productsBySku, productsByBrandName);
+    }
+
+    private void cacheBrand(ImportContext context, ProductionBrand brand) {
+        if (brand == null) {
+            return;
+        }
+        String key = normalizeKey(brand.getName());
+        if (key != null) {
+            context.brandsByName().put(key, brand);
+        }
+    }
+
+    private void cacheProduct(ImportContext context, ProductionProduct product) {
+        if (product == null) {
+            return;
+        }
+        String skuKey = normalizeSkuKey(product.getSkuCode());
+        if (skuKey != null) {
+            context.productsBySku().put(skuKey, product);
+        }
+        if (product.getBrand() != null) {
+            String nameKey = normalizeKey(product.getProductName());
+            if (nameKey != null) {
+                context.productsByBrandName().put(new ProductKey(product.getBrand().getId(), nameKey), product);
+            }
+        }
+    }
+
+    private ProductionProduct findExistingProduct(Company company,
+                                                  ProductionBrand brand,
+                                                  String productName,
+                                                  String sanitizedSku) {
+        if (StringUtils.hasText(sanitizedSku)) {
+            return productRepository.findByCompanyAndSkuCode(company, sanitizedSku).orElse(null);
+        }
+        return productRepository.findByBrandAndProductNameIgnoreCase(brand, productName).orElse(null);
+    }
+
+    private void applyRowToProduct(ProductionProduct product,
+                                   Company company,
+                                   ProductionBrand brand,
+                                   CatalogRow row,
+                                   String productName,
+                                   String category,
+                                   String sizeLabel,
+                                   boolean created) {
+        if (created) {
+            product.setCompany(company);
+            product.setBrand(brand);
+        } else if (product.getBrand() == null) {
+            product.setBrand(brand);
         }
         product.setProductName(productName);
         product.setCategory(category);
@@ -491,9 +688,6 @@ public class ProductionCatalogService {
             metadata = ensureFinishedGoodAccounts(company, product.getSkuCode(), metadata);
         }
         product.setMetadata(metadata);
-        ProductionProduct saved = productRepository.save(product);
-        boolean seeded = syncRawMaterial(company, saved);
-        return new ProcessOutcome(resolution.created(), created, seeded);
     }
 
     private BrandResolution resolveBrand(Company company, Long brandId, String brandName, String providedCode) {
@@ -696,6 +890,20 @@ public class ProductionCatalogService {
         return StringUtils.hasText(category) ? category.trim().replace(' ', '_').toUpperCase() : "GENERAL";
     }
 
+    private static String normalizeKey(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        return value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static String normalizeSkuKey(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        return value.trim().toUpperCase(Locale.ROOT);
+    }
+
     private Map<String, Object> normalizeMetadata(Map<String, Object> metadata) {
         if (metadata == null || metadata.isEmpty()) {
             return new HashMap<>();
@@ -820,6 +1028,20 @@ public class ProductionCatalogService {
         return false;
     }
 
+    private boolean isRetryableImportFailure(Throwable error) {
+        if (isDataIntegrityViolation(error)) {
+            return true;
+        }
+        Throwable cursor = error;
+        while (cursor != null) {
+            if (cursor instanceof UnexpectedRollbackException) {
+                return true;
+            }
+            cursor = cursor.getCause();
+        }
+        return false;
+    }
+
     private String sha256Hex(MultipartFile file) {
         try {
             byte[] bytes = file.getBytes();
@@ -834,6 +1056,36 @@ public class ProductionCatalogService {
     private record BrandResolution(ProductionBrand brand, boolean created) {}
 
     private record ProcessOutcome(boolean brandCreated, boolean productCreated, boolean rawMaterialSeeded) {}
+
+    private record ProductKey(Long brandId, String productNameKey) {
+        private ProductKey {
+            Objects.requireNonNull(brandId, "brandId");
+            Objects.requireNonNull(productNameKey, "productNameKey");
+        }
+    }
+
+    private record ImportContext(Map<String, ProductionBrand> brandsByName,
+                                 Map<String, ProductionProduct> productsBySku,
+                                 Map<ProductKey, ProductionProduct> productsByBrandName) {
+    }
+
+    private record ImportRow(long recordNumber,
+                             CatalogRow row,
+                             String sanitizedSku,
+                             String brandKey,
+                             String productKey) {
+        static ImportRow from(CSVRecord record, CatalogRow row) {
+            Objects.requireNonNull(record, "record");
+            Objects.requireNonNull(row, "row");
+            String sanitizedSku = null;
+            if (StringUtils.hasText(row.skuCode())) {
+                sanitizedSku = sanitizeSku(row.skuCode());
+            }
+            String brandKey = normalizeKey(row.brand());
+            String productKey = normalizeKey(row.productName());
+            return new ImportRow(record.getRecordNumber(), row, sanitizedSku, brandKey, productKey);
+        }
+    }
 
     private record CatalogRow(String brand,
                               String productName,

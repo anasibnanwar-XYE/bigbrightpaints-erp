@@ -2,7 +2,9 @@ package com.bigbrightpaints.erp.modules.production.domain;
 
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import org.springframework.data.jpa.repository.JpaRepository;
-
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -13,4 +15,10 @@ public interface ProductionProductRepository extends JpaRepository<ProductionPro
     Optional<ProductionProduct> findTopByCompanyAndSkuCodeStartingWithOrderBySkuCodeDesc(Company company, String prefix);
     List<ProductionProduct> findByCompanyOrderByProductNameAsc(Company company);
     List<ProductionProduct> findByBrandOrderByProductNameAsc(ProductionBrand brand);
+
+    List<ProductionProduct> findByCompanyAndSkuCodeIn(Company company, Collection<String> skuCodes);
+
+    @Query("select p from ProductionProduct p where p.brand in :brands and lower(p.productName) in :names")
+    List<ProductionProduct> findByBrandInAndProductNameInIgnoreCase(@Param("brands") Collection<ProductionBrand> brands,
+                                                                    @Param("names") Collection<String> names);
 }
