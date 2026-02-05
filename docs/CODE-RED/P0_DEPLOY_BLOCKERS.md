@@ -1,6 +1,6 @@
 # CODE-RED P0 Deploy Blockers (Must Fix or Prod-Gate)
 
-Last updated: 2026-02-04
+Last updated: 2026-02-05
 
 Purpose: a single, concrete list of **P0** items that block a safe enterprise deploy. For details, see:
 - `docs/CODE-RED/plan-v2.md`
@@ -70,6 +70,8 @@ Purpose: a single, concrete list of **P0** items that block a safe enterprise de
   - Packing record retries must not double-consume packaging or double-post journals.
   - Opening stock import must have an import idempotency key; retry must not create new batches/movements/journals.
     - Status (2026-02-04): ✅ opening stock import idempotent + prod gated; tests: `CR_OpeningStockImportIdempotencyIT`, `CR_OpeningStockImportProdGatingIT`.
+  - Production log `producedAt` must use the company timezone (no UTC drift for local date/time inputs).
+    - Status (2026-02-05): ✅ company timezone enforced; tests: `CR_MfgProducedAtTimezoneTest`.
 - Manual raw material intake must be disabled by default and require idempotency key when enabled (fail closed with canonical path).
   - Status (2026-02-04): ✅ feature-flag gating + idempotency record; tests: `CR_RawMaterialIntakeIdempotencyIT`, `ProcureToPayE2ETest.rawMaterialIntakeDisabledByDefault`.
 - Inventory adjustments must be retry-safe and use the adjustment date for posting:

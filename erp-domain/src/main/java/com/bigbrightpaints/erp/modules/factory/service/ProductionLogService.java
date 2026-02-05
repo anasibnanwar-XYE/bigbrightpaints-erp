@@ -544,6 +544,7 @@ public class ProductionLogService {
             return CompanyTime.now(company);
         }
         // Accept common UI formats: ISO_OFFSET_DATE_TIME, ISO_INSTANT, yyyy-MM-dd, dd-MM-yyyy HH:mm[:ss]
+        ZoneId zoneId = companyClock.zoneId(company);
         try {
             return OffsetDateTime.parse(producedAt).toInstant();
         } catch (Exception ignored) {
@@ -556,18 +557,18 @@ public class ProductionLogService {
         }
         try {
             DateTimeFormatter fmt = DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm");
-            return java.time.LocalDateTime.parse(producedAt, fmt).toInstant(ZoneOffset.UTC);
+            return java.time.LocalDateTime.parse(producedAt, fmt).atZone(zoneId).toInstant();
         } catch (Exception ignored) {
             // fall through
         }
         try {
             DateTimeFormatter fmtSeconds = DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss");
-            return java.time.LocalDateTime.parse(producedAt, fmtSeconds).toInstant(ZoneOffset.UTC);
+            return java.time.LocalDateTime.parse(producedAt, fmtSeconds).atZone(zoneId).toInstant();
         } catch (Exception ignored) {
             // fall through to final attempt
         }
         try {
-            return LocalDate.parse(producedAt).atStartOfDay(ZoneOffset.UTC).toInstant();
+            return LocalDate.parse(producedAt).atStartOfDay(zoneId).toInstant();
         } catch (Exception ex) {
             throw new IllegalArgumentException("Invalid producedAt format: " + producedAt, ex);
         }
