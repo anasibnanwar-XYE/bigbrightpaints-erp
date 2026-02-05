@@ -16,7 +16,9 @@ import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
+import com.bigbrightpaints.erp.modules.reports.dto.BalanceSheetDto;
 import com.bigbrightpaints.erp.modules.reports.dto.InventoryValuationDto;
+import com.bigbrightpaints.erp.modules.reports.dto.ReportSource;
 import com.bigbrightpaints.erp.modules.reports.service.ReportService;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 import com.bigbrightpaints.erp.test.support.TestDateUtils;
@@ -77,6 +79,45 @@ class CR_PeriodCloseSnapshotsTest extends AbstractIntegrationTest {
 
             assertThat(after.totalDebits()).isEqualByComparingTo(before.totalDebits());
             assertThat(after.totalCredits()).isEqualByComparingTo(before.totalCredits());
+        } finally {
+            CompanyContextHolder.clear();
+        }
+    }
+
+    @Test
+    void balanceSheetAsOf_usesSnapshotForClosedPeriod() {
+        String companyCode = "CR-SNAP-BS-" + System.nanoTime();
+        Company company = dataSeeder.ensureCompany(companyCode, companyCode + " Ltd");
+        CompanyContextHolder.setCompanyId(companyCode);
+        try {
+            LocalDate today = TestDateUtils.safeDate(company);
+            LocalDate periodDate = today.minusMonths(1);
+            AccountingPeriod period = accountingPeriodService.ensurePeriod(company, periodDate);
+            Account cash = ensureAccount(company, "CASH-SNAP-BS", "Cash", AccountType.ASSET);
+            Account revenue = ensureAccount(company, "REV-SNAP-BS", "Revenue", AccountType.REVENUE);
+
+            postJournal(period.getEndDate().minusDays(1), List.of(
+                    line(cash.getId(), new BigDecimal("120.00"), BigDecimal.ZERO),
+                    line(revenue.getId(), BigDecimal.ZERO, new BigDecimal("120.00"))
+            ));
+
+            accountingPeriodService.closePeriod(period.getId(), new AccountingPeriodCloseRequest(true, "snapshot close"));
+
+            BalanceSheetDto before = reportService.balanceSheet(period.getEndDate());
+
+            postJournal(period.getEndDate().plusDays(1), List.of(
+                    line(cash.getId(), new BigDecimal("30.00"), BigDecimal.ZERO),
+                    line(revenue.getId(), BigDecimal.ZERO, new BigDecimal("30.00"))
+            ));
+
+            BalanceSheetDto after = reportService.balanceSheet(period.getEndDate());
+            BalanceSheetDto live = reportService.balanceSheet();
+
+            assertThat(after.totalAssets()).isEqualByComparingTo(before.totalAssets());
+            assertThat(after.metadata().source()).isEqualTo(ReportSource.SNAPSHOT);
+            assertThat(after.metadata().snapshotId()).isNotNull();
+            assertThat(live.metadata().source()).isEqualTo(ReportSource.LIVE);
+            assertThat(live.totalAssets()).isGreaterThan(after.totalAssets());
         } finally {
             CompanyContextHolder.clear();
         }

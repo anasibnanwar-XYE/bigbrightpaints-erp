@@ -349,6 +349,22 @@ Enforcement:
 - Closing a period must persist the snapshot atomically (company + period).
 - Reports and reconciliation must read snapshot results for CLOSED periods.
 
+## 2026-02-05 - Report Responses Carry Snapshot Metadata (Fail Closed Without Snapshot)
+Decision:
+- Report responses must include metadata identifying the source of truth:
+  - `source` = `LIVE`, `AS_OF`, or `SNAPSHOT`
+  - `asOfDate`, `accountingPeriodId`, and `snapshotId` when applicable
+- If a period is CLOSED, report endpoints must fail closed unless a matching snapshot exists
+  (no fallback to live balances).
+
+Rationale:
+- Auditability requires that every financial report can be traced to its data source.
+- Prevents silent drift when late postings or missing snapshots exist.
+
+Enforcement:
+- Report selection is centralized and blocks closed-period reads without snapshots.
+- Tests cover snapshot selection + metadata on closed periods.
+
 ## 2026-02-01 - AccountingEventStore Is Not Accounting Truth
 Decision:
 - `accounting_events` / `AccountingEventStore` is **not** a source-of-truth for temporal accounting.

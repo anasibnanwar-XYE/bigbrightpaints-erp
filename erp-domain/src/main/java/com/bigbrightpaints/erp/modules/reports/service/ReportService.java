@@ -1,5 +1,7 @@
 package com.bigbrightpaints.erp.modules.reports.service;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
@@ -9,11 +11,13 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodReposit
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodSnapshot;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodSnapshotRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodStatus;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodTrialBalanceLineRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.DealerLedgerEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.DealerLedgerRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLine;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
@@ -36,6 +40,7 @@ import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -48,10 +53,12 @@ public class ReportService {
     private final AccountRepository accountRepository;
     private final AccountingPeriodRepository accountingPeriodRepository;
     private final AccountingPeriodSnapshotRepository snapshotRepository;
+    private final AccountingPeriodTrialBalanceLineRepository snapshotLineRepository;
     private final DealerRepository dealerRepository;
     private final DealerLedgerService dealerLedgerService;
     private final DealerLedgerRepository dealerLedgerRepository;
     private final JournalEntryRepository journalEntryRepository;
+    private final JournalLineRepository journalLineRepository;
     private final InvoiceRepository invoiceRepository;
     private final ProductionLogRepository productionLogRepository;
     private final CompanyEntityLookup companyEntityLookup;
@@ -63,10 +70,12 @@ public class ReportService {
                          AccountRepository accountRepository,
                          AccountingPeriodRepository accountingPeriodRepository,
                          AccountingPeriodSnapshotRepository snapshotRepository,
+                         AccountingPeriodTrialBalanceLineRepository snapshotLineRepository,
                          DealerRepository dealerRepository,
                          DealerLedgerService dealerLedgerService,
                          DealerLedgerRepository dealerLedgerRepository,
                          JournalEntryRepository journalEntryRepository,
+                         JournalLineRepository journalLineRepository,
                          InvoiceRepository invoiceRepository,
                          ProductionLogRepository productionLogRepository,
                          CompanyEntityLookup companyEntityLookup,
@@ -76,10 +85,12 @@ public class ReportService {
         this.accountRepository = accountRepository;
         this.accountingPeriodRepository = accountingPeriodRepository;
         this.snapshotRepository = snapshotRepository;
+        this.snapshotLineRepository = snapshotLineRepository;
         this.dealerRepository = dealerRepository;
         this.dealerLedgerService = dealerLedgerService;
         this.dealerLedgerRepository = dealerLedgerRepository;
         this.journalEntryRepository = journalEntryRepository;
+        this.journalLineRepository = journalLineRepository;
         this.invoiceRepository = invoiceRepository;
         this.productionLogRepository = productionLogRepository;
         this.companyEntityLookup = companyEntityLookup;
@@ -89,27 +100,40 @@ public class ReportService {
 
     @Transactional(readOnly = true)
     public BalanceSheetDto balanceSheet() {
-        Company company = companyContextService.requireCurrentCompany();
-        BigDecimal assets = aggregateAccountType(company, AccountType.ASSET);
-        BigDecimal liabilities = aggregateAccountType(company, AccountType.LIABILITY);
+        return balanceSheet(null);
+    }
+
+    @Transactional(readOnly = true)
+    public BalanceSheetDto balanceSheet(LocalDate asOfDate) {
+        ReportContext context = resolveReportContext(asOfDate);
+        List<TrialBalanceLine> lines = resolveTrialBalanceLines(context);
+        BigDecimal assets = aggregateAccountType(lines, AccountType.ASSET);
+        BigDecimal liabilities = aggregateAccountType(lines, AccountType.LIABILITY);
         BigDecimal equity = assets.subtract(liabilities);
-        return new BalanceSheetDto(assets, liabilities, equity);
+        return new BalanceSheetDto(assets, liabilities, equity, context.metadata());
     }
 
     @Transactional(readOnly = true)
     public ProfitLossDto profitLoss() {
-        Company company = companyContextService.requireCurrentCompany();
-        BigDecimal revenue = aggregateAccountType(company, AccountType.REVENUE);
-        BigDecimal cogs = aggregateAccountType(company, AccountType.COGS);
+        return profitLoss(null);
+    }
+
+    @Transactional(readOnly = true)
+    public ProfitLossDto profitLoss(LocalDate asOfDate) {
+        ReportContext context = resolveReportContext(asOfDate);
+        List<TrialBalanceLine> lines = resolveTrialBalanceLines(context);
+        BigDecimal revenue = aggregateAccountType(lines, AccountType.REVENUE);
+        BigDecimal cogs = aggregateAccountType(lines, AccountType.COGS);
         BigDecimal grossProfit = revenue.subtract(cogs);
-        BigDecimal expenses = aggregateAccountType(company, AccountType.EXPENSE);
+        BigDecimal expenses = aggregateAccountType(lines, AccountType.EXPENSE);
         BigDecimal netIncome = grossProfit.subtract(expenses);
-        return new ProfitLossDto(revenue, cogs, grossProfit, expenses, netIncome);
+        return new ProfitLossDto(revenue, cogs, grossProfit, expenses, netIncome, context.metadata());
     }
 
     @Transactional(readOnly = true)
     public CashFlowDto cashFlow() {
-        Company company = companyContextService.requireCurrentCompany();
+        ReportContext context = resolveReportContext(null);
+        Company company = context.company();
         List<JournalEntry> entries = journalEntryRepository.findByCompanyOrderByEntryDateDesc(company);
         BigDecimal operating = BigDecimal.ZERO;
         BigDecimal investing = BigDecimal.ZERO;
@@ -129,33 +153,34 @@ public class ReportService {
             }
         }
         BigDecimal net = operating.add(investing).add(financing);
-        return new CashFlowDto(operating, investing, financing, net);
-    }
-
-    @Transactional(readOnly = true)
-    public InventoryValuationDto inventoryValuation() {
-        Company company = companyContextService.requireCurrentCompany();
-        InventoryValuationService.InventorySnapshot snapshot = inventoryValuationService.currentSnapshot(company);
-        return new InventoryValuationDto(snapshot.totalValue(), snapshot.lowStockItems());
+        return new CashFlowDto(operating, investing, financing, net, context.metadata());
     }
 
     @Transactional(readOnly = true)
     public InventoryValuationDto inventoryValuationAsOf(LocalDate asOfDate) {
-        Company company = companyContextService.requireCurrentCompany();
-        if (asOfDate == null) {
-            InventoryValuationService.InventorySnapshot snapshot = inventoryValuationService.currentSnapshot(company);
-            return new InventoryValuationDto(snapshot.totalValue(), snapshot.lowStockItems());
+        return inventoryValuation(asOfDate);
+    }
+
+    @Transactional(readOnly = true)
+    public InventoryValuationDto inventoryValuation() {
+        return inventoryValuation(null);
+    }
+
+    private InventoryValuationDto inventoryValuation(LocalDate asOfDate) {
+        ReportContext context = resolveReportContext(asOfDate);
+        if (context.source() == ReportSource.SNAPSHOT && context.snapshot() != null) {
+            AccountingPeriodSnapshot snapshot = context.snapshot();
+            return new InventoryValuationDto(snapshot.getInventoryTotalValue(),
+                    snapshot.getInventoryLowStock(),
+                    context.metadata());
         }
-        AccountingPeriod period = accountingPeriodRepository.findByCompanyAndYearAndMonth(
-                company, asOfDate.getYear(), asOfDate.getMonthValue()).orElse(null);
-        if (period != null && period.getStatus() == AccountingPeriodStatus.CLOSED) {
-            AccountingPeriodSnapshot snapshot = snapshotRepository.findByCompanyAndPeriod(company, period).orElse(null);
-            if (snapshot != null) {
-                return new InventoryValuationDto(snapshot.getInventoryTotalValue(), snapshot.getInventoryLowStock());
-            }
+        Company company = context.company();
+        if (context.source() == ReportSource.AS_OF) {
+            InventoryValuationService.InventorySnapshot snapshot = inventoryValuationService.snapshotAsOf(company, context.asOfDate());
+            return new InventoryValuationDto(snapshot.totalValue(), snapshot.lowStockItems(), context.metadata());
         }
-        InventoryValuationService.InventorySnapshot snapshot = inventoryValuationService.snapshotAsOf(company, asOfDate);
-        return new InventoryValuationDto(snapshot.totalValue(), snapshot.lowStockItems());
+        InventoryValuationService.InventorySnapshot snapshot = inventoryValuationService.currentSnapshot(company);
+        return new InventoryValuationDto(snapshot.totalValue(), snapshot.lowStockItems(), context.metadata());
     }
 
     @Transactional(readOnly = true)
@@ -291,26 +316,103 @@ public class ReportService {
 
     @Transactional(readOnly = true)
     public TrialBalanceDto trialBalance() {
-        Company company = companyContextService.requireCurrentCompany();
-        List<Account> accounts = accountRepository.findByCompanyOrderByCodeAsc(company);
+        return trialBalance(null);
+    }
+
+    @Transactional(readOnly = true)
+    public TrialBalanceDto trialBalance(LocalDate asOfDate) {
+        ReportContext context = resolveReportContext(asOfDate);
+        List<TrialBalanceLine> lines = resolveTrialBalanceLines(context);
         List<TrialBalanceDto.Row> rows = new ArrayList<>();
         BigDecimal totalDebit = BigDecimal.ZERO;
         BigDecimal totalCredit = BigDecimal.ZERO;
-        for (Account account : accounts) {
-            TrialBalanceDto.Row row = toTrialBalanceRow(account);
+        for (TrialBalanceLine line : lines) {
+            TrialBalanceDto.Row row = new TrialBalanceDto.Row(
+                    line.accountId(),
+                    line.code(),
+                    line.name(),
+                    line.type(),
+                    line.debit(),
+                    line.credit()
+            );
             rows.add(row);
-            totalDebit = totalDebit.add(safe(row.debit()));
-            totalCredit = totalCredit.add(safe(row.credit()));
+            totalDebit = totalDebit.add(safe(line.debit()));
+            totalCredit = totalCredit.add(safe(line.credit()));
         }
         boolean balanced = totalDebit.subtract(totalCredit).abs().compareTo(BALANCE_TOLERANCE) <= 0;
-        return new TrialBalanceDto(rows, totalDebit, totalCredit, balanced);
+        return new TrialBalanceDto(rows, totalDebit, totalCredit, balanced, context.metadata());
     }
 
-    private BigDecimal aggregateAccountType(Company company, AccountType type) {
-        return accountRepository.findByCompanyOrderByCodeAsc(company).stream()
-                .filter(acc -> acc.getType() == type)
-                .map(Account::getBalance)
+    private BigDecimal aggregateAccountType(List<TrialBalanceLine> lines, AccountType type) {
+        return lines.stream()
+                .filter(line -> line.type() == type)
+                .map(line -> safe(line.debit()).subtract(safe(line.credit())))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private ReportContext resolveReportContext(LocalDate asOfDate) {
+        Company company = companyContextService.requireCurrentCompany();
+        LocalDate effectiveDate = asOfDate != null ? asOfDate : companyClock.today(company);
+        AccountingPeriod period = accountingPeriodRepository
+                .findByCompanyAndYearAndMonth(company, effectiveDate.getYear(), effectiveDate.getMonthValue())
+                .orElse(null);
+        AccountingPeriodSnapshot snapshot = null;
+        ReportSource source;
+        if (period != null && period.getStatus() == AccountingPeriodStatus.CLOSED) {
+            snapshot = snapshotRepository.findByCompanyAndPeriod(company, period)
+                    .orElseThrow(() -> new ApplicationException(ErrorCode.BUSINESS_CONSTRAINT_VIOLATION,
+                            "Closed period snapshot is required for reports")
+                            .withDetail("companyId", company.getId())
+                            .withDetail("periodId", period.getId())
+                            .withDetail("asOfDate", effectiveDate));
+            source = ReportSource.SNAPSHOT;
+        } else if (asOfDate != null) {
+            source = ReportSource.AS_OF;
+        } else {
+            source = ReportSource.LIVE;
+        }
+        return new ReportContext(company, effectiveDate, period, snapshot, source);
+    }
+
+    private List<TrialBalanceLine> resolveTrialBalanceLines(ReportContext context) {
+        if (context.source() == ReportSource.SNAPSHOT && context.snapshot() != null) {
+            return snapshotLineRepository.findBySnapshotOrderByAccountCodeAsc(context.snapshot()).stream()
+                    .map(line -> new TrialBalanceLine(
+                            line.getAccountId(),
+                            line.getAccountCode(),
+                            line.getAccountName(),
+                            line.getAccountType(),
+                            safe(line.getDebit()),
+                            safe(line.getCredit())
+                    ))
+                    .toList();
+        }
+        Company company = context.company();
+        List<Account> accounts = accountRepository.findByCompanyOrderByCodeAsc(company);
+        if (context.source() == ReportSource.AS_OF) {
+            Map<Long, BigDecimal> balances = summarizeBalances(company, context.asOfDate());
+            return accounts.stream()
+                    .map(account -> toTrialBalanceLine(account, balances.getOrDefault(account.getId(), BigDecimal.ZERO)))
+                    .toList();
+        }
+        return accounts.stream()
+                .map(account -> toTrialBalanceLine(account, safe(account.getBalance())))
+                .toList();
+    }
+
+    private Map<Long, BigDecimal> summarizeBalances(Company company, LocalDate asOfDate) {
+        Map<Long, BigDecimal> balances = new HashMap<>();
+        List<Object[]> rows = journalLineRepository.summarizeByAccountUpTo(company, asOfDate);
+        for (Object[] row : rows) {
+            if (row == null || row.length < 3 || row[0] == null) {
+                continue;
+            }
+            Long accountId = (Long) row[0];
+            BigDecimal debit = row[1] == null ? BigDecimal.ZERO : (BigDecimal) row[1];
+            BigDecimal credit = row[2] == null ? BigDecimal.ZERO : (BigDecimal) row[2];
+            balances.put(accountId, debit.subtract(credit));
+        }
+        return balances;
     }
 
     private boolean isInventoryAccount(Account account) {
@@ -349,11 +451,11 @@ public class ReportService {
         return value == null ? BigDecimal.ZERO : value;
     }
 
-    private TrialBalanceDto.Row toTrialBalanceRow(Account account) {
-        BigDecimal balance = safe(account.getBalance());
-        AccountType type = account.getType();
+    private TrialBalanceLine toTrialBalanceLine(Account account, BigDecimal balance) {
+        BigDecimal safeBalance = safe(balance);
+        AccountType type = account != null ? account.getType() : null;
         boolean debitNormal = type == null || type.isDebitNormalBalance();
-        BigDecimal normalized = debitNormal ? balance : balance.negate();
+        BigDecimal normalized = debitNormal ? safeBalance : safeBalance.negate();
         BigDecimal debit;
         BigDecimal credit;
         if (normalized.compareTo(BigDecimal.ZERO) >= 0) {
@@ -364,18 +466,41 @@ public class ReportService {
             debit = debitNormal ? BigDecimal.ZERO : amount;
             credit = debitNormal ? amount : BigDecimal.ZERO;
         }
-        return new TrialBalanceDto.Row(
-                account.getId(),
-                account.getCode(),
-                account.getName(),
+        return new TrialBalanceLine(
+                account != null ? account.getId() : null,
+                account != null ? account.getCode() : null,
+                account != null ? account.getName() : null,
                 type,
                 debit,
-                credit
-        );
+                credit);
     }
 
     private enum CashCategory {
         OPERATING, INVESTING, FINANCING
+    }
+
+    private record TrialBalanceLine(
+            Long accountId,
+            String code,
+            String name,
+            AccountType type,
+            BigDecimal debit,
+            BigDecimal credit
+    ) {}
+
+    private record ReportContext(
+            Company company,
+            LocalDate asOfDate,
+            AccountingPeriod period,
+            AccountingPeriodSnapshot snapshot,
+            ReportSource source
+    ) {
+        ReportMetadata metadata() {
+            Long periodId = period != null ? period.getId() : null;
+            String status = period != null && period.getStatus() != null ? period.getStatus().name() : null;
+            Long snapshotId = snapshot != null ? snapshot.getId() : null;
+            return new ReportMetadata(asOfDate, source, periodId, status, snapshotId);
+        }
     }
 
     private static class AgedBucket {

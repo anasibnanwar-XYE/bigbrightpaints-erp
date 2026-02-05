@@ -151,6 +151,7 @@ Purpose: a single, concrete list of **P0** items that block a safe enterprise de
   - Fix: persist period-end snapshots at close, and make report paths read snapshots for CLOSED periods.
   - Status (2026-02-05): ✅ snapshots persisted + closed-period reports read snapshots; tests:
     `CR_PeriodCloseSnapshotsTest.trialBalanceAsOf_usesSnapshotForClosedPeriod`,
+    `CR_PeriodCloseSnapshotsTest.balanceSheetAsOf_usesSnapshotForClosedPeriod`,
     `CR_PeriodCloseSnapshotsTest.inventoryValuationAsOf_usesSnapshotForClosedPeriod`.
 - Closed-period drift must be blocked by predeploy scans (missing snapshots / late postings / snapshot mismatch).
   - Status (2026-02-05): ✅ drift scans + tests:

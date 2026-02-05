@@ -6,4 +6,5 @@ public record ProfitLossDto(BigDecimal revenue,
                              BigDecimal costOfGoodsSold,
                              BigDecimal grossProfit,
                              BigDecimal operatingExpenses,
-                             BigDecimal netIncome) {}
+                             BigDecimal netIncome,
+                             ReportMetadata metadata) {}

@@ -4,4 +4,5 @@ import java.math.BigDecimal;
 
 public record BalanceSheetDto(BigDecimal totalAssets,
                               BigDecimal totalLiabilities,
-                              BigDecimal totalEquity) {}
+                              BigDecimal totalEquity,
+                              ReportMetadata metadata) {}

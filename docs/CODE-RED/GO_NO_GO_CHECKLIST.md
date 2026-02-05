@@ -72,6 +72,7 @@ Operational risk
 - Packing/production endpoints can be retried and double-consume or double-post.
 - Legacy factory batch logging or manual finished-good batch injection endpoints are reachable in prod (must be gated or aliased to production logs).
 - Period close/as-of correctness is not enforceable (closed periods can drift when “today” changes).
+- Report responses for CLOSED periods fall back to live data or omit snapshot metadata (source + snapshot id).
 - Flyway history is inconsistent (checksum drift, missing versions, extra versions, or count/max mismatch).
 - Public attack surface is unintentionally open:
   - Swagger/OpenAPI or detailed actuator endpoints are reachable without auth in prod.

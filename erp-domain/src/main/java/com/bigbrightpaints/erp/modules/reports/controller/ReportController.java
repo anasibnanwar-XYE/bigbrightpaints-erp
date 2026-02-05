@@ -29,12 +29,18 @@ public class ReportController {
     }
 
     @GetMapping("/reports/balance-sheet")
-    public ResponseEntity<ApiResponse<BalanceSheetDto>> balanceSheet() {
+    public ResponseEntity<ApiResponse<BalanceSheetDto>> balanceSheet(@RequestParam(required = false) String date) {
+        if (date != null && !date.isBlank()) {
+            return ResponseEntity.ok(ApiResponse.success(reportService.balanceSheet(java.time.LocalDate.parse(date))));
+        }
         return ResponseEntity.ok(ApiResponse.success(reportService.balanceSheet()));
     }
 
     @GetMapping("/reports/profit-loss")
-    public ResponseEntity<ApiResponse<ProfitLossDto>> profitLoss() {
+    public ResponseEntity<ApiResponse<ProfitLossDto>> profitLoss(@RequestParam(required = false) String date) {
+        if (date != null && !date.isBlank()) {
+            return ResponseEntity.ok(ApiResponse.success(reportService.profitLoss(java.time.LocalDate.parse(date))));
+        }
         return ResponseEntity.ok(ApiResponse.success(reportService.profitLoss()));
     }
 
@@ -69,7 +75,10 @@ public class ReportController {
     }
 
     @GetMapping("/reports/trial-balance")
-    public ResponseEntity<ApiResponse<TrialBalanceDto>> trialBalance() {
+    public ResponseEntity<ApiResponse<TrialBalanceDto>> trialBalance(@RequestParam(required = false) String date) {
+        if (date != null && !date.isBlank()) {
+            return ResponseEntity.ok(ApiResponse.success(reportService.trialBalance(java.time.LocalDate.parse(date))));
+        }
         return ResponseEntity.ok(ApiResponse.success(reportService.trialBalance()));
     }
 

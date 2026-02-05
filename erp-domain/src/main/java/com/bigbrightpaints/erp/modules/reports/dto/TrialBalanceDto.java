@@ -9,7 +9,8 @@ public record TrialBalanceDto(
         List<Row> rows,
         BigDecimal totalDebit,
         BigDecimal totalCredit,
-        boolean balanced
+        boolean balanced,
+        ReportMetadata metadata
 ) {
     public record Row(
             Long accountId,
