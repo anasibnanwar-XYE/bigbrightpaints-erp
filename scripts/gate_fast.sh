@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ARTIFACT_DIR="$ROOT_DIR/artifacts/gate-fast"
 TRUTH_TEST_ROOT="$ROOT_DIR/erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite"
+REQUIRE_DIFF_BASE="${GATE_FAST_REQUIRE_DIFF_BASE:-false}"
+RELEASE_VALIDATION_MODE="${GATE_FAST_RELEASE_VALIDATION_MODE:-false}"
 rm -rf "$ARTIFACT_DIR"
 mkdir -p "$ARTIFACT_DIR"
 
@@ -35,6 +37,21 @@ resolve_diff_base() {
 
   echo "HEAD~1"
 }
+
+if [[ "$RELEASE_VALIDATION_MODE" == "true" ]]; then
+  REQUIRE_DIFF_BASE="true"
+fi
+
+if [[ "$REQUIRE_DIFF_BASE" == "true" ]]; then
+  if [[ -z "${DIFF_BASE:-}" ]]; then
+    echo "[gate-fast] FAIL: explicit DIFF_BASE is required when GATE_FAST_REQUIRE_DIFF_BASE=true"
+    exit 2
+  fi
+  if [[ "$DIFF_BASE" =~ ^HEAD~ ]]; then
+    echo "[gate-fast] FAIL: HEAD~N is not allowed in release validation mode; use a fixed RELEASE_ANCHOR_SHA"
+    exit 2
+  fi
+fi
 
 echo "[gate-fast] validate catalog"
 python3 "$ROOT_DIR/scripts/validate_test_catalog.py" \

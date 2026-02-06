@@ -41,10 +41,22 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
         assertThatThrownBy(() -> enforcer.checkOrderApprovalPermissions(null, "C1"))
                 .isInstanceOf(AccessDeniedException.class)
                 .hasMessageContaining("Missing user or company context");
+        assertThatThrownBy(() -> enforcer.checkOrderApprovalPermissions("u1", null))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("Missing user or company context");
         assertThatThrownBy(() -> enforcer.checkDispatchPermissions("u1", null))
                 .isInstanceOf(AccessDeniedException.class)
                 .hasMessageContaining("Missing user or company context");
+        assertThatThrownBy(() -> enforcer.checkDispatchPermissions(null, "C1"))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("Missing user or company context");
         assertThatThrownBy(() -> enforcer.checkPayrollPermissions(null, null))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("Missing user or company context");
+        assertThatThrownBy(() -> enforcer.checkPayrollPermissions("u1", null))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("Missing user or company context");
+        assertThatThrownBy(() -> enforcer.checkPayrollPermissions(null, "C1"))
                 .isInstanceOf(AccessDeniedException.class)
                 .hasMessageContaining("Missing user or company context");
 

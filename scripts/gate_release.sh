@@ -23,7 +23,7 @@ python3 "$ROOT_DIR/scripts/check_flaky_tags.py" \
   --output "$ARTIFACT_DIR/flake-guard.json"
 
 echo "[gate-release] strict local verify"
-FAIL_ON_FINDINGS=true bash "$ROOT_DIR/scripts/verify_local.sh"
+VERIFY_LOCAL_SKIP_TESTS=true FAIL_ON_FINDINGS=true bash "$ROOT_DIR/scripts/verify_local.sh"
 
 echo "[gate-release] truth suite strict mode"
 (

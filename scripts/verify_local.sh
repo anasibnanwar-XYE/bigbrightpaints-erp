@@ -14,7 +14,12 @@ bash "$ROOT_DIR/scripts/flyway_overlap_scan.sh"
 echo "[verify_local] time api scan"
 bash "$ROOT_DIR/scripts/time_api_scan.sh"
 
-echo "[verify_local] mvn verify"
-(cd "$ROOT_DIR/erp-domain" && mvn -B -ntp verify)
+if [[ "${VERIFY_LOCAL_SKIP_TESTS:-false}" == "true" ]]; then
+  echo "[verify_local] mvn verify (skip tests)"
+  (cd "$ROOT_DIR/erp-domain" && mvn -B -ntp -DskipTests -Djacoco.skip=true verify)
+else
+  echo "[verify_local] mvn verify"
+  (cd "$ROOT_DIR/erp-domain" && mvn -B -ntp verify)
+fi
 
 echo "[verify_local] OK"

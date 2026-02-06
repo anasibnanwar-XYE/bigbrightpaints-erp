@@ -12,10 +12,34 @@ def run(cmd: list[str]) -> str:
     return subprocess.check_output(cmd, text=True).strip()
 
 
+def git_ref_exists(ref: str) -> bool:
+    try:
+        run(["git", "rev-parse", "--verify", "--quiet", ref])
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
+
+def resolve_diff_base(explicit_base: str) -> str:
+    base = explicit_base.strip()
+    if base:
+        return base
+
+    for ref in ("origin/main", "main", "origin/master"):
+        if git_ref_exists(ref):
+            return run(["git", "merge-base", ref, "HEAD"])
+
+    return "HEAD~1"
+
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Enforce changed-file JaCoCo coverage")
     p.add_argument("--jacoco", required=True, help="Path to jacoco.xml")
-    p.add_argument("--diff-base", default="", help="Git base ref/sha for diff (default HEAD~1)")
+    p.add_argument(
+        "--diff-base",
+        default="",
+        help="Git base ref/sha for diff (default: merge-base origin/main HEAD, then main/master, else HEAD~1)",
+    )
     p.add_argument("--src-root", default="erp-domain/src/main/java", help="Source root to evaluate")
     p.add_argument("--threshold-line", type=float, default=0.95, help="Minimum changed-line coverage ratio")
     p.add_argument("--threshold-branch", type=float, default=0.90, help="Minimum changed-branch coverage ratio")
@@ -67,7 +91,7 @@ def build_jacoco_line_map(jacoco_xml: str, src_root: str) -> dict[str, dict[int,
 
 def main() -> int:
     args = parse_args()
-    base = args.diff_base.strip() or "HEAD~1"
+    base = resolve_diff_base(args.diff_base)
     try:
         run(["git", "rev-parse", "--verify", f"{base}^{{commit}}"])
     except subprocess.CalledProcessError:

@@ -381,6 +381,106 @@
       "accounting_math_critical": false,
       "cross_module_critical": true,
       "quality_flake_monitor": true
+    },
+    {
+      "id": "ts-runtime-reference-number-executable-coverage",
+      "test_path": "erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimeReferenceNumberServiceExecutableCoverageTest.java",
+      "owner": "erp-domain-team",
+      "class": "useful",
+      "module": "RuntimeCoverage",
+      "gate_membership": [
+        "gate-core",
+        "gate-release",
+        "gate-reconciliation",
+        "gate-quality"
+      ],
+      "tags": [
+        "concurrency",
+        "reconciliation"
+      ],
+      "accounting_math_critical": true,
+      "cross_module_critical": false,
+      "quality_flake_monitor": true
+    },
+    {
+      "id": "ts-runtime-company-default-accounts-executable-coverage",
+      "test_path": "erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimeCompanyDefaultAccountsExecutableCoverageTest.java",
+      "owner": "erp-domain-team",
+      "class": "useful",
+      "module": "RuntimeCoverage",
+      "gate_membership": [
+        "gate-core",
+        "gate-release",
+        "gate-reconciliation",
+        "gate-quality"
+      ],
+      "tags": [
+        "concurrency",
+        "reconciliation"
+      ],
+      "accounting_math_critical": true,
+      "cross_module_critical": false,
+      "quality_flake_monitor": true
+    },
+    {
+      "id": "ts-runtime-invoice-settlement-policy-executable-coverage",
+      "test_path": "erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimeInvoiceSettlementPolicyExecutableCoverageTest.java",
+      "owner": "erp-domain-team",
+      "class": "useful",
+      "module": "RuntimeCoverage",
+      "gate_membership": [
+        "gate-core",
+        "gate-release",
+        "gate-reconciliation",
+        "gate-quality"
+      ],
+      "tags": [
+        "concurrency",
+        "reconciliation"
+      ],
+      "accounting_math_critical": true,
+      "cross_module_critical": false,
+      "quality_flake_monitor": true
+    },
+    {
+      "id": "ts-runtime-trace-service-executable-coverage",
+      "test_path": "erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimeTraceServiceExecutableCoverageTest.java",
+      "owner": "erp-domain-team",
+      "class": "useful",
+      "module": "RuntimeCoverage",
+      "gate_membership": [
+        "gate-core",
+        "gate-release",
+        "gate-reconciliation",
+        "gate-quality"
+      ],
+      "tags": [
+        "concurrency",
+        "reconciliation"
+      ],
+      "accounting_math_critical": false,
+      "cross_module_critical": true,
+      "quality_flake_monitor": true
+    },
+    {
+      "id": "ts-runtime-orchestrator-idempotency-executable-coverage",
+      "test_path": "erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimeOrchestratorIdempotencyExecutableCoverageTest.java",
+      "owner": "erp-domain-team",
+      "class": "useful",
+      "module": "RuntimeCoverage",
+      "gate_membership": [
+        "gate-core",
+        "gate-release",
+        "gate-reconciliation",
+        "gate-quality"
+      ],
+      "tags": [
+        "concurrency",
+        "reconciliation"
+      ],
+      "accounting_math_critical": false,
+      "cross_module_critical": true,
+      "quality_flake_monitor": true
     }
   ]
 }

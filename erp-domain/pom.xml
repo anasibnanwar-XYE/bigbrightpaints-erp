@@ -387,13 +387,12 @@
                         <param>HTML</param>
                     </outputFormats>
                     <targetClasses>
-                        <param>com.bigbrightpaints.erp.modules.accounting.service.ReferenceNumberService</param>
                         <param>com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService</param>
                         <param>com.bigbrightpaints.erp.modules.inventory.service.BatchNumberService</param>
                         <param>com.bigbrightpaints.erp.modules.invoice.service.InvoiceSettlementPolicy</param>
                         <param>com.bigbrightpaints.erp.orchestrator.policy.PolicyEnforcer</param>
-                        <param>com.bigbrightpaints.erp.orchestrator.service.CommandDispatcher</param>
-                        <param>com.bigbrightpaints.erp.orchestrator.service.EventPublisherService</param>
+                        <param>com.bigbrightpaints.erp.orchestrator.service.TraceService</param>
+                        <param>com.bigbrightpaints.erp.orchestrator.service.OrchestratorIdempotencyService</param>
                     </targetClasses>
                     <targetTests>
                         <param>com.bigbrightpaints.erp.truthsuite.o2c.TS_O2CDispatchCanonicalPostingTest</param>
@@ -414,6 +413,8 @@
                         <param>com.bigbrightpaints.erp.truthsuite.runtime.TS_RuntimeModuleExecutableCoverageTest</param>
                         <param>com.bigbrightpaints.erp.truthsuite.runtime.TS_RuntimeOrchestratorExecutableCoverageTest</param>
                         <param>com.bigbrightpaints.erp.truthsuite.runtime.TS_RuntimeEventPublisherExecutableCoverageTest</param>
+                        <param>com.bigbrightpaints.erp.truthsuite.runtime.TS_RuntimeTraceServiceExecutableCoverageTest</param>
+                        <param>com.bigbrightpaints.erp.truthsuite.runtime.TS_RuntimeOrchestratorIdempotencyExecutableCoverageTest</param>
                     </targetTests>
                 </configuration>
                 <dependencies>

@@ -125,7 +125,7 @@ class TS_RuntimeModuleExecutableCoverageTest {
     void batchNumberService_generates_rm_fg_and_packing_identifiers() {
         NumberSequenceService numberSequenceService = mock(NumberSequenceService.class);
         when(numberSequenceService.nextValue(any(Company.class), any(String.class)))
-                .thenReturn(1L, 2L, 3L);
+                .thenReturn(1L, 2L, 3L, 4L, 5L, 6L);
 
         BatchNumberService service = new BatchNumberService(numberSequenceService);
         Company company = company("BT", "Asia/Kolkata");
@@ -145,6 +145,23 @@ class TS_RuntimeModuleExecutableCoverageTest {
         assertThat(rmBatch).startsWith("RM-RM01-");
         assertThat(fgBatch).startsWith("BT-FG-FG01-202602-");
         assertThat(slip).startsWith("BT-PS-");
+
+        RawMaterial materialWithoutSku = new RawMaterial();
+        materialWithoutSku.setCompany(company);
+        ReflectionTestUtils.setField(materialWithoutSku, "id", 77L);
+
+        Company utcFallbackCompany = company("BTZ", null);
+        FinishedGood finishedGoodWithoutSku = new FinishedGood();
+        finishedGoodWithoutSku.setCompany(utcFallbackCompany);
+        finishedGoodWithoutSku.setProductCode("   ");
+
+        String rmFallback = service.nextRawMaterialBatchCode(materialWithoutSku);
+        String fgFallback = service.nextFinishedGoodBatchCode(finishedGoodWithoutSku, null);
+        String utcSlip = service.nextPackagingSlipNumber(utcFallbackCompany);
+
+        assertThat(rmFallback).contains("RM-77-");
+        assertThat(fgFallback).contains("-FG-ITEM-");
+        assertThat(utcSlip).startsWith("BTZ-PS-");
     }
 
     @Test

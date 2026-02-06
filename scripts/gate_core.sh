@@ -33,9 +33,9 @@ echo "[gate-core] module coverage gate"
 python3 "$ROOT_DIR/scripts/module_coverage_gate.py" \
   --jacoco "$ROOT_DIR/erp-domain/target/site/jacoco/jacoco.xml" \
   --packages com.bigbrightpaints.erp.modules.accounting,com.bigbrightpaints.erp.modules.inventory,com.bigbrightpaints.erp.modules.invoice,com.bigbrightpaints.erp.orchestrator.policy,com.bigbrightpaints.erp.orchestrator.service,com.bigbrightpaints.erp.orchestrator.workflow \
-  --classes com.bigbrightpaints.erp.modules.accounting.service.ReferenceNumberService,com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService,com.bigbrightpaints.erp.modules.inventory.service.BatchNumberService,com.bigbrightpaints.erp.modules.invoice.service.InvoiceSettlementPolicy,com.bigbrightpaints.erp.orchestrator.policy.PolicyEnforcer,com.bigbrightpaints.erp.orchestrator.service.CommandDispatcher,com.bigbrightpaints.erp.orchestrator.service.EventPublisherService \
-  --line-threshold 0.55 \
-  --branch-threshold 0.35 \
+  --classes com.bigbrightpaints.erp.modules.accounting.service.ReferenceNumberService,com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService,com.bigbrightpaints.erp.modules.inventory.service.BatchNumberService,com.bigbrightpaints.erp.modules.invoice.service.InvoiceSettlementPolicy,com.bigbrightpaints.erp.orchestrator.policy.PolicyEnforcer,com.bigbrightpaints.erp.orchestrator.service.TraceService,com.bigbrightpaints.erp.orchestrator.service.OrchestratorIdempotencyService \
+  --line-threshold 0.92 \
+  --branch-threshold 0.85 \
   --active-classes-only \
   --min-active-classes 7 \
   --min-active-packages 4 \
