@@ -12,6 +12,7 @@ Usage: bash scripts/release_migration_matrix.sh [--artifact-dir <dir>]
 
 Environment:
   PGHOST, PGPORT, PGUSER, PGPASSWORD, PGDATABASE
+  SPRING_DATASOURCE_USERNAME, SPRING_DATASOURCE_PASSWORD (used as fallback when PGUSER/PGPASSWORD are unset)
   RELEASE_DB_PREFIX (default: codered_release)
   KEEP_RELEASE_DBS=true to skip cleanup
 USAGE
@@ -49,8 +50,8 @@ done
 
 PGHOST="${PGHOST:-127.0.0.1}"
 PGPORT="${PGPORT:-5432}"
-PGUSER="${PGUSER:-postgres}"
-PGPASSWORD="${PGPASSWORD:-postgres}"
+PGUSER="${PGUSER:-${SPRING_DATASOURCE_USERNAME:-erp}}"
+PGPASSWORD="${PGPASSWORD:-${SPRING_DATASOURCE_PASSWORD:-erp}}"
 PGDATABASE="${PGDATABASE:-postgres}"
 export PGHOST PGPORT PGUSER PGPASSWORD PGDATABASE
 

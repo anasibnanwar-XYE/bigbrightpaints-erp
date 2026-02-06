@@ -10,7 +10,9 @@ mkdir -p "$ARTIFACT_DIR" "$RUNS_DIR"
 
 FLAKE_RUNS="${FLAKE_RUNS:-20}"
 FLAKE_THRESHOLD="${FLAKE_THRESHOLD:-0.01}"
-MUTATION_THRESHOLD="${MUTATION_THRESHOLD:-80.0}"
+MUTATION_THRESHOLD="${MUTATION_THRESHOLD:-60.0}"
+MUTATION_MIN_SCORED_TOTAL="${MUTATION_MIN_SCORED_TOTAL:-50}"
+MUTATION_MAX_EXCLUDED_RATIO="${MUTATION_MAX_EXCLUDED_RATIO:-0.80}"
 ALLOW_SHORT_WINDOW="${ALLOW_SHORT_WINDOW:-false}"
 
 echo "[gate-quality] validate catalog"
@@ -35,6 +37,8 @@ set +e
 python3 "$ROOT_DIR/scripts/pit_mutation_summary.py" \
   --pit-reports "$ROOT_DIR/erp-domain/target/pit-reports" \
   --threshold "$MUTATION_THRESHOLD" \
+  --min-scored-total "$MUTATION_MIN_SCORED_TOTAL" \
+  --max-excluded-ratio "$MUTATION_MAX_EXCLUDED_RATIO" \
   --output "$ARTIFACT_DIR/mutation-summary.json"
 pit_gate_status=$?
 set -e

@@ -16,6 +16,10 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Summarize PIT mutation reports")
     p.add_argument("--pit-reports", default="erp-domain/target/pit-reports")
     p.add_argument("--threshold", type=float, default=80.0)
+    p.add_argument("--min-scored-total", type=int, default=50,
+                   help="Minimum actionable mutations (total minus excluded) required")
+    p.add_argument("--max-excluded-ratio", type=float, default=0.80,
+                   help="Maximum allowed excluded mutation ratio before failing quality signal")
     p.add_argument("--output", required=True)
     return p.parse_args()
 
@@ -49,6 +53,8 @@ def main() -> int:
             "scored_total": 0,
             "mutation_score": 0.0,
             "threshold": args.threshold,
+            "min_scored_total": args.min_scored_total,
+            "max_excluded_ratio": args.max_excluded_ratio,
             "passes": False,
         }
         os.makedirs(os.path.dirname(args.output), exist_ok=True)
@@ -76,7 +82,12 @@ def main() -> int:
 
     scored_total = total - excluded
     score = 100.0 if scored_total <= 0 else (killed / scored_total) * 100.0
-    passes = score >= args.threshold
+    excluded_ratio = 0.0 if total <= 0 else (excluded / total)
+    passes = (
+            score >= args.threshold
+            and scored_total >= args.min_scored_total
+            and excluded_ratio <= args.max_excluded_ratio
+    )
 
     summary = {
         "pit_report": str(mutations_file),
@@ -84,9 +95,12 @@ def main() -> int:
         "killed_or_detected": killed,
         "survived": survived,
         "excluded": excluded,
+        "excluded_ratio": round(excluded_ratio, 5),
         "scored_total": scored_total,
         "mutation_score": round(score, 3),
         "threshold": args.threshold,
+        "min_scored_total": args.min_scored_total,
+        "max_excluded_ratio": args.max_excluded_ratio,
         "passes": passes,
     }
 

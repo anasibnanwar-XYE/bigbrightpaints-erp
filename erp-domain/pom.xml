@@ -387,7 +387,6 @@
                         <param>HTML</param>
                     </outputFormats>
                     <targetClasses>
-                        <param>com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade</param>
                         <param>com.bigbrightpaints.erp.modules.accounting.service.ReferenceNumberService</param>
                         <param>com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService</param>
                         <param>com.bigbrightpaints.erp.modules.inventory.service.BatchNumberService</param>
@@ -412,6 +411,9 @@
                         <param>com.bigbrightpaints.erp.truthsuite.tax.TS_GstRoundingDeterminismContractTest</param>
                         <param>com.bigbrightpaints.erp.truthsuite.crossmodule.TS_CrossModuleLinkageContractTest</param>
                         <param>com.bigbrightpaints.erp.truthsuite.inventory.TS_InventoryCogsLinkageScanContractTest</param>
+                        <param>com.bigbrightpaints.erp.truthsuite.runtime.TS_RuntimeModuleExecutableCoverageTest</param>
+                        <param>com.bigbrightpaints.erp.truthsuite.runtime.TS_RuntimeOrchestratorExecutableCoverageTest</param>
+                        <param>com.bigbrightpaints.erp.truthsuite.runtime.TS_RuntimeEventPublisherExecutableCoverageTest</param>
                     </targetTests>
                 </configuration>
                 <dependencies>

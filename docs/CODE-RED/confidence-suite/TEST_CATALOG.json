@@ -321,6 +321,66 @@
       "accounting_math_critical": true,
       "cross_module_critical": true,
       "quality_flake_monitor": true
+    },
+    {
+      "id": "ts-runtime-module-executable-coverage",
+      "test_path": "erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimeModuleExecutableCoverageTest.java",
+      "owner": "erp-domain-team",
+      "class": "useful",
+      "module": "RuntimeCoverage",
+      "gate_membership": [
+        "gate-core",
+        "gate-release",
+        "gate-reconciliation",
+        "gate-quality"
+      ],
+      "tags": [
+        "concurrency",
+        "reconciliation"
+      ],
+      "accounting_math_critical": true,
+      "cross_module_critical": true,
+      "quality_flake_monitor": true
+    },
+    {
+      "id": "ts-runtime-orchestrator-executable-coverage",
+      "test_path": "erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimeOrchestratorExecutableCoverageTest.java",
+      "owner": "erp-domain-team",
+      "class": "useful",
+      "module": "RuntimeCoverage",
+      "gate_membership": [
+        "gate-core",
+        "gate-release",
+        "gate-reconciliation",
+        "gate-quality"
+      ],
+      "tags": [
+        "concurrency",
+        "reconciliation"
+      ],
+      "accounting_math_critical": false,
+      "cross_module_critical": true,
+      "quality_flake_monitor": true
+    },
+    {
+      "id": "ts-runtime-event-publisher-executable-coverage",
+      "test_path": "erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimeEventPublisherExecutableCoverageTest.java",
+      "owner": "erp-domain-team",
+      "class": "useful",
+      "module": "RuntimeCoverage",
+      "gate_membership": [
+        "gate-core",
+        "gate-release",
+        "gate-reconciliation",
+        "gate-quality"
+      ],
+      "tags": [
+        "concurrency",
+        "reconciliation"
+      ],
+      "accounting_math_critical": false,
+      "cross_module_critical": true,
+      "quality_flake_monitor": true
     }
   ]
 }

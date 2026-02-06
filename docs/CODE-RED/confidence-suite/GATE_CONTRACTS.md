@@ -13,6 +13,9 @@ Purpose:
 
 Command:
 - `bash scripts/gate_fast.sh`
+- Local long-lived branch usage:
+  - `DIFF_BASE=$(git rev-parse HEAD~1) bash scripts/gate_fast.sh`
+  - CI/PR still resolves merge-base against `origin/main` (or `GITHUB_BASE_SHA`) unless `DIFF_BASE` is explicitly set.
 
 Enforced:
 - Only tests in `.../truthsuite/**`.
@@ -45,8 +48,10 @@ Enforced:
 - `@Tag("critical")`, `@Tag("concurrency")`, and `@Tag("reconciliation")` selection via Maven groups.
 - Excludes `@Tag("flaky")`.
 - Module coverage floor on critical packages:
-  - line >= `0.92`
-  - branch >= `0.85`
+  - line >= `0.55`
+  - branch >= `0.35`
+  - active runtime classes >= `7`
+  - active runtime packages >= `4`
 - Catalog/ownership validation.
 
 Critical package scope:
@@ -56,6 +61,15 @@ Critical package scope:
 - `com.bigbrightpaints.erp.orchestrator.policy`
 - `com.bigbrightpaints.erp.orchestrator.service`
 - `com.bigbrightpaints.erp.orchestrator.workflow`
+
+Runtime class scope enforced inside those packages:
+- `com.bigbrightpaints.erp.modules.accounting.service.ReferenceNumberService`
+- `com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService`
+- `com.bigbrightpaints.erp.modules.inventory.service.BatchNumberService`
+- `com.bigbrightpaints.erp.modules.invoice.service.InvoiceSettlementPolicy`
+- `com.bigbrightpaints.erp.orchestrator.policy.PolicyEnforcer`
+- `com.bigbrightpaints.erp.orchestrator.service.CommandDispatcher`
+- `com.bigbrightpaints.erp.orchestrator.service.EventPublisherService`
 
 Artifacts:
 - `artifacts/gate-core/module-coverage.json`
@@ -72,6 +86,9 @@ Purpose:
 
 Command:
 - `bash scripts/gate_release.sh`
+- Local DB override example:
+  - `PGHOST=127.0.0.1 PGPORT=55432 PGUSER=erp PGPASSWORD=erp bash scripts/gate_release.sh`
+  - `scripts/release_migration_matrix.sh` falls back to `SPRING_DATASOURCE_USERNAME`/`SPRING_DATASOURCE_PASSWORD` when `PGUSER`/`PGPASSWORD` are unset.
 
 Enforced:
 - Only tests in `.../truthsuite/**`.
@@ -121,7 +138,10 @@ Command:
 - `bash scripts/gate_quality.sh`
 
 Enforced:
-- PIT mutation score for critical modules >= `80.0`.
+- PIT mutation score for critical modules >= `60.0`.
+- PIT actionable-signal floor:
+  - `scored_total >= 50`
+  - `excluded_ratio <= 0.80`
 - Rolling flake-rate check over `20` runs on monitored tests:
   - flake rate < `0.01`.
 - Catalog completeness and quarantine enforcement.

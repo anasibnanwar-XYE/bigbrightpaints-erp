@@ -68,8 +68,18 @@ def build_jacoco_line_map(jacoco_xml: str, src_root: str) -> dict[str, dict[int,
 def main() -> int:
     args = parse_args()
     base = args.diff_base.strip() or "HEAD~1"
+    try:
+        run(["git", "rev-parse", "--verify", f"{base}^{{commit}}"])
+    except subprocess.CalledProcessError:
+        print(f"[changed_files_coverage] invalid --diff-base commit: {base}", file=sys.stderr)
+        return 2
+
     diff_cmd = ["git", "diff", "--unified=0", f"{base}...HEAD", "--", args.src_root]
-    diff_text = run(diff_cmd)
+    try:
+        diff_text = run(diff_cmd)
+    except subprocess.CalledProcessError as exc:
+        print(f"[changed_files_coverage] failed to diff against base={base}: {exc}", file=sys.stderr)
+        return 2
     changed = parse_changed_lines(diff_text)
 
     jacoco = build_jacoco_line_map(args.jacoco, args.src_root)

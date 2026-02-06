@@ -7,6 +7,35 @@ TRUTH_TEST_ROOT="$ROOT_DIR/erp-domain/src/test/java/com/bigbrightpaints/erp/trut
 rm -rf "$ARTIFACT_DIR"
 mkdir -p "$ARTIFACT_DIR"
 
+resolve_diff_base() {
+  if [[ -n "${DIFF_BASE:-}" ]]; then
+    echo "$DIFF_BASE"
+    return 0
+  fi
+
+  if [[ -n "${GITHUB_BASE_SHA:-}" ]]; then
+    echo "$GITHUB_BASE_SHA"
+    return 0
+  fi
+
+  if git rev-parse --verify --quiet origin/main >/dev/null; then
+    git merge-base origin/main HEAD
+    return 0
+  fi
+
+  if git rev-parse --verify --quiet main >/dev/null; then
+    git merge-base main HEAD
+    return 0
+  fi
+
+  if git rev-parse --verify --quiet origin/master >/dev/null; then
+    git merge-base origin/master HEAD
+    return 0
+  fi
+
+  echo "HEAD~1"
+}
+
 echo "[gate-fast] validate catalog"
 python3 "$ROOT_DIR/scripts/validate_test_catalog.py" \
   --catalog "$ROOT_DIR/docs/CODE-RED/confidence-suite/TEST_CATALOG.json" \
@@ -29,7 +58,7 @@ echo "[gate-fast] run critical truth tests"
   mvn -B -ntp -Pgate-fast test
 )
 
-DIFF_BASE="${DIFF_BASE:-${GITHUB_BASE_SHA:-HEAD~1}}"
+DIFF_BASE="$(resolve_diff_base)"
 echo "[gate-fast] changed-files coverage against base=$DIFF_BASE"
 python3 "$ROOT_DIR/scripts/changed_files_coverage.py" \
   --jacoco "$ROOT_DIR/erp-domain/target/site/jacoco/jacoco.xml" \
