@@ -13,6 +13,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.HexFormat;
+import java.util.UUID;
 import java.util.function.Supplier;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -90,6 +91,7 @@ public class OrchestratorIdempotencyService {
             return;
         }
         command.markSuccess();
+        persistStatusUpdate(command.getId(), OrchestratorCommand::markSuccess);
     }
 
     public void markFailed(OrchestratorCommand command, RuntimeException ex) {
@@ -101,6 +103,21 @@ public class OrchestratorIdempotencyService {
             message = ex != null ? ex.getClass().getSimpleName() : "FAILED";
         }
         command.markFailed(message);
+        String resolvedMessage = message;
+        persistStatusUpdate(command.getId(), managed -> managed.markFailed(resolvedMessage));
+    }
+
+    private void persistStatusUpdate(UUID commandId, java.util.function.Consumer<OrchestratorCommand> mutator) {
+        if (commandId == null || mutator == null) {
+            return;
+        }
+        txTemplate.execute(status -> {
+            OrchestratorCommand managed = commandRepository.findById(commandId)
+                    .orElseThrow(() -> new IllegalStateException("Orchestrator command row not found for id " + commandId));
+            mutator.accept(managed);
+            commandRepository.saveAndFlush(managed);
+            return null;
+        });
     }
 
     private String normalizeKey(String idempotencyKey) {
