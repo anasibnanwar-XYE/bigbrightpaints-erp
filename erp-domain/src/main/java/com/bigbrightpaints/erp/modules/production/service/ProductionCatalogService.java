@@ -7,6 +7,8 @@ import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
+import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
@@ -69,6 +71,7 @@ public class ProductionCatalogService {
     private static final Pattern NON_ALPHANUM = Pattern.compile("[^A-Z0-9]");
     private static final Pattern NON_SKU_CHAR = Pattern.compile("[^A-Z0-9-]");
     private static final Pattern SEQUENCE_PATTERN = Pattern.compile(".*-(\\d{3})$");
+    private static final String SEMI_FINISHED_SUFFIX = "-BULK";
     private static final List<String> RAW_MATERIAL_CATEGORIES = List.of("RAW_MATERIAL", "RAW MATERIAL", "RAW-MATERIAL");
     private static final List<String> FINISHED_GOOD_ACCOUNT_KEYS = List.of(
             "fgValuationAccountId",
@@ -91,6 +94,7 @@ public class ProductionCatalogService {
     private final CompanyContextService companyContextService;
     private final ProductionBrandRepository brandRepository;
     private final ProductionProductRepository productRepository;
+    private final FinishedGoodRepository finishedGoodRepository;
     private final RawMaterialRepository rawMaterialRepository;
     private final CompanyEntityLookup companyEntityLookup;
     private final CompanyDefaultAccountsService companyDefaultAccountsService;
@@ -102,6 +106,7 @@ public class ProductionCatalogService {
     public ProductionCatalogService(CompanyContextService companyContextService,
                                     ProductionBrandRepository brandRepository,
                                     ProductionProductRepository productRepository,
+                                    FinishedGoodRepository finishedGoodRepository,
                                     RawMaterialRepository rawMaterialRepository,
                                     CompanyEntityLookup companyEntityLookup,
                                     CompanyDefaultAccountsService companyDefaultAccountsService,
@@ -111,6 +116,7 @@ public class ProductionCatalogService {
         this.companyContextService = companyContextService;
         this.brandRepository = brandRepository;
         this.productRepository = productRepository;
+        this.finishedGoodRepository = finishedGoodRepository;
         this.rawMaterialRepository = rawMaterialRepository;
         this.companyEntityLookup = companyEntityLookup;
         this.companyDefaultAccountsService = companyDefaultAccountsService;
@@ -310,6 +316,7 @@ public class ProductionCatalogService {
         if (productRepository.findByCompanyAndSkuCode(company, sku).isPresent()) {
             throw new IllegalArgumentException("SKU " + sku + " already exists");
         }
+        assertNotReservedSemiFinishedSku(sku);
 
         ProductionProduct product = new ProductionProduct();
         product.setCompany(company);
@@ -331,6 +338,7 @@ public class ProductionCatalogService {
         }
         product.setMetadata(metadata);
         ProductionProduct saved = productRepository.save(product);
+        ensureCatalogFinishedGood(company, saved);
         syncRawMaterial(company, saved);
         return toProductDto(saved);
     }
@@ -481,6 +489,7 @@ public class ProductionCatalogService {
                     new HashMap<>(Optional.ofNullable(product.getMetadata()).orElseGet(HashMap::new))));
         }
         ProductionProduct saved = productRepository.save(product);
+        ensureCatalogFinishedGood(company, saved);
         return toProductDto(saved);
     }
 
@@ -513,16 +522,22 @@ public class ProductionCatalogService {
             String sku = StringUtils.hasText(sanitizedSku)
                     ? sanitizedSku
                     : determineSku(company, brand, category, row.defaultColour(), sizeLabel, null);
+            assertNotReservedSemiFinishedSku(sku);
             product.setCompany(company);
             product.setBrand(brand);
             product.setSkuCode(sku);
             product.setActive(true);
+        } else if (StringUtils.hasText(sanitizedSku) && !sanitizedSku.equalsIgnoreCase(product.getSkuCode())) {
+            throw new IllegalArgumentException(
+                    "SKU cannot be changed for an existing product. Existing SKU: "
+                            + product.getSkuCode() + ", provided: " + sanitizedSku);
         } else if (product.getBrand() != null && !product.getBrand().getId().equals(brand.getId())) {
             // Avoid accidental brand switching when reusing SKU
             brand = product.getBrand();
         }
         applyRowToProduct(product, company, brand, row, productName, category, sizeLabel, created);
         ProductionProduct saved = productRepository.save(product);
+        ensureCatalogFinishedGood(company, saved);
         cacheProduct(context, saved);
         boolean seeded = syncRawMaterial(company, saved);
         return new ProcessOutcome(resolution.created(), created, seeded);
@@ -639,7 +654,18 @@ public class ProductionCatalogService {
                                                   String productName,
                                                   String sanitizedSku) {
         if (StringUtils.hasText(sanitizedSku)) {
-            return productRepository.findByCompanyAndSkuCode(company, sanitizedSku).orElse(null);
+            ProductionProduct bySku = productRepository.findByCompanyAndSkuCode(company, sanitizedSku).orElse(null);
+            if (bySku != null) {
+                return bySku;
+            }
+            ProductionProduct byName = productRepository.findByBrandAndProductNameIgnoreCase(brand, productName).orElse(null);
+            if (byName != null) {
+                throw new IllegalArgumentException(
+                        "SKU cannot be changed for existing product " + productName
+                                + ". Existing SKU: " + byName.getSkuCode()
+                                + ", provided: " + sanitizedSku);
+            }
+            return null;
         }
         return productRepository.findByBrandAndProductNameIgnoreCase(brand, productName).orElse(null);
     }
@@ -799,11 +825,157 @@ public class ProductionCatalogService {
         return isNew;
     }
 
+    private void ensureCatalogFinishedGood(Company company, ProductionProduct product) {
+        if (product == null || isRawMaterialCategory(product.getCategory())) {
+            return;
+        }
+        String sku = product.getSkuCode();
+        if (!StringUtils.hasText(sku)) {
+            throw new IllegalStateException("Production product SKU is required to map finished goods");
+        }
+        Long valuationAccountId = requiredMetadataLong(product, "fgValuationAccountId");
+        Long cogsAccountId = requiredMetadataLong(product, "fgCogsAccountId");
+        Long revenueAccountId = requiredMetadataLong(product, "fgRevenueAccountId");
+        Long taxAccountId = requiredMetadataLong(product, "fgTaxAccountId");
+        Long discountAccountId = metadataLong(product, "fgDiscountAccountId");
+
+        FinishedGood finishedGood = finishedGoodRepository.findByCompanyAndProductCode(company, sku)
+                .orElseGet(() -> {
+                    FinishedGood created = new FinishedGood();
+                    created.setCompany(company);
+                    created.setProductCode(sku);
+                    created.setCurrentStock(BigDecimal.ZERO);
+                    created.setReservedStock(BigDecimal.ZERO);
+                    return created;
+                });
+
+        boolean dirty = false;
+        String productName = product.getProductName();
+        if (StringUtils.hasText(productName) && !Objects.equals(finishedGood.getName(), productName)) {
+            finishedGood.setName(productName);
+            dirty = true;
+        }
+        String unit = resolveUnit(product.getUnitOfMeasure());
+        if (!Objects.equals(finishedGood.getUnit(), unit)) {
+            finishedGood.setUnit(unit);
+            dirty = true;
+        }
+        if (!Objects.equals(finishedGood.getValuationAccountId(), valuationAccountId)) {
+            finishedGood.setValuationAccountId(valuationAccountId);
+            dirty = true;
+        }
+        if (!Objects.equals(finishedGood.getCogsAccountId(), cogsAccountId)) {
+            finishedGood.setCogsAccountId(cogsAccountId);
+            dirty = true;
+        }
+        if (!Objects.equals(finishedGood.getRevenueAccountId(), revenueAccountId)) {
+            finishedGood.setRevenueAccountId(revenueAccountId);
+            dirty = true;
+        }
+        if (!Objects.equals(finishedGood.getTaxAccountId(), taxAccountId)) {
+            finishedGood.setTaxAccountId(taxAccountId);
+            dirty = true;
+        }
+        if (!Objects.equals(finishedGood.getDiscountAccountId(), discountAccountId)) {
+            finishedGood.setDiscountAccountId(discountAccountId);
+            dirty = true;
+        }
+        if (!StringUtils.hasText(finishedGood.getCostingMethod())) {
+            finishedGood.setCostingMethod("FIFO");
+            dirty = true;
+        }
+        if (dirty) {
+            try {
+                finishedGoodRepository.save(finishedGood);
+            } catch (DataIntegrityViolationException ex) {
+                // Concurrent create on the same (company, product_code) should converge to existing row.
+                FinishedGood existing = finishedGoodRepository.findByCompanyAndProductCode(company, sku)
+                        .orElseThrow(() -> ex);
+                boolean needsSync = false;
+                if (StringUtils.hasText(productName) && !Objects.equals(existing.getName(), productName)) {
+                    existing.setName(productName);
+                    needsSync = true;
+                }
+                if (!Objects.equals(existing.getUnit(), unit)) {
+                    existing.setUnit(unit);
+                    needsSync = true;
+                }
+                if (!Objects.equals(existing.getValuationAccountId(), valuationAccountId)) {
+                    existing.setValuationAccountId(valuationAccountId);
+                    needsSync = true;
+                }
+                if (!Objects.equals(existing.getCogsAccountId(), cogsAccountId)) {
+                    existing.setCogsAccountId(cogsAccountId);
+                    needsSync = true;
+                }
+                if (!Objects.equals(existing.getRevenueAccountId(), revenueAccountId)) {
+                    existing.setRevenueAccountId(revenueAccountId);
+                    needsSync = true;
+                }
+                if (!Objects.equals(existing.getTaxAccountId(), taxAccountId)) {
+                    existing.setTaxAccountId(taxAccountId);
+                    needsSync = true;
+                }
+                if (!Objects.equals(existing.getDiscountAccountId(), discountAccountId)) {
+                    existing.setDiscountAccountId(discountAccountId);
+                    needsSync = true;
+                }
+                if (!StringUtils.hasText(existing.getCostingMethod())) {
+                    existing.setCostingMethod("FIFO");
+                    needsSync = true;
+                }
+                if (needsSync) {
+                    finishedGoodRepository.save(existing);
+                }
+            }
+        }
+    }
+
     private String resolveUnit(String unit) {
         if (StringUtils.hasText(unit)) {
             return unit.trim();
         }
         return "UNIT";
+    }
+
+    private Long requiredMetadataLong(ProductionProduct product, String key) {
+        Long value = metadataLong(product, key);
+        if (value == null || value <= 0) {
+            throw new IllegalStateException(
+                    "Product " + product.getSkuCode() + " is missing required metadata: " + key);
+        }
+        return value;
+    }
+
+    private Long metadataLong(ProductionProduct product, String key) {
+        if (product == null || product.getMetadata() == null) {
+            return null;
+        }
+        Object candidate = product.getMetadata().get(key);
+        if (candidate instanceof Number number) {
+            long value = number.longValue();
+            return value > 0 ? value : null;
+        }
+        if (candidate instanceof String text && StringUtils.hasText(text)) {
+            try {
+                long value = Long.parseLong(text.trim());
+                return value > 0 ? value : null;
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private void assertNotReservedSemiFinishedSku(String sku) {
+        if (!StringUtils.hasText(sku)) {
+            return;
+        }
+        if (sku.trim().toUpperCase(Locale.ROOT).endsWith(SEMI_FINISHED_SUFFIX)) {
+            throw new IllegalArgumentException(
+                    "SKU suffix '" + SEMI_FINISHED_SUFFIX
+                            + "' is reserved for internally generated semi-finished inventory");
+        }
     }
 
     private boolean isRawMaterialCategory(String category) {
