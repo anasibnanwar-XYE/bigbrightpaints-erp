@@ -2,6 +2,7 @@ package com.bigbrightpaints.erp.modules.accounting.service;
 
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriod;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodSnapshot;
@@ -150,24 +151,18 @@ public class TemporalBalanceService {
         for (Account account : accounts) {
             BigDecimal balance = balances.getOrDefault(account.getId(), BigDecimal.ZERO);
             if (balance.compareTo(BigDecimal.ZERO) != 0) {
-                boolean isDebit = account.getType().isDebitNormalBalance() 
-                        ? balance.compareTo(BigDecimal.ZERO) > 0
-                        : balance.compareTo(BigDecimal.ZERO) < 0;
-                
-                BigDecimal debit = isDebit ? balance.abs() : BigDecimal.ZERO;
-                BigDecimal credit = isDebit ? BigDecimal.ZERO : balance.abs();
-                
+                TrialBalanceAmounts amounts = toTrialBalanceAmounts(account, balance);
                 entries.add(new TrialBalanceEntry(
                         account.getId(),
                         account.getCode(),
                         account.getName(),
-                        account.getType().name(),
-                        debit,
-                        credit
+                        account.getType() != null ? account.getType().name() : null,
+                        amounts.debit(),
+                        amounts.credit()
                 ));
-                
-                totalDebits = totalDebits.add(debit);
-                totalCredits = totalCredits.add(credit);
+
+                totalDebits = totalDebits.add(amounts.debit());
+                totalCredits = totalCredits.add(amounts.credit());
             }
         }
         
@@ -273,6 +268,23 @@ public class TemporalBalanceService {
         return balances;
     }
 
+    private TrialBalanceAmounts toTrialBalanceAmounts(Account account, BigDecimal balance) {
+        AccountType type = account != null ? account.getType() : null;
+        boolean debitNormal = type == null || type.isDebitNormalBalance();
+        BigDecimal normalized = debitNormal ? safe(balance) : safe(balance).negate();
+        BigDecimal debit;
+        BigDecimal credit;
+        if (normalized.compareTo(BigDecimal.ZERO) >= 0) {
+            debit = debitNormal ? normalized : BigDecimal.ZERO;
+            credit = debitNormal ? BigDecimal.ZERO : normalized;
+        } else {
+            BigDecimal amount = normalized.abs();
+            debit = debitNormal ? BigDecimal.ZERO : amount;
+            credit = debitNormal ? amount : BigDecimal.ZERO;
+        }
+        return new TrialBalanceAmounts(debit, credit);
+    }
+
     private Instant resolveEntryTimestamp(JournalEntry entry) {
         if (entry == null) {
             return null;
@@ -343,5 +355,10 @@ public class TemporalBalanceService {
             LocalDate date2,
             BigDecimal balance2,
             BigDecimal change
+    ) {}
+
+    private record TrialBalanceAmounts(
+            BigDecimal debit,
+            BigDecimal credit
     ) {}
 }
