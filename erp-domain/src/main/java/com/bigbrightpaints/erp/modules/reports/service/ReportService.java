@@ -157,12 +157,10 @@ public class ReportService {
                 if (delta.compareTo(BigDecimal.ZERO) == 0) {
                     continue;
                 }
-                CashFlowSection section = resolveCashFlowSection(line, lines);
-                switch (section) {
-                    case INVESTING -> investing = investing.add(delta);
-                    case FINANCING -> financing = financing.add(delta);
-                    default -> operating = operating.add(delta);
-                }
+                Map<CashFlowSection, BigDecimal> allocations = resolveCashFlowAllocations(line, lines, delta);
+                operating = operating.add(safe(allocations.get(CashFlowSection.OPERATING)));
+                investing = investing.add(safe(allocations.get(CashFlowSection.INVESTING)));
+                financing = financing.add(safe(allocations.get(CashFlowSection.FINANCING)));
             }
         }
         BigDecimal net = operating.add(investing).add(financing);
@@ -458,13 +456,59 @@ public class ReportService {
                 || label.contains("upi");
     }
 
-    private CashFlowSection resolveCashFlowSection(JournalLine cashLine, List<JournalLine> entryLines) {
-        if (cashLine == null || entryLines == null || entryLines.isEmpty()) {
-            return CashFlowSection.OPERATING;
+    private Map<CashFlowSection, BigDecimal> resolveCashFlowAllocations(JournalLine cashLine,
+                                                                         List<JournalLine> entryLines,
+                                                                         BigDecimal cashDelta) {
+        Map<CashFlowSection, BigDecimal> allocations = new EnumMap<>(CashFlowSection.class);
+        if (cashDelta == null || cashDelta.compareTo(BigDecimal.ZERO) == 0) {
+            return allocations;
         }
-        BigDecimal cashDelta = safe(cashLine.getDebit()).subtract(safe(cashLine.getCredit()));
-        if (cashDelta.compareTo(BigDecimal.ZERO) == 0) {
-            return CashFlowSection.OPERATING;
+        Map<CashFlowSection, BigDecimal> weights = resolveCashFlowWeights(cashLine, entryLines, cashDelta);
+        if (weights.isEmpty()) {
+            allocations.put(CashFlowSection.OPERATING, cashDelta);
+            return allocations;
+        }
+        BigDecimal totalWeight = weights.values().stream()
+                .map(this::safe)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (totalWeight.compareTo(BigDecimal.ZERO) <= 0) {
+            allocations.put(CashFlowSection.OPERATING, cashDelta);
+            return allocations;
+        }
+
+        CashFlowSection dominantSection = dominantCashFlowSection(weights);
+        BigDecimal allocated = BigDecimal.ZERO;
+        for (Map.Entry<CashFlowSection, BigDecimal> entry : weights.entrySet()) {
+            CashFlowSection section = entry.getKey();
+            if (section == dominantSection) {
+                continue;
+            }
+            BigDecimal weight = safe(entry.getValue());
+            if (weight.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+            BigDecimal sectionAmount = roundCurrency(cashDelta.multiply(weight)
+                    .divide(totalWeight, 8, java.math.RoundingMode.HALF_UP));
+            if (sectionAmount.compareTo(BigDecimal.ZERO) == 0) {
+                continue;
+            }
+            allocations.merge(section, sectionAmount, BigDecimal::add);
+            allocated = allocated.add(sectionAmount);
+        }
+
+        BigDecimal dominantAmount = roundCurrency(cashDelta.subtract(allocated));
+        if (dominantAmount.compareTo(BigDecimal.ZERO) != 0) {
+            allocations.merge(dominantSection, dominantAmount, BigDecimal::add);
+        }
+        return allocations;
+    }
+
+    private Map<CashFlowSection, BigDecimal> resolveCashFlowWeights(JournalLine cashLine,
+                                                                     List<JournalLine> entryLines,
+                                                                     BigDecimal cashDelta) {
+        Map<CashFlowSection, BigDecimal> weights = new EnumMap<>(CashFlowSection.class);
+        if (cashLine == null || entryLines == null || entryLines.isEmpty() || cashDelta == null) {
+            return weights;
         }
         boolean inflow = cashDelta.compareTo(BigDecimal.ZERO) > 0;
         List<JournalLine> candidates = entryLines.stream()
@@ -480,17 +524,23 @@ public class ReportService {
                     .filter(line -> !isCashAccount(line.getAccount()))
                     .toList();
         }
-        if (candidates.isEmpty()) {
-            return CashFlowSection.OPERATING;
-        }
-        Map<CashFlowSection, BigDecimal> weights = new EnumMap<>(CashFlowSection.class);
         for (JournalLine candidate : candidates) {
             BigDecimal weight = inflow ? safe(candidate.getCredit()) : safe(candidate.getDebit());
             if (weight.compareTo(BigDecimal.ZERO) <= 0) {
                 weight = safe(candidate.getDebit()).add(safe(candidate.getCredit()));
             }
+            if (weight.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
             CashFlowSection section = classifyCashFlowCounterparty(candidate.getAccount());
             weights.merge(section, weight.abs(), BigDecimal::add);
+        }
+        return weights;
+    }
+
+    private CashFlowSection dominantCashFlowSection(Map<CashFlowSection, BigDecimal> weights) {
+        if (weights == null || weights.isEmpty()) {
+            return CashFlowSection.OPERATING;
         }
         CashFlowSection resolved = CashFlowSection.OPERATING;
         BigDecimal maxWeight = BigDecimal.ZERO;
@@ -502,6 +552,13 @@ public class ReportService {
             }
         }
         return resolved;
+    }
+
+    private BigDecimal roundCurrency(BigDecimal value) {
+        if (value == null) {
+            return BigDecimal.ZERO;
+        }
+        return value.setScale(2, java.math.RoundingMode.HALF_UP);
     }
 
     private CashFlowSection classifyCashFlowCounterparty(Account account) {

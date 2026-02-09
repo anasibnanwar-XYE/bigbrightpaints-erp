@@ -353,6 +353,69 @@ class PurchasingServiceTest {
     }
 
     @Test
+    @DisplayName("recordPurchaseReturn compares outstanding at currency precision")
+    void recordPurchaseReturn_currencyPrecisionComparison_allowsRoundedMatch() {
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(companyEntityLookup.requireSupplier(company, 10L)).thenReturn(supplier);
+        RawMaterialPurchase purchase = new RawMaterialPurchase();
+        ReflectionTestUtils.setField(purchase, "id", 61L);
+        purchase.setSupplier(supplier);
+        purchase.setTotalAmount(new BigDecimal("10.00"));
+        purchase.setOutstandingAmount(new BigDecimal("10.00"));
+        RawMaterialPurchaseLine purchaseLine = new RawMaterialPurchaseLine();
+        purchaseLine.setPurchase(purchase);
+        purchaseLine.setRawMaterial(rawMaterial);
+        purchaseLine.setQuantity(BigDecimal.ONE);
+        purchase.getLines().add(purchaseLine);
+        when(purchaseRepository.lockByCompanyAndId(company, 61L)).thenReturn(Optional.of(purchase));
+        when(rawMaterialRepository.lockByCompanyAndId(company, 20L)).thenReturn(Optional.of(rawMaterial));
+        when(companyClock.today(company)).thenReturn(LocalDate.now());
+        when(movementRepository.findByRawMaterialCompanyAndReferenceTypeAndReferenceId(
+                company, "PURCHASE_RETURN", "PRN-TEST-0001")).thenReturn(List.of());
+
+        JournalEntryDto journalDto = dummyJournal("PRN-TEST-0001");
+        when(accountingFacade.postPurchaseReturn(any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(journalDto);
+
+        RawMaterialBatch batch = new RawMaterialBatch();
+        ReflectionTestUtils.setField(batch, "id", 56L);
+        batch.setBatchCode("RM-BATCH-002");
+        batch.setQuantity(BigDecimal.ONE);
+        batch.setUnit("KG");
+        batch.setCostPerUnit(new BigDecimal("10.0002"));
+        batch.setRawMaterial(rawMaterial);
+        when(rawMaterialBatchRepository.findAvailableBatchesFIFO(rawMaterial)).thenReturn(List.of(batch));
+        when(rawMaterialBatchRepository.deductQuantityIfSufficient(56L, BigDecimal.ONE)).thenReturn(1);
+        when(rawMaterialRepository.deductStockIfSufficient(20L, BigDecimal.ONE)).thenReturn(1);
+
+        PurchaseReturnRequest request = new PurchaseReturnRequest(
+                10L,
+                61L,
+                20L,
+                BigDecimal.ONE,
+                new BigDecimal("10.0002"),
+                null,
+                null,
+                "Precision return"
+        );
+
+        JournalEntryDto result = purchasingService.recordPurchaseReturn(request);
+
+        ArgumentCaptor<BigDecimal> returnAmountCaptor = ArgumentCaptor.forClass(BigDecimal.class);
+        verify(accountingFacade).postPurchaseReturn(
+                eq(10L),
+                eq("PRN-TEST-0001"),
+                any(),
+                any(),
+                any(),
+                any(),
+                returnAmountCaptor.capture());
+        assertThat(returnAmountCaptor.getValue()).isEqualByComparingTo(new BigDecimal("10.00"));
+        assertThat(purchase.getOutstandingAmount()).isEqualByComparingTo(new BigDecimal("0.00"));
+        assertThat(result).isNotNull();
+    }
+
+    @Test
     @DisplayName("createPurchase posts journal before saving purchase to avoid orphans")
     void createPurchase_journalPostedFirst() {
         when(companyContextService.requireCurrentCompany()).thenReturn(company);

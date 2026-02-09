@@ -816,9 +816,9 @@ public class PurchasingService {
         }
         BigDecimal quantity = positive(request.quantity(), "quantity");
         BigDecimal unitCost = positive(request.unitCost(), "unitCost");
-        BigDecimal lineNet = MoneyUtils.safeMultiply(quantity, unitCost);
+        BigDecimal lineNet = currency(MoneyUtils.safeMultiply(quantity, unitCost));
         BigDecimal taxAmount = computeReturnTax(purchase, material, quantity);
-        BigDecimal totalAmount = lineNet.add(taxAmount);
+        BigDecimal totalAmount = currency(lineNet.add(taxAmount));
         String memo = returnMemo(material, supplier, request.reason());
         String reference = StringUtils.hasText(request.referenceNumber())
                 ? request.referenceNumber().trim()
@@ -888,9 +888,9 @@ public class PurchasingService {
                                                          String memo,
                                                          List<RawMaterialMovement> existingMovements) {
         validateReturnReplay(material, quantity, unitCost, reference, existingMovements);
-        BigDecimal lineNet = MoneyUtils.safeMultiply(quantity, unitCost);
+        BigDecimal lineNet = currency(MoneyUtils.safeMultiply(quantity, unitCost));
         BigDecimal taxAmount = computeReturnTax(purchase, material, quantity);
-        BigDecimal totalAmount = lineNet.add(taxAmount);
+        BigDecimal totalAmount = currency(lineNet.add(taxAmount));
         Map<Long, BigDecimal> taxCredits = null;
         if (taxAmount.compareTo(BigDecimal.ZERO) > 0) {
             taxCredits = new HashMap<>();
@@ -1011,11 +1011,11 @@ public class PurchasingService {
         if (purchase == null) {
             return;
         }
-        BigDecimal amount = totalAmount != null ? totalAmount : BigDecimal.ZERO;
+        BigDecimal amount = currency(totalAmount != null ? totalAmount : BigDecimal.ZERO);
         if (amount.compareTo(BigDecimal.ZERO) <= 0) {
             return;
         }
-        BigDecimal currentOutstanding = MoneyUtils.zeroIfNull(purchase.getOutstandingAmount());
+        BigDecimal currentOutstanding = currency(MoneyUtils.zeroIfNull(purchase.getOutstandingAmount()));
         if (amount.compareTo(currentOutstanding) > 0) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
                     "Purchase return exceeds outstanding payable amount")
@@ -1023,8 +1023,8 @@ public class PurchasingService {
                     .withDetail("outstandingAmount", currentOutstanding)
                     .withDetail("returnAmount", amount);
         }
-        BigDecimal newOutstanding = currentOutstanding.subtract(amount);
-        purchase.setOutstandingAmount(currency(newOutstanding));
+        BigDecimal newOutstanding = currency(currentOutstanding.subtract(amount));
+        purchase.setOutstandingAmount(newOutstanding);
         if (purchase.getOutstandingAmount().compareTo(BigDecimal.ZERO) == 0 && isPurchaseFullyReturned(purchase)) {
             purchase.setStatus("VOID");
         } else {
@@ -1110,13 +1110,14 @@ public class PurchasingService {
         if (purchase == null || returnAmount == null || returnAmount.compareTo(BigDecimal.ZERO) <= 0) {
             return;
         }
-        BigDecimal outstanding = MoneyUtils.zeroIfNull(purchase.getOutstandingAmount());
-        if (returnAmount.compareTo(outstanding) > 0) {
+        BigDecimal normalizedReturnAmount = currency(returnAmount);
+        BigDecimal outstanding = currency(MoneyUtils.zeroIfNull(purchase.getOutstandingAmount()));
+        if (normalizedReturnAmount.compareTo(outstanding) > 0) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
                     "Purchase return exceeds outstanding payable amount")
                     .withDetail("purchaseId", purchase.getId())
                     .withDetail("outstandingAmount", outstanding)
-                    .withDetail("returnAmount", returnAmount);
+                    .withDetail("returnAmount", normalizedReturnAmount);
         }
     }
 

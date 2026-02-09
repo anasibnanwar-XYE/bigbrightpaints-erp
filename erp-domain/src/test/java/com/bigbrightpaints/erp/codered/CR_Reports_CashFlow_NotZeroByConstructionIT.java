@@ -114,6 +114,34 @@ class CR_Reports_CashFlow_NotZeroByConstructionIT extends AbstractIntegrationTes
         }
     }
 
+    @Test
+    void cashFlow_apportionsMixedCounterpartySections_withinSingleCashJournal() {
+        String companyCode = "CR-CF-MIXED-" + System.nanoTime();
+        Company company = dataSeeder.ensureCompany(companyCode, companyCode + " Ltd");
+        CompanyContextHolder.setCompanyId(companyCode);
+        try {
+            LocalDate entryDate = TestDateUtils.safeDate(company);
+            Account cash = ensureAccount(company, "CASH-MIX", "Cash", AccountType.ASSET);
+            Account expense = ensureAccount(company, "EXP-MIX", "Operating Expense", AccountType.EXPENSE);
+            Account loan = ensureAccount(company, "LOAN-MIX", "Term Loan", AccountType.LIABILITY);
+
+            postJournal(entryDate, List.of(
+                    line(expense.getId(), new BigDecimal("40.00"), BigDecimal.ZERO),
+                    line(loan.getId(), new BigDecimal("60.00"), BigDecimal.ZERO),
+                    line(cash.getId(), BigDecimal.ZERO, new BigDecimal("100.00"))
+            ));
+
+            CashFlowDto cashFlow = reportService.cashFlow();
+
+            assertThat(cashFlow.operating()).isEqualByComparingTo(new BigDecimal("-40.00"));
+            assertThat(cashFlow.investing()).isEqualByComparingTo(BigDecimal.ZERO.setScale(2));
+            assertThat(cashFlow.financing()).isEqualByComparingTo(new BigDecimal("-60.00"));
+            assertThat(cashFlow.netChange()).isEqualByComparingTo(new BigDecimal("-100.00"));
+        } finally {
+            CompanyContextHolder.clear();
+        }
+    }
+
     private Long postJournal(LocalDate entryDate, List<JournalEntryRequest.JournalLineRequest> lines) {
         JournalEntryRequest request = new JournalEntryRequest(
                 "CF-TEST-" + System.nanoTime(),
