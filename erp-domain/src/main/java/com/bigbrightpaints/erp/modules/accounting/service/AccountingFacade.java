@@ -946,7 +946,7 @@ public class AccountingFacade {
         requireAccountById(company, inventoryAcctId, "Inventory account");
 
         // Generate reference number
-        String reference = "COGS-" + sanitize(referenceId);
+        String reference = resolveCogsReference(referenceId);
 
         // Check for duplicate (allow variants with same logical reference)
         Optional<JournalEntry> existing = journalReferenceResolver.findExistingEntry(company, reference);
@@ -1135,7 +1135,7 @@ public class AccountingFacade {
             return null;
         }
         Company company = companyContextService.requireCurrentCompany();
-        String reference = "COGS-" + sanitize(referenceId);
+        String reference = resolveCogsReference(referenceId);
 
         Optional<JournalEntry> existing = journalReferenceResolver.findExistingEntry(company, reference);
         if (existing.isPresent()) {
@@ -1160,8 +1160,7 @@ public class AccountingFacade {
 
     public boolean hasCogsJournalFor(String referenceId) {
         Company company = companyContextService.requireCurrentCompany();
-        String normalized = sanitize(referenceId);
-        String reference = normalized.startsWith("COGS-") ? normalized : "COGS-" + normalized;
+        String reference = resolveCogsReference(referenceId);
         return journalReferenceResolver.exists(company, reference);
     }
 
@@ -1664,6 +1663,14 @@ public class AccountingFacade {
         }
         // Preserve hyphens for readability (BBP-2025-00001 stays readable)
         return value.replaceAll("[^A-Za-z0-9-]", "").toUpperCase();
+    }
+
+    private String resolveCogsReference(String referenceId) {
+        String normalized = sanitize(referenceId);
+        if (normalized.startsWith("COGS-")) {
+            normalized = normalized.substring("COGS-".length());
+        }
+        return SalesOrderReference.cogsReference(normalized);
     }
 
     private String buildSalesReturnHashReference(String invoiceNumber,

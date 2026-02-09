@@ -1,9 +1,14 @@
 package com.bigbrightpaints.erp.modules.sales.util;
 
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import org.springframework.util.StringUtils;
 
 public final class SalesOrderReference {
+
+    private static final int MAX_REFERENCE_LENGTH = 64;
+    private static final int HASH_LENGTH = 12;
 
     private SalesOrderReference() {}
 
@@ -59,6 +64,29 @@ public final class SalesOrderReference {
 
     private static String withPrefix(String prefix, String orderNumber) {
         String normalized = normalizeOrderNumber(orderNumber);
-        return prefix + normalized;
+        String candidate = prefix + normalized;
+        if (candidate.length() <= MAX_REFERENCE_LENGTH) {
+            return candidate;
+        }
+        String hash = sha256Hex(candidate);
+        if (hash.length() < HASH_LENGTH) {
+            hash = (hash + "0".repeat(HASH_LENGTH)).substring(0, HASH_LENGTH);
+        } else {
+            hash = hash.substring(0, HASH_LENGTH);
+        }
+        hash = hash.toUpperCase();
+        int maxTokenLength = Math.max(1, MAX_REFERENCE_LENGTH - prefix.length() - HASH_LENGTH - 2);
+        String token = normalized.substring(0, Math.min(maxTokenLength, normalized.length()));
+        return prefix + token + "-H" + hash;
+    }
+
+    private static String sha256Hex(String value) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(value.getBytes(StandardCharsets.UTF_8));
+            return java.util.HexFormat.of().formatHex(hash);
+        } catch (Exception ignored) {
+            return Integer.toHexString(value.hashCode());
+        }
     }
 }

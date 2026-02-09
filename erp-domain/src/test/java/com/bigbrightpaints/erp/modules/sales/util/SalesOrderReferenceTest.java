@@ -43,6 +43,29 @@ class SalesOrderReferenceTest {
     }
 
     @Test
+    void invoiceReference_longOrder_isBoundedAndDeterministic() {
+        String longOrder = "SO-" + "A".repeat(120);
+        String first = SalesOrderReference.invoiceReference(longOrder);
+        String second = SalesOrderReference.invoiceReference(longOrder);
+
+        assertThat(first).isEqualTo(second);
+        assertThat(first).startsWith("INV-");
+        assertThat(first.length()).isLessThanOrEqualTo(64);
+    }
+
+    @Test
+    void cogsReference_longInputs_produceDistinctBoundedReferences() {
+        String first = SalesOrderReference.cogsReference("SO-" + "A".repeat(120));
+        String second = SalesOrderReference.cogsReference("SO-" + "B".repeat(120));
+
+        assertThat(first).startsWith("COGS-");
+        assertThat(second).startsWith("COGS-");
+        assertThat(first.length()).isLessThanOrEqualTo(64);
+        assertThat(second.length()).isLessThanOrEqualTo(64);
+        assertThat(first).isNotEqualTo(second);
+    }
+
+    @Test
     void normalizeOrderNumber_orderObjectUsesOrderNumber() {
         SalesOrder order = new SalesOrder();
         order.setOrderNumber("so-9");

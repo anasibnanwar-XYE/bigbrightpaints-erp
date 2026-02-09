@@ -35,6 +35,7 @@ import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccounts
 import com.bigbrightpaints.erp.modules.sales.domain.*;
 import com.bigbrightpaints.erp.modules.sales.dto.*;
 import com.bigbrightpaints.erp.modules.sales.event.SalesOrderCreatedEvent;
+import com.bigbrightpaints.erp.modules.sales.util.SalesOrderReference;
 import org.apache.commons.codec.digest.DigestUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -1436,6 +1437,7 @@ public class SalesService {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Sales order is required on packing slip");
         }
         String slipNumber = slip.getSlipNumber();
+        String cogsReferenceId = resolveCogsReferenceId(slip, slipNumber);
         Invoice existingInvoice = null;
         if (slip.getInvoiceId() != null) {
             existingInvoice = invoiceRepository.findByCompanyAndId(company, slip.getInvoiceId()).orElse(null);
@@ -1475,16 +1477,21 @@ public class SalesService {
                 existingJeId = existingInvoice.getJournalEntry().getId();
             }
             Long existingCogsJournalId = slip.getCogsJournalEntryId();
-            if (existingCogsJournalId == null && StringUtils.hasText(slipNumber)) {
-                String cogsReference = buildCogsReference(slipNumber);
-                existingCogsJournalId = journalEntryRepository.findByCompanyAndReferenceNumber(company, cogsReference)
-                        .map(JournalEntry::getId)
-                        .orElse(null);
+            if (existingCogsJournalId == null) {
+                existingCogsJournalId = findCogsJournalId(company, cogsReferenceId);
+                if (existingCogsJournalId == null
+                        && StringUtils.hasText(slipNumber)
+                        && !slipNumber.trim().equalsIgnoreCase(cogsReferenceId)) {
+                    existingCogsJournalId = findCogsJournalId(company, slipNumber.trim());
+                }
             }
             boolean hasInvoice = existingInvoiceId != null;
             boolean hasArJournal = existingJeId != null;
             boolean hasCogsJournal = existingCogsJournalId != null
-                    || (slipNumber != null && accountingFacade.hasCogsJournalFor(slipNumber));
+                    || accountingFacade.hasCogsJournalFor(cogsReferenceId)
+                    || (StringUtils.hasText(slipNumber)
+                    && !slipNumber.trim().equalsIgnoreCase(cogsReferenceId)
+                    && accountingFacade.hasCogsJournalFor(slipNumber.trim()));
             if (hasInvoice && hasArJournal && hasCogsJournal) {
                 if (existingInvoice != null) {
                     dealerLedgerService.syncInvoiceLedger(existingInvoice, null);
@@ -2033,7 +2040,7 @@ public class SalesService {
             }
             if (!cogsLines.isEmpty()) {
                 var cogsEntry = accountingFacade.postCogsJournal(
-                        slipNumber,
+                        cogsReferenceId,
                         dealer.getId(),
                         dispatchedDate,
                         "COGS for dispatch " + slipNumber,
@@ -2074,7 +2081,7 @@ public class SalesService {
             for (var entry : taxByAccount.entrySet()) {
                 arPostings.add(toPosting(company, entry.getKey(), "Tax for dispatch " + slipNumber, BigDecimal.ZERO, entry.getValue()));
             }
-            String salesJournalOrderKey = resolveSalesJournalOrderKey(order, slipNumber, singleSlipForOrder);
+            String salesJournalOrderKey = resolveSalesJournalOrderKey(order, slip.getId(), slipNumber, singleSlipForOrder);
             var arEntry = accountingFacade.postSalesJournal(
                     dealer.getId(),
                     salesJournalOrderKey,
@@ -2249,11 +2256,31 @@ public class SalesService {
         return combined;
     }
 
-    private String buildCogsReference(String slipNumber) {
-        return "COGS-" + normalizeReferenceToken(slipNumber);
+    private String buildCogsReference(String referenceId) {
+        return SalesOrderReference.cogsReference(referenceId);
     }
 
-    private String resolveSalesJournalOrderKey(SalesOrder order, String slipNumber, boolean singleSlip) {
+    private Long findCogsJournalId(Company company, String referenceId) {
+        if (!StringUtils.hasText(referenceId)) {
+            return null;
+        }
+        String cogsReference = buildCogsReference(referenceId.trim());
+        return journalEntryRepository.findByCompanyAndReferenceNumber(company, cogsReference)
+                .map(JournalEntry::getId)
+                .orElse(null);
+    }
+
+    private String resolveCogsReferenceId(PackagingSlip slip, String slipNumber) {
+        if (slip != null && slip.getId() != null) {
+            return "PS-" + slip.getId();
+        }
+        if (StringUtils.hasText(slipNumber)) {
+            return slipNumber.trim();
+        }
+        return "PS-GEN";
+    }
+
+    private String resolveSalesJournalOrderKey(SalesOrder order, Long slipId, String slipNumber, boolean singleSlip) {
         String base = order != null ? order.getOrderNumber() : null;
         if (!StringUtils.hasText(base) && order != null && order.getId() != null) {
             base = order.getId().toString();
@@ -2261,8 +2288,13 @@ public class SalesService {
         if (!StringUtils.hasText(base)) {
             base = "UNKNOWN";
         }
-        if (!singleSlip && StringUtils.hasText(slipNumber)) {
-            return base + "-" + slipNumber.trim();
+        if (!singleSlip) {
+            if (slipId != null) {
+                return base + "-PS-" + slipId;
+            }
+            if (StringUtils.hasText(slipNumber)) {
+                return base + "-PS-" + normalizeReferenceToken(slipNumber);
+            }
         }
         return base;
     }

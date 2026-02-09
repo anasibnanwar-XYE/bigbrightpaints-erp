@@ -1785,7 +1785,7 @@ public class FinishedGoodsService {
     }
 
     private String generateSlipNumber(Company company) {
-        return company.getCode() + "-PS-" + batchNumberService.nextPackagingSlipNumber(company);
+        return batchNumberService.nextPackagingSlipNumber(company);
     }
 
     private boolean canTransitionStatus(String current, String target) {
