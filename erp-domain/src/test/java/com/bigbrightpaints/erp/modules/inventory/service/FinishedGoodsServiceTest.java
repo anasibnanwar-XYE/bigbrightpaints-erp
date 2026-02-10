@@ -83,6 +83,31 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void linkDispatchMovementsToJournal_backfillsLegacyNullPackingSlipIdForSingleSlipOrder() {
+        Company company = seedCompany("DISPATCH-LEGACY-LINK");
+        FinishedGood fg = createFinishedGood(company, "FG-LINK", new BigDecimal("10"), BigDecimal.ZERO, "FIFO");
+        FinishedGoodBatch batch = createBatch(fg, "BATCH-LINK", new BigDecimal("10"), BigDecimal.ZERO, new BigDecimal("9"));
+        SalesOrder order = createOrder(company, "SO-LINK-" + UUID.randomUUID(), fg.getProductCode(), new BigDecimal("2"));
+        PackagingSlip slip = createSlip(company, order, "DISPATCHED", batch, new BigDecimal("2"));
+
+        InventoryMovement legacy = new InventoryMovement();
+        legacy.setFinishedGood(fg);
+        legacy.setFinishedGoodBatch(batch);
+        legacy.setReferenceType(InventoryReference.SALES_ORDER);
+        legacy.setReferenceId(order.getId().toString());
+        legacy.setMovementType("DISPATCH");
+        legacy.setQuantity(new BigDecimal("2"));
+        legacy.setUnitCost(new BigDecimal("9"));
+        InventoryMovement savedLegacy = inventoryMovementRepository.saveAndFlush(legacy);
+
+        finishedGoodsService.linkDispatchMovementsToJournal(slip.getId(), 777L);
+
+        InventoryMovement refreshed = inventoryMovementRepository.findById(savedLegacy.getId()).orElseThrow();
+        assertThat(refreshed.getPackingSlipId()).isEqualTo(slip.getId());
+        assertThat(refreshed.getJournalEntryId()).isEqualTo(777L);
+    }
+
+    @Test
     void dispatchRejectsZeroCostWhenOnHandExists() {
         Company company = seedCompany("WAC-ZERO");
         FinishedGood fg = createFinishedGood(company, "FG-ZERO", new BigDecimal("5"), new BigDecimal("5"), "FIFO");

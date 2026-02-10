@@ -313,8 +313,8 @@ class PurchasingServiceTest {
     }
 
     @Test
-    @DisplayName("recordPurchaseReturn rejects amount that exceeds outstanding payable")
-    void recordPurchaseReturn_amountExceedsOutstanding_throws() {
+    @DisplayName("recordPurchaseReturn allows supplier credit when return exceeds outstanding payable")
+    void recordPurchaseReturn_amountExceedsOutstanding_createsSupplierCredit() {
         when(companyContextService.requireCurrentCompany()).thenReturn(company);
         when(companyEntityLookup.requireSupplier(company, 10L)).thenReturn(supplier);
         RawMaterialPurchase purchase = new RawMaterialPurchase();
@@ -332,6 +332,19 @@ class PurchasingServiceTest {
         when(companyClock.today(company)).thenReturn(LocalDate.now());
         when(movementRepository.findByRawMaterialCompanyAndReferenceTypeAndReferenceId(
                 company, "PURCHASE_RETURN", "PRN-TEST-0001")).thenReturn(List.of());
+        when(accountingFacade.postPurchaseReturn(any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(dummyJournal("PRN-TEST-0001"));
+
+        RawMaterialBatch batch = new RawMaterialBatch();
+        ReflectionTestUtils.setField(batch, "id", 57L);
+        batch.setBatchCode("RM-BATCH-003");
+        batch.setQuantity(BigDecimal.ONE);
+        batch.setUnit("KG");
+        batch.setCostPerUnit(BigDecimal.TEN);
+        batch.setRawMaterial(rawMaterial);
+        when(rawMaterialBatchRepository.findAvailableBatchesFIFO(rawMaterial)).thenReturn(List.of(batch));
+        when(rawMaterialBatchRepository.deductQuantityIfSufficient(57L, BigDecimal.ONE)).thenReturn(1);
+        when(rawMaterialRepository.deductStockIfSufficient(20L, BigDecimal.ONE)).thenReturn(1);
 
         PurchaseReturnRequest request = new PurchaseReturnRequest(
                 10L,
@@ -344,12 +357,12 @@ class PurchasingServiceTest {
                 "Defective"
         );
 
-        assertThatThrownBy(() -> purchasingService.recordPurchaseReturn(request))
-                .isInstanceOf(ApplicationException.class)
-                .hasMessageContaining("exceeds outstanding payable");
+        JournalEntryDto result = purchasingService.recordPurchaseReturn(request);
 
-        verify(accountingFacade, never()).postPurchaseReturn(any(), any(), any(), any(), any(), any(), any());
-        verify(rawMaterialRepository, never()).deductStockIfSufficient(any(), any());
+        assertThat(result).isNotNull();
+        assertThat(purchase.getOutstandingAmount()).isEqualByComparingTo(new BigDecimal("-5.00"));
+        verify(accountingFacade).postPurchaseReturn(any(), any(), any(), any(), any(), any(), any());
+        verify(rawMaterialRepository).deductStockIfSufficient(20L, BigDecimal.ONE);
     }
 
     @Test

@@ -847,7 +847,6 @@ public class PurchasingService {
                     .withDetail("remainingReturnableQuantity", remainingReturnableQty)
                     .withDetail("requestedQuantity", quantity);
         }
-        validateReturnAmountWithinOutstanding(purchase, totalAmount);
 
         // Post journal FIRST before deducting stock
         Map<Long, BigDecimal> taxCredits = null;
@@ -1016,13 +1015,6 @@ public class PurchasingService {
             return;
         }
         BigDecimal currentOutstanding = currency(MoneyUtils.zeroIfNull(purchase.getOutstandingAmount()));
-        if (amount.compareTo(currentOutstanding) > 0) {
-            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
-                    "Purchase return exceeds outstanding payable amount")
-                    .withDetail("purchaseId", purchase.getId())
-                    .withDetail("outstandingAmount", currentOutstanding)
-                    .withDetail("returnAmount", amount);
-        }
         BigDecimal newOutstanding = currency(currentOutstanding.subtract(amount));
         purchase.setOutstandingAmount(newOutstanding);
         if (purchase.getOutstandingAmount().compareTo(BigDecimal.ZERO) == 0 && isPurchaseFullyReturned(purchase)) {
@@ -1104,21 +1096,6 @@ public class PurchasingService {
 
     private BigDecimal quantityValue(BigDecimal value) {
         return value != null ? value : BigDecimal.ZERO;
-    }
-
-    private void validateReturnAmountWithinOutstanding(RawMaterialPurchase purchase, BigDecimal returnAmount) {
-        if (purchase == null || returnAmount == null || returnAmount.compareTo(BigDecimal.ZERO) <= 0) {
-            return;
-        }
-        BigDecimal normalizedReturnAmount = currency(returnAmount);
-        BigDecimal outstanding = currency(MoneyUtils.zeroIfNull(purchase.getOutstandingAmount()));
-        if (normalizedReturnAmount.compareTo(outstanding) > 0) {
-            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
-                    "Purchase return exceeds outstanding payable amount")
-                    .withDetail("purchaseId", purchase.getId())
-                    .withDetail("outstandingAmount", outstanding)
-                    .withDetail("returnAmount", normalizedReturnAmount);
-        }
     }
 
     private JournalEntryDto postPurchaseEntry(RawMaterialPurchaseRequest request,

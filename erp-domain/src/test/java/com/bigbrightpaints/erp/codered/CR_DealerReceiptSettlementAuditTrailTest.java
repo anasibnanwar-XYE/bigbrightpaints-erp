@@ -41,6 +41,7 @@ import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderRequest;
 import com.bigbrightpaints.erp.modules.sales.service.SalesService;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -54,6 +55,9 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+@Tag("critical")
+@Tag("concurrency")
+@Tag("reconciliation")
 
 class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
 
@@ -373,6 +377,196 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
         } finally {
             CompanyContextHolder.clear();
         }
+    }
+
+    @Test
+    void dealerSettlement_isIdempotent_underConcurrency_withoutReferenceNumber() {
+        String companyCode = "CR-SETTLE-NOREF-" + shortId();
+        Company company = bootstrapCompany(companyCode, "UTC");
+        Map<String, Account> accounts = ensureCoreAccounts(company);
+        Dealer dealer = ensureDealer(company, accounts.get("AR"));
+
+        FinishedGood fg = ensureFinishedGoodWithCatalog(company, accounts, "FG-" + shortId(), BigDecimal.ZERO);
+        CompanyContextHolder.setCompanyId(companyCode);
+        finishedGoodsService.registerBatch(new FinishedGoodBatchRequest(
+                fg.getId(), "BATCH-1", new BigDecimal("20"), new BigDecimal("10.00"), Instant.now(), null));
+        CompanyContextHolder.clear();
+
+        SalesOrder order = createOrder(company, dealer, fg.getProductCode(), new BigDecimal("5"), new BigDecimal("15.50"));
+        PackagingSlip slip = packagingSlipRepository.findByCompanyAndSalesOrderId(company, order.getId()).orElseThrow();
+
+        DispatchConfirmRequest request = new DispatchConfirmRequest(
+                slip.getId(),
+                order.getId(),
+                slip.getLines().stream()
+                        .map(line -> new DispatchConfirmRequest.DispatchLine(
+                                line.getId(),
+                                null,
+                                line.getOrderedQuantity() != null ? line.getOrderedQuantity() : line.getQuantity(),
+                                null,
+                                null,
+                                null,
+                                null,
+                                null))
+                        .toList(),
+                "CODE-RED dispatch",
+                "codered",
+                false,
+                null,
+                null
+        );
+
+        CompanyContextHolder.setCompanyId(companyCode);
+        var dispatch = salesService.confirmDispatch(request);
+        CompanyContextHolder.clear();
+
+        Invoice invoice = invoiceRepository.findByCompanyAndId(company, dispatch.finalInvoiceId()).orElseThrow();
+        BigDecimal outstanding = invoice.getOutstandingAmount();
+        String idempotencyKey = "DS-NOREF-IDEMP-" + UUID.randomUUID();
+
+        DealerSettlementRequest settlementRequest = new DealerSettlementRequest(
+                dealer.getId(),
+                accounts.get("BANK").getId(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                "CODE-RED settlement",
+                idempotencyKey,
+                Boolean.FALSE,
+                List.of(new SettlementAllocationRequest(
+                        invoice.getId(),
+                        null,
+                        outstanding,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        null,
+                        "Apply to invoice")),
+                null
+        );
+
+        CoderedConcurrencyHarness.RunResult<PartnerSettlementResponse> result = CoderedConcurrencyHarness.run(
+                2,
+                3,
+                Duration.ofSeconds(30),
+                threadIndex -> () -> {
+                    CompanyContextHolder.setCompanyId(companyCode);
+                    try {
+                        return accountingService.settleDealerInvoices(settlementRequest);
+                    } finally {
+                        CompanyContextHolder.clear();
+                    }
+                },
+                CoderedRetry::isRetryable
+        );
+
+        assertThat(result.outcomes())
+                .as("settlement calls succeed")
+                .allMatch(outcome -> outcome instanceof CoderedConcurrencyHarness.Outcome.Success<?>);
+
+        List<Long> journalIds = result.outcomes().stream()
+                .map(outcome -> ((CoderedConcurrencyHarness.Outcome.Success<PartnerSettlementResponse>) outcome).value())
+                .map(response -> response.journalEntry().id())
+                .distinct()
+                .toList();
+        assertThat(journalIds).as("single settlement journal").hasSize(1);
+    }
+
+    @Test
+    void dealerReceipt_reusedReferenceWithDifferentIdempotencyKey_doesNotDuplicateAllocations() {
+        String companyCode = "CR-DR-REF-REUSE-" + shortId();
+        Company company = bootstrapCompany(companyCode, "UTC");
+        Map<String, Account> accounts = ensureCoreAccounts(company);
+        Dealer dealer = ensureDealer(company, accounts.get("AR"));
+
+        FinishedGood fg = ensureFinishedGoodWithCatalog(company, accounts, "FG-" + shortId(), BigDecimal.ZERO);
+        CompanyContextHolder.setCompanyId(companyCode);
+        finishedGoodsService.registerBatch(new FinishedGoodBatchRequest(
+                fg.getId(), "BATCH-1", new BigDecimal("20"), new BigDecimal("10.00"), Instant.now(), null));
+        CompanyContextHolder.clear();
+
+        SalesOrder order = createOrder(company, dealer, fg.getProductCode(), new BigDecimal("5"), new BigDecimal("15.50"));
+        PackagingSlip slip = packagingSlipRepository.findByCompanyAndSalesOrderId(company, order.getId()).orElseThrow();
+
+        DispatchConfirmRequest request = new DispatchConfirmRequest(
+                slip.getId(),
+                order.getId(),
+                slip.getLines().stream()
+                        .map(line -> new DispatchConfirmRequest.DispatchLine(
+                                line.getId(),
+                                null,
+                                line.getOrderedQuantity() != null ? line.getOrderedQuantity() : line.getQuantity(),
+                                null,
+                                null,
+                                null,
+                                null,
+                                null))
+                        .toList(),
+                "CODE-RED dispatch",
+                "codered",
+                false,
+                null,
+                null
+        );
+
+        CompanyContextHolder.setCompanyId(companyCode);
+        var dispatch = salesService.confirmDispatch(request);
+        CompanyContextHolder.clear();
+
+        Invoice invoice = invoiceRepository.findByCompanyAndId(company, dispatch.finalInvoiceId()).orElseThrow();
+        BigDecimal outstanding = invoice.getOutstandingAmount();
+        String referenceNumber = "DR-REF-REUSE-" + UUID.randomUUID();
+
+        DealerReceiptRequest firstRequest = new DealerReceiptRequest(
+                dealer.getId(),
+                accounts.get("BANK").getId(),
+                outstanding,
+                referenceNumber,
+                "CODE-RED receipt",
+                "DR-KEY-1-" + UUID.randomUUID(),
+                List.of(new SettlementAllocationRequest(
+                        invoice.getId(),
+                        null,
+                        outstanding,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        null,
+                        "Apply to invoice"))
+        );
+
+        DealerReceiptRequest secondRequest = new DealerReceiptRequest(
+                dealer.getId(),
+                accounts.get("BANK").getId(),
+                outstanding,
+                referenceNumber,
+                "CODE-RED receipt",
+                "DR-KEY-2-" + UUID.randomUUID(),
+                List.of(new SettlementAllocationRequest(
+                        invoice.getId(),
+                        null,
+                        outstanding,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        null,
+                        "Apply to invoice"))
+        );
+
+        CompanyContextHolder.setCompanyId(companyCode);
+        try {
+            JournalEntryDto first = accountingService.recordDealerReceipt(firstRequest);
+            JournalEntryDto second = accountingService.recordDealerReceipt(secondRequest);
+            assertThat(second.id()).isEqualTo(first.id());
+        } finally {
+            CompanyContextHolder.clear();
+        }
+
+        Invoice refreshed = invoiceRepository.findByCompanyAndId(company, invoice.getId()).orElseThrow();
+        assertThat(refreshed.getOutstandingAmount()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(settlementAllocationRepository.findByCompanyAndInvoiceOrderByCreatedAtDesc(company, invoice))
+                .as("single allocation row for reused reference")
+                .hasSize(1);
     }
 
     private Company bootstrapCompany(String companyCode, String timezone) {

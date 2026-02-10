@@ -67,7 +67,7 @@ public class TemporalBalanceService {
         AccountingPeriodSnapshot snapshot = resolveClosedSnapshot(company, asOfDate);
         if (snapshot != null) {
             return snapshotLineRepository.findBySnapshotAndAccountId(snapshot, accountId)
-                    .map(line -> safe(line.getDebit()).subtract(safe(line.getCredit())))
+                    .map(line -> normalizeNetBalance(line.getDebit(), line.getCredit(), line.getAccountType()))
                     .orElse(BigDecimal.ZERO);
         }
         return journalLineRepository.netBalanceUpTo(company, accountId, asOfDate);
@@ -96,7 +96,7 @@ public class TemporalBalanceService {
                     .filter(line -> line.getAccountId() != null)
                     .collect(Collectors.toMap(
                             AccountingPeriodTrialBalanceLine::getAccountId,
-                            line -> safe(line.getDebit()).subtract(safe(line.getCredit())),
+                            line -> normalizeNetBalance(line.getDebit(), line.getCredit(), line.getAccountType()),
                             BigDecimal::add));
             for (Long accountId : accountIds) {
                 if (accountId == null) {
@@ -283,6 +283,14 @@ public class TemporalBalanceService {
             credit = debitNormal ? amount : BigDecimal.ZERO;
         }
         return new TrialBalanceAmounts(debit, credit);
+    }
+
+    private BigDecimal normalizeNetBalance(BigDecimal debit, BigDecimal credit, AccountType accountType) {
+        BigDecimal net = safe(debit).subtract(safe(credit));
+        if (accountType != null && !accountType.isDebitNormalBalance()) {
+            return net.negate();
+        }
+        return net;
     }
 
     private Instant resolveEntryTimestamp(JournalEntry entry) {

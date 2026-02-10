@@ -25,6 +25,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -187,6 +188,137 @@ class CommandDispatcherTest {
                 ArgumentMatchers.eq("req-3"),
                 ArgumentMatchers.eq("idem-3"));
         verify(idempotencyService).markFailed(ArgumentMatchers.eq(command), ArgumentMatchers.any(RuntimeException.class));
+    }
+
+    @Test
+    void dispatchBatchInvalidPostingAmountMarksFailedAndThrows() {
+        OrchestratorCommand command = new OrchestratorCommand(1L, "ORCH.FACTORY.BATCH.DISPATCH", "idem-invalid-dispatch", "hash", "trace-invalid-dispatch");
+        DispatchRequest request = new DispatchRequest("77", "orch@bbp.com", BigDecimal.ZERO);
+        when(idempotencyService.start(
+                ArgumentMatchers.eq("ORCH.FACTORY.BATCH.DISPATCH"),
+                ArgumentMatchers.eq("idem-invalid-dispatch"),
+                ArgumentMatchers.eq(request),
+                ArgumentMatchers.any()))
+                .thenReturn(new OrchestratorIdempotencyService.CommandLease("trace-invalid-dispatch", command, true));
+
+        assertThatThrownBy(() -> commandDispatcher.dispatchBatch(request, "idem-invalid-dispatch", "req-invalid-dispatch", "COMP", "user-1"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("greater than zero for dispatch");
+
+        verify(integrationCoordinator, never()).updateProductionStatus(ArgumentMatchers.anyString(), ArgumentMatchers.anyString());
+        verify(integrationCoordinator, never()).releaseInventory(ArgumentMatchers.anyString(), ArgumentMatchers.anyString());
+        verify(integrationCoordinator, never()).postDispatchJournal(ArgumentMatchers.anyString(), ArgumentMatchers.anyString(), ArgumentMatchers.any());
+        verify(idempotencyService).markFailed(
+                ArgumentMatchers.eq(command),
+                ArgumentMatchers.argThat((RuntimeException ex) ->
+                        ex instanceof IllegalArgumentException
+                                && ex.getMessage() != null
+                                && ex.getMessage().contains("greater than zero for dispatch")));
+        verify(idempotencyService, never()).markSuccess(ArgumentMatchers.any());
+    }
+
+    @Test
+    void dispatchBatchNullRequestMarksFailedAndThrows() {
+        OrchestratorCommand command = new OrchestratorCommand(1L, "ORCH.FACTORY.BATCH.DISPATCH", "idem-null-dispatch", "hash", "trace-null-dispatch");
+        when(idempotencyService.start(
+                ArgumentMatchers.eq("ORCH.FACTORY.BATCH.DISPATCH"),
+                ArgumentMatchers.eq("idem-null-dispatch"),
+                ArgumentMatchers.isNull(),
+                ArgumentMatchers.any()))
+                .thenReturn(new OrchestratorIdempotencyService.CommandLease("trace-null-dispatch", command, true));
+
+        assertThatThrownBy(() -> commandDispatcher.dispatchBatch(null, "idem-null-dispatch", "req-null-dispatch", "COMP", "user-1"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("greater than zero for dispatch");
+
+        verify(idempotencyService).markFailed(
+                ArgumentMatchers.eq(command),
+                ArgumentMatchers.argThat((RuntimeException ex) ->
+                        ex instanceof IllegalArgumentException
+                                && ex.getMessage() != null
+                                && ex.getMessage().contains("greater than zero for dispatch")));
+        verify(idempotencyService, never()).markSuccess(ArgumentMatchers.any());
+    }
+
+    @Test
+    void runPayrollInvalidPostingAmountMarksFailedAndThrows() {
+        OrchestratorCommand command = new OrchestratorCommand(1L, "ORCH.PAYROLL.RUN", "idem-invalid-payroll", "hash", "trace-invalid-payroll");
+        PayrollRunRequest request = new PayrollRunRequest(LocalDate.now(), "orch", 11L, 22L, BigDecimal.ZERO);
+        when(idempotencyService.start(
+                ArgumentMatchers.eq("ORCH.PAYROLL.RUN"),
+                ArgumentMatchers.eq("idem-invalid-payroll"),
+                ArgumentMatchers.eq(request),
+                ArgumentMatchers.any()))
+                .thenReturn(new OrchestratorIdempotencyService.CommandLease("trace-invalid-payroll", command, true));
+
+        assertThatThrownBy(() -> commandDispatcher.runPayroll(request, "idem-invalid-payroll", "req-invalid-payroll", "COMP", "user-1"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("greater than zero for payroll");
+
+        verify(integrationCoordinator, never()).syncEmployees(ArgumentMatchers.anyString());
+        verify(integrationCoordinator, never()).generatePayroll(ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.anyString());
+        verify(integrationCoordinator, never()).recordPayrollPayment(ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.any(), ArgumentMatchers.anyString());
+        verify(idempotencyService).markFailed(
+                ArgumentMatchers.eq(command),
+                ArgumentMatchers.argThat((RuntimeException ex) ->
+                        ex instanceof IllegalArgumentException
+                                && ex.getMessage() != null
+                                && ex.getMessage().contains("greater than zero for payroll")));
+        verify(idempotencyService, never()).markSuccess(ArgumentMatchers.any());
+    }
+
+    @Test
+    void runPayrollNullRequestMarksFailedAndThrows() {
+        OrchestratorCommand command = new OrchestratorCommand(1L, "ORCH.PAYROLL.RUN", "idem-null-payroll", "hash", "trace-null-payroll");
+        when(idempotencyService.start(
+                ArgumentMatchers.eq("ORCH.PAYROLL.RUN"),
+                ArgumentMatchers.eq("idem-null-payroll"),
+                ArgumentMatchers.isNull(),
+                ArgumentMatchers.any()))
+                .thenReturn(new OrchestratorIdempotencyService.CommandLease("trace-null-payroll", command, true));
+
+        assertThatThrownBy(() -> commandDispatcher.runPayroll(null, "idem-null-payroll", "req-null-payroll", "COMP", "user-1"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("greater than zero for payroll");
+
+        verify(idempotencyService).markFailed(
+                ArgumentMatchers.eq(command),
+                ArgumentMatchers.argThat((RuntimeException ex) ->
+                        ex instanceof IllegalArgumentException
+                                && ex.getMessage() != null
+                                && ex.getMessage().contains("greater than zero for payroll")));
+        verify(idempotencyService, never()).markSuccess(ArgumentMatchers.any());
+    }
+
+    @Test
+    void dispatchBatchDisabledAuditFailureStillMarksFailed() {
+        CommandDispatcher disabledDispatcher = new CommandDispatcher(
+                workflowService,
+                integrationCoordinator,
+                eventPublisherService,
+                traceService,
+                policyEnforcer,
+                idempotencyService,
+                new OrchestratorFeatureFlags(true, false));
+
+        OrchestratorCommand command = new OrchestratorCommand(1L, "ORCH.FACTORY.BATCH.DISPATCH", "idem-dispatch-audit-fail", "hash", "trace-dispatch-audit-fail");
+        DispatchRequest request = new DispatchRequest("77", "orch@bbp.com", new BigDecimal("100"));
+        when(idempotencyService.start(
+                ArgumentMatchers.eq("ORCH.FACTORY.BATCH.DISPATCH"),
+                ArgumentMatchers.eq("idem-dispatch-audit-fail"),
+                ArgumentMatchers.eq(request),
+                ArgumentMatchers.any()))
+                .thenReturn(new OrchestratorIdempotencyService.CommandLease("trace-dispatch-audit-fail", command, true));
+        doThrow(new RuntimeException("outbox down"))
+                .when(eventPublisherService)
+                .enqueue(ArgumentMatchers.any(DomainEvent.class));
+
+        assertThatThrownBy(() -> disabledDispatcher.dispatchBatch(request, "idem-dispatch-audit-fail", "req-dispatch-audit-fail", "COMP", "user-1"))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("outbox down");
+
+        verify(idempotencyService).markFailed(ArgumentMatchers.eq(command), ArgumentMatchers.any(RuntimeException.class));
+        verify(idempotencyService, never()).markSuccess(ArgumentMatchers.any());
     }
 
     @Test

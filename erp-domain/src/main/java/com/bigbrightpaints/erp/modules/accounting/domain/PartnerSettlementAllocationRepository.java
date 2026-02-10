@@ -16,6 +16,8 @@ public interface PartnerSettlementAllocationRepository extends JpaRepository<Par
 
     List<PartnerSettlementAllocation> findByCompanyAndIdempotencyKey(Company company, String idempotencyKey);
 
+    List<PartnerSettlementAllocation> findByCompanyAndJournalEntryOrderByCreatedAtAsc(Company company, JournalEntry journalEntry);
+
     @EntityGraph(attributePaths = {"invoice", "invoice.salesOrder"})
     List<PartnerSettlementAllocation> findByCompanyAndPartnerTypeAndSettlementDateBetween(Company company,
                                                                                            PartnerType partnerType,

@@ -23,6 +23,7 @@ import com.bigbrightpaints.erp.modules.reports.service.ReportService;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 import com.bigbrightpaints.erp.test.support.TestDateUtils;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -31,6 +32,8 @@ import java.time.LocalDate;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+@Tag("critical")
+@Tag("reconciliation")
 
 class CR_PeriodCloseSnapshotsTest extends AbstractIntegrationTest {
 
@@ -79,6 +82,35 @@ class CR_PeriodCloseSnapshotsTest extends AbstractIntegrationTest {
 
             assertThat(after.totalDebits()).isEqualByComparingTo(before.totalDebits());
             assertThat(after.totalCredits()).isEqualByComparingTo(before.totalCredits());
+        } finally {
+            CompanyContextHolder.clear();
+        }
+    }
+
+    @Test
+    void accountBalanceAsOf_closedSnapshot_normalizesCreditNaturalSign() {
+        String companyCode = "CR-SNAP-BAL-" + System.nanoTime();
+        Company company = dataSeeder.ensureCompany(companyCode, companyCode + " Ltd");
+        CompanyContextHolder.setCompanyId(companyCode);
+        try {
+            LocalDate today = TestDateUtils.safeDate(company);
+            LocalDate periodDate = today.minusMonths(1);
+            AccountingPeriod period = accountingPeriodService.ensurePeriod(company, periodDate);
+            Account cash = ensureAccount(company, "CASH-SNAP-BAL", "Cash", AccountType.ASSET);
+            Account revenue = ensureAccount(company, "REV-SNAP-BAL", "Revenue", AccountType.REVENUE);
+
+            postJournal(period.getEndDate().minusDays(1), List.of(
+                    line(cash.getId(), new BigDecimal("100.00"), BigDecimal.ZERO),
+                    line(revenue.getId(), BigDecimal.ZERO, new BigDecimal("100.00"))
+            ));
+
+            accountingPeriodService.closePeriod(period.getId(), new AccountingPeriodCloseRequest(true, "snapshot close"));
+
+            BigDecimal cashBalance = temporalBalanceService.getBalanceAsOfDate(cash.getId(), period.getEndDate());
+            BigDecimal revenueBalance = temporalBalanceService.getBalanceAsOfDate(revenue.getId(), period.getEndDate());
+
+            assertThat(cashBalance).isEqualByComparingTo("100.00");
+            assertThat(revenueBalance).isEqualByComparingTo("100.00");
         } finally {
             CompanyContextHolder.clear();
         }

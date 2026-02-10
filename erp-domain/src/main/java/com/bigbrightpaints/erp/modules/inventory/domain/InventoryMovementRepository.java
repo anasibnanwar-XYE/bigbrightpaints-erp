@@ -26,6 +26,12 @@ public interface InventoryMovementRepository extends JpaRepository<InventoryMove
             Long packingSlipId,
             String movementType);
 
+    List<InventoryMovement> findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdAndPackingSlipIdIsNullAndMovementTypeIgnoreCaseOrderByCreatedAtAsc(
+            Company company,
+            String referenceType,
+            String referenceId,
+            String movementType);
+
     boolean existsByFinishedGood_CompanyAndReferenceTypeAndReferenceIdContainingIgnoreCase(
             Company company,
             String referenceType,

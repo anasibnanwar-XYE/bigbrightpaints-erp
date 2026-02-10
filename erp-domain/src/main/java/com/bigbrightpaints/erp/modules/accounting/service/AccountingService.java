@@ -821,6 +821,13 @@ public class AccountingService {
                     existingAllocations, allocations);
             return entryDto;
         }
+        List<PartnerSettlementAllocation> existingEntryAllocations = settlementAllocationRepository
+                .findByCompanyAndJournalEntryOrderByCreatedAtAsc(company, entry);
+        if (!existingEntryAllocations.isEmpty()) {
+            validateDealerReceiptIdempotency(idempotencyKey, dealer, cashAccount, receivableAccount, amount, memo, entry,
+                    existingEntryAllocations, allocations);
+            return entryDto;
+        }
         LocalDate entryDate = entry.getEntryDate();
         List<PartnerSettlementAllocation> settlementRows = new ArrayList<>();
         List<Invoice> touchedInvoices = new ArrayList<>();
@@ -954,6 +961,12 @@ public class AccountingService {
         existingAllocations = settlementAllocationRepository
                 .findByCompanyAndIdempotencyKey(company, idempotencyKey);
         if (!existingAllocations.isEmpty()) {
+            validateSplitReceiptIdempotency(idempotencyKey, dealer, memo, entry, lines);
+            return entryDto;
+        }
+        List<PartnerSettlementAllocation> existingEntryAllocations = settlementAllocationRepository
+                .findByCompanyAndJournalEntryOrderByCreatedAtAsc(company, entry);
+        if (!existingEntryAllocations.isEmpty()) {
             validateSplitReceiptIdempotency(idempotencyKey, dealer, memo, entry, lines);
             return entryDto;
         }
@@ -1605,6 +1618,11 @@ public class AccountingService {
                 : "Settlement for dealer " + dealer.getName();
         String reference = resolveDealerSettlementReference(company, dealer, request, trimmedIdempotencyKey);
         IdempotencyReservation reservation = reserveReferenceMapping(company, trimmedIdempotencyKey, reference, ENTITY_TYPE_DEALER_SETTLEMENT);
+        if (reservation.leader()
+                && !StringUtils.hasText(request.referenceNumber())
+                && isReservedReference(reference)) {
+            reference = referenceNumberService.dealerReceiptReference(company, dealer);
+        }
         SettlementLineDraft lineDraft = buildDealerSettlementLines(company, request, receivableAccount, totals, memo);
 
         if (!reservation.leader()) {
@@ -1612,6 +1630,7 @@ public class AccountingService {
             List<PartnerSettlementAllocation> existingAllocations = awaitAllocations(company, trimmedIdempotencyKey);
             if (!existingAllocations.isEmpty()) {
                 JournalEntry entry = existingEntry != null ? existingEntry : existingAllocations.getFirst().getJournalEntry();
+                linkReferenceMapping(company, trimmedIdempotencyKey, entry, ENTITY_TYPE_DEALER_SETTLEMENT);
                 validateSettlementIdempotencyKey(trimmedIdempotencyKey, PartnerType.DEALER, dealer.getId(), existingAllocations, allocations);
                 validateSettlementJournalLines(trimmedIdempotencyKey, dealer, memo, entry, lineDraft.lines());
                 return buildDealerSettlementResponse(existingAllocations);
@@ -1625,6 +1644,7 @@ public class AccountingService {
                 .findByCompanyAndIdempotencyKey(company, trimmedIdempotencyKey);
         if (!existingAllocations.isEmpty()) {
             JournalEntry entry = existingAllocations.getFirst().getJournalEntry();
+            linkReferenceMapping(company, trimmedIdempotencyKey, entry, ENTITY_TYPE_DEALER_SETTLEMENT);
             validateSettlementIdempotencyKey(trimmedIdempotencyKey, PartnerType.DEALER, dealer.getId(), existingAllocations, allocations);
             validateSettlementJournalLines(trimmedIdempotencyKey, dealer, memo, entry, lineDraft.lines());
             return buildDealerSettlementResponse(existingAllocations);
@@ -2172,6 +2192,13 @@ public class AccountingService {
         return "RESERVED-" + hash;
     }
 
+    private boolean isReservedReference(String reference) {
+        if (!StringUtils.hasText(reference)) {
+            return false;
+        }
+        return reference.trim().toUpperCase(Locale.ROOT).startsWith("RESERVED-");
+    }
+
     private String resolveReceiptIdempotencyKey(String provided, String reference, String label) {
         if (StringUtils.hasText(provided)) {
             return provided.trim();
@@ -2197,6 +2224,7 @@ public class AccountingService {
             if (mapping.isPresent() && StringUtils.hasText(mapping.get().getCanonicalReference())) {
                 return mapping.get().getCanonicalReference().trim();
             }
+            return reservedManualReference(key);
         }
         return referenceNumberService.dealerReceiptReference(company, dealer);
     }
@@ -2282,8 +2310,13 @@ public class AccountingService {
                 .orElseThrow(() -> new ApplicationException(ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
                         "Journal reference mapping missing for idempotency key")
                         .withDetail("idempotencyKey", key));
+        boolean canonicalMismatch = StringUtils.hasText(mapping.getCanonicalReference())
+                && !mapping.getCanonicalReference().equalsIgnoreCase(entry.getReferenceNumber());
+        boolean canRepairUnlinkedMapping = mapping.getEntityId() == null;
         if (StringUtils.hasText(mapping.getCanonicalReference())
-                && !mapping.getCanonicalReference().equalsIgnoreCase(entry.getReferenceNumber())) {
+                && canonicalMismatch
+                && !isReservedReference(mapping.getCanonicalReference())
+                && !canRepairUnlinkedMapping) {
             throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
                     "Idempotency key maps to a different journal reference")
                     .withDetail("idempotencyKey", key)
@@ -2537,7 +2570,7 @@ public class AccountingService {
                     "Idempotency key already used for another invoice")
                     .withDetail("idempotencyKey", idempotencyKey);
         }
-        BigDecimal existingAmount = calculateEntryTotal(entry);
+        BigDecimal existingAmount = calculateCreditNoteAmount(entry, invoice, source);
         BigDecimal expectedAmount = requestedAmount != null ? roundCurrency(requestedAmount) : existingAmount;
         if (existingAmount.compareTo(expectedAmount) != 0) {
             throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
@@ -3552,6 +3585,52 @@ public class AccountingService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
+    private BigDecimal calculateCreditNoteAmount(JournalEntry entry, Invoice invoice, JournalEntry source) {
+        if (entry == null || entry.getLines() == null || entry.getLines().isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        Long receivableAccountId = resolveReceivableAccountId(invoice, source);
+        if (receivableAccountId == null) {
+            return calculateEntryTotal(entry);
+        }
+        BigDecimal receivableCredit = entry.getLines().stream()
+                .filter(line -> line.getAccount() != null
+                        && Objects.equals(line.getAccount().getId(), receivableAccountId))
+                .map(line -> MoneyUtils.zeroIfNull(line.getCredit()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (receivableCredit.compareTo(BigDecimal.ZERO) > 0) {
+            return receivableCredit;
+        }
+        return calculateEntryTotal(entry);
+    }
+
+    private BigDecimal totalCreditNoteAmount(Company company, JournalEntry source, Invoice invoice) {
+        if (company == null || source == null) {
+            return BigDecimal.ZERO;
+        }
+        List<JournalEntry> notes = journalEntryRepository
+                .findByCompanyAndReversalOfAndCorrectionReasonIgnoreCase(company, source, "CREDIT_NOTE");
+        return notes.stream()
+                .map(note -> calculateCreditNoteAmount(note, invoice, source))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private Long resolveReceivableAccountId(Invoice invoice, JournalEntry source) {
+        if (invoice != null
+                && invoice.getDealer() != null
+                && invoice.getDealer().getReceivableAccount() != null
+                && invoice.getDealer().getReceivableAccount().getId() != null) {
+            return invoice.getDealer().getReceivableAccount().getId();
+        }
+        if (source != null
+                && source.getDealer() != null
+                && source.getDealer().getReceivableAccount() != null
+                && source.getDealer().getReceivableAccount().getId() != null) {
+            return source.getDealer().getReceivableAccount().getId();
+        }
+        return null;
+    }
+
     private BigDecimal totalNoteAmount(Company company, JournalEntry source, String reason) {
         if (company == null || source == null || !StringUtils.hasText(reason)) {
             return BigDecimal.ZERO;
@@ -3599,8 +3678,8 @@ public class AccountingService {
         LocalDate entryDate = request.entryDate() != null ? request.entryDate() : currentDate(company);
         JournalEntry existingEntry = findExistingEntry(company, reference, idempotencyKey);
         if (existingEntry != null) {
-            BigDecimal existingAmount = calculateEntryTotal(existingEntry);
-            BigDecimal totalCredited = totalNoteAmount(company, source, "CREDIT_NOTE");
+            BigDecimal existingAmount = calculateCreditNoteAmount(existingEntry, invoice, source);
+            BigDecimal totalCredited = totalCreditNoteAmount(company, source, invoice);
             validateCreditNoteIdempotency(idempotencyKey, invoice, source, existingEntry, request.amount(), invoice.getTotalAmount());
             applyCreditNoteToInvoice(invoice, existingAmount, totalCredited, existingEntry.getReferenceNumber(), entryDate);
             return toDto(existingEntry);
@@ -3609,7 +3688,7 @@ public class AccountingService {
         if (totalAmount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Credit note amount must be positive");
         }
-        BigDecimal creditedSoFar = totalNoteAmount(company, source, "CREDIT_NOTE");
+        BigDecimal creditedSoFar = totalCreditNoteAmount(company, source, invoice);
         BigDecimal remaining = totalAmount.subtract(creditedSoFar);
         if (remaining.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE,
@@ -3630,8 +3709,8 @@ public class AccountingService {
         if (!reservation.leader()) {
             JournalEntry awaited = awaitJournalEntry(company, reference, idempotencyKey);
             if (awaited != null) {
-                BigDecimal existingAmount = calculateEntryTotal(awaited);
-                BigDecimal totalCredited = totalNoteAmount(company, source, "CREDIT_NOTE");
+                BigDecimal existingAmount = calculateCreditNoteAmount(awaited, invoice, source);
+                BigDecimal totalCredited = totalCreditNoteAmount(company, source, invoice);
                 validateCreditNoteIdempotency(idempotencyKey, invoice, source, awaited, request.amount(), invoice.getTotalAmount());
                 applyCreditNoteToInvoice(invoice, existingAmount, totalCredited, awaited.getReferenceNumber(), entryDate);
                 return toDto(awaited);
@@ -3662,7 +3741,7 @@ public class AccountingService {
         saved.setCorrectionReason("CREDIT_NOTE");
         journalEntryRepository.save(saved);
         linkReferenceMapping(company, idempotencyKey, saved, ENTITY_TYPE_CREDIT_NOTE);
-        BigDecimal postedAmount = calculateEntryTotal(saved);
+        BigDecimal postedAmount = calculateCreditNoteAmount(saved, invoice, source);
         BigDecimal totalCredited = creditedSoFar.add(postedAmount);
         applyCreditNoteToInvoice(invoice, postedAmount, totalCredited, saved.getReferenceNumber(), entryDate);
         return toDto(saved);

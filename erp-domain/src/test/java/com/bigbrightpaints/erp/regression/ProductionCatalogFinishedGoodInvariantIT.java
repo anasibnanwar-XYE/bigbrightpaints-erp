@@ -20,6 +20,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -27,13 +28,14 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @DisplayName("Regression: Catalog -> FinishedGood invariants")
 class ProductionCatalogFinishedGoodInvariantIT extends AbstractIntegrationTest {
 
-    private static final String COMPANY_CODE = "LF-015";
+    private static final String COMPANY_CODE_PREFIX = "LF-015";
 
     @Autowired private CompanyRepository companyRepository;
     @Autowired private AccountRepository accountRepository;
     @Autowired private ProductionCatalogService productionCatalogService;
     @Autowired private FinishedGoodRepository finishedGoodRepository;
 
+    private final String companyCode = COMPANY_CODE_PREFIX + "-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
     private Company company;
     private Account inventoryAccount;
     private Account cogsAccount;
@@ -42,8 +44,8 @@ class ProductionCatalogFinishedGoodInvariantIT extends AbstractIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        company = dataSeeder.ensureCompany(COMPANY_CODE, COMPANY_CODE + " Ltd");
-        CompanyContextHolder.setCompanyId(COMPANY_CODE);
+        company = dataSeeder.ensureCompany(companyCode, companyCode + " Ltd");
+        CompanyContextHolder.setCompanyId(companyCode);
 
         inventoryAccount = ensureAccount("INV", "Inventory", AccountType.ASSET);
         cogsAccount = ensureAccount("COGS", "COGS", AccountType.COGS);
@@ -64,16 +66,19 @@ class ProductionCatalogFinishedGoodInvariantIT extends AbstractIntegrationTest {
 
     @Test
     void createProductAutoProvisionsFinishedGood() {
+        String token = uniqueToken();
+        String productName = "LF-015 Product " + token;
+        String skuCode = "FG-LF015-" + token;
         ProductCreateRequest request = new ProductCreateRequest(
                 null,
                 "LF-015 Brand",
                 null,
-                "LF-015 Product",
+                productName,
                 "FINISHED_GOOD",
                 "WHITE",
                 "1L",
                 "UNIT",
-                "FG-LF015-001",
+                skuCode,
                 new BigDecimal("100.00"),
                 new BigDecimal("18.00"),
                 null,
@@ -83,10 +88,10 @@ class ProductionCatalogFinishedGoodInvariantIT extends AbstractIntegrationTest {
 
         ProductionProductDto product = productionCatalogService.createProduct(request);
 
-        FinishedGood fg = finishedGoodRepository.findByCompanyAndProductCode(company, product.skuCode())
+        FinishedGood fg = finishedGoodRepository.findByCompanyAndProductCode(company, skuCode)
                 .orElseThrow();
 
-        assertThat(fg.getName()).isEqualTo(product.productName());
+        assertThat(fg.getName()).isEqualTo(productName);
         assertThat(fg.getUnit()).isEqualTo("UNIT");
         assertThat(fg.getValuationAccountId()).isEqualTo(inventoryAccount.getId());
         assertThat(fg.getCogsAccountId()).isEqualTo(cogsAccount.getId());
@@ -98,16 +103,20 @@ class ProductionCatalogFinishedGoodInvariantIT extends AbstractIntegrationTest {
 
     @Test
     void updateProductSynchronizesFinishedGoodNameAndUnit() {
+        String token = uniqueToken();
+        String sourceName = "LF-015 Sync Product " + token;
+        String updatedName = "LF-015 Sync Product Renamed " + token;
+        String skuCode = "FG-LF015-SYNC-" + token;
         ProductionProductDto created = productionCatalogService.createProduct(new ProductCreateRequest(
                 null,
                 "LF-015 Brand",
                 null,
-                "LF-015 Sync Product",
+                sourceName,
                 "FINISHED_GOOD",
                 "BLUE",
                 "1L",
                 "UNIT",
-                "FG-LF015-002",
+                skuCode,
                 new BigDecimal("90.00"),
                 new BigDecimal("18.00"),
                 null,
@@ -116,7 +125,7 @@ class ProductionCatalogFinishedGoodInvariantIT extends AbstractIntegrationTest {
         ));
 
         productionCatalogService.updateProduct(created.id(), new ProductUpdateRequest(
-                "LF-015 Sync Product Renamed",
+                updatedName,
                 null,
                 null,
                 null,
@@ -128,25 +137,26 @@ class ProductionCatalogFinishedGoodInvariantIT extends AbstractIntegrationTest {
                 null
         ));
 
-        FinishedGood fg = finishedGoodRepository.findByCompanyAndProductCode(company, created.skuCode())
+        FinishedGood fg = finishedGoodRepository.findByCompanyAndProductCode(company, skuCode)
                 .orElseThrow();
 
-        assertThat(fg.getName()).isEqualTo("LF-015 Sync Product Renamed");
+        assertThat(fg.getName()).isEqualTo(updatedName);
         assertThat(fg.getUnit()).isEqualTo("LITER");
     }
 
     @Test
     void createProductRejectsReservedSemiFinishedSuffix() {
+        String token = uniqueToken();
         ProductCreateRequest request = new ProductCreateRequest(
                 null,
                 "LF-015 Brand",
                 null,
-                "LF-015 Bulk Collision Product",
+                "LF-015 Bulk Collision Product " + token,
                 "FINISHED_GOOD",
                 "WHITE",
                 "1L",
                 "UNIT",
-                "FG-LF015-BULK",
+                "FG-LF015-" + token + "-BULK",
                 new BigDecimal("100.00"),
                 new BigDecimal("18.00"),
                 null,
@@ -169,5 +179,9 @@ class ProductionCatalogFinishedGoodInvariantIT extends AbstractIntegrationTest {
                     account.setType(type);
                     return accountRepository.save(account);
                 });
+    }
+
+    private String uniqueToken() {
+        return UUID.randomUUID().toString().substring(0, 8).toUpperCase();
     }
 }

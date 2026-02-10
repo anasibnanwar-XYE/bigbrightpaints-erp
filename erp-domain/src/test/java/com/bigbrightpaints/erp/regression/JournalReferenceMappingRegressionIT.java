@@ -61,9 +61,10 @@ class JournalReferenceMappingRegressionIT extends AbstractIntegrationTest {
 
     @Test
     void canonicalReferenceResolvesLegacyEntryEvenWithDuplicateMappings() {
+        LocalDate entryDate = LocalDate.now().minusDays(1);
         JournalEntryDto entry = accountingService.createJournalEntry(new JournalEntryRequest(
                 "INV-LEGACY-1",
-                LocalDate.of(2026, 1, 10),
+                entryDate,
                 "Legacy sales journal",
                 null,
                 null,

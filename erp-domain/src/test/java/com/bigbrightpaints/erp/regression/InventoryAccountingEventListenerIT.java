@@ -54,6 +54,7 @@ class InventoryAccountingEventListenerIT extends AbstractIntegrationTest {
 
     @Test
     void movementEventSkipsWhenJournalAlreadyExists() {
+        LocalDate movementDate = LocalDate.now().minusDays(1);
         long before = journalEntryRepository.count();
         InventoryMovementEvent event = InventoryMovementEvent.builder()
                 .companyId(company.getId())
@@ -68,7 +69,7 @@ class InventoryAccountingEventListenerIT extends AbstractIntegrationTest {
                 .sourceAccountId(inventoryAccount.getId())
                 .destinationAccountId(cogsAccount.getId())
                 .referenceNumber(REFERENCE)
-                .movementDate(LocalDate.of(2026, 1, 10))
+                .movementDate(movementDate)
                 .memo("Test movement event")
                 .relatedEntityId(99L)
                 .relatedEntityType("TEST")
@@ -85,6 +86,7 @@ class InventoryAccountingEventListenerIT extends AbstractIntegrationTest {
 
     @Test
     void movementEventsWithSameReferenceButDifferentItemsPostSeparately() {
+        LocalDate movementDate = LocalDate.now().minusDays(1);
         long before = journalEntryRepository.count();
         InventoryMovementEvent first = InventoryMovementEvent.builder()
                 .companyId(company.getId())
@@ -99,7 +101,7 @@ class InventoryAccountingEventListenerIT extends AbstractIntegrationTest {
                 .sourceAccountId(inventoryAccount.getId())
                 .destinationAccountId(cogsAccount.getId())
                 .referenceNumber(REFERENCE)
-                .movementDate(LocalDate.of(2026, 1, 10))
+                .movementDate(movementDate)
                 .memo("Test movement event 1")
                 .relatedEntityId(99L)
                 .relatedEntityType("TEST")
@@ -118,7 +120,7 @@ class InventoryAccountingEventListenerIT extends AbstractIntegrationTest {
                 .sourceAccountId(inventoryAccount.getId())
                 .destinationAccountId(cogsAccount.getId())
                 .referenceNumber(REFERENCE)
-                .movementDate(LocalDate.of(2026, 1, 10))
+                .movementDate(movementDate)
                 .memo("Test movement event 2")
                 .relatedEntityId(100L)
                 .relatedEntityType("TEST")

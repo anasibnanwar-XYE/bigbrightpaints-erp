@@ -196,13 +196,17 @@ public class CommandDispatcher {
             recordDeniedCommand(lease, "ORCH.FACTORY.BATCH.DISPATCH", companyId, userId,
                     idempotencyKey, normalizedRequestId,
                     "/api/v1/factory", "Orchestrator factory dispatch is disabled (CODE-RED).",
-                    "Batch", request.batchId());
+                    "Batch", request != null ? request.batchId() : null);
             throw new OrchestratorFeatureDisabledException(
                     "Orchestrator factory dispatch is disabled (CODE-RED).",
                     "/api/v1/factory");
         }
-        if (request.postingAmount() == null || request.postingAmount().compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException("Posting amount must be greater than zero for dispatch");
+        if (request == null || request.postingAmount() == null
+                || request.postingAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            IllegalArgumentException ex =
+                    new IllegalArgumentException("Posting amount must be greater than zero for dispatch");
+            idempotencyService.markFailed(lease.command(), ex);
+            throw ex;
         }
         try {
             String traceId = lease.traceId();
@@ -250,13 +254,17 @@ public class CommandDispatcher {
             recordDeniedCommand(lease, "ORCH.PAYROLL.RUN", companyId, userId,
                     idempotencyKey, normalizedRequestId,
                     "/api/v1/payroll/runs", "Orchestrator payroll run is disabled (CODE-RED).",
-                    "Payroll", request.payrollDate() != null ? request.payrollDate().toString() : null);
+                    "Payroll", request != null && request.payrollDate() != null ? request.payrollDate().toString() : null);
             throw new OrchestratorFeatureDisabledException(
                     "Orchestrator payroll run is disabled (CODE-RED).",
                     "/api/v1/payroll/runs");
         }
-        if (request.postingAmount() == null || request.postingAmount().compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException("Posting amount must be greater than zero for payroll");
+        if (request == null || request.postingAmount() == null
+                || request.postingAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            IllegalArgumentException ex =
+                    new IllegalArgumentException("Posting amount must be greater than zero for payroll");
+            idempotencyService.markFailed(lease.command(), ex);
+            throw ex;
         }
         try {
             String traceId = lease.traceId();
@@ -315,26 +323,30 @@ public class CommandDispatcher {
                                      String message,
                                      String entity,
                                      String entityId) {
-        String traceId = lease.traceId();
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("commandName", commandName);
-        payload.put("reason", message);
-        payload.put("canonicalPath", canonicalPath);
-        payload.put("idempotencyKey", idempotencyKey);
-        payload.put("traceId", traceId);
-        DomainEvent event = DomainEvent.of("OrchestratorCommandDenied", companyId, userId,
-                entity, entityId != null ? entityId : commandName, payload,
-                traceId, requestId, idempotencyKey);
-        eventPublisherService.enqueue(event);
-        traceService.record(traceId, "ORCH_COMMAND_DENIED", companyId, Map.of(
-                "commandName", commandName,
-                "reason", message,
-                "canonicalPath", canonicalPath,
-                "idempotencyKey", idempotencyKey,
-                "entity", entity,
-                "entityId", entityId
-        ), requestId, idempotencyKey);
-        idempotencyService.markFailed(lease.command(), new RuntimeException(message));
+        RuntimeException denied = new RuntimeException(message);
+        try {
+            String traceId = lease.traceId();
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("commandName", commandName);
+            payload.put("reason", message);
+            payload.put("canonicalPath", canonicalPath);
+            payload.put("idempotencyKey", idempotencyKey);
+            payload.put("traceId", traceId);
+            DomainEvent event = DomainEvent.of("OrchestratorCommandDenied", companyId, userId,
+                    entity, entityId != null ? entityId : commandName, payload,
+                    traceId, requestId, idempotencyKey);
+            eventPublisherService.enqueue(event);
+            traceService.record(traceId, "ORCH_COMMAND_DENIED", companyId, Map.of(
+                    "commandName", commandName,
+                    "reason", message,
+                    "canonicalPath", canonicalPath,
+                    "idempotencyKey", idempotencyKey,
+                    "entity", entity,
+                    "entityId", entityId
+            ), requestId, idempotencyKey);
+        } finally {
+            idempotencyService.markFailed(lease.command(), denied);
+        }
     }
 
     private String normalizeRequestId(String requestId, String idempotencyKey) {

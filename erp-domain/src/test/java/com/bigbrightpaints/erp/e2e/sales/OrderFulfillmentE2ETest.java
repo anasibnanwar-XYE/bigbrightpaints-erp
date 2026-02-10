@@ -471,8 +471,13 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
                 .get()
                 .extracting(entry -> entry.getId())
                 .isEqualTo(arJournalId);
-        String cogsReference = "COGS-" + slip.getSlipNumber();
-        assertThat(journalReferenceResolver.findExistingEntry(company, cogsReference))
+        String canonicalCogsReference = "COGS-PS-" + slipId;
+        String legacyCogsReference = "COGS-" + slip.getSlipNumber();
+        var cogsEntry = journalReferenceResolver.findExistingEntry(company, canonicalCogsReference);
+        if (cogsEntry.isEmpty()) {
+            cogsEntry = journalReferenceResolver.findExistingEntry(company, legacyCogsReference);
+        }
+        assertThat(cogsEntry)
                 .isPresent()
                 .get()
                 .extracting(entry -> entry.getId())

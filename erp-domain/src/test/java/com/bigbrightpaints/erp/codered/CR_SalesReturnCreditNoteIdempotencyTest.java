@@ -40,6 +40,7 @@ import com.bigbrightpaints.erp.modules.sales.service.SalesReturnService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesService;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
@@ -54,6 +55,9 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+@Tag("critical")
+@Tag("concurrency")
+@Tag("reconciliation")
 
 class CR_SalesReturnCreditNoteIdempotencyTest extends AbstractIntegrationTest {
 
@@ -110,8 +114,8 @@ class CR_SalesReturnCreditNoteIdempotencyTest extends AbstractIntegrationTest {
                         .toList(),
                 "CODE-RED dispatch",
                 "codered",
-                false,
-                null,
+                true,
+                "discount override for credit-note idempotency regression",
                 null
         );
 
@@ -197,8 +201,8 @@ class CR_SalesReturnCreditNoteIdempotencyTest extends AbstractIntegrationTest {
                         .toList(),
                 "CODE-RED dispatch",
                 "codered",
-                false,
-                null,
+                true,
+                "discount override for credit-note idempotency regression",
                 null
         );
 
@@ -274,6 +278,79 @@ class CR_SalesReturnCreditNoteIdempotencyTest extends AbstractIntegrationTest {
         } finally {
             CompanyContextHolder.clear();
         }
+    }
+
+    @Test
+    void creditNote_discountedInvoice_idempotentRetry_returnsSameJournal() {
+        String companyCode = "CR-CN-DISC-" + shortId();
+        Company company = bootstrapCompany(companyCode, "UTC");
+        Map<String, Account> accounts = ensureCoreAccounts(company);
+        Dealer dealer = ensureDealer(company, accounts.get("AR"));
+
+        FinishedGood fg = ensureFinishedGoodWithCatalog(company, accounts, "FG-CN-DISC-" + shortId(), BigDecimal.ZERO);
+        CompanyContextHolder.setCompanyId(companyCode);
+        finishedGoodsService.registerBatch(new FinishedGoodBatchRequest(
+                fg.getId(), "BATCH-CN-DISC-1", new BigDecimal("20"), new BigDecimal("10.00"), Instant.now(), null));
+        CompanyContextHolder.clear();
+
+        SalesOrder order = createOrder(company, dealer, fg.getProductCode(), new BigDecimal("5"), new BigDecimal("15.50"));
+        PackagingSlip slip = packagingSlipRepository.findByCompanyAndSalesOrderId(company, order.getId()).orElseThrow();
+
+        DispatchConfirmRequest request = new DispatchConfirmRequest(
+                slip.getId(),
+                order.getId(),
+                slip.getLines().stream()
+                        .map(line -> new DispatchConfirmRequest.DispatchLine(
+                                line.getId(),
+                                null,
+                                line.getOrderedQuantity() != null ? line.getOrderedQuantity() : line.getQuantity(),
+                                null,
+                                new BigDecimal("5.00"),
+                                null,
+                                null,
+                                null))
+                        .toList(),
+                "CODE-RED dispatch",
+                "codered",
+                true,
+                "discount override for credit-note idempotency regression",
+                null
+        );
+
+        CompanyContextHolder.setCompanyId(companyCode);
+        var dispatch = salesService.confirmDispatch(request);
+        CompanyContextHolder.clear();
+
+        Invoice invoice = invoiceRepository.findByCompanyAndId(company, dispatch.finalInvoiceId()).orElseThrow();
+        BigDecimal startingOutstanding = invoice.getOutstandingAmount();
+        BigDecimal grossWithoutDiscount = new BigDecimal("15.50")
+                .multiply(new BigDecimal("5"))
+                .setScale(2, RoundingMode.HALF_UP);
+        assertThat(startingOutstanding).isLessThan(grossWithoutDiscount);
+        BigDecimal creditAmount = startingOutstanding.divide(new BigDecimal("2"), 2, RoundingMode.HALF_UP);
+        String idempotencyKey = "CN-DISC-IDEMP-" + UUID.randomUUID();
+        CreditNoteRequest creditRequest = new CreditNoteRequest(
+                invoice.getId(),
+                creditAmount,
+                null,
+                null,
+                "CODE-RED credit note",
+                idempotencyKey,
+                Boolean.FALSE
+        );
+
+        CompanyContextHolder.setCompanyId(companyCode);
+        try {
+            JournalEntryDto first = accountingService.postCreditNote(creditRequest);
+            JournalEntryDto retry = accountingService.postCreditNote(creditRequest);
+            assertThat(retry.id()).isEqualTo(first.id());
+        } finally {
+            CompanyContextHolder.clear();
+        }
+
+        Invoice refreshed = invoiceRepository.findByCompanyAndId(company, invoice.getId()).orElseThrow();
+        assertThat(refreshed.getOutstandingAmount())
+                .isEqualByComparingTo(startingOutstanding.subtract(creditAmount));
     }
 
     private Company bootstrapCompany(String companyCode, String timezone) {

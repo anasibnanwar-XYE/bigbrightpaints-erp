@@ -35,6 +35,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -1671,14 +1672,20 @@ public class FinishedGoodsService {
                         packingSlipId,
                         "DISPATCH");
         if (movements.isEmpty()) {
+            movements = findLegacyDispatchMovements(company, packingSlipId);
+        }
+        if (movements.isEmpty()) {
             return;
         }
         List<InventoryMovement> toUpdate = new ArrayList<>();
         for (InventoryMovement movement : movements) {
-            if (movement.getJournalEntryId() != null) {
+            if (!"DISPATCH".equalsIgnoreCase(movement.getMovementType())) {
                 continue;
             }
-            if (!"DISPATCH".equalsIgnoreCase(movement.getMovementType())) {
+            if (!Objects.equals(movement.getPackingSlipId(), packingSlipId)) {
+                movement.setPackingSlipId(packingSlipId);
+            }
+            if (Objects.equals(movement.getJournalEntryId(), journalEntryId)) {
                 continue;
             }
             movement.setJournalEntryId(journalEntryId);
@@ -1687,6 +1694,27 @@ public class FinishedGoodsService {
         if (!toUpdate.isEmpty()) {
             inventoryMovementRepository.saveAll(toUpdate);
         }
+    }
+
+    private List<InventoryMovement> findLegacyDispatchMovements(Company company, Long packingSlipId) {
+        if (company == null || packingSlipId == null) {
+            return List.of();
+        }
+        PackagingSlip slip = packagingSlipRepository.findByIdAndCompany(packingSlipId, company).orElse(null);
+        if (slip == null || slip.getSalesOrder() == null || slip.getSalesOrder().getId() == null) {
+            return List.of();
+        }
+        Long salesOrderId = slip.getSalesOrder().getId();
+        List<PackagingSlip> slipsForOrder = packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, salesOrderId);
+        if (slipsForOrder.size() != 1) {
+            return List.of();
+        }
+        return inventoryMovementRepository
+                .findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdAndPackingSlipIdIsNullAndMovementTypeIgnoreCaseOrderByCreatedAtAsc(
+                        company,
+                        InventoryReference.SALES_ORDER,
+                        salesOrderId.toString(),
+                        "DISPATCH");
     }
 
     private String resolveBatchCode(FinishedGood finishedGood, String provided, Instant manufacturedAt) {
