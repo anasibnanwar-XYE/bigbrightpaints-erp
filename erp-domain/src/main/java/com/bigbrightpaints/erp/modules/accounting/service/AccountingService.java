@@ -299,12 +299,12 @@ public class AccountingService {
         Account supplierPayableAccount = null;
         if (request.dealerId() != null) {
             dealer = requireDealer(company, request.dealerId());
-            dealerReceivableAccount = requireDealerReceivable(dealer);
+            dealerReceivableAccount = dealer.getReceivableAccount();
             entry.setDealer(dealer);
         }
         if (request.supplierId() != null) {
             supplier = requireSupplier(company, request.supplierId());
-            supplierPayableAccount = requireSupplierPayable(supplier);
+            supplierPayableAccount = supplier.getPayableAccount();
             entry.setSupplier(supplier);
         }
         Map<Account, BigDecimal> accountDeltas = new HashMap<>();
@@ -371,6 +371,12 @@ public class AccountingService {
         if (hasPayableAccount && supplierContext == null) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
                     "Posting to AP requires a supplier context");
+        }
+        if (dealerContext != null && hasReceivableAccount && dealerReceivableAccount == null) {
+            dealerReceivableAccount = requireDealerReceivable(dealerContext);
+        }
+        if (supplierContext != null && hasPayableAccount && supplierPayableAccount == null) {
+            supplierPayableAccount = requireSupplierPayable(supplierContext);
         }
         BigDecimal totalBaseDebit = BigDecimal.ZERO;
         BigDecimal totalBaseCredit = BigDecimal.ZERO;

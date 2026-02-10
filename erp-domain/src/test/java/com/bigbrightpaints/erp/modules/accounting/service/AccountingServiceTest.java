@@ -357,10 +357,29 @@ class AccountingServiceTest {
         LocalDate today = LocalDate.of(2024, 3, 15);
         when(companyClock.today(company)).thenReturn(today);
         when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(new AccountingPeriod());
+        when(journalEntryRepository.findByCompanyAndReferenceNumber(eq(company), eq("DEALER-REF")))
+                .thenReturn(Optional.empty());
 
         Dealer dealer = new Dealer();
         dealer.setName("Test Dealer");
         when(companyEntityLookup.requireDealer(company, 99L)).thenReturn(dealer);
+
+        Account ar = new Account();
+        ReflectionTestUtils.setField(ar, "id", 1L);
+        ar.setCompany(company);
+        ar.setCode("AR-TEST");
+        ar.setName("Accounts Receivable");
+        ar.setType(AccountType.ASSET);
+
+        Account revenue = new Account();
+        ReflectionTestUtils.setField(revenue, "id", 2L);
+        revenue.setCompany(company);
+        revenue.setCode("REV-TEST");
+        revenue.setName("Revenue");
+        revenue.setType(AccountType.REVENUE);
+
+        when(accountRepository.lockByCompanyAndId(eq(company), eq(1L))).thenReturn(Optional.of(ar));
+        when(accountRepository.lockByCompanyAndId(eq(company), eq(2L))).thenReturn(Optional.of(revenue));
 
         JournalEntryRequest request = new JournalEntryRequest(
                 "DEALER-REF",
@@ -369,12 +388,69 @@ class AccountingServiceTest {
                 99L,
                 null,
                 Boolean.FALSE,
-                List.of(new JournalEntryRequest.JournalLineRequest(1L, "Line", new BigDecimal("50.00"), BigDecimal.ZERO))
+                List.of(
+                        new JournalEntryRequest.JournalLineRequest(1L, "AR", new BigDecimal("50.00"), BigDecimal.ZERO),
+                        new JournalEntryRequest.JournalLineRequest(2L, "Revenue", BigDecimal.ZERO, new BigDecimal("50.00"))
+                )
         );
 
         assertThatThrownBy(() -> accountingService.createJournalEntry(request))
                 .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Dealer Test Dealer is missing a receivable account");
+    }
+
+    @Test
+    void createJournalEntry_allowsDealerContextWithoutArWhenDealerReceivableMissing() {
+        LocalDate today = LocalDate.of(2024, 3, 16);
+        when(companyClock.today(company)).thenReturn(today);
+        AccountingPeriod period = new AccountingPeriod();
+        period.setYear(today.getYear());
+        period.setMonth(today.getMonthValue());
+        when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(period);
+        when(journalEntryRepository.findByCompanyAndReferenceNumber(eq(company), eq("DEALER-NON-AR")))
+                .thenReturn(Optional.empty());
+        when(journalEntryRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(accountRepository.updateBalanceAtomic(eq(company), any(), any())).thenReturn(1);
+
+        Dealer dealer = new Dealer();
+        dealer.setName("Dealer Without AR");
+        when(companyEntityLookup.requireDealer(company, 100L)).thenReturn(dealer);
+
+        Account expense = new Account();
+        ReflectionTestUtils.setField(expense, "id", 11L);
+        expense.setCompany(company);
+        expense.setCode("EXP-TEST");
+        expense.setName("Service Expense");
+        expense.setType(AccountType.EXPENSE);
+
+        Account cash = new Account();
+        ReflectionTestUtils.setField(cash, "id", 12L);
+        cash.setCompany(company);
+        cash.setCode("CASH");
+        cash.setName("Cash");
+        cash.setType(AccountType.ASSET);
+
+        when(accountRepository.lockByCompanyAndId(eq(company), eq(11L))).thenReturn(Optional.of(expense));
+        when(accountRepository.lockByCompanyAndId(eq(company), eq(12L))).thenReturn(Optional.of(cash));
+
+        JournalEntryRequest request = new JournalEntryRequest(
+                "DEALER-NON-AR",
+                today,
+                "Dealer tagged cash expense",
+                100L,
+                null,
+                Boolean.FALSE,
+                List.of(
+                        new JournalEntryRequest.JournalLineRequest(11L, "Expense", new BigDecimal("2000.00"), BigDecimal.ZERO),
+                        new JournalEntryRequest.JournalLineRequest(12L, "Cash", BigDecimal.ZERO, new BigDecimal("2000.00"))
+                )
+        );
+
+        JournalEntryDto result = accountingService.createJournalEntry(request);
+
+        assertThat(result).isNotNull();
+        assertThat(result.referenceNumber()).isEqualTo("DEALER-NON-AR");
+        verify(dealerLedgerService, never()).recordLedgerEntry(any(), any());
     }
 
     @Test

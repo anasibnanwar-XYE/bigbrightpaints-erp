@@ -70,6 +70,7 @@ public class ProductionCatalogService {
 
     private static final Pattern NON_ALPHANUM = Pattern.compile("[^A-Z0-9]");
     private static final Pattern NON_SKU_CHAR = Pattern.compile("[^A-Z0-9-]");
+    private static final Pattern MULTI_VALUE_DELIMITER = Pattern.compile("[,;\\n]");
     private static final Pattern SEQUENCE_PATTERN = Pattern.compile(".*-(\\d{3})$");
     private static final String SEMI_FINISHED_SUFFIX = "-BULK";
     private static final List<String> RAW_MATERIAL_CATEGORIES = List.of("RAW_MATERIAL", "RAW MATERIAL", "RAW-MATERIAL");
@@ -312,6 +313,8 @@ public class ProductionCatalogService {
         }
 
         String sizeLabel = StringUtils.hasText(request.sizeLabel()) ? request.sizeLabel().trim() : request.unitOfMeasure();
+        validateSingleVariantField("defaultColour", request.defaultColour());
+        validateSingleVariantField("sizeLabel", request.sizeLabel());
         String sku = determineSku(company, brand, normalizedCategory, request.defaultColour(), sizeLabel, request.customSkuCode());
         if (productRepository.findByCompanyAndSkuCode(company, sku).isPresent()) {
             throw new IllegalArgumentException("SKU " + sku + " already exists");
@@ -480,6 +483,17 @@ public class ProductionCatalogService {
         return value == null ? "" : value.trim().toUpperCase(Locale.ROOT);
     }
 
+    private void validateSingleVariantField(String fieldName, String value) {
+        if (!StringUtils.hasText(value)) {
+            return;
+        }
+        if (MULTI_VALUE_DELIMITER.matcher(value).find()) {
+            throw new IllegalArgumentException(
+                    "Multiple values in '" + fieldName + "' are not supported for single-product create/update. "
+                            + "Use /api/v1/accounting/catalog/products/bulk-variants for color/size matrix input.");
+        }
+    }
+
     private String truncate(String value, int maxLen) {
         if (value == null) return "";
         return value.length() > maxLen ? value.substring(0, maxLen) : value;
@@ -533,9 +547,11 @@ public class ProductionCatalogService {
             product.setCategory(normalizeCategory(request.category()));
         }
         if (request.defaultColour() != null) {
+            validateSingleVariantField("defaultColour", request.defaultColour());
             product.setDefaultColour(cleanValue(request.defaultColour()));
         }
         if (request.sizeLabel() != null) {
+            validateSingleVariantField("sizeLabel", request.sizeLabel());
             product.setSizeLabel(cleanValue(request.sizeLabel()));
         }
         if (request.unitOfMeasure() != null) {
