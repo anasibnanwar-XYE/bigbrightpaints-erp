@@ -30,6 +30,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 @Tag("critical")
@@ -111,6 +112,39 @@ class CR_PeriodCloseSnapshotsTest extends AbstractIntegrationTest {
 
             assertThat(cashBalance).isEqualByComparingTo("100.00");
             assertThat(revenueBalance).isEqualByComparingTo("100.00");
+        } finally {
+            CompanyContextHolder.clear();
+        }
+    }
+
+    @Test
+    void accountBalanceAsOf_creditNormal_isStableAcrossClosedOpenBoundary() {
+        String companyCode = "CR-SNAP-BND-" + System.nanoTime();
+        Company company = dataSeeder.ensureCompany(companyCode, companyCode + " Ltd");
+        CompanyContextHolder.setCompanyId(companyCode);
+        try {
+            LocalDate today = TestDateUtils.safeDate(company);
+            LocalDate periodDate = today.minusMonths(1);
+            AccountingPeriod period = accountingPeriodService.ensurePeriod(company, periodDate);
+            Account cash = ensureAccount(company, "CASH-SNAP-BND", "Cash", AccountType.ASSET);
+            Account revenue = ensureAccount(company, "REV-SNAP-BND", "Revenue", AccountType.REVENUE);
+
+            postJournal(period.getEndDate().minusDays(1), List.of(
+                    line(cash.getId(), new BigDecimal("100.00"), BigDecimal.ZERO),
+                    line(revenue.getId(), BigDecimal.ZERO, new BigDecimal("100.00"))
+            ));
+            accountingPeriodService.closePeriod(period.getId(), new AccountingPeriodCloseRequest(true, "snapshot close"));
+
+            LocalDate closedDate = period.getEndDate();
+            LocalDate nextOpenDate = closedDate.plusDays(1);
+            BigDecimal closedRevenueBalance = temporalBalanceService.getBalanceAsOfDate(revenue.getId(), closedDate);
+            BigDecimal openRevenueBalance = temporalBalanceService.getBalanceAsOfDate(revenue.getId(), nextOpenDate);
+            Map<Long, BigDecimal> openBalances = temporalBalanceService
+                    .getBalancesAsOfDate(List.of(revenue.getId()), nextOpenDate);
+
+            assertThat(closedRevenueBalance).isEqualByComparingTo("100.00");
+            assertThat(openRevenueBalance).isEqualByComparingTo(closedRevenueBalance);
+            assertThat(openBalances.get(revenue.getId())).isEqualByComparingTo(closedRevenueBalance);
         } finally {
             CompanyContextHolder.clear();
         }

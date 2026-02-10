@@ -70,7 +70,11 @@ public class TemporalBalanceService {
                     .map(line -> normalizeNetBalance(line.getDebit(), line.getCredit(), line.getAccountType()))
                     .orElse(BigDecimal.ZERO);
         }
-        return journalLineRepository.netBalanceUpTo(company, accountId, asOfDate);
+        BigDecimal rawBalance = safe(journalLineRepository.netBalanceUpTo(company, accountId, asOfDate));
+        AccountType accountType = accountRepository.findByCompanyAndId(company, accountId)
+                .map(Account::getType)
+                .orElse(null);
+        return normalizeNetBalance(rawBalance, accountType);
     }
 
     /**
@@ -107,12 +111,20 @@ public class TemporalBalanceService {
             return balances;
         }
         Map<Long, BigDecimal> balances = summarizeBalances(company, asOfDate);
+        Map<Long, AccountType> accountTypeById = accountRepository.findByCompanyOrderByCodeAsc(company).stream()
+                .collect(Collectors.toMap(Account::getId, Account::getType));
         Map<Long, BigDecimal> filtered = new HashMap<>();
         for (Long accountId : accountIds) {
             if (accountId == null) {
                 continue;
             }
-            filtered.put(accountId, balances.getOrDefault(accountId, BigDecimal.ZERO));
+            filtered.put(
+                    accountId,
+                    normalizeNetBalance(
+                            balances.getOrDefault(accountId, BigDecimal.ZERO),
+                            accountTypeById.get(accountId)
+                    )
+            );
         }
         return filtered;
     }
@@ -286,11 +298,15 @@ public class TemporalBalanceService {
     }
 
     private BigDecimal normalizeNetBalance(BigDecimal debit, BigDecimal credit, AccountType accountType) {
-        BigDecimal net = safe(debit).subtract(safe(credit));
+        return normalizeNetBalance(safe(debit).subtract(safe(credit)), accountType);
+    }
+
+    private BigDecimal normalizeNetBalance(BigDecimal netBalance, AccountType accountType) {
+        BigDecimal normalized = safe(netBalance);
         if (accountType != null && !accountType.isDebitNormalBalance()) {
-            return net.negate();
+            return normalized.negate();
         }
-        return net;
+        return normalized;
     }
 
     private Instant resolveEntryTimestamp(JournalEntry entry) {

@@ -10,6 +10,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocationRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptSplitRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementResponse;
@@ -557,7 +558,9 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
         try {
             JournalEntryDto first = accountingService.recordDealerReceipt(firstRequest);
             JournalEntryDto second = accountingService.recordDealerReceipt(secondRequest);
+            JournalEntryDto secondRetry = accountingService.recordDealerReceipt(secondRequest);
             assertThat(second.id()).isEqualTo(first.id());
+            assertThat(secondRetry.id()).isEqualTo(first.id());
         } finally {
             CompanyContextHolder.clear();
         }
@@ -566,6 +569,85 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
         assertThat(refreshed.getOutstandingAmount()).isEqualByComparingTo(BigDecimal.ZERO);
         assertThat(settlementAllocationRepository.findByCompanyAndInvoiceOrderByCreatedAtDesc(company, invoice))
                 .as("single allocation row for reused reference")
+                .hasSize(1);
+    }
+
+    @Test
+    void dealerReceiptSplit_reusedReferenceWithDifferentIdempotencyKey_replaysWithoutDuplicateAllocations() {
+        String companyCode = "CR-DRS-REF-REUSE-" + shortId();
+        Company company = bootstrapCompany(companyCode, "UTC");
+        Map<String, Account> accounts = ensureCoreAccounts(company);
+        Dealer dealer = ensureDealer(company, accounts.get("AR"));
+
+        FinishedGood fg = ensureFinishedGoodWithCatalog(company, accounts, "FG-" + shortId(), BigDecimal.ZERO);
+        CompanyContextHolder.setCompanyId(companyCode);
+        finishedGoodsService.registerBatch(new FinishedGoodBatchRequest(
+                fg.getId(), "BATCH-1", new BigDecimal("20"), new BigDecimal("10.00"), Instant.now(), null));
+        CompanyContextHolder.clear();
+
+        SalesOrder order = createOrder(company, dealer, fg.getProductCode(), new BigDecimal("5"), new BigDecimal("15.50"));
+        PackagingSlip slip = packagingSlipRepository.findByCompanyAndSalesOrderId(company, order.getId()).orElseThrow();
+
+        DispatchConfirmRequest request = new DispatchConfirmRequest(
+                slip.getId(),
+                order.getId(),
+                slip.getLines().stream()
+                        .map(line -> new DispatchConfirmRequest.DispatchLine(
+                                line.getId(),
+                                null,
+                                line.getOrderedQuantity() != null ? line.getOrderedQuantity() : line.getQuantity(),
+                                null,
+                                null,
+                                null,
+                                null,
+                                null))
+                        .toList(),
+                "CODE-RED dispatch",
+                "codered",
+                false,
+                null,
+                null
+        );
+
+        CompanyContextHolder.setCompanyId(companyCode);
+        var dispatch = salesService.confirmDispatch(request);
+        CompanyContextHolder.clear();
+
+        Invoice invoice = invoiceRepository.findByCompanyAndId(company, dispatch.finalInvoiceId()).orElseThrow();
+        BigDecimal outstanding = invoice.getOutstandingAmount();
+        String referenceNumber = "DRS-REF-REUSE-" + UUID.randomUUID();
+
+        DealerReceiptSplitRequest firstRequest = new DealerReceiptSplitRequest(
+                dealer.getId(),
+                List.of(new DealerReceiptSplitRequest.IncomingLine(accounts.get("BANK").getId(), outstanding)),
+                referenceNumber,
+                "CODE-RED split receipt",
+                "DRS-KEY-1-" + UUID.randomUUID()
+        );
+
+        DealerReceiptSplitRequest secondRequest = new DealerReceiptSplitRequest(
+                dealer.getId(),
+                List.of(new DealerReceiptSplitRequest.IncomingLine(accounts.get("BANK").getId(), outstanding)),
+                referenceNumber,
+                "CODE-RED split receipt",
+                "DRS-KEY-2-" + UUID.randomUUID()
+        );
+
+        CompanyContextHolder.setCompanyId(companyCode);
+        try {
+            JournalEntryDto first = accountingService.recordDealerReceiptSplit(firstRequest);
+            JournalEntryDto second = accountingService.recordDealerReceiptSplit(secondRequest);
+            JournalEntryDto secondRetry = accountingService.recordDealerReceiptSplit(secondRequest);
+            assertThat(second.id()).isEqualTo(first.id());
+            assertThat(secondRetry.id()).isEqualTo(first.id());
+        } finally {
+            CompanyContextHolder.clear();
+        }
+
+        Invoice refreshed = invoiceRepository.findByCompanyAndId(company, invoice.getId()).orElseThrow();
+        assertThat(refreshed.getOutstandingAmount()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(settlementAllocationRepository.findByCompanyAndInvoiceOrderByCreatedAtDesc(company, invoice))
+                .as("single allocation row for reused split receipt reference")
                 .hasSize(1);
     }
 

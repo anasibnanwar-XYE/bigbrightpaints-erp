@@ -779,7 +779,8 @@ public class AccountingService {
 
         if (!reservation.leader()) {
             JournalEntry existingEntry = awaitJournalEntry(company, reference, idempotencyKey);
-            List<PartnerSettlementAllocation> existingAllocations = awaitAllocations(company, idempotencyKey);
+            List<PartnerSettlementAllocation> existingAllocations =
+                    resolveAllocationsForIdempotentReceiptReplay(company, idempotencyKey, existingEntry);
             if (!existingAllocations.isEmpty()) {
                 JournalEntry entry = existingEntry != null ? existingEntry : existingAllocations.getFirst().getJournalEntry();
                 validateDealerReceiptIdempotency(idempotencyKey, dealer, cashAccount, receivableAccount, amount, memo, entry,
@@ -928,7 +929,8 @@ public class AccountingService {
         IdempotencyReservation reservation = reserveReferenceMapping(company, idempotencyKey, reference, ENTITY_TYPE_DEALER_RECEIPT_SPLIT);
         if (!reservation.leader()) {
             JournalEntry existingEntry = awaitJournalEntry(company, reference, idempotencyKey);
-            List<PartnerSettlementAllocation> existingAllocations = awaitAllocations(company, idempotencyKey);
+            List<PartnerSettlementAllocation> existingAllocations =
+                    resolveAllocationsForIdempotentReceiptReplay(company, idempotencyKey, existingEntry);
             if (!existingAllocations.isEmpty()) {
                 JournalEntry entry = existingEntry != null ? existingEntry : existingAllocations.getFirst().getJournalEntry();
                 validateSplitReceiptIdempotency(idempotencyKey, dealer, memo, entry, lines);
@@ -2381,6 +2383,16 @@ public class AccountingService {
             }
         }
         return existing;
+    }
+
+    private List<PartnerSettlementAllocation> resolveAllocationsForIdempotentReceiptReplay(Company company,
+                                                                                            String idempotencyKey,
+                                                                                            JournalEntry existingEntry) {
+        List<PartnerSettlementAllocation> existingAllocations = awaitAllocations(company, idempotencyKey);
+        if (!existingAllocations.isEmpty() || existingEntry == null) {
+            return existingAllocations;
+        }
+        return settlementAllocationRepository.findByCompanyAndJournalEntryOrderByCreatedAtAsc(company, existingEntry);
     }
 
     private void sleepBriefly() {
