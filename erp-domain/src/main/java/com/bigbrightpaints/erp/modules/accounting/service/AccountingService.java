@@ -2388,6 +2388,13 @@ public class AccountingService {
     private List<PartnerSettlementAllocation> resolveAllocationsForIdempotentReceiptReplay(Company company,
                                                                                             String idempotencyKey,
                                                                                             JournalEntry existingEntry) {
+        if (existingEntry != null) {
+            List<PartnerSettlementAllocation> existingEntryAllocations = settlementAllocationRepository
+                    .findByCompanyAndJournalEntryOrderByCreatedAtAsc(company, existingEntry);
+            if (!existingEntryAllocations.isEmpty()) {
+                return existingEntryAllocations;
+            }
+        }
         List<PartnerSettlementAllocation> existingAllocations = awaitAllocations(company, idempotencyKey);
         if (!existingAllocations.isEmpty() || existingEntry == null) {
             return existingAllocations;

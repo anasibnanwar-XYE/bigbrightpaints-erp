@@ -558,9 +558,12 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
         try {
             JournalEntryDto first = accountingService.recordDealerReceipt(firstRequest);
             JournalEntryDto second = accountingService.recordDealerReceipt(secondRequest);
+            long retryStartedAtNanos = System.nanoTime();
             JournalEntryDto secondRetry = accountingService.recordDealerReceipt(secondRequest);
+            Duration retryLatency = Duration.ofNanos(System.nanoTime() - retryStartedAtNanos);
             assertThat(second.id()).isEqualTo(first.id());
             assertThat(secondRetry.id()).isEqualTo(first.id());
+            assertThat(retryLatency).isLessThan(Duration.ofSeconds(5));
         } finally {
             CompanyContextHolder.clear();
         }
@@ -637,9 +640,12 @@ class CR_DealerReceiptSettlementAuditTrailTest extends AbstractIntegrationTest {
         try {
             JournalEntryDto first = accountingService.recordDealerReceiptSplit(firstRequest);
             JournalEntryDto second = accountingService.recordDealerReceiptSplit(secondRequest);
+            long retryStartedAtNanos = System.nanoTime();
             JournalEntryDto secondRetry = accountingService.recordDealerReceiptSplit(secondRequest);
+            Duration retryLatency = Duration.ofNanos(System.nanoTime() - retryStartedAtNanos);
             assertThat(second.id()).isEqualTo(first.id());
             assertThat(secondRetry.id()).isEqualTo(first.id());
+            assertThat(retryLatency).isLessThan(Duration.ofSeconds(5));
         } finally {
             CompanyContextHolder.clear();
         }
