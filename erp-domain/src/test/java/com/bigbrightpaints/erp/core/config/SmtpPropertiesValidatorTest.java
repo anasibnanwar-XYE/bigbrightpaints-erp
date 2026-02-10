@@ -11,6 +11,8 @@ class SmtpPropertiesValidatorTest {
     @Test
     void validateSmtp_rejectsMissingPassword() {
         SmtpPropertiesValidator validator = new SmtpPropertiesValidator();
+        ReflectionTestUtils.setField(validator, "mailEnabled", true);
+        ReflectionTestUtils.setField(validator, "smtpHost", "smtp.example.com");
         ReflectionTestUtils.setField(validator, "smtpPassword", "");
         ReflectionTestUtils.setField(validator, "smtpUser", "mailer");
 
@@ -22,6 +24,8 @@ class SmtpPropertiesValidatorTest {
     @Test
     void validateSmtp_rejectsDefaultPlaceholderPassword() {
         SmtpPropertiesValidator validator = new SmtpPropertiesValidator();
+        ReflectionTestUtils.setField(validator, "mailEnabled", true);
+        ReflectionTestUtils.setField(validator, "smtpHost", "smtp.example.com");
         ReflectionTestUtils.setField(validator, "smtpPassword", "changeme");
         ReflectionTestUtils.setField(validator, "smtpUser", "mailer");
 
@@ -31,10 +35,36 @@ class SmtpPropertiesValidatorTest {
     }
 
     @Test
-    void validateSmtp_acceptsConfiguredPassword() {
+    void validateSmtp_rejectsMissingUsername() {
         SmtpPropertiesValidator validator = new SmtpPropertiesValidator();
+        ReflectionTestUtils.setField(validator, "mailEnabled", true);
+        ReflectionTestUtils.setField(validator, "smtpHost", "smtp.example.com");
+        ReflectionTestUtils.setField(validator, "smtpPassword", "prod-secret-value");
+        ReflectionTestUtils.setField(validator, "smtpUser", "");
+
+        assertThatThrownBy(validator::validateSmtp)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("SMTP username is missing");
+    }
+
+    @Test
+    void validateSmtp_acceptsConfiguredCredentials() {
+        SmtpPropertiesValidator validator = new SmtpPropertiesValidator();
+        ReflectionTestUtils.setField(validator, "mailEnabled", true);
+        ReflectionTestUtils.setField(validator, "smtpHost", "smtp.example.com");
         ReflectionTestUtils.setField(validator, "smtpPassword", "prod-secret-value");
         ReflectionTestUtils.setField(validator, "smtpUser", "mailer");
+
+        assertThatCode(validator::validateSmtp).doesNotThrowAnyException();
+    }
+
+    @Test
+    void validateSmtp_skipsValidationWhenMailDisabled() {
+        SmtpPropertiesValidator validator = new SmtpPropertiesValidator();
+        ReflectionTestUtils.setField(validator, "mailEnabled", false);
+        ReflectionTestUtils.setField(validator, "smtpHost", "");
+        ReflectionTestUtils.setField(validator, "smtpPassword", "");
+        ReflectionTestUtils.setField(validator, "smtpUser", "");
 
         assertThatCode(validator::validateSmtp).doesNotThrowAnyException();
     }

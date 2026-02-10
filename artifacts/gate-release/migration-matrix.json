@@ -1,0 +1,15 @@
+{
+  "expected_count": 132,
+  "expected_max_version": 132,
+  "upgrade_seed_version": 131,
+  "fresh": {
+    "database": "codered_release_fresh_local_1770381061",
+    "history_count": 132,
+    "history_max_version": 132
+  },
+  "upgrade": {
+    "database": "codered_release_upgrade_local_1770381061",
+    "history_count": 132,
+    "history_max_version": 132
+  }
+}

@@ -349,12 +349,20 @@ public class ProductionCatalogService {
     @Transactional
     public BulkVariantResponse createVariants(BulkVariantRequest request) {
         Company company = companyContextService.requireCurrentCompany();
-        List<String> colors = expandTokens(request.colors());
-        List<String> sizes = expandTokens(request.sizes());
-        if (colors.isEmpty()) {
+        Map<String, String> colorsByKey = new LinkedHashMap<>();
+        for (String color : expandTokens(request.colors())) {
+            colorsByKey.putIfAbsent(normalizeTokenKey(color), color);
+        }
+        Map<String, ColorSizeSpec> colorSizeMatrix = expandColorSizeMatrix(request.colorSizeMatrix());
+        for (ColorSizeSpec matrixEntry : colorSizeMatrix.values()) {
+            colorsByKey.putIfAbsent(normalizeTokenKey(matrixEntry.color()), matrixEntry.color());
+        }
+        List<String> globalSizes = expandTokens(request.sizes());
+
+        if (colorsByKey.isEmpty()) {
             throw new IllegalArgumentException("At least one color is required");
         }
-        if (sizes.isEmpty()) {
+        if (globalSizes.isEmpty() && colorSizeMatrix.values().stream().allMatch(entry -> entry.sizes().isEmpty())) {
             throw new IllegalArgumentException("At least one size is required");
         }
         String normalizedCategory = normalizeCategory(request.category());
@@ -368,7 +376,15 @@ public class ProductionCatalogService {
         List<ProductionProductDto> variants = new ArrayList<>();
         int created = 0;
         int skipped = 0;
-        for (String color : colors) {
+        for (Map.Entry<String, String> colorEntry : colorsByKey.entrySet()) {
+            String color = colorEntry.getValue();
+            ColorSizeSpec matrixEntry = colorSizeMatrix.get(colorEntry.getKey());
+            List<String> sizes = matrixEntry != null && !matrixEntry.sizes().isEmpty()
+                    ? matrixEntry.sizes()
+                    : globalSizes;
+            if (sizes.isEmpty()) {
+                throw new IllegalArgumentException("At least one size is required for color '" + color + "'");
+            }
             String colorCode = truncate(sanitizeSkuFragment(color), 8);
             for (String size : sizes) {
                 String sizeCode = truncate(sanitizeSkuFragment(size), 8);
@@ -397,11 +413,71 @@ public class ProductionCatalogService {
 
     private List<String> expandTokens(List<String> items) {
         if (items == null) return List.of();
-        return items.stream()
-                .filter(StringUtils::hasText)
-                .map(String::trim)
-                .distinct()
-                .toList();
+        Map<String, String> tokens = new LinkedHashMap<>();
+        for (String raw : items) {
+            if (!StringUtils.hasText(raw)) {
+                continue;
+            }
+            String[] chunks = raw.split("[,;\\n]+");
+            for (String chunk : chunks) {
+                if (!StringUtils.hasText(chunk)) {
+                    continue;
+                }
+                String token = chunk.trim();
+                tokens.putIfAbsent(normalizeTokenKey(token), token);
+            }
+        }
+        return List.copyOf(tokens.values());
+    }
+
+    private Map<String, ColorSizeSpec> expandColorSizeMatrix(List<BulkVariantRequest.ColorSizeMatrixEntry> entries) {
+        if (entries == null) {
+            return Map.of();
+        }
+        Map<String, ColorSizeSpec> matrix = new LinkedHashMap<>();
+        for (BulkVariantRequest.ColorSizeMatrixEntry entry : entries) {
+            if (entry == null || !StringUtils.hasText(entry.color())) {
+                continue;
+            }
+            List<String> colors = expandTokens(List.of(entry.color()));
+            if (colors.isEmpty()) {
+                continue;
+            }
+            List<String> sizes = expandTokens(entry.sizes());
+            for (String color : colors) {
+                String colorKey = normalizeTokenKey(color);
+                ColorSizeSpec existing = matrix.get(colorKey);
+                if (existing == null) {
+                    matrix.put(colorKey, new ColorSizeSpec(color, sizes));
+                    continue;
+                }
+                matrix.put(colorKey, new ColorSizeSpec(existing.color(), mergeTokens(existing.sizes(), sizes)));
+            }
+        }
+        return matrix;
+    }
+
+    private List<String> mergeTokens(List<String> first, List<String> second) {
+        Map<String, String> merged = new LinkedHashMap<>();
+        if (first != null) {
+            for (String token : first) {
+                if (StringUtils.hasText(token)) {
+                    merged.putIfAbsent(normalizeTokenKey(token), token.trim());
+                }
+            }
+        }
+        if (second != null) {
+            for (String token : second) {
+                if (StringUtils.hasText(token)) {
+                    merged.putIfAbsent(normalizeTokenKey(token), token.trim());
+                }
+            }
+        }
+        return List.copyOf(merged.values());
+    }
+
+    private String normalizeTokenKey(String value) {
+        return value == null ? "" : value.trim().toUpperCase(Locale.ROOT);
     }
 
     private String truncate(String value, int maxLen) {
@@ -1222,6 +1298,13 @@ public class ProductionCatalogService {
             return java.util.HexFormat.of().formatHex(hash);
         } catch (Exception ex) {
             return Integer.toHexString(file.getOriginalFilename() != null ? file.getOriginalFilename().hashCode() : 0);
+        }
+    }
+
+    private record ColorSizeSpec(String color, List<String> sizes) {
+        private ColorSizeSpec {
+            color = color == null ? "" : color;
+            sizes = sizes == null ? List.of() : List.copyOf(sizes);
         }
     }
 

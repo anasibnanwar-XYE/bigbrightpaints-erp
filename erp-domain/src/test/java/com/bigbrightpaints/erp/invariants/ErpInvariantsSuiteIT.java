@@ -76,6 +76,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @Tag("erp-invariants")
 @DisplayName("ERP Invariants: Golden Paths")
+@Tag("critical")
+@Tag("reconciliation")
 public class ErpInvariantsSuiteIT extends AbstractIntegrationTest {
 
     private static final String PASSWORD = "test123";

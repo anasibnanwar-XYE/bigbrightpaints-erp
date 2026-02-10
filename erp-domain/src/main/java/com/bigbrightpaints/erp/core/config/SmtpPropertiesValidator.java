@@ -14,6 +14,12 @@ public class SmtpPropertiesValidator {
 
     private static final Logger log = LoggerFactory.getLogger(SmtpPropertiesValidator.class);
 
+    @Value("${erp.mail.enabled:true}")
+    private boolean mailEnabled = true;
+
+    @Value("${spring.mail.host:}")
+    private String smtpHost;
+
     @Value("${spring.mail.password:}")
     private String smtpPassword;
 
@@ -22,6 +28,13 @@ public class SmtpPropertiesValidator {
 
     @PostConstruct
     void validateSmtp() {
+        if (!mailEnabled) {
+            log.info("SMTP validation skipped because erp.mail.enabled=false");
+            return;
+        }
+        if (!StringUtils.hasText(smtpHost)) {
+            throw new IllegalStateException("SMTP host is missing (spring.mail.host)");
+        }
         if (!StringUtils.hasText(smtpPassword)) {
             throw new IllegalStateException("SMTP password is missing (spring.mail.password)");
         }
@@ -29,7 +42,7 @@ public class SmtpPropertiesValidator {
             throw new IllegalStateException("SMTP password uses default 'changeme'; set a real credential for production");
         }
         if (!StringUtils.hasText(smtpUser)) {
-            log.warn("SMTP username is empty; verify spring.mail.username is set");
+            throw new IllegalStateException("SMTP username is missing (spring.mail.username)");
         }
     }
 }

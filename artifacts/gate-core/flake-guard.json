@@ -1,0 +1,11 @@
+{
+  "gate": "gate-core",
+  "lane_tags": [
+    "concurrency",
+    "critical",
+    "reconciliation"
+  ],
+  "flaky_tag_violations": [],
+  "quarantine_lane_violations": [],
+  "passes": true
+}

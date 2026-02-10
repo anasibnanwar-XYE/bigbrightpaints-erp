@@ -1,6 +1,8 @@
 package com.bigbrightpaints.erp.core.notification;
 
 import com.bigbrightpaints.erp.core.config.EmailProperties;
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.mail.MailException;
@@ -30,12 +32,11 @@ public class EmailService {
 
     public void sendSimpleEmail(String to, String subject, String body) {
         if (!properties.isEnabled()) {
-            log.debug("Email sending disabled. Skipping email to {}", to);
-            return;
+            throw new ApplicationException(ErrorCode.SYSTEM_CONFIGURATION_ERROR,
+                    "Email delivery is disabled; enable erp.mail.enabled and SMTP settings");
         }
         if (!StringUtils.hasText(to)) {
-            log.warn("Attempted to send email with empty recipient");
-            return;
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Email recipient is required");
         }
         SimpleMailMessage message = new SimpleMailMessage();
         message.setTo(to);
@@ -47,6 +48,11 @@ public class EmailService {
             log.info("Sent email to {}", to);
         } catch (MailException ex) {
             log.error("Failed to send email to {}: {}", to, ex.getMessage(), ex);
+            throw new ApplicationException(
+                    ErrorCode.SYSTEM_EXTERNAL_SERVICE_ERROR,
+                    "Failed to dispatch email via SMTP",
+                    ex
+            ).withDetail("recipient", to);
         }
     }
 
@@ -111,12 +117,11 @@ public class EmailService {
                                   String invoiceDate, String dueDate, String totalAmount,
                                   String companyName, byte[] pdfAttachment) {
         if (!properties.isEnabled()) {
-            log.debug("Email sending disabled. Skipping invoice email to {}", to);
-            return;
+            throw new ApplicationException(ErrorCode.SYSTEM_CONFIGURATION_ERROR,
+                    "Email delivery is disabled; enable erp.mail.enabled and SMTP settings");
         }
         if (!StringUtils.hasText(to)) {
-            log.warn("Attempted to send invoice email with empty recipient");
-            return;
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Invoice recipient email is required");
         }
         String subject = "Invoice " + invoiceNumber + " from " + companyName;
         Context context = new Context();
@@ -147,6 +152,12 @@ public class EmailService {
             log.info("Sent invoice email {} to {}", invoiceNumber, to);
         } catch (MailException ex) {
             log.error("Failed to send invoice email to {}: {}", to, ex.getMessage(), ex);
+            throw new ApplicationException(
+                    ErrorCode.SYSTEM_EXTERNAL_SERVICE_ERROR,
+                    "Failed to deliver invoice email via SMTP",
+                    ex
+            ).withDetail("invoiceNumber", invoiceNumber)
+                    .withDetail("recipient", to);
         }
     }
 

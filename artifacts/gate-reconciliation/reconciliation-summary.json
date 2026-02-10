@@ -1,0 +1,12 @@
+{
+  "gate": "gate-reconciliation",
+  "reports_dir": "/home/realnigga/Desktop/orchestrator_erp/erp-domain/target/surefire-reports",
+  "report_files": 25,
+  "tests": 97,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "time_seconds": 2.647,
+  "failing_cases": [],
+  "passes": true
+}

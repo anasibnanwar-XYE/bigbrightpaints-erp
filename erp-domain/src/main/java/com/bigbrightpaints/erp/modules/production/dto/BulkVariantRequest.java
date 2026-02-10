@@ -1,7 +1,7 @@
 package com.bigbrightpaints.erp.modules.production.dto;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotEmpty;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -16,8 +16,9 @@ public record BulkVariantRequest(
         String brandCode,
         @NotBlank String baseProductName,
         @NotBlank String category,
-        @NotEmpty List<String> colors,
-        @NotEmpty List<String> sizes,
+        List<String> colors,
+        List<String> sizes,
+        List<@Valid ColorSizeMatrixEntry> colorSizeMatrix,
         String unitOfMeasure,
         String skuPrefix,
         BigDecimal basePrice,
@@ -25,4 +26,9 @@ public record BulkVariantRequest(
         BigDecimal minDiscountPercent,
         BigDecimal minSellingPrice,
         Map<String, Object> metadata
-) {}
+) {
+    public record ColorSizeMatrixEntry(
+            @NotBlank String color,
+            List<String> sizes
+    ) {}
+}

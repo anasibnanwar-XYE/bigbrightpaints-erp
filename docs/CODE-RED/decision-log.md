@@ -563,6 +563,26 @@ Enforcement:
 
 ---
 
+## 2026-02-06 - Release Promotion Requires Five Confidence Lanes
+Decision:
+- Release promotion uses one authoritative confidence suite across five lanes:
+  - `gate-fast`
+  - `gate-core`
+  - `gate-release`
+  - `gate-reconciliation`
+  - `gate-quality`
+
+Rationale:
+- A single `mvn verify` signal is not sufficient for enterprise release decisions.
+- Lane separation makes regressions explicit: PR safety, mainline integration, strict release checks, reconciliation truth, and long-horizon quality durability.
+
+Enforcement:
+- CI workflow definitions must expose these lane jobs and publish lane evidence artifacts.
+- `gate-release` and `gate-reconciliation` are mandatory for release SHA promotion.
+- Latest `gate-quality` run must be green in the promotion window.
+
+---
+
 ## Open Decisions (Must Be Resolved Before We Claim “Enterprise Deploy-Ready”)
 
 These are intentionally listed here so new agents don’t implement conflicting behavior.

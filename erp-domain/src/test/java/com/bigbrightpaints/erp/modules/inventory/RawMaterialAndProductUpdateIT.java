@@ -21,9 +21,13 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 
 import java.math.BigDecimal;
+import java.util.Locale;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -166,6 +170,133 @@ class RawMaterialAndProductUpdateIT extends AbstractIntegrationTest {
         assertThat(saved.getProductName()).isEqualTo("Primer Base Plus");
         assertThat(saved.getBasePrice()).isEqualByComparingTo("150.00");
         assertThat(saved.getMinSellingPrice()).isEqualByComparingTo("130.00");
+    }
+
+    @Test
+    void bulk_variants_expand_comma_separated_colors_and_sizes() {
+        HttpHeaders headers = authenticatedHeaders();
+
+        String baseProductName = "Primer Variant " + UUID.randomUUID().toString().substring(0, 8);
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("brandName", "HouseBrand");
+        payload.put("baseProductName", baseProductName);
+        payload.put("category", "FINISHED_GOOD");
+        payload.put("colors", List.of("Red, Blue", "blue", "Green"));
+        payload.put("sizes", List.of("1L,2L", "2L"));
+        payload.put("skuPrefix", "HB");
+        payload.put("unitOfMeasure", "LTR");
+
+        ResponseEntity<Map> response = rest.exchange(
+                "/api/v1/accounting/catalog/products/bulk-variants",
+                HttpMethod.POST,
+                new HttpEntity<>(payload, headers),
+                Map.class
+        );
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<?, ?> data = (Map<?, ?>) response.getBody().get("data");
+        assertThat(((Number) data.get("created")).intValue()).isEqualTo(6);
+        assertThat(((Number) data.get("skippedExisting")).intValue()).isZero();
+        assertThat((List<?>) data.get("variants")).hasSize(6);
+
+        Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
+        Map<String, Set<String>> sizesByColor = productionProductRepository.findByCompanyOrderByProductNameAsc(company).stream()
+                .filter(product -> product.getProductName() != null && product.getProductName().startsWith(baseProductName + " "))
+                .collect(Collectors.groupingBy(
+                        product -> product.getDefaultColour().toUpperCase(Locale.ROOT),
+                        Collectors.mapping(ProductionProduct::getSizeLabel, Collectors.toSet())
+                ));
+
+        assertThat(sizesByColor).containsOnlyKeys("RED", "BLUE", "GREEN");
+        assertThat(sizesByColor.get("RED")).containsExactlyInAnyOrder("1L", "2L");
+        assertThat(sizesByColor.get("BLUE")).containsExactlyInAnyOrder("1L", "2L");
+        assertThat(sizesByColor.get("GREEN")).containsExactlyInAnyOrder("1L", "2L");
+    }
+
+    @Test
+    void bulk_variants_allow_color_specific_size_overrides() {
+        HttpHeaders headers = authenticatedHeaders();
+
+        String baseProductName = "Primer Matrix " + UUID.randomUUID().toString().substring(0, 8);
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("brandName", "HouseBrand");
+        payload.put("baseProductName", baseProductName);
+        payload.put("category", "FINISHED_GOOD");
+        payload.put("colors", List.of("Black, White, Blue"));
+        payload.put("sizes", List.of("S,M,L,XL"));
+        payload.put("colorSizeMatrix", List.of(
+                Map.of("color", "Blue", "sizes", List.of("XS,XL")),
+                Map.of("color", "White", "sizes", List.of("M"))
+        ));
+        payload.put("skuPrefix", "HB");
+        payload.put("unitOfMeasure", "LTR");
+
+        ResponseEntity<Map> response = rest.exchange(
+                "/api/v1/accounting/catalog/products/bulk-variants",
+                HttpMethod.POST,
+                new HttpEntity<>(payload, headers),
+                Map.class
+        );
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<?, ?> data = (Map<?, ?>) response.getBody().get("data");
+        assertThat(((Number) data.get("created")).intValue()).isEqualTo(7);
+        assertThat(((Number) data.get("skippedExisting")).intValue()).isZero();
+
+        Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
+        Map<String, Set<String>> sizesByColor = productionProductRepository.findByCompanyOrderByProductNameAsc(company).stream()
+                .filter(product -> product.getProductName() != null && product.getProductName().startsWith(baseProductName + " "))
+                .collect(Collectors.groupingBy(
+                        product -> product.getDefaultColour().toUpperCase(Locale.ROOT),
+                        Collectors.mapping(ProductionProduct::getSizeLabel, Collectors.toSet())
+                ));
+
+        assertThat(sizesByColor).containsOnlyKeys("BLACK", "WHITE", "BLUE");
+        assertThat(sizesByColor.get("BLACK")).containsExactlyInAnyOrder("S", "M", "L", "XL");
+        assertThat(sizesByColor.get("WHITE")).containsExactly("M");
+        assertThat(sizesByColor.get("BLUE")).containsExactlyInAnyOrder("XS", "XL");
+    }
+
+    @Test
+    void bulk_variants_accept_matrix_only_colors_and_sizes() {
+        HttpHeaders headers = authenticatedHeaders();
+
+        String baseProductName = "Primer MatrixOnly " + UUID.randomUUID().toString().substring(0, 8);
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("brandName", "HouseBrand");
+        payload.put("baseProductName", baseProductName);
+        payload.put("category", "FINISHED_GOOD");
+        payload.put("colors", List.of());
+        payload.put("sizes", List.of());
+        payload.put("colorSizeMatrix", List.of(
+                Map.of("color", "Amber, Teal", "sizes", List.of("250ML,500ML"))
+        ));
+        payload.put("skuPrefix", "HB");
+        payload.put("unitOfMeasure", "LTR");
+
+        ResponseEntity<Map> response = rest.exchange(
+                "/api/v1/accounting/catalog/products/bulk-variants",
+                HttpMethod.POST,
+                new HttpEntity<>(payload, headers),
+                Map.class
+        );
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<?, ?> data = (Map<?, ?>) response.getBody().get("data");
+        assertThat(((Number) data.get("created")).intValue()).isEqualTo(4);
+        assertThat(((Number) data.get("skippedExisting")).intValue()).isZero();
+
+        Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
+        Map<String, Set<String>> sizesByColor = productionProductRepository.findByCompanyOrderByProductNameAsc(company).stream()
+                .filter(product -> product.getProductName() != null && product.getProductName().startsWith(baseProductName + " "))
+                .collect(Collectors.groupingBy(
+                        product -> product.getDefaultColour().toUpperCase(Locale.ROOT),
+                        Collectors.mapping(ProductionProduct::getSizeLabel, Collectors.toSet())
+                ));
+
+        assertThat(sizesByColor).containsOnlyKeys("AMBER", "TEAL");
+        assertThat(sizesByColor.get("AMBER")).containsExactlyInAnyOrder("250ML", "500ML");
+        assertThat(sizesByColor.get("TEAL")).containsExactlyInAnyOrder("250ML", "500ML");
     }
 
     private HttpHeaders authenticatedHeaders() {

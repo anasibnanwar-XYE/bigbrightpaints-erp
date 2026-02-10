@@ -43,6 +43,7 @@ CODE-RED program docs
 - Identity & naming contract (companyId vs companyCode): `docs/CODE-RED/IDENTITY_AND_NAMING.md`
 - Observability identifiers contract (traceId/requestId/idempotency): `docs/CODE-RED/OBSERVABILITY_IDENTIFIERS.md`
 - Decision log (what we decided, when): `docs/CODE-RED/decision-log.md`
+- Review comments ledger (open findings/questions): `docs/CODE-RED/REVIEW_COMMENTS.md`
 - P0 deploy blockers (must fix or prod-gate): `docs/CODE-RED/P0_DEPLOY_BLOCKERS.md`
 - Module audit summary (1-page snapshot): `docs/CODE-RED/MODULE_AUDIT_SUMMARY.md`
 - Performance/query hotspot inventory: `docs/CODE-RED/PERFORMANCE_QUERY_HOTSPOTS.md`

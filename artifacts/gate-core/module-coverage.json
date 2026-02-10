@@ -1,0 +1,151 @@
+{
+  "matched_packages": [
+    "com.bigbrightpaints.erp.modules.accounting.service",
+    "com.bigbrightpaints.erp.modules.inventory.service",
+    "com.bigbrightpaints.erp.modules.invoice.service",
+    "com.bigbrightpaints.erp.orchestrator.policy",
+    "com.bigbrightpaints.erp.orchestrator.service"
+  ],
+  "matched_classes": 10,
+  "class_filters": [
+    "com.bigbrightpaints.erp.modules.accounting.service.ReferenceNumberService",
+    "com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService",
+    "com.bigbrightpaints.erp.modules.inventory.service.BatchNumberService",
+    "com.bigbrightpaints.erp.modules.invoice.service.InvoiceSettlementPolicy",
+    "com.bigbrightpaints.erp.orchestrator.policy.PolicyEnforcer",
+    "com.bigbrightpaints.erp.orchestrator.service.TraceService",
+    "com.bigbrightpaints.erp.orchestrator.service.OrchestratorIdempotencyService"
+  ],
+  "active_classes": 10,
+  "active_classes_only": true,
+  "min_active_classes": 7,
+  "active_packages": [
+    "com.bigbrightpaints.erp.modules.accounting.service",
+    "com.bigbrightpaints.erp.modules.inventory.service",
+    "com.bigbrightpaints.erp.modules.invoice.service",
+    "com.bigbrightpaints.erp.orchestrator.policy",
+    "com.bigbrightpaints.erp.orchestrator.service"
+  ],
+  "min_active_packages": 4,
+  "line_covered": 351,
+  "line_total": 355,
+  "line_ratio": 0.9887323943661972,
+  "line_threshold": 0.92,
+  "branch_covered": 149,
+  "branch_total": 160,
+  "branch_ratio": 0.93125,
+  "branch_threshold": 0.85,
+  "class_summaries": [
+    {
+      "class": "com.bigbrightpaints.erp.orchestrator.policy.PolicyEnforcer",
+      "package": "com.bigbrightpaints.erp.orchestrator.policy",
+      "active": true,
+      "line_covered": 10,
+      "line_total": 10,
+      "line_ratio": 1.0,
+      "branch_covered": 12,
+      "branch_total": 12,
+      "branch_ratio": 1.0
+    },
+    {
+      "class": "com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService",
+      "package": "com.bigbrightpaints.erp.modules.accounting.service",
+      "active": true,
+      "line_covered": 56,
+      "line_total": 56,
+      "line_ratio": 1.0,
+      "branch_covered": 23,
+      "branch_total": 24,
+      "branch_ratio": 0.9583333333333334
+    },
+    {
+      "class": "com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService$DefaultAccounts",
+      "package": "com.bigbrightpaints.erp.modules.accounting.service",
+      "active": true,
+      "line_covered": 1,
+      "line_total": 1,
+      "line_ratio": 1.0,
+      "branch_covered": 0,
+      "branch_total": 0,
+      "branch_ratio": 1.0
+    },
+    {
+      "class": "com.bigbrightpaints.erp.modules.accounting.service.ReferenceNumberService",
+      "package": "com.bigbrightpaints.erp.modules.accounting.service",
+      "active": true,
+      "line_covered": 100,
+      "line_total": 102,
+      "line_ratio": 0.9803921568627451,
+      "branch_covered": 32,
+      "branch_total": 36,
+      "branch_ratio": 0.8888888888888888
+    },
+    {
+      "class": "com.bigbrightpaints.erp.orchestrator.service.OrchestratorIdempotencyService",
+      "package": "com.bigbrightpaints.erp.orchestrator.service",
+      "active": true,
+      "line_covered": 53,
+      "line_total": 55,
+      "line_ratio": 0.9636363636363636,
+      "branch_covered": 15,
+      "branch_total": 16,
+      "branch_ratio": 0.9375
+    },
+    {
+      "class": "com.bigbrightpaints.erp.orchestrator.service.TraceService",
+      "package": "com.bigbrightpaints.erp.orchestrator.service",
+      "active": true,
+      "line_covered": 25,
+      "line_total": 25,
+      "line_ratio": 1.0,
+      "branch_covered": 4,
+      "branch_total": 4,
+      "branch_ratio": 1.0
+    },
+    {
+      "class": "com.bigbrightpaints.erp.orchestrator.service.OrchestratorIdempotencyService$CommandLease",
+      "package": "com.bigbrightpaints.erp.orchestrator.service",
+      "active": true,
+      "line_covered": 1,
+      "line_total": 1,
+      "line_ratio": 1.0,
+      "branch_covered": 0,
+      "branch_total": 0,
+      "branch_ratio": 1.0
+    },
+    {
+      "class": "com.bigbrightpaints.erp.modules.inventory.service.BatchNumberService",
+      "package": "com.bigbrightpaints.erp.modules.inventory.service",
+      "active": true,
+      "line_covered": 24,
+      "line_total": 24,
+      "line_ratio": 1.0,
+      "branch_covered": 8,
+      "branch_total": 8,
+      "branch_ratio": 1.0
+    },
+    {
+      "class": "com.bigbrightpaints.erp.modules.invoice.service.InvoiceSettlementPolicy$InvoiceStatus",
+      "package": "com.bigbrightpaints.erp.modules.invoice.service",
+      "active": true,
+      "line_covered": 7,
+      "line_total": 7,
+      "line_ratio": 1.0,
+      "branch_covered": 0,
+      "branch_total": 0,
+      "branch_ratio": 1.0
+    },
+    {
+      "class": "com.bigbrightpaints.erp.modules.invoice.service.InvoiceSettlementPolicy",
+      "package": "com.bigbrightpaints.erp.modules.invoice.service",
+      "active": true,
+      "line_covered": 74,
+      "line_total": 74,
+      "line_ratio": 1.0,
+      "branch_covered": 55,
+      "branch_total": 60,
+      "branch_ratio": 0.9166666666666666
+    }
+  ],
+  "passes": true
+}

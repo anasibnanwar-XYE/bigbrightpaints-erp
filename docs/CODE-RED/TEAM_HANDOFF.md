@@ -1,6 +1,6 @@
 # CODE-RED Team Handoff (Execution Order + Next P0 Work)
 
-Last updated: 2026-02-03
+Last updated: 2026-02-04
 
 Purpose: one place for the team to see **what’s already hardened**, what is still **P0**, and the exact **execution order**
 to reach a safe, enterprise-grade deploy (no “mind fookin” scattered fixes).
@@ -13,6 +13,7 @@ Start here:
 - Orchestrator strong-arm contract: `docs/CODE-RED/ORCHESTRATOR_STRONG_ARM_SPEC.md`
 - Cross-cutting “code smell → centralization” plan: `docs/CODE-RED/CROSS_CUTTING_CENTRALIZATION.md`
 - Decision log (locking behavior / truth boundaries): `docs/CODE-RED/decision-log.md`
+- Review comments ledger (open findings/questions): `docs/CODE-RED/REVIEW_COMMENTS.md`
 - Evidence maps: `docs/cross-module-trace-map.md`, `docs/idempotency-inventory.md`
 
 ---

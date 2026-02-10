@@ -9,6 +9,7 @@ References
 - Release plan and scope: `docs/CODE-RED/release-plan.md`
 - Go/No-Go gate: `docs/CODE-RED/GO_NO_GO_CHECKLIST.md`
 - Env var checklist: `erp-domain/docs/DEPLOY_CHECKLIST.md`
+- Confidence lane contracts: `docs/CODE-RED/confidence-suite/GATE_CONTRACTS.md`
 
 ---
 
@@ -33,6 +34,13 @@ Fail if: any scan reports findings or the command exits non-zero.
 Command: `FAIL_ON_FINDINGS=true bash scripts/verify_local.sh`
 Expected: output includes `[verify_local] OK` with zero findings.
 Fail if: any scan returns findings or non-zero exit.
+
+5) Validate release lane scripts are present.
+Commands:
+- `test -x scripts/gate_release.sh`
+- `test -x scripts/gate_reconciliation.sh`
+Expected: both exit code 0.
+Fail if: either script is missing or not executable.
 
 ---
 
@@ -149,6 +157,12 @@ Fail if: any deploy step fails, or Flyway validation fails.
 Command: `psql "$PROD_DATABASE_URL" -f scripts/db_predeploy_scans.sql`
 Expected: zero rows.
 Fail if: any rows are returned or the command exits non-zero.
+
+3) Confirm release SHA has the required confidence-lane evidence:
+- `gate-release` artifacts (`artifacts/gate-release/*`)
+- `gate-reconciliation` artifacts (`artifacts/gate-reconciliation/*`)
+- latest `gate-quality` artifact is green in the promotion window.
+Fail if: required artifacts are missing or indicate failures.
 
 ---
 

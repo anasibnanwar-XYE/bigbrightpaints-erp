@@ -21,6 +21,7 @@ import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 import com.bigbrightpaints.erp.test.support.TestDateUtils;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -46,6 +47,9 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 
 @org.springframework.context.annotation.Import(CR_PeriodCloseAtomicityTest.CloseHookConfig.class)
+@Tag("critical")
+@Tag("concurrency")
+@Tag("reconciliation")
 class CR_PeriodCloseAtomicityTest extends AbstractIntegrationTest {
 
     @Autowired private AccountingPeriodService accountingPeriodService;

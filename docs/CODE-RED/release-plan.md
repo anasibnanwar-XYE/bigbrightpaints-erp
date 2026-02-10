@@ -16,12 +16,18 @@ We are "deployable" when all are true:
   movements, or journal entries (idempotency at the correct boundaries).
 - Operational truth (orders, slips, packing) does not contradict financial truth (journals) for the same business event.
 - The pre-deploy scans return clean on a production-like dataset.
+- One immutable SHA has passed `gate-release` and `gate-reconciliation`, with the latest `gate-quality` nightly run green.
 
 ## 1) Current Status Snapshot (as of 2026-02-05)
 
 Verified green gates:
 - Local release gate passes: `bash scripts/verify_local.sh` (schema drift scan + Flyway overlap scan + time API scan + `mvn verify`).
-- CI must execute the same gate as `scripts/verify_local.sh` (see `.github/workflows/ci.yml`).
+- CI is wired with dedicated lanes in `.github/workflows/ci.yml`:
+  - `gate-fast` (PR hard-fail safety lane)
+  - `gate-core` (mainline integration + concurrency lane)
+  - `gate-release` (strict release-SHA verification + migration matrix)
+  - `gate-reconciliation` (operational truth == financial truth)
+  - `gate-quality` (nightly mutation + flake-rate durability lane)
 
 Known open risks (must be explicitly handled before prod use):
 - Mutating/nondeterministic GET: `/api/v1/dispatch/order/{orderId}` can create slips/reservations and selects "most recent"
@@ -144,7 +150,20 @@ Authoritative release procedure (commands, expected outputs, and failure criteri
 Reference-only checklist (env vars + endpoints):
 `erp-domain/docs/DEPLOY_CHECKLIST.md`
 
-## 7) Ownership (RACI-lite)
+## 7) Confidence Suite Commands
+
+Local lane entrypoints:
+- `bash scripts/gate_fast.sh`
+- `bash scripts/gate_core.sh`
+- `bash scripts/gate_release.sh`
+- `bash scripts/gate_reconciliation.sh`
+- `bash scripts/gate_quality.sh`
+
+Contracts:
+- `docs/CODE-RED/confidence-suite/GATE_CONTRACTS.md`
+- `docs/CODE-RED/confidence-suite/RECONCILIATION_CONTRACT.md`
+
+## 8) Ownership (RACI-lite)
 
 - PM/Release Captain: owns scope, timelines, go/no-go, comms.
 - Backend Lead: owns invariants, canonical workflow enforcement, and merges.

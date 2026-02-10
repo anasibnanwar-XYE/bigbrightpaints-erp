@@ -14,6 +14,12 @@ Code + tests
 - `bash scripts/verify_local.sh` is green on the release commit.
 - On the release commit, run the CODE-RED scans in **fail-on-findings** mode (or record an explicit waiver):
   - `FAIL_ON_FINDINGS=true bash scripts/verify_local.sh`
+- Confidence suite lanes are green for the same immutable SHA:
+  - `gate-fast` (PR safety lane)
+  - `gate-core` (mainline integration lane)
+  - `gate-release` (strict release lane)
+  - `gate-reconciliation` (operational truth == financial truth)
+  - latest `gate-quality` nightly run is green in the promotion window.
 - CI is green on the same commit (see `.github/workflows/ci.yml`).
 
 Database safety
@@ -67,6 +73,7 @@ Workflow truth mismatch
   - COGS can be posted twice due to slip-vs-order reference mismatch (`COGS-<slipNumber>` vs `COGS-<orderNumber>`).
 - Idempotency is not mismatch-safe:
   - if “return existing” can silently accept materially different payloads (amount/accounts/lines), it is NO-GO.
+- Any mandatory confidence lane is red or missing evidence artifacts for the release SHA.
 
 Operational risk
 - Packing/production endpoints can be retried and double-consume or double-post.

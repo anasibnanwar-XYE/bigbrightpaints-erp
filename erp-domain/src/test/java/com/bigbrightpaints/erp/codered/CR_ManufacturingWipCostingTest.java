@@ -36,6 +36,7 @@ import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProductRepository;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -53,6 +54,8 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @TestPropertySource(properties = "erp.benchmark.override-date=2025-03-31")
+@Tag("critical")
+@Tag("reconciliation")
 class CR_ManufacturingWipCostingTest extends AbstractIntegrationTest {
 
     @Autowired private CompanyRepository companyRepository;

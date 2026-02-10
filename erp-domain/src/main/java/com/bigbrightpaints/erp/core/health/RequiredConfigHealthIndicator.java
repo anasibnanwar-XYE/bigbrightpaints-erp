@@ -24,6 +24,7 @@ public class RequiredConfigHealthIndicator implements HealthIndicator {
     private final String licenseKey;
     private final boolean mailEnabled;
     private final String mailHost;
+    private final String mailUsername;
     private final String mailPassword;
 
     public RequiredConfigHealthIndicator(
@@ -33,6 +34,7 @@ public class RequiredConfigHealthIndicator implements HealthIndicator {
             @Value("${erp.licensing.license-key:}") String licenseKey,
             @Value("${erp.mail.enabled:true}") boolean mailEnabled,
             @Value("${spring.mail.host:}") String mailHost,
+            @Value("${spring.mail.username:}") String mailUsername,
             @Value("${spring.mail.password:}") String mailPassword) {
         this.jwtSecret = jwtSecret;
         this.encryptionKey = encryptionKey;
@@ -40,6 +42,7 @@ public class RequiredConfigHealthIndicator implements HealthIndicator {
         this.licenseKey = licenseKey;
         this.mailEnabled = mailEnabled;
         this.mailHost = mailHost;
+        this.mailUsername = mailUsername;
         this.mailPassword = mailPassword;
     }
 
@@ -68,12 +71,14 @@ public class RequiredConfigHealthIndicator implements HealthIndicator {
 
         boolean mailOk = true;
         if (mailEnabled) {
-            mailOk = StringUtils.hasText(mailHost) && mailPasswordConfigured(mailPassword);
+            mailOk = StringUtils.hasText(mailHost)
+                    && StringUtils.hasText(mailUsername)
+                    && mailPasswordConfigured(mailPassword);
         }
         details.put("mailEnabled", mailEnabled);
         details.put("mailConfigured", mailOk);
         if (!mailOk) {
-            missing.add("spring.mail.host/password");
+            missing.add("spring.mail.host/username/password");
         }
 
         Health.Builder builder = missing.isEmpty() ? Health.up() : Health.down();

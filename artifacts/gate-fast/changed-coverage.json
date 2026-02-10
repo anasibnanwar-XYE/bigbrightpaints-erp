@@ -1,0 +1,40 @@
+{
+  "diff_base": "2df86f7b55fd457d768d3218f651cc2c341397ac",
+  "files_considered": 3,
+  "line_covered": 7,
+  "line_total": 7,
+  "line_ratio": 1.0,
+  "line_threshold": 0.95,
+  "branch_covered": 0,
+  "branch_total": 0,
+  "branch_ratio": 1.0,
+  "branch_threshold": 0.9,
+  "vacuous": false,
+  "passes": true,
+  "per_file": {
+    "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingFacade.java": {
+      "line_covered": 1,
+      "line_total": 1,
+      "branch_covered": 0,
+      "branch_total": 0,
+      "line_ratio": 1.0,
+      "branch_ratio": 1.0
+    },
+    "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingPeriodService.java": {
+      "line_covered": 5,
+      "line_total": 5,
+      "branch_covered": 0,
+      "branch_total": 0,
+      "line_ratio": 1.0,
+      "branch_ratio": 1.0
+    },
+    "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/reports/service/InventoryValuationService.java": {
+      "line_covered": 1,
+      "line_total": 1,
+      "branch_covered": 0,
+      "branch_total": 0,
+      "line_ratio": 1.0,
+      "branch_ratio": 1.0
+    }
+  }
+}
