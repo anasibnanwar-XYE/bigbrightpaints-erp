@@ -207,18 +207,23 @@ Auto-Replenish Queue (Always Keep Filled)
 - [ready] M2-S7 Event-trail failure taxonomy normalization
   - Unify failure classification rules across posting/reversal paths and expose deterministic categories for alert routing.
   - Add tests for `DATA_INTEGRITY` and `VALIDATION` categories (not only generic persistence failures).
-- [in_progress] M8-S4 Commit self-containment guardrail
+- [done] M8-S4 Commit self-containment guardrail
   - Ensure orchestrator correlation commits include both dispatcher call-site and coordinator overload definitions.
   - Add commit-review checklist item to reject clean-checkout compile gaps.
+  - Completed: added `scripts/guard_orchestrator_correlation_contract.sh` to assert dispatcher call-site propagation + coordinator overload presence + regression-test coverage.
+  - Completed: wired guard into `scripts/verify_local.sh` so local preflight fails fast if correlation contract drifts.
 - [done] M0-S5 Auth-wrapper async proxy contract test
   - Add proxied/asynchronous `AuditService` integration test so auth attribution coverage includes real `@Async` execution and context drift conditions.
   - Validate wrapper attribution policy under blank override inputs (explicit contract, no accidental ambient misattribution).
   - Completed: added `AuditServiceAsyncIT` using Spring-proxied `AuditService` with real async executor.
   - Completed: verifies explicit auth actor/company attribution survives post-invocation caller-context mutation.
   - Completed: added unresolved-company behavior assertion for auth-failure wrapper path.
-- [ready] M0-S6 Auth-wrapper attribution policy hardening
+- [in_progress] M0-S6 Auth-wrapper attribution policy hardening
   - Decide and enforce contract for blank username/company overrides (`UNKNOWN` vs reject vs ambient fallback) to avoid accidental misattribution.
   - Expand async tests to include blank-override behavior once contract is finalized.
+- [ready] M8-S5 Correlation guard CI integration follow-up
+  - Integrate `guard_orchestrator_correlation_contract.sh` into CI path (`scripts/verify_local.sh` is already covered by local gate).
+  - Add fail-fast artifact note for orchestrator correlation guard violations.
 
 Commit Ledger
 - 2026-02-12: `16b2a2c4`
@@ -312,18 +317,25 @@ Commit Ledger
   - Verified:
     - `mvn -B -ntp -Dtest=CompanyContextTaskDecoratorTest,AuditServiceTest test`
   - `codex review --commit 1d182cad`: running (result will be appended).
+- 2026-02-12: `3e48cf4c`
+  - Added proxied async attribution integration tests for auth wrappers (`AuditServiceAsyncIT`).
+  - Verified:
+    - `mvn -B -ntp -Dtest=AuditServiceAsyncIT,AuditServiceTest,CompanyContextTaskDecoratorTest test`
+  - `codex review --commit 3e48cf4c`: running (result will be appended).
 
 Current Checkpoint
-- Current WIP M0-S5 completion + M8-S4 in-progress:
-  - `erp-domain/src/test/java/com/bigbrightpaints/erp/core/audit/AuditServiceAsyncIT.java`
-    - validates proxied `@Async` auth-wrapper attribution under caller-context mutation
-    - validates unresolved company override behavior in async wrapper flow
+- Current WIP M8-S4 completion + M0-S6 kickoff:
+  - `scripts/guard_orchestrator_correlation_contract.sh`
+    - enforces orchestrator correlation propagation contract across dispatcher/coordinator/test boundary
+  - `scripts/verify_local.sh`
+    - now executes orchestrator correlation guard in local preflight sequence
 - Verification command:
-  - `mvn -B -ntp -Dtest=AuditServiceAsyncIT,AuditServiceTest,CompanyContextTaskDecoratorTest test`
+  - `bash scripts/guard_orchestrator_correlation_contract.sh`
+  - `bash -n scripts/verify_local.sh`
 - Next action:
-  - commit M0-S5 async proxy auth-wrapper coverage
+  - commit M8-S4 correlation contract guardrail wiring
   - run `codex review --commit <sha>`
-  - execute M8-S4 self-containment guardrail and M0-S6 attribution policy hardening
+  - execute M0-S6 auth-wrapper attribution policy hardening
 
 Async Loop Cadence
 - Each cycle:

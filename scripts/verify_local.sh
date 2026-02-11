@@ -2,24 +2,50 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+MIGRATION_SET="${MIGRATION_SET:-v2}"
+MVN_ARGS=(-B -ntp)
+
+case "$MIGRATION_SET" in
+  v2)
+    MVN_ARGS+=("-Dspring.profiles.active=test,flyway-v2")
+    MVN_ARGS+=("-Dspring.flyway.locations=classpath:db/migration_v2")
+    MVN_ARGS+=("-Dspring.flyway.table=flyway_schema_history_v2")
+    ;;
+  v1)
+    MVN_ARGS+=("-Dspring.profiles.active=test")
+    MVN_ARGS+=("-Dspring.flyway.locations=classpath:db/migration")
+    MVN_ARGS+=("-Dspring.flyway.table=flyway_schema_history")
+    ;;
+  *)
+    echo "[verify_local] invalid MIGRATION_SET: $MIGRATION_SET (expected v1 or v2)" >&2
+    exit 2
+    ;;
+esac
 
 echo "[verify_local] root=$ROOT_DIR"
+echo "[verify_local] migration_set=$MIGRATION_SET"
+
+echo "[verify_local] legacy migration freeze guard"
+bash "$ROOT_DIR/scripts/guard_legacy_migration_freeze.sh" --no-range
 
 echo "[verify_local] schema drift scan"
-bash "$ROOT_DIR/scripts/schema_drift_scan.sh"
+FAIL_ON_FINDINGS=true bash "$ROOT_DIR/scripts/schema_drift_scan.sh" --migration-set "$MIGRATION_SET"
 
 echo "[verify_local] flyway overlap scan (heuristic)"
-bash "$ROOT_DIR/scripts/flyway_overlap_scan.sh"
+FAIL_ON_FINDINGS=true bash "$ROOT_DIR/scripts/flyway_overlap_scan.sh" --migration-set "$MIGRATION_SET"
+
+echo "[verify_local] orchestrator correlation contract guard"
+bash "$ROOT_DIR/scripts/guard_orchestrator_correlation_contract.sh"
 
 echo "[verify_local] time api scan"
 bash "$ROOT_DIR/scripts/time_api_scan.sh"
 
 if [[ "${VERIFY_LOCAL_SKIP_TESTS:-false}" == "true" ]]; then
   echo "[verify_local] mvn verify (skip tests)"
-  (cd "$ROOT_DIR/erp-domain" && mvn -B -ntp -DskipTests -Djacoco.skip=true verify)
+  (cd "$ROOT_DIR/erp-domain" && mvn "${MVN_ARGS[@]}" -DskipTests -Djacoco.skip=true verify)
 else
   echo "[verify_local] mvn verify"
-  (cd "$ROOT_DIR/erp-domain" && mvn -B -ntp verify)
+  (cd "$ROOT_DIR/erp-domain" && mvn "${MVN_ARGS[@]}" verify)
 fi
 
 echo "[verify_local] OK"
