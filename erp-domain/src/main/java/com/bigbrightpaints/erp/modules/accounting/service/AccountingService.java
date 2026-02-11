@@ -81,6 +81,9 @@ public class AccountingService {
     private static final BigDecimal ALLOCATION_TOLERANCE = new BigDecimal("0.01");
     private static final Duration IDEMPOTENCY_WAIT_TIMEOUT = Duration.ofSeconds(8);
     private static final long IDEMPOTENCY_WAIT_SLEEP_MS = 50L;
+    private static final int ACCOUNTING_EVENT_JOURNAL_REFERENCE_MAX_LENGTH = 100;
+    private static final int ACCOUNTING_EVENT_ACCOUNT_CODE_MAX_LENGTH = 50;
+    private static final int ACCOUNTING_EVENT_DESCRIPTION_MAX_LENGTH = 500;
     private static final String ENTITY_TYPE_DEALER_RECEIPT = "DEALER_RECEIPT";
     private static final String ENTITY_TYPE_DEALER_RECEIPT_SPLIT = "DEALER_RECEIPT_SPLIT";
     private static final String ENTITY_TYPE_DEALER_SETTLEMENT = "DEALER_SETTLEMENT";
@@ -3298,6 +3301,7 @@ public class AccountingService {
         if (journalEntry == null) {
             return;
         }
+        validatePostedEventPayloadCompatibility(journalEntry);
         try {
             Map<Long, BigDecimal> snapshot = balancesBefore != null ? new HashMap<>(balancesBefore) : Map.of();
             accountingEventStore.recordJournalEntryPosted(journalEntry, snapshot);
@@ -3310,6 +3314,7 @@ public class AccountingService {
         if (original == null || reversal == null) {
             return;
         }
+        validateReversalEventPayloadCompatibility(original, reason);
         try {
             accountingEventStore.recordJournalEntryReversed(original, reversal, reason);
         } catch (Exception ex) {
@@ -3324,11 +3329,17 @@ public class AccountingService {
         if (StringUtils.hasText(journalReference)) {
             metadata.put("journalReference", journalReference);
         }
+        metadata.put("failureCode", "ACCOUNTING_EVENT_TRAIL_PERSISTENCE_FAILURE");
+        metadata.put("errorCategory", classifyEventTrailFailure(ex));
         metadata.put("errorType", ex.getClass().getSimpleName());
-        if (StringUtils.hasText(ex.getMessage())) {
-            metadata.put("error", ex.getMessage());
+        try {
+            auditService.logFailure(AuditEvent.INTEGRATION_FAILURE, metadata);
+        } catch (Exception auditEx) {
+            log.warn("Failed to write integration-failure audit marker for operation {} and journal {}",
+                    operation,
+                    journalReference,
+                    auditEx);
         }
-        auditService.logFailure(AuditEvent.INTEGRATION_FAILURE, metadata);
 
         if (strictAccountingEventTrail) {
             throw new ApplicationException(
@@ -3343,6 +3354,86 @@ public class AccountingService {
                 operation,
                 journalReference,
                 ex);
+    }
+
+    private void validatePostedEventPayloadCompatibility(JournalEntry journalEntry) {
+        ensureEventFieldWithinLimit(
+                "journalReference",
+                journalEntry.getReferenceNumber(),
+                ACCOUNTING_EVENT_JOURNAL_REFERENCE_MAX_LENGTH,
+                "JOURNAL_ENTRY_POSTED");
+        ensureEventFieldWithinLimit(
+                "journalMemo",
+                journalEntry.getMemo(),
+                ACCOUNTING_EVENT_DESCRIPTION_MAX_LENGTH,
+                "JOURNAL_ENTRY_POSTED");
+        if (journalEntry.getLines() == null || journalEntry.getLines().isEmpty()) {
+            return;
+        }
+        for (JournalLine line : journalEntry.getLines()) {
+            if (line == null) {
+                continue;
+            }
+            Account account = line.getAccount();
+            if (account != null) {
+                ensureEventFieldWithinLimit(
+                        "accountCode",
+                        account.getCode(),
+                        ACCOUNTING_EVENT_ACCOUNT_CODE_MAX_LENGTH,
+                        "JOURNAL_ENTRY_POSTED");
+            }
+            ensureEventFieldWithinLimit(
+                    "journalLineDescription",
+                    line.getDescription(),
+                    ACCOUNTING_EVENT_DESCRIPTION_MAX_LENGTH,
+                    "JOURNAL_ENTRY_POSTED");
+        }
+    }
+
+    private void validateReversalEventPayloadCompatibility(JournalEntry original, String reason) {
+        ensureEventFieldWithinLimit(
+                "journalReference",
+                original.getReferenceNumber(),
+                ACCOUNTING_EVENT_JOURNAL_REFERENCE_MAX_LENGTH,
+                "JOURNAL_ENTRY_REVERSED");
+        ensureEventFieldWithinLimit(
+                "reversalReason",
+                reason,
+                ACCOUNTING_EVENT_DESCRIPTION_MAX_LENGTH,
+                "JOURNAL_ENTRY_REVERSED");
+    }
+
+    private void ensureEventFieldWithinLimit(String field,
+                                             String value,
+                                             int maxLength,
+                                             String operation) {
+        if (!StringUtils.hasText(value)) {
+            return;
+        }
+        String normalized = value.trim();
+        if (normalized.length() <= maxLength) {
+            return;
+        }
+        throw new ApplicationException(
+                ErrorCode.VALIDATION_INVALID_INPUT,
+                "Accounting event-trail field exceeds allowed length")
+                .withDetail("eventTrailOperation", operation)
+                .withDetail("field", field)
+                .withDetail("maxLength", maxLength)
+                .withDetail("actualLength", normalized.length());
+    }
+
+    private String classifyEventTrailFailure(Exception ex) {
+        if (ex instanceof ApplicationException appEx && appEx.getErrorCode() == ErrorCode.VALIDATION_INVALID_INPUT) {
+            return "VALIDATION";
+        }
+        if (ex instanceof IllegalArgumentException) {
+            return "VALIDATION";
+        }
+        if (ex instanceof DataIntegrityViolationException) {
+            return "DATA_INTEGRITY";
+        }
+        return "PERSISTENCE";
     }
 
     private void ensureDuplicateMatchesExisting(JournalEntry existing,

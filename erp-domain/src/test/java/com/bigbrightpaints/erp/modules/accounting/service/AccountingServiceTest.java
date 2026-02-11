@@ -71,6 +71,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
@@ -892,7 +893,15 @@ class AccountingServiceTest {
                 .satisfies(ex -> assertThat(((ApplicationException) ex).getErrorCode())
                         .isEqualTo(ErrorCode.SYSTEM_DATABASE_ERROR))
                 .hasMessageContaining("Accounting event trail persistence failed");
-        verify(auditService).logFailure(eq(AuditEvent.INTEGRATION_FAILURE), org.mockito.ArgumentMatchers.<Map<String, String>>any());
+        ArgumentCaptor<Map<String, String>> integrationFailureCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(auditService).logFailure(eq(AuditEvent.INTEGRATION_FAILURE), integrationFailureCaptor.capture());
+        assertThat(integrationFailureCaptor.getValue())
+                .containsEntry("eventTrailOperation", "JOURNAL_ENTRY_POSTED")
+                .containsEntry("policy", "STRICT")
+                .containsEntry("failureCode", "ACCOUNTING_EVENT_TRAIL_PERSISTENCE_FAILURE")
+                .containsEntry("errorCategory", "PERSISTENCE")
+                .containsEntry("errorType", "IllegalStateException")
+                .doesNotContainKey("error");
     }
 
     @Test
@@ -939,8 +948,147 @@ class AccountingServiceTest {
 
         JournalEntryDto result = accountingService.createJournalEntry(request);
         assertThat(result.referenceNumber()).isEqualTo("EVT-BEST-EFFORT");
-        verify(auditService).logFailure(eq(AuditEvent.INTEGRATION_FAILURE), org.mockito.ArgumentMatchers.<Map<String, String>>any());
+        ArgumentCaptor<Map<String, String>> integrationFailureCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(auditService).logFailure(eq(AuditEvent.INTEGRATION_FAILURE), integrationFailureCaptor.capture());
+        assertThat(integrationFailureCaptor.getValue())
+                .containsEntry("eventTrailOperation", "JOURNAL_ENTRY_POSTED")
+                .containsEntry("policy", "BEST_EFFORT")
+                .containsEntry("failureCode", "ACCOUNTING_EVENT_TRAIL_PERSISTENCE_FAILURE")
+                .containsEntry("errorCategory", "PERSISTENCE")
+                .containsEntry("errorType", "IllegalStateException")
+                .doesNotContainKey("error");
         verify(auditService).logSuccess(eq(AuditEvent.JOURNAL_ENTRY_POSTED), any());
+    }
+
+    @Test
+    void createJournalEntry_rejectsEventTrailIncompatibleReferenceLength() {
+        LocalDate today = LocalDate.of(2024, 3, 24);
+        when(companyClock.today(company)).thenReturn(today);
+        AccountingPeriod period = new AccountingPeriod();
+        period.setYear(today.getYear());
+        period.setMonth(today.getMonthValue());
+        when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(period);
+        String oversizedReference = "R".repeat(101);
+        when(journalEntryRepository.findByCompanyAndReferenceNumber(eq(company), eq(oversizedReference)))
+                .thenReturn(Optional.empty());
+
+        Account debitAccount = new Account();
+        ReflectionTestUtils.setField(debitAccount, "id", 301L);
+        debitAccount.setCompany(company);
+        debitAccount.setBalance(BigDecimal.ZERO);
+        debitAccount.setCode("DEBIT-LIMIT");
+        Account creditAccount = new Account();
+        ReflectionTestUtils.setField(creditAccount, "id", 302L);
+        creditAccount.setCompany(company);
+        creditAccount.setBalance(BigDecimal.ZERO);
+        creditAccount.setCode("CREDIT-LIMIT");
+        when(accountRepository.lockByCompanyAndId(eq(company), eq(301L))).thenReturn(Optional.of(debitAccount));
+        when(accountRepository.lockByCompanyAndId(eq(company), eq(302L))).thenReturn(Optional.of(creditAccount));
+        when(journalEntryRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(accountRepository.updateBalanceAtomic(eq(company), any(), any())).thenReturn(1);
+
+        JournalEntryRequest request = new JournalEntryRequest(
+                oversizedReference,
+                today,
+                "Event compatibility length violation",
+                null,
+                null,
+                Boolean.FALSE,
+                List.of(
+                        new JournalEntryRequest.JournalLineRequest(301L, "Debit line", new BigDecimal("10.00"), BigDecimal.ZERO),
+                        new JournalEntryRequest.JournalLineRequest(302L, "Credit line", BigDecimal.ZERO, new BigDecimal("10.00"))
+                )
+        );
+
+        assertThatThrownBy(() -> accountingService.createJournalEntry(request))
+                .isInstanceOf(ApplicationException.class)
+                .satisfies(ex -> assertThat(((ApplicationException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT))
+                .hasMessageContaining("Accounting event-trail field exceeds allowed length");
+
+        verify(accountingEventStore, never()).recordJournalEntryPosted(any(), any());
+    }
+
+    @Test
+    void reverseJournalEntry_failsWhenEventTrailPersistenceFailsInStrictMode() {
+        LocalDate today = LocalDate.of(2024, 4, 2);
+        when(companyClock.today(company)).thenReturn(today);
+        AccountingPeriod openPeriod = new AccountingPeriod();
+        when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(openPeriod);
+
+        AccountingService service = spy(accountingService);
+        JournalEntry original = reversalSourceEntry(610L, "REV-EVT-STRICT", today);
+        JournalEntry reversal = new JournalEntry();
+        ReflectionTestUtils.setField(reversal, "id", 910L);
+
+        when(companyEntityLookup.requireJournalEntry(company, 610L)).thenReturn(original);
+        when(companyEntityLookup.requireJournalEntry(company, 910L)).thenReturn(reversal);
+        when(journalEntryRepository.save(any(JournalEntry.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        doReturn(stubEntry(910L)).when(service).createJournalEntry(any(JournalEntryRequest.class));
+        when(accountingEventStore.recordJournalEntryReversed(any(), any(), any()))
+                .thenThrow(new IllegalStateException("event-store-down"));
+
+        JournalEntryReversalRequest request = new JournalEntryReversalRequest(
+                today,
+                false,
+                "Strict reversal event failure",
+                "Reversal strict failure test",
+                Boolean.FALSE
+        );
+
+        assertThatThrownBy(() -> service.reverseJournalEntry(610L, request))
+                .isInstanceOf(ApplicationException.class)
+                .satisfies(ex -> assertThat(((ApplicationException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.SYSTEM_DATABASE_ERROR))
+                .hasMessageContaining("Accounting event trail persistence failed");
+
+        ArgumentCaptor<Map<String, String>> integrationFailureCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(auditService).logFailure(eq(AuditEvent.INTEGRATION_FAILURE), integrationFailureCaptor.capture());
+        assertThat(integrationFailureCaptor.getValue())
+                .containsEntry("eventTrailOperation", "JOURNAL_ENTRY_REVERSED")
+                .containsEntry("policy", "STRICT")
+                .containsEntry("failureCode", "ACCOUNTING_EVENT_TRAIL_PERSISTENCE_FAILURE")
+                .containsEntry("errorCategory", "PERSISTENCE")
+                .containsEntry("errorType", "IllegalStateException")
+                .doesNotContainKey("error");
+        verify(auditService, never()).logSuccess(eq(AuditEvent.JOURNAL_ENTRY_REVERSED), any());
+    }
+
+    @Test
+    void reverseJournalEntry_bestEffortEventTrailFailureContinuesWhenAuditMarkerFails() {
+        ReflectionTestUtils.setField(accountingService, "strictAccountingEventTrail", false);
+        LocalDate today = LocalDate.of(2024, 4, 3);
+        when(companyClock.today(company)).thenReturn(today);
+        AccountingPeriod openPeriod = new AccountingPeriod();
+        when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(openPeriod);
+
+        AccountingService service = spy(accountingService);
+        JournalEntry original = reversalSourceEntry(611L, "REV-EVT-BEST", today);
+        JournalEntry reversal = new JournalEntry();
+        ReflectionTestUtils.setField(reversal, "id", 911L);
+
+        when(companyEntityLookup.requireJournalEntry(company, 611L)).thenReturn(original);
+        when(companyEntityLookup.requireJournalEntry(company, 911L)).thenReturn(reversal);
+        when(journalEntryRepository.save(any(JournalEntry.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        doReturn(stubEntry(911L)).when(service).createJournalEntry(any(JournalEntryRequest.class));
+        when(accountingEventStore.recordJournalEntryReversed(any(), any(), any()))
+                .thenThrow(new IllegalStateException("event-store-down"));
+        doThrow(new IllegalStateException("audit-log-down"))
+                .when(auditService)
+                .logFailure(eq(AuditEvent.INTEGRATION_FAILURE), org.mockito.ArgumentMatchers.<Map<String, String>>any());
+
+        JournalEntryReversalRequest request = new JournalEntryReversalRequest(
+                today,
+                false,
+                "Best effort reversal event failure",
+                "Reversal best effort failure test",
+                Boolean.FALSE
+        );
+
+        JournalEntryDto result = service.reverseJournalEntry(611L, request);
+        assertThat(result.id()).isEqualTo(911L);
+        verify(auditService).logFailure(eq(AuditEvent.INTEGRATION_FAILURE), org.mockito.ArgumentMatchers.<Map<String, String>>any());
+        verify(auditService).logSuccess(eq(AuditEvent.JOURNAL_ENTRY_REVERSED), any());
     }
 
     @Test

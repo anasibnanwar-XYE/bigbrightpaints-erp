@@ -180,20 +180,31 @@ Auto-Replenish Queue (Always Keep Filled)
 - [ready] M0-S4 Async security-context snapshot integrity
   - Snapshot security context on decoration to avoid principal drift when caller thread mutates auth before worker executes.
   - Add deterministic regression test for mutate-after-decorate scenario.
-- [in_progress] M2-S5 Accounting event-trail failure sanitization + strict-policy resilience
+- [done] M2-S5 Accounting event-trail failure sanitization + strict-policy resilience
   - Guard best-effort mode from secondary audit-log failures so event-trail policy cannot fail-open/fail-closed unpredictably.
   - Replace raw exception-message leakage in audit metadata with sanitized failure class/code.
   - Add reversal-path strict/best-effort tests to match posting-path durability coverage.
+  - Completed: integration-failure audit marker writes are now guarded with local warn fallback (best-effort path no longer aborts on audit marker failure).
+  - Completed: `INTEGRATION_FAILURE` metadata now emits sanitized `failureCode`, `errorCategory`, `errorType` without raw exception text.
+  - Completed: strict and best-effort reversal event-trail failure tests added and passing.
 - [done] M8-S3 Correlation contract assertions for orchestrator accounting side effects
   - Add focused checks to ensure dispatch/payroll side-effect calls always carry trace/idempotency markers.
   - Extend orchestrator truth-suite assertions to cover accounting memo correlation markers.
   - Completed: added `IntegrationCoordinatorTest` assertions for dispatch/payroll memo propagation of `[trace=...]` and `[idem=...]`.
-- [ready] M2-S6 Event-trail input prevalidation contract
+- [done] M2-S6 Event-trail input prevalidation contract
   - Validate event-mirrored fields (reference, account code, description) against bounded/safe constraints before strict event persistence.
   - Fail fast with `VALIDATION_INVALID_INPUT` on invalid payloads instead of infra-flavored integration errors.
+  - Completed: added event-store compatibility checks for journal reference/account code/description bounds prior to event persistence.
+  - Completed: oversized mirrored fields now fail with `VALIDATION_INVALID_INPUT` and structured field-length details.
+- [in_progress] M0-S4 Async security-context snapshot integrity
+  - Snapshot security context on decoration to avoid principal drift when caller thread mutates auth before worker executes.
+  - Add deterministic regression test for mutate-after-decorate scenario.
 - [ready] M8-S4 Commit self-containment guardrail
   - Ensure orchestrator correlation commits include both dispatcher call-site and coordinator overload definitions.
   - Add commit-review checklist item to reject clean-checkout compile gaps.
+- [ready] M2-S7 Event-trail failure taxonomy normalization
+  - Unify failure classification rules across posting/reversal paths and expose deterministic categories for alert routing.
+  - Add tests for `DATA_INTEGRITY` and `VALIDATION` categories (not only generic persistence failures).
 
 Commit Ledger
 - 2026-02-12: `16b2a2c4`
@@ -262,10 +273,16 @@ Commit Ledger
   - Verified:
     - `mvn -B -ntp -Dtest=CommandDispatcherTest,EventPublisherServiceTest,TraceServiceIT test`
   - `codex review --commit 85d2e1be`: flagged P0 clean-checkout compile gap (dispatcher calls new overloads not yet committed in coordinator at commit boundary).
-  - Follow-up action in progress: commit missing `IntegrationCoordinator` overload bridge + correlation contract tests to close self-containment gap.
+  - Follow-up resolved by `fda59a31` (coordinator overload bridge + correlation tests).
+- 2026-02-12: `fda59a31`
+  - Added `IntegrationCoordinator` correlation-aware overload bridge to make orchestrator correlation chain compile-safe on clean checkout.
+  - Added `IntegrationCoordinatorTest` memo-correlation assertions for dispatch/payroll accounting calls.
+  - Verified:
+    - `mvn -B -ntp -Dtest=IntegrationCoordinatorTest,CommandDispatcherTest test`
+  - `codex review --commit fda59a31`: running (result will be appended).
 
 Current Checkpoint
-- Current WIP M2-S5 implementation + M8-S3 follow-up hardening:
+- Current WIP M2-S5/M2-S6 commit staging:
   - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingService.java`
     - event-trail failure metadata sanitized and audit-marker write now guarded from secondary failure amplification
     - strict-mode compatibility prevalidation added for event-mirrored field lengths
@@ -279,9 +296,9 @@ Current Checkpoint
   - `mvn -B -ntp -Dtest=IntegrationCoordinatorTest,CommandDispatcherTest test`
   - `mvn -B -ntp -Dtest=AccountingServiceTest,JournalEntryE2ETest,SettlementE2ETest test`
 - Next action:
-  - commit integration self-containment bridge for `85d2e1be` follow-up
+  - commit M2-S5/M2-S6 accounting event-trail hardening patch
   - run `codex review --commit <sha>`
-  - commit M2-S5 accounting event-trail sanitization + reversal durability hardening
+  - execute M0-S4 async security-context snapshot integrity
 
 Async Loop Cadence
 - Each cycle:
