@@ -30,6 +30,8 @@ import java.util.UUID;
 public class AuditService {
 
     private static final Logger logger = LoggerFactory.getLogger(AuditService.class);
+    private static final String AUTH_COMPANY_UNRESOLVED_SENTINEL = "__AUTH_COMPANY_UNRESOLVED__";
+    private static final String UNKNOWN_AUTH_ACTOR = "UNKNOWN_AUTH_ACTOR";
 
     @Autowired
     private AuditLogRepository auditLogRepository;
@@ -53,13 +55,19 @@ public class AuditService {
     }
 
     public void logAuthSuccess(AuditEvent event, String username, String companyCode, Map<String, String> metadata) {
+        Map<String, String> authMetadata = metadata != null ? new HashMap<>(metadata) : new HashMap<>();
+        String usernameOverride = normalizeAuthUsernameOverride(username, authMetadata);
+        String companyCodeOverride = normalizeAuthCompanyOverride(companyCode, authMetadata);
         Map<String, String> requestContext = captureRequestContextMetadata();
-        self.logEventAsync(event, AuditStatus.SUCCESS, metadata, username, companyCode, requestContext);
+        self.logEventAsync(event, AuditStatus.SUCCESS, authMetadata, usernameOverride, companyCodeOverride, requestContext);
     }
 
     public void logAuthFailure(AuditEvent event, String username, String companyCode, Map<String, String> metadata) {
+        Map<String, String> authMetadata = metadata != null ? new HashMap<>(metadata) : new HashMap<>();
+        String usernameOverride = normalizeAuthUsernameOverride(username, authMetadata);
+        String companyCodeOverride = normalizeAuthCompanyOverride(companyCode, authMetadata);
         Map<String, String> requestContext = captureRequestContextMetadata();
-        self.logEventAsync(event, AuditStatus.FAILURE, metadata, username, companyCode, requestContext);
+        self.logEventAsync(event, AuditStatus.FAILURE, authMetadata, usernameOverride, companyCodeOverride, requestContext);
     }
 
     @Async
@@ -98,9 +106,14 @@ public class AuditService {
             }
 
             // Add company context
-            String companyToken = (companyCodeOverride != null && !companyCodeOverride.isBlank())
-                    ? companyCodeOverride
-                    : CompanyContextHolder.getCompanyCode();
+            String companyToken;
+            if (AUTH_COMPANY_UNRESOLVED_SENTINEL.equals(companyCodeOverride)) {
+                companyToken = null;
+            } else if (companyCodeOverride != null && !companyCodeOverride.isBlank()) {
+                companyToken = companyCodeOverride;
+            } else {
+                companyToken = CompanyContextHolder.getCompanyCode();
+            }
             Long companyId = resolveCompanyId(companyToken);
             if (companyId != null) {
                 builder.companyId(companyId);
@@ -290,6 +303,26 @@ public class AuditService {
 
     private String safeString(String value) {
         return value == null ? "" : value;
+    }
+
+    private String normalizeAuthUsernameOverride(String username, Map<String, String> metadata) {
+        if (username != null && !username.isBlank()) {
+            return username.trim();
+        }
+        if (metadata != null) {
+            metadata.putIfAbsent("authActorResolution", "UNRESOLVED");
+        }
+        return UNKNOWN_AUTH_ACTOR;
+    }
+
+    private String normalizeAuthCompanyOverride(String companyCode, Map<String, String> metadata) {
+        if (companyCode != null && !companyCode.isBlank()) {
+            return companyCode.trim();
+        }
+        if (metadata != null) {
+            metadata.putIfAbsent("authCompanyResolution", "UNRESOLVED");
+        }
+        return AUTH_COMPANY_UNRESOLVED_SENTINEL;
     }
 
     /**

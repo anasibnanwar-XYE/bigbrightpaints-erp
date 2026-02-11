@@ -151,4 +151,38 @@ class AuditServiceAsyncIT {
         assertThat(saved.getCompanyId()).isNull();
         assertThat(saved.getMetadata()).containsEntry("reason", "bad-password");
     }
+
+    @Test
+    void logAuthFailure_blankOverridesDoNotUseAmbientContextInAsyncPath() throws Exception {
+        CountDownLatch latch = new CountDownLatch(1);
+        AtomicReference<AuditLog> savedRef = new AtomicReference<>();
+        when(auditLogRepository.save(any(AuditLog.class))).thenAnswer(invocation -> {
+            AuditLog log = invocation.getArgument(0);
+            savedRef.set(log);
+            latch.countDown();
+            return log;
+        });
+
+        SecurityContext ambientContext = SecurityContextHolder.createEmptyContext();
+        ambientContext.setAuthentication(new UsernamePasswordAuthenticationToken("ambient-user", "n/a"));
+        SecurityContextHolder.setContext(ambientContext);
+        CompanyContextHolder.setCompanyCode("AMBIENT-COMPANY");
+
+        auditService.logAuthFailure(
+                AuditEvent.LOGIN_FAILURE,
+                " ",
+                " ",
+                Map.of("reason", "blank-overrides"));
+
+        assertThat(latch.await(3, TimeUnit.SECONDS)).isTrue();
+        AuditLog saved = savedRef.get();
+        assertThat(saved).isNotNull();
+        assertThat(saved.getUsername()).isEqualTo("UNKNOWN_AUTH_ACTOR");
+        assertThat(saved.getUserId()).isEqualTo("UNKNOWN_AUTH_ACTOR");
+        assertThat(saved.getCompanyId()).isNull();
+        assertThat(saved.getMetadata())
+                .containsEntry("reason", "blank-overrides")
+                .containsEntry("authActorResolution", "UNRESOLVED")
+                .containsEntry("authCompanyResolution", "UNRESOLVED");
+    }
 }

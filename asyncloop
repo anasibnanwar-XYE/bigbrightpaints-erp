@@ -218,12 +218,20 @@ Auto-Replenish Queue (Always Keep Filled)
   - Completed: added `AuditServiceAsyncIT` using Spring-proxied `AuditService` with real async executor.
   - Completed: verifies explicit auth actor/company attribution survives post-invocation caller-context mutation.
   - Completed: added unresolved-company behavior assertion for auth-failure wrapper path.
-- [in_progress] M0-S6 Auth-wrapper attribution policy hardening
+- [done] M0-S6 Auth-wrapper attribution policy hardening
   - Decide and enforce contract for blank username/company overrides (`UNKNOWN` vs reject vs ambient fallback) to avoid accidental misattribution.
   - Expand async tests to include blank-override behavior once contract is finalized.
+  - Completed policy: blank auth-wrapper overrides now resolve to explicit `UNKNOWN_AUTH_ACTOR` and unresolved-company sentinel (no ambient fallback).
+  - Completed: async and unit tests now assert unresolved attribution metadata markers (`authActorResolution`, `authCompanyResolution`).
 - [ready] M8-S5 Correlation guard CI integration follow-up
   - Integrate `guard_orchestrator_correlation_contract.sh` into CI path (`scripts/verify_local.sh` is already covered by local gate).
   - Add fail-fast artifact note for orchestrator correlation guard violations.
+- [in_progress] M2-S7 Event-trail failure taxonomy normalization
+  - Unify failure classification rules across posting/reversal paths and expose deterministic categories for alert routing.
+  - Add tests for `DATA_INTEGRITY` and `VALIDATION` categories (not only generic persistence failures).
+- [ready] M0-S7 Auth-wrapper contract documentation + API alignment
+  - Document explicit auth-audit attribution fallback policy so auth/login services send nonblank actor/company values.
+  - Add compatibility checks in auth service tests for expected audit metadata markers.
 
 Commit Ledger
 - 2026-02-12: `16b2a2c4`
@@ -322,20 +330,27 @@ Commit Ledger
   - Verified:
     - `mvn -B -ntp -Dtest=AuditServiceAsyncIT,AuditServiceTest,CompanyContextTaskDecoratorTest test`
   - `codex review --commit 3e48cf4c`: running (result will be appended).
+- 2026-02-12: `0cb6a857`
+  - Added orchestrator correlation contract guard script and wired it into `verify_local.sh`.
+  - Verified:
+    - `bash scripts/guard_orchestrator_correlation_contract.sh`
+    - `bash -n scripts/verify_local.sh`
+  - `codex review --commit 0cb6a857`: running (result will be appended).
 
 Current Checkpoint
-- Current WIP M8-S4 completion + M0-S6 kickoff:
-  - `scripts/guard_orchestrator_correlation_contract.sh`
-    - enforces orchestrator correlation propagation contract across dispatcher/coordinator/test boundary
-  - `scripts/verify_local.sh`
-    - now executes orchestrator correlation guard in local preflight sequence
+- Current WIP M0-S6 completion + M2-S7 kickoff:
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/core/audit/AuditService.java`
+    - auth wrappers now enforce explicit unresolved attribution markers for blank overrides (no ambient context fallback)
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/core/audit/AuditServiceTest.java`
+    - unit contract updated to assert unresolved attribution behavior
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/core/audit/AuditServiceAsyncIT.java`
+    - async proxy test extended for blank override policy path
 - Verification command:
-  - `bash scripts/guard_orchestrator_correlation_contract.sh`
-  - `bash -n scripts/verify_local.sh`
+  - `mvn -B -ntp -Dtest=AuditServiceTest,AuditServiceAsyncIT,CompanyContextTaskDecoratorTest test`
 - Next action:
-  - commit M8-S4 correlation contract guardrail wiring
+  - commit M0-S6 auth-wrapper attribution policy hardening
   - run `codex review --commit <sha>`
-  - execute M0-S6 auth-wrapper attribution policy hardening
+  - execute M2-S7 event-trail failure taxonomy normalization
 
 Async Loop Cadence
 - Each cycle:

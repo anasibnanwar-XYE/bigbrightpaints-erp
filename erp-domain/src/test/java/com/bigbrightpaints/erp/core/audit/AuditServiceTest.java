@@ -160,7 +160,7 @@ class AuditServiceTest {
     }
 
     @Test
-    void logAuthFailure_blankOverrideFallsBackToSecurityAndCompanyContext() {
+    void logAuthFailure_blankOverrideDoesNotFallbackToAmbientContext() {
         CompanyContextHolder.setCompanyCode("42");
         SecurityContext securityContext = SecurityContextHolder.createEmptyContext();
         securityContext.setAuthentication(new UsernamePasswordAuthenticationToken(
@@ -174,10 +174,13 @@ class AuditServiceTest {
         ArgumentCaptor<AuditLog> auditCaptor = ArgumentCaptor.forClass(AuditLog.class);
         verify(auditLogRepository).save(auditCaptor.capture());
         AuditLog saved = auditCaptor.getValue();
-        assertThat(saved.getUsername()).isEqualTo("security-user");
-        assertThat(saved.getUserId()).isEqualTo("security-user");
-        assertThat(saved.getCompanyId()).isEqualTo(42L);
-        assertThat(saved.getMetadata()).containsEntry("reason", "fallback");
+        assertThat(saved.getUsername()).isEqualTo("UNKNOWN_AUTH_ACTOR");
+        assertThat(saved.getUserId()).isEqualTo("UNKNOWN_AUTH_ACTOR");
+        assertThat(saved.getCompanyId()).isNull();
+        assertThat(saved.getMetadata())
+                .containsEntry("reason", "fallback")
+                .containsEntry("authActorResolution", "UNRESOLVED")
+                .containsEntry("authCompanyResolution", "UNRESOLVED");
     }
 
     private AuditService createService() {
