@@ -1,8 +1,17 @@
 # Flyway Audit and Strategy
 
+## Parallel v2 Rebuild Mode (Active)
+- Legacy chain remains intact in `src/main/resources/db/migration` for existing environments and rollback-safe comparison.
+- Rebuilt chain is under `src/main/resources/db/migration_v2`.
+- Rebuild executions must use Spring profile `flyway-v2`, which switches:
+  - `spring.flyway.locations=classpath:db/migration_v2`
+  - `spring.flyway.table=flyway_schema_history_v2`
+  - default dev datasource to `jdbc:postgresql://localhost:5432/erp_domain_v2`
+- This isolates v2 verification from v1 history/data and allows side-by-side validation.
+
 ## Inventory
-- Total migrations: 131 (`src/main/resources/db/migration`)
-- Naming pattern: `V{version}__{description}.sql` with incremental versions 1-131.
+- Total migrations: 135 (`src/main/resources/db/migration`)
+- Naming pattern: `V{version}__{description}.sql` with incremental versions 1-135.
 - Placeholder/gap fillers exist (example: `V25__fill_migration_gap.sql`, `V42__placeholder.sql`). These are intentional and
   should remain explicit in audit/review so the version history stays stable.
 
