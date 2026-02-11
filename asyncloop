@@ -15,7 +15,7 @@ Non-Stop Operating Rules
 - Auto-replenish rule: whenever one planned task is marked completed, immediately add at least one new concrete task slice.
 - Backlog floor: always keep at least 3 `ready` tasks so loop never runs out of work.
 - DB migration policy (mandatory): use Flyway V2 only (`classpath:db/migration_v2`, table `flyway_schema_history_v2`) for all new schema/index fixes.
-- No legacy migration additions while in this loop unless explicitly marked emergency/backport and documented here with reason.
+- No legacy migration additions while in this loop.
 
 Completion Gates (Required For "Safe To Deploy" Claim)
 - No known critical/high security issues in auth/RBAC/tenant isolation/data exposure.
@@ -29,7 +29,7 @@ Completion Gates (Required For "Safe To Deploy" Claim)
   - migration safety checked (Flyway V2 path)
   - critical indexes and heavy query paths reviewed
   - no committed secrets in runtime config
-  - migration overlap/drift scans pass for V2 (`scripts/flyway_overlap_scan.sh --migration-set v2`, schema drift checks)
+  - migration overlap/drift scans pass for V2 (`scripts/flyway_overlap_scan.sh --migration-set v2`, `scripts/schema_drift_scan.sh --migration-set v2`)
 - Module workflow gates:
   - intended E2E workflows execute with expected state transitions
   - edge-case failures are deterministic and fail-safe
@@ -119,9 +119,12 @@ Auto-Replenish Queue (Always Keep Filled)
 - [done] M1-S0 Dealer ledger boundary status semantics
   - Completed via `37022d02`: cross-dealer ledger access now returns 403 via access-denied path.
   - Regression coverage: `DealerControllerSecurityIT`.
-- [ready] M2-S1 Dealer settlement idempotency replay matrix
+- [done] M2-S1 Dealer settlement idempotency replay matrix
   - Validate same idempotency key across payload variants cannot mutate allocations/cash lines.
   - Assert deterministic rejection path and no duplicate journal/allocation rows.
+  - Completed: accounting service now resolves settlement allocations case-insensitively for replay checks and normalizes mapping keys for reservation/linking.
+  - Added deterministic mapping resolution when duplicate legacy-reference mappings exist; prevents ambiguous Optional lookups.
+  - Added E2E coverage for mixed-case idempotency replay and stabilized multi-allocation settlement test setup.
 - [ready] M1-S2 Dealer portal invoice/aging/pdf boundary matrix
   - Verify dealer role cannot enumerate or fetch another dealer artifacts across all portal endpoints.
   - Ensure failure semantics are consistent (403/404 as intended) and never leak foreign IDs.
@@ -143,6 +146,9 @@ Auto-Replenish Queue (Always Keep Filled)
 - [ready] M6-S2 Cross-module duplicate logic map
   - Build service/controller duplication map for order->dispatch->invoice->receipt->settlement path.
   - Consolidate highest-risk duplicated rule into single canonical path with regression tests.
+- [ready] M2-S3 Manual journal idempotency key collision matrix
+  - Probe mixed-case/manual-reference collisions against `createManualJournalEntry`.
+  - Verify deterministic replay behavior and no split-brain mapping rows under concurrent retries.
 
 Commit Ledger
 - 2026-02-12: `16b2a2c4`
@@ -163,6 +169,12 @@ Commit Ledger
   - Added `DealerControllerSecurityIT` for cross-dealer ledger abuse denial + self-access allow.
   - Verified: `mvn -B -ntp -Dtest=DealerControllerSecurityIT,DealerLedgerIT test`.
   - `codex review --commit 37022d02`: running (result will be appended).
+- 2026-02-12: `94317f61`
+  - Deepened async loop contract with service-level module breakdown and Flyway V2 policy.
+  - Subagent review findings applied in-loop:
+    - removed contradictory legacy-migration exception wording
+    - pinned explicit V2 schema drift scan command in completion gates
+  - `codex review --commit 94317f61`: no code regression (process-ledger commit); follow-up wording fixes applied.
 
 Current Checkpoint
 - Current WIP secret hygiene + duplicate-config alignment:

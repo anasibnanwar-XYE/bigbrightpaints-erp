@@ -25,6 +25,7 @@ import org.springframework.http.ResponseEntity;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -413,6 +414,46 @@ public class SettlementE2ETest extends AbstractIntegrationTest {
     }
 
     @Test
+    @DisplayName("Dealer settlement idempotency is case-insensitive for replay")
+    void dealerSettlement_Idempotent_ReusesExisting_IgnoringCase() {
+        String idemKey = "Settle-Case-" + UUID.randomUUID();
+        Map<String, Object> allocation = Map.of(
+                "invoiceId", invoice.getId(),
+                "appliedAmount", new BigDecimal("200.00")
+        );
+        Map<String, Object> firstPayload = Map.of(
+                "dealerId", dealer.getId(),
+                "cashAccountId", cash.getId(),
+                "allocations", List.of(allocation),
+                "idempotencyKey", idemKey
+        );
+
+        ResponseEntity<Map> first = rest.exchange(
+                "/api/v1/accounting/settlements/dealers",
+                HttpMethod.POST,
+                new HttpEntity<>(firstPayload, headers),
+                Map.class);
+        assertThat(first.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        Map<String, Object> replayPayload = Map.of(
+                "dealerId", dealer.getId(),
+                "cashAccountId", cash.getId(),
+                "allocations", List.of(allocation),
+                "idempotencyKey", idemKey.toLowerCase(Locale.ROOT)
+        );
+        ResponseEntity<Map> replay = rest.exchange(
+                "/api/v1/accounting/settlements/dealers",
+                HttpMethod.POST,
+                new HttpEntity<>(replayPayload, headers),
+                Map.class);
+        assertThat(replay.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        List<PartnerSettlementAllocation> rows = allocationRepository
+                .findByCompanyAndIdempotencyKeyIgnoreCase(company, idemKey);
+        assertThat(rows).hasSize(1);
+    }
+
+    @Test
     @DisplayName("Dealer settlement idempotency rejects conflicting payload")
     void dealerSettlement_IdempotencyKeyConflictRejected() {
         String idemKey = "SETTLE-CONFLICT-" + UUID.randomUUID();
@@ -538,8 +579,9 @@ public class SettlementE2ETest extends AbstractIntegrationTest {
     @DisplayName("Dealer settlement idempotency allows multiple allocations per key")
     void dealerSettlement_Idempotent_MultiAllocation() {
         Invoice second = ensureInvoice();
-        dealer.setOutstandingBalance(new BigDecimal("1600.00"));
-        dealerRepository.save(dealer);
+        Dealer persistedDealer = dealerRepository.findById(dealer.getId()).orElseThrow();
+        persistedDealer.setOutstandingBalance(new BigDecimal("1600.00"));
+        dealerRepository.save(persistedDealer);
         seedInvoicePosting(second);
 
         String idemKey = "SETTLE-IDEM-MULTI-" + System.nanoTime();
