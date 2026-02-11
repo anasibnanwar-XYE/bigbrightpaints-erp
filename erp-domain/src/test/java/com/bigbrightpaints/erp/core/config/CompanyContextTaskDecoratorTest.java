@@ -55,4 +55,31 @@ class CompanyContextTaskDecoratorTest {
         assertThat(CompanyContextHolder.getCompanyCode()).isNull();
         assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
     }
+
+    @Test
+    void decorate_snapshotsAuthenticationAtDecorationTime() {
+        CompanyContextHolder.setCompanyCode("BBP");
+        SecurityContext callerContext = SecurityContextHolder.createEmptyContext();
+        callerContext.setAuthentication(new UsernamePasswordAuthenticationToken("decorated-user", "n/a"));
+        SecurityContextHolder.setContext(callerContext);
+
+        CompanyContextTaskDecorator decorator = new CompanyContextTaskDecorator();
+        AtomicReference<String> authNameInside = new AtomicReference<>();
+
+        Runnable wrapped = decorator.decorate(() -> {
+            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+            authNameInside.set(authentication != null ? authentication.getName() : null);
+        });
+
+        callerContext.setAuthentication(new UsernamePasswordAuthenticationToken("mutated-user", "n/a"));
+
+        CompanyContextHolder.clear();
+        SecurityContextHolder.clearContext();
+
+        wrapped.run();
+
+        assertThat(authNameInside.get()).isEqualTo("decorated-user");
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+        assertThat(CompanyContextHolder.getCompanyCode()).isNull();
+    }
 }

@@ -2,6 +2,7 @@ package com.bigbrightpaints.erp.core.config;
 
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import org.springframework.core.task.TaskDecorator;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 
@@ -15,7 +16,8 @@ public class CompanyContextTaskDecorator implements TaskDecorator {
     public Runnable decorate(Runnable runnable) {
         // Capture context from the calling thread
         String companyCode = CompanyContextHolder.getCompanyCode();
-        SecurityContext securityContext = SecurityContextHolder.getContext();
+        SecurityContext callerContext = SecurityContextHolder.getContext();
+        Authentication authenticationSnapshot = callerContext != null ? callerContext.getAuthentication() : null;
 
         return () -> {
             try {
@@ -23,7 +25,13 @@ public class CompanyContextTaskDecorator implements TaskDecorator {
                 if (companyCode != null) {
                     CompanyContextHolder.setCompanyCode(companyCode);
                 }
-                SecurityContextHolder.setContext(securityContext);
+                if (authenticationSnapshot != null) {
+                    SecurityContext workerContext = SecurityContextHolder.createEmptyContext();
+                    workerContext.setAuthentication(authenticationSnapshot);
+                    SecurityContextHolder.setContext(workerContext);
+                } else {
+                    SecurityContextHolder.clearContext();
+                }
                 runnable.run();
             } finally {
                 // Clean up to prevent context leaks

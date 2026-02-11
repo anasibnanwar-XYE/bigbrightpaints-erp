@@ -196,15 +196,23 @@ Auto-Replenish Queue (Always Keep Filled)
   - Fail fast with `VALIDATION_INVALID_INPUT` on invalid payloads instead of infra-flavored integration errors.
   - Completed: added event-store compatibility checks for journal reference/account code/description bounds prior to event persistence.
   - Completed: oversized mirrored fields now fail with `VALIDATION_INVALID_INPUT` and structured field-length details.
-- [in_progress] M0-S4 Async security-context snapshot integrity
+- [done] M0-S4 Async security-context snapshot integrity
   - Snapshot security context on decoration to avoid principal drift when caller thread mutates auth before worker executes.
   - Add deterministic regression test for mutate-after-decorate scenario.
+  - Completed: `CompanyContextTaskDecorator` now snapshots authentication at decoration time and restores an isolated worker context.
+  - Completed: added mutate-after-decorate regression proving worker sees original principal, not caller-thread mutation.
 - [ready] M8-S4 Commit self-containment guardrail
   - Ensure orchestrator correlation commits include both dispatcher call-site and coordinator overload definitions.
   - Add commit-review checklist item to reject clean-checkout compile gaps.
 - [ready] M2-S7 Event-trail failure taxonomy normalization
   - Unify failure classification rules across posting/reversal paths and expose deterministic categories for alert routing.
   - Add tests for `DATA_INTEGRITY` and `VALIDATION` categories (not only generic persistence failures).
+- [in_progress] M8-S4 Commit self-containment guardrail
+  - Ensure orchestrator correlation commits include both dispatcher call-site and coordinator overload definitions.
+  - Add commit-review checklist item to reject clean-checkout compile gaps.
+- [ready] M0-S5 Auth-wrapper async proxy contract test
+  - Add proxied/asynchronous `AuditService` integration test so auth attribution coverage includes real `@Async` execution and context drift conditions.
+  - Validate wrapper attribution policy under blank override inputs (explicit contract, no accidental ambient misattribution).
 
 Commit Ledger
 - 2026-02-12: `16b2a2c4`
@@ -280,25 +288,32 @@ Commit Ledger
   - Verified:
     - `mvn -B -ntp -Dtest=IntegrationCoordinatorTest,CommandDispatcherTest test`
   - `codex review --commit fda59a31`: running (result will be appended).
+- 2026-02-12: `5c43d284`
+  - Hardened accounting event-trail durability handling with sanitized failure metadata and guarded best-effort audit marker path.
+  - Added event-store compatibility prevalidation for mirrored fields + reversal strict/best-effort durability tests.
+  - Verified:
+    - `mvn -B -ntp -Dtest=AccountingServiceTest test`
+    - `mvn -B -ntp -Dtest=AccountingServiceTest,JournalEntryE2ETest,SettlementE2ETest test`
+  - `codex review --commit 5c43d284`: running (result will be appended).
+- 2026-02-12: `80d54ee4`
+  - Added auth-wrapper attribution regression tests.
+  - Subagent follow-up findings:
+    - medium: coverage uses `self=service` and does not exercise real async proxy behavior (`M0-S5` added)
+    - medium: blank override fallback policy may misattribute auth events if ambient contexts are stale (`M0-S5` added)
+    - low: extend recycled-request field assertions and unresolved-company tests (queued under `M0-S5`)
 
 Current Checkpoint
-- Current WIP M2-S5/M2-S6 commit staging:
-  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingService.java`
-    - event-trail failure metadata sanitized and audit-marker write now guarded from secondary failure amplification
-    - strict-mode compatibility prevalidation added for event-mirrored field lengths
-  - `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingServiceTest.java`
-    - added strict/best-effort reversal durability tests and metadata-sanitization assertions
-  - `erp-domain/src/main/java/com/bigbrightpaints/erp/orchestrator/service/IntegrationCoordinator.java`
-    - adds correlation-aware overloads required by dispatcher commit self-containment
-  - `erp-domain/src/test/java/com/bigbrightpaints/erp/orchestrator/service/IntegrationCoordinatorTest.java`
-    - verifies trace/idempotency markers are propagated into dispatch/payroll accounting memos
+- Current WIP M0-S4 completion + M8-S4 kickoff:
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/core/config/CompanyContextTaskDecorator.java`
+    - snapshot-based auth context propagation prevents mutate-after-decorate principal drift
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/core/config/CompanyContextTaskDecoratorTest.java`
+    - added deterministic mutate-after-decorate regression
 - Verification command:
-  - `mvn -B -ntp -Dtest=IntegrationCoordinatorTest,CommandDispatcherTest test`
-  - `mvn -B -ntp -Dtest=AccountingServiceTest,JournalEntryE2ETest,SettlementE2ETest test`
+  - `mvn -B -ntp -Dtest=CompanyContextTaskDecoratorTest,AuditServiceTest test`
 - Next action:
-  - commit M2-S5/M2-S6 accounting event-trail hardening patch
+  - commit M0-S4 security-context snapshot hardening
   - run `codex review --commit <sha>`
-  - execute M0-S4 async security-context snapshot integrity
+  - execute M8-S4 self-containment guardrail and M0-S5 async proxy auth-wrapper follow-ups
 
 Async Loop Cadence
 - Each cycle:
