@@ -170,19 +170,26 @@ Auto-Replenish Queue (Always Keep Filled)
     - `IntegrationCoordinator.postDispatchJournal(...)`
     - `IntegrationCoordinator.recordPayrollPayment(...)`
   - Added unit regression tests to lock correlation propagation behavior in `CommandDispatcherTest`.
-- [in_progress] M0-S3 Auth audit wrapper attribution hardening
+- [done] M0-S3 Auth audit wrapper attribution hardening
   - Add direct tests for `logAuthSuccess` / `logAuthFailure` request+company attribution under missing/recycled security/request context.
   - Ensure login/auth events preserve actor/company metadata even when async context shifts.
+  - Completed: added direct wrapper tests for:
+    - success attribution with explicit actor/company override and no request/security context
+    - failure attribution with recycled request facade and conflicting security context
+    - fallback attribution behavior when overrides are blank
 - [ready] M0-S4 Async security-context snapshot integrity
   - Snapshot security context on decoration to avoid principal drift when caller thread mutates auth before worker executes.
   - Add deterministic regression test for mutate-after-decorate scenario.
-- [ready] M2-S5 Accounting event-trail failure sanitization + strict-policy resilience
+- [in_progress] M2-S5 Accounting event-trail failure sanitization + strict-policy resilience
   - Guard best-effort mode from secondary audit-log failures so event-trail policy cannot fail-open/fail-closed unpredictably.
   - Replace raw exception-message leakage in audit metadata with sanitized failure class/code.
   - Add reversal-path strict/best-effort tests to match posting-path durability coverage.
 - [ready] M8-S3 Correlation contract assertions for orchestrator accounting side effects
   - Add focused checks to ensure dispatch/payroll side-effect calls always carry trace/idempotency markers.
   - Extend orchestrator truth-suite assertions to cover accounting memo correlation markers.
+- [ready] M2-S6 Event-trail input prevalidation contract
+  - Validate event-mirrored fields (reference, account code, description) against bounded/safe constraints before strict event persistence.
+  - Fail fast with `VALIDATION_INVALID_INPUT` on invalid payloads instead of infra-flavored integration errors.
 
 Commit Ledger
 - 2026-02-12: `16b2a2c4`
@@ -245,19 +252,23 @@ Commit Ledger
     - medium: strict policy currently hard-fails on unvalidated mirrored fields; add input pre-validation for event-safe fields
     - medium: raw exception text is emitted in audit metadata (`error`), leaking internals; sanitize
     - low: add reversal durability tests to mirror posting-path coverage
+- 2026-02-12: `85d2e1be`
+  - Propagated orchestrator trace/idempotency markers into accounting side effects for dispatch and payroll.
+  - Added direct regression tests in `CommandDispatcherTest` to prevent correlation loss.
+  - Verified:
+    - `mvn -B -ntp -Dtest=CommandDispatcherTest,EventPublisherServiceTest,TraceServiceIT test`
+  - `codex review --commit 85d2e1be`: running (result will be appended).
 
 Current Checkpoint
-- Current WIP M8-S2 completion + M0-S3 kickoff:
-  - `erp-domain/src/main/java/com/bigbrightpaints/erp/orchestrator/service/CommandDispatcher.java`
-    - dispatch and payroll orchestrator paths now propagate `traceId` + `idempotencyKey` into accounting-side posting calls
-  - `erp-domain/src/test/java/com/bigbrightpaints/erp/orchestrator/service/CommandDispatcherTest.java`
-    - added direct propagation regressions for dispatch/payroll and updated disabled/invalid-path no-call assertions for new overloads
+- Current WIP M0-S3 completion + M2-S5 kickoff:
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/core/audit/AuditServiceTest.java`
+    - added auth-wrapper attribution coverage under missing/recycled contexts and override/fallback paths
 - Verification command:
-  - `mvn -B -ntp -Dtest=CommandDispatcherTest,EventPublisherServiceTest,TraceServiceIT test`
+  - `mvn -B -ntp -Dtest=AuditServiceTest,CompanyContextTaskDecoratorTest,CommandDispatcherTest test`
 - Next action:
-  - commit M8-S2 correlation propagation patch
+  - commit M0-S3 audit-wrapper attribution tests
   - run `codex review --commit <sha>`
-  - execute M0-S3 auth audit-wrapper attribution hardening
+  - execute M2-S5 accounting event-trail sanitization + reversal durability hardening
 
 Async Loop Cadence
 - Each cycle:

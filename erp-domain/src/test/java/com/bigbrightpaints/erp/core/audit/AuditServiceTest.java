@@ -1,8 +1,10 @@
 package com.bigbrightpaints.erp.core.audit;
 
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
+import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import jakarta.servlet.http.HttpServletRequest;
+import java.util.Optional;
 import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -93,6 +95,91 @@ class AuditServiceTest {
         assertThat(saved.getMetadata()).containsEntry("source", "test");
     }
 
+    @Test
+    void logAuthSuccess_withoutSecurityOrRequestContext_preservesActorAndCompanyOverride() {
+        Company company = companyWithId(88L, "COMP-A");
+        when(companyRepository.findByCodeIgnoreCase("COMP-A")).thenReturn(Optional.of(company));
+
+        auditService.logAuthSuccess(
+                AuditEvent.LOGIN_SUCCESS,
+                "alice",
+                "COMP-A",
+                Map.of("authChannel", "password"));
+
+        ArgumentCaptor<AuditLog> auditCaptor = ArgumentCaptor.forClass(AuditLog.class);
+        verify(auditLogRepository).save(auditCaptor.capture());
+        AuditLog saved = auditCaptor.getValue();
+        assertThat(saved.getEventType()).isEqualTo(AuditEvent.LOGIN_SUCCESS);
+        assertThat(saved.getStatus()).isEqualTo(AuditStatus.SUCCESS);
+        assertThat(saved.getUsername()).isEqualTo("alice");
+        assertThat(saved.getUserId()).isEqualTo("alice");
+        assertThat(saved.getCompanyId()).isEqualTo(88L);
+        assertThat(saved.getMetadata()).containsEntry("authChannel", "password");
+    }
+
+    @Test
+    void logAuthFailure_recycledRequestContext_stillPersistsOverrideAttribution() {
+        HttpServletRequest recycledRequest = mock(HttpServletRequest.class);
+        when(recycledRequest.getHeader(anyString())).thenThrow(new IllegalStateException("request recycled"));
+        when(recycledRequest.getMethod()).thenThrow(new IllegalStateException("request recycled"));
+        when(recycledRequest.getRequestURI()).thenThrow(new IllegalStateException("request recycled"));
+        when(recycledRequest.getRemoteAddr()).thenThrow(new IllegalStateException("request recycled"));
+        when(recycledRequest.getSession(false)).thenThrow(new IllegalStateException("request recycled"));
+        when(recycledRequest.getAttribute(anyString())).thenThrow(new IllegalStateException("request recycled"));
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(recycledRequest));
+
+        Company company = companyWithId(99L, "COMP-B");
+        when(companyRepository.findByCodeIgnoreCase("COMP-B")).thenReturn(Optional.of(company));
+
+        SecurityContext securityContext = SecurityContextHolder.createEmptyContext();
+        securityContext.setAuthentication(new UsernamePasswordAuthenticationToken(
+                "unexpected-security-user",
+                "n/a",
+                java.util.List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
+        SecurityContextHolder.setContext(securityContext);
+
+        assertThatCode(() -> auditService.logAuthFailure(
+                AuditEvent.LOGIN_FAILURE,
+                "blocked-user",
+                "COMP-B",
+                Map.of("reason", "bad-password")))
+                .doesNotThrowAnyException();
+
+        ArgumentCaptor<AuditLog> auditCaptor = ArgumentCaptor.forClass(AuditLog.class);
+        verify(auditLogRepository).save(auditCaptor.capture());
+        AuditLog saved = auditCaptor.getValue();
+        assertThat(saved.getEventType()).isEqualTo(AuditEvent.LOGIN_FAILURE);
+        assertThat(saved.getStatus()).isEqualTo(AuditStatus.FAILURE);
+        assertThat(saved.getUsername()).isEqualTo("blocked-user");
+        assertThat(saved.getUserId()).isEqualTo("blocked-user");
+        assertThat(saved.getCompanyId()).isEqualTo(99L);
+        assertThat(saved.getIpAddress()).isNull();
+        assertThat(saved.getRequestMethod()).isNull();
+        assertThat(saved.getRequestPath()).isNull();
+        assertThat(saved.getMetadata()).containsEntry("reason", "bad-password");
+    }
+
+    @Test
+    void logAuthFailure_blankOverrideFallsBackToSecurityAndCompanyContext() {
+        CompanyContextHolder.setCompanyCode("42");
+        SecurityContext securityContext = SecurityContextHolder.createEmptyContext();
+        securityContext.setAuthentication(new UsernamePasswordAuthenticationToken(
+                "security-user",
+                "n/a",
+                java.util.List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
+        SecurityContextHolder.setContext(securityContext);
+
+        auditService.logAuthFailure(AuditEvent.LOGIN_FAILURE, "   ", "   ", Map.of("reason", "fallback"));
+
+        ArgumentCaptor<AuditLog> auditCaptor = ArgumentCaptor.forClass(AuditLog.class);
+        verify(auditLogRepository).save(auditCaptor.capture());
+        AuditLog saved = auditCaptor.getValue();
+        assertThat(saved.getUsername()).isEqualTo("security-user");
+        assertThat(saved.getUserId()).isEqualTo("security-user");
+        assertThat(saved.getCompanyId()).isEqualTo(42L);
+        assertThat(saved.getMetadata()).containsEntry("reason", "fallback");
+    }
+
     private AuditService createService() {
         AuditService service = new AuditService();
         ReflectionTestUtils.setField(service, "auditLogRepository", auditLogRepository);
@@ -100,5 +187,12 @@ class AuditServiceTest {
         ReflectionTestUtils.setField(service, "self", service);
         when(auditLogRepository.save(any(AuditLog.class))).thenAnswer(invocation -> invocation.getArgument(0));
         return service;
+    }
+
+    private Company companyWithId(Long id, String code) {
+        Company company = new Company();
+        company.setCode(code);
+        ReflectionTestUtils.setField(company, "id", id);
+        return company;
     }
 }
