@@ -1,22 +1,77 @@
 ASYNC LOOP LEDGER
 =================
 
-Goal
-- Reach staging/predeployment readiness with verified security, business-logic, and accounting safeguards.
+Master Mission (Do Not Stop Until Done)
+- Move ERP to staging/predeployment readiness with enterprise-grade safety and accounting trust.
+- Continue autonomous loop until completion gates are met; do not stop at partial fixes.
+- Scope includes: debugging, cybersecurity flaws, business-logic flaws/abuse, accounting integrity, cross-module workflows, duplicate/redundant logic, DB/performance hardening, and release readiness.
 
-Operating Rules
+Non-Stop Operating Rules
 - After each completed step: update plan + append this file.
 - Every code change must be committed.
 - After each commit: run `codex review --commit <sha>` and log result here.
-- Prioritize exploitable security flaws and accounting invariant violations first.
+- Prioritize exploitable vulnerabilities and accounting/invariant failures over cosmetic work.
+- Validate by targeted abuse + invariant tests, not doc assumptions.
 
-Current Loop Plan
-- [completed] Harden configuration secrets and unsafe defaults in runtime profiles.
-- [in_progress] Design and add abuse-driven tests for tenant/role boundary bypasses.
-- [pending] Audit accounting posting and settlement flows for cross-module invariant gaps.
-- [pending] Fix confirmed logic/security issues with minimal safe patches.
-- [pending] Run targeted verification matrix (security + accounting + cross-module).
-- [pending] Iterate through high-risk modules (inventory, purchasing, invoicing, payroll).
+Completion Gates (Required For "Safe To Deploy" Claim)
+- No known critical/high security issues in auth/RBAC/tenant isolation/data exposure.
+- Accounting safety gates hold:
+  - Double-entry balance invariants
+  - Subledger-GL reconciliation invariants
+  - Settlement and reversal idempotency + period-close boundaries
+  - Cross-module posting links (sales/inventory/purchasing/payroll -> accounting)
+- No confirmed cross-tenant / cross-partner IDOR or privilege abuse paths.
+- DB/predeploy gates:
+  - migration safety checked
+  - critical indexes and heavy query paths reviewed
+  - no committed secrets in runtime config
+- Module workflow gates:
+  - intended E2E workflows execute with expected state transitions
+  - edge-case failures are deterministic and fail-safe
+
+Deep Module-by-Module Execution Plan
+- [in_progress] M0 Security Foundation + Runtime Secret Hygiene
+  - Auth/JWT/session state, disabled-user handling, role gates, tenant isolation filters.
+  - Runtime config secret leakage + unsafe defaults in all runtime trees (`erp-domain` and `testing/erp-domain`).
+  - Ensure violations fail as 401/403 (never 500) where security boundaries are crossed.
+- [in_progress] M1 Dealer/Sales Portal Abuse Surface
+  - Dealer self-access invariants (ledger/invoices/aging/pdf).
+  - Portal role boundary checks and path-parameter abuse.
+  - Verify cross-company and cross-dealer isolation in controller + service layers.
+- [pending] M2 Accounting Core Trustworthiness (GL Engine)
+  - Journal posting validation, locked period boundaries, reversal/cascade reversal invariants.
+  - Manual journal idempotency and reference reservation races.
+  - Account-type constraints and control-account misuse protection.
+- [pending] M3 AR/AP Settlements + Idempotency/Allocation Logic
+  - Dealer receipts, split receipts, dealer settlements.
+  - Supplier payments, supplier settlements.
+  - Allocation over-application checks, FX/discount/write-off treatment, replay-safety.
+- [pending] M4 Period Close, Reopen, Reconciliation, Reporting Consistency
+  - Close/lock/reopen invariants and backposting constraints.
+  - Snapshot/report source consistency and reconciliation surfaces.
+  - Ensure close controls prevent accounting drift.
+- [pending] M5 Inventory/Manufacturing/Dispatch Accounting Coupling
+  - Raw material intake/purchase/issue, batch handling, packing/dispatch.
+  - Costing/COGS/WIP linkages and dispatch journal mappings.
+  - Non-negative and quantity/value consistency under edge cases.
+- [pending] M6 Purchasing + Invoice + O2C/P2P Cross-Module Paths
+  - PO/GRN/invoice/payment transitions and ownership scoping.
+  - Sales order -> packing slip -> dispatch -> invoice -> receipt -> settlement chain.
+  - Validate invariant links and idempotent retries end-to-end.
+- [pending] M7 Payroll/HR + Accounting Integration
+  - Payroll run calculation/post/pay flows.
+  - Liability clearing and payroll journal linkage.
+  - Notification/config safety and period/date constraints.
+- [pending] M8 Orchestrator/Outbox/Async Exactly-Once Semantics
+  - Outbox command dedupe, retry safety, and side-effect idempotency.
+  - Scheduler/batch operations race and replay behavior.
+- [pending] M9 DB + Performance + Duplicate Logic Audit
+  - Heavy queries/index coverage for hot endpoints.
+  - Duplicate/redundant function/service/controller paths causing divergence risk.
+  - Migration overlap/drift, startup config validation, predeploy scan scripts.
+- [pending] M10 Release Readiness Consolidation
+  - Final risk ledger, unresolved blockers, reproduction commands, rollback/safety notes.
+  - Confirm staging handoff checklist with evidence.
 
 Commit Ledger
 - 2026-02-12: `16b2a2c4`
@@ -32,16 +87,33 @@ Commit Ledger
   - Added `ConfigurationSecretsHardeningTest`; updated prod-hardening test properties.
   - Verified: `mvn -B -ntp -Dtest=ConfigurationSecretsHardeningTest,CR_HealthEndpointProdHardeningIT test`.
   - `codex review --commit 35866465`: running (result will be appended).
+- 2026-02-12: `37022d02`
+  - Dealer boundary hardening: violations now raise `AccessDeniedException` (403 path), not `SecurityException` (500 path).
+  - Added `DealerControllerSecurityIT` for cross-dealer ledger abuse denial + self-access allow.
+  - Verified: `mvn -B -ntp -Dtest=DealerControllerSecurityIT,DealerLedgerIT test`.
+  - `codex review --commit 37022d02`: running (result will be appended).
 
 Current Checkpoint
-- Current WIP security fix:
-  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/service/DealerPortalService.java`
-    - Replace `SecurityException` with `AccessDeniedException` to prevent 500 on dealer-boundary violations.
-  - `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/sales/DealerControllerSecurityIT.java`
-    - Add abuse test ensuring dealer cannot access another dealer's ledger (`403`).
+- Current WIP secret hygiene + duplicate-config alignment:
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/service/PayrollCalculationService.java`
+    - Remove personal email fallback from payroll notification default.
+  - `testing/erp-domain/src/main/resources/application.yml`
+  - `testing/erp-domain/src/main/resources/application-dev.yml`
+  - `testing/erp-domain/src/main/resources/application-prod.yml`
+  - `testing/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/service/PayrollCalculationService.java`
+    - Mirror secure config defaults in testing tree to eliminate leaked creds from mirrored runtime config.
 - Verification command:
-  - `mvn -B -ntp -Dtest=DealerControllerSecurityIT,DealerLedgerIT test`
+  - `mvn -B -ntp -Dtest=PayrollCalculationServiceTest,DealerControllerSecurityIT,ConfigurationSecretsHardeningTest test`
 - Next action:
-  - commit dealer-boundary fix
+  - commit secret hygiene alignment step
   - run `codex review --commit <sha>`
-  - continue accounting invariant audit loop
+  - continue M2/M3 accounting invariant + abuse audit loop
+
+Async Loop Cadence
+- Each cycle:
+  - pick one high-risk module slice
+  - prove exploitability/invariant gap
+  - apply minimal safe patch
+  - run focused verification
+  - commit + `codex review --commit`
+  - append findings/next slice here

@@ -54,7 +54,7 @@ public class PayrollCalculationService {
     private final JavaMailSender mailSender;
     private final TemplateEngine templateEngine;
 
-    @Value("${erp.payroll.notification-email:mdanas7869292@gmail.com}")
+    @Value("${erp.payroll.notification-email:alerts@localhost}")
     private String payrollNotificationEmail;
 
     @Value("${erp.mail.from-address:bigbrightpaints@gmail.com}")
