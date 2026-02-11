@@ -226,12 +226,20 @@ Auto-Replenish Queue (Always Keep Filled)
 - [ready] M8-S5 Correlation guard CI integration follow-up
   - Integrate `guard_orchestrator_correlation_contract.sh` into CI path (`scripts/verify_local.sh` is already covered by local gate).
   - Add fail-fast artifact note for orchestrator correlation guard violations.
-- [in_progress] M2-S7 Event-trail failure taxonomy normalization
+- [done] M2-S7 Event-trail failure taxonomy normalization
   - Unify failure classification rules across posting/reversal paths and expose deterministic categories for alert routing.
   - Add tests for `DATA_INTEGRITY` and `VALIDATION` categories (not only generic persistence failures).
+  - Completed: added best-effort classification tests for `IllegalArgumentException -> VALIDATION` and `DataIntegrityViolationException -> DATA_INTEGRITY`.
+  - Completed: classification assertions now pin `errorCategory` + `errorType` in integration-failure metadata.
 - [ready] M0-S7 Auth-wrapper contract documentation + API alignment
   - Document explicit auth-audit attribution fallback policy so auth/login services send nonblank actor/company values.
   - Add compatibility checks in auth service tests for expected audit metadata markers.
+- [in_progress] M0-S7 Auth-wrapper contract documentation + API alignment
+  - Document explicit auth-audit attribution fallback policy so auth/login services send nonblank actor/company values.
+  - Add compatibility checks in auth service tests for expected audit metadata markers.
+- [ready] M2-S8 Event-trail failure alert-routing fixture
+  - Add lightweight assertion fixture for downstream alert router mapping from `errorCategory`/`failureCode`.
+  - Ensure categories remain stable across refactors.
 
 Commit Ledger
 - 2026-02-12: `16b2a2c4`
@@ -338,19 +346,15 @@ Commit Ledger
   - `codex review --commit 0cb6a857`: running (result will be appended).
 
 Current Checkpoint
-- Current WIP M0-S6 completion + M2-S7 kickoff:
-  - `erp-domain/src/main/java/com/bigbrightpaints/erp/core/audit/AuditService.java`
-    - auth wrappers now enforce explicit unresolved attribution markers for blank overrides (no ambient context fallback)
-  - `erp-domain/src/test/java/com/bigbrightpaints/erp/core/audit/AuditServiceTest.java`
-    - unit contract updated to assert unresolved attribution behavior
-  - `erp-domain/src/test/java/com/bigbrightpaints/erp/core/audit/AuditServiceAsyncIT.java`
-    - async proxy test extended for blank override policy path
+- Current WIP M2-S7 completion + M0-S7 kickoff:
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingServiceTest.java`
+    - added deterministic taxonomy tests for `VALIDATION` and `DATA_INTEGRITY` event-trail failure categories
 - Verification command:
-  - `mvn -B -ntp -Dtest=AuditServiceTest,AuditServiceAsyncIT,CompanyContextTaskDecoratorTest test`
+  - `mvn -B -ntp -Dtest=AccountingServiceTest test`
 - Next action:
-  - commit M0-S6 auth-wrapper attribution policy hardening
+  - commit M2-S7 taxonomy normalization regression tests
   - run `codex review --commit <sha>`
-  - execute M2-S7 event-trail failure taxonomy normalization
+  - execute M0-S7 auth-wrapper contract documentation + API alignment
 
 Async Loop Cadence
 - Each cycle:

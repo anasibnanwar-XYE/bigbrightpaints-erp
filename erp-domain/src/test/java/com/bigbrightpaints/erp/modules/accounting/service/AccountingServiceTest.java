@@ -55,6 +55,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.batch.support.transaction.ResourcelessTransactionManager;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -958,6 +959,108 @@ class AccountingServiceTest {
                 .containsEntry("errorType", "IllegalStateException")
                 .doesNotContainKey("error");
         verify(auditService).logSuccess(eq(AuditEvent.JOURNAL_ENTRY_POSTED), any());
+    }
+
+    @Test
+    void createJournalEntry_bestEffortEventTrailValidationFailureClassified() {
+        ReflectionTestUtils.setField(accountingService, "strictAccountingEventTrail", false);
+        LocalDate today = LocalDate.of(2024, 3, 24);
+        when(companyClock.today(company)).thenReturn(today);
+        AccountingPeriod period = new AccountingPeriod();
+        period.setYear(today.getYear());
+        period.setMonth(today.getMonthValue());
+        when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(period);
+        when(journalEntryRepository.findByCompanyAndReferenceNumber(eq(company), eq("EVT-VALIDATION")))
+                .thenReturn(Optional.empty());
+
+        Account debitAccount = new Account();
+        ReflectionTestUtils.setField(debitAccount, "id", 211L);
+        debitAccount.setCompany(company);
+        debitAccount.setBalance(BigDecimal.ZERO);
+        debitAccount.setCode("DEBIT-VALIDATION");
+        Account creditAccount = new Account();
+        ReflectionTestUtils.setField(creditAccount, "id", 212L);
+        creditAccount.setCompany(company);
+        creditAccount.setBalance(BigDecimal.ZERO);
+        creditAccount.setCode("CREDIT-VALIDATION");
+        when(accountRepository.lockByCompanyAndId(eq(company), eq(211L))).thenReturn(Optional.of(debitAccount));
+        when(accountRepository.lockByCompanyAndId(eq(company), eq(212L))).thenReturn(Optional.of(creditAccount));
+        when(journalEntryRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(accountRepository.updateBalanceAtomic(eq(company), any(), any())).thenReturn(1);
+        when(accountingEventStore.recordJournalEntryPosted(any(), any()))
+                .thenThrow(new IllegalArgumentException("bad-event-payload"));
+
+        JournalEntryRequest request = new JournalEntryRequest(
+                "EVT-VALIDATION",
+                today,
+                "Best effort event trail validation classification",
+                null,
+                null,
+                Boolean.FALSE,
+                List.of(
+                        new JournalEntryRequest.JournalLineRequest(211L, "Debit line", new BigDecimal("25.00"), BigDecimal.ZERO),
+                        new JournalEntryRequest.JournalLineRequest(212L, "Credit line", BigDecimal.ZERO, new BigDecimal("25.00"))
+                )
+        );
+
+        JournalEntryDto result = accountingService.createJournalEntry(request);
+        assertThat(result.referenceNumber()).isEqualTo("EVT-VALIDATION");
+        ArgumentCaptor<Map<String, String>> integrationFailureCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(auditService).logFailure(eq(AuditEvent.INTEGRATION_FAILURE), integrationFailureCaptor.capture());
+        assertThat(integrationFailureCaptor.getValue())
+                .containsEntry("errorCategory", "VALIDATION")
+                .containsEntry("errorType", "IllegalArgumentException");
+    }
+
+    @Test
+    void createJournalEntry_bestEffortEventTrailDataIntegrityFailureClassified() {
+        ReflectionTestUtils.setField(accountingService, "strictAccountingEventTrail", false);
+        LocalDate today = LocalDate.of(2024, 3, 25);
+        when(companyClock.today(company)).thenReturn(today);
+        AccountingPeriod period = new AccountingPeriod();
+        period.setYear(today.getYear());
+        period.setMonth(today.getMonthValue());
+        when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(period);
+        when(journalEntryRepository.findByCompanyAndReferenceNumber(eq(company), eq("EVT-INTEGRITY")))
+                .thenReturn(Optional.empty());
+
+        Account debitAccount = new Account();
+        ReflectionTestUtils.setField(debitAccount, "id", 221L);
+        debitAccount.setCompany(company);
+        debitAccount.setBalance(BigDecimal.ZERO);
+        debitAccount.setCode("DEBIT-INTEGRITY");
+        Account creditAccount = new Account();
+        ReflectionTestUtils.setField(creditAccount, "id", 222L);
+        creditAccount.setCompany(company);
+        creditAccount.setBalance(BigDecimal.ZERO);
+        creditAccount.setCode("CREDIT-INTEGRITY");
+        when(accountRepository.lockByCompanyAndId(eq(company), eq(221L))).thenReturn(Optional.of(debitAccount));
+        when(accountRepository.lockByCompanyAndId(eq(company), eq(222L))).thenReturn(Optional.of(creditAccount));
+        when(journalEntryRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(accountRepository.updateBalanceAtomic(eq(company), any(), any())).thenReturn(1);
+        when(accountingEventStore.recordJournalEntryPosted(any(), any()))
+                .thenThrow(new DataIntegrityViolationException("duplicate-event-sequence"));
+
+        JournalEntryRequest request = new JournalEntryRequest(
+                "EVT-INTEGRITY",
+                today,
+                "Best effort event trail data integrity classification",
+                null,
+                null,
+                Boolean.FALSE,
+                List.of(
+                        new JournalEntryRequest.JournalLineRequest(221L, "Debit line", new BigDecimal("30.00"), BigDecimal.ZERO),
+                        new JournalEntryRequest.JournalLineRequest(222L, "Credit line", BigDecimal.ZERO, new BigDecimal("30.00"))
+                )
+        );
+
+        JournalEntryDto result = accountingService.createJournalEntry(request);
+        assertThat(result.referenceNumber()).isEqualTo("EVT-INTEGRITY");
+        ArgumentCaptor<Map<String, String>> integrationFailureCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(auditService).logFailure(eq(AuditEvent.INTEGRATION_FAILURE), integrationFailureCaptor.capture());
+        assertThat(integrationFailureCaptor.getValue())
+                .containsEntry("errorCategory", "DATA_INTEGRITY")
+                .containsEntry("errorType", "DataIntegrityViolationException");
     }
 
     @Test
