@@ -47,17 +47,17 @@ spring:
       linger-ms: 1
       buffer-memory: 33554432
   mail:
-    host: ${SPRING_MAIL_HOST:smtp-relay.brevo.com}
-    port: ${SPRING_MAIL_PORT:587}
-    username: ${SPRING_MAIL_USERNAME:9baaf7001@smtp-brevo.com}
-    password: ${SPRING_MAIL_PASSWORD:njqUYK2FytD5ZVhA}
+    host: ${SPRING_MAIL_HOST:localhost}
+    port: ${SPRING_MAIL_PORT:1025}
+    username: ${SPRING_MAIL_USERNAME:}
+    password: ${SPRING_MAIL_PASSWORD:}
     properties:
       mail:
         smtp:
-          auth: true
+          auth: ${SPRING_MAIL_SMTP_AUTH:false}
           starttls:
-            enable: true
-            required: true
+            enable: ${SPRING_MAIL_STARTTLS_ENABLE:false}
+            required: ${SPRING_MAIL_STARTTLS_REQUIRED:false}
 
 management:
   endpoints:
@@ -136,7 +136,7 @@ erp:
     debit-account-id: ${ERP_DISPATCH_DEBIT_ACCOUNT_ID:0}
     credit-account-id: ${ERP_DISPATCH_CREDIT_ACCOUNT_ID:0}
   payroll:
-    notification-email: ${ERP_PAYROLL_NOTIFICATION_EMAIL:mdanas7869292@gmail.com}
+    notification-email: ${ERP_PAYROLL_NOTIFICATION_EMAIL:alerts@localhost}
   raw-material:
     intake:
       enabled: ${ERP_RAW_MATERIAL_INTAKE_ENABLED:false}
