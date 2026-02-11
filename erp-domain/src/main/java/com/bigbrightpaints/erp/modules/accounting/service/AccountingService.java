@@ -2181,9 +2181,9 @@ public class AccountingService {
                     CompanyTime.now(company)
             );
             if (reserved == 0) {
-                Optional<JournalEntry> already = journalReferenceResolver.findExistingEntry(company, key);
-                if (already.isPresent()) {
-                    return toDto(already.get());
+                JournalEntry already = awaitJournalEntry(company, rawKey, key);
+                if (already != null) {
+                    return toDto(already);
                 }
                 throw new ApplicationException(ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
                         "Manual journal idempotency key already reserved but entry not found")
@@ -2461,13 +2461,13 @@ public class AccountingService {
             return List.of();
         }
         String key = idempotencyKey.trim();
-        List<PartnerSettlementAllocation> exact = settlementAllocationRepository.findByCompanyAndIdempotencyKey(company, key);
-        if (exact != null && !exact.isEmpty()) {
-            return exact;
+        List<PartnerSettlementAllocation> matches = settlementAllocationRepository
+                .findByCompanyAndIdempotencyKeyIgnoreCaseOrderByCreatedAtAscIdAsc(company, key);
+        if (matches != null && !matches.isEmpty()) {
+            return matches;
         }
-        List<PartnerSettlementAllocation> ignoreCase = settlementAllocationRepository
-                .findByCompanyAndIdempotencyKeyIgnoreCase(company, key);
-        return ignoreCase != null ? ignoreCase : List.of();
+        List<PartnerSettlementAllocation> exact = settlementAllocationRepository.findByCompanyAndIdempotencyKey(company, key);
+        return exact != null ? exact : List.of();
     }
 
     private List<PartnerSettlementAllocation> resolveAllocationsForIdempotentReceiptReplay(Company company,

@@ -146,9 +146,18 @@ Auto-Replenish Queue (Always Keep Filled)
 - [ready] M6-S2 Cross-module duplicate logic map
   - Build service/controller duplication map for order->dispatch->invoice->receipt->settlement path.
   - Consolidate highest-risk duplicated rule into single canonical path with regression tests.
-- [ready] M2-S3 Manual journal idempotency key collision matrix
+- [done] M2-S3 Manual journal idempotency key collision matrix
   - Probe mixed-case/manual-reference collisions against `createManualJournalEntry`.
   - Verify deterministic replay behavior and no split-brain mapping rows under concurrent retries.
+  - Completed: loser path now waits for leader journal materialization before failing (`awaitJournalEntry` in manual idempotency reserve path).
+  - Added E2E test `journalEntry_ManualIdempotencyKey_CaseInsensitiveReplay`.
+  - Follow-up deterministic patch applied: allocation idempotency reads now use ordered case-insensitive lookup first.
+- [ready] M2-S4 Accounting event trail durability boundary
+  - Investigate fail-open `recordJournalEntryPostedEventSafe`/`recordJournalEntryReversedEventSafe` behavior and define policy for staging (`strict` vs `best-effort` with durable retry/alert).
+  - Ensure no silent accounting-event trail drops for posted/reversed journals without compensating alerting.
+- [ready] M0-S2 Async audit-request lifecycle hardening
+  - Fix `AuditService` async logging path reading recycled `HttpServletRequest` facade after response commit.
+  - Ensure client IP/user-agent metadata capture is request-safe and non-throwing under async execution.
 
 Commit Ledger
 - 2026-02-12: `16b2a2c4`
@@ -175,22 +184,34 @@ Commit Ledger
     - removed contradictory legacy-migration exception wording
     - pinned explicit V2 schema drift scan command in completion gates
   - `codex review --commit 94317f61`: no code regression (process-ledger commit); follow-up wording fixes applied.
+- 2026-02-12: `4127af01`
+  - Hardened settlement idempotency/mapping path and added V2 CI lookup indexes.
+  - Added mixed-case dealer settlement replay E2E coverage.
+  - Verified:
+    - `mvn -B -ntp -Dtest=AccountingServiceTest,SettlementE2ETest test`
+    - `mvn -B -ntp -Dtest=AccountingServiceTest,JournalEntryE2ETest test`
+  - Subagent review findings:
+    - medium: non-deterministic case-variant allocation lookup path (patched in current WIP cycle)
+    - medium: accounting event trail fail-open boundary needs explicit policy/task (`M2-S4`)
+    - low: overly broad `ON CONFLICT DO NOTHING` in mapping reserve SQL (patched in current WIP cycle)
 
 Current Checkpoint
-- Current WIP secret hygiene + duplicate-config alignment:
-  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/service/PayrollCalculationService.java`
-    - Remove personal email fallback from payroll notification default.
-  - `testing/erp-domain/src/main/resources/application.yml`
-  - `testing/erp-domain/src/main/resources/application-dev.yml`
-  - `testing/erp-domain/src/main/resources/application-prod.yml`
-  - `testing/erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/service/PayrollCalculationService.java`
-    - Mirror secure config defaults in testing tree to eliminate leaked creds from mirrored runtime config.
+- Current WIP M2-S3 stabilization:
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingService.java`
+    - manual-journal loser path now awaits leader commit before concurrency-failure
+    - allocation idempotency resolver now prioritizes deterministic ordered ignore-case lookup
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/domain/PartnerSettlementAllocationRepository.java`
+    - added ordered case-insensitive finder for stable replay resolution
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/domain/JournalReferenceMappingRepository.java`
+    - restored targeted conflict clause for reserve insert statements
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/e2e/accounting/JournalEntryE2ETest.java`
+    - added mixed-case manual idempotency replay coverage
 - Verification command:
-  - `mvn -B -ntp -Dtest=PayrollCalculationServiceTest,DealerControllerSecurityIT,ConfigurationSecretsHardeningTest test`
+  - `mvn -B -ntp -Dtest=AccountingServiceTest,SettlementE2ETest,JournalEntryE2ETest test`
 - Next action:
-  - commit secret hygiene alignment step
+  - commit M2-S3 follow-up patch
   - run `codex review --commit <sha>`
-  - continue M2/M3 accounting invariant + abuse audit loop
+  - move to M2-S4 accounting event-trail durability boundary
 
 Async Loop Cadence
 - Each cycle:

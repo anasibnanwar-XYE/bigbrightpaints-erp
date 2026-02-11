@@ -25,7 +25,7 @@ public interface JournalReferenceMappingRepository extends JpaRepository<Journal
                 created_at
             )
             VALUES (:companyId, :legacyReference, :canonicalReference, :entityType, :createdAt)
-            ON CONFLICT DO NOTHING
+            ON CONFLICT (company_id, legacy_reference) DO NOTHING
             """, nativeQuery = true)
     int reserveManualReference(@Param("companyId") Long companyId,
                                @Param("legacyReference") String legacyReference,
@@ -43,7 +43,7 @@ public interface JournalReferenceMappingRepository extends JpaRepository<Journal
                 created_at
             )
             VALUES (:companyId, :legacyReference, :canonicalReference, :entityType, :createdAt)
-            ON CONFLICT DO NOTHING
+            ON CONFLICT (company_id, legacy_reference) DO NOTHING
             """, nativeQuery = true)
     int reserveReferenceMapping(@Param("companyId") Long companyId,
                                 @Param("legacyReference") String legacyReference,

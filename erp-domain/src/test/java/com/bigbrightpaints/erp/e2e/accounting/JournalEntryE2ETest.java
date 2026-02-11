@@ -18,6 +18,7 @@ import org.springframework.http.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -290,6 +291,57 @@ public class JournalEntryE2ETest extends AbstractIntegrationTest {
                 .filter(entry -> memo.equals(entry.getMemo()))
                 .count();
         assertThat(memoCount).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("Journal Entry: Manual idempotency key is case-insensitive")
+    void journalEntry_ManualIdempotencyKey_CaseInsensitiveReplay() {
+        Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
+        Account cashAccount = accountRepository.findByCompanyAndCodeIgnoreCase(company, "CASH").orElseThrow();
+        Account revenueAccount = accountRepository.findByCompanyAndCodeIgnoreCase(company, "REVENUE").orElseThrow();
+
+        BigDecimal amount = new BigDecimal("180.00");
+        Map<String, Object> debitLine = Map.of(
+                "accountId", cashAccount.getId(),
+                "debit", amount,
+                "credit", BigDecimal.ZERO,
+                "description", "Case replay cash"
+        );
+        Map<String, Object> creditLine = Map.of(
+                "accountId", revenueAccount.getId(),
+                "debit", BigDecimal.ZERO,
+                "credit", amount,
+                "description", "Case replay revenue"
+        );
+
+        String manualRef = "MANUAL-CASE-" + System.currentTimeMillis();
+        Map<String, Object> firstReq = Map.of(
+                "entryDate", LocalDate.now(),
+                "referenceNumber", manualRef,
+                "memo", "Manual idempotency case replay",
+                "lines", List.of(debitLine, creditLine)
+        );
+        ResponseEntity<Map> first = rest.exchange("/api/v1/accounting/journal-entries",
+                HttpMethod.POST, new HttpEntity<>(firstReq, headers), Map.class);
+        assertThat(first.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Long firstId = ((Number) ((Map<?, ?>) first.getBody().get("data")).get("id")).longValue();
+
+        Map<String, Object> secondReq = Map.of(
+                "entryDate", LocalDate.now(),
+                "referenceNumber", manualRef.toLowerCase(Locale.ROOT),
+                "memo", "Manual idempotency case replay",
+                "lines", List.of(debitLine, creditLine)
+        );
+        ResponseEntity<Map> second = rest.exchange("/api/v1/accounting/journal-entries",
+                HttpMethod.POST, new HttpEntity<>(secondReq, headers), Map.class);
+        assertThat(second.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Long secondId = ((Number) ((Map<?, ?>) second.getBody().get("data")).get("id")).longValue();
+        assertThat(secondId).isEqualTo(firstId);
+
+        List<JournalReferenceMapping> mappings = journalReferenceMappingRepository
+                .findAllByCompanyAndLegacyReferenceIgnoreCase(company, manualRef);
+        assertThat(mappings).hasSize(1);
+        assertThat(mappings.getFirst().getEntityId()).isEqualTo(firstId);
     }
 
     @Test
