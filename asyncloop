@@ -210,9 +210,15 @@ Auto-Replenish Queue (Always Keep Filled)
 - [in_progress] M8-S4 Commit self-containment guardrail
   - Ensure orchestrator correlation commits include both dispatcher call-site and coordinator overload definitions.
   - Add commit-review checklist item to reject clean-checkout compile gaps.
-- [ready] M0-S5 Auth-wrapper async proxy contract test
+- [done] M0-S5 Auth-wrapper async proxy contract test
   - Add proxied/asynchronous `AuditService` integration test so auth attribution coverage includes real `@Async` execution and context drift conditions.
   - Validate wrapper attribution policy under blank override inputs (explicit contract, no accidental ambient misattribution).
+  - Completed: added `AuditServiceAsyncIT` using Spring-proxied `AuditService` with real async executor.
+  - Completed: verifies explicit auth actor/company attribution survives post-invocation caller-context mutation.
+  - Completed: added unresolved-company behavior assertion for auth-failure wrapper path.
+- [ready] M0-S6 Auth-wrapper attribution policy hardening
+  - Decide and enforce contract for blank username/company overrides (`UNKNOWN` vs reject vs ambient fallback) to avoid accidental misattribution.
+  - Expand async tests to include blank-override behavior once contract is finalized.
 
 Commit Ledger
 - 2026-02-12: `16b2a2c4`
@@ -301,19 +307,23 @@ Commit Ledger
     - medium: coverage uses `self=service` and does not exercise real async proxy behavior (`M0-S5` added)
     - medium: blank override fallback policy may misattribute auth events if ambient contexts are stale (`M0-S5` added)
     - low: extend recycled-request field assertions and unresolved-company tests (queued under `M0-S5`)
+- 2026-02-12: `1d182cad`
+  - Snapshotted async security authentication context in `CompanyContextTaskDecorator` and added mutate-after-decorate regression test.
+  - Verified:
+    - `mvn -B -ntp -Dtest=CompanyContextTaskDecoratorTest,AuditServiceTest test`
+  - `codex review --commit 1d182cad`: running (result will be appended).
 
 Current Checkpoint
-- Current WIP M0-S4 completion + M8-S4 kickoff:
-  - `erp-domain/src/main/java/com/bigbrightpaints/erp/core/config/CompanyContextTaskDecorator.java`
-    - snapshot-based auth context propagation prevents mutate-after-decorate principal drift
-  - `erp-domain/src/test/java/com/bigbrightpaints/erp/core/config/CompanyContextTaskDecoratorTest.java`
-    - added deterministic mutate-after-decorate regression
+- Current WIP M0-S5 completion + M8-S4 in-progress:
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/core/audit/AuditServiceAsyncIT.java`
+    - validates proxied `@Async` auth-wrapper attribution under caller-context mutation
+    - validates unresolved company override behavior in async wrapper flow
 - Verification command:
-  - `mvn -B -ntp -Dtest=CompanyContextTaskDecoratorTest,AuditServiceTest test`
+  - `mvn -B -ntp -Dtest=AuditServiceAsyncIT,AuditServiceTest,CompanyContextTaskDecoratorTest test`
 - Next action:
-  - commit M0-S4 security-context snapshot hardening
+  - commit M0-S5 async proxy auth-wrapper coverage
   - run `codex review --commit <sha>`
-  - execute M8-S4 self-containment guardrail and M0-S5 async proxy auth-wrapper follow-ups
+  - execute M8-S4 self-containment guardrail and M0-S6 attribution policy hardening
 
 Async Loop Cadence
 - Each cycle:
