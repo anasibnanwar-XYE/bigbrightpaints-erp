@@ -1702,6 +1702,143 @@ class AccountingServiceTest {
     }
 
     @Test
+    void settleDealerInvoices_rejectsOldSettlementDateBeforeMutation() {
+        LocalDate today = LocalDate.of(2024, 4, 30);
+        when(companyClock.today(company)).thenReturn(today);
+        when(journalEntryRepository.findByCompanyAndReferenceNumber(eq(company), any()))
+                .thenReturn(Optional.empty());
+
+        Dealer dealer = new Dealer();
+        dealer.setName("Closed-period dealer");
+        ReflectionTestUtils.setField(dealer, "id", 1L);
+
+        Account receivable = new Account();
+        receivable.setCompany(company);
+        receivable.setCode("AR-OLD");
+        receivable.setType(AccountType.ASSET);
+        ReflectionTestUtils.setField(receivable, "id", 10L);
+        dealer.setReceivableAccount(receivable);
+
+        Account cash = new Account();
+        cash.setCompany(company);
+        cash.setCode("CASH-OLD");
+        cash.setType(AccountType.ASSET);
+        ReflectionTestUtils.setField(cash, "id", 20L);
+
+        com.bigbrightpaints.erp.modules.invoice.domain.Invoice invoice =
+                new com.bigbrightpaints.erp.modules.invoice.domain.Invoice();
+        invoice.setCompany(company);
+        invoice.setDealer(dealer);
+        invoice.setCurrency("INR");
+        invoice.setOutstandingAmount(new BigDecimal("100.00"));
+        invoice.setTotalAmount(new BigDecimal("100.00"));
+        ReflectionTestUtils.setField(invoice, "id", 730L);
+
+        when(dealerRepository.lockByCompanyAndId(eq(company), eq(1L))).thenReturn(Optional.of(dealer));
+        when(companyEntityLookup.requireAccount(eq(company), eq(20L))).thenReturn(cash);
+        when(invoiceRepository.lockByCompanyAndId(eq(company), eq(730L))).thenReturn(Optional.of(invoice));
+
+        DealerSettlementRequest request = new DealerSettlementRequest(
+                1L,
+                20L,
+                null,
+                null,
+                null,
+                null,
+                today.minusDays(31),
+                "DR-OLD-1",
+                "Old dealer settlement",
+                "IDEMP-DR-OLD-1",
+                Boolean.FALSE,
+                List.of(new SettlementAllocationRequest(
+                        730L,
+                        null,
+                        new BigDecimal("100.00"),
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        null
+                )),
+                null
+        );
+
+        assertThatThrownBy(() -> accountingService.settleDealerInvoices(request))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Entry date cannot be more than 30 days old");
+
+        assertThat(invoice.getOutstandingAmount()).isEqualByComparingTo("100.00");
+        verify(invoiceSettlementPolicy, never()).applySettlement(any(), any(), any());
+        verify(settlementAllocationRepository, never()).saveAll(any());
+        verify(invoiceRepository, never()).saveAll(any());
+    }
+
+    @Test
+    void settleSupplierInvoices_rejectsOldSettlementDateBeforeMutation() {
+        LocalDate today = LocalDate.of(2024, 4, 30);
+        when(companyClock.today(company)).thenReturn(today);
+        when(journalEntryRepository.findByCompanyAndReferenceNumber(eq(company), any()))
+                .thenReturn(Optional.empty());
+
+        Supplier supplier = new Supplier();
+        supplier.setName("Closed-period supplier");
+        ReflectionTestUtils.setField(supplier, "id", 1L);
+
+        Account payable = new Account();
+        payable.setCompany(company);
+        payable.setCode("AP-OLD");
+        payable.setType(AccountType.LIABILITY);
+        ReflectionTestUtils.setField(payable, "id", 10L);
+        supplier.setPayableAccount(payable);
+
+        Account cash = new Account();
+        cash.setCompany(company);
+        cash.setCode("CASH-OLD");
+        cash.setType(AccountType.ASSET);
+        ReflectionTestUtils.setField(cash, "id", 20L);
+
+        RawMaterialPurchase purchase = new RawMaterialPurchase();
+        purchase.setCompany(company);
+        purchase.setSupplier(supplier);
+        purchase.setOutstandingAmount(new BigDecimal("100.00"));
+        ReflectionTestUtils.setField(purchase, "id", 740L);
+
+        when(supplierRepository.lockByCompanyAndId(eq(company), eq(1L))).thenReturn(Optional.of(supplier));
+        when(companyEntityLookup.requireAccount(eq(company), eq(20L))).thenReturn(cash);
+        when(rawMaterialPurchaseRepository.lockByCompanyAndId(eq(company), eq(740L))).thenReturn(Optional.of(purchase));
+
+        SupplierSettlementRequest request = new SupplierSettlementRequest(
+                1L,
+                20L,
+                null,
+                null,
+                null,
+                null,
+                today.minusDays(31),
+                "SUP-OLD-1",
+                "Old supplier settlement",
+                "IDEMP-SUP-OLD-1",
+                Boolean.FALSE,
+                List.of(new SettlementAllocationRequest(
+                        null,
+                        740L,
+                        new BigDecimal("100.00"),
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        null
+                ))
+        );
+
+        assertThatThrownBy(() -> accountingService.settleSupplierInvoices(request))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Entry date cannot be more than 30 days old");
+
+        assertThat(purchase.getOutstandingAmount()).isEqualByComparingTo("100.00");
+        verify(settlementAllocationRepository, never()).saveAll(any());
+        verify(rawMaterialPurchaseRepository, never()).saveAll(any());
+    }
+
+    @Test
     void recordSupplierPayment_requiresPurchaseAllocation() {
         Supplier supplier = new Supplier();
         supplier.setName("Supplier");
