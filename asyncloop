@@ -19,8 +19,8 @@ Non-Stop Operating Rules
 
 Runtime Tracking
 - tracked_start_ts: `2026-02-12T01:53:52+05:30` (first immutable async-loop commit marker)
-- tracked_now_ts: `2026-02-12T07:09:25+05:30`
-- tracked_elapsed: `5h 15m 33s`
+- tracked_now_ts: `2026-02-12T07:14:09+05:30`
+- tracked_elapsed: `5h 20m 17s`
 
 Completion Gates (Required For "Safe To Deploy" Claim)
 - No known critical/high security issues in auth/RBAC/tenant isolation/data exposure.
@@ -537,26 +537,39 @@ Commit Ledger
     - high: `SHIPPED` can be set without full dispatch truth (invoice + AR + COGS linkage).
     - medium: status-resolution divergence vs `SalesService#resolveOrderStatusAfterDispatch` (cancelled-slip handling).
     - medium: potential implicit cancel-path side-effect bypass and unlocked status write race.
+- 2026-02-12: `6cdf11be`
+  - Dealer portal hardening follow-up:
+    - fail closed when principal user-id exists but no dealer mapping is present.
+    - tighten portal security IT assertions to long-safe numeric comparisons.
+    - normalize IT auth header path to `X-Company-Code` for mismatch coverage.
+  - Verified:
+    - `mvn -B -ntp -Dtest=DealerPortalServiceTest,DealerPortalControllerSecurityIT test`
+  - Subagent review:
+    - `019c4f82-3025-7471-a47f-1212068e416e` (completed)
+    - medium: legacy dealer users without `portal_user_id` backfill can be locked out; mitigation required via migration/backfill slice.
+    - low: keep explicit integration proof that fail-closed id-miss path maps to 403.
 
 Current Checkpoint
-- Current WIP M5-S5 (dealer portal follow-up hardening from commit reviews):
-  - Root cause (from prior completed subagent reviews on `c5abfd49` and `7dc9b6b1`):
-    - principal user-id miss could still fall back to email mapping (weak fail-closed behavior).
-    - dealer portal misuse IT asserted numeric IDs with int narrowing and needed explicit token-vs-header mismatch precision.
+- Current WIP M3-S4R (inventory status-sync remediation from high-severity review findings):
+  - Root cause (from subagent review on `5f3a6db4`):
+    - backorder-cancel status sync could bypass accounting immutability constraints and diverge from `SalesService` status semantics.
   - Fix completed in working tree (pending commit):
-    - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/service/DealerPortalService.java`
-      - if principal user-id exists but no dealer mapping is found, fail closed (`AccessDeniedException`) and do not fall back to email.
-    - `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/sales/service/DealerPortalServiceTest.java`
-      - added regression: id-present + id-miss + email-possible path denies access and never queries email.
-    - `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/sales/DealerPortalControllerSecurityIT.java`
-      - use canonical company header path and long-safe ID assertions.
+    - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/service/FinishedGoodsService.java`
+      - lock order row before reconciliation (`findWithItemsByCompanyAndIdForUpdate`).
+      - allow status sync only for mutable `PENDING_PRODUCTION` orders with no posted accounting markers.
+      - apply only `PENDING_PRODUCTION -> READY_TO_SHIP` transition from backorder-cancel path.
+      - align slip-status resolution semantics with `SalesService` (no active-slip-only divergence).
+    - `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/inventory/service/FinishedGoodsServiceTest.java`
+      - adjust reconciliation expectation to `READY_TO_SHIP`.
+      - add regression: posted-accounting order status must not mutate.
+      - add regression: terminal-status order must not mutate.
 - Verification command:
-  - `mvn -B -ntp -Dtest=DealerPortalServiceTest,DealerPortalControllerSecurityIT test`
-  - Result: pass (2026-02-12T07:08:29+05:30)
+  - `mvn -B -ntp -Dtest=FinishedGoodsServiceTest#cancelBackorderClearsReservation,FinishedGoodsServiceTest#cancelBackorderReconcilesOrderStatusToReadyToShipWhenOnlyDispatchedSlipRemains,FinishedGoodsServiceTest#cancelBackorderDoesNotMutateOrderStatusWhenAccountingAlreadyPosted,FinishedGoodsServiceTest#cancelBackorderDoesNotMutateOrderStatusWhenOrderAlreadyTerminal,DispatchConfirmationIT test`
+  - Result: pass (2026-02-12T07:13:54+05:30)
 - Next action:
-  - commit M5-S5 dealer portal fail-closed + assertion precision patch
+  - commit M3-S4R inventory status-sync guardrail remediation
   - run `codex review --commit <sha>`
-  - execute M3-S4R remediation commit to close high findings from `5f3a6db4`
+  - implement M5-S6 dealer portal user-id backfill + uniqueness guard in Flyway V2
 
 Async Loop Cadence
 - Each cycle:

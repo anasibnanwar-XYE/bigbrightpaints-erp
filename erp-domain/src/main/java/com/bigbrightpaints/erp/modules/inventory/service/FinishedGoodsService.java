@@ -1393,16 +1393,33 @@ public class FinishedGoodsService {
         if (company == null || salesOrder == null || salesOrder.getId() == null) {
             return;
         }
-        SalesOrder managedOrder = salesOrderRepository.findByCompanyAndId(company, salesOrder.getId()).orElse(null);
+        SalesOrder managedOrder = salesOrderRepository.findWithItemsByCompanyAndIdForUpdate(company, salesOrder.getId())
+                .orElse(null);
         if (managedOrder == null) {
             return;
         }
-        String nextStatus = resolveOrderStatusFromSlips(company, managedOrder);
-        if (!StringUtils.hasText(nextStatus) || nextStatus.equalsIgnoreCase(managedOrder.getStatus())) {
+        if (!isBackorderCancellationStatusSyncAllowed(managedOrder)) {
             return;
         }
-        managedOrder.setStatus(nextStatus);
+        String nextStatus = resolveOrderStatusFromSlips(company, managedOrder);
+        if (!"READY_TO_SHIP".equalsIgnoreCase(nextStatus)
+                || "READY_TO_SHIP".equalsIgnoreCase(managedOrder.getStatus())) {
+            return;
+        }
+        managedOrder.setStatus("READY_TO_SHIP");
         salesOrderRepository.save(managedOrder);
+    }
+
+    private boolean isBackorderCancellationStatusSyncAllowed(SalesOrder order) {
+        if (order == null) {
+            return false;
+        }
+        if (!"PENDING_PRODUCTION".equalsIgnoreCase(order.getStatus())) {
+            return false;
+        }
+        return !order.hasInvoiceIssued()
+                && !order.hasSalesJournalPosted()
+                && !order.hasCogsJournalPosted();
     }
 
     private String resolveOrderStatusFromSlips(Company company, SalesOrder order) {
@@ -1413,18 +1430,12 @@ public class FinishedGoodsService {
         if (slips.isEmpty()) {
             return order.getStatus();
         }
-        List<PackagingSlip> activeSlips = slips.stream()
-                .filter(slip -> !"CANCELLED".equalsIgnoreCase(slip.getStatus()))
-                .toList();
-        if (activeSlips.isEmpty()) {
-            return "CANCELLED";
-        }
-        boolean allDispatched = activeSlips.stream()
+        boolean allDispatched = slips.stream()
                 .allMatch(slip -> "DISPATCHED".equalsIgnoreCase(slip.getStatus()));
         if (allDispatched) {
             return "SHIPPED";
         }
-        boolean anyBackorder = activeSlips.stream()
+        boolean anyBackorder = slips.stream()
                 .anyMatch(slip -> "BACKORDER".equalsIgnoreCase(slip.getStatus()));
         if (anyBackorder) {
             return "PENDING_PRODUCTION";
