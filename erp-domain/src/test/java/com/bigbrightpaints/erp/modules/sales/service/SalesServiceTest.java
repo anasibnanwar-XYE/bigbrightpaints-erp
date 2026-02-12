@@ -1184,7 +1184,7 @@ class SalesServiceTest {
     }
 
     @Test
-    void reconcileStaleOrderLevelMarkersScansAcrossCandidatePages() {
+    void reconcileStaleOrderLevelMarkersProcessesAllReturnedCandidates() {
         SalesOrder singleSlipOrder = new SalesOrder();
         setField(singleSlipOrder, "id", 10L);
         singleSlipOrder.setCompany(company);
@@ -1200,11 +1200,8 @@ class SalesServiceTest {
         multiSlipOrder.setFulfillmentInvoiceId(803L);
 
         when(salesOrderRepository.findDispatchMarkerCandidateIdsByCompanyOrderByCreatedAtDescIdDesc(
-                company, PageRequest.of(0, 100)))
-                .thenReturn(new PageImpl<>(List.of(10L), PageRequest.of(0, 100), 101));
-        when(salesOrderRepository.findDispatchMarkerCandidateIdsByCompanyOrderByCreatedAtDescIdDesc(
-                company, PageRequest.of(1, 100)))
-                .thenReturn(new PageImpl<>(List.of(20L), PageRequest.of(1, 100), 101));
+                company, PageRequest.of(0, 200)))
+                .thenReturn(new PageImpl<>(List.of(10L, 20L), PageRequest.of(0, 200), 2));
 
         when(salesOrderRepository.findWithItemsByCompanyAndIdForUpdate(company, 10L))
                 .thenReturn(Optional.of(singleSlipOrder));
