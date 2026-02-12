@@ -470,25 +470,35 @@ Commit Ledger
     - `mvn -B -ntp -Dtest=AuditServiceTest,AuditServiceAsyncIT,AuthServiceAuditAttributionTest test`
   - Subagent review:
     - `019c4f5a-af42-7d51-a9d8-1db3be551161` (running)
+- 2026-02-12: `e462c145`
+  - Fixed dispatch/backorder cascade invariant: partial dispatch of an already-backordered slip now creates/links a new active backorder slip instead of reusing dispatched history.
+  - Added regression test for partial-backorder redispatch chain continuity.
+  - Verified:
+    - `mvn -B -ntp -Dtest=FinishedGoodsServiceTest,DispatchConfirmationIT test`
+  - Subagent review:
+    - `019c4f5f-1e7d-71d1-8451-b15aba32d0a9` (running)
+  - Prior review follow-up captured for next auth/audit slice:
+    - high: ambiguous numeric runtime token collision can misattribute tenant in audit context
+    - medium: unresolved auth company token not persisted in metadata for forensic traceability
 
 Current Checkpoint
-- Current WIP M5-S1 (dispatch/backorder invariant closure):
+- Current WIP M5-S2 (bulk packing idempotency fail-closed):
   - Root cause (proved by failing test):
-    - partial dispatch on an already backordered slip re-used any historical `isBackorder=true` slip id, including slips already moved to `DISPATCHED`, leaving no active backorder slip for remaining qty.
+    - idempotent replay returned success when packing inventory movements existed but no journal linkage existed, silently masking accounting drift.
     - failing proof command:
-      - `mvn -B -ntp -Dtest=FinishedGoodsServiceTest#confirmDispatch_partialBackorderDispatchCreatesFollowupBackorderSlip test`
+      - `mvn -B -ntp -Dtest=BulkPackingServiceIdempotencyTest test`
   - Fix in progress:
-    - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/service/FinishedGoodsService.java`
-      - backorder reuse now filters to open slips with `status=BACKORDER` and excludes current slip id
-      - added helper methods for response-time backorder id resolution and open-backorder lookup
-    - `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/inventory/service/FinishedGoodsServiceTest.java`
-      - added cascade regression: partial dispatch of a backorder slip must generate a new active backorder slip for residual quantities
+    - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/service/BulkPackingService.java`
+      - `resolveIdempotentPack` now throws `INTERNAL_CONCURRENCY_FAILURE` when inventory movements exist without journal
+      - prevents fail-open replay in partial/unsafe pack states
+    - `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/factory/service/BulkPackingServiceIdempotencyTest.java`
+      - added regression ensuring replay fails closed on missing journal linkage
 - Verification command:
-  - `mvn -B -ntp -Dtest=FinishedGoodsServiceTest,DispatchConfirmationIT test`
+  - `mvn -B -ntp -Dtest=BulkPackingServiceIdempotencyTest,BulkPackingServiceTest,CR_BulkPackagingCrossModuleTest#bulkPack_idempotentRetry_doesNotDoubleConsumeOrPost test`
 - Next action:
-  - commit M5-S1 dispatch/backorder active-slip invariant fix
+  - commit M5-S2 bulk-pack fail-closed idempotency guard
   - run `codex review --commit <sha>`
-  - start M5-S2 manufacturing packing/bulk-packing invariant audit
+  - continue M5-S2 manufacturing audit (remaining: duplicate child-line guard + zero-pack hard reject)
 
 Async Loop Cadence
 - Each cycle:

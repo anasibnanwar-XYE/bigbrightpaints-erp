@@ -33,8 +33,6 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * Service for converting bulk FG batches into sized child batches.
@@ -251,6 +249,11 @@ public class BulkPackingService {
         Long journalEntryId = journalEntryRepository.findByCompanyAndReferenceNumber(company, packReference)
                 .map(JournalEntry::getId)
                 .orElse(null);
+        if (journalEntryId == null) {
+            throw new ApplicationException(ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
+                    "Partial bulk pack detected for reference " + packReference
+                            + " (inventory movements exist without journal)");
+        }
 
         return new BulkPackResponse(
                 bulkBatch.getId(),
@@ -401,8 +404,6 @@ public class BulkPackingService {
         }
     }
 
-    static final Pattern SIZE_LABEL_PATTERN = Pattern.compile("([0-9]+(?:\\.[0-9]+)?)\\s*(ML|L|LTR|LITRE|LITER)");
-
     private BigDecimal extractSizeInLiters(String sizeLabel, String unit) {
         BigDecimal fromLabel = parseSizeInLiters(sizeLabel);
         if (fromLabel != null) {
@@ -417,25 +418,7 @@ public class BulkPackingService {
     }
 
     static BigDecimal parseSizeInLiters(String label) {
-        if (!StringUtils.hasText(label)) {
-            return null;
-        }
-        String normalized = label.trim().toUpperCase();
-        Matcher matcher = SIZE_LABEL_PATTERN.matcher(normalized);
-        if (!matcher.find()) {
-            return null;
-        }
-        BigDecimal value;
-        try {
-            value = new BigDecimal(matcher.group(1));
-        } catch (NumberFormatException ex) {
-            return null;
-        }
-        String unit = matcher.group(2);
-        if ("ML".equals(unit)) {
-            return value.divide(new BigDecimal("1000"), 6, RoundingMode.HALF_UP);
-        }
-        return value;
+        return PackagingSizeParser.parseSizeInLiters(label);
     }
 
     private PackagingCostSummary consumePackagingMaterials(Company company,
