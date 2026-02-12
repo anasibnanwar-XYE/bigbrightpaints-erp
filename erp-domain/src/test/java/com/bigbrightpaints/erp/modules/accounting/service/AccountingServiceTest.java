@@ -2730,6 +2730,12 @@ class AccountingServiceTest {
         cash.setType(AccountType.ASSET);
         ReflectionTestUtils.setField(cash, "id", 20L);
 
+        RawMaterialPurchase purchase = new RawMaterialPurchase();
+        purchase.setCompany(company);
+        purchase.setSupplier(supplier);
+        purchase.setOutstandingAmount(new BigDecimal("100.00"));
+        ReflectionTestUtils.setField(purchase, "id", 704L);
+
         JournalEntry createdEntry = new JournalEntry();
         ReflectionTestUtils.setField(createdEntry, "id", 960L);
         createdEntry.setSupplier(supplier);
@@ -2751,6 +2757,7 @@ class AccountingServiceTest {
         concurrentRow.setCompany(company);
         concurrentRow.setPartnerType(com.bigbrightpaints.erp.modules.accounting.domain.PartnerType.SUPPLIER);
         concurrentRow.setSupplier(supplier);
+        concurrentRow.setPurchase(purchase);
         concurrentRow.setJournalEntry(concurrentEntry);
         concurrentRow.setSettlementDate(LocalDate.of(2024, 4, 9));
         concurrentRow.setAllocationAmount(new BigDecimal("100.00"));
@@ -2777,13 +2784,14 @@ class AccountingServiceTest {
 
         when(supplierRepository.lockByCompanyAndId(eq(company), eq(1L))).thenReturn(Optional.of(supplier));
         when(companyEntityLookup.requireAccount(eq(company), eq(20L))).thenReturn(cash);
+        when(rawMaterialPurchaseRepository.lockByCompanyAndId(eq(company), eq(704L))).thenReturn(Optional.of(purchase));
         doReturn(stubEntry(960L)).when(service).createJournalEntry(any(JournalEntryRequest.class));
         when(companyEntityLookup.requireJournalEntry(eq(company), eq(960L))).thenReturn(createdEntry);
         when(settlementAllocationRepository.saveAll(any())).thenThrow(new DataIntegrityViolationException("duplicate"));
 
         SettlementAllocationRequest allocation = new SettlementAllocationRequest(
                 null,
-                null,
+                704L,
                 new BigDecimal("100.00"),
                 BigDecimal.ZERO,
                 BigDecimal.ZERO,
@@ -2814,6 +2822,8 @@ class AccountingServiceTest {
         assertThat(mapping.getEntityId()).isEqualTo(961L);
         assertThat(mapping.getEntityType()).isEqualTo("SUPPLIER_SETTLEMENT");
         assertThat(mapping.getCanonicalReference()).isEqualTo("SUP-SETTLE-RACE-EXIST-1");
+        assertThat(purchase.getOutstandingAmount()).isEqualByComparingTo("100.00");
+        verify(rawMaterialPurchaseRepository, never()).saveAll(any());
     }
 
     @Test
