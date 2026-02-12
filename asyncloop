@@ -1655,3 +1655,43 @@ Queue Rotation (Auto-Replenish)
 - [ready] M7-S2 ledger/journal report linkage assertions (traceability from report rows to journal IDs)
 - [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
 - [ready] M6-S9 unify partner journal-line idempotency assertion helpers to reduce drift across receipt/settlement validations
+
+Post-Commit Review Evidence
+- Commit reviewed: `6ec609ce`
+- `codex review --commit 6ec609ce`:
+  - final verdict: documentation-only ledger commit; no actionable bug identified.
+- Review subagent `019c51d2-0fbf-79b1-9b01-1f78dcbed3d8`:
+  - findings: none; confirmed ledger/test/review/queue evidence consistency and ready-floor compliance.
+
+Completed Slice (Committed)
+- 2026-02-12: `8a8620d8`
+  - refactor(accounting): consolidate partner replay journal-line idempotency checks.
+  - M6-S8 duplicate-logic consolidation:
+    - collapsed duplicated dealer/supplier replay journal-line guards into shared `validatePartnerJournalReplay(...)` helper,
+    - preserved existing partner mismatch, memo mismatch, missing-entry, and payload-mismatch conflict semantics/messages,
+    - retained flow-specific payload mismatch text for receipt, supplier payment, and settlement paths.
+  - Verification:
+    - `cd erp-domain && mvn -B -ntp -Dtest=AccountingServiceTest test` -> pass (68 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `8a8620d8`
+- `codex review --commit 8a8620d8`:
+  - final verdict: helper consolidation preserved behavior; no regression identified.
+- Review subagent `019c51d4-271a-75e1-b941-589b590e331b`:
+  - findings: none (low informational note only: new unsupported-partner-type guard is additive and fail-fast).
+
+Loop Update
+- 2026-02-12T18:02:18+05:30
+- tracked_now_ts: `2026-02-12T18:02:18+05:30`
+- tracked_elapsed: `16h 8m 26s`
+- active_in_progress: `M9-S4 accounting query hotspot + index-check under replay workload`
+
+Queue Rotation (Auto-Replenish)
+- [completed] M6-S8 duplicate idempotency helper consolidation map for receipt/split/payment/settlement paths
+- [in_progress] M9-S4 accounting query hotspot + index-check under replay workload
+- [ready] M5-S6 stale order-level marker reconciliation for already-drifted multi-slip records
+- [ready] M4-S8 aging overcredit policy hardening decision (negative bucket clamp vs carry-forward bucket)
+- [ready] M7-S2 ledger/journal report linkage assertions (traceability from report rows to journal IDs)
+- [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
+- [ready] M6-S9 unify partner journal-line idempotency assertion helpers to reduce drift across receipt/settlement validations
+- [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
