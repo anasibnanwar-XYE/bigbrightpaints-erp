@@ -1469,6 +1469,10 @@ public class SalesService {
             existingInvoice = resolveExistingInvoiceForSlip(company, order, slip, slipNumber);
         }
         String overrideReason = null;
+        if (alreadyDispatched && hasRequestedOverrides) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Dispatch overrides are not allowed for already dispatched slips");
+        }
         if (!alreadyDispatched && hasRequestedOverrides) {
             if (!StringUtils.hasText(request.overrideReason())) {
                 throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,

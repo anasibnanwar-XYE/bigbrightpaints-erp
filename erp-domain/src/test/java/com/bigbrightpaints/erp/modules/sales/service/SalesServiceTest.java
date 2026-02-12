@@ -579,6 +579,38 @@ class SalesServiceTest {
     }
 
     @Test
+    void confirmDispatchRejectsOverridesForAlreadyDispatchedSlip() {
+        SalesOrder order = new SalesOrder();
+        setField(order, "id", 10L);
+        order.setCompany(company);
+        order.setStatus("SHIPPED");
+
+        PackagingSlip slip = new PackagingSlip();
+        setField(slip, "id", 55L);
+        slip.setCompany(company);
+        slip.setSalesOrder(order);
+        slip.setStatus("DISPATCHED");
+
+        when(packagingSlipRepository.findAndLockByIdAndCompany(55L, company)).thenReturn(Optional.of(slip));
+        when(companyEntityLookup.requireSalesOrder(company, 10L)).thenReturn(order);
+
+        DispatchConfirmRequest request = new DispatchConfirmRequest(
+                55L,
+                null,
+                List.of(new DispatchConfirmRequest.DispatchLine(99L, null, BigDecimal.ONE, null, new BigDecimal("10"), null, null, null)),
+                null,
+                "admin",
+                Boolean.TRUE,
+                "Attempted replay override",
+                null);
+
+        assertThrows(ApplicationException.class, () -> salesService.confirmDispatch(request));
+        verifyNoInteractions(dealerRepository);
+        verifyNoInteractions(finishedGoodsService);
+        verifyNoInteractions(accountingFacade);
+    }
+
+    @Test
     void confirmDispatchSkipsArPostingWhenOrderAlreadyHasJournal() {
         Dealer dealer = dealerWithCreditLimit(42L, BigDecimal.valueOf(1000));
         Account receivable = new Account();
