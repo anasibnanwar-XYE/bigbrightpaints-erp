@@ -28,10 +28,8 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -350,19 +348,25 @@ class StatementServiceTest {
 
         var expected = statementService.dealerStatement(91L, from, to);
         byte[] pdf = statementService.dealerStatementPdf(91L, from, to);
-        String text = extractPdfText(pdf);
+        String text = canonicalizeForMatch(extractPdfText(pdf));
 
         assertThat(text).contains("Dealer Statement");
         assertThat(text).contains(expected.partnerName());
-        assertNumericTokenPresent(text, expected.openingBalance());
-        assertNumericTokenPresent(text, expected.closingBalance());
+        assertPatternPresent(text, "Opening\\s+Balance:\\s+" + numericPattern(expected.openingBalance()));
+        assertPatternPresent(text, "Closing\\s+Balance:\\s+" + numericPattern(expected.closingBalance()));
         for (var tx : expected.transactions()) {
-            String txSection = extractLineContainingMarker(text, tx.referenceNumber());
             assertThat(text).contains(tx.referenceNumber());
-            assertThat(txSection).contains(tx.memo());
-            assertNumericTokenPresent(txSection, tx.debit());
-            assertNumericTokenPresent(txSection, tx.credit());
-            assertNumericTokenPresent(txSection, tx.runningBalance());
+            assertPatternPresent(
+                    text,
+                    Pattern.quote(canonicalizeForMatch(tx.referenceNumber()))
+                            + "\\s+"
+                            + Pattern.quote(canonicalizeForMatch(tx.memo()))
+                            + "\\s+"
+                            + numericPattern(tx.debit())
+                            + "\\s+"
+                            + numericPattern(tx.credit())
+                            + "\\s+"
+                            + numericPattern(tx.runningBalance()));
         }
     }
 
@@ -382,15 +386,18 @@ class StatementServiceTest {
 
         var expected = statementService.supplierAging(92L, LocalDate.of(2026, 2, 12), "0-30,30-60,61");
         byte[] pdf = statementService.supplierAgingPdf(92L, LocalDate.of(2026, 2, 12), "0-30,30-60,61");
-        String text = extractPdfText(pdf);
+        String text = canonicalizeForMatch(extractPdfText(pdf));
 
         assertThat(text).contains("Supplier Aging");
         assertThat(text).contains(expected.partnerName());
-        assertNumericTokenPresent(extractLineContainingMarker(text, "Total"), expected.totalOutstanding());
+        assertPatternPresent(text, "Total\\s+" + numericPattern(expected.totalOutstanding()));
         for (var bucket : expected.buckets()) {
-            String bucketSection = extractLineContainingMarker(text, bucket.label());
             assertThat(text).contains(bucket.label());
-            assertNumericTokenPresent(bucketSection, bucket.amount());
+            assertPatternPresent(
+                    text,
+                    Pattern.quote(canonicalizeForMatch(bucket.label()))
+                            + "\\s+"
+                            + numericPattern(bucket.amount()));
         }
     }
 
@@ -402,36 +409,31 @@ class StatementServiceTest {
         }
     }
 
-    private List<BigDecimal> extractNumericTokens(String text) {
-        List<BigDecimal> values = new ArrayList<>();
-        Matcher matcher = Pattern.compile("\\(?-?\\d+(?:,\\d{3})*(?:\\.\\d+)?\\)?").matcher(text);
-        while (matcher.find()) {
-            String token = matcher.group().replace(",", "").trim();
-            if (token.startsWith("(") && token.endsWith(")")) {
-                token = "-" + token.substring(1, token.length() - 1);
-            }
-            try {
-                values.add(new BigDecimal(token));
-            } catch (NumberFormatException ignored) {
-                // Skip non-numeric artifacts from text extraction.
-            }
+    private String canonicalizeForMatch(String text) {
+        if (text == null) {
+            return "";
         }
-        return values;
+        return text
+                .replace('\u00A0', ' ')
+                .replace(",", "")
+                .replaceAll("\\((\\d+(?:\\.\\d+)?)\\)", "-$1")
+                .replaceAll("\\s+", " ")
+                .trim();
     }
 
-    private void assertNumericTokenPresent(String text, BigDecimal expected) {
-        List<BigDecimal> numericTokens = extractNumericTokens(text);
-        assertThat(numericTokens.stream().anyMatch(value -> value.compareTo(expected) == 0))
-                .withFailMessage("Expected numeric value %s in extracted PDF text", expected)
+    private String numericPattern(BigDecimal value) {
+        BigDecimal abs = value.abs().stripTrailingZeros();
+        String plain = abs.toPlainString();
+        String signedCore = value.signum() < 0 ? "-" + plain : plain;
+        if (!signedCore.contains(".")) {
+            return Pattern.quote(signedCore) + "(?:\\.0+)?";
+        }
+        return Pattern.quote(signedCore) + "0*";
+    }
+
+    private void assertPatternPresent(String text, String regex) {
+        assertThat(Pattern.compile(regex).matcher(text).find())
+                .withFailMessage("Expected pattern %s in extracted PDF text: %s", regex, text)
                 .isTrue();
-    }
-
-    private String extractLineContainingMarker(String text, String marker) {
-        for (String line : text.split("\\R")) {
-            if (line.contains(marker)) {
-                return line;
-            }
-        }
-        throw new AssertionError("Expected marker '" + marker + "' in extracted PDF text");
     }
 }
