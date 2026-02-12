@@ -2,7 +2,9 @@ package com.bigbrightpaints.erp.modules.accounting.service;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
+import com.bigbrightpaints.erp.modules.accounting.domain.DealerLedgerEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.DealerLedgerRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.SupplierLedgerEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.SupplierLedgerRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerBalanceView;
 import com.bigbrightpaints.erp.modules.accounting.dto.SupplierBalanceView;
@@ -228,6 +230,60 @@ class StatementServiceTest {
         verify(dealerLedgerRepository, never()).findByCompanyAndDealerOrderByEntryDateAsc(
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void dealerAging_ignoresFutureDatedEntriesIfRepositoryLeaksThem() {
+        Dealer dealer = new Dealer();
+        dealer.setName("Dealer Future Guard");
+        ReflectionTestUtils.setField(dealer, "id", 72L);
+        when(dealerRepository.findByCompanyAndId(company, 72L)).thenReturn(Optional.of(dealer));
+
+        LocalDate asOf = LocalDate.of(2026, 2, 12);
+        DealerLedgerEntry inRange = new DealerLedgerEntry();
+        inRange.setEntryDate(asOf.minusDays(2));
+        inRange.setDebit(new BigDecimal("120.00"));
+        inRange.setCredit(BigDecimal.ZERO);
+        inRange.setDueDate(asOf.minusDays(2));
+
+        DealerLedgerEntry future = new DealerLedgerEntry();
+        future.setEntryDate(asOf.plusDays(3));
+        future.setDebit(new BigDecimal("999.00"));
+        future.setCredit(BigDecimal.ZERO);
+        future.setDueDate(asOf.plusDays(3));
+
+        when(dealerLedgerRepository.findByCompanyAndDealerAndEntryDateLessThanEqualOrderByEntryDateAscIdAsc(
+                company, dealer, asOf)).thenReturn(List.of(inRange, future));
+
+        var response = statementService.dealerAging(72L, asOf, "0-30,30-60,61");
+
+        assertThat(response.totalOutstanding()).isEqualByComparingTo("120.00");
+    }
+
+    @Test
+    void supplierAging_ignoresFutureDatedEntriesIfRepositoryLeaksThem() {
+        Supplier supplier = new Supplier();
+        supplier.setName("Supplier Future Guard");
+        ReflectionTestUtils.setField(supplier, "id", 73L);
+        when(supplierRepository.findByCompanyAndId(company, 73L)).thenReturn(Optional.of(supplier));
+
+        LocalDate asOf = LocalDate.of(2026, 2, 12);
+        SupplierLedgerEntry inRange = new SupplierLedgerEntry();
+        inRange.setEntryDate(asOf.minusDays(1));
+        inRange.setDebit(BigDecimal.ZERO);
+        inRange.setCredit(new BigDecimal("75.00"));
+
+        SupplierLedgerEntry future = new SupplierLedgerEntry();
+        future.setEntryDate(asOf.plusDays(5));
+        future.setDebit(BigDecimal.ZERO);
+        future.setCredit(new BigDecimal("400.00"));
+
+        when(supplierLedgerRepository.findByCompanyAndSupplierAndEntryDateLessThanEqualOrderByEntryDateAscIdAsc(
+                company, supplier, asOf)).thenReturn(List.of(inRange, future));
+
+        var response = statementService.supplierAging(73L, asOf, "0-30,30-60,61");
+
+        assertThat(response.totalOutstanding()).isEqualByComparingTo("75.00");
     }
 
     @Test

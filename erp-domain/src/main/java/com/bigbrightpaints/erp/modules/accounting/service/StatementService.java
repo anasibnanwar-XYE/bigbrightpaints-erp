@@ -153,6 +153,9 @@ public class StatementService {
         List<AgingLine> openInvoices = new ArrayList<>();
         BigDecimal creditPool = BigDecimal.ZERO;
         for (DealerLedgerEntry e : entries) {
+            if (e.getEntryDate().isAfter(ref)) {
+                break;
+            }
             BigDecimal delta = safe(e.getDebit()).subtract(safe(e.getCredit()));
             balance = balance.add(delta);
             if (delta.compareTo(BigDecimal.ZERO) > 0) {
@@ -219,6 +222,9 @@ public class StatementService {
         List<AgingLine> openInvoices = new ArrayList<>();
         BigDecimal creditPool = BigDecimal.ZERO;
         for (SupplierLedgerEntry e : entries) {
+            if (e.getEntryDate().isAfter(ref)) {
+                break;
+            }
             BigDecimal delta = safe(e.getCredit()).subtract(safe(e.getDebit()));
             balance = balance.add(delta);
             if (delta.compareTo(BigDecimal.ZERO) > 0) {
