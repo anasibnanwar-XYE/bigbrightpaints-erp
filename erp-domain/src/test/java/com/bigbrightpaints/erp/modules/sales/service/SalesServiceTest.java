@@ -794,6 +794,99 @@ class SalesServiceTest {
     }
 
     @Test
+    void confirmDispatchRejectsReplayOverrideWhenExistingJournalTotalMismatches() {
+        Dealer dealer = dealerWithCreditLimit(42L, BigDecimal.valueOf(1000));
+        Account receivable = new Account();
+        setField(receivable, "id", 900L);
+        receivable.setName("AR");
+        dealer.setReceivableAccount(receivable);
+
+        SalesOrder order = new SalesOrder();
+        setField(order, "id", 10L);
+        order.setCompany(company);
+        order.setDealer(dealer);
+        order.setOrderNumber("SO-10");
+        order.setStatus("SHIPPED");
+
+        SalesOrderItem item = new SalesOrderItem();
+        setField(item, "id", 1L);
+        item.setSalesOrder(order);
+        item.setProductCode("SKU-D");
+        item.setDescription("Desc");
+        item.setQuantity(BigDecimal.ONE);
+        item.setUnitPrice(new BigDecimal("100.00"));
+        item.setGstRate(BigDecimal.ZERO);
+        order.getItems().add(item);
+
+        FinishedGood finishedGood = buildFinishedGood("SKU-D");
+        finishedGood.setRevenueAccountId(3L);
+        finishedGood.setDiscountAccountId(4L);
+
+        FinishedGoodBatch batch = new FinishedGoodBatch();
+        batch.setFinishedGood(finishedGood);
+        batch.setBatchCode("B-1");
+        batch.setQuantityTotal(BigDecimal.ONE);
+        batch.setQuantityAvailable(BigDecimal.ONE);
+        batch.setUnitCost(BigDecimal.ZERO);
+
+        PackagingSlip slip = new PackagingSlip();
+        setField(slip, "id", 55L);
+        slip.setCompany(company);
+        slip.setSalesOrder(order);
+        slip.setSlipNumber("PS-55");
+        slip.setStatus("DISPATCHED");
+        slip.setJournalEntryId(222L);
+
+        PackagingSlipLine slipLine = new PackagingSlipLine();
+        setField(slipLine, "id", 99L);
+        slipLine.setPackagingSlip(slip);
+        slipLine.setFinishedGoodBatch(batch);
+        slipLine.setOrderedQuantity(BigDecimal.ONE);
+        slipLine.setQuantity(BigDecimal.ONE);
+        slipLine.setShippedQuantity(BigDecimal.ONE);
+        slipLine.setUnitCost(BigDecimal.ZERO);
+        slip.getLines().add(slipLine);
+
+        JournalEntry existingEntry = new JournalEntry();
+        setField(existingEntry, "id", 222L);
+        JournalLine receivableLine = new JournalLine();
+        receivableLine.setAccount(receivable);
+        receivableLine.setDebit(new BigDecimal("100.00"));
+        receivableLine.setCredit(BigDecimal.ZERO);
+        existingEntry.getLines().add(receivableLine);
+
+        when(packagingSlipRepository.findAndLockByIdAndCompany(55L, company)).thenReturn(Optional.of(slip));
+        when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, 10L)).thenReturn(List.of(slip));
+        when(companyEntityLookup.requireSalesOrder(company, 10L)).thenReturn(order);
+        when(companyEntityLookup.requireJournalEntry(company, 222L)).thenReturn(existingEntry);
+        when(dealerRepository.lockByCompanyAndId(company, dealer.getId())).thenReturn(Optional.of(dealer));
+
+        DispatchConfirmRequest request = new DispatchConfirmRequest(
+                55L,
+                null,
+                List.of(new DispatchConfirmRequest.DispatchLine(99L, null, BigDecimal.ONE, null, new BigDecimal("10.00"), null, null, null)),
+                null,
+                "admin",
+                Boolean.TRUE,
+                "Replay with approved prior override",
+                null);
+
+        ApplicationException ex = assertThrows(ApplicationException.class, () -> salesService.confirmDispatch(request));
+        assertTrue(ex.getMessage().contains("Existing AR journal total does not match dispatch total"));
+        verify(invoiceRepository, never()).save(any(Invoice.class));
+        verify(accountingFacade, never()).postSalesJournal(
+                ArgumentMatchers.anyLong(),
+                ArgumentMatchers.anyString(),
+                ArgumentMatchers.any(),
+                ArgumentMatchers.anyString(),
+                ArgumentMatchers.anyMap(),
+                ArgumentMatchers.anyMap(),
+                ArgumentMatchers.anyMap(),
+                ArgumentMatchers.any(),
+                ArgumentMatchers.anyString());
+    }
+
+    @Test
     void confirmDispatchReplayFastPathLogsOverrideAuditMetadata() {
         SalesOrder order = new SalesOrder();
         setField(order, "id", 10L);
