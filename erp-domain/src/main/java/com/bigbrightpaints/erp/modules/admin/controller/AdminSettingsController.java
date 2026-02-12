@@ -29,7 +29,6 @@ import java.util.stream.Stream;
 
 @RestController
 @RequestMapping("/api/v1/admin")
-@PreAuthorize("hasAuthority('ROLE_ADMIN')")
 public class AdminSettingsController {
     private static final String CREDIT_REQUEST_APPROVAL_ACTION = "APPROVE_DEALER_CREDIT_REQUEST";
     private static final String CREDIT_OVERRIDE_APPROVAL_ACTION = "APPROVE_DISPATCH_CREDIT_OVERRIDE";
@@ -63,23 +62,27 @@ public class AdminSettingsController {
     }
 
     @GetMapping("/settings")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ApiResponse<SystemSettingsDto> getSettings() {
         return ApiResponse.success("Settings fetched", systemSettingsService.snapshot());
     }
 
     @PutMapping("/settings")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ApiResponse<SystemSettingsDto> updateSettings(@Valid @RequestBody SystemSettingsUpdateRequest request) {
         SystemSettingsDto dto = systemSettingsService.update(request);
         return ApiResponse.success("Settings updated", dto);
     }
 
     @PostMapping("/notify")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ApiResponse<String> notifyUser(@Valid @RequestBody AdminNotifyRequest request) {
         emailService.sendSimpleEmail(request.to(), request.subject(), request.body());
         return ApiResponse.success("Notification sent", "Email dispatched");
     }
 
     @GetMapping("/approvals")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
     @Transactional(readOnly = true)
     public ApiResponse<AdminApprovalsResponse> approvals() {
         Company company = companyContextService.requireCurrentCompany();

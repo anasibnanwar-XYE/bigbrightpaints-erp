@@ -40,7 +40,7 @@ class AdminApprovalRbacIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void adminApprovalsEndpointRequiresAdminRole() {
+    void adminApprovalsEndpointAllowsAdminAndAccountingRoles() {
         HttpHeaders adminHeaders = authHeaders(ADMIN_EMAIL, PASSWORD);
         HttpHeaders accountingHeaders = authHeaders(ACCOUNTING_EMAIL, PASSWORD);
         HttpHeaders salesHeaders = authHeaders(SALES_EMAIL, PASSWORD);
@@ -57,7 +57,7 @@ class AdminApprovalRbacIT extends AbstractIntegrationTest {
                 HttpMethod.GET,
                 new HttpEntity<>(accountingHeaders),
                 Map.class);
-        assertThat(accountingResponse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(accountingResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
 
         ResponseEntity<Map> salesResponse = rest.exchange(
                 "/api/v1/admin/approvals",

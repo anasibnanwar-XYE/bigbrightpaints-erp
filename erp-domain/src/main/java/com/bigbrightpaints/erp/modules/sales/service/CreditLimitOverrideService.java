@@ -34,6 +34,7 @@ public class CreditLimitOverrideService {
     private static final String STATUS_APPROVED = "APPROVED";
     private static final String STATUS_REJECTED = "REJECTED";
     private static final String STATUS_EXPIRED = "EXPIRED";
+    private static final BigDecimal HEADROOM_TOLERANCE = new BigDecimal("0.01");
 
     private final CompanyContextService companyContextService;
     private final CreditLimitOverrideRequestRepository creditLimitOverrideRequestRepository;
@@ -194,10 +195,39 @@ public class CreditLimitOverrideService {
             return false;
         }
         if (dispatchAmount != null && overrideRequest.getDispatchAmount() != null
-                && dispatchAmount.compareTo(overrideRequest.getDispatchAmount()) > 0) {
+                && dispatchAmount.compareTo(overrideRequest.getDispatchAmount()) > 0
+                && !isWithinApprovedHeadroom(overrideRequest, dealer, dispatchAmount)) {
             return false;
         }
         return true;
+    }
+
+    private boolean isWithinApprovedHeadroom(CreditLimitOverrideRequest overrideRequest,
+                                             Dealer dealer,
+                                             BigDecimal dispatchAmount) {
+        if (dealer == null || dealer.getId() == null || dispatchAmount == null) {
+            return false;
+        }
+        BigDecimal creditLimit = dealer.getCreditLimit();
+        if (creditLimit == null || creditLimit.compareTo(BigDecimal.ZERO) <= 0) {
+            return true;
+        }
+        BigDecimal approvedHeadroom = overrideRequest.getRequiredHeadroom();
+        if (approvedHeadroom == null) {
+            return false;
+        }
+        BigDecimal exposure = dealerLedgerService.currentBalance(dealer.getId());
+        if (exposure == null) {
+            exposure = BigDecimal.ZERO;
+        }
+        BigDecimal requiredHeadroom = exposure.add(dispatchAmount).subtract(creditLimit);
+        if (requiredHeadroom.compareTo(BigDecimal.ZERO) < 0) {
+            requiredHeadroom = BigDecimal.ZERO;
+        }
+        BigDecimal normalizedApprovedHeadroom = approvedHeadroom.compareTo(BigDecimal.ZERO) < 0
+                ? BigDecimal.ZERO
+                : approvedHeadroom;
+        return requiredHeadroom.compareTo(normalizedApprovedHeadroom.add(HEADROOM_TOLERANCE)) <= 0;
     }
 
     private PackagingSlip resolveSlip(Company company, Long slipId, Long orderId) {

@@ -6,6 +6,7 @@ import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.CreditLimitOverrideRequest;
 import com.bigbrightpaints.erp.modules.sales.domain.CreditLimitOverrideRequestRepository;
+import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderRepository;
 import com.bigbrightpaints.erp.modules.sales.dto.CreditLimitOverrideRequestDto;
@@ -15,10 +16,12 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -53,7 +56,7 @@ class CreditLimitOverrideServiceTest {
         );
         company = new Company();
         company.setTimezone("UTC");
-        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        lenient().when(companyContextService.requireCurrentCompany()).thenReturn(company);
     }
 
     @Test
@@ -85,5 +88,59 @@ class CreditLimitOverrideServiceTest {
 
         assertThat(response.status()).isEqualTo("APPROVED");
         assertThat(request.getStatus()).isEqualTo("APPROVED");
+    }
+
+    @Test
+    void isOverrideApproved_allowsHigherDispatchAmountWhenWithinApprovedHeadroom() {
+        CreditLimitOverrideRequest request = new CreditLimitOverrideRequest();
+        request.setCompany(company);
+        request.setStatus("APPROVED");
+        request.setDispatchAmount(new BigDecimal("120.00"));
+        request.setRequiredHeadroom(new BigDecimal("80.00"));
+
+        Dealer dealer = new Dealer();
+        dealer.setCreditLimit(new BigDecimal("200.00"));
+        org.springframework.test.util.ReflectionTestUtils.setField(dealer, "id", 42L);
+
+        when(creditLimitOverrideRequestRepository.findByCompanyAndId(company, 21L))
+                .thenReturn(Optional.of(request));
+        when(dealerLedgerService.currentBalance(42L)).thenReturn(new BigDecimal("120.00"));
+
+        boolean approved = service.isOverrideApproved(
+                21L,
+                company,
+                dealer,
+                null,
+                null,
+                new BigDecimal("150.00"));
+
+        assertThat(approved).isTrue();
+    }
+
+    @Test
+    void isOverrideApproved_rejectsHigherDispatchAmountWhenApprovedHeadroomIsExceeded() {
+        CreditLimitOverrideRequest request = new CreditLimitOverrideRequest();
+        request.setCompany(company);
+        request.setStatus("APPROVED");
+        request.setDispatchAmount(new BigDecimal("120.00"));
+        request.setRequiredHeadroom(new BigDecimal("20.00"));
+
+        Dealer dealer = new Dealer();
+        dealer.setCreditLimit(new BigDecimal("200.00"));
+        org.springframework.test.util.ReflectionTestUtils.setField(dealer, "id", 42L);
+
+        when(creditLimitOverrideRequestRepository.findByCompanyAndId(company, 22L))
+                .thenReturn(Optional.of(request));
+        when(dealerLedgerService.currentBalance(42L)).thenReturn(new BigDecimal("120.00"));
+
+        boolean approved = service.isOverrideApproved(
+                22L,
+                company,
+                dealer,
+                null,
+                null,
+                new BigDecimal("150.00"));
+
+        assertThat(approved).isFalse();
     }
 }
