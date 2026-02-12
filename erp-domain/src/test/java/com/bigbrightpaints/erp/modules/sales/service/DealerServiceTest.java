@@ -31,9 +31,11 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -78,26 +80,26 @@ class DealerServiceTest {
         ReflectionTestUtils.setField(company, "id", 1L);
         company.setCode("TEST");
 
-        when(companyContextService.requireCurrentCompany()).thenReturn(company);
-        when(dealerRepository.findByCompanyAndPortalUserEmail(eq(company), anyString())).thenReturn(Optional.empty());
-        when(dealerRepository.findByCompanyAndCodeIgnoreCase(eq(company), anyString())).thenReturn(Optional.empty());
-        when(dealerRepository.save(any(Dealer.class))).thenAnswer(invocation -> {
+        lenient().when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        lenient().when(dealerRepository.findAllByCompanyAndPortalUserEmailIgnoreCase(eq(company), anyString())).thenReturn(List.of());
+        lenient().when(dealerRepository.findByCompanyAndCodeIgnoreCase(eq(company), anyString())).thenReturn(Optional.empty());
+        lenient().when(dealerRepository.save(any(Dealer.class))).thenAnswer(invocation -> {
             Dealer dealer = invocation.getArgument(0);
             if (dealer.getId() == null) {
                 ReflectionTestUtils.setField(dealer, "id", 99L);
             }
             return dealer;
         });
-        when(userAccountRepository.findByEmailIgnoreCase(anyString())).thenReturn(Optional.empty());
-        when(userAccountRepository.save(any(UserAccount.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(passwordEncoder.encode(anyString())).thenReturn("encoded");
+        lenient().when(userAccountRepository.findByEmailIgnoreCase(anyString())).thenReturn(Optional.empty());
+        lenient().when(userAccountRepository.save(any(UserAccount.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        lenient().when(passwordEncoder.encode(anyString())).thenReturn("encoded");
 
         Role dealerRole = new Role();
         dealerRole.setName("ROLE_DEALER");
-        when(roleService.ensureRoleExists("ROLE_DEALER")).thenReturn(dealerRole);
+        lenient().when(roleService.ensureRoleExists("ROLE_DEALER")).thenReturn(dealerRole);
 
-        when(accountRepository.findByCompanyAndCodeIgnoreCase(eq(company), anyString())).thenReturn(Optional.empty());
-        when(accountRepository.save(any(Account.class))).thenAnswer(invocation -> {
+        lenient().when(accountRepository.findByCompanyAndCodeIgnoreCase(eq(company), anyString())).thenReturn(Optional.empty());
+        lenient().when(accountRepository.save(any(Account.class))).thenAnswer(invocation -> {
             Account account = invocation.getArgument(0);
             if (account.getId() == null) {
                 ReflectionTestUtils.setField(account, "id", 123L);
@@ -152,6 +154,16 @@ class DealerServiceTest {
         ArgumentCaptor<Account> accountCaptor = ArgumentCaptor.forClass(Account.class);
         verify(accountRepository).save(accountCaptor.capture());
         assertThat(accountCaptor.getValue().getParent()).isSameAs(arControl);
+    }
+
+    @Test
+    void createDealer_rejectsDuplicatePortalMappingGracefully() {
+        when(dealerRepository.findAllByCompanyAndPortalUserEmailIgnoreCase(eq(company), eq("dealer@example.com")))
+                .thenReturn(List.of(new Dealer(), new Dealer()));
+
+        assertThatThrownBy(() -> dealerService.createDealer(request()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Dealer already exists for this portal user");
     }
 
     private CreateDealerRequest request() {

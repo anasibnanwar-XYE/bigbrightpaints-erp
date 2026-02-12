@@ -19,8 +19,8 @@ Non-Stop Operating Rules
 
 Runtime Tracking
 - tracked_start_ts: `2026-02-12T01:53:52+05:30` (first immutable async-loop commit marker)
-- tracked_now_ts: `2026-02-12T06:06:09+05:30`
-- tracked_elapsed: `4h 12m 17s`
+- tracked_now_ts: `2026-02-12T06:54:04+05:30`
+- tracked_elapsed: `5h 00m 12s`
 
 Completion Gates (Required For "Safe To Deploy" Claim)
 - No known critical/high security issues in auth/RBAC/tenant isolation/data exposure.
@@ -500,25 +500,30 @@ Commit Ledger
     - `019c4f66-59b4-7fc3-8bc6-d70adb304430` (running)
 
 Current Checkpoint
-- Current WIP M0-S7 (auth/audit attribution collision + forensic metadata hardening):
-  - Root cause (proved by failing test):
-    - runtime numeric company token collisions (code vs id) could silently misattribute audit events.
-    - unresolved auth company token attempts were not persisted in audit metadata, reducing forensic traceability.
-    - failing proof command:
-      - commit-review finding surfaced from `019c4f5a-af42-7d51-a9d8-1db3be551161` and pinned by updated `AuditServiceTest`.
+- Current WIP M5-S3 (dealer/sales portal authorization + tenant-isolation hardening):
+  - Root cause (proved by service-level tests and repository contract review):
+    - `DealerPortalService#getCurrentDealer` bound identity to mutable email only; principal user-id was not used.
+    - Duplicate dealer mappings for same portal user could yield ambiguous access behavior/non-deterministic failures.
+    - `DealerService#createDealer` used single-result lookup and could fail noisily under duplicate dirty-data states.
   - Fix in progress:
-    - `erp-domain/src/main/java/com/bigbrightpaints/erp/core/audit/AuditService.java`
-      - runtime numeric collision path now fails closed when code-id and entity-id conflict
-      - unresolved auth company token now persisted as metadata (`authCompanyToken`, `authCompanyResolution=UNRESOLVED`)
-    - `erp-domain/src/test/java/com/bigbrightpaints/erp/core/audit/AuditServiceTest.java`
-      - updated numeric collision test to assert fail-closed behavior
-      - added metadata assertions for unresolved auth numeric token paths
+    - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/service/DealerPortalService.java`
+      - bind dealer resolution to authenticated `UserPrincipal.user.id` first
+      - email lookup retained as compatibility fallback only
+      - fail closed with `AccessDeniedException` when mappings are ambiguous
+    - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/domain/DealerRepository.java`
+      - added explicit list-based scoped lookup methods for portal user id/email
+    - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/service/DealerService.java`
+      - switched duplicate portal-user guard to list-based lookup to avoid single-result ambiguity
+    - `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/sales/service/DealerPortalServiceTest.java` (new)
+      - coverage for user-id binding, ambiguity fail-closed behavior, and fallback path
+    - `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/sales/service/DealerServiceTest.java`
+      - added duplicate-portal-mapping guard regression
 - Verification command:
-  - `mvn -B -ntp -Dtest=AuditServiceTest,AuditServiceAsyncIT,AuthServiceAuditAttributionTest test`
+  - `mvn -B -ntp -Dtest=DealerPortalServiceTest,DealerServiceTest,DealerControllerSecurityIT test`
 - Next action:
-  - commit M0-S7 auth/audit collision + metadata hardening
+  - commit M5-S3 dealer/sales portal identity-binding hardening
   - run `codex review --commit <sha>`
-  - start M5-S3 dealer/sales portal authz and tenant-isolation slice
+  - start M5-S4 endpoint misuse matrix (dealer portal horizontal access + company header abuse + permission edge paths)
 
 Async Loop Cadence
 - Each cycle:

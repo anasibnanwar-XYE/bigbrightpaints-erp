@@ -80,10 +80,9 @@ public class DealerService {
         String dealerCode = generateDealerCode(request.name(), company);
 
         String contactEmail = request.contactEmail().trim();
-        dealerRepository.findByCompanyAndPortalUserEmail(company, contactEmail)
-                .ifPresent(existing -> {
-                    throw new IllegalArgumentException("Dealer already exists for this portal user");
-                });
+        if (!dealerRepository.findAllByCompanyAndPortalUserEmailIgnoreCase(company, contactEmail).isEmpty()) {
+            throw new IllegalArgumentException("Dealer already exists for this portal user");
+        }
 
         Dealer dealer = new Dealer();
         dealer.setCompany(company);

@@ -2,6 +2,8 @@ package com.bigbrightpaints.erp.modules.sales.service;
 
 import com.bigbrightpaints.erp.modules.accounting.service.DealerLedgerService;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
+import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
+import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
@@ -17,6 +19,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
@@ -59,13 +62,29 @@ public class DealerPortalService {
 
     public Dealer getCurrentDealer() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || auth.getName() == null) {
+        if (auth == null || !auth.isAuthenticated()) {
             throw new IllegalStateException("No authenticated user");
         }
         Company company = companyContextService.requireCurrentCompany();
-        String email = auth.getName();
-        return dealerRepository.findByCompanyAndPortalUserEmail(company, email)
-                .orElseThrow(() -> new IllegalStateException("No dealer account linked to user: " + email));
+        UserAccount authenticatedUser = resolveAuthenticatedUser(auth);
+
+        if (authenticatedUser != null && authenticatedUser.getId() != null) {
+            Dealer matchedByUserId = resolveSingleDealerOrNull(
+                    dealerRepository.findAllByCompanyAndPortalUserId(company, authenticatedUser.getId()),
+                    "userId:" + authenticatedUser.getId());
+            if (matchedByUserId != null) {
+                return matchedByUserId;
+            }
+        }
+
+        String email = resolveAuthenticatedEmail(authenticatedUser, auth);
+        Dealer matchedByEmail = resolveSingleDealerOrNull(
+                dealerRepository.findAllByCompanyAndPortalUserEmailIgnoreCase(company, email),
+                "email:" + email);
+        if (matchedByEmail != null) {
+            return matchedByEmail;
+        }
+        throw new IllegalStateException("No dealer account linked to user: " + email);
     }
 
     public boolean isDealerUser() {
@@ -302,5 +321,34 @@ public class DealerPortalService {
         }
 
         return invoicePdfService.renderInvoicePdf(invoiceId);
+    }
+
+    private UserAccount resolveAuthenticatedUser(Authentication auth) {
+        Object principal = auth.getPrincipal();
+        if (principal instanceof UserPrincipal userPrincipal) {
+            return userPrincipal.getUser();
+        }
+        return null;
+    }
+
+    private String resolveAuthenticatedEmail(UserAccount authenticatedUser, Authentication auth) {
+        String email = authenticatedUser != null ? authenticatedUser.getEmail() : null;
+        if (!StringUtils.hasText(email)) {
+            email = auth.getName();
+        }
+        if (!StringUtils.hasText(email)) {
+            throw new IllegalStateException("No authenticated user identity");
+        }
+        return email.trim();
+    }
+
+    private Dealer resolveSingleDealerOrNull(List<Dealer> candidates, String identity) {
+        if (candidates == null || candidates.isEmpty()) {
+            return null;
+        }
+        if (candidates.size() > 1) {
+            throw new AccessDeniedException("Ambiguous dealer mapping for " + identity);
+        }
+        return candidates.get(0);
     }
 }
