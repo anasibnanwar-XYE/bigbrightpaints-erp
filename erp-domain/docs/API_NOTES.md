@@ -231,6 +231,7 @@
 - `PUT /api/v1/sales/targets/{id}`
 
 Credit request status transitions are action-only:
+- `POST /api/v1/sales/credit-requests` only accepts `PENDING` (or blank/default); `APPROVED`/`REJECTED` create payloads are rejected.
 - `PUT /api/v1/sales/credit-requests/{id}` updates request details and cannot change status.
 - Use `POST /api/v1/sales/credit-requests/{id}/approve` or `/reject` for status decisions.
 

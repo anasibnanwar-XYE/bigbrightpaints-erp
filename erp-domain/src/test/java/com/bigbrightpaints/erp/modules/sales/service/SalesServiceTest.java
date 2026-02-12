@@ -209,6 +209,20 @@ class SalesServiceTest {
     }
 
     @Test
+    void createCreditRequestRejectsNonPendingInitialStatus() {
+        ApplicationException ex = assertThrows(ApplicationException.class, () -> salesService.createCreditRequest(
+                new CreditRequestRequest(
+                        null,
+                        new BigDecimal("1200"),
+                        "Attempted pre-approval",
+                        "APPROVED"
+                )));
+
+        assertEquals(ErrorCode.VALIDATION_INVALID_INPUT, ex.getErrorCode());
+        verify(creditRequestRepository, never()).save(any(CreditRequest.class));
+    }
+
+    @Test
     void updateCreditRequestRejectsStatusTransitionToApproved() {
         CreditRequest existing = new CreditRequest();
         existing.setCompany(company);
@@ -229,6 +243,31 @@ class SalesServiceTest {
 
         assertEquals(ErrorCode.VALIDATION_INVALID_INPUT, ex.getErrorCode());
         assertEquals("PENDING", existing.getStatus());
+    }
+
+    @Test
+    void updateCreditRequestRejectsEditsWhenRequestAlreadyFinalized() {
+        CreditRequest existing = new CreditRequest();
+        existing.setCompany(company);
+        existing.setAmountRequested(new BigDecimal("810"));
+        existing.setReason("Already finalized");
+        existing.setStatus("APPROVED");
+        setField(existing, "id", 905L);
+
+        when(companyEntityLookup.requireCreditRequest(company, 905L)).thenReturn(existing);
+
+        ApplicationException ex = assertThrows(ApplicationException.class, () -> salesService.updateCreditRequest(
+                905L,
+                new CreditRequestRequest(
+                        null,
+                        new BigDecimal("920"),
+                        "Edited after approval",
+                        null
+                )));
+
+        assertEquals(ErrorCode.BUSINESS_INVALID_STATE, ex.getErrorCode());
+        assertEquals(new BigDecimal("810"), existing.getAmountRequested());
+        assertEquals("APPROVED", existing.getStatus());
     }
 
     @Test

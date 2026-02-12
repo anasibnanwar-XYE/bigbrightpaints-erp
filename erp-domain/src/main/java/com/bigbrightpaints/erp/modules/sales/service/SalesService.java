@@ -1348,13 +1348,22 @@ public class SalesService {
         }
         creditRequest.setAmountRequested(request.amountRequested());
         creditRequest.setReason(request.reason());
-        creditRequest.setStatus(normalizeCreditRequestStatus(request.status(), true));
+        String requestedStatus = normalizeCreditRequestStatus(request.status(), true);
+        if (!CREDIT_REQUEST_STATUS_PENDING.equals(requestedStatus)) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "New credit requests must start in pending status")
+                    .withDetail("requiredStatus", CREDIT_REQUEST_STATUS_PENDING)
+                    .withDetail("requestedStatus", requestedStatus);
+        }
+        creditRequest.setStatus(requestedStatus);
         return toDto(creditRequestRepository.save(creditRequest));
     }
 
     @Transactional
     public CreditRequestDto updateCreditRequest(Long id, CreditRequestRequest request) {
         CreditRequest creditRequest = requireCreditRequest(id);
+        requirePendingCreditRequest(creditRequest, "updated");
+        String currentStatus = normalizeCreditRequestStatus(creditRequest.getStatus(), true);
         if (request.dealerId() != null) {
             creditRequest.setDealer(requireDealer(request.dealerId()));
         }
@@ -1362,7 +1371,6 @@ public class SalesService {
         creditRequest.setReason(request.reason());
         if (request.status() != null) {
             String requestedStatus = normalizeCreditRequestStatus(request.status(), false);
-            String currentStatus = normalizeCreditRequestStatus(creditRequest.getStatus(), true);
             if (!requestedStatus.equals(currentStatus)) {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
                         "Credit request status transitions require dedicated approve/reject actions")
