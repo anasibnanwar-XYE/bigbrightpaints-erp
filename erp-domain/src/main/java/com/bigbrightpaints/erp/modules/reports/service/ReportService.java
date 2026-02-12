@@ -211,7 +211,17 @@ public class ReportService {
                             : "BALANCE";
                     BigDecimal debit = latest != null ? safe(latest.getDebit()) : outstanding;
                     BigDecimal credit = latest != null ? safe(latest.getCredit()) : BigDecimal.ZERO;
-                    return new AccountStatementEntryDto(dealer.getName(), entryDate, reference, debit, credit, outstanding);
+                    Long journalEntryId = latest != null && latest.getJournalEntry() != null
+                            ? latest.getJournalEntry().getId()
+                            : null;
+                    return new AccountStatementEntryDto(
+                            dealer.getName(),
+                            entryDate,
+                            reference,
+                            debit,
+                            credit,
+                            outstanding,
+                            journalEntryId);
                 })
                 .toList();
     }

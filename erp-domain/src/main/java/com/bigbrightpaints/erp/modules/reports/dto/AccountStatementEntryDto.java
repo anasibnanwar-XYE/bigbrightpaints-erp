@@ -8,4 +8,5 @@ public record AccountStatementEntryDto(String dealerName,
                                        String reference,
                                        BigDecimal debit,
                                        BigDecimal credit,
-                                       BigDecimal balance) {}
+                                       BigDecimal balance,
+                                       Long journalEntryId) {}
