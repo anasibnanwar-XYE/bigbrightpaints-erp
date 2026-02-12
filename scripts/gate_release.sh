@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+MIGRATION_SET="v2"
 ARTIFACT_DIR="$ROOT_DIR/artifacts/gate-release"
 TRUTH_TEST_ROOT="$ROOT_DIR/erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite"
 rm -rf "$ARTIFACT_DIR"
@@ -22,8 +23,17 @@ python3 "$ROOT_DIR/scripts/check_flaky_tags.py" \
   --gate gate-release \
   --output "$ARTIFACT_DIR/flake-guard.json"
 
+echo "[gate-release] orchestrator correlation contract guard"
+CORRELATION_GUARD_LOG="$ARTIFACT_DIR/orchestrator-correlation-guard.txt"
+if bash "$ROOT_DIR/scripts/guard_orchestrator_correlation_contract.sh" >"$CORRELATION_GUARD_LOG" 2>&1; then
+  cat "$CORRELATION_GUARD_LOG"
+else
+  cat "$CORRELATION_GUARD_LOG" >&2
+  exit 1
+fi
+
 echo "[gate-release] strict local verify"
-VERIFY_LOCAL_SKIP_TESTS=true FAIL_ON_FINDINGS=true bash "$ROOT_DIR/scripts/verify_local.sh"
+MIGRATION_SET="$MIGRATION_SET" VERIFY_LOCAL_SKIP_TESTS=true FAIL_ON_FINDINGS=true bash "$ROOT_DIR/scripts/verify_local.sh"
 
 echo "[gate-release] truth suite strict mode"
 (
@@ -33,6 +43,6 @@ echo "[gate-release] truth suite strict mode"
 )
 
 echo "[gate-release] fresh + upgrade migration matrix"
-bash "$ROOT_DIR/scripts/release_migration_matrix.sh" --artifact-dir "$ARTIFACT_DIR"
+MIGRATION_SET="$MIGRATION_SET" bash "$ROOT_DIR/scripts/release_migration_matrix.sh" --migration-set v2 --artifact-dir "$ARTIFACT_DIR"
 
 echo "[gate-release] OK"

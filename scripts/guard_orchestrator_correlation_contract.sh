@@ -5,9 +5,11 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DISPATCHER="$ROOT_DIR/erp-domain/src/main/java/com/bigbrightpaints/erp/orchestrator/service/CommandDispatcher.java"
 COORDINATOR="$ROOT_DIR/erp-domain/src/main/java/com/bigbrightpaints/erp/orchestrator/service/IntegrationCoordinator.java"
 COORDINATOR_TEST="$ROOT_DIR/erp-domain/src/test/java/com/bigbrightpaints/erp/orchestrator/service/IntegrationCoordinatorTest.java"
+REMEDIATION_COMMAND="bash scripts/guard_orchestrator_correlation_contract.sh"
 
 fail() {
   echo "[guard_orchestrator_correlation_contract] ERROR: $1" >&2
+  echo "[guard_orchestrator_correlation_contract] REMEDIATION: run '$REMEDIATION_COMMAND'" >&2
   exit 1
 }
 
