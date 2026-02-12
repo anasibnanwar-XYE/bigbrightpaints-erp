@@ -986,6 +986,8 @@ class SalesServiceTest {
         assertEquals(777L, response.finalInvoiceId());
         assertEquals(222L, response.arJournalEntryId());
         assertNull(order.getSalesJournalEntryId());
+        assertNull(order.getCogsJournalEntryId());
+        assertNull(order.getFulfillmentInvoiceId());
         verify(accountingFacade, never()).postSalesJournal(
                 ArgumentMatchers.anyLong(),
                 ArgumentMatchers.anyString(),

@@ -1545,7 +1545,7 @@ public class SalesService {
                     order.setCogsJournalEntryId(existingCogsJournalId);
                     orderUpdated = true;
                 }
-                if (order.getFulfillmentInvoiceId() == null && existingInvoiceId != null) {
+                if (order.getFulfillmentInvoiceId() == null && existingInvoiceId != null && singleSlipForOrder) {
                     order.setFulfillmentInvoiceId(existingInvoiceId);
                     orderUpdated = true;
                 }
@@ -2164,7 +2164,7 @@ public class SalesService {
         if (cogsJournalId != null && order.getCogsJournalEntryId() == null && singleSlipForOrder) {
             order.setCogsJournalEntryId(cogsJournalId);
         }
-        if (invoice.getId() != null && order.getFulfillmentInvoiceId() == null) {
+        if (invoice.getId() != null && order.getFulfillmentInvoiceId() == null && singleSlipForOrder) {
             order.setFulfillmentInvoiceId(invoice.getId());
         }
         String nextStatus = resolveOrderStatusAfterDispatch(company, order);
