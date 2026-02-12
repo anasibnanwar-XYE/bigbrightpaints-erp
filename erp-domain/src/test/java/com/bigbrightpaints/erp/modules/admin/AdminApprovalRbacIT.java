@@ -146,6 +146,59 @@ class AdminApprovalRbacIT extends AbstractIntegrationTest {
         assertThat(adminReject.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
     }
 
+    @Test
+    void payrollApprovalActionsAllowOnlyAdminOrAccounting() {
+        HttpHeaders salesHeaders = authHeaders(SALES_EMAIL, PASSWORD);
+        HttpHeaders factoryHeaders = authHeaders(FACTORY_EMAIL, PASSWORD);
+        HttpHeaders accountingHeaders = authHeaders(ACCOUNTING_EMAIL, PASSWORD);
+        HttpHeaders adminHeaders = authHeaders(ADMIN_EMAIL, PASSWORD);
+
+        long unknownRunId = 999_999L;
+        Map<String, String> markPaidPayload = Map.of("paymentReference", "PMT-ADMIN-APPROVAL");
+
+        ResponseEntity<Map> salesApprove = rest.exchange(
+                "/api/v1/payroll/runs/" + unknownRunId + "/approve",
+                HttpMethod.POST,
+                new HttpEntity<>(null, salesHeaders),
+                Map.class);
+        assertThat(salesApprove.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+        ResponseEntity<Map> factoryPost = rest.exchange(
+                "/api/v1/payroll/runs/" + unknownRunId + "/post",
+                HttpMethod.POST,
+                new HttpEntity<>(null, factoryHeaders),
+                Map.class);
+        assertThat(factoryPost.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+        ResponseEntity<Map> salesMarkPaid = rest.exchange(
+                "/api/v1/payroll/runs/" + unknownRunId + "/mark-paid",
+                HttpMethod.POST,
+                new HttpEntity<>(markPaidPayload, salesHeaders),
+                Map.class);
+        assertThat(salesMarkPaid.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+        ResponseEntity<Map> accountingApprove = rest.exchange(
+                "/api/v1/payroll/runs/" + unknownRunId + "/approve",
+                HttpMethod.POST,
+                new HttpEntity<>(null, accountingHeaders),
+                Map.class);
+        assertThat(accountingApprove.getStatusCode()).isNotEqualTo(HttpStatus.FORBIDDEN);
+
+        ResponseEntity<Map> accountingPost = rest.exchange(
+                "/api/v1/payroll/runs/" + unknownRunId + "/post",
+                HttpMethod.POST,
+                new HttpEntity<>(null, accountingHeaders),
+                Map.class);
+        assertThat(accountingPost.getStatusCode()).isNotEqualTo(HttpStatus.FORBIDDEN);
+
+        ResponseEntity<Map> adminMarkPaid = rest.exchange(
+                "/api/v1/payroll/runs/" + unknownRunId + "/mark-paid",
+                HttpMethod.POST,
+                new HttpEntity<>(markPaidPayload, adminHeaders),
+                Map.class);
+        assertThat(adminMarkPaid.getStatusCode()).isNotEqualTo(HttpStatus.FORBIDDEN);
+    }
+
     private HttpHeaders authHeaders(String email, String password) {
         Map<String, Object> loginPayload = Map.of(
                 "email", email,
