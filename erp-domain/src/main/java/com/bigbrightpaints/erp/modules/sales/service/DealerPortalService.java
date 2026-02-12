@@ -75,6 +75,7 @@ public class DealerPortalService {
             if (matchedByUserId != null) {
                 return matchedByUserId;
             }
+            throw new AccessDeniedException("Dealer mapping missing for authenticated principal userId:" + authenticatedUser.getId());
         }
 
         String email = resolveAuthenticatedEmail(authenticatedUser, auth);

@@ -119,6 +119,20 @@ class DealerPortalServiceTest {
     }
 
     @Test
+    void getCurrentDealer_failsClosedWhenUserIdMissingDealerMappingEvenIfEmailMatches() {
+        UserAccount user = userWithId(100L, "dealer@tenant.com");
+        authenticate(user, "ROLE_DEALER");
+        when(dealerRepository.findAllByCompanyAndPortalUserId(company, 100L))
+                .thenReturn(List.of());
+
+        assertThatThrownBy(() -> dealerPortalService.getCurrentDealer())
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("mapping missing")
+                .hasMessageContaining("userId:100");
+        verify(dealerRepository, never()).findAllByCompanyAndPortalUserEmailIgnoreCase(any(), anyString());
+    }
+
+    @Test
     void verifyDealerAccess_rejectsCrossDealerReadForDealerRole() {
         UserAccount user = userWithId(100L, "dealer@tenant.com");
         authenticate(user, "ROLE_DEALER");

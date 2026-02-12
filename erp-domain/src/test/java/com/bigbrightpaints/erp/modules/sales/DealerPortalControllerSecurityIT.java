@@ -81,13 +81,13 @@ class DealerPortalControllerSecurityIT extends AbstractIntegrationTest {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         Map<?, ?> data = (Map<?, ?>) response.getBody().get("data");
-        assertThat(data.get("dealerId")).isEqualTo(dealerA.getId().intValue());
+        assertThat(asLong(data.get("dealerId"))).isEqualTo(dealerA.getId());
         assertThat(data.get("invoiceCount")).isEqualTo(1);
         List<?> invoices = (List<?>) data.get("invoices");
         assertThat(invoices).hasSize(1);
         Map<?, ?> invoice = (Map<?, ?>) invoices.getFirst();
-        assertThat(invoice.get("id")).isEqualTo(invoiceA.getId().intValue());
-        assertThat(invoice.get("id")).isNotEqualTo(invoiceB.getId().intValue());
+        assertThat(asLong(invoice.get("id"))).isEqualTo(invoiceA.getId());
+        assertThat(asLong(invoice.get("id"))).isNotEqualTo(invoiceB.getId());
     }
 
     @Test
@@ -131,8 +131,12 @@ class DealerPortalControllerSecurityIT extends AbstractIntegrationTest {
         String token = (String) login.getBody().get("accessToken");
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token);
-        headers.set("X-Company-Id", COMPANY_CODE);
+        headers.set("X-Company-Code", COMPANY_CODE);
         return headers;
+    }
+
+    private long asLong(Object value) {
+        return ((Number) value).longValue();
     }
 
     private Dealer upsertDealer(Company company, String code, String name, UserAccount portalUser) {

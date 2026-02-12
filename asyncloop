@@ -19,8 +19,8 @@ Non-Stop Operating Rules
 
 Runtime Tracking
 - tracked_start_ts: `2026-02-12T01:53:52+05:30` (first immutable async-loop commit marker)
-- tracked_now_ts: `2026-02-12T07:06:02+05:30`
-- tracked_elapsed: `5h 12m 10s`
+- tracked_now_ts: `2026-02-12T07:09:25+05:30`
+- tracked_elapsed: `5h 15m 33s`
 
 Completion Gates (Required For "Safe To Deploy" Claim)
 - No known critical/high security issues in auth/RBAC/tenant isolation/data exposure.
@@ -525,24 +525,38 @@ Commit Ledger
     - `019c4f76-7bac-7d40-8b3e-54621d630a83` (completed)
     - medium: mismatch case currently trips header-vs-header conflict path; add single-header token-vs-header mismatch assertion.
     - low: avoid narrowing `Long` IDs to `int` in assertions.
+- 2026-02-12: `5f3a6db4`
+  - Reconciled sales-order status when canceling backorder slips (`FinishedGoodsService`):
+    - added order-status sync after backorder cancellation
+    - added targeted regression proving `PENDING_PRODUCTION -> SHIPPED` when only dispatched slip remains
+  - Verified:
+    - `mvn -B -ntp -Dtest=FinishedGoodsServiceTest#cancelBackorderClearsReservation,FinishedGoodsServiceTest#cancelBackorderReconcilesOrderStatusToShippedWhenOnlyDispatchedSlipRemains,DispatchConfirmationIT test`
+  - Subagent review:
+    - `019c4f7e-6bb0-77b1-b924-e6ede30cd973` (completed)
+    - high: status mutation path bypasses sales-order immutability/accounting-posted guards.
+    - high: `SHIPPED` can be set without full dispatch truth (invoice + AR + COGS linkage).
+    - medium: status-resolution divergence vs `SalesService#resolveOrderStatusAfterDispatch` (cancelled-slip handling).
+    - medium: potential implicit cancel-path side-effect bypass and unlocked status write race.
 
 Current Checkpoint
-- Current WIP M3-S4 (inventory-manufacturing dispatch invariant chain):
-  - Root cause (proved by workflow review + targeted regression):
-    - canceling a backorder slip released inventory reservations but did not reconcile parent sales-order workflow state.
-    - this can leave orders stranded in `PENDING_PRODUCTION` even when active slips indicate shipping is complete.
+- Current WIP M5-S5 (dealer portal follow-up hardening from commit reviews):
+  - Root cause (from prior completed subagent reviews on `c5abfd49` and `7dc9b6b1`):
+    - principal user-id miss could still fall back to email mapping (weak fail-closed behavior).
+    - dealer portal misuse IT asserted numeric IDs with int narrowing and needed explicit token-vs-header mismatch precision.
   - Fix completed in working tree (pending commit):
-    - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/service/FinishedGoodsService.java`
-      - reconcile parent order status after backorder cancellation using active (non-cancelled) slip set.
-    - `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/inventory/service/FinishedGoodsServiceTest.java`
-      - new regression: cancel backorder + remaining dispatched slip => order transitions to `SHIPPED`.
+    - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/service/DealerPortalService.java`
+      - if principal user-id exists but no dealer mapping is found, fail closed (`AccessDeniedException`) and do not fall back to email.
+    - `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/sales/service/DealerPortalServiceTest.java`
+      - added regression: id-present + id-miss + email-possible path denies access and never queries email.
+    - `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/sales/DealerPortalControllerSecurityIT.java`
+      - use canonical company header path and long-safe ID assertions.
 - Verification command:
-  - `mvn -B -ntp -Dtest=FinishedGoodsServiceTest#cancelBackorderClearsReservation,FinishedGoodsServiceTest#cancelBackorderReconcilesOrderStatusToShippedWhenOnlyDispatchedSlipRemains,DispatchConfirmationIT test`
-  - Result: pass (2026-02-12T07:05:39+05:30)
+  - `mvn -B -ntp -Dtest=DealerPortalServiceTest,DealerPortalControllerSecurityIT test`
+  - Result: pass (2026-02-12T07:08:29+05:30)
 - Next action:
-  - commit M3-S4 order-status reconciliation on backorder cancellation
+  - commit M5-S5 dealer portal fail-closed + assertion precision patch
   - run `codex review --commit <sha>`
-  - apply portal review follow-ups (`M5-S5`): strict id-miss fail-closed and token-vs-header mismatch test precision
+  - execute M3-S4R remediation commit to close high findings from `5f3a6db4`
 
 Async Loop Cadence
 - Each cycle:
