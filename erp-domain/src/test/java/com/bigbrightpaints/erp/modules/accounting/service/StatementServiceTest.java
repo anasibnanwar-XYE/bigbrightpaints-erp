@@ -6,6 +6,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.DealerLedgerEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.DealerLedgerRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.SupplierLedgerEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.SupplierLedgerRepository;
+import com.bigbrightpaints.erp.modules.accounting.dto.AgingBucketDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerBalanceView;
 import com.bigbrightpaints.erp.modules.accounting.dto.SupplierBalanceView;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -316,9 +317,15 @@ class StatementServiceTest {
         var response = statementService.dealerAging(74L, asOf, "0-30,31");
 
         assertThat(response.totalOutstanding()).isEqualByComparingTo("-150.00");
-        assertThat(response.buckets()).allSatisfy(bucket ->
-                assertThat(bucket.amount()).isGreaterThanOrEqualTo(BigDecimal.ZERO));
+        assertThat(response.buckets()).hasSize(3);
         assertThat(response.buckets().get(0).amount()).isEqualByComparingTo("0.00");
+        assertThat(response.buckets().get(1).amount()).isEqualByComparingTo("0.00");
+        assertThat(response.buckets().get(2).label()).isEqualTo("Credit Balance");
+        assertThat(response.buckets().get(2).amount()).isEqualByComparingTo("-150.00");
+        BigDecimal bucketTotal = response.buckets().stream()
+                .map(AgingBucketDto::amount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        assertThat(bucketTotal).isEqualByComparingTo(response.totalOutstanding());
     }
 
     @Test
@@ -345,9 +352,15 @@ class StatementServiceTest {
         var response = statementService.supplierAging(75L, asOf, "0-30,31");
 
         assertThat(response.totalOutstanding()).isEqualByComparingTo("-120.00");
-        assertThat(response.buckets()).allSatisfy(bucket ->
-                assertThat(bucket.amount()).isGreaterThanOrEqualTo(BigDecimal.ZERO));
+        assertThat(response.buckets()).hasSize(3);
         assertThat(response.buckets().get(0).amount()).isEqualByComparingTo("0.00");
+        assertThat(response.buckets().get(1).amount()).isEqualByComparingTo("0.00");
+        assertThat(response.buckets().get(2).label()).isEqualTo("Credit Balance");
+        assertThat(response.buckets().get(2).amount()).isEqualByComparingTo("-120.00");
+        BigDecimal bucketTotal = response.buckets().stream()
+                .map(AgingBucketDto::amount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        assertThat(bucketTotal).isEqualByComparingTo(response.totalOutstanding());
     }
 
     @Test

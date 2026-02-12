@@ -193,13 +193,14 @@ public class StatementService {
                 }
             }
         }
-        applyResidualCreditToCurrentBucket(bucketTotals, creditPool);
+        BigDecimal residualCredit = applyResidualCreditToCurrentBucket(bucketTotals, creditPool);
         List<AgingBucketDto> bucketDtos = new ArrayList<>();
         for (int i = 0; i < buckets.size(); i++) {
             int[] b = buckets.get(i);
             String label = b[0] + (b.length > 1 ? "-" + b[1] : "+") + " days";
             bucketDtos.add(new AgingBucketDto(label, b[0], b.length > 1 ? b[1] : null, bucketTotals[i]));
         }
+        appendResidualCreditBucket(bucketDtos, residualCredit);
         return new AgingSummaryResponse(dealer.getId(), dealer.getName(), balance, bucketDtos);
     }
 
@@ -260,13 +261,14 @@ public class StatementService {
                 }
             }
         }
-        applyResidualCreditToCurrentBucket(bucketTotals, creditPool);
+        BigDecimal residualCredit = applyResidualCreditToCurrentBucket(bucketTotals, creditPool);
         List<AgingBucketDto> bucketDtos = new ArrayList<>();
         for (int i = 0; i < buckets.size(); i++) {
             int[] b = buckets.get(i);
             String label = b[0] + (b.length > 1 ? "-" + b[1] : "+") + " days";
             bucketDtos.add(new AgingBucketDto(label, b[0], b.length > 1 ? b[1] : null, bucketTotals[i]));
         }
+        appendResidualCreditBucket(bucketDtos, residualCredit);
         return new AgingSummaryResponse(supplier.getId(), supplier.getName(), balance, bucketDtos);
     }
 
@@ -373,12 +375,23 @@ public class StatementService {
         return entry.getDueDate() != null ? entry.getDueDate() : entry.getEntryDate();
     }
 
-    private void applyResidualCreditToCurrentBucket(BigDecimal[] bucketTotals, BigDecimal creditPool) {
-        if (creditPool.compareTo(BigDecimal.ZERO) <= 0 || bucketTotals.length == 0) {
+    private BigDecimal applyResidualCreditToCurrentBucket(BigDecimal[] bucketTotals, BigDecimal creditPool) {
+        if (creditPool.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO;
+        }
+        if (bucketTotals.length == 0) {
+            return creditPool;
+        }
+        BigDecimal applied = bucketTotals[0].min(creditPool);
+        bucketTotals[0] = bucketTotals[0].subtract(applied);
+        return creditPool.subtract(applied);
+    }
+
+    private void appendResidualCreditBucket(List<AgingBucketDto> bucketDtos, BigDecimal residualCredit) {
+        if (residualCredit.compareTo(BigDecimal.ZERO) <= 0) {
             return;
         }
-        BigDecimal adjusted = bucketTotals[0].subtract(creditPool);
-        bucketTotals[0] = adjusted.max(BigDecimal.ZERO);
+        bucketDtos.add(new AgingBucketDto("Credit Balance", 0, 0, residualCredit.negate()));
     }
 
     private record AgingLine(LocalDate date, BigDecimal amount) {
