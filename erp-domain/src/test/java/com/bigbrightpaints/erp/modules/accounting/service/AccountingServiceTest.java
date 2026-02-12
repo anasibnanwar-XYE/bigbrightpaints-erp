@@ -3490,6 +3490,135 @@ class AccountingServiceTest {
     }
 
     @Test
+    void settleDealerInvoices_replayPayloadMismatchWinsOverNetCashPrevalidation() {
+        Dealer dealer = new Dealer();
+        dealer.setName("Replay Dealer");
+        ReflectionTestUtils.setField(dealer, "id", 1L);
+
+        Account receivable = new Account();
+        receivable.setCompany(company);
+        receivable.setCode("AR-SETTLE-REPLAY");
+        receivable.setType(AccountType.ASSET);
+        ReflectionTestUtils.setField(receivable, "id", 10L);
+        dealer.setReceivableAccount(receivable);
+
+        Account cash = new Account();
+        cash.setCompany(company);
+        cash.setCode("CASH-SETTLE-REPLAY");
+        cash.setType(AccountType.ASSET);
+        ReflectionTestUtils.setField(cash, "id", 20L);
+
+        Account discount = new Account();
+        discount.setCompany(company);
+        discount.setCode("DISC-SETTLE-REPLAY");
+        ReflectionTestUtils.setField(discount, "id", 21L);
+
+        com.bigbrightpaints.erp.modules.invoice.domain.Invoice invoiceA =
+                new com.bigbrightpaints.erp.modules.invoice.domain.Invoice();
+        invoiceA.setCompany(company);
+        invoiceA.setDealer(dealer);
+        ReflectionTestUtils.setField(invoiceA, "id", 701L);
+
+        com.bigbrightpaints.erp.modules.invoice.domain.Invoice invoiceB =
+                new com.bigbrightpaints.erp.modules.invoice.domain.Invoice();
+        invoiceB.setCompany(company);
+        invoiceB.setDealer(dealer);
+        ReflectionTestUtils.setField(invoiceB, "id", 702L);
+
+        JournalEntry existingEntry = new JournalEntry();
+        ReflectionTestUtils.setField(existingEntry, "id", 1950L);
+        existingEntry.setDealer(dealer);
+        existingEntry.setReferenceNumber("DR-SETTLE-REPLAY-NETCASH-1");
+
+        com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocation existingRowA =
+                new com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocation();
+        existingRowA.setCompany(company);
+        existingRowA.setPartnerType(com.bigbrightpaints.erp.modules.accounting.domain.PartnerType.DEALER);
+        existingRowA.setDealer(dealer);
+        existingRowA.setInvoice(invoiceA);
+        existingRowA.setJournalEntry(existingEntry);
+        existingRowA.setSettlementDate(LocalDate.of(2024, 4, 9));
+        existingRowA.setAllocationAmount(new BigDecimal("100.00"));
+        existingRowA.setDiscountAmount(BigDecimal.ZERO);
+        existingRowA.setWriteOffAmount(BigDecimal.ZERO);
+        existingRowA.setFxDifferenceAmount(BigDecimal.ZERO);
+        existingRowA.setIdempotencyKey("IDEMP-DR-SETTLE-REPLAY-NETCASH");
+
+        com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocation existingRowB =
+                new com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocation();
+        existingRowB.setCompany(company);
+        existingRowB.setPartnerType(com.bigbrightpaints.erp.modules.accounting.domain.PartnerType.DEALER);
+        existingRowB.setDealer(dealer);
+        existingRowB.setInvoice(invoiceB);
+        existingRowB.setJournalEntry(existingEntry);
+        existingRowB.setSettlementDate(LocalDate.of(2024, 4, 9));
+        existingRowB.setAllocationAmount(new BigDecimal("200.00"));
+        existingRowB.setDiscountAmount(BigDecimal.ZERO);
+        existingRowB.setWriteOffAmount(BigDecimal.ZERO);
+        existingRowB.setFxDifferenceAmount(BigDecimal.ZERO);
+        existingRowB.setIdempotencyKey("IDEMP-DR-SETTLE-REPLAY-NETCASH");
+
+        when(dealerRepository.lockByCompanyAndId(eq(company), eq(1L))).thenReturn(Optional.of(dealer));
+        when(companyEntityLookup.requireAccount(eq(company), eq(20L))).thenReturn(cash);
+        when(companyEntityLookup.requireAccount(eq(company), eq(21L))).thenReturn(discount);
+        when(journalReferenceMappingRepository.findAllByCompanyAndLegacyReferenceIgnoreCase(
+                eq(company), eq("idemp-dr-settle-replay-netcash")))
+                .thenReturn(List.of());
+        when(journalReferenceResolver.findExistingEntry(eq(company), eq("DR-SETTLE-REPLAY-NETCASH-1")))
+                .thenReturn(Optional.empty());
+        when(journalReferenceMappingRepository.reserveReferenceMapping(
+                eq(company.getId()),
+                eq("idemp-dr-settle-replay-netcash"),
+                eq("DR-SETTLE-REPLAY-NETCASH-1"),
+                eq("DEALER_SETTLEMENT"),
+                any()))
+                .thenReturn(1);
+        when(settlementAllocationRepository.findByCompanyAndIdempotencyKeyIgnoreCaseOrderByCreatedAtAscIdAsc(
+                eq(company), eq("IDEMP-DR-SETTLE-REPLAY-NETCASH")))
+                .thenReturn(List.of(existingRowA, existingRowB));
+
+        DealerSettlementRequest request = new DealerSettlementRequest(
+                1L,
+                20L,
+                21L,
+                null,
+                null,
+                null,
+                LocalDate.of(2024, 4, 9),
+                "DR-SETTLE-REPLAY-NETCASH-1",
+                "Dealer settlement replay",
+                "IDEMP-DR-SETTLE-REPLAY-NETCASH",
+                Boolean.FALSE,
+                List.of(
+                        new SettlementAllocationRequest(
+                                701L,
+                                null,
+                                new BigDecimal("100.00"),
+                                new BigDecimal("120.00"),
+                                BigDecimal.ZERO,
+                                BigDecimal.ZERO,
+                                null
+                        ),
+                        new SettlementAllocationRequest(
+                                702L,
+                                null,
+                                new BigDecimal("200.00"),
+                                BigDecimal.ZERO,
+                                BigDecimal.ZERO,
+                                BigDecimal.ZERO,
+                                null
+                        )
+                ),
+                null
+        );
+
+        assertThatThrownBy(() -> accountingService.settleDealerInvoices(request))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("different settlement payload")
+                .satisfies(ex -> assertThat(ex).hasMessageNotContaining("negative net cash contribution"));
+    }
+
+    @Test
     void settleDealerInvoices_appliesGrossAmountToInvoice() {
         AccountingService service = spy(accountingService);
 

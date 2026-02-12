@@ -1699,7 +1699,10 @@ public class AccountingService {
         if (allocations == null || allocations.isEmpty()) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "At least one allocation is required");
         }
-        validateDealerSettlementAllocations(allocations);
+        boolean replayCandidate = hasExistingSettlementAllocations(company, trimmedIdempotencyKey);
+        if (!replayCandidate) {
+            validateDealerSettlementAllocations(allocations);
+        }
         SettlementTotals totals = computeSettlementTotals(allocations);
         String memo = StringUtils.hasText(request.memo())
                 ? request.memo().trim()
