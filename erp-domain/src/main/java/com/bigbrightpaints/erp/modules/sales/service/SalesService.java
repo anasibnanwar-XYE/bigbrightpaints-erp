@@ -1471,7 +1471,7 @@ public class SalesService {
         String overrideReason = null;
         if (alreadyDispatched && hasRequestedOverrides) {
             boolean hasOrderLevelReplayAnchor = order.getSalesJournalEntryId() != null
-                    && hasSingleSlipForOrder(company, order);
+                    && hasSingleActiveSlipForOrder(company, order);
             boolean hasReplayFinancialAnchor = existingInvoice != null
                     || slip.getInvoiceId() != null
                     || slip.getJournalEntryId() != null
@@ -1941,7 +1941,7 @@ public class SalesService {
             preexistingJournalId = existingInvoice.getJournalEntry().getId();
         } else if (slip.getJournalEntryId() != null) {
             preexistingJournalId = slip.getJournalEntryId();
-        } else if (alreadyDispatched && order.getSalesJournalEntryId() != null && hasSingleSlipForOrder(company, order)) {
+        } else if (alreadyDispatched && order.getSalesJournalEntryId() != null && hasSingleActiveSlipForOrder(company, order)) {
             preexistingJournalId = order.getSalesJournalEntryId();
         }
         if (preexistingJournalId != null) {
@@ -2078,7 +2078,7 @@ public class SalesService {
         if (arJournalEntryId == null && preexistingJournalId != null) {
             arJournalEntryId = preexistingJournalId;
         }
-        boolean singleSlipForOrder = hasSingleSlipForOrder(company, order);
+        boolean singleSlipForOrder = hasSingleActiveSlipForOrder(company, order);
         List<DispatchConfirmResponse.AccountPostingDto> arPostings = new ArrayList<>();
         if (arJournalEntryId == null && totalAmount.compareTo(BigDecimal.ZERO) > 0) {
             if (revenueByAccount.isEmpty()) {
@@ -2403,7 +2403,7 @@ public class SalesService {
                         .withDetail("slipNumber", slipNumber);
             }
         }
-        if (hasSingleSlipForOrder(company, order)) {
+        if (hasSingleActiveSlipForOrder(company, order)) {
             if (order.getFulfillmentInvoiceId() != null) {
                 return invoiceRepository.findByCompanyAndId(company, order.getFulfillmentInvoiceId()).orElse(null);
             }

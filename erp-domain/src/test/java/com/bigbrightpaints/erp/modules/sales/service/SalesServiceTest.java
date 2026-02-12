@@ -656,6 +656,48 @@ class SalesServiceTest {
     }
 
     @Test
+    void confirmDispatchTreatsOrderJournalAnchorAsReplayAnchorWhenOnlyOtherSlipCancelled() {
+        SalesOrder order = new SalesOrder();
+        setField(order, "id", 10L);
+        order.setCompany(company);
+        order.setStatus("SHIPPED");
+        order.setSalesJournalEntryId(222L);
+
+        PackagingSlip slip = new PackagingSlip();
+        setField(slip, "id", 55L);
+        slip.setCompany(company);
+        slip.setSalesOrder(order);
+        slip.setStatus("DISPATCHED");
+
+        PackagingSlip cancelledSlip = new PackagingSlip();
+        setField(cancelledSlip, "id", 56L);
+        cancelledSlip.setCompany(company);
+        cancelledSlip.setSalesOrder(order);
+        cancelledSlip.setStatus("CANCELLED");
+
+        when(packagingSlipRepository.findAndLockByIdAndCompany(55L, company)).thenReturn(Optional.of(slip));
+        when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, 10L))
+                .thenReturn(List.of(slip, cancelledSlip));
+        when(companyEntityLookup.requireSalesOrder(company, 10L)).thenReturn(order);
+
+        DispatchConfirmRequest request = new DispatchConfirmRequest(
+                55L,
+                null,
+                List.of(new DispatchConfirmRequest.DispatchLine(99L, null, BigDecimal.ONE, null, new BigDecimal("10"), null, null, null)),
+                null,
+                "admin",
+                Boolean.TRUE,
+                null,
+                null);
+
+        ApplicationException ex = assertThrows(ApplicationException.class, () -> salesService.confirmDispatch(request));
+        assertTrue(ex.getMessage().contains("overrideReason is required when replaying overrides"));
+        verifyNoInteractions(dealerRepository);
+        verifyNoInteractions(finishedGoodsService);
+        verifyNoInteractions(accountingFacade);
+    }
+
+    @Test
     void confirmDispatchRequiresOverrideReasonWhenReplayOverrideAnchored() {
         SalesOrder order = new SalesOrder();
         setField(order, "id", 10L);
@@ -1056,6 +1098,106 @@ class SalesServiceTest {
         assertEquals(222L, order.getSalesJournalEntryId());
         assertEquals(333L, order.getCogsJournalEntryId());
         assertEquals(777L, order.getFulfillmentInvoiceId());
+    }
+
+    @Test
+    void confirmDispatchReusesOrderJournalWhenOnlyOtherSlipCancelled() {
+        Dealer dealer = dealerWithCreditLimit(42L, BigDecimal.valueOf(1000));
+        Account receivable = new Account();
+        receivable.setName("AR");
+        setField(receivable, "id", 900L);
+        dealer.setReceivableAccount(receivable);
+
+        SalesOrder order = new SalesOrder();
+        setField(order, "id", 10L);
+        order.setCompany(company);
+        order.setDealer(dealer);
+        order.setOrderNumber("SO-10");
+        order.setStatus("SHIPPED");
+        order.setSalesJournalEntryId(222L);
+
+        SalesOrderItem item = new SalesOrderItem();
+        setField(item, "id", 1L);
+        item.setSalesOrder(order);
+        item.setProductCode("SKU-D");
+        item.setDescription("Desc");
+        item.setQuantity(BigDecimal.ONE);
+        item.setUnitPrice(BigDecimal.valueOf(200));
+        item.setGstRate(BigDecimal.ZERO);
+        order.getItems().add(item);
+
+        FinishedGood finishedGood = buildFinishedGood("SKU-D");
+        finishedGood.setCurrentStock(BigDecimal.ONE);
+        finishedGood.setRevenueAccountId(3L);
+
+        FinishedGoodBatch batch = new FinishedGoodBatch();
+        batch.setFinishedGood(finishedGood);
+        batch.setBatchCode("B-1");
+        batch.setQuantityTotal(BigDecimal.ONE);
+        batch.setQuantityAvailable(BigDecimal.ONE);
+        batch.setUnitCost(BigDecimal.ZERO);
+
+        PackagingSlip slip = new PackagingSlip();
+        setField(slip, "id", 55L);
+        slip.setCompany(company);
+        slip.setSalesOrder(order);
+        slip.setSlipNumber("PS-55");
+        slip.setStatus("DISPATCHED");
+
+        PackagingSlip cancelledSlip = new PackagingSlip();
+        setField(cancelledSlip, "id", 56L);
+        cancelledSlip.setCompany(company);
+        cancelledSlip.setSalesOrder(order);
+        cancelledSlip.setSlipNumber("PS-56");
+        cancelledSlip.setStatus("CANCELLED");
+
+        PackagingSlipLine slipLine = new PackagingSlipLine();
+        setField(slipLine, "id", 99L);
+        slipLine.setPackagingSlip(slip);
+        slipLine.setFinishedGoodBatch(batch);
+        slipLine.setOrderedQuantity(BigDecimal.ONE);
+        slipLine.setQuantity(BigDecimal.ONE);
+        slipLine.setShippedQuantity(BigDecimal.ONE);
+        slipLine.setUnitCost(BigDecimal.ZERO);
+        slip.getLines().add(slipLine);
+
+        JournalEntry existingEntry = new JournalEntry();
+        setField(existingEntry, "id", 222L);
+        JournalLine line = new JournalLine();
+        line.setAccount(receivable);
+        line.setDebit(new BigDecimal("200"));
+        line.setCredit(BigDecimal.ZERO);
+        existingEntry.getLines().add(line);
+
+        when(packagingSlipRepository.findAndLockByIdAndCompany(55L, company)).thenReturn(Optional.of(slip));
+        when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, 10L))
+                .thenReturn(List.of(slip, cancelledSlip));
+        when(companyEntityLookup.requireSalesOrder(company, 10L)).thenReturn(order);
+        when(companyEntityLookup.requireJournalEntry(company, 222L)).thenReturn(existingEntry);
+        when(dealerRepository.lockByCompanyAndId(company, dealer.getId())).thenReturn(Optional.of(dealer));
+        when(invoiceNumberService.nextInvoiceNumber(company)).thenReturn("INV-55");
+        when(invoiceRepository.save(ArgumentMatchers.any(Invoice.class))).thenAnswer(invocation -> {
+            Invoice invoice = invocation.getArgument(0);
+            setField(invoice, "id", 777L);
+            return invoice;
+        });
+        when(salesOrderRepository.save(ArgumentMatchers.any(SalesOrder.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(packagingSlipRepository.save(ArgumentMatchers.any(PackagingSlip.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        DispatchConfirmResponse response = salesService.confirmDispatch(
+                new DispatchConfirmRequest(55L, null, List.of(), null, "admin", Boolean.TRUE, null, null));
+
+        assertEquals(222L, response.arJournalEntryId());
+        verify(accountingFacade, never()).postSalesJournal(
+                ArgumentMatchers.anyLong(),
+                ArgumentMatchers.anyString(),
+                ArgumentMatchers.any(),
+                ArgumentMatchers.anyString(),
+                ArgumentMatchers.anyMap(),
+                ArgumentMatchers.anyMap(),
+                ArgumentMatchers.nullable(Map.class),
+                ArgumentMatchers.any(),
+                ArgumentMatchers.anyString());
     }
 
     @Test
