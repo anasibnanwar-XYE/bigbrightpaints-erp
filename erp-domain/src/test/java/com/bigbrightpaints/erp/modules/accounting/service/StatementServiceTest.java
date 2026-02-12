@@ -292,6 +292,65 @@ class StatementServiceTest {
     }
 
     @Test
+    void dealerAging_overcreditDoesNotCreateNegativeBucketAmount() {
+        Dealer dealer = new Dealer();
+        dealer.setName("Dealer Overcredit Clamp");
+        ReflectionTestUtils.setField(dealer, "id", 74L);
+        when(dealerRepository.findByCompanyAndId(company, 74L)).thenReturn(Optional.of(dealer));
+
+        LocalDate asOf = LocalDate.of(2026, 2, 12);
+        DealerLedgerEntry invoice = new DealerLedgerEntry();
+        invoice.setEntryDate(asOf.minusDays(10));
+        invoice.setDueDate(asOf.minusDays(10));
+        invoice.setDebit(new BigDecimal("100.00"));
+        invoice.setCredit(BigDecimal.ZERO);
+
+        DealerLedgerEntry payment = new DealerLedgerEntry();
+        payment.setEntryDate(asOf.minusDays(2));
+        payment.setDebit(BigDecimal.ZERO);
+        payment.setCredit(new BigDecimal("250.00"));
+
+        when(dealerLedgerRepository.findByCompanyAndDealerAndEntryDateLessThanEqualOrderByEntryDateAscIdAsc(
+                company, dealer, asOf)).thenReturn(List.of(invoice, payment));
+
+        var response = statementService.dealerAging(74L, asOf, "0-30,31");
+
+        assertThat(response.totalOutstanding()).isEqualByComparingTo("-150.00");
+        assertThat(response.buckets()).allSatisfy(bucket ->
+                assertThat(bucket.amount()).isGreaterThanOrEqualTo(BigDecimal.ZERO));
+        assertThat(response.buckets().get(0).amount()).isEqualByComparingTo("0.00");
+    }
+
+    @Test
+    void supplierAging_overcreditDoesNotCreateNegativeBucketAmount() {
+        Supplier supplier = new Supplier();
+        supplier.setName("Supplier Overcredit Clamp");
+        ReflectionTestUtils.setField(supplier, "id", 75L);
+        when(supplierRepository.findByCompanyAndId(company, 75L)).thenReturn(Optional.of(supplier));
+
+        LocalDate asOf = LocalDate.of(2026, 2, 12);
+        SupplierLedgerEntry invoice = new SupplierLedgerEntry();
+        invoice.setEntryDate(asOf.minusDays(9));
+        invoice.setDebit(BigDecimal.ZERO);
+        invoice.setCredit(new BigDecimal("80.00"));
+
+        SupplierLedgerEntry payment = new SupplierLedgerEntry();
+        payment.setEntryDate(asOf.minusDays(1));
+        payment.setDebit(new BigDecimal("200.00"));
+        payment.setCredit(BigDecimal.ZERO);
+
+        when(supplierLedgerRepository.findByCompanyAndSupplierAndEntryDateLessThanEqualOrderByEntryDateAscIdAsc(
+                company, supplier, asOf)).thenReturn(List.of(invoice, payment));
+
+        var response = statementService.supplierAging(75L, asOf, "0-30,31");
+
+        assertThat(response.totalOutstanding()).isEqualByComparingTo("-120.00");
+        assertThat(response.buckets()).allSatisfy(bucket ->
+                assertThat(bucket.amount()).isGreaterThanOrEqualTo(BigDecimal.ZERO));
+        assertThat(response.buckets().get(0).amount()).isEqualByComparingTo("0.00");
+    }
+
+    @Test
     void dealerStatementPdf_returnsRealPdfBytes() {
         Dealer dealer = new Dealer();
         dealer.setName("Dealer PDF");

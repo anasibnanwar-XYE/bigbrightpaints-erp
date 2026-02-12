@@ -193,9 +193,7 @@ public class StatementService {
                 }
             }
         }
-        if (creditPool.compareTo(BigDecimal.ZERO) > 0 && bucketTotals.length > 0) {
-            bucketTotals[0] = bucketTotals[0].subtract(creditPool);
-        }
+        applyResidualCreditToCurrentBucket(bucketTotals, creditPool);
         List<AgingBucketDto> bucketDtos = new ArrayList<>();
         for (int i = 0; i < buckets.size(); i++) {
             int[] b = buckets.get(i);
@@ -262,9 +260,7 @@ public class StatementService {
                 }
             }
         }
-        if (creditPool.compareTo(BigDecimal.ZERO) > 0 && bucketTotals.length > 0) {
-            bucketTotals[0] = bucketTotals[0].subtract(creditPool);
-        }
+        applyResidualCreditToCurrentBucket(bucketTotals, creditPool);
         List<AgingBucketDto> bucketDtos = new ArrayList<>();
         for (int i = 0; i < buckets.size(); i++) {
             int[] b = buckets.get(i);
@@ -375,6 +371,14 @@ public class StatementService {
             return CompanyTime.today(company);
         }
         return entry.getDueDate() != null ? entry.getDueDate() : entry.getEntryDate();
+    }
+
+    private void applyResidualCreditToCurrentBucket(BigDecimal[] bucketTotals, BigDecimal creditPool) {
+        if (creditPool.compareTo(BigDecimal.ZERO) <= 0 || bucketTotals.length == 0) {
+            return;
+        }
+        BigDecimal adjusted = bucketTotals[0].subtract(creditPool);
+        bucketTotals[0] = adjusted.max(BigDecimal.ZERO);
     }
 
     private record AgingLine(LocalDate date, BigDecimal amount) {
