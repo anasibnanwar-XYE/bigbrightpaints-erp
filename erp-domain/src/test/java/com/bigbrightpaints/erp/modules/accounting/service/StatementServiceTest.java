@@ -116,7 +116,7 @@ class StatementServiceTest {
     }
 
     @Test
-    void supplierAging_rejectsOverlappingBuckets() {
+    void supplierAging_rejectsTrueOverlappingBuckets() {
         Supplier supplier = new Supplier();
         ReflectionTestUtils.setField(supplier, "id", 13L);
         when(supplierRepository.findByCompanyAndId(company, 13L)).thenReturn(Optional.of(supplier));
@@ -124,9 +124,24 @@ class StatementServiceTest {
         assertThatThrownBy(() -> statementService.supplierAging(
                 13L,
                 LocalDate.of(2026, 2, 12),
-                "0-30,30-60,61"))
+                "0-30,29-60,61"))
                 .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Invalid aging bucket format");
+    }
+
+    @Test
+    void supplierAging_allowsLegacyTouchingBoundaryBuckets() {
+        Supplier supplier = new Supplier();
+        supplier.setName("Supplier");
+        ReflectionTestUtils.setField(supplier, "id", 14L);
+        when(supplierRepository.findByCompanyAndId(company, 14L)).thenReturn(Optional.of(supplier));
+        when(supplierLedgerRepository.findByCompanyAndSupplierOrderByEntryDateAsc(company, supplier)).thenReturn(List.of());
+
+        var response = statementService.supplierAging(14L, LocalDate.of(2026, 2, 12), "0-30,30-60,61");
+
+        assertThat(response.totalOutstanding()).isZero();
+        assertThat(response.buckets()).hasSize(3);
+        assertThat(response.buckets().get(2).toDays()).isNull();
     }
 
     @Test

@@ -1000,3 +1000,29 @@ Queue Rotation (Auto-Replenish)
 - [ready] M5-S3 dispatch/invoice/accounting exact-link invariant sweep (including backorder cancel status semantics)
 - [ready] M6-S8 duplicate idempotency helper consolidation map for receipt/split/payment/settlement paths
 - [ready] M4-S6 aging/statement performance guard (repository-level prefiltering to avoid full-ledger scans)
+
+Loop Update
+- 2026-02-12T14:05:04+05:30
+- tracked_now_ts: `2026-02-12T14:05:04+05:30`
+- tracked_elapsed: `12h 11m 12s`
+- active_in_progress: `M4-S4 follow-up compatibility patch from commit-review findings`
+
+Completed Slice (Commit In Progress)
+- 2026-02-12: `[pending-commit-sha]`
+  - M4-S4b report bucket compatibility follow-up:
+    - Addressed review finding from commit `b37c72f3` that strict boundary enforcement could break legacy bucket specs like `0-30,30-60,61`.
+    - Relaxed parser overlap guard to reject only true overlap (`next.from < previous.to`) while allowing touching boundaries for backward compatibility.
+    - Extended test coverage:
+      - renamed true-overlap rejection case (`0-30,29-60,61`),
+      - added explicit legacy touching-boundary acceptance test.
+  - Verification:
+    - `mvn -B -ntp -Dtest=StatementServiceTest test` -> pass (6 tests, 0 failures, 0 errors).
+
+Queue Rotation (Auto-Replenish)
+- [completed] M4-S4b bucket compatibility patch after review feedback
+- [in_progress] M4-S5 report export parity audit (PDF/CSV aging/statement should match API totals + as-of semantics)
+- [ready] M2-S9 closed-period mutation abuse matrix for settlement replay and allocation races
+- [ready] M9-S4 accounting query hotspot + index-check under replay workload
+- [ready] M5-S3 dispatch/invoice/accounting exact-link invariant sweep (including backorder cancel status semantics)
+- [ready] M6-S8 duplicate idempotency helper consolidation map for receipt/split/payment/settlement paths
+- [ready] M4-S6 aging/statement performance guard (repository-level prefiltering to avoid full-ledger scans)

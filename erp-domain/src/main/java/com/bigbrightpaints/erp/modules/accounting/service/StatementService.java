@@ -311,14 +311,14 @@ public class StatementService {
                 if (from > to) {
                     throw invalidBucketFormat(bucketParam);
                 }
-                if (previousUpperBound != null && from <= previousUpperBound) {
+                if (previousUpperBound != null && from < previousUpperBound) {
                     throw invalidBucketFormat(bucketParam);
                 }
                 previousUpperBound = to;
                 buckets.add(new int[]{from, to});
             } else {
                 int from = parseBucketBound(trimmed, bucketParam);
-                if (previousUpperBound != null && from <= previousUpperBound) {
+                if (previousUpperBound != null && from < previousUpperBound) {
                     throw invalidBucketFormat(bucketParam);
                 }
                 if (i != parts.length - 1) {
