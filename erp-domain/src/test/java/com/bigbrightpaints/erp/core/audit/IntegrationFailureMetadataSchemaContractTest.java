@@ -99,7 +99,24 @@ class IntegrationFailureMetadataSchemaContractTest {
                 .logFailure(eq(AuditEvent.INTEGRATION_FAILURE), metadataCaptor.capture());
         List<Map<String, String>> emittedMetadata = metadataCaptor.getAllValues();
         assertThat(emittedMetadata).hasSize(2);
-        emittedMetadata.forEach(this::assertRequiredSchema);
+        assertThat(emittedMetadata)
+                .anySatisfy(metadata -> {
+                    assertRequiredSchema(metadata);
+                    assertThat(metadata)
+                            .containsEntry("category", "request-parse")
+                            .containsEntry("failureCode", IntegrationFailureAlertRoutingPolicy.MALFORMED_REQUEST_FAILURE_CODE)
+                            .containsEntry("errorCategory", "VALIDATION")
+                            .containsEntry("requestPath", "/api/v1/accounting/settlements/suppliers");
+                });
+        assertThat(emittedMetadata)
+                .anySatisfy(metadata -> {
+                    assertRequiredSchema(metadata);
+                    assertThat(metadata)
+                            .containsEntry("category", "settlement-failure")
+                            .containsEntry("failureCode", IntegrationFailureAlertRoutingPolicy.SETTLEMENT_OPERATION_FAILURE_CODE)
+                            .containsEntry("errorCategory", "VALIDATION")
+                            .containsEntry("settlementType", "DEALER");
+                });
     }
 
     private void assertRequiredSchema(Map<String, String> metadata) {
