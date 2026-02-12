@@ -54,7 +54,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     private boolean isProductionMode() {
         if (activeProfile == null || activeProfile.isBlank()) {
-            return false;
+            return true;
         }
         for (String profile : activeProfile.split(",")) {
             String normalized = profile.trim();

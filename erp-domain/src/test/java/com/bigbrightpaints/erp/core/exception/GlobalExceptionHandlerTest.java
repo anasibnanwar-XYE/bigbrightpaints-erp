@@ -60,6 +60,24 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    void blankProfilesFailClosedAndHideDetails() throws Exception {
+        GlobalExceptionHandler handler = new GlobalExceptionHandler();
+        setActiveProfile(handler, "   ");
+
+        ApplicationException ex = new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "invalid")
+                .withDetail("field", "value");
+
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRequestURI("/api/test");
+
+        ResponseEntity<ApiResponse<Map<String, Object>>> response = handler.handleApplicationException(ex, request);
+
+        ApiResponse<Map<String, Object>> body = response.getBody();
+        assertThat(body).isNotNull();
+        assertThat(body.data()).doesNotContainKey("details");
+    }
+
+    @Test
     void illegalArgumentInProductionReturnsReadableReason() throws Exception {
         GlobalExceptionHandler handler = new GlobalExceptionHandler();
         setActiveProfile(handler, "prod,seed");

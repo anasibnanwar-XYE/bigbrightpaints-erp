@@ -17,9 +17,6 @@ fi
 echo "Checking health..."
 curl -fsS "${MGMT_URL}/actuator/health" >/dev/null
 
-echo "Checking API docs..."
-curl -fsS "${BASE_URL}/v3/api-docs" >/dev/null
-
 echo "Checking authenticated profile..."
 login_payload=$(printf '{"email":"%s","password":"%s","companyCode":"%s"}' \
   "${ERP_SMOKE_EMAIL}" "${ERP_SMOKE_PASSWORD}" "${ERP_SMOKE_COMPANY}")
@@ -38,6 +35,11 @@ if [[ -z "${token}" ]]; then
   echo "Login did not return accessToken." >&2
   exit 1
 fi
+
+echo "Checking API docs (authenticated)..."
+curl -fsS \
+  -H "Authorization: Bearer ${token}" \
+  "${BASE_URL}/v3/api-docs" >/dev/null
 
 curl -fsS \
   -H "Authorization: Bearer ${token}" \

@@ -2,7 +2,7 @@ spring:
   application:
     name: erp-domain
   profiles:
-    active: ${SPRING_PROFILES_ACTIVE:prod}
+    default: prod
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/erp_domain}
     username: ${SPRING_DATASOURCE_USERNAME:erp}

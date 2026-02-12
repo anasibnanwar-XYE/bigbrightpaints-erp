@@ -8,6 +8,7 @@ import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.context.ApplicationContext;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.test.context.TestPropertySource;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -21,6 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * These tests MUST pass before any deployment
  */
 @DisplayName("Smoke Tests - Application Startup")
+@TestPropertySource(properties = "erp.security.swagger-public=true")
 public class ApplicationSmokeTest extends AbstractIntegrationTest {
 
     @Autowired

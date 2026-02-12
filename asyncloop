@@ -625,3 +625,43 @@ Async Loop Cadence
   - convert next `ready` slice to `in_progress`
   - append at least one new `ready` slice at end of queue
   - append one dependent cross-module slice so the queue stays context-linked (not generic)
+
+Loop Update
+- 2026-02-12T07:51:12+05:30
+- tracked_now_ts: `2026-02-12T07:51:12+05:30`
+- tracked_elapsed: `05h 57m 20s`
+
+Completed Slice (Committed)
+- 2026-02-12: `ad3e5988`
+  - Security defaults hardened to fail-closed:
+    - Swagger/docs exposure defaults private.
+    - Runtime profile defaults shifted to production-safe behavior.
+    - Global exception detail exposure made production-first.
+  - Added CODE-RED regression test proving anonymous docs are blocked by default.
+  - Preserved OpenAPI snapshot test via explicit opt-in (`erp.security.swagger-public=true`).
+
+Follow-up Slice (Ready To Commit Next)
+- 2026-02-12: `[pending-commit-sha]`
+  - Prod security fixture stabilization + fail-closed profile edge hardening:
+    - Added explicit SMTP host/user test properties to prod hardening tests to satisfy prod validators.
+    - Changed runtime profile fallback from `spring.profiles.active` defaulting to `spring.profiles.default: prod` to avoid blank-env fail-open behavior.
+    - Updated `GlobalExceptionHandler` blank profile behavior to fail closed.
+    - Added regression test for blank-profile hidden-details behavior.
+    - Updated smoke test and ops smoke script so docs checks are explicit/authenticated and aligned with hardened defaults.
+  - Verification:
+    - `mvn -B -ntp -Dtest=ApplicationSmokeTest#swaggerDocumentationLoads,CR_SwaggerDefaultHardeningIT,OpenApiSnapshotIT,CR_SwaggerProdHardeningIT,CR_ActuatorProdHardeningIT,CR_InventoryGlAutomationProdOffIT,CR_OpeningStockImportProdGatingIT,CR_FinishedGoodBatchProdGatingIT,CR_HealthEndpointProdHardeningIT,CR_FactoryLegacyBatchProdGatingIT,GlobalExceptionHandlerTest test`
+    - result: pass (21 tests, 0 failures, 0 errors)
+
+Replenished Queue (Auto-Update Rule)
+- [in_progress] M1-S8 Dealer portal artifact-boundary abuse matrix
+  - probe cross-dealer invoice, aging, and document endpoints for IDOR / enumeration by path and query fuzzing.
+  - lock expected semantics (`403`/`404`) and ensure no foreign artifact metadata leaks.
+- [ready] M2-S8 Accounting period-lock + reversal abuse matrix
+  - force reversal and settlement mutation attempts in closed/locked periods.
+  - assert admin override boundaries and deterministic rejection paths.
+- [ready] M5-S2 Dispatch/invoice/accounting link invariant sweep
+  - verify exactly-once linkage across dispatch slip -> invoice -> journal -> allocation references.
+- [ready] M9-S3 Accounting list/query hotspot profiling
+  - inspect repository query plans for journal/activity/aging listings and propose only measured V2 index changes.
+- [ready] M6-S3 O2C/P2P duplicate-rule consolidation scan
+  - identify diverged duplicate business rules across service/controller layers and collapse highest-risk duplicate path.
