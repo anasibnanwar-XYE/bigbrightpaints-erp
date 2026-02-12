@@ -455,19 +455,30 @@ Commit Ledger
     - `mvn -B -ntp -Dtest=IntegrationFailureMetadataSchemaContractTest,GlobalExceptionHandlerTest,IntegrationFailureAlertRoutingPolicyTest,AccountingServiceTest,AccountingEventTrailAlertRoutingPolicyTest,JournalEntryE2ETest,SettlementE2ETest,IntegrationCoordinatorTest,CommandDispatcherTest,AuditServiceTest,AuditServiceAsyncIT,CompanyContextTaskDecoratorTest,AuthServiceAuditAttributionTest test`
   - Subagent review:
     - `019c4f54-353c-7372-ab9b-d2d05bc02a89` (running)
+- 2026-02-12: `e5604107`
+  - Strengthened integration-failure metadata schema contract with producer-specific assertions.
+  - Closed medium review gap where aggregate-only assertions could mask single producer dropout.
+  - Verified:
+    - `mvn -B -ntp -Dtest=IntegrationFailureMetadataSchemaContractTest,GlobalExceptionHandlerTest test`
+  - Subagent review:
+    - `019c4f56-7141-7ac1-aa2c-1c180b5a4d99` (status polling timed out; follow-up tracked in active loop)
 
 Current Checkpoint
-- Current WIP M2-S12 completion (producer-specific schema contract closure):
-  - `erp-domain/src/test/java/com/bigbrightpaints/erp/core/audit/IntegrationFailureMetadataSchemaContractTest.java`
-    - strengthened global-exception contract assertions to ensure both producers emit independently:
-      - malformed-request producer (`category=request-parse`, malformed failure code, expected path)
-      - settlement-failure producer (`category=settlement-failure`, settlement failure code, settlement type)
-    - closes medium review gap where aggregate count-only checks could mask producer dropout.
+- Current WIP M0-S6 (auth audit token trust-boundary hardening):
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/core/audit/AuditService.java`
+    - split company token resolution by source trust:
+      - auth override token: resolve by company code only (no numeric id fallback)
+      - ambient runtime context token: keep backward-compatible numeric-id fallback
+    - closes high exploit path where attacker-supplied numeric auth token could bind audit events to existing tenant ids.
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/core/audit/AuditServiceTest.java`
+    - added regression coverage for:
+      - auth failure unknown numeric company token does not fallback to raw id
+      - auth success unknown numeric company token does not fallback to raw id
+      - runtime context numeric code/id collision remains code-first
 - Verification command:
-  - `mvn -B -ntp -Dtest=IntegrationFailureMetadataSchemaContractTest,GlobalExceptionHandlerTest test`
-  - `mvn -B -ntp -Dtest=IntegrationFailureMetadataSchemaContractTest,GlobalExceptionHandlerTest,IntegrationFailureAlertRoutingPolicyTest,AccountingServiceTest,AccountingEventTrailAlertRoutingPolicyTest,JournalEntryE2ETest,SettlementE2ETest,IntegrationCoordinatorTest,CommandDispatcherTest,AuditServiceTest,AuditServiceAsyncIT,CompanyContextTaskDecoratorTest,AuthServiceAuditAttributionTest test`
+  - `mvn -B -ntp -Dtest=AuditServiceTest,AuditServiceAsyncIT,AuthServiceAuditAttributionTest test`
 - Next action:
-  - commit M2-S12 producer-specific schema contract hardening
+  - commit M0-S6 auth token trust-boundary hardening
   - run `codex review --commit <sha>`
   - start M5-S1 inventory-manufacturing-dispatch invariant audit (cross-module posting and stock/dispatch abuse paths)
 

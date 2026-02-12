@@ -141,7 +141,6 @@ class AuditServiceTest {
     @Test
     void logAuthFailure_unknownNumericCompanyCodeDoesNotPersistPhantomCompanyId() {
         when(companyRepository.findByCodeIgnoreCase("404")).thenReturn(Optional.empty());
-        when(companyRepository.findById(404L)).thenReturn(Optional.empty());
 
         auditService.logAuthFailure(
                 AuditEvent.LOGIN_FAILURE,
@@ -154,6 +153,58 @@ class AuditServiceTest {
         AuditLog saved = auditCaptor.getValue();
         assertThat(saved.getCompanyId()).isNull();
         assertThat(saved.getMetadata()).containsEntry("reason", "unknown-numeric-company");
+        verify(companyRepository, never()).findById(404L);
+    }
+
+    @Test
+    void logAuthFailure_unknownNumericCompanyCodeDoesNotFallbackToNumericCompanyId() {
+        when(companyRepository.findByCodeIgnoreCase("404")).thenReturn(Optional.empty());
+        when(companyRepository.findById(404L)).thenReturn(Optional.of(companyWithId(404L, "LEGACY-404")));
+
+        auditService.logAuthFailure(
+                AuditEvent.LOGIN_FAILURE,
+                "numeric-miss-user",
+                "404",
+                Map.of("reason", "unknown-numeric-company"));
+
+        ArgumentCaptor<AuditLog> auditCaptor = ArgumentCaptor.forClass(AuditLog.class);
+        verify(auditLogRepository).save(auditCaptor.capture());
+        AuditLog saved = auditCaptor.getValue();
+        assertThat(saved.getCompanyId()).isNull();
+        verify(companyRepository, never()).findById(404L);
+    }
+
+    @Test
+    void logAuthSuccess_unknownNumericCompanyCodeDoesNotFallbackToNumericCompanyId() {
+        when(companyRepository.findByCodeIgnoreCase("505")).thenReturn(Optional.empty());
+        when(companyRepository.findById(505L)).thenReturn(Optional.of(companyWithId(505L, "LEGACY-505")));
+
+        auditService.logAuthSuccess(
+                AuditEvent.LOGIN_SUCCESS,
+                "numeric-success-user",
+                "505",
+                Map.of("authChannel", "password"));
+
+        ArgumentCaptor<AuditLog> auditCaptor = ArgumentCaptor.forClass(AuditLog.class);
+        verify(auditLogRepository).save(auditCaptor.capture());
+        AuditLog saved = auditCaptor.getValue();
+        assertThat(saved.getCompanyId()).isNull();
+        assertThat(saved.getMetadata()).containsEntry("authChannel", "password");
+        verify(companyRepository, never()).findById(505L);
+    }
+
+    @Test
+    void logEvent_numericRuntimeContextPrefersCodeOnCodeIdCollision() {
+        CompanyContextHolder.setCompanyCode("1001");
+        when(companyRepository.findByCodeIgnoreCase("1001")).thenReturn(Optional.of(companyWithId(77L, "1001")));
+
+        auditService.logEvent(AuditEvent.DATA_READ, AuditStatus.SUCCESS, Map.of("source", "runtime-collision"));
+
+        ArgumentCaptor<AuditLog> auditCaptor = ArgumentCaptor.forClass(AuditLog.class);
+        verify(auditLogRepository).save(auditCaptor.capture());
+        AuditLog saved = auditCaptor.getValue();
+        assertThat(saved.getCompanyId()).isEqualTo(77L);
+        verify(companyRepository, never()).findById(1001L);
     }
 
     @Test

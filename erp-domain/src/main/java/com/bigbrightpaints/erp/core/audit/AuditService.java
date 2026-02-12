@@ -107,18 +107,22 @@ public class AuditService {
 
             // Add company context
             String companyToken;
+            boolean allowNumericIdFallback;
             if (AUTH_COMPANY_UNRESOLVED_SENTINEL.equals(companyCodeOverride)) {
                 companyToken = null;
+                allowNumericIdFallback = false;
             } else if (companyCodeOverride != null && !companyCodeOverride.isBlank()) {
                 companyToken = companyCodeOverride;
+                allowNumericIdFallback = false;
             } else {
                 companyToken = CompanyContextHolder.getCompanyCode();
+                allowNumericIdFallback = true;
             }
-            Long companyId = resolveCompanyId(companyToken);
+            Long companyId = resolveCompanyId(companyToken, allowNumericIdFallback);
             if (companyId != null) {
                 builder.companyId(companyId);
             } else if (companyToken != null) {
-                logger.warn("Invalid company identifier format: {}", companyToken);
+                logger.warn("Unable to resolve company token: {}", companyToken);
             }
 
             if (requestContext != null && !requestContext.isEmpty()) {
@@ -194,7 +198,7 @@ public class AuditService {
         return context;
     }
 
-    private Long resolveCompanyId(String companyToken) {
+    private Long resolveCompanyId(String companyToken, boolean allowNumericIdFallback) {
         if (companyToken == null || companyToken.isBlank()) {
             return null;
         }
@@ -202,6 +206,9 @@ public class AuditService {
         Company byCode = companyRepository.findByCodeIgnoreCase(normalizedToken).orElse(null);
         if (byCode != null) {
             return byCode.getId();
+        }
+        if (!allowNumericIdFallback) {
+            return null;
         }
         try {
             Long parsedId = Long.parseLong(normalizedToken);
