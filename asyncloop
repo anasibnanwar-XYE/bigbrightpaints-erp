@@ -17,10 +17,18 @@ Non-Stop Operating Rules
 - DB migration policy (mandatory): use Flyway V2 only (`classpath:db/migration_v2`, table `flyway_schema_history_v2`) for all new schema/index fixes.
 - No legacy migration additions while in this loop.
 
+Cross-Agent Continuation Contract (If Any Agent Handoffs Here)
+- Read this file first, then resume the latest `in_progress` slice without waiting for new prompts.
+- Do not reset the queue; continue from the latest checkpoint and keep backlog floor >= 3 `ready` slices.
+- If a user asks a question mid-loop, answer it briefly, then continue execution immediately.
+- Only use subagents for post-commit review; all audit/debug/fix work remains in the main agent.
+- Before ending a turn, append: what changed, what was verified, current `in_progress`, and next replenished slices.
+- Never claim completion unless completion gates in this file are satisfied with evidence.
+
 Runtime Tracking
 - tracked_start_ts: `2026-02-12T01:53:52+05:30` (first immutable async-loop commit marker)
-- tracked_now_ts: `2026-02-12T07:38:25+05:30`
-- tracked_elapsed: `5h 44m 33s`
+- tracked_now_ts: `2026-02-12T12:41:29+05:30`
+- tracked_elapsed: `10h 47m 37s`
 
 Completion Gates (Required For "Safe To Deploy" Claim)
 - No known critical/high security issues in auth/RBAC/tenant isolation/data exposure.
@@ -695,3 +703,30 @@ Queue Rotation (Auto-Replenish)
 - [ready] M9-S3 Accounting list/query hotspot profiling
 - [ready] M6-S3 O2C/P2P duplicate-rule consolidation scan
 - [ready] M2-S9 Settlement replay + closed-period mutation matrix (dealer + supplier)
+
+Loop Update
+- 2026-02-12T12:41:29+05:30
+- tracked_now_ts: `2026-02-12T12:41:29+05:30`
+- tracked_elapsed: `10h 47m 37s`
+
+Completed Slice (Commit In Progress)
+- 2026-02-12: `[pending-commit-sha]`
+  - M2-S8b period-reopen reversal boundary hardening:
+    - Added scoped internal override context for journal date-override authority during system-driven period-reopen reversals.
+    - This prevents reopen auto-reversal failures for historical periods when caller has `ROLE_ACCOUNTING` but not `ROLE_ADMIN`.
+    - Change is localized to reversal call path (`createJournalEntryForReversal(...)`) and does not alter normal manual posting authorization.
+  - M2-S8c regression coverage:
+    - Added E2E case: old-period close + reopen by accounting-only user succeeds and clears closing journal linkage.
+    - Extended period-close IT helper auth flow to support role-specific test users.
+  - Verification:
+    - `mvn -B -ntp -Dtest=PeriodCloseLockIT#reopenOldClosedPeriod_allowsAccountingRoleWithAutoReversal test` -> pass.
+    - `mvn -B -ntp -Dtest=AccountingServiceTest#reverseJournalEntry_rejectsLockedPeriod+reverseJournalEntry_rejectsClosedPeriodWithoutOverride+reverseJournalEntry_logsSuccessAudit_afterCommitOnly+reverseJournalEntry_skipsSuccessAudit_whenTransactionRollsBack test` -> pass.
+    - Note: full `PeriodCloseLockIT` class has pre-existing unrelated failures (`closePeriodRejectsUninvoicedReceipts`, `reversalBlockedWhenPeriodClosed`) and remains tracked outside this slice.
+
+Queue Rotation (Auto-Replenish)
+- [completed] M2-S8b period-reopen reversal boundary hardening
+- [completed] M2-S8c old-period reopen regression lock-in
+- [in_progress] M6-S3 Duplicate posting path audit across receipts/settlements/manual-journal mapping
+- [ready] M4-S3 Statement/Aging/Report source consistency and settlement linkage checks
+- [ready] M9-S3 Duplicate service/controller rule map for posting workflows (canonicalization targets)
+- [ready] M2-S9 Closed-period mutation abuse matrix for settlements and allocation replay

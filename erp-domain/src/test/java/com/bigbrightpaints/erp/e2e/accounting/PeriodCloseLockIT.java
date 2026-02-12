@@ -36,6 +36,8 @@ class PeriodCloseLockIT extends AbstractIntegrationTest {
     private static final String COMPANY_CODE = "PERIOD";
     private static final String ADMIN_EMAIL = "period-admin@bbp.com";
     private static final String ADMIN_PASSWORD = "period123";
+    private static final String ACCOUNTING_EMAIL = "period-accounting@bbp.com";
+    private static final String ACCOUNTING_PASSWORD = "periodacct123";
 
     @Autowired private TestRestTemplate rest;
     @Autowired private CompanyRepository companyRepository;
@@ -46,6 +48,7 @@ class PeriodCloseLockIT extends AbstractIntegrationTest {
     @Autowired private GoodsReceiptRepository goodsReceiptRepository;
 
     private HttpHeaders headers;
+    private HttpHeaders accountingHeaders;
     private Company company;
     private Account revenue;
     private Account expense;
@@ -55,8 +58,11 @@ class PeriodCloseLockIT extends AbstractIntegrationTest {
     void setup() {
         dataSeeder.ensureUser(ADMIN_EMAIL, ADMIN_PASSWORD, "Period Admin", COMPANY_CODE,
                 List.of("ROLE_ADMIN", "ROLE_ACCOUNTING"));
+        dataSeeder.ensureUser(ACCOUNTING_EMAIL, ACCOUNTING_PASSWORD, "Period Accountant", COMPANY_CODE,
+                List.of("ROLE_ACCOUNTING"));
         company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
         headers = authHeaders();
+        accountingHeaders = authHeaders(ACCOUNTING_EMAIL, ACCOUNTING_PASSWORD, COMPANY_CODE);
         revenue = ensureAccount("REV-TEST", "Test Revenue", AccountType.REVENUE);
         expense = ensureAccount("EXP-TEST", "Test Expense", AccountType.EXPENSE);
         cash = ensureAccount("CASH-TEST", "Cash", AccountType.ASSET);
@@ -250,6 +256,52 @@ class PeriodCloseLockIT extends AbstractIntegrationTest {
         assertThat(reopenResp.getBody().get("message").toString()).containsIgnoringCase("reason");
     }
 
+    @Test
+    @DisplayName("Accounting role can reopen old closed period with auto-reversal")
+    void reopenOldClosedPeriod_allowsAccountingRoleWithAutoReversal() {
+        LocalDate today = TestDateUtils.safeDate(company);
+        LocalDate oldPeriodDate = today.minusMonths(3);
+        oldPeriodDate = oldPeriodDate.withDayOfMonth(Math.min(15, oldPeriodDate.lengthOfMonth()));
+        LocalDate revenueDate = oldPeriodDate.withDayOfMonth(Math.max(1, oldPeriodDate.getDayOfMonth() - 2));
+        LocalDate expenseDate = oldPeriodDate.withDayOfMonth(Math.max(1, oldPeriodDate.getDayOfMonth() - 1));
+
+        postJournalWithOverride(revenueDate,
+                List.of(
+                        line(cash.getId(), new BigDecimal("100.00"), BigDecimal.ZERO),
+                        line(revenue.getId(), BigDecimal.ZERO, new BigDecimal("100.00"))
+                ),
+                true,
+                headers);
+        postJournalWithOverride(expenseDate,
+                List.of(
+                        line(expense.getId(), new BigDecimal("25.00"), BigDecimal.ZERO),
+                        line(cash.getId(), BigDecimal.ZERO, new BigDecimal("25.00"))
+                ),
+                true,
+                headers);
+
+        Long periodId = currentPeriodId(oldPeriodDate);
+        ResponseEntity<Map> closeResp = rest.exchange(
+                "/api/v1/accounting/periods/" + periodId + "/close",
+                HttpMethod.POST,
+                new HttpEntity<>(Map.of("note", "Old period close", "force", true), headers),
+                Map.class);
+        assertThat(closeResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> closed = (Map<String, Object>) closeResp.getBody().get("data");
+        assertThat(closed.get("status")).isEqualTo("CLOSED");
+        assertThat(closed.get("closingJournalEntryId")).isNotNull();
+
+        ResponseEntity<Map> reopenResp = rest.exchange(
+                "/api/v1/accounting/periods/" + periodId + "/reopen",
+                HttpMethod.POST,
+                new HttpEntity<>(Map.of("reason", "Historical correction"), accountingHeaders),
+                Map.class);
+        assertThat(reopenResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> reopened = (Map<String, Object>) reopenResp.getBody().get("data");
+        assertThat(reopened.get("status")).isEqualTo("OPEN");
+        assertThat(reopened.get("closingJournalEntryId")).isNull();
+    }
+
     private Map<String, Object> line(Long accountId, BigDecimal debit, BigDecimal credit) {
         return Map.of(
                 "accountId", accountId,
@@ -260,14 +312,21 @@ class PeriodCloseLockIT extends AbstractIntegrationTest {
     }
 
     private Long postJournal(LocalDate date, List<Map<String, Object>> lines) {
+        return postJournalWithOverride(date, lines, false, headers);
+    }
+
+    private Long postJournalWithOverride(LocalDate date,
+                                         List<Map<String, Object>> lines,
+                                         boolean adminOverride,
+                                         HttpHeaders requestHeaders) {
         ResponseEntity<Map> resp = rest.exchange("/api/v1/accounting/journal-entries",
                 HttpMethod.POST,
                 new HttpEntity<>(Map.of(
                         "entryDate", date,
                         "memo", "Seed P&L",
-                        "adminOverride", false,
+                        "adminOverride", adminOverride,
                         "lines", lines
-                ), headers),
+                ), requestHeaders),
                 Map.class);
         assertThat(resp.getStatusCode()).as("Journal posting should succeed: " + resp.getBody()).isEqualTo(HttpStatus.OK);
         return ((Number) ((Map<?, ?>) resp.getBody().get("data")).get("id")).longValue();
@@ -348,10 +407,14 @@ class PeriodCloseLockIT extends AbstractIntegrationTest {
     }
 
     private HttpHeaders authHeaders() {
+        return authHeaders(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY_CODE);
+    }
+
+    private HttpHeaders authHeaders(String email, String password, String companyCode) {
         Map<String, Object> req = Map.of(
-                "email", ADMIN_EMAIL,
-                "password", ADMIN_PASSWORD,
-                "companyCode", COMPANY_CODE
+                "email", email,
+                "password", password,
+                "companyCode", companyCode
         );
         ResponseEntity<Map> login = rest.postForEntity("/api/v1/auth/login", req, Map.class);
         assertThat(login.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -359,7 +422,7 @@ class PeriodCloseLockIT extends AbstractIntegrationTest {
         HttpHeaders h = new HttpHeaders();
         h.setBearerAuth(token);
         h.setContentType(MediaType.APPLICATION_JSON);
-        h.set("X-Company-Id", COMPANY_CODE);
+        h.set("X-Company-Id", companyCode);
         return h;
     }
 }

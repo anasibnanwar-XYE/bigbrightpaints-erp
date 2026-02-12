@@ -81,6 +81,7 @@ public class AccountingService {
     private static final BigDecimal ALLOCATION_TOLERANCE = new BigDecimal("0.01");
     private static final Duration IDEMPOTENCY_WAIT_TIMEOUT = Duration.ofSeconds(8);
     private static final long IDEMPOTENCY_WAIT_SLEEP_MS = 50L;
+    private static final ThreadLocal<Boolean> SYSTEM_ENTRY_DATE_OVERRIDE = ThreadLocal.withInitial(() -> Boolean.FALSE);
     private static final int ACCOUNTING_EVENT_JOURNAL_REFERENCE_MAX_LENGTH = 100;
     private static final int ACCOUNTING_EVENT_ACCOUNT_CODE_MAX_LENGTH = 50;
     private static final int ACCOUNTING_EVENT_DESCRIPTION_MAX_LENGTH = 500;
@@ -721,7 +722,7 @@ public class AccountingService {
         );
         if (request != null && request.voidOnly()) {
             Instant now = CompanyTime.now(company);
-            JournalEntryDto reversalDto = createJournalEntry(payload);
+            JournalEntryDto reversalDto = createJournalEntryForReversal(payload, allowClosedPeriodOverride);
             JournalEntry reversalEntry = companyEntityLookup.requireJournalEntry(company, reversalDto.id());
             reversalEntry.setReversalOf(entry);
             reversalEntry.setAccountingPeriod(postingPeriod);
@@ -757,7 +758,7 @@ public class AccountingService {
             logAuditSuccessAfterCommit(AuditEvent.JOURNAL_ENTRY_REVERSED, auditMetadata);
             return toDto(reversalEntry);
         }
-        JournalEntryDto reversalDto = createJournalEntry(payload);
+        JournalEntryDto reversalDto = createJournalEntryForReversal(payload, allowClosedPeriodOverride);
         JournalEntry reversalEntry = companyEntityLookup.requireJournalEntry(company, reversalDto.id());
         reversalEntry.setReversalOf(entry);
         reversalEntry.setAccountingPeriod(postingPeriod);
@@ -3106,7 +3107,27 @@ public class AccountingService {
         }
     }
 
+    private JournalEntryDto createJournalEntryForReversal(JournalEntryRequest payload, boolean allowClosedPeriodOverride) {
+        if (!allowClosedPeriodOverride) {
+            return createJournalEntry(payload);
+        }
+        Boolean previous = SYSTEM_ENTRY_DATE_OVERRIDE.get();
+        SYSTEM_ENTRY_DATE_OVERRIDE.set(Boolean.TRUE);
+        try {
+            return createJournalEntry(payload);
+        } finally {
+            if (Boolean.TRUE.equals(previous)) {
+                SYSTEM_ENTRY_DATE_OVERRIDE.set(Boolean.TRUE);
+            } else {
+                SYSTEM_ENTRY_DATE_OVERRIDE.remove();
+            }
+        }
+    }
+
     private boolean hasEntryDateOverrideAuthority() {
+        if (Boolean.TRUE.equals(SYSTEM_ENTRY_DATE_OVERRIDE.get())) {
+            return true;
+        }
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null || authentication.getAuthorities() == null) {
             return false;
