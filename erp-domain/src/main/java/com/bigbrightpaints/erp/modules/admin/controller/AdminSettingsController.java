@@ -94,10 +94,7 @@ public class AdminSettingsController {
         List<AdminApprovalItemDto> payrollApprovals = payrollRunRepository
                 .findByCompanyAndStatusOrderByCreatedAtDesc(company, PayrollRun.PayrollStatus.CALCULATED)
                 .stream()
-                .map(pr -> approvalItem("PAYROLL_RUN", pr.getId(), pr.getPublicId(),
-                        pr.getRunNumber(), pr.getStatus().name(),
-                        pr.getRunType().name() + " " + pr.getPeriodStart() + " - " + pr.getPeriodEnd(),
-                        pr.getCreatedAt()))
+                .map(this::toPayrollApprovalItem)
                 .toList();
 
         AdminApprovalsResponse response = new AdminApprovalsResponse(creditApprovals, payrollApprovals);
@@ -110,10 +107,11 @@ public class AdminSettingsController {
     }
 
     private AdminApprovalItemDto toCreditRequestApprovalItem(CreditRequest request) {
+        String reference = "CR-" + request.getId();
         String dealerLabel = request.getDealer() != null && StringUtils.hasText(request.getDealer().getName())
                 ? request.getDealer().getName()
                 : "Unknown dealer";
-        String summary = "Approve credit-limit increase for " + dealerLabel
+        String summary = "Approve dealer credit-limit increase request " + reference + " for " + dealerLabel
                 + " amount " + toAmountString(request.getAmountRequested());
         if (StringUtils.hasText(request.getReason())) {
             summary = summary + " (reason: " + request.getReason().trim() + ")";
@@ -122,7 +120,7 @@ public class AdminSettingsController {
                 "CREDIT_REQUEST",
                 request.getId(),
                 request.getPublicId(),
-                "CR-" + request.getId(),
+                reference,
                 request.getStatus(),
                 summary,
                 request.getCreatedAt()
@@ -130,10 +128,11 @@ public class AdminSettingsController {
     }
 
     private AdminApprovalItemDto toCreditOverrideApprovalItem(CreditLimitOverrideRequest request) {
+        String reference = overrideReference(request);
         String dealerLabel = request.getDealer() != null && StringUtils.hasText(request.getDealer().getName())
                 ? request.getDealer().getName()
                 : "Unknown dealer";
-        String summary = "Approve dispatch credit override for " + dealerLabel
+        String summary = "Approve dispatch credit override request " + reference + " for " + dealerLabel
                 + ": dispatch " + toAmountString(request.getDispatchAmount())
                 + ", exposure " + toAmountString(request.getCurrentExposure())
                 + ", limit " + toAmountString(request.getCreditLimit())
@@ -145,10 +144,27 @@ public class AdminSettingsController {
                 "CREDIT_LIMIT_OVERRIDE_REQUEST",
                 request.getId(),
                 request.getPublicId(),
-                overrideReference(request),
+                reference,
                 request.getStatus(),
                 summary,
                 request.getCreatedAt()
+        );
+    }
+
+    private AdminApprovalItemDto toPayrollApprovalItem(PayrollRun run) {
+        String reference = StringUtils.hasText(run.getRunNumber())
+                ? run.getRunNumber()
+                : "PR-" + run.getId();
+        String summary = "Approve payroll run " + reference
+                + " (" + run.getRunType().name() + " " + run.getPeriodStart() + " - " + run.getPeriodEnd() + ")";
+        return approvalItem(
+                "PAYROLL_RUN",
+                run.getId(),
+                run.getPublicId(),
+                reference,
+                run.getStatus().name(),
+                summary,
+                run.getCreatedAt()
         );
     }
 

@@ -165,6 +165,8 @@ Purpose: a single place to action admin-only approvals and hand off to accountin
       - reject: `POST /api/v1/credit/override-requests/{id}/reject`
       - `reference` preference: slip number -> sales order number -> `CLO-<id>` fallback.
     - UI must route actions by `type` and not assume all `creditRequests[]` rows share one approval endpoint.
+    - Use `summary` as the admin-facing action sentence (it now states the exact approval intent and target reference).
+    - `reference` is display-only; action APIs must use `item.id` path params for approve/reject calls.
   - Actions depend on where the approval is implemented:
     - Credit limit overrides:
       - API: `GET /api/v1/credit/override-requests`
