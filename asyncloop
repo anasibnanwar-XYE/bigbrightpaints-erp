@@ -1695,3 +1695,69 @@ Queue Rotation (Auto-Replenish)
 - [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
 - [ready] M6-S9 unify partner journal-line idempotency assertion helpers to reduce drift across receipt/settlement validations
 - [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
+
+Completed Slice (Committed)
+- 2026-02-12: `6ccc3214`
+  - perf(accounting): add replay hotspot indexes for settlement allocations.
+  - Added Flyway V2 migration `V10__accounting_replay_hotspot_indexes.sql` with:
+    - `idx_partner_settlement_company_journal_created_id`
+    - `idx_partner_settlement_idem_ci_created_id`
+  - Verification:
+    - `bash scripts/flyway_overlap_scan.sh --migration-set v2` -> pass (11 migrations, findings=0).
+    - `bash scripts/schema_drift_scan.sh --migration-set v2` -> known existing drift-generator output in `V7` (`CREATE ... IF NOT EXISTS`), script exit 0.
+
+Post-Commit Review Evidence
+- Commit reviewed: `6ccc3214`
+- Review subagent `019c51da-2f1f-7ef2-9be1-f5376a1ac13b`:
+  - medium findings:
+    - redundant idempotency covering index risk (`idx_partner_settlement_idem_ci_created_id`),
+    - migration lock/write-amplification caution.
+  - disposition: addressed in follow-up chain (`63526ede` then checksum-safe correction `4485c047`).
+
+Completed Slice (Committed)
+- 2026-02-12: `63526ede`
+  - fix(perf): drop redundant replay idempotency index from V10.
+  - Follow-up attempted to remove redundant index directly from `V10`.
+
+Post-Commit Review Evidence
+- Commit reviewed: `63526ede`
+- `codex review --commit 63526ede`:
+  - finding: P1 checksum-risk from editing previously introduced Flyway versioned migration (`V10`).
+- Review subagent `019c51e4-5ad6-7790-a4c7-ccc0421f58a8`:
+  - critical/high findings echoed checksum immutability risk and replay-path index-shape caution.
+  - disposition: fixed by `4485c047` (restored V10 content and moved cleanup to new `V11` migration).
+
+Completed Slice (Committed)
+- 2026-02-12: `4485c047`
+  - fix(perf): preserve V10 checksum and add V11 replay index cleanup.
+  - Restored `V10__accounting_replay_hotspot_indexes.sql` to original content and added forward migration:
+    - `V11__accounting_replay_index_cleanup.sql` (`DROP INDEX IF EXISTS public.idx_partner_settlement_idem_ci_created_id`).
+  - Verification:
+    - `git diff --exit-code 6ccc3214 -- erp-domain/src/main/resources/db/migration_v2/V10__accounting_replay_hotspot_indexes.sql` -> exit 0 (current V10 matches original introducing content).
+    - `bash scripts/flyway_overlap_scan.sh --migration-set v2` -> pass (11 migrations, findings=0).
+    - `bash scripts/schema_drift_scan.sh --migration-set v2` -> known existing `V7` drift-generator output, script exit 0.
+
+Post-Commit Review Evidence
+- Commit reviewed: `4485c047`
+- `codex review --commit 4485c047`:
+  - finding: P1 checksum-mismatch warning when viewing commit in isolation.
+  - disposition: resolved in chain context by proving HEAD V10 byte-content matches original `6ccc3214`; no further edits to V10 allowed.
+- Review subagent `019c51de-d00a-7052-84e8-bec4a2dce791`:
+  - high finding repeated commit-scoped checksum warning.
+  - disposition: closed with same chain validation (`V10@HEAD == V10@6ccc3214`).
+
+Loop Update
+- 2026-02-12T18:20:25+05:30
+- tracked_now_ts: `2026-02-12T18:20:25+05:30`
+- tracked_elapsed: `16h 26m 33s`
+- active_in_progress: `M5-S6 stale order-level marker reconciliation for already-drifted multi-slip records`
+
+Queue Rotation (Auto-Replenish)
+- [completed] M9-S4 accounting query hotspot + index-check under replay workload
+- [in_progress] M5-S6 stale order-level marker reconciliation for already-drifted multi-slip records
+- [ready] M4-S8 aging overcredit policy hardening decision (negative bucket clamp vs carry-forward bucket)
+- [ready] M7-S2 ledger/journal report linkage assertions (traceability from report rows to journal IDs)
+- [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
+- [ready] M6-S9 unify partner journal-line idempotency assertion helpers to reduce drift across receipt/settlement validations
+- [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
+- [ready] M10-S3 release-gate dry-run and blocker ledger sync (`scripts/verify_local.sh` + artifact sanity)
