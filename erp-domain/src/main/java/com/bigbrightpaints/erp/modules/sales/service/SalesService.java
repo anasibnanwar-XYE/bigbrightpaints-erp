@@ -1470,10 +1470,21 @@ public class SalesService {
         }
         String overrideReason = null;
         if (alreadyDispatched && hasRequestedOverrides) {
-            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
-                    "Dispatch overrides are not allowed for already dispatched slips");
-        }
-        if (!alreadyDispatched && hasRequestedOverrides) {
+            boolean hasReplayFinancialAnchor = existingInvoice != null
+                    || slip.getInvoiceId() != null
+                    || slip.getJournalEntryId() != null
+                    || order.getSalesJournalEntryId() != null;
+            if (!hasReplayFinancialAnchor) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Dispatch overrides are not allowed for already dispatched slips without existing financial markers")
+                        .withDetail("packingSlipId", slip.getId());
+            }
+            if (!StringUtils.hasText(request.overrideReason())) {
+                throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
+                        "overrideReason is required when replaying overrides for an already dispatched slip");
+            }
+            overrideReason = request.overrideReason().trim();
+        } else if (hasRequestedOverrides) {
             if (!StringUtils.hasText(request.overrideReason())) {
                 throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
                         "overrideReason is required when dispatch overrides are applied");
