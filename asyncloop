@@ -1374,3 +1374,44 @@ Queue Rotation (Auto-Replenish)
 - [ready] M4-S8 aging overcredit policy hardening decision (negative bucket clamp vs carry-forward bucket)
 - [ready] M7-S2 ledger/journal report linkage assertions (traceability from report rows to journal IDs)
 - [ready] M2-S11 settlement replay mismatch negative matrix parity check (all resolveReplayJournalEntry call sites + future-proof coverage)
+
+Post-Commit Review Evidence
+- Commit reviewed: `888a297d`
+- `codex review --commit 888a297d`:
+  - final verdict: log-only commit is correct; no actionable regressions.
+- Review subagent `019c5141-c77a-7080-a5e6-3fc80173d0a0`:
+  - findings: none (validated linkage accuracy for recorded commits/tests/queue state).
+
+Completed Slice (Committed)
+- 2026-02-12: `96355fc0`
+  - test(accounting): enforce closed-period no-mutation guards for settlements.
+  - M2-S10 guard matrix closure:
+    - added dealer-settlement stale-date test asserting old-period rejection happens before invoice settlement mutation/persistence,
+    - added supplier-settlement stale-date test asserting old-period rejection happens before purchase mutation/persistence,
+    - both tests assert allocation persistence is never attempted when entry-date validation rejects.
+  - Verification:
+    - `mvn -B -ntp -Dtest=AccountingServiceTest#settleDealerInvoices_rejectsOldSettlementDateBeforeMutation+settleSupplierInvoices_rejectsOldSettlementDateBeforeMutation test` -> pass (2 tests, 0 failures, 0 errors).
+    - `mvn -B -ntp -Dtest=AccountingServiceTest#recordDealerReceipt_dataIntegrityFallbackRepairsReferenceMapping+recordDealerReceiptSplit_dataIntegrityFallbackRepairsReferenceMapping+recordSupplierPayment_dataIntegrityFallbackRepairsReferenceMapping+settleDealerInvoices_dataIntegrityFallbackRepairsReferenceMapping+settleSupplierInvoices_dataIntegrityFallbackRepairsReferenceMapping+settleDealerInvoices_rejectsOldSettlementDateBeforeMutation+settleSupplierInvoices_rejectsOldSettlementDateBeforeMutation test` -> pass (7 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `96355fc0`
+- `codex review --commit 96355fc0`:
+  - final verdict: focused test commit validates intended closed-period guard behavior; no regressions.
+- Review subagent `019c5144-ac4d-7df3-8a39-02d189bfcc83`:
+  - findings: none.
+
+Loop Update
+- 2026-02-12T15:25:40+05:30
+- tracked_now_ts: `2026-02-12T15:25:40+05:30`
+- tracked_elapsed: `13h 31m 48s`
+- active_in_progress: `M5-S3 dispatch/invoice/accounting exact-link invariant sweep (dispatch finality + backorder cancel + double-post prevention)`
+
+Queue Rotation (Auto-Replenish)
+- [completed] M2-S10 period-close mutation guard matrix (AP/AR settlement + payment stale-date no-mutation paths)
+- [in_progress] M5-S3 dispatch/invoice/accounting exact-link invariant sweep (dispatch finality + backorder cancel + double-post prevention)
+- [ready] M6-S8 duplicate idempotency helper consolidation map for receipt/split/payment/settlement paths
+- [ready] M9-S4 accounting query hotspot + index-check under replay workload
+- [ready] M4-S8 aging overcredit policy hardening decision (negative bucket clamp vs carry-forward bucket)
+- [ready] M7-S2 ledger/journal report linkage assertions (traceability from report rows to journal IDs)
+- [ready] M2-S11 settlement replay mismatch negative matrix parity check (all resolveReplayJournalEntry call sites + future-proof coverage)
+- [ready] M5-S4 dispatch duplicate-invoice and COGS repost abuse scan (SalesService + InvoiceService cross-check)
