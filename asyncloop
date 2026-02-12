@@ -1190,3 +1190,131 @@ Queue Rotation (Auto-Replenish)
 - [ready] M5-S3 dispatch/invoice/accounting exact-link invariant sweep (including backorder cancel status semantics)
 - [ready] M6-S8 duplicate idempotency helper consolidation map for receipt/split/payment/settlement paths
 - [ready] M4-S8 aging overcredit policy hardening decision (negative bucket clamp vs carry-forward bucket)
+
+Completed Slice (Committed)
+- 2026-02-12: `9c9f7ad9`
+  - test(reports): assert PDF content parity with statement and aging payloads.
+  - Added PDF text extraction assertions for statement/aging endpoints and tied checks to core payload markers.
+  - Verification:
+    - `mvn -B -ntp -Dtest=StatementServiceTest test` -> pass (15 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `9c9f7ad9`
+- `codex review --commit 9c9f7ad9`:
+  - no actionable regressions in implementation.
+- Review subagent `019c511b-0594-7dc3-95ae-40af7c4a959d`:
+  - flagged residual brittleness: raw `BigDecimal.toString()` matching could cause false failures.
+
+Completed Slice (Committed)
+- 2026-02-12: `fc85ef56`
+  - test(reports): bind PDF assertions to computed statement and aging payloads.
+  - Switched tests to assert values from computed API payload objects rather than fixture literals.
+  - Verification:
+    - `mvn -B -ntp -Dtest=StatementServiceTest test` -> pass (15 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `fc85ef56`
+- `codex review --commit fc85ef56`:
+  - no actionable regression found.
+- Review subagent `019c511d-a72c-78e0-90f0-dc46537846ad`:
+  - flagged medium risk: global numeric-token checks could mask row-level regressions.
+
+Completed Slice (Committed)
+- 2026-02-12: `19218eed`
+  - test(reports): make PDF parity assertions resilient to numeric formatting.
+  - Replaced raw numeric string `contains` checks with numeric token comparison path.
+  - Verification:
+    - `mvn -B -ntp -Dtest=StatementServiceTest test` -> pass.
+
+Post-Commit Review Evidence
+- Commit reviewed: `19218eed`
+- `codex review --commit 19218eed`:
+  - no clear runtime regression.
+- Review subagent `019c5120-d6f3-7673-a7b8-d38d53e95ee9`:
+  - high-severity finding: row context weakened; drove follow-up hardening.
+
+Completed Slice (Committed)
+- 2026-02-12: `8f09240a`
+  - test(reports): bind PDF numeric checks to row sections and support parentheses.
+  - Added section-bound checks and parenthesized-negative token support.
+  - Verification:
+    - `mvn -B -ntp -Dtest=StatementServiceTest test` -> pass.
+
+Post-Commit Review Evidence
+- Commit reviewed: `8f09240a`
+- `codex review --commit 8f09240a`:
+  - no introduced defect detected.
+- Review subagent `019c5123-4155-7cc0-b796-61b784d88b7f`:
+  - high-severity finding on unbounded final transaction section; fixed in follow-up.
+
+Completed Slice (Committed)
+- 2026-02-12: `b54e7397`
+  - test(reports): bound PDF section extraction to prevent tail bleed.
+  - Added defensive bounds for section extraction.
+  - Verification:
+    - `mvn -B -ntp -Dtest=StatementServiceTest test` -> pass.
+
+Post-Commit Review Evidence
+- Commit reviewed: `b54e7397`
+- `codex review --commit b54e7397`:
+  - no introduced runtime defect.
+- Review subagent `019c5125-9e8a-7783-ad87-6269d39a16fb`:
+  - medium finding: magic-window truncation could create false negatives.
+
+Completed Slice (Committed)
+- 2026-02-12: `b9627477`
+  - test(reports): anchor PDF parity checks to marker lines.
+  - Removed magic window; moved checks to marker-line extraction.
+  - Verification:
+    - `mvn -B -ntp -Dtest=StatementServiceTest test` -> pass.
+
+Post-Commit Review Evidence
+- Commit reviewed: `b9627477`
+- `codex review --commit b9627477`:
+  - no clear regression flagged.
+- Review subagent `019c5128-c888-7f52-8fb9-d144c4b63ada`:
+  - high/medium findings: line-only matching brittle for wraps and repeated markers.
+
+Completed Slice (Committed)
+- 2026-02-12: `ccc19e30`
+  - test(reports): use canonical regex sequences for PDF parity checks.
+  - Reworked parity assertions to canonicalized text + regex sequence matching.
+  - Verification:
+    - `mvn -B -ntp -Dtest=StatementServiceTest test` -> pass.
+
+Post-Commit Review Evidence
+- Commit reviewed: `ccc19e30`
+- `codex review --commit ccc19e30`:
+  - flagged P2 follow-up risks (canonical expected text + blank memo path) which were remediated in next commit.
+- Review subagent `019c512b-40a0-7e40-9c4a-ccc4435e54b0`:
+  - no blocking findings; residual strict-sequence risk acknowledged.
+
+Completed Slice (Committed)
+- 2026-02-12: `98a23ad8`
+  - test(reports): harden canonical PDF regex for commas and blank memo.
+  - Canonicalized expected partner/reference/bucket assertions.
+  - Added blank-memo-safe transaction row regex path while preserving numeric ordering checks.
+  - Verification:
+    - `mvn -B -ntp -Dtest=StatementServiceTest test` -> pass (15 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `98a23ad8`
+- `codex review --commit 98a23ad8`:
+  - final verdict: no discrete correctness regression in this patch.
+- Review subagent `019c512f-619e-7cb2-bc71-e5eebc7f15f8`:
+  - no findings; residual risk only on punctuation-layout regressions intentionally normalized by canonical matching.
+
+Loop Update
+- 2026-02-12T15:02:06+05:30
+- tracked_now_ts: `2026-02-12T15:02:06+05:30`
+- tracked_elapsed: `13h 08m 14s`
+- active_in_progress: `M2-S9 closed-period mutation abuse matrix (settlement replay/allocation race + period lock bypass attempts)`
+
+Queue Rotation (Auto-Replenish)
+- [completed] M4-S7 report-API PDF parity assertion hardening (multi-commit critique-driven closure)
+- [in_progress] M2-S9 closed-period mutation abuse matrix (settlement replay/allocation race + period lock bypass attempts)
+- [ready] M5-S3 dispatch/invoice/accounting exact-link invariant sweep (backorder cancel + dispatch finality checks)
+- [ready] M6-S8 duplicate idempotency helper consolidation map for receipt/split/payment/settlement paths
+- [ready] M9-S4 accounting query hotspot + index-check under replay workload
+- [ready] M4-S8 aging overcredit policy hardening decision (negative bucket clamp vs carry-forward bucket)
+- [ready] M7-S2 ledger/journal report linkage assertions (traceability from report rows to journal IDs)
