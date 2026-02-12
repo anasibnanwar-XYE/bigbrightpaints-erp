@@ -42,6 +42,7 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class StatementServiceTest {
+    private static final int SECTION_WINDOW_CHARS = 600;
 
     @Mock
     private CompanyContextService companyContextService;
@@ -440,12 +441,13 @@ class StatementServiceTest {
                 .withFailMessage("Expected marker '%s' in extracted PDF text", startMarker)
                 .isGreaterThanOrEqualTo(0);
         int searchFrom = start + startMarker.length();
+        int boundedEnd = Math.min(text.length(), start + SECTION_WINDOW_CHARS);
         if (endMarker == null) {
-            return text.substring(start);
+            return text.substring(start, boundedEnd);
         }
         int end = text.indexOf(endMarker, searchFrom);
-        if (end < 0) {
-            end = text.length();
+        if (end < 0 || end > boundedEnd) {
+            end = boundedEnd;
         }
         return text.substring(start, end);
     }
