@@ -351,22 +351,12 @@ class StatementServiceTest {
         String text = canonicalizeForMatch(extractPdfText(pdf));
 
         assertThat(text).contains("Dealer Statement");
-        assertThat(text).contains(expected.partnerName());
+        assertThat(text).contains(canonicalizeForMatch(expected.partnerName()));
         assertPatternPresent(text, "Opening\\s+Balance:\\s+" + numericPattern(expected.openingBalance()));
         assertPatternPresent(text, "Closing\\s+Balance:\\s+" + numericPattern(expected.closingBalance()));
         for (var tx : expected.transactions()) {
-            assertThat(text).contains(tx.referenceNumber());
-            assertPatternPresent(
-                    text,
-                    Pattern.quote(canonicalizeForMatch(tx.referenceNumber()))
-                            + "\\s+"
-                            + Pattern.quote(canonicalizeForMatch(tx.memo()))
-                            + "\\s+"
-                            + numericPattern(tx.debit())
-                            + "\\s+"
-                            + numericPattern(tx.credit())
-                            + "\\s+"
-                            + numericPattern(tx.runningBalance()));
+            assertThat(text).contains(canonicalizeForMatch(tx.referenceNumber()));
+            assertPatternPresent(text, transactionRowPattern(tx));
         }
     }
 
@@ -389,10 +379,10 @@ class StatementServiceTest {
         String text = canonicalizeForMatch(extractPdfText(pdf));
 
         assertThat(text).contains("Supplier Aging");
-        assertThat(text).contains(expected.partnerName());
+        assertThat(text).contains(canonicalizeForMatch(expected.partnerName()));
         assertPatternPresent(text, "Total\\s+" + numericPattern(expected.totalOutstanding()));
         for (var bucket : expected.buckets()) {
-            assertThat(text).contains(bucket.label());
+            assertThat(text).contains(canonicalizeForMatch(bucket.label()));
             assertPatternPresent(
                     text,
                     Pattern.quote(canonicalizeForMatch(bucket.label()))
@@ -429,6 +419,21 @@ class StatementServiceTest {
             return Pattern.quote(signedCore) + "(?:\\.0+)?";
         }
         return Pattern.quote(signedCore) + "0*";
+    }
+
+    private String transactionRowPattern(com.bigbrightpaints.erp.modules.accounting.dto.StatementTransactionDto tx) {
+        String reference = Pattern.quote(canonicalizeForMatch(tx.referenceNumber()));
+        String memo = canonicalizeForMatch(tx.memo());
+        StringBuilder regex = new StringBuilder(reference).append("\\s+");
+        if (!memo.isBlank()) {
+            regex.append(Pattern.quote(memo)).append("\\s+");
+        }
+        regex.append(numericPattern(tx.debit()))
+                .append("\\s+")
+                .append(numericPattern(tx.credit()))
+                .append("\\s+")
+                .append(numericPattern(tx.runningBalance()));
+        return regex.toString();
     }
 
     private void assertPatternPresent(String text, String regex) {
