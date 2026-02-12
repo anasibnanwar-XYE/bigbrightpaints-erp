@@ -2666,28 +2666,14 @@ public class AccountingService {
                                              String memo,
                                              JournalEntry entry,
                                              List<JournalEntryRequest.JournalLineRequest> expectedLines) {
-        if (entry == null) {
-            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
-                    "Idempotency key already used but journal entry is missing")
-                    .withDetail("idempotencyKey", idempotencyKey);
-        }
-        if (entry.getDealer() == null || !Objects.equals(entry.getDealer().getId(), dealer.getId())) {
-            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
-                    "Idempotency key already used for another dealer")
-                    .withDetail("idempotencyKey", idempotencyKey);
-        }
-        if (StringUtils.hasText(memo) && !Objects.equals(entry.getMemo(), memo)) {
-            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
-                    "Idempotency key already used with a different memo")
-                    .withDetail("idempotencyKey", idempotencyKey);
-        }
-        Map<JournalLineSignature, Integer> existingLines = lineSignatureCounts(entry.getLines());
-        Map<JournalLineSignature, Integer> expected = lineSignatureCountsFromRequests(expectedLines);
-        if (!existingLines.equals(expected)) {
-            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
-                    "Idempotency key already used for a different receipt payload")
-                    .withDetail("idempotencyKey", idempotencyKey);
-        }
+        validatePartnerJournalReplay(
+                idempotencyKey,
+                PartnerType.DEALER,
+                dealer != null ? dealer.getId() : null,
+                memo,
+                entry,
+                expectedLines,
+                "Idempotency key already used for a different receipt payload");
     }
 
     private void validateSupplierPaymentIdempotency(String idempotencyKey,
@@ -2700,32 +2686,18 @@ public class AccountingService {
                                                     List<PartnerSettlementAllocation> existingAllocations,
                                                     List<SettlementAllocationRequest> allocations) {
         validateSettlementIdempotencyKey(idempotencyKey, PartnerType.SUPPLIER, supplier.getId(), existingAllocations, allocations);
-        if (entry == null) {
-            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
-                    "Idempotency key already used but journal entry is missing")
-                    .withDetail("idempotencyKey", idempotencyKey);
-        }
-        if (entry.getSupplier() == null || !Objects.equals(entry.getSupplier().getId(), supplier.getId())) {
-            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
-                    "Idempotency key already used for another supplier")
-                    .withDetail("idempotencyKey", idempotencyKey);
-        }
-        if (StringUtils.hasText(memo) && !Objects.equals(entry.getMemo(), memo)) {
-            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
-                    "Idempotency key already used with a different memo")
-                    .withDetail("idempotencyKey", idempotencyKey);
-        }
         List<JournalEntryRequest.JournalLineRequest> expectedLines = List.of(
                 new JournalEntryRequest.JournalLineRequest(payableAccount.getId(), memo, amount, BigDecimal.ZERO),
                 new JournalEntryRequest.JournalLineRequest(cashAccount.getId(), memo, BigDecimal.ZERO, amount)
         );
-        Map<JournalLineSignature, Integer> existingLines = lineSignatureCounts(entry.getLines());
-        Map<JournalLineSignature, Integer> expected = lineSignatureCountsFromRequests(expectedLines);
-        if (!existingLines.equals(expected)) {
-            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
-                    "Idempotency key already used for a different supplier payment payload")
-                    .withDetail("idempotencyKey", idempotencyKey);
-        }
+        validatePartnerJournalReplay(
+                idempotencyKey,
+                PartnerType.SUPPLIER,
+                supplier != null ? supplier.getId() : null,
+                memo,
+                entry,
+                expectedLines,
+                "Idempotency key already used for a different supplier payment payload");
     }
 
     private void validateSettlementJournalLines(String idempotencyKey,
@@ -2733,28 +2705,14 @@ public class AccountingService {
                                                 String memo,
                                                 JournalEntry entry,
                                                 List<JournalEntryRequest.JournalLineRequest> expectedLines) {
-        if (entry == null) {
-            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
-                    "Idempotency key already used but journal entry is missing")
-                    .withDetail("idempotencyKey", idempotencyKey);
-        }
-        if (entry.getDealer() == null || !Objects.equals(entry.getDealer().getId(), dealer.getId())) {
-            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
-                    "Idempotency key already used for another dealer")
-                    .withDetail("idempotencyKey", idempotencyKey);
-        }
-        if (StringUtils.hasText(memo) && !Objects.equals(entry.getMemo(), memo)) {
-            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
-                    "Idempotency key already used with a different memo")
-                    .withDetail("idempotencyKey", idempotencyKey);
-        }
-        Map<JournalLineSignature, Integer> existingLines = lineSignatureCounts(entry.getLines());
-        Map<JournalLineSignature, Integer> expected = lineSignatureCountsFromRequests(expectedLines);
-        if (!existingLines.equals(expected)) {
-            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
-                    "Idempotency key already used for a different settlement payload")
-                    .withDetail("idempotencyKey", idempotencyKey);
-        }
+        validatePartnerJournalReplay(
+                idempotencyKey,
+                PartnerType.DEALER,
+                dealer != null ? dealer.getId() : null,
+                memo,
+                entry,
+                expectedLines,
+                "Idempotency key already used for a different settlement payload");
     }
 
     private void validateSupplierSettlementJournalLines(String idempotencyKey,
@@ -2762,15 +2720,45 @@ public class AccountingService {
                                                         String memo,
                                                         JournalEntry entry,
                                                         List<JournalEntryRequest.JournalLineRequest> expectedLines) {
+        validatePartnerJournalReplay(
+                idempotencyKey,
+                PartnerType.SUPPLIER,
+                supplier != null ? supplier.getId() : null,
+                memo,
+                entry,
+                expectedLines,
+                "Idempotency key already used for a different settlement payload");
+    }
+
+    private void validatePartnerJournalReplay(String idempotencyKey,
+                                              PartnerType partnerType,
+                                              Long partnerId,
+                                              String memo,
+                                              JournalEntry entry,
+                                              List<JournalEntryRequest.JournalLineRequest> expectedLines,
+                                              String payloadMismatchMessage) {
         if (entry == null) {
             throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
                     "Idempotency key already used but journal entry is missing")
                     .withDetail("idempotencyKey", idempotencyKey);
         }
-        if (entry.getSupplier() == null || !Objects.equals(entry.getSupplier().getId(), supplier.getId())) {
+        if (partnerType == PartnerType.DEALER) {
+            if (entry.getDealer() == null || !Objects.equals(entry.getDealer().getId(), partnerId)) {
+                throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
+                        "Idempotency key already used for another dealer")
+                        .withDetail("idempotencyKey", idempotencyKey);
+            }
+        } else if (partnerType == PartnerType.SUPPLIER) {
+            if (entry.getSupplier() == null || !Objects.equals(entry.getSupplier().getId(), partnerId)) {
+                throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
+                        "Idempotency key already used for another supplier")
+                        .withDetail("idempotencyKey", idempotencyKey);
+            }
+        } else {
             throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
-                    "Idempotency key already used for another supplier")
-                    .withDetail("idempotencyKey", idempotencyKey);
+                    "Idempotency key already used for another partner type")
+                    .withDetail("idempotencyKey", idempotencyKey)
+                    .withDetail("partnerType", partnerType != null ? partnerType.name() : "null");
         }
         if (StringUtils.hasText(memo) && !Objects.equals(entry.getMemo(), memo)) {
             throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
@@ -2781,7 +2769,7 @@ public class AccountingService {
         Map<JournalLineSignature, Integer> expected = lineSignatureCountsFromRequests(expectedLines);
         if (!existingLines.equals(expected)) {
             throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
-                    "Idempotency key already used for a different settlement payload")
+                    payloadMismatchMessage)
                     .withDetail("idempotencyKey", idempotencyKey);
         }
     }
