@@ -1547,3 +1547,111 @@ Loop Update
 - tracked_now_ts: `2026-02-12T17:03:38+05:30`
 - tracked_elapsed: `15h 09m 46s`
 - active_in_progress: `M5-S5 dispatch/invoice TOCTOU + stale-marker cleanup plan (cross-service invariant closure)`
+
+Completed Slice (Committed)
+- 2026-02-12: `5aa05d90`
+  - fix(dispatch): reconcile stale order-level markers on multi-slip paths.
+  - M5-S5 hardening pass (cross-service stale-marker cleanup):
+    - `SalesService.confirmDispatch(...)` now clears stale order-level AR/invoice markers for multi-slip orders while preserving single-slip marker backfill.
+    - `InvoiceService.issueInvoiceForOrder(...)` mirrors cleanup semantics: order-level invoice marker retained only for single-slip path; multi-slip path removes drifted marker.
+  - Added regression coverage for stale-marker cleanup and single-slip preservation invariants.
+  - Verification:
+    - `cd erp-domain && mvn -B -ntp -Dtest=SalesServiceTest,InvoiceServiceTest test` -> pass (31 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `5aa05d90`
+- `codex review --commit 5aa05d90`:
+  - tooling produced unstable rollout/state-db noise and no durable final verdict in-session.
+- Review subagent `019c51b3-41ce-74f0-8542-a7af1c330520`:
+  - medium finding: cancelled-slip counting could over-clear order-level markers.
+  - disposition: fixed in follow-up `a594c5f2`.
+
+Completed Slice (Committed)
+- 2026-02-12: `a594c5f2`
+  - fix(dispatch): treat cancelled slips as inactive for marker reconciliation.
+  - Introduced active-slip semantics (`status != CANCELLED`) for reconciliation guards in dispatch/invoice stale-marker cleanup paths.
+  - Added cancelled-secondary-slip regression coverage to ensure active single-slip behavior preserves valid order-level markers.
+  - Verification:
+    - `cd erp-domain && mvn -B -ntp -Dtest=SalesServiceTest,InvoiceServiceTest test` -> pass (33 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `a594c5f2`
+- `codex review --commit a594c5f2`:
+  - run completed with noisy/timeout-prone output; no stable actionable regression summary produced.
+- Review subagent `019c51bb-7cab-7d01-b2a0-c823c2a9f664`:
+  - medium finding: active-slip semantics were not yet applied to replay-anchor/journal-reuse/existing-invoice decision points.
+  - disposition: fixed in follow-up `bcf36e3a`.
+
+Completed Slice (Committed)
+- 2026-02-12: `bcf36e3a`
+  - fix(dispatch): use active-slip semantics for replay anchor and journal reuse.
+  - Extended active-slip guard usage in `SalesService` to replay-anchor selection, AR journal reuse decision, sales-journal order-key single-slip branch, and existing invoice resolution path.
+  - Added targeted regression coverage for cancelled-secondary-slip anchor/journal reuse invariants.
+  - Verification:
+    - `cd erp-domain && mvn -B -ntp -Dtest=SalesServiceTest,InvoiceServiceTest test` -> pass (35 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `bcf36e3a`
+- `codex review --commit bcf36e3a`:
+  - execution remained noisy/timeout-prone; no concrete regression finding captured.
+- Review subagent `019c51c0-e974-7fa0-971c-87ca902e2f44`:
+  - findings: none requiring immediate code changes; residual note on concurrency-window monitoring only.
+
+Loop Update
+- 2026-02-12T17:44:42+05:30
+- tracked_now_ts: `2026-02-12T17:44:42+05:30`
+- tracked_elapsed: `15h 50m 50s`
+- active_in_progress: `M2-S11 settlement replay mismatch parity across all replay call sites`
+
+Queue Rotation (Auto-Replenish)
+- [completed] M5-S5 dispatch/invoice TOCTOU + stale-marker cleanup plan (cross-service invariant closure)
+- [in_progress] M2-S11 settlement replay mismatch parity across all replay call sites
+- [ready] M5-S6 stale order-level marker reconciliation for already-drifted multi-slip records
+- [ready] M6-S8 duplicate idempotency helper consolidation map for receipt/split/payment/settlement paths
+- [ready] M9-S4 accounting query hotspot + index-check under replay workload
+- [ready] M4-S8 aging overcredit policy hardening decision (negative bucket clamp vs carry-forward bucket)
+- [ready] M7-S2 ledger/journal report linkage assertions (traceability from report rows to journal IDs)
+- [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
+
+Completed Slice (Committed)
+- 2026-02-12: `163957b0`
+  - fix(accounting): enforce replay mismatch parity on fast-path replays.
+  - M2-S11 closure hardening:
+    - Added `resolveReplayJournalEntryFromExistingAllocations(...)` in `AccountingService` to apply mapping-vs-allocation journal parity checks on leader fast-path replay branches.
+    - Applied helper to all receipt/payment/settlement leader replay and DataIntegrity fallback replay branches:
+      - `recordDealerReceipt`
+      - `recordDealerReceiptSplit`
+      - `recordSupplierPayment`
+      - `settleDealerInvoices`
+      - `settleSupplierInvoices`
+    - Prevents stale canonical mapping drift from being silently accepted during replay short-circuit paths.
+  - Added targeted negative/idempotency coverage:
+    - leader fast-path mismatch rejection tests for all five replay entrypoints,
+    - race fallback mismatch rejection test for dealer receipt DataIntegrity replay path.
+  - Verification:
+    - `cd erp-domain && mvn -B -ntp -Dtest=AccountingServiceTest#recordDealerReceipt_replayRejectsMappingAllocationJournalMismatch+recordDealerReceipt_replayRejectsMappingAllocationJournalMismatchOnLeaderFastPath+recordDealerReceiptSplit_replayRejectsMappingAllocationJournalMismatch+recordDealerReceiptSplit_replayRejectsMappingAllocationJournalMismatchOnLeaderFastPath+recordSupplierPayment_replayRejectsMappingAllocationJournalMismatch+recordSupplierPayment_replayRejectsMappingAllocationJournalMismatchOnLeaderFastPath+recordDealerReceipt_dataIntegrityFallbackRejectsMappingAllocationJournalMismatch+settleDealerInvoices_replayRejectsMappingAllocationJournalMismatch+settleDealerInvoices_replayRejectsMappingAllocationJournalMismatchOnLeaderFastPath+settleSupplierInvoices_replayRejectsMappingAllocationJournalMismatch+settleSupplierInvoices_replayRejectsMappingAllocationJournalMismatchOnLeaderFastPath test` -> pass (11 tests, 0 failures, 0 errors).
+    - `cd erp-domain && mvn -B -ntp -Dtest=AccountingServiceTest#recordDealerReceipt_replayRejectsMappingAllocationJournalMismatch+recordDealerReceipt_replayRejectsMappingAllocationJournalMismatchOnLeaderFastPath+recordDealerReceiptSplit_replayRejectsMappingAllocationJournalMismatch+recordDealerReceiptSplit_replayRejectsMappingAllocationJournalMismatchOnLeaderFastPath+recordSupplierPayment_replayRejectsMappingAllocationJournalMismatch+recordSupplierPayment_replayRejectsMappingAllocationJournalMismatchOnLeaderFastPath+recordDealerReceipt_dataIntegrityFallbackRepairsReferenceMapping+recordDealerReceipt_dataIntegrityFallbackRejectsMappingAllocationJournalMismatch+recordDealerReceiptSplit_dataIntegrityFallbackRepairsReferenceMapping+recordSupplierPayment_dataIntegrityFallbackRepairsReferenceMapping+settleDealerInvoices_replayRejectsMappingAllocationJournalMismatch+settleDealerInvoices_replayRejectsMappingAllocationJournalMismatchOnLeaderFastPath+settleDealerInvoices_dataIntegrityFallbackRepairsReferenceMapping+settleSupplierInvoices_replayRejectsMappingAllocationJournalMismatch+settleSupplierInvoices_replayRejectsMappingAllocationJournalMismatchOnLeaderFastPath+settleSupplierInvoices_dataIntegrityFallbackRepairsReferenceMapping test` -> pass (16 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `163957b0`
+- `codex review --commit 163957b0`:
+  - command executed but remained noisy with rollout/state-db errors and prolonged analysis stream; no stable final verdict captured in-session.
+- Review subagent `019c51ce-306e-7501-9745-24ae260a26db`:
+  - findings: none at medium/high severity.
+  - residual note: non-leader heavy-concurrency replay behavior remains a watch area (no new blocker).
+
+Loop Update
+- 2026-02-12T17:56:46+05:30
+- tracked_now_ts: `2026-02-12T17:56:46+05:30`
+- tracked_elapsed: `16h 2m 54s`
+- active_in_progress: `M6-S8 duplicate idempotency helper consolidation map for receipt/split/payment/settlement paths`
+
+Queue Rotation (Auto-Replenish)
+- [completed] M2-S11 settlement replay mismatch parity across all replay call sites
+- [in_progress] M6-S8 duplicate idempotency helper consolidation map for receipt/split/payment/settlement paths
+- [ready] M5-S6 stale order-level marker reconciliation for already-drifted multi-slip records
+- [ready] M9-S4 accounting query hotspot + index-check under replay workload
+- [ready] M4-S8 aging overcredit policy hardening decision (negative bucket clamp vs carry-forward bucket)
+- [ready] M7-S2 ledger/journal report linkage assertions (traceability from report rows to journal IDs)
+- [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
+- [ready] M6-S9 unify partner journal-line idempotency assertion helpers to reduce drift across receipt/settlement validations
