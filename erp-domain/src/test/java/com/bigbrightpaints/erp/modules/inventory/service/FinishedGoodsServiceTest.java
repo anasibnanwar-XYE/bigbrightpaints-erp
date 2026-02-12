@@ -376,6 +376,56 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void confirmDispatch_partialBackorderDispatchCreatesFollowupBackorderSlip() {
+        Company company = seedCompany("DISPATCH-BO-CASCADE");
+        FinishedGood fg = createFinishedGood(company, "FG-BO-CASCADE", new BigDecimal("10"), new BigDecimal("10"), "FIFO");
+        FinishedGoodBatch batch = createBatch(fg, "BATCH-BO-CASCADE", new BigDecimal("10"), BigDecimal.ZERO, new BigDecimal("7"));
+        SalesOrder order = createOrder(company, "SO-BO-CASCADE-" + UUID.randomUUID(), fg.getProductCode(), new BigDecimal("10"));
+        PackagingSlip primarySlip = createSlip(company, order, "RESERVED", batch, new BigDecimal("10"));
+        createReservation(order, fg, batch, new BigDecimal("10"));
+
+        PackagingSlipLine primaryLine = primarySlip.getLines().getFirst();
+        DispatchConfirmationRequest firstConfirm = new DispatchConfirmationRequest(
+                primarySlip.getId(),
+                List.of(new DispatchConfirmationRequest.LineConfirmation(primaryLine.getId(), new BigDecimal("6"), null)),
+                "partial primary shipment",
+                "tester",
+                null);
+
+        var firstResponse = finishedGoodsService.confirmDispatch(firstConfirm, "tester");
+        assertThat(firstResponse.backorderSlipId()).isNotNull();
+
+        PackagingSlip firstBackorder = packagingSlipRepository
+                .findByIdAndCompany(firstResponse.backorderSlipId(), company)
+                .orElseThrow();
+        PackagingSlipLine firstBackorderLine = firstBackorder.getLines().getFirst();
+
+        DispatchConfirmationRequest secondConfirm = new DispatchConfirmationRequest(
+                firstBackorder.getId(),
+                List.of(new DispatchConfirmationRequest.LineConfirmation(firstBackorderLine.getId(), new BigDecimal("2"), null)),
+                "partial backorder shipment",
+                "tester",
+                null);
+
+        var secondResponse = finishedGoodsService.confirmDispatch(secondConfirm, "tester");
+        assertThat(secondResponse.totalBackorderAmount()).isGreaterThan(BigDecimal.ZERO);
+        assertThat(secondResponse.backorderSlipId()).isNotNull();
+        assertThat(secondResponse.backorderSlipId()).isNotEqualTo(firstBackorder.getId());
+
+        PackagingSlip dispatchedBackorder = packagingSlipRepository.findByIdAndCompany(firstBackorder.getId(), company).orElseThrow();
+        assertThat(dispatchedBackorder.getStatus()).isEqualTo("DISPATCHED");
+
+        PackagingSlip followUpBackorder = packagingSlipRepository
+                .findByIdAndCompany(secondResponse.backorderSlipId(), company)
+                .orElseThrow();
+        assertThat(followUpBackorder.isBackorder()).isTrue();
+        assertThat(followUpBackorder.getStatus()).isEqualTo("BACKORDER");
+        assertThat(followUpBackorder.getLines()).hasSize(1);
+        assertThat(followUpBackorder.getLines().getFirst().getOrderedQuantity())
+                .isEqualByComparingTo(new BigDecimal("2"));
+    }
+
+    @Test
     void previewUsesReservedForOrder() {
         Company company = seedCompany("PREVIEW-RES");
         FinishedGood fg = createFinishedGood(company, "FG-PREV", new BigDecimal("5"), new BigDecimal("5"), "FIFO");

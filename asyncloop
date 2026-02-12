@@ -462,25 +462,33 @@ Commit Ledger
     - `mvn -B -ntp -Dtest=IntegrationFailureMetadataSchemaContractTest,GlobalExceptionHandlerTest test`
   - Subagent review:
     - `019c4f56-7141-7ac1-aa2c-1c180b5a4d99` (status polling timed out; follow-up tracked in active loop)
+- 2026-02-12: `d0d71c65`
+  - Enforced auth-origin company token resolution as code-only (no numeric id fallback) in `AuditService`.
+  - Preserved runtime context compatibility with code-first plus numeric fallback.
+  - Added regression coverage for auth failure/success numeric-token abuse and runtime numeric collision semantics.
+  - Verified:
+    - `mvn -B -ntp -Dtest=AuditServiceTest,AuditServiceAsyncIT,AuthServiceAuditAttributionTest test`
+  - Subagent review:
+    - `019c4f5a-af42-7d51-a9d8-1db3be551161` (running)
 
 Current Checkpoint
-- Current WIP M0-S6 (auth audit token trust-boundary hardening):
-  - `erp-domain/src/main/java/com/bigbrightpaints/erp/core/audit/AuditService.java`
-    - split company token resolution by source trust:
-      - auth override token: resolve by company code only (no numeric id fallback)
-      - ambient runtime context token: keep backward-compatible numeric-id fallback
-    - closes high exploit path where attacker-supplied numeric auth token could bind audit events to existing tenant ids.
-  - `erp-domain/src/test/java/com/bigbrightpaints/erp/core/audit/AuditServiceTest.java`
-    - added regression coverage for:
-      - auth failure unknown numeric company token does not fallback to raw id
-      - auth success unknown numeric company token does not fallback to raw id
-      - runtime context numeric code/id collision remains code-first
+- Current WIP M5-S1 (dispatch/backorder invariant closure):
+  - Root cause (proved by failing test):
+    - partial dispatch on an already backordered slip re-used any historical `isBackorder=true` slip id, including slips already moved to `DISPATCHED`, leaving no active backorder slip for remaining qty.
+    - failing proof command:
+      - `mvn -B -ntp -Dtest=FinishedGoodsServiceTest#confirmDispatch_partialBackorderDispatchCreatesFollowupBackorderSlip test`
+  - Fix in progress:
+    - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/service/FinishedGoodsService.java`
+      - backorder reuse now filters to open slips with `status=BACKORDER` and excludes current slip id
+      - added helper methods for response-time backorder id resolution and open-backorder lookup
+    - `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/inventory/service/FinishedGoodsServiceTest.java`
+      - added cascade regression: partial dispatch of a backorder slip must generate a new active backorder slip for residual quantities
 - Verification command:
-  - `mvn -B -ntp -Dtest=AuditServiceTest,AuditServiceAsyncIT,AuthServiceAuditAttributionTest test`
+  - `mvn -B -ntp -Dtest=FinishedGoodsServiceTest,DispatchConfirmationIT test`
 - Next action:
-  - commit M0-S6 auth token trust-boundary hardening
+  - commit M5-S1 dispatch/backorder active-slip invariant fix
   - run `codex review --commit <sha>`
-  - start M5-S1 inventory-manufacturing-dispatch invariant audit (cross-module posting and stock/dispatch abuse paths)
+  - start M5-S2 manufacturing packing/bulk-packing invariant audit
 
 Async Loop Cadence
 - Each cycle:

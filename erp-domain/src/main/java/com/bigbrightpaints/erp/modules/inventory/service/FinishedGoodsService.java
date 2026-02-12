@@ -1089,14 +1089,7 @@ public class FinishedGoodsService {
             ));
         }
 
-        Long backorderSlipId = null;
-        if (hasBackorder && slip.getSalesOrder() != null) {
-            backorderSlipId = packagingSlipRepository
-                    .findAllByCompanyAndSalesOrderIdAndIsBackorderTrue(company, slip.getSalesOrder().getId()).stream()
-                    .findFirst()
-                    .map(PackagingSlip::getId)
-                    .orElse(null);
-        }
+        Long backorderSlipId = resolveBackorderSlipIdForResponse(slip, company, hasBackorder);
 
         return new DispatchConfirmationResponse(
                 slip.getId(),
@@ -1141,13 +1134,10 @@ public class FinishedGoodsService {
             return null;
         }
 
-        Long existingId = packagingSlipRepository
-                .findAllByCompanyAndSalesOrderIdAndIsBackorderTrue(
-                        originalSlip.getCompany(), originalSlip.getSalesOrder().getId())
-                .stream()
-                .map(PackagingSlip::getId)
-                .findFirst()
-                .orElse(null);
+        Long existingId = findOpenBackorderSlipId(
+                originalSlip.getCompany(),
+                originalSlip.getSalesOrder().getId(),
+                originalSlip.getId());
         if (existingId != null) {
             return existingId;
         }
@@ -1179,14 +1169,39 @@ public class FinishedGoodsService {
             PackagingSlip saved = packagingSlipRepository.saveAndFlush(backorderSlip);
             return saved.getId();
         } catch (DataIntegrityViolationException ex) {
-            return packagingSlipRepository
-                    .findAllByCompanyAndSalesOrderIdAndIsBackorderTrue(
-                            originalSlip.getCompany(), originalSlip.getSalesOrder().getId())
-                    .stream()
-                    .findFirst()
-                    .map(PackagingSlip::getId)
-                    .orElseThrow(() -> ex);
+            Long concurrentExistingId = findOpenBackorderSlipId(
+                    originalSlip.getCompany(),
+                    originalSlip.getSalesOrder().getId(),
+                    originalSlip.getId());
+            if (concurrentExistingId != null) {
+                return concurrentExistingId;
+            }
+            throw ex;
         }
+    }
+
+    private Long resolveBackorderSlipIdForResponse(PackagingSlip slip, Company company, boolean hasBackorder) {
+        if (!hasBackorder || slip == null || slip.getSalesOrder() == null) {
+            return null;
+        }
+        if (slip.isBackorder() && "BACKORDER".equalsIgnoreCase(slip.getStatus())) {
+            return slip.getId();
+        }
+        return findOpenBackorderSlipId(company, slip.getSalesOrder().getId(), slip.getId());
+    }
+
+    private Long findOpenBackorderSlipId(Company company, Long salesOrderId, Long excludeSlipId) {
+        if (company == null || salesOrderId == null) {
+            return null;
+        }
+        return packagingSlipRepository
+                .findAllByCompanyAndSalesOrderIdAndIsBackorderTrue(company, salesOrderId).stream()
+                .filter(existing -> existing.getId() != null)
+                .filter(existing -> !Objects.equals(existing.getId(), excludeSlipId))
+                .filter(existing -> "BACKORDER".equalsIgnoreCase(existing.getStatus()))
+                .map(PackagingSlip::getId)
+                .findFirst()
+                .orElse(null);
     }
 
     /**
