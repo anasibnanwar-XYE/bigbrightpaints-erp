@@ -3780,6 +3780,74 @@ class AccountingServiceTest {
     }
 
     @Test
+    void settleDealerInvoices_rejectsAllocationWithNegativeNetCashContribution() {
+        Dealer dealer = new Dealer();
+        dealer.setName("Dealer");
+        Account receivable = new Account();
+        receivable.setCompany(company);
+        receivable.setCode("AR");
+        receivable.setType(AccountType.ASSET);
+        ReflectionTestUtils.setField(receivable, "id", 10L);
+        dealer.setReceivableAccount(receivable);
+        ReflectionTestUtils.setField(dealer, "id", 1L);
+
+        Account cash = new Account();
+        cash.setCompany(company);
+        cash.setCode("CASH");
+        cash.setType(AccountType.ASSET);
+        ReflectionTestUtils.setField(cash, "id", 20L);
+
+        Account discount = new Account();
+        discount.setCompany(company);
+        discount.setCode("DISC");
+        ReflectionTestUtils.setField(discount, "id", 21L);
+
+        when(dealerRepository.lockByCompanyAndId(eq(company), eq(1L))).thenReturn(Optional.of(dealer));
+        when(settlementAllocationRepository.findByCompanyAndIdempotencyKey(any(), any())).thenReturn(List.of());
+        when(companyEntityLookup.requireAccount(eq(company), eq(20L))).thenReturn(cash);
+        when(companyEntityLookup.requireAccount(eq(company), eq(21L))).thenReturn(discount);
+
+        DealerSettlementRequest request = new DealerSettlementRequest(
+                1L,
+                20L,
+                21L,
+                null,
+                null,
+                null,
+                LocalDate.of(2024, 5, 1),
+                "REF-NEG-CASH-DEALER",
+                "Dealer settlement",
+                "IDEMP-NEG-CASH-DEALER",
+                Boolean.FALSE,
+                List.of(
+                        new SettlementAllocationRequest(
+                                5L,
+                                null,
+                                new BigDecimal("100.00"),
+                                new BigDecimal("120.00"),
+                                BigDecimal.ZERO,
+                                BigDecimal.ZERO,
+                                "over-discounted allocation"
+                        ),
+                        new SettlementAllocationRequest(
+                                6L,
+                                null,
+                                new BigDecimal("200.00"),
+                                BigDecimal.ZERO,
+                                BigDecimal.ZERO,
+                                BigDecimal.ZERO,
+                                "offsetting allocation"
+                        )
+                ),
+                null
+        );
+
+        assertThatThrownBy(() -> accountingService.settleDealerInvoices(request))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("negative net cash contribution");
+    }
+
+    @Test
     void settleDealerInvoices_rejectsMissingInvoiceAllocation() {
         Dealer dealer = new Dealer();
         dealer.setName("Dealer");
@@ -3998,6 +4066,73 @@ class AccountingServiceTest {
         verify(service, never()).createJournalEntry(any(JournalEntryRequest.class));
         verify(journalReferenceMappingRepository, never())
                 .reserveReferenceMapping(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void settleSupplierInvoices_rejectsAllocationWithNegativeNetCashContribution() {
+        Supplier supplier = new Supplier();
+        supplier.setName("Supplier");
+        Account payable = new Account();
+        payable.setCompany(company);
+        payable.setCode("AP");
+        payable.setType(AccountType.LIABILITY);
+        ReflectionTestUtils.setField(payable, "id", 10L);
+        supplier.setPayableAccount(payable);
+        ReflectionTestUtils.setField(supplier, "id", 1L);
+
+        Account cash = new Account();
+        cash.setCompany(company);
+        cash.setCode("CASH");
+        cash.setType(AccountType.ASSET);
+        ReflectionTestUtils.setField(cash, "id", 20L);
+
+        Account discount = new Account();
+        discount.setCompany(company);
+        discount.setCode("DISC");
+        ReflectionTestUtils.setField(discount, "id", 21L);
+
+        when(supplierRepository.lockByCompanyAndId(eq(company), eq(1L))).thenReturn(Optional.of(supplier));
+        when(settlementAllocationRepository.findByCompanyAndIdempotencyKey(any(), any())).thenReturn(List.of());
+        when(companyEntityLookup.requireAccount(eq(company), eq(20L))).thenReturn(cash);
+        when(companyEntityLookup.requireAccount(eq(company), eq(21L))).thenReturn(discount);
+
+        SupplierSettlementRequest request = new SupplierSettlementRequest(
+                1L,
+                20L,
+                21L,
+                null,
+                null,
+                null,
+                LocalDate.of(2024, 5, 1),
+                "REF-NEG-CASH-SUPPLIER",
+                "Supplier settlement",
+                "IDEMP-NEG-CASH-SUPPLIER",
+                Boolean.FALSE,
+                List.of(
+                        new SettlementAllocationRequest(
+                                null,
+                                2L,
+                                new BigDecimal("100.00"),
+                                new BigDecimal("120.00"),
+                                BigDecimal.ZERO,
+                                BigDecimal.ZERO,
+                                "over-discounted allocation"
+                        ),
+                        new SettlementAllocationRequest(
+                                null,
+                                3L,
+                                new BigDecimal("200.00"),
+                                BigDecimal.ZERO,
+                                BigDecimal.ZERO,
+                                BigDecimal.ZERO,
+                                "offsetting allocation"
+                        )
+                )
+        );
+
+        assertThatThrownBy(() -> accountingService.settleSupplierInvoices(request))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("negative net cash contribution");
     }
 
     @Test

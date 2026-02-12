@@ -1766,6 +1766,7 @@ public class AccountingService {
             BigDecimal discount = normalizeNonNegative(allocation.discountAmount(), "discountAmount");
             BigDecimal writeOff = normalizeNonNegative(allocation.writeOffAmount(), "writeOffAmount");
             BigDecimal fxAdjustment = MoneyUtils.zeroIfNull(allocation.fxAdjustment());
+            validateDealerAllocationCashContribution(allocation.invoiceId(), applied, discount, writeOff, fxAdjustment);
 
             Invoice invoice = invoiceRepository.lockByCompanyAndId(company, allocation.invoiceId())
                     .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Invoice not found"));
@@ -1986,6 +1987,7 @@ public class AccountingService {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
                         "On-account supplier settlement allocations cannot include discount/write-off/FX adjustments");
             }
+            validateSupplierAllocationCashContribution(allocation.purchaseId(), applied, discount, writeOff, fxAdjustment);
 
             RawMaterialPurchase purchase = null;
             if (allocation.purchaseId() != null) {
@@ -2922,6 +2924,57 @@ public class AccountingService {
             }
         }
         return new SettlementTotals(totalApplied, totalDiscount, totalWriteOff, totalFxGain, totalFxLoss);
+    }
+
+    private void validateDealerAllocationCashContribution(Long invoiceId,
+                                                          BigDecimal applied,
+                                                          BigDecimal discount,
+                                                          BigDecimal writeOff,
+                                                          BigDecimal fxAdjustment) {
+        BigDecimal fxGain = fxAdjustment.compareTo(BigDecimal.ZERO) > 0 ? fxAdjustment : BigDecimal.ZERO;
+        BigDecimal fxLoss = fxAdjustment.compareTo(BigDecimal.ZERO) < 0 ? fxAdjustment.abs() : BigDecimal.ZERO;
+        BigDecimal netCashContribution = applied
+                .add(fxGain)
+                .subtract(fxLoss)
+                .subtract(discount)
+                .subtract(writeOff);
+        validateAllocationCashContribution("dealer", "invoiceId", invoiceId, netCashContribution, applied, discount, writeOff, fxAdjustment);
+    }
+
+    private void validateSupplierAllocationCashContribution(Long purchaseId,
+                                                            BigDecimal applied,
+                                                            BigDecimal discount,
+                                                            BigDecimal writeOff,
+                                                            BigDecimal fxAdjustment) {
+        BigDecimal fxGain = fxAdjustment.compareTo(BigDecimal.ZERO) > 0 ? fxAdjustment : BigDecimal.ZERO;
+        BigDecimal fxLoss = fxAdjustment.compareTo(BigDecimal.ZERO) < 0 ? fxAdjustment.abs() : BigDecimal.ZERO;
+        BigDecimal netCashContribution = applied
+                .add(fxLoss)
+                .subtract(fxGain)
+                .subtract(discount)
+                .subtract(writeOff);
+        validateAllocationCashContribution("supplier", "purchaseId", purchaseId, netCashContribution, applied, discount, writeOff, fxAdjustment);
+    }
+
+    private void validateAllocationCashContribution(String partnerLabel,
+                                                    String referenceField,
+                                                    Long referenceId,
+                                                    BigDecimal contribution,
+                                                    BigDecimal applied,
+                                                    BigDecimal discount,
+                                                    BigDecimal writeOff,
+                                                    BigDecimal fxAdjustment) {
+        if (contribution.compareTo(BigDecimal.ZERO) < 0
+                && contribution.abs().compareTo(ALLOCATION_TOLERANCE) > 0) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Settlement allocation has negative net cash contribution for " + partnerLabel + " settlement")
+                    .withDetail(referenceField, referenceId)
+                    .withDetail("appliedAmount", applied)
+                    .withDetail("discountAmount", discount)
+                    .withDetail("writeOffAmount", writeOff)
+                    .withDetail("fxAdjustment", fxAdjustment)
+                    .withDetail("netCashContribution", contribution);
+        }
     }
 
     private SettlementLineDraft buildDealerSettlementLines(Company company,
