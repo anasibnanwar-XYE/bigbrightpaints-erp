@@ -113,6 +113,7 @@ public class SalesService {
             "APPROVED",
             "REJECTED"
     );
+    private static final String CREDIT_REQUEST_STATUS_PENDING = "PENDING";
 
     private final CompanyContextService companyContextService;
     private final DealerRepository dealerRepository;
@@ -1360,7 +1361,15 @@ public class SalesService {
         creditRequest.setAmountRequested(request.amountRequested());
         creditRequest.setReason(request.reason());
         if (request.status() != null) {
-            creditRequest.setStatus(normalizeCreditRequestStatus(request.status(), false));
+            String requestedStatus = normalizeCreditRequestStatus(request.status(), false);
+            String currentStatus = normalizeCreditRequestStatus(creditRequest.getStatus(), true);
+            if (!requestedStatus.equals(currentStatus)) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Credit request status transitions require dedicated approve/reject actions")
+                        .withDetail("currentStatus", currentStatus)
+                        .withDetail("requestedStatus", requestedStatus);
+            }
+            creditRequest.setStatus(currentStatus);
         }
         return toDto(creditRequest);
     }
@@ -1368,6 +1377,7 @@ public class SalesService {
     @Transactional
     public CreditRequestDto approveCreditRequest(Long id) {
         CreditRequest creditRequest = requireCreditRequest(id);
+        requirePendingCreditRequest(creditRequest, "approved");
         creditRequest.setStatus("APPROVED");
         return toDto(creditRequest);
     }
@@ -1375,6 +1385,7 @@ public class SalesService {
     @Transactional
     public CreditRequestDto rejectCreditRequest(Long id) {
         CreditRequest creditRequest = requireCreditRequest(id);
+        requirePendingCreditRequest(creditRequest, "rejected");
         creditRequest.setStatus("REJECTED");
         return toDto(creditRequest);
     }
@@ -1394,6 +1405,16 @@ public class SalesService {
                     .withDetail("allowedStatuses", VALID_CREDIT_REQUEST_STATUSES);
         }
         return normalized;
+    }
+
+    private void requirePendingCreditRequest(CreditRequest creditRequest, String action) {
+        String currentStatus = normalizeCreditRequestStatus(creditRequest.getStatus(), true);
+        if (!CREDIT_REQUEST_STATUS_PENDING.equals(currentStatus)) {
+            throw new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE,
+                    "Only pending credit requests can be " + action)
+                    .withDetail("currentStatus", currentStatus)
+                    .withDetail("requiredStatus", CREDIT_REQUEST_STATUS_PENDING);
+        }
     }
 
     private CreditRequestDto toDto(CreditRequest request) {

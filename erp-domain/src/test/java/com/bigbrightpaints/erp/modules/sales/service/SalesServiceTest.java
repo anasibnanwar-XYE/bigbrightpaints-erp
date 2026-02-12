@@ -209,7 +209,7 @@ class SalesServiceTest {
     }
 
     @Test
-    void updateCreditRequestNormalizesApprovedStatus() {
+    void updateCreditRequestRejectsStatusTransitionToApproved() {
         CreditRequest existing = new CreditRequest();
         existing.setCompany(company);
         existing.setAmountRequested(new BigDecimal("800"));
@@ -218,15 +218,38 @@ class SalesServiceTest {
 
         when(companyEntityLookup.requireCreditRequest(company, 902L)).thenReturn(existing);
 
-        CreditRequestDto dto = salesService.updateCreditRequest(902L, new CreditRequestRequest(
+        ApplicationException ex = assertThrows(ApplicationException.class, () -> salesService.updateCreditRequest(
+                902L,
+                new CreditRequestRequest(
+                        null,
+                        new BigDecimal("800"),
+                        "Approved by admin",
+                        " approved "
+                )));
+
+        assertEquals(ErrorCode.VALIDATION_INVALID_INPUT, ex.getErrorCode());
+        assertEquals("PENDING", existing.getStatus());
+    }
+
+    @Test
+    void updateCreditRequestAllowsExplicitSameStatus() {
+        CreditRequest existing = new CreditRequest();
+        existing.setCompany(company);
+        existing.setAmountRequested(new BigDecimal("810"));
+        existing.setStatus("PENDING");
+        setField(existing, "id", 904L);
+
+        when(companyEntityLookup.requireCreditRequest(company, 904L)).thenReturn(existing);
+
+        CreditRequestDto dto = salesService.updateCreditRequest(904L, new CreditRequestRequest(
                 null,
-                new BigDecimal("800"),
-                "Approved by admin",
-                " approved "
+                new BigDecimal("810"),
+                "Minor note update",
+                " pending "
         ));
 
-        assertEquals("APPROVED", dto.status());
-        assertEquals("APPROVED", existing.getStatus());
+        assertEquals("PENDING", dto.status());
+        assertEquals("PENDING", existing.getStatus());
     }
 
     @Test
@@ -275,6 +298,23 @@ class SalesServiceTest {
     }
 
     @Test
+    void approveCreditRequestRejectsNonPendingStatus() {
+        CreditRequest existing = new CreditRequest();
+        existing.setCompany(company);
+        existing.setAmountRequested(new BigDecimal("600"));
+        existing.setStatus("APPROVED");
+        setField(existing, "id", 912L);
+
+        when(companyEntityLookup.requireCreditRequest(company, 912L)).thenReturn(existing);
+
+        ApplicationException ex = assertThrows(ApplicationException.class,
+                () -> salesService.approveCreditRequest(912L));
+
+        assertEquals(ErrorCode.BUSINESS_INVALID_STATE, ex.getErrorCode());
+        assertEquals("APPROVED", existing.getStatus());
+    }
+
+    @Test
     void rejectCreditRequestUpdatesStatusOnly() {
         Dealer dealer = dealerWithCreditLimit(78L, new BigDecimal("3000"));
         CreditRequest existing = new CreditRequest();
@@ -293,6 +333,23 @@ class SalesServiceTest {
         assertEquals(new BigDecimal("725"), existing.getAmountRequested());
         assertEquals("Dealer requested temporary overrun", existing.getReason());
         assertEquals(dealer.getId(), existing.getDealer().getId());
+    }
+
+    @Test
+    void rejectCreditRequestRejectsNonPendingStatus() {
+        CreditRequest existing = new CreditRequest();
+        existing.setCompany(company);
+        existing.setAmountRequested(new BigDecimal("725"));
+        existing.setStatus("REJECTED");
+        setField(existing, "id", 913L);
+
+        when(companyEntityLookup.requireCreditRequest(company, 913L)).thenReturn(existing);
+
+        ApplicationException ex = assertThrows(ApplicationException.class,
+                () -> salesService.rejectCreditRequest(913L));
+
+        assertEquals(ErrorCode.BUSINESS_INVALID_STATE, ex.getErrorCode());
+        assertEquals("REJECTED", existing.getStatus());
     }
 
     @Test

@@ -217,6 +217,8 @@
 - `POST /api/v1/credit/override-requests/{id}/reject`
 - `POST /api/v1/invoices/{id}/email`
 - `POST /api/v1/sales/credit-requests`
+- `POST /api/v1/sales/credit-requests/{id}/approve`
+- `POST /api/v1/sales/credit-requests/{id}/reject`
 - `POST /api/v1/sales/dispatch/confirm`
 - `POST /api/v1/sales/orders`
 - `POST /api/v1/sales/orders/{id}/cancel`
@@ -227,6 +229,10 @@
 - `PUT /api/v1/sales/orders/{id}`
 - `PUT /api/v1/sales/promotions/{id}`
 - `PUT /api/v1/sales/targets/{id}`
+
+Credit request status transitions are action-only:
+- `PUT /api/v1/sales/credit-requests/{id}` updates request details and cannot change status.
+- Use `POST /api/v1/sales/credit-requests/{id}/approve` or `/reject` for status decisions.
 
 ### DEALERS
 - `GET /api/v1/dealer-portal/aging`

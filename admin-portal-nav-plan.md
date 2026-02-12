@@ -175,6 +175,7 @@ Purpose: a single place to action admin-only approvals and hand off to accountin
     - For `CREDIT_REQUEST` rows:
       - approve: `POST /api/v1/sales/credit-requests/{id}/approve`
       - reject: `POST /api/v1/sales/credit-requests/{id}/reject`
+      - `PUT /api/v1/sales/credit-requests/{id}` remains for amount/reason edits; it cannot change status and must not be used for approval decisions.
   - Actions depend on where the approval is implemented:
     - Credit limit overrides:
       - API: `GET /api/v1/credit/override-requests`
