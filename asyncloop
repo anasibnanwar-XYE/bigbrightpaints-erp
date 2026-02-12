@@ -1122,3 +1122,71 @@ Queue Rotation (Auto-Replenish)
 - [ready] M9-S4 accounting query hotspot + index-check under replay workload
 - [ready] M5-S3 dispatch/invoice/accounting exact-link invariant sweep (including backorder cancel status semantics)
 - [ready] M6-S8 duplicate idempotency helper consolidation map for receipt/split/payment/settlement paths
+
+Completed Slice (Committed)
+- 2026-02-12: `2a87385e`
+  - perf(reports): prefilter ledger scans and aggregate statement openings.
+  - M4-S6 optimization pass:
+    - moved statement opening-balance computation to repository aggregates (`aggregateBalanceBefore`) instead of loading all prior rows in memory,
+    - shifted statement period reads to repository order-by `entryDate,id` query paths,
+    - prefiltered aging source rows at repository layer (`entryDate <= asOf`) to reduce full-ledger scan volume,
+    - expanded `StatementServiceTest` with query-path regression coverage (aggregate opening and prefilter usage).
+  - Verification:
+    - `mvn -B -ntp -Dtest=StatementServiceTest test` -> pass (11 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `2a87385e`
+- `codex review --commit 2a87385e`:
+  - final verdict: no correctness regressions introduced.
+- Review subagent `019c510f-09e5-7e22-b8fb-78f251b44c40`:
+  - findings: none.
+  - residual watch:
+    - harden as-of guard in service loop to tolerate repository-leak/mis-spec scenarios.
+
+Completed Slice (Committed)
+- 2026-02-12: `6f3cd8e2`
+  - fix(reports): enforce aging as-of guard against leaked future entries.
+  - Added in-service as-of defensive checks in dealer/supplier aging loops and added future-entry leak tests for both paths.
+  - Verification:
+    - `mvn -B -ntp -Dtest=StatementServiceTest test` -> pass (13 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `6f3cd8e2`
+- `codex review --commit 6f3cd8e2`:
+  - final verdict: no introduced defects; as-of guard behavior acceptable.
+- Review subagent `019c5113-0ea8-7a41-acf3-15b341bfbcf0`:
+  - findings: none.
+  - residual watch:
+    - prefer guard semantics that do not depend on ordered leak positioning.
+
+Completed Slice (Committed)
+- 2026-02-12: `66728995`
+  - fix(reports): ignore leaked future aging rows without order assumptions.
+  - Refined defensive guard from `break` to `continue` so misordered repository leakage cannot skip later valid pre-as-of entries.
+  - Verification:
+    - `mvn -B -ntp -Dtest=StatementServiceTest test` -> pass (13 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `66728995`
+- `codex review --commit 66728995`:
+  - final verdict: no correctness regressions from `break -> continue` change.
+- Review subagent `019c5115-189e-78c0-a543-2f15d29b6b0a`:
+  - findings: none.
+  - residual watch:
+    - optional telemetry for leaked future rows,
+    - existing aging first-bucket negative-overcredit semantics remain legacy behavior (explicitly track before changing).
+
+Loop Update
+- 2026-02-12T14:32:26+05:30
+- tracked_now_ts: `2026-02-12T14:32:26+05:30`
+- tracked_elapsed: `12h 38m 34s`
+- active_in_progress: `M4-S7 report-API contract parity assertions (PDF content extraction vs API totals)`
+
+Queue Rotation (Auto-Replenish)
+- [completed] M4-S6 aging/statement performance guard (prefilter + query-path reduction + defensive as-of fallback)
+- [in_progress] M4-S7 report-API contract parity assertions (PDF content extraction vs API totals)
+- [ready] M2-S9 closed-period mutation abuse matrix for settlement replay and allocation races
+- [ready] M9-S4 accounting query hotspot + index-check under replay workload
+- [ready] M5-S3 dispatch/invoice/accounting exact-link invariant sweep (including backorder cancel status semantics)
+- [ready] M6-S8 duplicate idempotency helper consolidation map for receipt/split/payment/settlement paths
+- [ready] M4-S8 aging overcredit policy hardening decision (negative bucket clamp vs carry-forward bucket)
