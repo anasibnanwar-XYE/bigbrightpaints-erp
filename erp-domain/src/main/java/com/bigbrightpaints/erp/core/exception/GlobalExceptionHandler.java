@@ -1,5 +1,8 @@
 package com.bigbrightpaints.erp.core.exception;
 
+import com.bigbrightpaints.erp.core.audit.AuditEvent;
+import com.bigbrightpaints.erp.core.audit.IntegrationFailureAlertRoutingPolicy;
+import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.modules.auth.exception.InvalidMfaException;
 import com.bigbrightpaints.erp.modules.auth.exception.MfaRequiredException;
 import com.bigbrightpaints.erp.modules.auth.web.MfaChallengeResponse;
@@ -8,12 +11,14 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.AuthenticationException;
@@ -21,6 +26,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 import org.springframework.util.StringUtils;
@@ -39,6 +45,9 @@ import java.util.UUID;
 public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    @Autowired(required = false)
+    private AuditService auditService;
 
     @Value("${spring.profiles.active:dev}")
     private String activeProfile;
@@ -140,6 +149,32 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         errorResponse.put("reason", reason);
         errorResponse.put("traceId", traceId);
         errorResponse.put("errors", fieldErrors);
+        return ResponseEntity.badRequest().body(ApiResponse.failure(reason, errorResponse));
+    }
+
+    @Override
+    protected ResponseEntity<Object> handleHttpMessageNotReadable(HttpMessageNotReadableException ex,
+                                                                  HttpHeaders headers,
+                                                                  HttpStatusCode status,
+                                                                  WebRequest request) {
+        String traceId = UUID.randomUUID().toString();
+        String reason = "Failed to read request";
+        String detail = resolveMostSpecificMessage(ex);
+        logger.warn("Malformed request [{}] - Path: {}", traceId, request.getDescription(false));
+
+        Map<String, Object> errorResponse = new HashMap<>();
+        errorResponse.put("code", ErrorCode.VALIDATION_INVALID_INPUT.getCode());
+        errorResponse.put("message", reason);
+        errorResponse.put("reason", reason);
+        errorResponse.put("traceId", traceId);
+        if (!isProductionMode() && StringUtils.hasText(detail)) {
+            errorResponse.put("details", detail);
+        }
+
+        HttpServletRequest servletRequest = request instanceof ServletWebRequest servletWebRequest
+                ? servletWebRequest.getRequest()
+                : null;
+        logMalformedRequestAudit(servletRequest, traceId, reason, detail);
         return ResponseEntity.badRequest().body(ApiResponse.failure(reason, errorResponse));
     }
 
@@ -464,5 +499,54 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             return "Invalid option provided";
         }
         return trimmed;
+    }
+
+    private void logMalformedRequestAudit(HttpServletRequest request,
+                                          String traceId,
+                                          String reason,
+                                          String detail) {
+        if (auditService == null) {
+            return;
+        }
+        Map<String, String> metadata = new HashMap<>();
+        metadata.put("category", "request-parse");
+        metadata.put("code", ErrorCode.VALIDATION_INVALID_INPUT.getCode());
+        metadata.put("traceId", traceId);
+        metadata.put("reason", reason);
+        String failureCode = IntegrationFailureAlertRoutingPolicy.MALFORMED_REQUEST_FAILURE_CODE;
+        metadata.put("failureCode", failureCode);
+        metadata.put("errorCategory", "VALIDATION");
+        metadata.put("alertRoutingVersion", IntegrationFailureAlertRoutingPolicy.ROUTING_VERSION);
+        metadata.put("alertRoute",
+                IntegrationFailureAlertRoutingPolicy.resolveRoute(failureCode, "request-parse"));
+        if (request != null) {
+            metadata.put("requestMethod", request.getMethod());
+            metadata.put("requestPath", request.getRequestURI());
+        }
+        if (StringUtils.hasText(detail)) {
+            metadata.put("detail", trimMetadata(detail));
+        }
+        auditService.logFailure(AuditEvent.INTEGRATION_FAILURE, metadata);
+    }
+
+    private String resolveMostSpecificMessage(Throwable ex) {
+        if (ex == null) {
+            return null;
+        }
+        Throwable current = ex;
+        while (current.getCause() != null && current.getCause() != current) {
+            current = current.getCause();
+        }
+        return current.getMessage();
+    }
+
+    private String trimMetadata(String value) {
+        if (value == null) {
+            return "";
+        }
+        if (value.length() <= 500) {
+            return value;
+        }
+        return value.substring(0, 500);
     }
 }

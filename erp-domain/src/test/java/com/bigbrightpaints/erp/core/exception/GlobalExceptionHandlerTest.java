@@ -1,14 +1,23 @@
 package com.bigbrightpaints.erp.core.exception;
 
+import com.bigbrightpaints.erp.core.audit.AuditEvent;
+import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import java.lang.reflect.Field;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.web.context.request.ServletWebRequest;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 class GlobalExceptionHandlerTest {
 
@@ -70,9 +79,51 @@ class GlobalExceptionHandlerTest {
         assertThat(body.data()).containsEntry("reason", "Invalid option provided");
     }
 
+    @Test
+    void malformedJson_isAuditedAndReturnsValidationPayload() throws Exception {
+        GlobalExceptionHandler handler = new GlobalExceptionHandler();
+        setActiveProfile(handler, "dev");
+        AuditService auditService = mock(AuditService.class);
+        setAuditService(handler, auditService);
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/accounting/settlements/suppliers");
+        HttpMessageNotReadableException ex = new HttpMessageNotReadableException(
+                "JSON parse error", new IllegalArgumentException("Unrecognized field \"payments\""));
+
+        ResponseEntity<Object> response = handler.handleHttpMessageNotReadable(
+                ex, new HttpHeaders(), HttpStatus.BAD_REQUEST, new ServletWebRequest(request));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isInstanceOf(ApiResponse.class);
+        @SuppressWarnings("unchecked")
+        ApiResponse<Map<String, Object>> body = (ApiResponse<Map<String, Object>>) response.getBody();
+        assertThat(body).isNotNull();
+        assertThat(body.message()).isEqualTo("Failed to read request");
+        assertThat(body.data()).containsEntry("code", ErrorCode.VALIDATION_INVALID_INPUT.getCode());
+        assertThat(body.data()).containsEntry("reason", "Failed to read request");
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, String>> metadataCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(auditService).logFailure(eq(AuditEvent.INTEGRATION_FAILURE), metadataCaptor.capture());
+        Map<String, String> metadata = metadataCaptor.getValue();
+        assertThat(metadata).containsEntry("category", "request-parse");
+        assertThat(metadata).containsEntry("failureCode", "MALFORMED_REQUEST_PAYLOAD");
+        assertThat(metadata).containsEntry("errorCategory", "VALIDATION");
+        assertThat(metadata).containsEntry("alertRoutingVersion", "INTEGRATION_FAILURE_V1");
+        assertThat(metadata).containsEntry("alertRoute", "SEV3_TICKET");
+        assertThat(metadata).containsEntry("requestMethod", "POST");
+        assertThat(metadata).containsEntry("requestPath", "/api/v1/accounting/settlements/suppliers");
+    }
+
     private static void setActiveProfile(GlobalExceptionHandler handler, String value) throws Exception {
         Field field = GlobalExceptionHandler.class.getDeclaredField("activeProfile");
         field.setAccessible(true);
         field.set(handler, value);
+    }
+
+    private static void setAuditService(GlobalExceptionHandler handler, AuditService auditService) throws Exception {
+        Field field = GlobalExceptionHandler.class.getDeclaredField("auditService");
+        field.setAccessible(true);
+        field.set(handler, auditService);
     }
 }

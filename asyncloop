@@ -19,8 +19,8 @@ Non-Stop Operating Rules
 
 Runtime Tracking
 - tracked_start_ts: `2026-02-12T01:53:52+05:30` (first immutable async-loop commit marker)
-- tracked_now_ts: `2026-02-12T05:58:06+05:30`
-- tracked_elapsed: `4h 04m 14s`
+- tracked_now_ts: `2026-02-12T06:00:47+05:30`
+- tracked_elapsed: `4h 06m 55s`
 
 Completion Gates (Required For "Safe To Deploy" Claim)
 - No known critical/high security issues in auth/RBAC/tenant isolation/data exposure.
@@ -267,18 +267,28 @@ Auto-Replenish Queue (Always Keep Filled)
   - Ensure accounting event-trail refactors cannot silently remap routing class semantics.
   - Completed: added `AccountingEventTrailAlertRoutingPolicy` contract mapper and dedicated regression matrix `AccountingEventTrailAlertRoutingPolicyTest`.
   - Completed: mapping now enforces stable routes (`SEV1_PAGE`, `SEV2_URGENT`, `SEV3_TICKET`, `UNMAPPED`) for downstream responders.
-- [ready] M2-S10 Integration-failure route coverage expansion
-  - Extend routing metadata contract checks to non-accounting integration-failure producers (e.g., global exception handling) to prevent inconsistent alert payloads.
-  - Add regression test coverage pinning route-version and route-key presence where applicable.
 - [ready] M8-S6 Correlation guard CI artifact and fail-fast evidence
   - Publish correlation guard failures into CI artifacts for triage (`artifacts/gate-release`), including missing call-site/overload/test signals.
   - Ensure CI failure output includes a single actionable remediation command.
-- [in_progress] M2-S10 Integration-failure route coverage expansion
+- [done] M2-S10 Integration-failure route coverage expansion
   - Extend routing metadata contract checks to non-accounting integration-failure producers (e.g., global exception handling) to prevent inconsistent alert payloads.
   - Add regression test coverage pinning route-version and route-key presence where applicable.
+  - Completed: added non-accounting route policy contract (`INTEGRATION_FAILURE_V1`) in `IntegrationFailureAlertRoutingPolicy`.
+  - Completed: `GlobalExceptionHandler` malformed-request integration-failure marker now includes:
+    - `failureCode=MALFORMED_REQUEST_PAYLOAD`
+    - `errorCategory=VALIDATION`
+    - `alertRoutingVersion=INTEGRATION_FAILURE_V1`
+    - `alertRoute=SEV3_TICKET`
+  - Completed: added/updated regression tests in `IntegrationFailureAlertRoutingPolicyTest` and `GlobalExceptionHandlerTest`.
 - [ready] M3-S2 Settlement failure telemetry normalization
   - Normalize settlement failure audit metadata (dealer/supplier flows) to include deterministic failure codes and non-leaky categories.
   - Add regression assertions for split receipts and supplier settlement failure taxonomy.
+- [in_progress] M8-S6 Correlation guard CI artifact and fail-fast evidence
+  - Publish correlation guard failures into CI artifacts for triage (`artifacts/gate-release`), including missing call-site/overload/test signals.
+  - Ensure CI failure output includes a single actionable remediation command.
+- [ready] M2-S11 Integration failure metadata schema check
+  - Add a lightweight schema-check test ensuring mandatory metadata keys for `AuditEvent.INTEGRATION_FAILURE` producers are present.
+  - Prevent silent drift between accounting and non-accounting failure markers.
 
 Commit Ledger
 - 2026-02-12: `16b2a2c4`
@@ -393,20 +403,30 @@ Commit Ledger
   - Verified:
     - `mvn -B -ntp -Dtest=AccountingServiceTest,AccountingEventTrailAlertRoutingPolicyTest,JournalEntryE2ETest,SettlementE2ETest,IntegrationCoordinatorTest,CommandDispatcherTest,AuditServiceTest,AuditServiceAsyncIT,CompanyContextTaskDecoratorTest,AuthServiceAuditAttributionTest test`
   - `codex review --commit 18548593`: running (result will be appended).
+- 2026-02-12: `a215f36b`
+  - Enforced orchestrator correlation guard execution in gate-fast/gate-core CI scripts with artifact capture.
+  - Verified:
+    - `bash -n scripts/gate_fast.sh scripts/gate_core.sh`
+    - `bash scripts/guard_orchestrator_correlation_contract.sh`
+  - `codex review --commit a215f36b`: running (result will be appended).
 
 Current Checkpoint
-- Current WIP M8-S5 completion + M2-S10 kickoff:
-  - `scripts/gate_fast.sh`
-    - adds orchestrator correlation guard execution + artifact capture in gate-fast CI path
-  - `scripts/gate_core.sh`
-    - adds orchestrator correlation guard execution + artifact capture in gate-core CI path
+- Current WIP M2-S10 completion + M8-S6 kickoff:
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/core/audit/IntegrationFailureAlertRoutingPolicy.java`
+    - new non-accounting integration-failure routing contract policy
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/core/exception/GlobalExceptionHandler.java`
+    - malformed-request failure metadata now emits deterministic route keys
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/core/audit/IntegrationFailureAlertRoutingPolicyTest.java`
+    - route contract coverage for mapped/unmapped combinations
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/core/exception/GlobalExceptionHandlerTest.java`
+    - verifies integration-failure route metadata presence and values
 - Verification command:
-  - `bash -n scripts/gate_fast.sh scripts/gate_core.sh`
-  - `bash scripts/guard_orchestrator_correlation_contract.sh`
+  - `mvn -B -ntp -Dtest=GlobalExceptionHandlerTest,IntegrationFailureAlertRoutingPolicyTest test`
+  - `mvn -B -ntp -Dtest=GlobalExceptionHandlerTest,IntegrationFailureAlertRoutingPolicyTest,AccountingServiceTest,AccountingEventTrailAlertRoutingPolicyTest,JournalEntryE2ETest,SettlementE2ETest,IntegrationCoordinatorTest,CommandDispatcherTest,AuditServiceTest,AuditServiceAsyncIT,CompanyContextTaskDecoratorTest,AuthServiceAuditAttributionTest test`
 - Next action:
-  - commit M8-S5 CI guard integration
+  - commit M2-S10 non-accounting integration-failure route coverage
   - run `codex review --commit <sha>`
-  - continue M2-S10 non-accounting integration-failure route coverage expansion
+  - continue M8-S6 correlation guard CI artifact/fail-fast evidence expansion
 
 Async Loop Cadence
 - Each cycle:
