@@ -46,4 +46,32 @@ class ReportControllerContractTest {
         String json = mapper.writeValueAsString(response.getBody());
         assertThat(json).contains("\"journalEntryId\":9001");
     }
+
+    @Test
+    void accountStatement_serializesNullJournalEntryIdInApiResponse() throws Exception {
+        ReportService reportService = mock(ReportService.class);
+        ReportController controller = new ReportController(reportService);
+        when(reportService.accountStatement()).thenReturn(List.of(
+                new AccountStatementEntryDto(
+                        "Dealer No Journal",
+                        LocalDate.of(2026, 2, 12),
+                        "BALANCE",
+                        new BigDecimal("0.00"),
+                        new BigDecimal("0.00"),
+                        new BigDecimal("0.00"),
+                        null
+                )
+        ));
+
+        ResponseEntity<ApiResponse<List<AccountStatementEntryDto>>> response = controller.accountStatement();
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().data()).hasSize(1);
+        assertThat(response.getBody().data().get(0).journalEntryId()).isNull();
+
+        ObjectMapper mapper = new ObjectMapper().registerModule(new JavaTimeModule());
+        String json = mapper.writeValueAsString(response.getBody());
+        assertThat(json).contains("\"journalEntryId\":null");
+    }
 }

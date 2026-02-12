@@ -175,4 +175,27 @@ class ReportServiceAccountStatementTest {
         assertThat(row.balance()).isEqualByComparingTo("25.00");
         assertThat(row.journalEntryId()).isNull();
     }
+
+    @Test
+    void accountStatement_toleratesNullBalanceMap() {
+        Dealer dealer = new Dealer();
+        ReflectionTestUtils.setField(dealer, "id", 14L);
+        dealer.setName("Dealer Null Balances");
+        when(dealerRepository.findByCompanyOrderByNameAsc(company)).thenReturn(List.of(dealer));
+        when(dealerLedgerService.currentBalances(List.of(14L))).thenReturn(null);
+        when(dealerLedgerRepository.findFirstByCompanyAndDealerOrderByEntryDateDescIdDesc(company, dealer))
+                .thenReturn(Optional.empty());
+        when(companyClock.today(company)).thenReturn(LocalDate.of(2026, 2, 14));
+
+        var rows = reportService.accountStatement();
+
+        assertThat(rows).hasSize(1);
+        var row = rows.getFirst();
+        assertThat(row.dealerName()).isEqualTo("Dealer Null Balances");
+        assertThat(row.reference()).isEqualTo("BALANCE");
+        assertThat(row.debit()).isEqualByComparingTo("0.00");
+        assertThat(row.credit()).isEqualByComparingTo("0.00");
+        assertThat(row.balance()).isEqualByComparingTo("0.00");
+        assertThat(row.journalEntryId()).isNull();
+    }
 }

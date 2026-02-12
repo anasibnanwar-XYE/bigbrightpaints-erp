@@ -198,7 +198,9 @@ public class ReportService {
     public List<AccountStatementEntryDto> accountStatement() {
         Company company = companyContextService.requireCurrentCompany();
         var dealers = dealerRepository.findByCompanyOrderByNameAsc(company);
-        var balances = dealerLedgerService.currentBalances(dealers.stream().map(Dealer::getId).toList());
+        var balances = Optional.ofNullable(
+                dealerLedgerService.currentBalances(dealers.stream().map(Dealer::getId).toList()))
+                .orElse(Map.of());
         return dealers.stream()
                 .map(dealer -> {
                     BigDecimal outstanding = balances.getOrDefault(dealer.getId(), BigDecimal.ZERO);
