@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.sales.service;
 
 import com.bigbrightpaints.erp.core.audit.AuditService;
+import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
@@ -65,6 +66,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -611,6 +613,83 @@ class SalesServiceTest {
     }
 
     @Test
+    void confirmDispatchRejectsReplayOverridesWhenOnlyOrderJournalAnchorOnMultiSlipOrder() {
+        SalesOrder order = new SalesOrder();
+        setField(order, "id", 10L);
+        order.setCompany(company);
+        order.setStatus("SHIPPED");
+        order.setSalesJournalEntryId(222L);
+
+        PackagingSlip slip = new PackagingSlip();
+        setField(slip, "id", 55L);
+        slip.setCompany(company);
+        slip.setSalesOrder(order);
+        slip.setStatus("DISPATCHED");
+
+        PackagingSlip otherSlip = new PackagingSlip();
+        setField(otherSlip, "id", 56L);
+        otherSlip.setCompany(company);
+        otherSlip.setSalesOrder(order);
+        otherSlip.setStatus("DISPATCHED");
+
+        when(packagingSlipRepository.findAndLockByIdAndCompany(55L, company)).thenReturn(Optional.of(slip));
+        when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, 10L))
+                .thenReturn(List.of(slip, otherSlip));
+        when(companyEntityLookup.requireSalesOrder(company, 10L)).thenReturn(order);
+
+        DispatchConfirmRequest request = new DispatchConfirmRequest(
+                55L,
+                null,
+                List.of(new DispatchConfirmRequest.DispatchLine(99L, null, BigDecimal.ONE, null, new BigDecimal("10"), null, null, null)),
+                null,
+                "admin",
+                Boolean.TRUE,
+                "Attempted replay override",
+                null);
+
+        ApplicationException ex = assertThrows(ApplicationException.class, () -> salesService.confirmDispatch(request));
+        assertTrue(ex.getMessage().contains("without existing financial markers"));
+        verifyNoInteractions(dealerRepository);
+        verifyNoInteractions(finishedGoodsService);
+        verifyNoInteractions(accountingFacade);
+    }
+
+    @Test
+    void confirmDispatchRequiresOverrideReasonWhenReplayOverrideAnchored() {
+        SalesOrder order = new SalesOrder();
+        setField(order, "id", 10L);
+        order.setCompany(company);
+        order.setStatus("SHIPPED");
+
+        PackagingSlip slip = new PackagingSlip();
+        setField(slip, "id", 55L);
+        slip.setCompany(company);
+        slip.setSalesOrder(order);
+        slip.setStatus("DISPATCHED");
+        slip.setJournalEntryId(222L);
+
+        when(packagingSlipRepository.findAndLockByIdAndCompany(55L, company)).thenReturn(Optional.of(slip));
+        when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, 10L)).thenReturn(List.of(slip));
+        when(companyEntityLookup.requireSalesOrder(company, 10L)).thenReturn(order);
+
+        DispatchConfirmRequest request = new DispatchConfirmRequest(
+                55L,
+                null,
+                List.of(new DispatchConfirmRequest.DispatchLine(99L, null, BigDecimal.ONE, null, new BigDecimal("10"), null, null, null)),
+                null,
+                "admin",
+                Boolean.TRUE,
+                null,
+                null);
+
+        ApplicationException ex = assertThrows(ApplicationException.class, () -> salesService.confirmDispatch(request));
+        assertTrue(ex.getMessage().contains("overrideReason is required when replaying overrides"));
+        verifyNoInteractions(dealerRepository);
+        verifyNoInteractions(finishedGoodsService);
+        verifyNoInteractions(accountingFacade);
+    }
+
+    @Test
     void confirmDispatchAllowsReplayOverridesWhenAlreadyDispatchedHasJournalAnchor() {
         Dealer dealer = dealerWithCreditLimit(42L, BigDecimal.valueOf(1000));
         Account receivable = new Account();
@@ -712,6 +791,55 @@ class SalesServiceTest {
                 ArgumentMatchers.anyMap(),
                 ArgumentMatchers.any(),
                 ArgumentMatchers.anyString());
+    }
+
+    @Test
+    void confirmDispatchReplayFastPathLogsOverrideAuditMetadata() {
+        SalesOrder order = new SalesOrder();
+        setField(order, "id", 10L);
+        order.setCompany(company);
+        order.setStatus("SHIPPED");
+
+        PackagingSlip slip = new PackagingSlip();
+        setField(slip, "id", 55L);
+        slip.setCompany(company);
+        slip.setSalesOrder(order);
+        slip.setSlipNumber("PS-55");
+        slip.setStatus("DISPATCHED");
+        slip.setInvoiceId(777L);
+        slip.setJournalEntryId(222L);
+        slip.setCogsJournalEntryId(333L);
+
+        Invoice existingInvoice = new Invoice();
+        setField(existingInvoice, "id", 777L);
+        existingInvoice.setTotalAmount(new BigDecimal("90.00"));
+
+        when(packagingSlipRepository.findAndLockByIdAndCompany(55L, company)).thenReturn(Optional.of(slip));
+        when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, 10L)).thenReturn(List.of(slip));
+        when(companyEntityLookup.requireSalesOrder(company, 10L)).thenReturn(order);
+        when(invoiceRepository.findByCompanyAndId(company, 777L)).thenReturn(Optional.of(existingInvoice));
+
+        DispatchConfirmRequest request = new DispatchConfirmRequest(
+                55L,
+                null,
+                List.of(new DispatchConfirmRequest.DispatchLine(99L, null, BigDecimal.ONE, null, new BigDecimal("10"), null, null, null)),
+                null,
+                "admin",
+                Boolean.TRUE,
+                "Replay override in fast path",
+                null);
+
+        DispatchConfirmResponse response = salesService.confirmDispatch(request);
+
+        assertEquals(777L, response.finalInvoiceId());
+        assertEquals(222L, response.arJournalEntryId());
+
+        ArgumentCaptor<Map<String, String>> auditMetadataCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(auditService).logSuccess(eq(AuditEvent.DISPATCH_CONFIRMED), auditMetadataCaptor.capture());
+        Map<String, String> metadata = auditMetadataCaptor.getValue();
+        assertEquals("true", metadata.get("alreadyDispatched"));
+        assertEquals("true", metadata.get("dispatchOverridesApplied"));
+        assertEquals("Replay override in fast path", metadata.get("dispatchOverrideReason"));
     }
 
     @Test
