@@ -249,6 +249,14 @@ Auto-Replenish Queue (Always Keep Filled)
 - [ready] M0-S8 Auth-audit observability note
   - Add runbook note for interpreting `authActorResolution`/`authCompanyResolution` markers during incident response.
   - Include quick triage queries for unresolved auth attributions.
+- [done] M0-S9 Async auth-audit test config isolation
+  - Isolate `AuditServiceAsyncIT` test-only Spring config from `TestApplication` component scans to prevent cross-suite bean collisions.
+  - Completed: gated `AuditServiceAsyncIT.TestConfig` behind dedicated profile `audit-async-it`.
+  - Completed: enabled the profile only in `AuditServiceAsyncIT` via `@ActiveProfiles("audit-async-it")`.
+  - Completed: verified no `BeanDefinitionOverrideException` in mixed matrix including E2E + async-auth tests.
+- [ready] M2-S9 Event-trail alert routing contract map
+  - Add deterministic mapping fixture asserting `errorCategory`/`failureCode` -> alert tier/severity.
+  - Ensure accounting event-trail refactors cannot silently remap routing class semantics.
 
 Commit Ledger
 - 2026-02-12: `16b2a2c4`
@@ -355,19 +363,15 @@ Commit Ledger
   - `codex review --commit 0cb6a857`: running (result will be appended).
 
 Current Checkpoint
-- Current WIP M0-S7 completion + M2-S8 kickoff:
-  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/service/AuthService.java`
-    - audit identifiers are normalized before auth-failure wrapper calls
-  - `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/auth/service/AuthServiceAuditAttributionTest.java`
-    - pins trimmed audit identifier handoff on authentication failure path
-  - `docs/auth-audit-attribution-policy.md`
-    - defines explicit auth-wrapper attribution contract and unresolved-marker semantics
+- Current WIP M0-S9 completion + M2-S8 continuation:
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/core/audit/AuditServiceAsyncIT.java`
+    - isolated async test config with dedicated profile to stop context contamination in full SpringBoot E2E suites
 - Verification command:
-  - `mvn -B -ntp -Dtest=AuthServiceAuditAttributionTest,AuditServiceTest,AuditServiceAsyncIT test`
+  - `mvn -B -ntp -Dtest=AccountingServiceTest,JournalEntryE2ETest,SettlementE2ETest,IntegrationCoordinatorTest,CommandDispatcherTest,AuditServiceTest,AuditServiceAsyncIT,CompanyContextTaskDecoratorTest,AuthServiceAuditAttributionTest test`
 - Next action:
-  - commit M0-S7 auth-wrapper contract docs + API alignment
+  - commit M0-S9 async test isolation fix
   - run `codex review --commit <sha>`
-  - execute M2-S8 event-trail alert-routing fixture
+  - execute M2-S8 + M2-S9 event-trail alert-routing fixture and contract map assertions
 
 Async Loop Cadence
 - Each cycle:

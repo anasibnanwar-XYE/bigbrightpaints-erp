@@ -13,12 +13,15 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.scheduling.annotation.AsyncConfigurer;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -29,11 +32,13 @@ import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.when;
 
 @SpringJUnitConfig(classes = AuditServiceAsyncIT.TestConfig.class)
+@ActiveProfiles("audit-async-it")
 class AuditServiceAsyncIT {
 
-    @Configuration
+    @TestConfiguration
+    @Profile("audit-async-it")
     @EnableAsync(proxyTargetClass = true)
-    static class TestConfig {
+    static class TestConfig implements AsyncConfigurer {
         @Bean
         AuditService auditService() {
             return new AuditService();
@@ -49,8 +54,8 @@ class AuditServiceAsyncIT {
             return mock(CompanyRepository.class);
         }
 
-        @Bean(name = "taskExecutor")
-        Executor taskExecutor() {
+        @Bean(name = "auditAsyncExecutor")
+        Executor auditAsyncExecutor() {
             ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
             executor.setCorePoolSize(1);
             executor.setMaxPoolSize(1);
@@ -58,6 +63,11 @@ class AuditServiceAsyncIT {
             executor.setThreadNamePrefix("audit-async-it-");
             executor.initialize();
             return executor;
+        }
+
+        @Override
+        public Executor getAsyncExecutor() {
+            return auditAsyncExecutor();
         }
     }
 
