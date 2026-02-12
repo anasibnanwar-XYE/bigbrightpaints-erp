@@ -1773,6 +1773,7 @@ public class AccountingService {
             List<PartnerSettlementAllocation> concurrent = findAllocationsByIdempotencyKey(company, trimmedIdempotencyKey);
             if (!concurrent.isEmpty()) {
                 JournalEntry existingEntry = concurrent.getFirst().getJournalEntry();
+                linkReferenceMapping(company, trimmedIdempotencyKey, existingEntry, ENTITY_TYPE_DEALER_SETTLEMENT);
                 validateSettlementIdempotencyKey(trimmedIdempotencyKey, PartnerType.DEALER, dealer.getId(), concurrent, allocations);
                 validateSettlementJournalLines(trimmedIdempotencyKey, dealer, memo, existingEntry, lineDraft.lines());
                 return buildDealerSettlementResponse(concurrent);

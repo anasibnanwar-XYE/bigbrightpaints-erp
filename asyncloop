@@ -903,3 +903,36 @@ Loop Update
 - tracked_now_ts: `2026-02-12T13:44:30+05:30`
 - tracked_elapsed: `11h 50m 38s`
 - active_in_progress: `M4-S3 statement/aging/report settlement-link consistency and source-of-truth checks`
+
+Post-Commit Review Evidence
+- Commit reviewed: `5a6bbea4`
+- `codex review --commit 5a6bbea4`:
+  - completed with rollout/state-db noise and final verdict: log-only commit with no executable-path regressions.
+- Review subagent `019c50ec-9f10-7103-a818-4f68498e1c09`:
+  - no functional/accounting/security regressions found; metadata-only ledger checkpoint update.
+
+Loop Update
+- 2026-02-12T13:52:10+05:30
+- tracked_now_ts: `2026-02-12T13:52:10+05:30`
+- tracked_elapsed: `11h 58m 18s`
+- active_in_progress: `M6-S7 settlement race-fallback mapping repair + test closure`
+
+Completed Slice (Commit In Progress)
+- 2026-02-12: `[pending-commit-sha]`
+  - M6-S7 settlement race-fallback closure:
+    - Fixed dealer settlement `DataIntegrityViolationException` replay fallback to relink idempotency mapping before idempotency/line validation:
+      - `AccountingService.settleDealerInvoices(...)` now calls `linkReferenceMapping(..., ENTITY_TYPE_DEALER_SETTLEMENT)` in concurrent allocation fallback.
+    - Added settlement-specific race fallback regression tests:
+      - `settleDealerInvoices_dataIntegrityFallbackRepairsReferenceMapping`
+      - `settleSupplierInvoices_dataIntegrityFallbackRepairsReferenceMapping`
+    - This closes the remaining replay/race coverage gap flagged after `e8a94e8e` review.
+  - Verification:
+    - `mvn -B -ntp -Dtest=AccountingServiceTest#settleDealerInvoices_dataIntegrityFallbackRepairsReferenceMapping+settleSupplierInvoices_dataIntegrityFallbackRepairsReferenceMapping test` -> pass (2 tests, 0 failures, 0 errors).
+
+Queue Rotation (Auto-Replenish)
+- [completed] M6-S7 settlement race-fallback mapping repair + test closure
+- [in_progress] M4-S4 statement/aging boundary invariants (from/to guards + as-of source-of-truth consistency)
+- [ready] M2-S9 closed-period mutation abuse matrix for settlement replay and allocation races
+- [ready] M9-S4 accounting query hotspot + index-check under replay workload
+- [ready] M5-S3 dispatch/invoice/accounting exact-link invariant sweep (including backorder cancel status semantics)
+- [ready] M6-S8 duplicate idempotency helper consolidation map for receipt/split/payment/settlement paths
