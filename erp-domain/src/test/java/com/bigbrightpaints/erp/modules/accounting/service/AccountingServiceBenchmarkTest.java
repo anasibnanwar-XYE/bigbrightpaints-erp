@@ -10,6 +10,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodReposit
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
+import com.bigbrightpaints.erp.modules.accounting.event.AccountingEventStore;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -109,6 +110,8 @@ class AccountingServiceBenchmarkTest {
     private com.bigbrightpaints.erp.core.config.SystemSettingsService systemSettingsService;
     @Mock
     private AuditService auditService;
+    @Mock
+    private AccountingEventStore accountingEventStore;
 
     private AccountingService accountingService;
     private Company company;
@@ -141,7 +144,8 @@ class AccountingServiceBenchmarkTest {
                 journalReferenceMappingRepository,
                 entityManager,
                 systemSettingsService,
-                auditService
+                auditService,
+                accountingEventStore
         );
 
         company = new Company();
