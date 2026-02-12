@@ -1415,3 +1415,135 @@ Queue Rotation (Auto-Replenish)
 - [ready] M7-S2 ledger/journal report linkage assertions (traceability from report rows to journal IDs)
 - [ready] M2-S11 settlement replay mismatch negative matrix parity check (all resolveReplayJournalEntry call sites + future-proof coverage)
 - [ready] M5-S4 dispatch duplicate-invoice and COGS repost abuse scan (SalesService + InvoiceService cross-check)
+
+Completed Slice (Committed)
+- 2026-02-12: `e277cde0`
+  - fix(dispatch): allow anchored replay overrides and block unanchored abuse.
+  - Added anchored replay guard semantics:
+    - already-dispatched overrides require financial anchors,
+    - replay override requires explicit `overrideReason`.
+  - Added anchored replay regression test path.
+  - Verification:
+    - `mvn -B -ntp -Dtest=SalesServiceTest#confirmDispatchRequiresOverrideReasonWhenOverridesProvided,SalesServiceTest#confirmDispatchRejectsOverridesForAlreadyDispatchedSlip,SalesServiceTest#confirmDispatchAllowsReplayOverridesWhenAlreadyDispatchedHasJournalAnchor,SalesServiceTest#confirmDispatchSkipsArPostingWhenOrderAlreadyHasJournal test` -> pass (4 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `e277cde0`
+- Review subagent `019c514e-ef2a-7481-ac46-86285e15abcb`:
+  - high/medium findings raised:
+    - multi-slip replay bypass via order-level journal anchor,
+    - override audit metadata dropped on replay fast-path return.
+  - disposition: fixed in follow-up `8b7b3e73`.
+
+Completed Slice (Committed)
+- 2026-02-12: `8b7b3e73`
+  - fix(dispatch): close order-journal replay bypass and preserve override audit.
+  - Hardening:
+    - order-level journal counts as replay anchor only when single-slip,
+    - replay fast-path audit now records `dispatchOverridesApplied` and reason.
+  - Added regression tests:
+    - reject replay override when only order-level journal on multi-slip order,
+    - require override reason on anchored replay,
+    - verify replay fast-path audit metadata propagation.
+  - Verification:
+    - `mvn -B -ntp -Dtest=SalesServiceTest#confirmDispatchRejectsOverridesForAlreadyDispatchedSlip,SalesServiceTest#confirmDispatchRejectsReplayOverridesWhenOnlyOrderJournalAnchorOnMultiSlipOrder,SalesServiceTest#confirmDispatchRequiresOverrideReasonWhenReplayOverrideAnchored,SalesServiceTest#confirmDispatchAllowsReplayOverridesWhenAlreadyDispatchedHasJournalAnchor,SalesServiceTest#confirmDispatchReplayFastPathLogsOverrideAuditMetadata,SalesServiceTest#confirmDispatchRequiresOverrideReasonWhenOverridesProvided,SalesServiceTest#confirmDispatchSkipsArPostingWhenOrderAlreadyHasJournal test` -> pass (7 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `8b7b3e73`
+- Review subagent `019c5157-94a4-7cd1-b1ca-d601555160f5`:
+  - high finding: stale single-slip snapshot can drift during dispatch lifecycle.
+  - medium finding: replay mismatch coverage gap and anchor integrity residuals.
+  - disposition: stale-snapshot and mismatch gaps fixed in `ea3bd276` + `9a8c2c42`; residual anchor integrity/TOCTOU kept as next slice items.
+
+Completed Slice (Committed)
+- 2026-02-12: `9a8c2c42`
+  - test(dispatch): add replay mismatch coverage for existing AR journal totals.
+  - Added explicit mismatch rejection test to prevent replay amount drift against existing receivable journal.
+  - Verification:
+    - `mvn -B -ntp -Dtest=SalesServiceTest#confirmDispatchRejectsReplayOverrideWhenExistingJournalTotalMismatches test` -> pass (1 test, 0 failures, 0 errors).
+
+Completed Slice (Committed)
+- 2026-02-12: `ea3bd276`
+  - fix(dispatch): recompute single-slip anchors and guard replay linkage drift.
+  - Replaced stale early single-slip snapshot with recalculation at decision points.
+  - Added regression for order transitioning from single-slip to multi-slip during dispatch.
+  - Verification:
+    - `mvn -B -ntp -Dtest=SalesServiceTest#confirmDispatchRejectsOverridesForAlreadyDispatchedSlip,SalesServiceTest#confirmDispatchRejectsReplayOverridesWhenOnlyOrderJournalAnchorOnMultiSlipOrder,SalesServiceTest#confirmDispatchRequiresOverrideReasonWhenReplayOverrideAnchored,SalesServiceTest#confirmDispatchAllowsReplayOverridesWhenAlreadyDispatchedHasJournalAnchor,SalesServiceTest#confirmDispatchRejectsReplayOverrideWhenExistingJournalTotalMismatches,SalesServiceTest#confirmDispatchReplayFastPathLogsOverrideAuditMetadata,SalesServiceTest#confirmDispatchRequiresOverrideReasonWhenOverridesProvided,SalesServiceTest#confirmDispatchSkipsArPostingWhenOrderAlreadyHasJournal,SalesServiceTest#confirmDispatchPostsArWhenOrderJournalExistsButOrderBecomesMultiSlip test` -> pass (9 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `ea3bd276`
+- `codex review --commit ea3bd276`:
+  - no discrete regression found.
+- Review subagent `019c5181-56ce-7220-9bf3-c9aa14010e07`:
+  - medium findings:
+    - replay fast-path could still write order-level AR marker on multi-slip,
+    - weak nullable matcher in `never()` assertions.
+  - disposition: fixed in `26ddee67`.
+
+Completed Slice (Committed)
+- 2026-02-12: `26ddee67`
+  - fix(dispatch): block order-level AR linkage drift on multi-slip replay.
+  - Added single-slip gate before replay fast-path writes `order.salesJournalEntryId`.
+  - Strengthened replay test assertions for marker invariants and nullable-map verification semantics.
+  - Verification:
+    - `mvn -B -ntp -Dtest=SalesServiceTest#confirmDispatchRejectsOverridesForAlreadyDispatchedSlip,SalesServiceTest#confirmDispatchRejectsReplayOverridesWhenOnlyOrderJournalAnchorOnMultiSlipOrder,SalesServiceTest#confirmDispatchRequiresOverrideReasonWhenReplayOverrideAnchored,SalesServiceTest#confirmDispatchAllowsReplayOverridesWhenAlreadyDispatchedHasJournalAnchor,SalesServiceTest#confirmDispatchRejectsReplayOverrideWhenExistingJournalTotalMismatches,SalesServiceTest#confirmDispatchReplayFastPathLogsOverrideAuditMetadata,SalesServiceTest#confirmDispatchReplayFastPathDoesNotSetOrderJournalForMultiSlipOrder,SalesServiceTest#confirmDispatchRequiresOverrideReasonWhenOverridesProvided,SalesServiceTest#confirmDispatchPostsArWhenOrderJournalExistsButSlipNotDispatched,SalesServiceTest#confirmDispatchPostsArWhenOrderJournalExistsButOrderBecomesMultiSlip test` -> pass (10 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `26ddee67`
+- `codex review --commit 26ddee67`:
+  - no actionable regression found.
+- Review subagent `019c5189-b03f-7690-b40c-298ca39ebcdf`:
+  - medium finding: invoice marker could still be repopulated on multi-slip in `InvoiceService`.
+  - disposition: fixed in `09af3991`.
+
+Completed Slice (Committed)
+- 2026-02-12: `521d8e07`
+  - fix(dispatch): gate order invoice linkage to single-slip invariants.
+  - Added single-slip gate before writing `order.fulfillmentInvoiceId` in replay fast-path and main dispatch persistence.
+  - Added stronger multi-slip replay assertion for AR/COGS/invoice marker non-propagation.
+  - Verification:
+    - `mvn -B -ntp -Dtest=SalesServiceTest#confirmDispatchRejectsOverridesForAlreadyDispatchedSlip,SalesServiceTest#confirmDispatchRejectsReplayOverridesWhenOnlyOrderJournalAnchorOnMultiSlipOrder,SalesServiceTest#confirmDispatchRequiresOverrideReasonWhenReplayOverrideAnchored,SalesServiceTest#confirmDispatchAllowsReplayOverridesWhenAlreadyDispatchedHasJournalAnchor,SalesServiceTest#confirmDispatchRejectsReplayOverrideWhenExistingJournalTotalMismatches,SalesServiceTest#confirmDispatchReplayFastPathLogsOverrideAuditMetadata,SalesServiceTest#confirmDispatchReplayFastPathDoesNotSetOrderJournalForMultiSlipOrder,SalesServiceTest#confirmDispatchRequiresOverrideReasonWhenOverridesProvided,SalesServiceTest#confirmDispatchPostsArWhenOrderJournalExistsButSlipNotDispatched,SalesServiceTest#confirmDispatchPostsArWhenOrderJournalExistsButOrderBecomesMultiSlip test` -> pass (10 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `521d8e07`
+- `codex review --commit 521d8e07`:
+  - no actionable regression found.
+- Review subagent `019c5191-c061-7230-8c94-f810e3ceae34`:
+  - high finding: `InvoiceService` existing-invoice path could still set order-level `fulfillmentInvoiceId` on multi-slip orders.
+  - disposition: fixed in `09af3991`.
+
+Completed Slice (Committed)
+- 2026-02-12: `09af3991`
+  - fix(invoice): enforce single-slip gate before order-level invoice marker writes.
+  - Added guard in `InvoiceService.issueInvoiceForOrder` existing-invoice path to prevent multi-slip order-level invoice marker propagation.
+  - Added regression test: existing invoice + multi-slip order leaves `fulfillmentInvoiceId` unset.
+  - Verification:
+    - `mvn -B -ntp -Dtest=SalesServiceTest,InvoiceServiceTest test` -> pass (30 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `09af3991`
+- Review subagent `019c519a-36b3-7623-9c86-672947e79a75`:
+  - status: no final report captured before handoff timeout/close.
+- `codex review --commit 09af3991`:
+  - no actionable regression found.
+
+Loop Update
+- 2026-02-12T16:56:01+05:30
+- tracked_now_ts: `2026-02-12T16:56:01+05:30`
+- tracked_elapsed: `15h 02m 09s`
+- active_in_progress: `M5-S3 dispatch/invoice/accounting exact-link invariant sweep (remaining TOCTOU + stale-marker cleanup)`
+
+Queue Rotation (Auto-Replenish)
+- [completed] M5-S3 replay override anchor hardening + order-level marker safety chain (dispatch + invoice service)
+- [in_progress] M5-S5 dispatch/invoice TOCTOU + stale-marker cleanup plan (cross-service invariant closure)
+- [ready] M6-S8 duplicate idempotency helper consolidation map for receipt/split/payment/settlement paths
+- [ready] M9-S4 accounting query hotspot + index-check under replay workload
+- [ready] M4-S8 aging overcredit policy hardening decision (negative bucket clamp vs carry-forward bucket)
+- [ready] M7-S2 ledger/journal report linkage assertions (traceability from report rows to journal IDs)
+- [ready] M2-S11 settlement replay mismatch negative matrix parity check (all resolveReplayJournalEntry call sites + future-proof coverage)
+- [ready] M5-S6 stale order-level marker reconciliation routine for already-drifted multi-slip records
+
+Loop Update
+- 2026-02-12T17:03:38+05:30
+- tracked_now_ts: `2026-02-12T17:03:38+05:30`
+- tracked_elapsed: `15h 09m 46s`
+- active_in_progress: `M5-S5 dispatch/invoice TOCTOU + stale-marker cleanup plan (cross-service invariant closure)`
