@@ -138,6 +138,39 @@ class InvoiceServiceTest {
     }
 
     @Test
+    void issueInvoiceForOrder_existingInvoiceDoesNotSetOrderInvoiceIdWhenMultiSlip() {
+        Long orderId = 56L;
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        Invoice existingInvoice = new Invoice();
+        ReflectionTestUtils.setField(existingInvoice, "id", 123L);
+        existingInvoice.setCompany(company);
+        existingInvoice.setInvoiceNumber("INV-56");
+        when(invoiceRepository.findAllByCompanyAndSalesOrderId(company, orderId)).thenReturn(List.of(existingInvoice));
+
+        Dealer dealer = new Dealer();
+        SalesOrder order = new SalesOrder();
+        order.setCompany(company);
+        order.setDealer(dealer);
+        order.setOrderNumber("SO-56");
+        order.setCurrency("INR");
+        ReflectionTestUtils.setField(order, "id", orderId);
+
+        when(salesService.getOrderWithItems(orderId)).thenReturn(order);
+        PackagingSlip slip = new PackagingSlip();
+        ReflectionTestUtils.setField(slip, "id", 99L);
+        PackagingSlip otherSlip = new PackagingSlip();
+        ReflectionTestUtils.setField(otherSlip, "id", 100L);
+        when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, orderId))
+                .thenReturn(List.of(slip, otherSlip));
+
+        InvoiceDto dto = invoiceService.issueInvoiceForOrder(orderId);
+
+        assertThat(order.getFulfillmentInvoiceId()).isNull();
+        assertThat(dto.id()).isEqualTo(123L);
+        verify(salesOrderRepository, org.mockito.Mockito.never()).save(any(SalesOrder.class));
+    }
+
+    @Test
     void issueInvoiceForOrder_usesDispatchConfirmationWhenSlipExists() {
         Long orderId = 77L;
         when(companyContextService.requireCurrentCompany()).thenReturn(company);
