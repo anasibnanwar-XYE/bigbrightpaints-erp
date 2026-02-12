@@ -20,11 +20,14 @@ import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.CreditLimitExceededException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.modules.invoice.service.InvoiceNumberService;
 import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
 import com.bigbrightpaints.erp.modules.factory.domain.FactoryTaskRepository;
 import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderDto;
+import com.bigbrightpaints.erp.modules.sales.dto.CreditRequestDto;
+import com.bigbrightpaints.erp.modules.sales.dto.CreditRequestRequest;
 import com.bigbrightpaints.erp.modules.inventory.dto.PackagingSlipDto;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.InventoryReservationResult;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.InventoryShortage;
@@ -182,6 +185,72 @@ class SalesServiceTest {
         when(companyContextService.requireCurrentCompany()).thenReturn(company);
         when(companyClock.today(any())).thenReturn(java.time.LocalDate.of(2026, 1, 27));
         when(invoiceRepository.findAllByCompanyAndSalesOrderId(eq(company), anyLong())).thenReturn(List.of());
+    }
+
+    @Test
+    void createCreditRequestNormalizesPendingStatusForAdminQueue() {
+        when(creditRequestRepository.save(any(CreditRequest.class))).thenAnswer(invocation -> {
+            CreditRequest entity = invocation.getArgument(0);
+            setField(entity, "id", 901L);
+            return entity;
+        });
+
+        CreditRequestDto dto = salesService.createCreditRequest(new CreditRequestRequest(
+                null,
+                new BigDecimal("1500"),
+                "Need temporary headroom",
+                " pending "
+        ));
+
+        assertEquals("PENDING", dto.status());
+        ArgumentCaptor<CreditRequest> requestCaptor = ArgumentCaptor.forClass(CreditRequest.class);
+        verify(creditRequestRepository).save(requestCaptor.capture());
+        assertEquals("PENDING", requestCaptor.getValue().getStatus());
+    }
+
+    @Test
+    void updateCreditRequestNormalizesApprovedStatus() {
+        CreditRequest existing = new CreditRequest();
+        existing.setCompany(company);
+        existing.setAmountRequested(new BigDecimal("800"));
+        existing.setStatus("PENDING");
+        setField(existing, "id", 902L);
+
+        when(companyEntityLookup.requireCreditRequest(company, 902L)).thenReturn(existing);
+
+        CreditRequestDto dto = salesService.updateCreditRequest(902L, new CreditRequestRequest(
+                null,
+                new BigDecimal("800"),
+                "Approved by admin",
+                " approved "
+        ));
+
+        assertEquals("APPROVED", dto.status());
+        assertEquals("APPROVED", existing.getStatus());
+    }
+
+    @Test
+    void updateCreditRequestRejectsUnsupportedStatusValue() {
+        CreditRequest existing = new CreditRequest();
+        existing.setCompany(company);
+        existing.setAmountRequested(new BigDecimal("600"));
+        existing.setStatus("PENDING");
+        setField(existing, "id", 903L);
+
+        when(companyEntityLookup.requireCreditRequest(company, 903L)).thenReturn(existing);
+
+        ApplicationException ex = assertThrows(ApplicationException.class, () -> salesService.updateCreditRequest(
+                903L,
+                new CreditRequestRequest(
+                        null,
+                        new BigDecimal("600"),
+                        "Status drift attempt",
+                        "in_review"
+                )
+        ));
+
+        assertEquals(ErrorCode.VALIDATION_INVALID_INPUT, ex.getErrorCode());
+        assertEquals("PENDING", existing.getStatus());
     }
 
     @Test

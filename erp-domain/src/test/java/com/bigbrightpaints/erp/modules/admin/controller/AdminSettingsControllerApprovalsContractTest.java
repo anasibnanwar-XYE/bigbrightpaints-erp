@@ -158,9 +158,9 @@ class AdminSettingsControllerApprovalsContractTest {
         ReflectionTestUtils.setField(payrollRun, "publicId", UUID.fromString("33333333-3333-3333-3333-333333333333"));
         ReflectionTestUtils.setField(payrollRun, "createdAt", Instant.parse("2026-02-12T10:00:00Z"));
 
-        when(creditRequestRepository.findByCompanyAndStatusOrderByCreatedAtDesc(company, "PENDING"))
+        when(creditRequestRepository.findPendingByCompanyOrderByCreatedAtDesc(company))
                 .thenReturn(List.of(creditRequest));
-        when(creditLimitOverrideRequestRepository.findByCompanyAndStatusOrderByCreatedAtDesc(company, "PENDING"))
+        when(creditLimitOverrideRequestRepository.findPendingByCompanyOrderByCreatedAtDesc(company))
                 .thenReturn(List.of(overrideRequest, orderOverrideRequest, fallbackOverrideRequest, slipAndOrderOverrideRequest));
         when(payrollRunRepository.findByCompanyAndStatusOrderByCreatedAtDesc(company, PayrollRun.PayrollStatus.CALCULATED))
                 .thenReturn(List.of(payrollRun));
@@ -177,6 +177,11 @@ class AdminSettingsControllerApprovalsContractTest {
         assertThat(overrideApproval.summary()).contains("request CLO-22");
         assertThat(overrideApproval.summary()).contains("Dealer Delta");
         assertThat(overrideApproval.summary()).contains("requested by ops.user@bbp.com");
+        assertThat(overrideApproval.actionType()).isEqualTo("APPROVE_DISPATCH_CREDIT_OVERRIDE");
+        assertThat(overrideApproval.actionLabel()).isEqualTo("Approve dispatch credit override");
+        assertThat(overrideApproval.sourcePortal()).isEqualTo("SALES_PORTAL");
+        assertThat(overrideApproval.approveEndpoint()).isEqualTo("/api/v1/credit/override-requests/{id}/approve");
+        assertThat(overrideApproval.rejectEndpoint()).isEqualTo("/api/v1/credit/override-requests/{id}/reject");
 
         AdminApprovalItemDto orderOverrideApproval = response.data().creditRequests().get(1);
         assertThat(orderOverrideApproval.type()).isEqualTo("CREDIT_LIMIT_OVERRIDE_REQUEST");
@@ -184,6 +189,7 @@ class AdminSettingsControllerApprovalsContractTest {
         assertThat(orderOverrideApproval.summary()).contains("request SO-55");
         assertThat(orderOverrideApproval.summary()).contains("Dealer Gamma");
         assertThat(orderOverrideApproval.summary()).contains("requested by factory.user@bbp.com");
+        assertThat(orderOverrideApproval.sourcePortal()).isEqualTo("SALES_PORTAL");
 
         AdminApprovalItemDto slipOverrideApproval = response.data().creditRequests().get(2);
         assertThat(slipOverrideApproval.type()).isEqualTo("CREDIT_LIMIT_OVERRIDE_REQUEST");
@@ -191,6 +197,7 @@ class AdminSettingsControllerApprovalsContractTest {
         assertThat(slipOverrideApproval.summary()).contains("request PS-66");
         assertThat(slipOverrideApproval.summary()).contains("Dealer Epsilon");
         assertThat(slipOverrideApproval.summary()).contains("requested by sales.manager@bbp.com");
+        assertThat(slipOverrideApproval.sourcePortal()).isEqualTo("FACTORY_PORTAL");
 
         AdminApprovalItemDto slipOnlyOverrideApproval = response.data().creditRequests().get(3);
         assertThat(slipOnlyOverrideApproval.type()).isEqualTo("CREDIT_LIMIT_OVERRIDE_REQUEST");
@@ -199,11 +206,17 @@ class AdminSettingsControllerApprovalsContractTest {
         assertThat(slipOnlyOverrideApproval.summary()).contains("Dealer Beta");
         assertThat(slipOnlyOverrideApproval.summary()).contains("dispatch 300");
         assertThat(slipOnlyOverrideApproval.summary()).contains("requested by sales.user@bbp.com");
+        assertThat(slipOnlyOverrideApproval.sourcePortal()).isEqualTo("FACTORY_PORTAL");
 
         AdminApprovalItemDto creditApproval = response.data().creditRequests().get(4);
         assertThat(creditApproval.type()).isEqualTo("CREDIT_REQUEST");
         assertThat(creditApproval.reference()).isEqualTo("CR-10");
         assertThat(creditApproval.summary()).contains("Approve dealer credit-limit increase request CR-10 for Dealer Alpha");
+        assertThat(creditApproval.actionType()).isEqualTo("APPROVE_DEALER_CREDIT_REQUEST");
+        assertThat(creditApproval.actionLabel()).isEqualTo("Approve dealer credit-limit increase");
+        assertThat(creditApproval.sourcePortal()).isEqualTo("DEALER_PORTAL");
+        assertThat(creditApproval.approveEndpoint()).isEqualTo("/api/v1/sales/credit-requests/{id}");
+        assertThat(creditApproval.rejectEndpoint()).isEqualTo("/api/v1/sales/credit-requests/{id}");
 
         assertThat(response.data().creditRequests())
                 .extracting(AdminApprovalItemDto::createdAt)
@@ -220,6 +233,11 @@ class AdminSettingsControllerApprovalsContractTest {
         assertThat(payrollApproval.type()).isEqualTo("PAYROLL_RUN");
         assertThat(payrollApproval.reference()).isEqualTo("PR-2026-02");
         assertThat(payrollApproval.summary()).contains("Approve payroll run PR-2026-02");
+        assertThat(payrollApproval.actionType()).isEqualTo("APPROVE_PAYROLL_RUN");
+        assertThat(payrollApproval.actionLabel()).isEqualTo("Approve payroll run");
+        assertThat(payrollApproval.sourcePortal()).isEqualTo("HR_PORTAL");
+        assertThat(payrollApproval.approveEndpoint()).isEqualTo("/api/v1/payroll/runs/{id}/approve");
+        assertThat(payrollApproval.rejectEndpoint()).isNull();
     }
 
     @Test
@@ -255,9 +273,9 @@ class AdminSettingsControllerApprovalsContractTest {
         ReflectionTestUtils.setField(payrollRun, "publicId", UUID.fromString("77777777-7777-7777-7777-777777777777"));
         ReflectionTestUtils.setField(payrollRun, "createdAt", Instant.parse("2026-03-12T10:00:00Z"));
 
-        when(creditRequestRepository.findByCompanyAndStatusOrderByCreatedAtDesc(company, "PENDING"))
+        when(creditRequestRepository.findPendingByCompanyOrderByCreatedAtDesc(company))
                 .thenReturn(List.of());
-        when(creditLimitOverrideRequestRepository.findByCompanyAndStatusOrderByCreatedAtDesc(company, "PENDING"))
+        when(creditLimitOverrideRequestRepository.findPendingByCompanyOrderByCreatedAtDesc(company))
                 .thenReturn(List.of());
         when(payrollRunRepository.findByCompanyAndStatusOrderByCreatedAtDesc(company, PayrollRun.PayrollStatus.CALCULATED))
                 .thenReturn(List.of(payrollRun));
@@ -273,5 +291,7 @@ class AdminSettingsControllerApprovalsContractTest {
         assertThat(payrollApproval.type()).isEqualTo("PAYROLL_RUN");
         assertThat(payrollApproval.reference()).isEqualTo("PR-31");
         assertThat(payrollApproval.summary()).contains("Approve payroll run PR-31");
+        assertThat(payrollApproval.actionType()).isEqualTo("APPROVE_PAYROLL_RUN");
+        assertThat(payrollApproval.sourcePortal()).isEqualTo("HR_PORTAL");
     }
 }

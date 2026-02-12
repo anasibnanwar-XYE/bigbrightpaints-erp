@@ -167,6 +167,13 @@ Purpose: a single place to action admin-only approvals and hand off to accountin
     - UI must route actions by `type` and not assume all `creditRequests[]` rows share one approval endpoint.
     - Use `summary` as the admin-facing action sentence (it now states the exact approval intent and target reference).
     - `reference` is display-only; action APIs must use `item.id` path params for approve/reject calls.
+    - New explicit action-routing fields on every item:
+      - `actionType`: immutable action code (`APPROVE_DEALER_CREDIT_REQUEST`, `APPROVE_DISPATCH_CREDIT_OVERRIDE`, `APPROVE_PAYROLL_RUN`).
+      - `actionLabel`: human action caption for buttons.
+      - `sourcePortal`: origin context (`DEALER_PORTAL`, `SALES_PORTAL`, `FACTORY_PORTAL`, `HR_PORTAL`).
+      - `approveEndpoint` / `rejectEndpoint`: server-declared API route templates (`{id}` path placeholder).
+    - For `CREDIT_REQUEST` rows:
+      - approval/rejection both use `PUT /api/v1/sales/credit-requests/{id}` with body `status=APPROVED|REJECTED`.
   - Actions depend on where the approval is implemented:
     - Credit limit overrides:
       - API: `GET /api/v1/credit/override-requests`

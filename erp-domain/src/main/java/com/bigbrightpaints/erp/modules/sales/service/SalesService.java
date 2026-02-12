@@ -108,6 +108,11 @@ public class SalesService {
             "REJECTED",
             "CLOSED"
     );
+    private static final Set<String> VALID_CREDIT_REQUEST_STATUSES = Set.of(
+            "PENDING",
+            "APPROVED",
+            "REJECTED"
+    );
 
     private final CompanyContextService companyContextService;
     private final DealerRepository dealerRepository;
@@ -1342,7 +1347,7 @@ public class SalesService {
         }
         creditRequest.setAmountRequested(request.amountRequested());
         creditRequest.setReason(request.reason());
-        creditRequest.setStatus(request.status() == null ? "PENDING" : request.status());
+        creditRequest.setStatus(normalizeCreditRequestStatus(request.status(), true));
         return toDto(creditRequestRepository.save(creditRequest));
     }
 
@@ -1355,9 +1360,26 @@ public class SalesService {
         creditRequest.setAmountRequested(request.amountRequested());
         creditRequest.setReason(request.reason());
         if (request.status() != null) {
-            creditRequest.setStatus(request.status());
+            creditRequest.setStatus(normalizeCreditRequestStatus(request.status(), false));
         }
         return toDto(creditRequest);
+    }
+
+    private String normalizeCreditRequestStatus(String status, boolean defaultPending) {
+        if (!StringUtils.hasText(status)) {
+            if (defaultPending) {
+                return "PENDING";
+            }
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Status is required")
+                    .withDetail("entity", "CreditRequest");
+        }
+        String normalized = status.trim().toUpperCase(Locale.ROOT);
+        if (!VALID_CREDIT_REQUEST_STATUSES.contains(normalized)) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Unsupported credit request status")
+                    .withDetail("status", normalized)
+                    .withDetail("allowedStatuses", VALID_CREDIT_REQUEST_STATUSES);
+        }
+        return normalized;
     }
 
     private CreditRequestDto toDto(CreditRequest request) {

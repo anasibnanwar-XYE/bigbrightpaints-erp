@@ -10,5 +10,10 @@ public record AdminApprovalItemDto(
         String reference,
         String status,
         String summary,
+        String actionType,
+        String actionLabel,
+        String sourcePortal,
+        String approveEndpoint,
+        String rejectEndpoint,
         Instant createdAt
 ) {}

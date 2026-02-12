@@ -23,6 +23,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import java.util.stream.Stream;
 
@@ -30,6 +31,14 @@ import java.util.stream.Stream;
 @RequestMapping("/api/v1/admin")
 @PreAuthorize("hasAuthority('ROLE_ADMIN')")
 public class AdminSettingsController {
+    private static final String CREDIT_REQUEST_APPROVAL_ACTION = "APPROVE_DEALER_CREDIT_REQUEST";
+    private static final String CREDIT_OVERRIDE_APPROVAL_ACTION = "APPROVE_DISPATCH_CREDIT_OVERRIDE";
+    private static final String PAYROLL_APPROVAL_ACTION = "APPROVE_PAYROLL_RUN";
+    private static final String CREDIT_REQUEST_MUTATION_ENDPOINT = "/api/v1/sales/credit-requests/{id}";
+    private static final String CREDIT_OVERRIDE_APPROVE_ENDPOINT = "/api/v1/credit/override-requests/{id}/approve";
+    private static final String CREDIT_OVERRIDE_REJECT_ENDPOINT = "/api/v1/credit/override-requests/{id}/reject";
+    private static final String PAYROLL_APPROVE_ENDPOINT = "/api/v1/payroll/runs/{id}/approve";
+
 
     private final SystemSettingsService systemSettingsService;
     private final EmailService emailService;
@@ -74,13 +83,13 @@ public class AdminSettingsController {
     public ApiResponse<AdminApprovalsResponse> approvals() {
         Company company = companyContextService.requireCurrentCompany();
         List<AdminApprovalItemDto> creditRequestApprovals = creditRequestRepository
-                .findByCompanyAndStatusOrderByCreatedAtDesc(company, "PENDING")
+                .findPendingByCompanyOrderByCreatedAtDesc(company)
                 .stream()
                 .map(this::toCreditRequestApprovalItem)
                 .toList();
 
         List<AdminApprovalItemDto> creditOverrideApprovals = creditLimitOverrideRequestRepository
-                .findByCompanyAndStatusOrderByCreatedAtDesc(company, "PENDING")
+                .findPendingByCompanyOrderByCreatedAtDesc(company)
                 .stream()
                 .map(this::toCreditOverrideApprovalItem)
                 .toList();
@@ -102,8 +111,24 @@ public class AdminSettingsController {
     }
 
     private AdminApprovalItemDto approvalItem(String type, Long id, UUID publicId, String reference,
-                                              String status, String summary, Instant createdAt) {
-        return new AdminApprovalItemDto(type, id, publicId, reference, status, summary, createdAt);
+                                              String status, String summary, String actionType,
+                                              String actionLabel, String sourcePortal,
+                                              String approveEndpoint, String rejectEndpoint,
+                                              Instant createdAt) {
+        return new AdminApprovalItemDto(
+                type,
+                id,
+                publicId,
+                reference,
+                status,
+                summary,
+                actionType,
+                actionLabel,
+                sourcePortal,
+                approveEndpoint,
+                rejectEndpoint,
+                createdAt
+        );
     }
 
     private AdminApprovalItemDto toCreditRequestApprovalItem(CreditRequest request) {
@@ -121,8 +146,13 @@ public class AdminSettingsController {
                 request.getId(),
                 request.getPublicId(),
                 reference,
-                request.getStatus(),
+                normalizeStatus(request.getStatus()),
                 summary,
+                CREDIT_REQUEST_APPROVAL_ACTION,
+                "Approve dealer credit-limit increase",
+                "DEALER_PORTAL",
+                CREDIT_REQUEST_MUTATION_ENDPOINT,
+                CREDIT_REQUEST_MUTATION_ENDPOINT,
                 request.getCreatedAt()
         );
     }
@@ -145,8 +175,13 @@ public class AdminSettingsController {
                 request.getId(),
                 request.getPublicId(),
                 reference,
-                request.getStatus(),
+                normalizeStatus(request.getStatus()),
                 summary,
+                CREDIT_OVERRIDE_APPROVAL_ACTION,
+                "Approve dispatch credit override",
+                overrideSourcePortal(request),
+                CREDIT_OVERRIDE_APPROVE_ENDPOINT,
+                CREDIT_OVERRIDE_REJECT_ENDPOINT,
                 request.getCreatedAt()
         );
     }
@@ -162,10 +197,22 @@ public class AdminSettingsController {
                 run.getId(),
                 run.getPublicId(),
                 reference,
-                run.getStatus().name(),
+                normalizeStatus(run.getStatus() != null ? run.getStatus().name() : null),
                 summary,
+                PAYROLL_APPROVAL_ACTION,
+                "Approve payroll run",
+                "HR_PORTAL",
+                PAYROLL_APPROVE_ENDPOINT,
+                null,
                 run.getCreatedAt()
         );
+    }
+
+    private String normalizeStatus(String status) {
+        if (!StringUtils.hasText(status)) {
+            return "UNKNOWN";
+        }
+        return status.trim().toUpperCase(Locale.ROOT);
     }
 
     private String overrideReference(CreditLimitOverrideRequest request) {
@@ -177,6 +224,16 @@ public class AdminSettingsController {
             return request.getSalesOrder().getOrderNumber();
         }
         return "CLO-" + request.getId();
+    }
+
+    private String overrideSourcePortal(CreditLimitOverrideRequest request) {
+        if (request.getPackagingSlip() != null) {
+            return "FACTORY_PORTAL";
+        }
+        if (request.getSalesOrder() != null) {
+            return "SALES_PORTAL";
+        }
+        return "SALES_PORTAL";
     }
 
     private String toAmountString(BigDecimal amount) {
