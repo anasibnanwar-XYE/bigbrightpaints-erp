@@ -936,3 +936,36 @@ Queue Rotation (Auto-Replenish)
 - [ready] M9-S4 accounting query hotspot + index-check under replay workload
 - [ready] M5-S3 dispatch/invoice/accounting exact-link invariant sweep (including backorder cancel status semantics)
 - [ready] M6-S8 duplicate idempotency helper consolidation map for receipt/split/payment/settlement paths
+
+Completed Slice (Committed)
+- 2026-02-12: `091a2c7d`
+  - fix(accounting): repair settlement race fallback mapping and add coverage.
+  - Dealer settlement race fallback now repairs idempotency reference mapping before validating replay payload in `DataIntegrityViolationException` path.
+  - Added settlement race fallback mapping repair tests:
+    - `settleDealerInvoices_dataIntegrityFallbackRepairsReferenceMapping`
+    - `settleSupplierInvoices_dataIntegrityFallbackRepairsReferenceMapping`
+  - Verification:
+    - `mvn -B -ntp -Dtest=AccountingServiceTest#settleDealerInvoices_dataIntegrityFallbackRepairsReferenceMapping+settleSupplierInvoices_dataIntegrityFallbackRepairsReferenceMapping test` -> pass (2 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `091a2c7d`
+- `codex review --commit 091a2c7d`:
+  - completed with rollout/state-db noise and final verdict: no introduced regression; targeted fix is behavior-consistent.
+- Review subagent `019c50f2-2876-7c10-a27e-1dd07ad19e7a`:
+  - no functional/accounting/security regressions found.
+  - residual watch item: keep settlement race paths in regression suite to detect future `CONCURRENCY_CONFLICT` drift.
+
+Loop Update
+- 2026-02-12T13:57:19+05:30
+- tracked_now_ts: `2026-02-12T13:57:19+05:30`
+- tracked_elapsed: `12h 3m 27s`
+- active_in_progress: `M4-S4 statement/aging boundary invariants (from/to guards + as-of source-of-truth consistency)`
+
+Queue Rotation (Auto-Replenish)
+- [completed] M6-S7 settlement race-fallback mapping repair + test closure
+- [in_progress] M4-S4 statement/aging boundary invariants (from/to guards + as-of source-of-truth consistency)
+- [ready] M2-S9 closed-period mutation abuse matrix for settlement replay and allocation races
+- [ready] M9-S4 accounting query hotspot + index-check under replay workload
+- [ready] M5-S3 dispatch/invoice/accounting exact-link invariant sweep (including backorder cancel status semantics)
+- [ready] M6-S8 duplicate idempotency helper consolidation map for receipt/split/payment/settlement paths
+- [ready] M4-S5 report export parity audit (PDF/CSV aging/statement should match API totals + as-of semantics)
