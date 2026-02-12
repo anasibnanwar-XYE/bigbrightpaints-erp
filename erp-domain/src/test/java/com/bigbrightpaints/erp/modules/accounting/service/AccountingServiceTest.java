@@ -3791,21 +3791,7 @@ class AccountingServiceTest {
         dealer.setReceivableAccount(receivable);
         ReflectionTestUtils.setField(dealer, "id", 1L);
 
-        Account cash = new Account();
-        cash.setCompany(company);
-        cash.setCode("CASH");
-        cash.setType(AccountType.ASSET);
-        ReflectionTestUtils.setField(cash, "id", 20L);
-
-        Account discount = new Account();
-        discount.setCompany(company);
-        discount.setCode("DISC");
-        ReflectionTestUtils.setField(discount, "id", 21L);
-
         when(dealerRepository.lockByCompanyAndId(eq(company), eq(1L))).thenReturn(Optional.of(dealer));
-        when(settlementAllocationRepository.findByCompanyAndIdempotencyKey(any(), any())).thenReturn(List.of());
-        when(companyEntityLookup.requireAccount(eq(company), eq(20L))).thenReturn(cash);
-        when(companyEntityLookup.requireAccount(eq(company), eq(21L))).thenReturn(discount);
 
         DealerSettlementRequest request = new DealerSettlementRequest(
                 1L,
@@ -3845,6 +3831,8 @@ class AccountingServiceTest {
         assertThatThrownBy(() -> accountingService.settleDealerInvoices(request))
                 .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("negative net cash contribution");
+        verify(journalReferenceMappingRepository, never())
+                .reserveReferenceMapping(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -4086,15 +4074,8 @@ class AccountingServiceTest {
         cash.setType(AccountType.ASSET);
         ReflectionTestUtils.setField(cash, "id", 20L);
 
-        Account discount = new Account();
-        discount.setCompany(company);
-        discount.setCode("DISC");
-        ReflectionTestUtils.setField(discount, "id", 21L);
-
         when(supplierRepository.lockByCompanyAndId(eq(company), eq(1L))).thenReturn(Optional.of(supplier));
-        when(settlementAllocationRepository.findByCompanyAndIdempotencyKey(any(), any())).thenReturn(List.of());
         when(companyEntityLookup.requireAccount(eq(company), eq(20L))).thenReturn(cash);
-        when(companyEntityLookup.requireAccount(eq(company), eq(21L))).thenReturn(discount);
 
         SupplierSettlementRequest request = new SupplierSettlementRequest(
                 1L,
@@ -4133,6 +4114,8 @@ class AccountingServiceTest {
         assertThatThrownBy(() -> accountingService.settleSupplierInvoices(request))
                 .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("negative net cash contribution");
+        verify(journalReferenceMappingRepository, never())
+                .reserveReferenceMapping(any(), any(), any(), any(), any());
     }
 
     @Test

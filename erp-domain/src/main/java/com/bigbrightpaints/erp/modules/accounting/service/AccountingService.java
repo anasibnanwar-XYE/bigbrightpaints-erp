@@ -1766,7 +1766,6 @@ public class AccountingService {
             BigDecimal discount = normalizeNonNegative(allocation.discountAmount(), "discountAmount");
             BigDecimal writeOff = normalizeNonNegative(allocation.writeOffAmount(), "writeOffAmount");
             BigDecimal fxAdjustment = MoneyUtils.zeroIfNull(allocation.fxAdjustment());
-            validateDealerAllocationCashContribution(allocation.invoiceId(), applied, discount, writeOff, fxAdjustment);
 
             Invoice invoice = invoiceRepository.lockByCompanyAndId(company, allocation.invoiceId())
                     .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Invoice not found"));
@@ -1987,7 +1986,6 @@ public class AccountingService {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
                         "On-account supplier settlement allocations cannot include discount/write-off/FX adjustments");
             }
-            validateSupplierAllocationCashContribution(allocation.purchaseId(), applied, discount, writeOff, fxAdjustment);
 
             RawMaterialPurchase purchase = null;
             if (allocation.purchaseId() != null) {
@@ -2874,6 +2872,11 @@ public class AccountingService {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
                         "Dealer settlements cannot allocate to purchases");
             }
+            BigDecimal applied = requirePositive(allocation.appliedAmount(), "appliedAmount");
+            BigDecimal discount = normalizeNonNegative(allocation.discountAmount(), "discountAmount");
+            BigDecimal writeOff = normalizeNonNegative(allocation.writeOffAmount(), "writeOffAmount");
+            BigDecimal fxAdjustment = MoneyUtils.zeroIfNull(allocation.fxAdjustment());
+            validateDealerAllocationCashContribution(allocation.invoiceId(), applied, discount, writeOff, fxAdjustment);
         }
     }
 
@@ -2886,6 +2889,7 @@ public class AccountingService {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
                         "Supplier settlements cannot allocate to invoices");
             }
+            BigDecimal applied = requirePositive(allocation.appliedAmount(), "appliedAmount");
             BigDecimal discount = normalizeNonNegative(allocation.discountAmount(), "discountAmount");
             BigDecimal writeOff = normalizeNonNegative(allocation.writeOffAmount(), "writeOffAmount");
             BigDecimal fxAdjustment = MoneyUtils.zeroIfNull(allocation.fxAdjustment());
@@ -2896,6 +2900,7 @@ public class AccountingService {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
                         "On-account supplier settlement allocations cannot include discount/write-off/FX adjustments");
             }
+            validateSupplierAllocationCashContribution(allocation.purchaseId(), applied, discount, writeOff, fxAdjustment);
         }
     }
 
