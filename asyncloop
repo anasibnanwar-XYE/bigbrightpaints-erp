@@ -1318,3 +1318,59 @@ Queue Rotation (Auto-Replenish)
 - [ready] M9-S4 accounting query hotspot + index-check under replay workload
 - [ready] M4-S8 aging overcredit policy hardening decision (negative bucket clamp vs carry-forward bucket)
 - [ready] M7-S2 ledger/journal report linkage assertions (traceability from report rows to journal IDs)
+
+Completed Slice (Committed)
+- 2026-02-12: `f71a0779`
+  - fix(accounting): prevent settlement mutations on allocation race fallback.
+  - M2-S9 hardening pass:
+    - deferred invoice/purchase outstanding mutations until `settlementAllocationRepository.saveAll(...)` succeeds,
+    - maintained per-document remaining balances during allocation validation so duplicate allocation lines cannot over-clear,
+    - applied settlement policy + dealer ledger sync and purchase status/outstanding updates only post-persistence,
+    - added no-mutation race-fallback assertions for dealer receipt/split, supplier payment, and dealer settlement paths.
+  - Verification:
+    - `mvn -B -ntp -Dtest=AccountingServiceTest#recordDealerReceipt_dataIntegrityFallbackRepairsReferenceMapping+recordDealerReceiptSplit_dataIntegrityFallbackRepairsReferenceMapping+recordSupplierPayment_dataIntegrityFallbackRepairsReferenceMapping+settleDealerInvoices_dataIntegrityFallbackRepairsReferenceMapping test` -> pass (4 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `f71a0779`
+- `codex review --commit f71a0779`:
+  - final verdict: no regressions introduced by this commit.
+- Review subagent `019c513a-ed04-7310-bbff-4d99bb322e58`:
+  - low finding: missing supplier-settlement explicit no-mutation assertion for DataIntegrity replay fallback.
+  - disposition: fixed in follow-up commit `ab57a465`.
+
+Completed Slice (Committed)
+- 2026-02-12: `ab57a465`
+  - test(accounting): cover supplier settlement race fallback mutation guard.
+  - Extended `settleSupplierInvoices_dataIntegrityFallbackRepairsReferenceMapping` to allocate against a locked purchase and assert:
+    - purchase outstanding remains unchanged on fallback replay,
+    - `rawMaterialPurchaseRepository.saveAll(...)` is not called.
+  - Verification:
+    - `mvn -B -ntp -Dtest=AccountingServiceTest#recordDealerReceipt_dataIntegrityFallbackRepairsReferenceMapping+recordDealerReceiptSplit_dataIntegrityFallbackRepairsReferenceMapping+recordSupplierPayment_dataIntegrityFallbackRepairsReferenceMapping+settleDealerInvoices_dataIntegrityFallbackRepairsReferenceMapping+settleSupplierInvoices_dataIntegrityFallbackRepairsReferenceMapping test` -> pass (5 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `ab57a465`
+- `codex review --commit ab57a465`:
+  - final verdict: test-only hardening is correct; no actionable regressions.
+- Review subagent `019c513f-7102-79f0-b419-c1e2871aa7de`:
+  - findings: none (explicitly validated no-mutation invariant coverage).
+
+Runtime/Blocker Validation
+- 2026-02-12: benchmark gate relevance check completed.
+  - `AccountingServiceBenchmarkTest` is under `erp-domain/src/test`, so it is inside module test-compile scope.
+  - `mvn -B -ntp -Dtest=AccountingServiceBenchmarkTest test` -> build success (2 skipped benchmark tests, 0 compile/runtime failures).
+
+Loop Update
+- 2026-02-12T15:19:05+05:30
+- tracked_now_ts: `2026-02-12T15:19:05+05:30`
+- tracked_elapsed: `13h 25m 13s`
+- active_in_progress: `M2-S10 period-close mutation guard matrix (AP/AR settlement & payment flows under closed-period constraints)`
+
+Queue Rotation (Auto-Replenish)
+- [completed] M2-S9 closed-period mutation abuse matrix (settlement replay/allocation race mutation side-effects)
+- [in_progress] M2-S10 period-close mutation guard matrix (AP/AR settlement & payment flows under closed-period constraints)
+- [ready] M5-S3 dispatch/invoice/accounting exact-link invariant sweep (backorder cancel + dispatch finality checks)
+- [ready] M6-S8 duplicate idempotency helper consolidation map for receipt/split/payment/settlement paths
+- [ready] M9-S4 accounting query hotspot + index-check under replay workload
+- [ready] M4-S8 aging overcredit policy hardening decision (negative bucket clamp vs carry-forward bucket)
+- [ready] M7-S2 ledger/journal report linkage assertions (traceability from report rows to journal IDs)
+- [ready] M2-S11 settlement replay mismatch negative matrix parity check (all resolveReplayJournalEntry call sites + future-proof coverage)
