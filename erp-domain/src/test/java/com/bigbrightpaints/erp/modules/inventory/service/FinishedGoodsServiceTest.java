@@ -204,15 +204,30 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
         assertThat(firstInserted.getId()).isLessThan(secondInserted.getId());
 
         SalesOrder order = createOrder(company, "SO-WAC-FEFO-TIE-" + UUID.randomUUID(), fg.getProductCode(), BigDecimal.ONE);
-        FinishedGoodsService.InventoryReservationResult result = finishedGoodsService.reserveForOrder(order);
+        FinishedGoodsService.InventoryReservationResult first = finishedGoodsService.reserveForOrder(order);
+        FinishedGoodsService.InventoryReservationResult replay = finishedGoodsService.reserveForOrder(order);
 
         PackagingSlip slip = packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, order.getId()).stream()
                 .filter(existing -> !existing.isBackorder())
                 .findFirst()
                 .orElseThrow();
-        assertThat(result.shortages()).isEmpty();
+        assertThat(first.shortages()).isEmpty();
+        assertThat(replay.shortages()).isEmpty();
         assertThat(slip.getLines()).hasSize(1);
         assertThat(slip.getLines().getFirst().getFinishedGoodBatch().getId()).isEqualTo(firstInserted.getId());
+
+        FinishedGoodBatch firstAfterReplay = finishedGoodBatchRepository.findById(firstInserted.getId()).orElseThrow();
+        FinishedGoodBatch secondAfterReplay = finishedGoodBatchRepository.findById(secondInserted.getId()).orElseThrow();
+        assertThat(firstAfterReplay.getQuantityAvailable()).isEqualByComparingTo(new BigDecimal("2"));
+        assertThat(secondAfterReplay.getQuantityAvailable()).isEqualByComparingTo(new BigDecimal("3"));
+
+        List<InventoryReservation> reservations = inventoryReservationRepository
+                .findByFinishedGoodCompanyAndReferenceTypeAndReferenceId(
+                        company,
+                        InventoryReference.SALES_ORDER,
+                        order.getId().toString());
+        assertThat(reservations).hasSize(1);
+        assertThat(reservations.getFirst().getReservedQuantity()).isEqualByComparingTo(BigDecimal.ONE);
     }
 
     @Test
@@ -254,16 +269,31 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
                     fg.getProductCode(),
                     new BigDecimal("2"));
 
-            FinishedGoodsService.InventoryReservationResult result = finishedGoodsService.reserveForOrder(order);
+            FinishedGoodsService.InventoryReservationResult first = finishedGoodsService.reserveForOrder(order);
+            FinishedGoodsService.InventoryReservationResult replay = finishedGoodsService.reserveForOrder(order);
 
             PackagingSlip slip = packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, order.getId()).stream()
                     .filter(existing -> !existing.isBackorder())
                     .findFirst()
                     .orElseThrow();
-            assertThat(result.shortages()).isEmpty();
+            assertThat(first.shortages()).isEmpty();
+            assertThat(replay.shortages()).isEmpty();
             assertThat(slip.getLines()).hasSize(1);
             assertThat(slip.getLines().getFirst().getFinishedGoodBatch().getId())
                     .isEqualTo(newerManufacturedSoonerExpiry.getId());
+
+            FinishedGoodBatch soonerAfterReplay = finishedGoodBatchRepository.findById(newerManufacturedSoonerExpiry.getId()).orElseThrow();
+            FinishedGoodBatch olderAfterReplay = finishedGoodBatchRepository.findById(olderManufacturedLaterExpiry.getId()).orElseThrow();
+            assertThat(soonerAfterReplay.getQuantityAvailable()).isEqualByComparingTo(BigDecimal.ONE);
+            assertThat(olderAfterReplay.getQuantityAvailable()).isEqualByComparingTo(new BigDecimal("3"));
+
+            List<InventoryReservation> reservations = inventoryReservationRepository
+                    .findByFinishedGoodCompanyAndReferenceTypeAndReferenceId(
+                            company,
+                            InventoryReference.SALES_ORDER,
+                            order.getId().toString());
+            assertThat(reservations).hasSize(1);
+            assertThat(reservations.getFirst().getReservedQuantity()).isEqualByComparingTo(new BigDecimal("2"));
         } finally {
             Locale.setDefault(previous);
         }
