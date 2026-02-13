@@ -3978,3 +3978,50 @@ Post-Commit Review Evidence
 - Review subagent `019c58be-eb82-7ce2-8809-6ff0c6bf04d0`:
   - findings: none.
   - summary: queue invariants and M14-S19 closure evidence remain coherent.
+
+Post-Commit Review Evidence
+- Commit reviewed: `1fc8aaf5`
+- `codex review --commit 1fc8aaf5`:
+  - final verdict: docs-only closure append; no runtime/test/config defect introduced.
+- Review subagent `019c58c0-1e99-71c2-b442-f0bb0451f81a`:
+  - findings: none.
+
+Completed Slice (Committed)
+- 2026-02-14: `403e77ac`
+  - hardening(guard): enforce nonzero accounting scope coverage.
+  - M14-S20 closure:
+    - hardened `scripts/guard_accounting_portal_scope_contract.sh` to enforce non-zero endpoint counts for `hr`, `purchasing`, `inventory`, and `reports` rows in `docs/endpoint-inventory.md`.
+    - added env-overridable doc paths in guard script to support deterministic fixture-based regression checks.
+    - added `AccountingPortalScopeGuardScriptTest` with positive fixture pass + negative drift case (`reports` count -> 0) to verify fail-closed behavior.
+  - Verification:
+    - `cd /home/realnigga/Desktop/orchestrator_erp && bash scripts/guard_accounting_portal_scope_contract.sh` -> pass (`[guard_accounting_portal_scope_contract] OK`).
+    - `cd /home/realnigga/Desktop/orchestrator_erp/erp-domain && mvn -B -ntp -Dtest=AccountingPortalScopeGuardScriptTest test` -> pass (2 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `403e77ac`
+- `codex review --commit 403e77ac`:
+  - status: first run interrupted after prolonged rollout-noise stall; re-run in progress (`exec` session `92120`) with terminal verdict pending capture.
+- Review subagent `019c58c2-5592-77f3-8288-b45067c19ed8`:
+  - findings: none.
+  - summary: guard hardening and new negative regression test are release-safe with no identified accounting/security regressions.
+
+Loop Update
+- 2026-02-14T02:20:02+05:30
+- tracked_now_ts: `2026-02-14T02:20:02+05:30`
+- tracked_elapsed: `48h 26m 10s`
+- active_in_progress: `M14-S21 unsupported-method preservation contract for catalog sync/create/update (unknown legacy costing values stay unchanged while known aliases canonicalize)`
+
+Queue Rotation (Auto-Replenish)
+- [completed] M14-S20 accounting portal endpoint-map drift gate (assert HR/PURCHASING/INVENTORY/REPORTS remain mapped under Accounting portal unless replacement map docs update lands atomically)
+- [in_progress] M14-S21 unsupported-method preservation contract for catalog sync/create/update (unknown legacy costing values stay unchanged while known aliases canonicalize)
+- [ready] M14-S22 costing-selector dedupe guard for WAC/FIFO/LIFO replay paths (extract shared finished-good selector helper for reserve+adjustment and enforce parity tests incl. shortage replay)
+- [ready] M14-S23 portal-scope guard negative matrix (simulate dropped section/module anchors in temp docs fixture to prove fail-closed behavior)
+- [ready] M14-S24 accounting catalog import idempotency mismatch guard (`/api/v1/accounting/catalog/import` same idempotency key + payload hash mismatch must fail deterministically with no partial product/raw-material mutations)
+- [ready] M14-S25 accounting catalog import multipart abuse matrix (missing/empty file part, wrong content-type, and oversized row rejection must fail safe without creating product/raw-material rows)
+- [ready] M14-S26 finished-good costing alias parity sweep for read paths (ensure stock-summary and inventory-valuation canonicalize legacy weighted-average aliases identically, with unsupported-method fallback explicitly covered)
+- [ready] M14-S27 endpoint-inventory cross-portal drift detector (fail if hr/purchasing/inventory/reports rows fall to zero or disappear while accounting portal map still claims ownership)
+- [ready] M12-S5 discount/reference calculation parity matrix across sales->invoice->settlement + user-facing example table refresh
+- [ready] M10-S3 release-gate dry-run and blocker ledger sync (`scripts/verify_local.sh` + artifact sanity)
+- [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
+- [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
+- [ready] M11-S6 approval queue runtime contract test slice (assert FE docs match live `AdminApprovalItemDto` payload fields and action endpoint semantics)
