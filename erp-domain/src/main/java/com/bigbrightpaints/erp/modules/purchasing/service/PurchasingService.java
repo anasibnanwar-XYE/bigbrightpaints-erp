@@ -505,6 +505,7 @@ public class PurchasingService {
                             "Goods receipt already linked to a purchase invoice")
                             .withDetail("purchaseId", existing.getId());
                 });
+        assertGoodsReceiptMovementsUnlinked(company, goodsReceipt.getReceiptNumber());
 
         Map<Long, BigDecimal> receiptQuantities = new HashMap<>();
         Map<Long, BigDecimal> receiptUnitCosts = new HashMap<>();
@@ -767,16 +768,7 @@ public class PurchasingService {
                         movement.setJournalEntryId(entryId);
                         movementRepository.save(movement);
                     });
-            List<RawMaterialMovement> receiptMovements = movementRepository
-                    .findByRawMaterialCompanyAndReferenceTypeAndReferenceId(company,
-                            InventoryReference.RAW_MATERIAL_PURCHASE,
-                            goodsReceipt.getReceiptNumber());
-            for (RawMaterialMovement movement : receiptMovements) {
-                if (movement.getJournalEntryId() == null || !movement.getJournalEntryId().equals(entryId)) {
-                    movement.setJournalEntryId(entryId);
-                    movementRepository.save(movement);
-                }
-            }
+            linkGoodsReceiptMovementsToJournal(company, goodsReceipt.getReceiptNumber(), entryId);
         }
         goodsReceipt.setStatus("INVOICED");
         goodsReceiptRepository.save(goodsReceipt);
@@ -789,6 +781,63 @@ public class PurchasingService {
             }
         }
         return toResponse(purchase);
+    }
+
+    private void assertGoodsReceiptMovementsUnlinked(Company company, String receiptNumber) {
+        if (!StringUtils.hasText(receiptNumber)) {
+            return;
+        }
+        for (RawMaterialMovement movement : findGoodsReceiptMovements(company, receiptNumber)) {
+            Long existingJournalId = movement.getJournalEntryId();
+            if (existingJournalId != null) {
+                throw new ApplicationException(
+                        ErrorCode.BUSINESS_CONSTRAINT_VIOLATION,
+                        "Goods receipt " + receiptNumber + " already linked to journal " + existingJournalId)
+                        .withDetail("goodsReceiptNumber", receiptNumber)
+                        .withDetail("movementId", movement.getId())
+                        .withDetail("existingJournalEntryId", existingJournalId);
+            }
+        }
+    }
+
+    private void linkGoodsReceiptMovementsToJournal(Company company, String receiptNumber, Long journalEntryId) {
+        if (journalEntryId == null || !StringUtils.hasText(receiptNumber)) {
+            return;
+        }
+        List<RawMaterialMovement> receiptMovements = findGoodsReceiptMovements(company, receiptNumber);
+        if (receiptMovements.isEmpty()) {
+            return;
+        }
+        List<RawMaterialMovement> toUpdate = new ArrayList<>();
+        for (RawMaterialMovement movement : receiptMovements) {
+            Long existingJournalId = movement.getJournalEntryId();
+            if (existingJournalId == null) {
+                movement.setJournalEntryId(journalEntryId);
+                toUpdate.add(movement);
+                continue;
+            }
+            if (!Objects.equals(existingJournalId, journalEntryId)) {
+                throw new ApplicationException(
+                        ErrorCode.BUSINESS_CONSTRAINT_VIOLATION,
+                        "Goods receipt " + receiptNumber + " already linked to journal " + existingJournalId)
+                        .withDetail("goodsReceiptNumber", receiptNumber)
+                        .withDetail("movementId", movement.getId())
+                        .withDetail("existingJournalEntryId", existingJournalId)
+                        .withDetail("requestedJournalEntryId", journalEntryId);
+            }
+        }
+        if (!toUpdate.isEmpty()) {
+            movementRepository.saveAll(toUpdate);
+        }
+    }
+
+    private List<RawMaterialMovement> findGoodsReceiptMovements(Company company, String receiptNumber) {
+        List<RawMaterialMovement> movements = movementRepository
+                .findByRawMaterialCompanyAndReferenceTypeAndReferenceId(
+                        company,
+                        InventoryReference.RAW_MATERIAL_PURCHASE,
+                        receiptNumber);
+        return movements != null ? movements : List.of();
     }
 
     @Transactional

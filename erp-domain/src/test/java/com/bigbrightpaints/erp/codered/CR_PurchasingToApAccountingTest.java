@@ -221,13 +221,12 @@ class CR_PurchasingToApAccountingTest extends AbstractIntegrationTest {
             CompanyContextHolder.clear();
         }
 
-        RawMaterialPurchase persisted = purchaseRepository.findById(purchase.id()).orElseThrow();
-        assertThat(persisted.getJournalEntry()).as("purchase journal").isNotNull();
-        assertThat(persisted.getLines())
-                .extracting(line -> line.getRawMaterial().getId())
+        assertThat(purchase.journalEntryId()).as("purchase journal").isNotNull();
+        assertThat(purchase.lines())
+                .extracting(line -> line.rawMaterialId())
                 .containsOnly(importedRawMaterial.getId());
 
-        Long journalId = persisted.getJournalEntry().getId();
+        Long journalId = purchase.journalEntryId();
         CoderedDbAssertions.assertRawMaterialMovementsLinkedToJournal(
                 jdbcTemplate,
                 company.getId(),
@@ -246,6 +245,112 @@ class CR_PurchasingToApAccountingTest extends AbstractIntegrationTest {
                 .distinct()
                 .toList();
         assertThat(movementRawMaterialIds).containsExactly(importedRawMaterial.getId());
+    }
+
+    @Test
+    void importedCatalogRawMaterial_purchaseRejectsDriftedMovementJournalRelink() {
+        String companyCode = "CR-AP-CAT-DRIFT-" + shortId();
+        Company company = bootstrapCompany(companyCode);
+        Map<String, Account> accounts = ensurePurchasingAccounts(company);
+        Supplier supplier = ensureSupplier(company, accounts.get("AP"));
+        String importedSku = ("CR-RM-DRIFT-" + shortId()).toUpperCase(Locale.ROOT);
+        LocalDate today = TestDateUtils.safeDate(company);
+
+        CompanyContextHolder.setCompanyId(companyCode);
+        try {
+            CatalogImportResponse importResponse = productionCatalogService.importCatalog(
+                    rawMaterialCatalogCsv(importedSku),
+                    "CR-RM-DRIFT-IDEMP-" + shortId());
+            assertThat(importResponse.errors()).isEmpty();
+
+            RawMaterial importedRawMaterial = rawMaterialRepository.findByCompanyAndSku(company, importedSku).orElseThrow();
+            RawMaterialPurchaseResponse baselinePurchase = createPurchaseFlow(supplier, importedRawMaterial, today);
+            Long baselineJournalId = purchaseRepository.findById(baselinePurchase.id()).orElseThrow()
+                    .getJournalEntry()
+                    .getId();
+
+            String orderNumber = "PO-" + shortId();
+            String receiptNumber = "GRN-" + shortId();
+            String invoiceNumber = "INV-" + shortId();
+            String grnIdempotencyKey = "GRN-IDEMP-" + shortId();
+
+            PurchaseOrderResponse po = purchasingService.createPurchaseOrder(new PurchaseOrderRequest(
+                    supplier.getId(),
+                    orderNumber,
+                    today,
+                    "CODE-RED Drift PO",
+                    List.of(new PurchaseOrderLineRequest(
+                            importedRawMaterial.getId(),
+                            new BigDecimal("6"),
+                            importedRawMaterial.getUnitType(),
+                            new BigDecimal("11.75"),
+                            "RM line"))
+            ));
+
+            GoodsReceiptResponse grn = purchasingService.createGoodsReceipt(new GoodsReceiptRequest(
+                    po.id(),
+                    receiptNumber,
+                    today,
+                    "CODE-RED Drift GRN",
+                    grnIdempotencyKey,
+                    List.of(new GoodsReceiptLineRequest(
+                            importedRawMaterial.getId(),
+                            "RM-BATCH-" + shortId(),
+                            new BigDecimal("6"),
+                            importedRawMaterial.getUnitType(),
+                            new BigDecimal("11.75"),
+                            "GRN line"))
+            ));
+
+            var driftedMovements = movementRepository.findByRawMaterialCompanyAndReferenceTypeAndReferenceId(
+                    company,
+                    InventoryReference.RAW_MATERIAL_PURCHASE,
+                    grn.receiptNumber());
+            assertThat(driftedMovements).isNotEmpty();
+            driftedMovements.forEach(movement -> movement.setJournalEntryId(baselineJournalId));
+            movementRepository.saveAll(driftedMovements);
+
+            assertThatThrownBy(() -> purchasingService.createPurchase(new RawMaterialPurchaseRequest(
+                    supplier.getId(),
+                    invoiceNumber,
+                    today,
+                    "CODE-RED Drift Purchase",
+                    po.id(),
+                    grn.id(),
+                    null,
+                    List.of(new RawMaterialPurchaseLineRequest(
+                            importedRawMaterial.getId(),
+                            null,
+                            new BigDecimal("6"),
+                            importedRawMaterial.getUnitType(),
+                            new BigDecimal("11.75"),
+                            null,
+                            null,
+                            "Invoice line"))
+            )))
+                    .isInstanceOf(ApplicationException.class)
+                    .hasMessageContaining("already linked to journal")
+                    .satisfies(error -> assertThat(((ApplicationException) error).getErrorCode())
+                            .isEqualTo(ErrorCode.BUSINESS_CONSTRAINT_VIOLATION));
+
+            List<Long> movementJournalIds = movementRepository.findByRawMaterialCompanyAndReferenceTypeAndReferenceId(
+                            company,
+                            InventoryReference.RAW_MATERIAL_PURCHASE,
+                            grn.receiptNumber())
+                    .stream()
+                    .map(movement -> movement.getJournalEntryId())
+                    .distinct()
+                    .toList();
+            assertThat(movementJournalIds).containsExactly(baselineJournalId);
+
+            GoodsReceipt refreshedGrn = goodsReceiptRepository.findById(grn.id()).orElseThrow();
+            assertThat(refreshedGrn.getStatus()).isEqualTo("RECEIVED");
+            assertThat(purchaseRepository.findByCompanyAndInvoiceNumberIgnoreCase(company, invoiceNumber))
+                    .as("failed invoice is not persisted")
+                    .isEmpty();
+        } finally {
+            CompanyContextHolder.clear();
+        }
     }
 
     @Test
