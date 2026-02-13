@@ -1581,51 +1581,54 @@ public class SalesService {
     /* Dispatch confirmation: inventory issue + COGS posting (AR/Invoice to be wired) */
     @org.springframework.transaction.annotation.Transactional(isolation = Isolation.SERIALIZABLE)
     public DispatchConfirmResponse confirmDispatch(DispatchConfirmRequest request) {
-        PackagingSlip slip = null;
         Company company = companyContextService.requireCurrentCompany();
         // Ensure company defaults are configured before proceeding
         companyDefaultAccountsService.requireDefaults();
-        if (request.packingSlipId() != null) {
-            slip = packagingSlipRepository.findAndLockByIdAndCompany(request.packingSlipId(), company)
-                    .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Packing slip not found"));
-        } else if (request.orderId() != null) {
-            List<PackagingSlip> slips = findOrderSlips(company, request.orderId(), true);
-            if (slips.isEmpty()) {
-                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
-                        "Packing slip not found for order " + request.orderId());
-            }
-            long activeSlips = activeSlipCount(slips);
-            if (activeSlips > 1) {
-                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
-                        "Multiple packing slips found for order " + request.orderId() + "; provide packingSlipId");
-            }
-            PackagingSlip selected = findSingleActiveSlip(slips);
-            if (selected == null) {
-                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
-                        "No active packing slip found for order " + request.orderId());
-            }
-            Long slipId = selected.getId();
-            slip = packagingSlipRepository.findAndLockByIdAndCompany(slipId, company)
-                    .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
-                            "Packing slip not found for order " + request.orderId()));
-        } else {
+        Long requestedSlipId = request.packingSlipId();
+        Long salesOrderId = request.orderId();
+        if (requestedSlipId == null && salesOrderId == null) {
             throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD, "packingSlipId or orderId is required");
         }
-        Long salesOrderId = slip.getSalesOrder() != null ? slip.getSalesOrder().getId() : request.orderId();
+        if (requestedSlipId != null) {
+            Optional<PackagingSlip> referencedSlipOpt = packagingSlipRepository.findByIdAndCompany(requestedSlipId, company);
+            if (referencedSlipOpt == null) {
+                referencedSlipOpt = Optional.empty();
+            }
+            PackagingSlip referencedSlip = referencedSlipOpt
+                    .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Packing slip not found"));
+            salesOrderId = referencedSlip.getSalesOrder() != null ? referencedSlip.getSalesOrder().getId() : salesOrderId;
+        }
         if (salesOrderId == null) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Sales order is required on packing slip");
         }
         SalesOrder order = requireOrderForUpdate(company, salesOrderId);
         List<PackagingSlip> orderSlips = findOrderSlips(company, salesOrderId, true);
-        if (orderSlips.isEmpty() && slip != null) {
-            orderSlips = List.of(slip);
+        if (orderSlips.isEmpty() && requestedSlipId != null) {
+            Optional<PackagingSlip> lockedSlip = packagingSlipRepository.findAndLockByIdAndCompany(requestedSlipId, company);
+            if (lockedSlip != null && lockedSlip.isPresent()) {
+                orderSlips = List.of(lockedSlip.get());
+            }
         }
-        if (slip != null && slip.getId() != null) {
-            for (PackagingSlip candidate : orderSlips) {
-                if (candidate != null && slip.getId().equals(candidate.getId())) {
-                    slip = candidate;
-                    break;
-                }
+        if (orderSlips.isEmpty()) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                    "Packing slip not found for order " + salesOrderId);
+        }
+        PackagingSlip slip;
+        if (requestedSlipId != null) {
+            slip = orderSlips.stream()
+                    .filter(candidate -> candidate != null && requestedSlipId.equals(candidate.getId()))
+                    .findFirst()
+                    .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Packing slip not found"));
+        } else {
+            long activeSlips = activeSlipCount(orderSlips);
+            if (activeSlips > 1) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Multiple packing slips found for order " + salesOrderId + "; provide packingSlipId");
+            }
+            slip = findSingleActiveSlip(orderSlips);
+            if (slip == null) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                        "No active packing slip found for order " + salesOrderId);
             }
         }
         boolean singleActiveSlipForOrder = hasSingleActiveSlip(orderSlips);

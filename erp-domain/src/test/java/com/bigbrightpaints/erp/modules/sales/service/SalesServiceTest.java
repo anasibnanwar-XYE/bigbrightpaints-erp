@@ -185,6 +185,12 @@ class SalesServiceTest {
         when(companyContextService.requireCurrentCompany()).thenReturn(company);
         when(companyClock.today(any())).thenReturn(java.time.LocalDate.of(2026, 1, 27));
         when(invoiceRepository.findAllByCompanyAndSalesOrderId(eq(company), anyLong())).thenReturn(List.of());
+        lenient().when(packagingSlipRepository.findByIdAndCompany(anyLong(), eq(company)))
+                .thenAnswer(invocation -> {
+                    Long slipId = invocation.getArgument(0);
+                    Optional<PackagingSlip> lockedSlip = packagingSlipRepository.findAndLockByIdAndCompany(slipId, company);
+                    return lockedSlip != null ? lockedSlip : Optional.empty();
+                });
     }
 
     @Test
