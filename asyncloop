@@ -3213,3 +3213,68 @@ Queue Rotation (Auto-Replenish)
 - [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
 - [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
 - [ready] M11-S6 approval queue runtime contract test slice (assert FE docs match live `AdminApprovalItemDto` payload fields and action endpoint semantics)
+
+Continuity Checkpoint
+- 2026-02-13T21:04:26+05:30
+- Confirmed no owned uncommitted changes in current slice files (`asyncloop`, inventory costing services/tests touched in `1a03caf4`/`9c843617`).
+- Re-checked pending review stream outcomes for continuity anchors and verified ledger alignment:
+  - `0355149b`: review confirmed journal-relink overwrite risk (P1); disposition already logged and fixed by `f9fd898f`.
+  - `f9fd898f`: review final verdict no blocking regression after relink-drift guard.
+  - `a1d05cd7`: review final verdict docs-only, no executable-path regression.
+
+Completed Slice (Committed)
+- 2026-02-13: `1a03caf4`
+  - fix(inventory): harden costing alias parsing for locale.
+  - M14-S7 locale-stability hardening pass:
+    - switched costing-method normalization/dispatch selection paths to `Locale.ROOT` casing in:
+      - `RawMaterialService`
+      - `FinishedGoodsService`
+      - `InventoryAdjustmentService`
+    - added Turkish-locale regressions for raw-material create normalization, finished-good reserve path alias handling, and inventory adjustment depletion selector path.
+  - Verification:
+    - `cd erp-domain && mvn -B -ntp -Dtest=RawMaterialAndProductUpdateIT#raw_material_create_normalizes_weighted_average_alias_under_turkish_locale,FinishedGoodsServiceTest#reserveForOrderTreatsLegacyWeightedAverageAliasAsWac_underTurkishLocale,CR_INV_AdjustmentIdempotencyTest#adjustment_legacyWeightedAverageAlias_usesExpiryOrder_underTurkishLocale test` -> pass (3 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `1a03caf4`
+- `codex review --commit 1a03caf4`:
+  - final verdict: locale hardening is behavior-consistent; no blocking regressions identified.
+  - captured stream: `/tmp/codex_review_1a03caf4.log`.
+- Review-only subagent (prior handoff run):
+  - low finding: duplicated alias-classification logic remained in some selectors and dispatch-locale regression was not yet explicit.
+  - disposition: dispatch-locale gap closed in follow-up `9c843617`; remaining dedupe tracked under `M14-S9`/`M14-S10`.
+
+Completed Slice (Committed)
+- 2026-02-13: `9c843617`
+  - test(inventory): cover dispatch alias locale regression.
+  - Added `FinishedGoodsServiceTest#dispatchUsesLegacyWeightedAverageAliasUnderTurkishLocale` to pin dispatch path behavior for legacy `weighted-average` alias under Turkish locale.
+  - Verification:
+    - `cd erp-domain && mvn -B -ntp -Dtest=FinishedGoodsServiceTest#dispatchUsesLegacyWeightedAverageAliasUnderTurkishLocale,FinishedGoodsServiceTest#reserveForOrderTreatsLegacyWeightedAverageAliasAsWac_underTurkishLocale,RawMaterialAndProductUpdateIT#raw_material_create_normalizes_weighted_average_alias_under_turkish_locale,CR_INV_AdjustmentIdempotencyTest#adjustment_legacyWeightedAverageAlias_usesExpiryOrder_underTurkishLocale test` -> pass (4 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `9c843617`
+- `codex review --commit 9c843617`:
+  - final verdict: patch is correct; test-only change introduces no runtime regression.
+  - captured stream: `/tmp/codex_review_9c843617.log`.
+- Review subagent `019c57a0-036b-7fc1-a0ac-89ce1c04422c`:
+  - findings: none (critical/high/medium/low).
+  - residual note: locale-default mutation in test is safe under current non-parallel suite configuration; keep watch if test parallelism is enabled later.
+
+Loop Update
+- 2026-02-13T21:04:26+05:30
+- tracked_now_ts: `2026-02-13T21:04:26+05:30`
+- tracked_elapsed: `43h 10m 34s`
+- active_in_progress: `M14-S8 WAC FEFO tie-break determinism (same-expiry batch ordering contract + replay-safe depletion assertions across reserve/adjustment flows)`
+
+Queue Rotation (Auto-Replenish)
+- [completed] M14-S7 locale-stable costing helper sweep (`Locale.ROOT` normalization parity across duplicated `isWeightedAverage(...)` call sites + negative locale regression checks)
+- [in_progress] M14-S8 WAC FEFO tie-break determinism (same-expiry batch ordering contract + replay-safe depletion assertions across reserve/adjustment flows)
+- [ready] M14-S9 costing-method utility adoption in inventory service call sites (replace inline alias checks in dispatch/adjustment selectors + locale contract tests)
+- [ready] M14-S10 finished-good costing selector unification (`resolveDispatchUnitCost` + batch selectors consume shared utility, with locale-forced negative regression tests)
+- [ready] M14-S11 stock-summary method-awareness parity (prevent implicit WAC-only unit-cost output drift for FIFO/LIFO goods, or document and guard explicit endpoint contract)
+- [ready] M14-S12 cost-breakdown tenant-boundary + RBAC negative matrix (`/reports/production-logs/{id}/cost-breakdown` cross-company rejection + unauthorized-role assertions)
+- [ready] M14-S13 costing canonicalization parity for catalog/import update flows (ensure finished-good aliases are canonicalized consistently outside direct create/update API paths)
+- [ready] M12-S5 discount/reference calculation parity matrix across sales->invoice->settlement + user-facing example table refresh
+- [ready] M10-S3 release-gate dry-run and blocker ledger sync (`scripts/verify_local.sh` + artifact sanity)
+- [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
+- [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
+- [ready] M11-S6 approval queue runtime contract test slice (assert FE docs match live `AdminApprovalItemDto` payload fields and action endpoint semantics)
