@@ -31,6 +31,15 @@ else
   exit 1
 fi
 
+echo "[gate-core] accounting portal scope contract guard"
+PORTAL_SCOPE_GUARD_LOG="$ARTIFACT_DIR/accounting-portal-scope-guard.txt"
+if bash "$ROOT_DIR/scripts/guard_accounting_portal_scope_contract.sh" >"$PORTAL_SCOPE_GUARD_LOG" 2>&1; then
+  cat "$PORTAL_SCOPE_GUARD_LOG"
+else
+  cat "$PORTAL_SCOPE_GUARD_LOG" >&2
+  exit 1
+fi
+
 echo "[gate-core] run critical+concurrency+reconciliation truth tests"
 (
   cd "$ROOT_DIR/erp-domain"

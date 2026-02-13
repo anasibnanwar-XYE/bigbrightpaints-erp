@@ -10,7 +10,7 @@ Related behavior contract:
 - `docs/ACCOUNTING_PORTAL_SCOPE_GUARDRAIL.md`
 
 Portal scope guardrail:
-- HR, PURCHASING, INVENTORY, and REPORTS come under Accounting portal frontend scope.
+- HR, PURCHASING, INVENTORY, and REPORTS come under the Accounting portal in frontend scope.
 
 ## Summary by module
 
