@@ -276,6 +276,43 @@ class RawMaterialAndProductUpdateIT extends AbstractIntegrationTest {
     }
 
     @Test
+    void finished_good_update_rejects_unsupported_costing_method() {
+        HttpHeaders headers = authenticatedHeaders();
+
+        Map<String, Object> createPayload = new HashMap<>();
+        createPayload.put("productCode", "FG-UPD-BAD-" + UUID.randomUUID().toString().substring(0, 8));
+        createPayload.put("name", "FG Update Bad Method");
+        createPayload.put("unit", "UNIT");
+        createPayload.put("costingMethod", "FIFO");
+
+        ResponseEntity<Map> create = rest.exchange(
+                "/api/v1/finished-goods",
+                HttpMethod.POST,
+                new HttpEntity<>(createPayload, headers),
+                Map.class
+        );
+        assertThat(create.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<?, ?> createdData = (Map<?, ?>) create.getBody().get("data");
+        Long finishedGoodId = ((Number) createdData.get("id")).longValue();
+
+        Map<String, Object> updatePayload = new HashMap<>();
+        updatePayload.put("productCode", createPayload.get("productCode"));
+        updatePayload.put("name", "FG Update Bad Method");
+        updatePayload.put("unit", "UNIT");
+        updatePayload.put("costingMethod", "ABC");
+
+        ResponseEntity<Map> update = rest.exchange(
+                "/api/v1/finished-goods/" + finishedGoodId,
+                HttpMethod.PUT,
+                new HttpEntity<>(updatePayload, headers),
+                Map.class
+        );
+
+        assertThat(update.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(String.valueOf(update.getBody())).contains("Unsupported costing method");
+    }
+
+    @Test
     void create_product_rejects_multi_value_color_and_size_and_points_to_bulk_variants() {
         HttpHeaders headers = authenticatedHeaders();
 

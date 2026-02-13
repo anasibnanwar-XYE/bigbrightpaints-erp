@@ -34,6 +34,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -1984,7 +1985,7 @@ public class FinishedGoodsService {
         if (!StringUtils.hasText(method)) {
             return "FIFO";
         }
-        String normalized = method.trim().toUpperCase();
+        String normalized = method.trim().toUpperCase(Locale.ROOT);
         return switch (normalized) {
             case "FIFO" -> "FIFO";
             case "LIFO" -> "LIFO";
