@@ -2954,6 +2954,56 @@ Queue Rotation (Auto-Replenish)
 - [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
 - [ready] M11-S6 approval queue runtime contract test slice (assert FE docs match live `AdminApprovalItemDto` payload fields and action endpoint semantics)
 
+Post-Commit Review Evidence
+- Commit reviewed: `15da48cb`
+- `codex review --commit 15da48cb`:
+  - final verdict: docs-only `asyncloop` append; no runtime behavior or executable-path regression identified.
+  - captured stream: `/tmp/codex_review_15da48cb.log`.
+- Review subagent `019c5784-a4a2-7bf1-aa38-142862f255c0`:
+  - findings: none (high/medium/low).
+  - residual note: confidence in referenced `99ae6c06` runtime checks still depends on rerunnable command evidence, outside this docs-only commit scope.
+
+Completed Slice (Committed)
+- 2026-02-13: `5f971524`
+  - test(inventory): add finished-good costing alias replay coverage.
+  - M14-S5 closure:
+    - added finished-good alias replay matrix in `RawMaterialAndProductUpdateIT` to prove repeated accepted aliases remain canonical (`WAC`) across update replays.
+    - added repeated invalid-alias replay test to assert failed updates do not mutate persisted `costingMethod` or name.
+  - Added focused tests:
+    - `finished_good_update_alias_replay_stays_canonical_wac`
+    - `finished_good_invalid_alias_replay_does_not_mutate_persisted_method`
+  - Verification:
+    - `cd erp-domain && mvn -B -ntp -Dtest=RawMaterialAndProductUpdateIT#finished_good_update_alias_replay_stays_canonical_wac+finished_good_invalid_alias_replay_does_not_mutate_persisted_method test` -> pass (2 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `5f971524`
+- `codex review --commit 5f971524`:
+  - final verdict: test-only change is internally consistent and introduces no production-code regressions.
+  - captured stream: `/tmp/codex_review_5f971524.log`.
+- Review subagent `019c5787-9f02-73a1-ab54-cdb1610d2656`:
+  - findings: none (critical/high/medium/low).
+  - residual note: coverage remains API-state focused and does not extend RBAC/cross-company boundaries in this slice.
+
+Loop Update
+- 2026-02-13T20:36:01+05:30
+- tracked_now_ts: `2026-02-13T20:36:01+05:30`
+- tracked_elapsed: `42h 42m 12s`
+- active_in_progress: `M14-S6 costing output endpoint parity contract (stock-summary vs inventory-valuation vs production-log cost-breakdown consistency under FIFO/WAC)`
+
+Queue Rotation (Auto-Replenish)
+- [completed] M14-S5 costing method alias replay matrix for finished-goods APIs (FIFO/WAC normalization + invalid-alias rejection parity with raw-material contracts)
+- [in_progress] M14-S6 costing output endpoint parity contract (`stock-summary` vs `inventory-valuation` vs `production-log cost-breakdown` consistency under FIFO/WAC)
+- [ready] M14-S7 locale-stable costing helper sweep (`Locale.ROOT` normalization parity across duplicated `isWeightedAverage(...)` call sites + negative locale regression checks)
+- [ready] M14-S8 WAC FEFO tie-break determinism (same-expiry batch ordering contract + replay-safe depletion assertions across reserve/adjustment flows)
+- [ready] M14-S9 costing-method utility adoption in inventory service call sites (replace inline alias checks in dispatch/adjustment selectors + locale contract tests)
+- [ready] M14-S10 finished-good costing selector unification (`resolveDispatchUnitCost` + batch selectors consume shared utility, with locale-forced negative regression tests)
+- [ready] M14-S11 stock-summary method-awareness parity (prevent implicit WAC-only unit-cost output drift for FIFO/LIFO goods, or document and guard explicit endpoint contract)
+- [ready] M12-S5 discount/reference calculation parity matrix across sales->invoice->settlement + user-facing example table refresh
+- [ready] M10-S3 release-gate dry-run and blocker ledger sync (`scripts/verify_local.sh` + artifact sanity)
+- [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
+- [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
+- [ready] M11-S6 approval queue runtime contract test slice (assert FE docs match live `AdminApprovalItemDto` payload fields and action endpoint semantics)
+
 Completed Slice (Committed)
 - 2026-02-13: `99ae6c06`
   - chore(guard): enforce accounting portal scope contract.
