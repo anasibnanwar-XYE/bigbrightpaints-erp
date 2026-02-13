@@ -1,0 +1,129 @@
+package com.bigbrightpaints.erp.modules.accounting.controller;
+
+import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class AccountingCatalogControllerSecurityIT extends AbstractIntegrationTest {
+
+    private static final String COMPANY_CODE = "CAT-SEC-A1";
+    private static final String OTHER_COMPANY_CODE = "CAT-SEC-B1";
+    private static final String PASSWORD = "CatalogSec123!";
+    private static final String ADMIN_EMAIL = "catalog-sec-admin@bbp.com";
+    private static final String ACCOUNTING_EMAIL = "catalog-sec-accounting@bbp.com";
+    private static final String SALES_EMAIL = "catalog-sec-sales@bbp.com";
+
+    @Autowired
+    private TestRestTemplate rest;
+
+    @BeforeEach
+    void setUpUsers() {
+        dataSeeder.ensureUser(ADMIN_EMAIL, PASSWORD, "Catalog Sec Admin", COMPANY_CODE, List.of("ROLE_ADMIN"));
+        dataSeeder.ensureUser(ACCOUNTING_EMAIL, PASSWORD, "Catalog Sec Accounting", COMPANY_CODE, List.of("ROLE_ACCOUNTING"));
+        dataSeeder.ensureUser(SALES_EMAIL, PASSWORD, "Catalog Sec Sales", COMPANY_CODE, List.of("ROLE_SALES"));
+        dataSeeder.ensureCompany(OTHER_COMPANY_CODE, "Catalog Sec Other Co");
+    }
+
+    @Test
+    void accountingCatalogImport_allowsAdminAndAccounting_only() {
+        ResponseEntity<Map> adminResponse = importCatalog(
+                authHeaders(ADMIN_EMAIL, PASSWORD, COMPANY_CODE),
+                "RBAC-RM-" + shortId(),
+                "CAT-RBAC-ADMIN-" + shortId());
+        assertThat(adminResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        ResponseEntity<Map> accountingResponse = importCatalog(
+                authHeaders(ACCOUNTING_EMAIL, PASSWORD, COMPANY_CODE),
+                "RBAC-RM-" + shortId(),
+                "CAT-RBAC-ACC-" + shortId());
+        assertThat(accountingResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        ResponseEntity<Map> salesResponse = importCatalog(
+                authHeaders(SALES_EMAIL, PASSWORD, COMPANY_CODE),
+                "RBAC-RM-" + shortId(),
+                "CAT-RBAC-SALES-" + shortId());
+        assertThat(salesResponse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void accountingCatalogImport_rejectsCrossCompanyHeaderMismatch() {
+        HttpHeaders accountingHeaders = authHeaders(ACCOUNTING_EMAIL, PASSWORD, COMPANY_CODE);
+        accountingHeaders.set("X-Company-Id", OTHER_COMPANY_CODE);
+
+        ResponseEntity<Map> mismatchResponse = importCatalog(
+                accountingHeaders,
+                "RBAC-RM-MISMATCH-" + shortId(),
+                "CAT-RBAC-MISMATCH-" + shortId());
+
+        assertThat(mismatchResponse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    private ResponseEntity<Map> importCatalog(HttpHeaders headers, String sku, String idempotencyKey) {
+        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+        HttpHeaders fileHeaders = new HttpHeaders();
+        fileHeaders.setContentType(MediaType.parseMediaType("text/csv"));
+        body.add("file", new HttpEntity<>(catalogCsv(sku), fileHeaders));
+
+        HttpHeaders requestHeaders = new HttpHeaders();
+        requestHeaders.putAll(headers);
+        requestHeaders.setContentType(MediaType.MULTIPART_FORM_DATA);
+        requestHeaders.set("Idempotency-Key", idempotencyKey);
+
+        return rest.exchange(
+                "/api/v1/accounting/catalog/import",
+                HttpMethod.POST,
+                new HttpEntity<>(body, requestHeaders),
+                Map.class);
+    }
+
+    private HttpHeaders authHeaders(String email, String password, String companyCode) {
+        Map<String, Object> loginPayload = Map.of(
+                "email", email,
+                "password", password,
+                "companyCode", companyCode
+        );
+        ResponseEntity<Map> loginResponse = rest.postForEntity("/api/v1/auth/login", loginPayload, Map.class);
+        assertThat(loginResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        String token = (String) loginResponse.getBody().get("accessToken");
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+        headers.set("X-Company-Id", companyCode);
+        return headers;
+    }
+
+    private ByteArrayResource catalogCsv(String sku) {
+        String csv = String.join("\n",
+                "brand,product_name,sku_code,category,unit_of_measure,gst_rate",
+                "RBAC Brand,RBAC Product " + sku + "," + sku + ",RAW_MATERIAL,KG,18.00"
+        );
+        return new ByteArrayResource(csv.getBytes(StandardCharsets.UTF_8)) {
+            @Override
+            public String getFilename() {
+                return "catalog-" + sku + ".csv";
+            }
+        };
+    }
+
+    private String shortId() {
+        return UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+    }
+}
