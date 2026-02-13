@@ -3278,3 +3278,57 @@ Queue Rotation (Auto-Replenish)
 - [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
 - [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
 - [ready] M11-S6 approval queue runtime contract test slice (assert FE docs match live `AdminApprovalItemDto` payload fields and action endpoint semantics)
+
+Completed Slice (Committed)
+- 2026-02-13: `fec72ec3`
+  - docs(async-loop): backfill M14-S7 review closure and rotate to M14-S8.
+  - Added continuity closure evidence for `1a03caf4` / `9c843617` and synchronized active queue state.
+  - Verification:
+    - docs-only ledger update (no runtime tests).
+
+Post-Commit Review Evidence
+- Commit reviewed: `fec72ec3`
+- `codex review --commit fec72ec3`:
+  - final verdict: patch is correct; docs-only commit with no executable-path regression.
+- Review subagent `019c57a5-8437-7310-bdec-4c52c7438e07`:
+  - findings: none.
+
+Completed Slice (Committed)
+- 2026-02-13: `52baa483`
+  - fix(inventory): stabilize WAC FEFO tie-break ordering.
+  - M14-S8 closure hardening:
+    - added stable tie-break key to WAC/FEFO allocation query (`b.id asc`) for same-expiry/same-manufactured batches in `FinishedGoodBatchRepository.findAllocatableBatches(...)`.
+    - added reserve-path contract test:
+      - `FinishedGoodsServiceTest#reserveForOrderUsesStableBatchIdTieBreakWhenWacBatchesShareExpiryAndManufacturedAt`.
+    - added adjustment-path + replay contract test:
+      - `CR_INV_AdjustmentIdempotencyTest#adjustment_wacUsesStableBatchIdTieBreak_whenExpiryAndManufacturedAtMatch`.
+  - Verification:
+    - `cd erp-domain && mvn -B -ntp -Dtest=FinishedGoodsServiceTest#reserveForOrderUsesStableBatchIdTieBreakWhenWacBatchesShareExpiryAndManufacturedAt,FinishedGoodsServiceTest#reserveForOrderUsesExpiryOrderWhenCostingMethodIsWac,CR_INV_AdjustmentIdempotencyTest#adjustment_wacUsesStableBatchIdTieBreak_whenExpiryAndManufacturedAtMatch,CR_INV_AdjustmentIdempotencyTest#adjustment_wacUsesExpiryOrderedBatchSelection_andIdempotentReplayDoesNotDoubleDeplete test` -> pass (4 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `52baa483`
+- `codex review --commit 52baa483`:
+  - final verdict: production tie-break patch is narrow and safe; no regressions or correctness issues identified.
+- Review subagent `019c57a8-7278-7332-a6b8-0b1ccf514bfb`:
+  - findings: none (critical/high/medium/low).
+  - residual note: add future concurrency-import tie-break stress coverage in cross-module replay matrix.
+
+Loop Update
+- 2026-02-13T21:12:22+05:30
+- tracked_now_ts: `2026-02-13T21:12:22+05:30`
+- tracked_elapsed: `43h 18m 30s`
+- active_in_progress: `M14-S9 costing-method utility adoption in inventory service call sites (replace inline alias checks in dispatch/adjustment selectors + locale contract tests)`
+
+Queue Rotation (Auto-Replenish)
+- [completed] M14-S8 WAC FEFO tie-break determinism (same-expiry batch ordering contract + replay-safe depletion assertions across reserve/adjustment flows)
+- [in_progress] M14-S9 costing-method utility adoption in inventory service call sites (replace inline alias checks in dispatch/adjustment selectors + locale contract tests)
+- [ready] M14-S10 finished-good costing selector unification (`resolveDispatchUnitCost` + batch selectors consume shared utility, with locale-forced negative regression tests)
+- [ready] M14-S11 stock-summary method-awareness parity (prevent implicit WAC-only unit-cost output drift for FIFO/LIFO goods, or document and guard explicit endpoint contract)
+- [ready] M14-S12 cost-breakdown tenant-boundary + RBAC negative matrix (`/reports/production-logs/{id}/cost-breakdown` cross-company rejection + unauthorized-role assertions)
+- [ready] M14-S13 costing canonicalization parity for catalog/import update flows (ensure finished-good aliases are canonicalized consistently outside direct create/update API paths)
+- [ready] M14-S14 WAC tie-break concurrency matrix (catalog-imported same-expiry batches + replay/depletion stability under retry pressure)
+- [ready] M12-S5 discount/reference calculation parity matrix across sales->invoice->settlement + user-facing example table refresh
+- [ready] M10-S3 release-gate dry-run and blocker ledger sync (`scripts/verify_local.sh` + artifact sanity)
+- [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
+- [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
+- [ready] M11-S6 approval queue runtime contract test slice (assert FE docs match live `AdminApprovalItemDto` payload fields and action endpoint semantics)
