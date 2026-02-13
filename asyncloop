@@ -2725,3 +2725,46 @@ Queue Rotation (Auto-Replenish)
 - [ready] M14-S2 WAC allocation path correctness (replace FIFO batch selection in WAC branches of `FinishedGoodsService` + `InventoryAdjustmentService`)
 - [ready] M14-S3 costing helper dedupe + regression matrix (consolidate duplicated `isWeightedAverage(...)` logic across factory/inventory valuation services)
 - [ready] M14-S4 accounting-portal scope invariant guard (preserve HR/PURCHASING/INVENTORY/REPORTS mapping unless replacement portal-map + endpoint docs land in same commit)
+
+Loop Update
+- 2026-02-13T19:17:48+05:30
+- tracked_now_ts: `2026-02-13T19:17:48+05:30`
+- tracked_elapsed: `41h 23m 56s`
+- active_in_progress: `M13-S9 product-import to purchasing/accounting reference-carry consistency (SKU/raw-material/packaging document link chain)`
+
+Completed Slice (Committed)
+- 2026-02-13: `dc41b730`
+  - docs(portal): expand handoffs for costing audit and approvals.
+  - Updated current frontend handoff docs with explicit implementation deltas for:
+    - costing visibility requirements,
+    - accounting transaction audit trail flow (`/api/v1/accounting/audit/transactions*`),
+    - admin approval payload/action contract across portals.
+  - Touched docs:
+    - `docs/accounting-portal-frontend-engineer-handoff.md`
+    - `docs/admin-portal-frontend-engineer-handoff.md`
+    - `docs/sales-portal-frontend-engineer-handoff.md`
+    - `docs/dealer-portal-frontend-engineer-handoff.md`
+    - `docs/manufacturing-portal-frontend-engineer-handoff.md`
+  - Verification:
+    - `rg -n "Delta Update \\(2026-02-13\\)" docs/accounting-portal-frontend-engineer-handoff.md docs/admin-portal-frontend-engineer-handoff.md docs/sales-portal-frontend-engineer-handoff.md docs/dealer-portal-frontend-engineer-handoff.md docs/manufacturing-portal-frontend-engineer-handoff.md` -> pass.
+
+Post-Commit Review Evidence
+- Commit reviewed: `dc41b730`
+- `codex review --commit dc41b730`:
+  - skipped by explicit user instruction: docs-only commits do not require `codex review`.
+- Review subagent:
+  - skipped by explicit user instruction: docs-only commits do not require review subagent.
+
+Queue Rotation (Auto-Replenish)
+- [completed] M11-S5 admin approval action payload parity hardening across portals (explicit action descriptors in API responses)
+- [in_progress] M13-S9 product-import to purchasing/accounting reference-carry consistency (SKU/raw-material/packaging document link chain)
+- [ready] M13-S10 packing/non-bulk journal-link parity scan (movement linkage invariants across all packing paths)
+- [ready] M12-S5 discount/reference calculation parity matrix across sales->invoice->settlement + user-facing example table refresh
+- [ready] M10-S3 release-gate dry-run and blocker ledger sync (`scripts/verify_local.sh` + artifact sanity)
+- [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
+- [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
+- [ready] M14-S1 costing method normalization parity (align finished-good costing method normalization with raw-material normalization contracts)
+- [ready] M14-S2 WAC allocation path correctness (replace FIFO batch selection in WAC branches of `FinishedGoodsService` + `InventoryAdjustmentService`)
+- [ready] M14-S3 costing helper dedupe + regression matrix (consolidate duplicated `isWeightedAverage(...)` logic across factory/inventory valuation services)
+- [ready] M14-S4 accounting-portal scope invariant guard (preserve HR/PURCHASING/INVENTORY/REPORTS mapping unless replacement portal-map + endpoint docs land in same commit)
+- [ready] M11-S6 approval queue runtime contract test slice (assert FE docs match live `AdminApprovalItemDto` payload fields and action endpoint semantics)
