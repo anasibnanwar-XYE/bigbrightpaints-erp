@@ -17,6 +17,8 @@ import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipRepository;
 import com.bigbrightpaints.erp.modules.inventory.dto.DispatchPreviewDto;
 import com.bigbrightpaints.erp.modules.inventory.dto.FinishedGoodBatchRequest;
 import com.bigbrightpaints.erp.modules.inventory.dto.DispatchConfirmationRequest;
+import com.bigbrightpaints.erp.modules.inventory.dto.StockSummaryDto;
+import com.bigbrightpaints.erp.modules.reports.service.InventoryValuationService;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderItem;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderRepository;
@@ -57,6 +59,9 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
 
     @Autowired
     private SalesOrderRepository salesOrderRepository;
+
+    @Autowired
+    private InventoryValuationService inventoryValuationService;
 
     @AfterEach
     void clearContext() {
@@ -120,6 +125,26 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
         assertThat(slip.getLines()).hasSize(1);
         assertThat(slip.getLines().getFirst().getFinishedGoodBatch().getId())
                 .isEqualTo(newerManufacturedSoonerExpiry.getId());
+    }
+
+    @Test
+    void stockSummaryWeightedAverageAlignsWithInventoryValuationForWacGoods() {
+        Company company = seedCompany("WAC-PARITY");
+        BigDecimal baselineValue = inventoryValuationService.currentSnapshot(company).totalValue();
+        FinishedGood fg = createFinishedGood(company, "FG-WAC-PARITY", new BigDecimal("10"), BigDecimal.ZERO, "WAC");
+        createBatch(fg, "WAC-PARITY-1", new BigDecimal("4"), new BigDecimal("4"), new BigDecimal("8"));
+        createBatch(fg, "WAC-PARITY-2", new BigDecimal("6"), new BigDecimal("6"), new BigDecimal("12"));
+
+        StockSummaryDto summary = finishedGoodsService.getStockSummary().stream()
+                .filter(item -> "FG-WAC-PARITY".equals(item.code()))
+                .findFirst()
+                .orElseThrow();
+        InventoryValuationService.InventorySnapshot snapshot = inventoryValuationService.currentSnapshot(company);
+
+        assertThat(summary.weightedAverageCost()).isEqualByComparingTo(new BigDecimal("10.4"));
+        assertThat(summary.currentStock()).isEqualByComparingTo(new BigDecimal("10"));
+        assertThat(snapshot.totalValue().subtract(baselineValue))
+                .isEqualByComparingTo(summary.currentStock().multiply(summary.weightedAverageCost()));
     }
 
     @Test
