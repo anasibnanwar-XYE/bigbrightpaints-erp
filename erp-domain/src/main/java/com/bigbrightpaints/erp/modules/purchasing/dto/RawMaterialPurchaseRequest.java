@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.purchasing.dto;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -12,11 +13,11 @@ import java.util.List;
 
 public record RawMaterialPurchaseRequest(
         @NotNull Long supplierId,
-        @NotBlank String invoiceNumber,
+        @JsonAlias({"invoiceNo", "invoice_no"}) @NotBlank String invoiceNumber,
         @NotNull LocalDate invoiceDate,
         String memo,
         Long purchaseOrderId,
-        @NotNull Long goodsReceiptId,
+        @JsonAlias({"goodsReceiptID", "goods_receipt_id", "goodsReceipt", "grnId"}) @NotNull Long goodsReceiptId,
         @PositiveOrZero BigDecimal taxAmount,
         @NotEmpty List<@Valid RawMaterialPurchaseLineRequest> lines
 ) {}

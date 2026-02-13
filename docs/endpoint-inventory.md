@@ -6,6 +6,7 @@ Updated: 2026-01-25
 Related behavior contract:
 - `docs/PORTAL_DISCOUNT_REFERENCE_BEHAVIOR_GUIDE.md`
 - `docs/ADMIN_APPROVAL_ACTION_DESCRIPTOR_MATRIX.md`
+- `docs/P2P_PURCHASE_SETTLEMENT_BOUNDARY.md`
 
 ## Summary by module
 
@@ -39,6 +40,12 @@ Related behavior contract:
 
 ## High-risk duplicates / aliases (manual review)
 - `/api/v1/sales/dispatch/confirm` ↔ `/api/v1/dispatch/confirm` (dispatch confirm)
+
+P2P boundary (not a duplicate route):
+- `POST /api/v1/purchasing/raw-material-purchases` is purchase-invoice creation only.
+- Supplier payment/settlement are accounting routes only:
+  - `POST /api/v1/accounting/suppliers/payments`
+  - `POST /api/v1/accounting/settlements/suppliers`
 
 ## `accounting`
 
