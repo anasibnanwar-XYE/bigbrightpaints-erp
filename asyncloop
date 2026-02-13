@@ -2631,3 +2631,97 @@ Queue Rotation (Auto-Replenish)
 - [ready] M10-S3 release-gate dry-run and blocker ledger sync (`scripts/verify_local.sh` + artifact sanity)
 - [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
 - [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
+
+Loop Update
+- 2026-02-13T19:06:12+05:30
+- tracked_now_ts: `2026-02-13T19:06:12+05:30`
+- tracked_elapsed: `41h 12m 20s`
+- active_in_progress: `M13-S8 catalog import stale-row cache cleanup acceptance test matrix (legacy drifted rows + retry replay)`
+
+Completed Slice (Committed)
+- 2026-02-13: `827a77d9`
+  - docs(portal): pin accounting scope guardrail domains.
+  - Added permanent guardrail file `docs/ACCOUNTING_PORTAL_SCOPE_GUARDRAIL.md` to lock accounting-portal frontend scope.
+  - Guardrail explicitly states: HR, PURCHASING, INVENTORY, and REPORTS come under accounting portal frontend scope.
+  - Linked guardrail into `docs/endpoint-inventory.md`.
+  - Added explicit scope-invariant sections to:
+    - `docs/accounting-portal-endpoint-map.md`
+    - `docs/accounting-portal-frontend-engineer-handoff.md`
+  - Verification:
+    - `rg -n "Scope Guardrail|Portal Scope Invariant|come under the Accounting portal|ACCOUNTING_PORTAL_SCOPE_GUARDRAIL" docs/accounting-portal-endpoint-map.md docs/accounting-portal-frontend-engineer-handoff.md docs/endpoint-inventory.md docs/ACCOUNTING_PORTAL_SCOPE_GUARDRAIL.md` -> pass.
+
+Post-Commit Review Evidence
+- Commit reviewed: `827a77d9`
+- `codex review --commit 827a77d9`:
+  - skipped by explicit user instruction: docs-only commits do not require `codex review`.
+- Review subagent:
+  - skipped by explicit user instruction: docs-only commits do not require review subagent.
+
+Queue Rotation (Auto-Replenish)
+- [completed] M12-S6 accounting portal scope guardrail persistence docs (HR/PURCHASING/INVENTORY/REPORTS under accounting portal frontend)
+- [in_progress] M13-S8 catalog import stale-row cache cleanup acceptance test matrix (legacy drifted rows + retry replay)
+- [ready] M13-S9 product-import to purchasing/accounting reference-carry consistency (SKU/raw-material/packaging document link chain)
+- [ready] M13-S10 packing/non-bulk journal-link parity scan (movement linkage invariants across all packing paths)
+- [ready] M12-S5 discount/reference calculation parity matrix across sales->invoice->settlement + user-facing example table refresh
+- [ready] M11-S5 admin approval action payload parity hardening across portals (explicit action descriptors in API responses)
+- [ready] M10-S3 release-gate dry-run and blocker ledger sync (`scripts/verify_local.sh` + artifact sanity)
+- [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
+- [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
+- [ready] M12-S7 portal-scope guardrail drift check across non-accounting portal docs (admin/dealer/manufacturing/sales consistency)
+
+Post-Commit Review Evidence (Pending Stream Re-check Closure)
+- Commit reviewed: `0355149b`
+- `codex review --commit 0355149b` (re-check run, finalized):
+  - P1 finding confirmed: movement-link helper could overwrite existing non-null journal linkage on conflicting replay/relink attempts.
+  - disposition: already closed by follow-up `f9fd898f` drift guard (`BUSINESS_CONSTRAINT_VIOLATION` on conflicting relink).
+- Commit reviewed: `f9fd898f`
+- `codex review --commit f9fd898f` (re-check run, finalized):
+  - final verdict: no blocking regressions introduced by relink drift guard + regression test.
+- Commit reviewed: `a1d05cd7`
+- `codex review --commit a1d05cd7` (re-check run, finalized):
+  - final verdict: docs-only patch is correct; no executable-path regressions.
+
+Completed Slice (Committed)
+- 2026-02-13: `23193f63`
+  - fix(catalog): prune drifted import cache rows on unresolved brand.
+  - M13-S8 stale-row cleanup hardening:
+    - when brand id cannot be resolved during retry cache-eviction, product-name cache cleanup now removes only drifted entries (missing row id in current company), preserving cross-brand safety.
+    - prevents legacy drifted cache rows from persisting across retry/replay loops while avoiding wildcard cross-brand purge semantics.
+  - Added acceptance matrix coverage in `ProductionCatalogServiceRetryPolicyTest`:
+    - unresolved-brand path keeps active rows when no drift is present,
+    - unresolved-brand path prunes drifted rows only,
+    - retry/replay sequence after drift prune clears resolved-brand entry deterministically.
+  - Verification:
+    - `cd erp-domain && mvn -B -ntp -Dtest=ProductionCatalogServiceRetryPolicyTest,CR_CatalogImportIdempotencyIT,ProductionCatalogRawMaterialInvariantIT test`
+      - result: blocked by pre-existing unrelated workspace test-compile failures (missing symbols in broad modified test tree; e.g., `TestDataSeeder`, `CR_BulkPackagingCrossModuleTest`, `CR_CatalogImportConcurrencyIT`).
+    - `cd erp-domain && mvn -B -ntp -DskipTests compile` -> pass.
+    - `cd erp-domain && mvn -B -ntp -DincludeScope=test -Dmdep.outputFile=/tmp/erp_test_cp.txt dependency:build-classpath` -> pass.
+    - `cd erp-domain && javac --release 21 -cp "$(cat /tmp/erp_test_cp.txt):target/classes" -d /tmp/pcstest-compile src/test/java/com/bigbrightpaints/erp/modules/production/service/ProductionCatalogServiceRetryPolicyTest.java` -> pass.
+
+Post-Commit Review Evidence
+- Commit reviewed: `23193f63`
+- `codex review --commit 23193f63`:
+  - final verdict: no blocking correctness issues; unresolved-brand drift-pruning behavior is narrowly scoped and covered by retry/replay tests.
+- Review subagent `019c5733-7b93-7be3-bee2-fcad5d8ea6c1`:
+  - findings: none at medium/high severity.
+  - note: confirmed no replay/idempotency/cross-brand regression in commit scope.
+
+Loop Update
+- 2026-02-13T19:07:03+05:30
+- tracked_now_ts: `2026-02-13T19:07:03+05:30`
+- tracked_elapsed: `41h 13m 11s`
+- active_in_progress: `M13-S9 product-import to purchasing/accounting reference-carry consistency (SKU/raw-material/packaging document link chain)`
+
+Queue Rotation (Auto-Replenish)
+- [completed] M13-S8 catalog import stale-row cache cleanup acceptance test matrix (legacy drifted rows + retry replay)
+- [in_progress] M13-S9 product-import to purchasing/accounting reference-carry consistency (SKU/raw-material/packaging document link chain)
+- [ready] M13-S10 packing/non-bulk journal-link parity scan (movement linkage invariants across all packing paths)
+- [ready] M12-S5 discount/reference calculation parity matrix across sales->invoice->settlement + user-facing example table refresh
+- [ready] M11-S5 admin approval action payload parity hardening across portals (explicit action descriptors in API responses)
+- [ready] M10-S3 release-gate dry-run and blocker ledger sync (`scripts/verify_local.sh` + artifact sanity)
+- [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
+- [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
+- [ready] M14-S1 costing method normalization parity (align finished-good costing method normalization with raw-material normalization contracts)
+- [ready] M14-S2 WAC allocation path correctness (replace FIFO batch selection in WAC branches of `FinishedGoodsService` + `InventoryAdjustmentService`)
+- [ready] M14-S3 costing helper dedupe + regression matrix (consolidate duplicated `isWeightedAverage(...)` logic across factory/inventory valuation services)
+- [ready] M14-S4 accounting-portal scope invariant guard (preserve HR/PURCHASING/INVENTORY/REPORTS mapping unless replacement portal-map + endpoint docs land in same commit)
