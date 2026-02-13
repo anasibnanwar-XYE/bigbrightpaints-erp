@@ -49,6 +49,8 @@ import com.bigbrightpaints.erp.modules.purchasing.dto.RawMaterialPurchaseLineReq
 import com.bigbrightpaints.erp.modules.purchasing.dto.RawMaterialPurchaseRequest;
 import com.bigbrightpaints.erp.modules.purchasing.dto.RawMaterialPurchaseResponse;
 import com.bigbrightpaints.erp.modules.purchasing.service.PurchasingService;
+import com.bigbrightpaints.erp.modules.production.dto.CatalogImportResponse;
+import com.bigbrightpaints.erp.modules.production.service.ProductionCatalogService;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 import com.bigbrightpaints.erp.test.support.TestDateUtils;
 import org.junit.jupiter.api.AfterEach;
@@ -56,8 +58,10 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.web.MockMultipartFile;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.util.List;
@@ -85,6 +89,7 @@ class CR_PurchasingToApAccountingTest extends AbstractIntegrationTest {
     @Autowired private GoodsReceiptRepository goodsReceiptRepository;
     @Autowired private RawMaterialPurchaseRepository purchaseRepository;
     @Autowired private PurchasingService purchasingService;
+    @Autowired private ProductionCatalogService productionCatalogService;
     @Autowired private JournalEntryRepository journalEntryRepository;
     @Autowired private ReconciliationService reconciliationService;
     @Autowired private JdbcTemplate jdbcTemplate;
@@ -190,6 +195,56 @@ class CR_PurchasingToApAccountingTest extends AbstractIntegrationTest {
                         reconciliation.supplierLedgerTotal(),
                         reconciliation.variance())
                 .isTrue();
+    }
+
+    @Test
+    void importedCatalogRawMaterial_purchaseFlowPreservesReferenceCarryChain() {
+        String companyCode = "CR-AP-CAT-" + shortId();
+        Company company = bootstrapCompany(companyCode);
+        Map<String, Account> accounts = ensurePurchasingAccounts(company);
+        Supplier supplier = ensureSupplier(company, accounts.get("AP"));
+        String importedSku = "CR-RM-IMP-" + shortId();
+        RawMaterial importedRawMaterial;
+        RawMaterialPurchaseResponse purchase;
+
+        CompanyContextHolder.setCompanyId(companyCode);
+        try {
+            CatalogImportResponse importResponse = productionCatalogService.importCatalog(
+                    rawMaterialCatalogCsv(importedSku),
+                    "CR-RM-IMP-IDEMP-" + shortId());
+            assertThat(importResponse.errors()).isEmpty();
+
+            importedRawMaterial = rawMaterialRepository.findByCompanyAndSku(company, importedSku).orElseThrow();
+            purchase = createPurchaseFlow(supplier, importedRawMaterial, TestDateUtils.safeDate(company));
+        } finally {
+            CompanyContextHolder.clear();
+        }
+
+        RawMaterialPurchase persisted = purchaseRepository.findById(purchase.id()).orElseThrow();
+        assertThat(persisted.getJournalEntry()).as("purchase journal").isNotNull();
+        assertThat(persisted.getLines())
+                .extracting(line -> line.getRawMaterial().getId())
+                .containsOnly(importedRawMaterial.getId());
+
+        Long journalId = persisted.getJournalEntry().getId();
+        CoderedDbAssertions.assertRawMaterialMovementsLinkedToJournal(
+                jdbcTemplate,
+                company.getId(),
+                InventoryReference.RAW_MATERIAL_PURCHASE,
+                purchase.goodsReceiptNumber(),
+                journalId
+        );
+
+        List<Long> movementRawMaterialIds = movementRepository
+                .findByRawMaterialCompanyAndReferenceTypeAndReferenceId(
+                        company,
+                        InventoryReference.RAW_MATERIAL_PURCHASE,
+                        purchase.goodsReceiptNumber())
+                .stream()
+                .map(movement -> movement.getRawMaterial().getId())
+                .distinct()
+                .toList();
+        assertThat(movementRawMaterialIds).containsExactly(importedRawMaterial.getId());
     }
 
     @Test
@@ -861,8 +916,21 @@ class CR_PurchasingToApAccountingTest extends AbstractIntegrationTest {
                         new BigDecimal("12.50"),
                         null,
                         null,
-                        "Invoice line"))
+                "Invoice line"))
         ));
+    }
+
+    private MockMultipartFile rawMaterialCatalogCsv(String skuCode) {
+        String csv = String.join("\n",
+                "brand,product_name,sku_code,category,unit_of_measure,gst_rate",
+                "CRIMPORT,Imported Material," + skuCode + ",RAW_MATERIAL,KG,18.00"
+        );
+        return new MockMultipartFile(
+                "file",
+                "catalog-import.csv",
+                "text/csv",
+                csv.getBytes(StandardCharsets.UTF_8)
+        );
     }
 
     private MonthEndChecklistItemDto findChecklistItem(MonthEndChecklistDto checklist, String key) {
