@@ -2480,3 +2480,89 @@ Queue Rotation (Auto-Replenish)
 - [ready] M10-S3 release-gate dry-run and blocker ledger sync (`scripts/verify_local.sh` + artifact sanity)
 - [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
 - [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
+
+Completed Slice (Committed)
+- 2026-02-13: `34725ea4`
+  - fix(catalog): harden row-loop stale cache and optimistic retries.
+  - Expanded optimistic retry classification in catalog row processing to include optimistic-lock exception families.
+  - Added row-loop cache refresh helper so replay/retry decisions use current-transaction product state instead of stale detached entities.
+  - Added targeted retry/eviction regression coverage in `ProductionCatalogServiceRetryPolicyTest`.
+  - Verification:
+    - `cd erp-domain && mvn -B -ntp -Dtest=ProductionCatalogServiceRetryPolicyTest,TS_CatalogImportCompanyScopedIdempotencyTest,CR_CatalogImportIdempotencyIT,ProductionCatalogRawMaterialInvariantIT test` -> pass (17 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `34725ea4`
+- `codex review --commit 34725ea4`:
+  - command executed; environment produced long/noisy rollout stream with no durable final verdict capture.
+- Review subagent `019c56fa-cc56-79e3-b29f-21d37d587791`:
+  - medium finding: unconditional per-row refresh lookup may add replay overhead.
+  - low finding: unresolved brand retry path still risked broad cache purge.
+  - disposition: addressed in follow-up commits `67944c58` and `c50ade02`.
+
+Completed Slice (Committed)
+- 2026-02-13: `67944c58`
+  - fix(catalog): narrow retry cache eviction and query refresh churn.
+  - Reduced retry cache churn and narrowed row-cache eviction behavior.
+  - Added additional retry-policy regression coverage (including reflective cache-eviction checks).
+  - Verification:
+    - `cd erp-domain && mvn -B -ntp -Dtest=ProductionCatalogServiceRetryPolicyTest,CR_CatalogImportIdempotencyIT,ProductionCatalogRawMaterialInvariantIT test` -> pass (15 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `67944c58`
+- `codex review --commit 67944c58`:
+  - command executed; environment produced long/noisy rollout stream with no durable final verdict capture.
+- Review subagent `019c56fa-cc56-79e3-b29f-21d37d587791`:
+  - medium finding: verified-id shortcut could skip per-row refresh and allow stale snapshot reuse.
+  - low finding: unresolved-brand retry path could still trigger broad purge in fallback branch.
+  - disposition: fixed in follow-up commit `f040df27` (restore per-row refresh integrity + scoped eviction).
+
+Completed Slice (Committed)
+- 2026-02-13: `f040df27`
+  - fix(catalog): preserve per-row refresh integrity with scoped cache eviction.
+  - Reverted verified-id shortcut to keep per-row refresh semantics deterministic under row-level retries.
+  - Refactored row cache eviction to accept `Company` and resolve missing brand id through repository fallback before eviction.
+  - Updated retry-policy regression tests for new eviction signature and fallback behavior.
+  - Verification:
+    - `cd erp-domain && mvn -B -ntp -Dtest=ProductionCatalogServiceRetryPolicyTest,CR_CatalogImportIdempotencyIT,ProductionCatalogRawMaterialInvariantIT test` -> pass (15 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `f040df27`
+- `codex review --commit f040df27`:
+  - command executed; environment produced long/noisy rollout stream with no durable final verdict capture.
+- Review subagent `019c56fa-cc56-79e3-b29f-21d37d587791`:
+  - low finding: unresolved brand-id path could still degrade to cross-brand wildcard purge.
+  - disposition: fixed in follow-up commit `c50ade02`.
+
+Completed Slice (Committed)
+- 2026-02-13: `c50ade02`
+  - fix(catalog): avoid wildcard cache purge on unresolved brand.
+  - Added unresolved-brand guard in row-cache eviction to prevent fallback wildcard purge when brand id cannot be resolved.
+  - Added regression test `evictRowCache_skipsBrandNamePurgeWhenBrandCannotBeResolved`.
+  - Verification:
+    - `cd erp-domain && mvn -B -ntp -Dtest=ProductionCatalogServiceRetryPolicyTest,CR_CatalogImportIdempotencyIT,ProductionCatalogRawMaterialInvariantIT test` -> pass (16 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `c50ade02`
+- `codex review --commit c50ade02`:
+  - command executing in this environment; stream remains long/noisy at this ledger timestamp (final verdict not yet durably captured).
+- Review subagent `019c56fa-cc56-79e3-b29f-21d37d587791`:
+  - no medium/high findings.
+  - low note: unresolved-brand early return can retain stale brand-key cache entry until next clean cache rebuild.
+  - disposition: accepted for now (prevents cross-brand purge risk; monitor for stale-key replay drift signals).
+
+Loop Update
+- 2026-02-13T18:21:41+05:30
+- tracked_now_ts: `2026-02-13T18:21:41+05:30`
+- tracked_elapsed: `40h 27m 49s`
+- active_in_progress: `M13-S7 product import SKU/raw-material/packaging cross-module reconciliation assertions (inventory + accounting linkage)`
+
+Queue Rotation (Auto-Replenish)
+- [completed] M13-S5 catalog import update-existing row transactional safety scan (REQUIRES_NEW row-loop optimistic-lock behavior + invariant closure)
+- [in_progress] M13-S7 product import SKU/raw-material/packaging cross-module reconciliation assertions (inventory + accounting linkage)
+- [ready] M13-S8 catalog import stale-row cache cleanup acceptance test matrix (legacy drifted rows + retry replay)
+- [ready] M12-S5 discount/reference calculation parity matrix across sales->invoice->settlement + user-facing example table refresh
+- [ready] M11-S5 admin approval action payload parity hardening across portals (explicit action descriptors in API responses)
+- [ready] M10-S3 release-gate dry-run and blocker ledger sync (`scripts/verify_local.sh` + artifact sanity)
+- [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
+- [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
+- [ready] M13-S9 product-import to purchasing/accounting reference-carry consistency (SKU/raw-material/packaging document link chain)
