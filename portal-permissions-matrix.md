@@ -33,7 +33,7 @@ This matrix is built from `@PreAuthorize` rules in backend controllers. It is in
 | Users | `/api/v1/admin/users` | R/W | — | — | — | — |
 | Roles (RBAC) | `/api/v1/admin/roles` | R/W | — | — | — | — |
 | System Settings | `/api/v1/admin/settings` | R/W | — | — | — | — |
-| Admin Approvals (credit + payroll) | `/api/v1/admin/approvals` | R/W | — | — | — | — |
+| Admin Approvals (credit + payroll) | `/api/v1/admin/approvals` | R | R | — | — | — |
 | Portal Insights (dashboard/ops/workforce) | `/api/v1/portal/*` | R | — | — | — | — |
 | Company Update | `/api/v1/companies/{id}` | W | — | — | — | — |
 

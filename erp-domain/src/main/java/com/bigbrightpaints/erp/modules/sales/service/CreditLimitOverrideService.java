@@ -34,6 +34,7 @@ public class CreditLimitOverrideService {
     private static final String STATUS_APPROVED = "APPROVED";
     private static final String STATUS_REJECTED = "REJECTED";
     private static final String STATUS_EXPIRED = "EXPIRED";
+    private static final BigDecimal DISPATCH_AMOUNT_TOLERANCE = new BigDecimal("0.01");
     private static final BigDecimal HEADROOM_TOLERANCE = new BigDecimal("0.01");
 
     private final CompanyContextService companyContextService;
@@ -194,10 +195,15 @@ public class CreditLimitOverrideService {
                 && !order.getId().equals(overrideRequest.getSalesOrder().getId())) {
             return false;
         }
-        if (dispatchAmount != null && overrideRequest.getDispatchAmount() != null
-                && dispatchAmount.compareTo(overrideRequest.getDispatchAmount()) > 0
-                && !isWithinApprovedHeadroom(overrideRequest, dealer, dispatchAmount)) {
-            return false;
+        if (dispatchAmount != null) {
+            BigDecimal approvedDispatchAmount = overrideRequest.getDispatchAmount();
+            if (approvedDispatchAmount != null
+                    && dispatchAmount.compareTo(approvedDispatchAmount.add(DISPATCH_AMOUNT_TOLERANCE)) > 0) {
+                return false;
+            }
+            if (!isWithinApprovedHeadroom(overrideRequest, dealer, dispatchAmount)) {
+                return false;
+            }
         }
         return true;
     }

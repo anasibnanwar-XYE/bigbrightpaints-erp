@@ -91,12 +91,12 @@ class CreditLimitOverrideServiceTest {
     }
 
     @Test
-    void isOverrideApproved_allowsHigherDispatchAmountWhenWithinApprovedHeadroom() {
+    void isOverrideApproved_allowsMinorDispatchDriftWithinToleranceWhenHeadroomIsValid() {
         CreditLimitOverrideRequest request = new CreditLimitOverrideRequest();
         request.setCompany(company);
         request.setStatus("APPROVED");
         request.setDispatchAmount(new BigDecimal("120.00"));
-        request.setRequiredHeadroom(new BigDecimal("80.00"));
+        request.setRequiredHeadroom(new BigDecimal("50.00"));
 
         Dealer dealer = new Dealer();
         dealer.setCreditLimit(new BigDecimal("200.00"));
@@ -112,13 +112,13 @@ class CreditLimitOverrideServiceTest {
                 dealer,
                 null,
                 null,
-                new BigDecimal("150.00"));
+                new BigDecimal("120.01"));
 
         assertThat(approved).isTrue();
     }
 
     @Test
-    void isOverrideApproved_rejectsHigherDispatchAmountWhenApprovedHeadroomIsExceeded() {
+    void isOverrideApproved_rejectsDispatchWhenApprovedHeadroomIsExceeded() {
         CreditLimitOverrideRequest request = new CreditLimitOverrideRequest();
         request.setCompany(company);
         request.setStatus("APPROVED");
@@ -135,6 +135,32 @@ class CreditLimitOverrideServiceTest {
 
         boolean approved = service.isOverrideApproved(
                 22L,
+                company,
+                dealer,
+                null,
+                null,
+                new BigDecimal("120.01"));
+
+        assertThat(approved).isFalse();
+    }
+
+    @Test
+    void isOverrideApproved_rejectsMateriallyHigherDispatchEvenWhenHeadroomWouldAllow() {
+        CreditLimitOverrideRequest request = new CreditLimitOverrideRequest();
+        request.setCompany(company);
+        request.setStatus("APPROVED");
+        request.setDispatchAmount(new BigDecimal("120.00"));
+        request.setRequiredHeadroom(new BigDecimal("80.00"));
+
+        Dealer dealer = new Dealer();
+        dealer.setCreditLimit(new BigDecimal("200.00"));
+        org.springframework.test.util.ReflectionTestUtils.setField(dealer, "id", 42L);
+
+        when(creditLimitOverrideRequestRepository.findByCompanyAndId(company, 23L))
+                .thenReturn(Optional.of(request));
+
+        boolean approved = service.isOverrideApproved(
+                23L,
                 company,
                 dealer,
                 null,

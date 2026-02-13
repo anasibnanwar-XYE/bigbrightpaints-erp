@@ -280,10 +280,10 @@ Use this as the canonical frontend route map for the Admin portal. It matches th
 
 | Route | Nav Group | Page | Required Role | Primary APIs (on load) | Primary APIs (actions) |
 |---|---|---|---|---|---|
-| `/admin` | Overview | Overview | `ROLE_ADMIN` | `GET /api/v1/portal/dashboard`, `GET /api/v1/portal/operations`, `GET /api/v1/portal/workforce`, `GET /api/v1/admin/approvals`, `GET /api/v1/accounting/configuration/health` | — |
+| `/admin` | Overview | Overview | `ROLE_ADMIN` | `GET /api/v1/portal/dashboard`, `GET /api/v1/portal/operations`, `GET /api/v1/portal/workforce`, `GET /api/v1/admin/approvals` (`ROLE_ADMIN` or `ROLE_ACCOUNTING`), `GET /api/v1/accounting/configuration/health` | — |
 | `/admin/access/users` | Access | Users | `ROLE_ADMIN` | `GET /api/v1/admin/users`, `GET /api/v1/companies`, `GET /api/v1/admin/roles` | `POST /api/v1/admin/users`, `PUT /api/v1/admin/users/{id}`, `PATCH /api/v1/admin/users/{id}/suspend`, `PATCH /api/v1/admin/users/{id}/unsuspend`, `PATCH /api/v1/admin/users/{id}/mfa/disable`, `DELETE /api/v1/admin/users/{id}`, `POST /api/v1/auth/password/forgot` |
 | `/admin/access/roles` | Access | Roles | `ROLE_ADMIN` | `GET /api/v1/admin/roles` | `POST /api/v1/admin/roles`, `GET /api/v1/admin/roles/{roleKey}` |
-| `/admin/approvals` | Approvals | Approvals | `ROLE_ADMIN` | `GET /api/v1/admin/approvals` | `POST /api/v1/credit/override-requests/{id}/approve`, `POST /api/v1/credit/override-requests/{id}/reject`, `POST /api/v1/payroll/runs/{id}/approve`, `POST /api/v1/payroll/runs/{id}/post`, `POST /api/v1/payroll/runs/{id}/mark-paid` |
+| `/admin/approvals` | Approvals | Approvals | `ROLE_ADMIN` (endpoint also allows `ROLE_ACCOUNTING`) | `GET /api/v1/admin/approvals` | `POST /api/v1/credit/override-requests/{id}/approve`, `POST /api/v1/credit/override-requests/{id}/reject`, `POST /api/v1/payroll/runs/{id}/approve`, `POST /api/v1/payroll/runs/{id}/post`, `POST /api/v1/payroll/runs/{id}/mark-paid` |
 | `/admin/settings/system` | Settings | System | `ROLE_ADMIN` | `GET /api/v1/admin/settings` | `PUT /api/v1/admin/settings` |
 | `/admin/settings/notifications` | Settings | Notifications | `ROLE_ADMIN` | — | `POST /api/v1/admin/notify` |
 | `/admin/settings/company` | Settings | Company | `ROLE_ADMIN` | `GET /api/v1/companies` | `PUT /api/v1/companies/{id}`, `POST /api/v1/multi-company/companies/switch` |
@@ -452,7 +452,7 @@ This section is meant for frontend devs: exact endpoints + minimal request paylo
     { "to": "user@company.com", "subject": "Subject", "body": "Message" }
     ```
 
-### Approvals / Insights (`ROLE_ADMIN`)
+### Approvals / Insights (`ROLE_ADMIN`; approvals API also available to `ROLE_ACCOUNTING`)
 
 - Aggregated approvals list
   - `GET /api/v1/admin/approvals`
