@@ -4025,3 +4025,81 @@ Queue Rotation (Auto-Replenish)
 - [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
 - [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
 - [ready] M11-S6 approval queue runtime contract test slice (assert FE docs match live `AdminApprovalItemDto` payload fields and action endpoint semantics)
+
+Post-Commit Review Evidence (Prior Pending Closure)
+- Commit reviewed: `403e77ac`
+- `codex review --commit 403e77ac` (re-check/final capture):
+  - final verdict: guard hardening commit introduces no actionable correctness or regression defect.
+- Review subagent `019c58c2-5592-77f3-8288-b45067c19ed8`:
+  - findings: none.
+
+Completed Slice (Committed)
+- 2026-02-14: `6428828f`
+  - docs(async-loop): close M14-S20 and rotate to M14-S21.
+  - ledger continuity closure:
+    - recorded M14-S20 completion and advanced queue head to M14-S21.
+    - replenished ready backlog with `M14-S27 endpoint-inventory cross-portal drift detector`.
+
+Post-Commit Review Evidence
+- Commit reviewed: `6428828f`
+- `codex review --commit 6428828f`:
+  - final verdict: docs-only queue-rotation update; no executable-path defects introduced.
+- Review subagent `019c58c5-238c-78b1-b84f-db3d19845c4e`:
+  - findings: none.
+
+Completed Slice (Committed)
+- 2026-02-14: `b9228e91`
+  - test(catalog): preserve unsupported costing methods on sync.
+  - M14-S21 closure:
+    - added unsupported-method sync invariants in `ProductionCatalogRawMaterialInvariantIT` for finished-good catalog import replay (`CUSTOM_METHOD` preserved).
+    - added create/update sync invariants proving unsupported costing methods remain unchanged for both finished goods and raw materials while canonical aliases continue to normalize.
+  - Verification:
+    - `cd /home/realnigga/Desktop/orchestrator_erp/erp-domain && mvn -B -ntp -Dtest=ProductionCatalogRawMaterialInvariantIT#importCatalog_preservesUnsupportedRawMaterialCostingMethod_onSync+importCatalog_preservesUnsupportedFinishedGoodCostingMethod_onSync+createAndUpdateProduct_canonicalizeDriftedFinishedGoodCostingAlias+createAndUpdateProduct_preserveUnsupportedCostingMethods test` -> pass (4 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `b9228e91`
+- `codex review --commit b9228e91` (re-check/final capture):
+  - final verdict: test-only commit is coherent with existing catalog invariants and introduces no actionable defect.
+- Review subagent `019c58c8-9ddf-76a0-971f-76f1d0a843b7`:
+  - findings: none.
+
+Completed Slice (Committed)
+- 2026-02-14: `cfb14d3e`
+  - refactor(inventory): dedupe batch selector costing resolution.
+  - M14-S22 closure:
+    - introduced `CostingMethodUtils.resolveFinishedGoodBatchSelectionMethod(...)` with explicit `FIFO/LIFO/WAC` selector enum.
+    - switched both `FinishedGoodsService` reservation selector path and `InventoryAdjustmentService` batch-adjustment selector path to shared resolver (single parity source).
+    - aligned stock-summary non-WAC valuation branch in `FinishedGoodsService` with shared resolver to avoid future selector drift.
+    - expanded `CostingMethodUtilsTest` to lock alias canonicalization/fallback semantics and Turkish-locale stability for selector resolution.
+  - Verification:
+    - `cd /home/realnigga/Desktop/orchestrator_erp/erp-domain && mvn -B -ntp -Dtest=CostingMethodUtilsTest,FinishedGoodsServiceTest#reserveForOrderUsesExpiryOrderWhenCostingMethodIsWac+reserveForOrderUsesStableBatchIdTieBreakWhenWacBatchesShareExpiryAndManufacturedAt+reserveForOrderWacShortageReplayKeepsStableReservationsAndDoesNotDoubleDeplete+stockSummaryUsesBatchValuationUnitCostForLifoGoods test` -> pass (13 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `cfb14d3e`
+- `codex review --commit cfb14d3e`:
+  - final verdict: behavior-preserving selector refactor; no actionable correctness defects identified.
+- Review subagent `019c58d1-e02f-7ab2-8d01-9d679b3456ed`:
+  - findings: none.
+  - note: non-blocking residual gap flagged for future slice: add direct service-level selector-routing assertions for adjustment path beyond utility-level coverage.
+
+Loop Update
+- 2026-02-14T02:37:22+05:30
+- tracked_now_ts: `2026-02-14T02:37:22+05:30`
+- tracked_elapsed: `48h 43m 30s`
+- active_in_progress: `M14-S23 portal-scope guard negative matrix (simulate dropped section/module anchors in temp docs fixture to prove fail-closed behavior)`
+
+Queue Rotation (Auto-Replenish)
+- [completed] M14-S21 unsupported-method preservation contract for catalog sync/create/update (unknown legacy costing values stay unchanged while known aliases canonicalize)
+- [completed] M14-S22 costing-selector dedupe guard for WAC/FIFO/LIFO replay paths (extract shared finished-good selector helper for reserve+adjustment and enforce parity tests incl. shortage replay)
+- [in_progress] M14-S23 portal-scope guard negative matrix (simulate dropped section/module anchors in temp docs fixture to prove fail-closed behavior)
+- [ready] M14-S24 accounting catalog import idempotency mismatch guard (`/api/v1/accounting/catalog/import` same idempotency key + payload hash mismatch must fail deterministically with no partial product/raw-material mutations)
+- [ready] M14-S25 accounting catalog import multipart abuse matrix (missing/empty file part, wrong content-type, and oversized row rejection must fail safe without creating product/raw-material rows)
+- [ready] M14-S26 finished-good costing alias parity sweep for read paths (ensure stock-summary and inventory-valuation canonicalize legacy weighted-average aliases identically, with unsupported-method fallback explicitly covered)
+- [ready] M14-S27 endpoint-inventory cross-portal drift detector (fail if hr/purchasing/inventory/reports rows fall to zero or disappear while accounting portal map still claims ownership)
+- [ready] M14-S28 cross-module costing predicate dedupe map (consolidate duplicated `isWeightedAverage(...)` decision points across BulkPackingService/PackagingMaterialService/ProductionLogService/InventoryValuationService into one canonical helper + parity tests)
+- [ready] M14-S29 inventory adjustment selector-routing integration assertions (prove WAC/LIFO/FIFO branch parity between reserve and adjustment flows with deterministic batch-order fixtures)
+- [ready] M12-S5 discount/reference calculation parity matrix across sales->invoice->settlement + user-facing example table refresh
+- [ready] M10-S3 release-gate dry-run and blocker ledger sync (`scripts/verify_local.sh` + artifact sanity)
+- [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
+- [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
+- [ready] M11-S6 approval queue runtime contract test slice (assert FE docs match live `AdminApprovalItemDto` payload fields and action endpoint semantics)
