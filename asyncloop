@@ -2868,3 +2868,73 @@ Queue Rotation (Auto-Replenish)
 - [ready] M11-S6 approval queue runtime contract test slice (assert FE docs match live `AdminApprovalItemDto` payload fields and action endpoint semantics)
 - [ready] M14-S5 costing method alias replay matrix for finished-goods APIs (FIFO/WAC normalization + invalid-alias rejection parity with raw-material contracts)
 - [ready] M14-S6 costing output endpoint parity contract (`stock-summary` vs `inventory-valuation` vs `production-log cost-breakdown` consistency under FIFO/WAC)
+
+Post-Commit Review Evidence (Prior Pending Closure)
+- Commit reviewed: `bb5fce9c`
+- `codex review --commit bb5fce9c`:
+  - final verdict captured from re-check stream: docs-only patch is correct with no executable-path regressions.
+  - captured stream: `/tmp/codex_review_bb5fce9c.log`.
+- Review subagent `019c5754-9a59-7712-8eee-26ae2f73b014`:
+  - findings: none.
+
+Completed Slice (Committed)
+- 2026-02-13: `b548206e`
+  - fix(inventory): normalize finished-good costing methods.
+  - M14-S1 initial closure pass:
+    - finished-good create/update now normalize costing method inputs to canonical values instead of persisting raw alias strings,
+    - unsupported costing methods now fail fast with `IllegalArgumentException` (400 path in API layer),
+    - preserved legacy `LIFO` compatibility while canonicalizing WAC aliases.
+  - Added API integration coverage in `RawMaterialAndProductUpdateIT`:
+    - create normalizes `weighted-average` -> `WAC`,
+    - create preserves `lifo` -> `LIFO`,
+    - update normalizes `weighted_average` -> `WAC`,
+    - create rejects unsupported costing method.
+  - Verification:
+    - `cd erp-domain && mvn -B -ntp -Dtest=RawMaterialAndProductUpdateIT#finished_good_create_normalizes_weighted_average_alias_to_wac+finished_good_create_preserves_lifo_method+finished_good_update_normalizes_weighted_average_alias_to_wac+finished_good_create_rejects_unsupported_costing_method test` -> pass (4 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `b548206e`
+- `codex review --commit b548206e`:
+  - executed, but environment stream remained rollout/state-db noisy without durable terminal verdict capture.
+  - attempted stream capture path `/tmp/codex_review_b548206e.log` stayed empty in this run.
+- Review subagent `019c575b-bfe4-7c41-9ef7-a15305d23481`:
+  - medium finding: locale-sensitive `toUpperCase()` in costing normalization could reject valid methods under non-English locales.
+  - low finding: missing invalid-costing update-path regression.
+  - disposition: fixed in follow-up commit `2b008e3e`.
+
+Completed Slice (Committed)
+- 2026-02-13: `2b008e3e`
+  - fix(inventory): harden costing normalization locale semantics.
+  - Follow-up hardening for M14-S1 review findings:
+    - switched costing normalization to `toUpperCase(Locale.ROOT)` to avoid locale-dependent casing drift,
+    - added explicit update-path negative test for unsupported costing method rejection.
+  - Verification:
+    - `cd erp-domain && mvn -B -ntp -Dtest=RawMaterialAndProductUpdateIT#finished_good_create_normalizes_weighted_average_alias_to_wac+finished_good_create_preserves_lifo_method+finished_good_update_normalizes_weighted_average_alias_to_wac+finished_good_create_rejects_unsupported_costing_method+finished_good_update_rejects_unsupported_costing_method test` -> pass (5 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `2b008e3e`
+- `codex review --commit 2b008e3e`:
+  - final verdict: no regressions identified; locale hardening and update-path negative coverage are behavior-consistent.
+  - captured stream: `/tmp/codex_review_2b008e3e.log`.
+- Review subagent `019c5761-6e44-7920-bd27-51a9dcb5978c`:
+  - status polling timed out in this environment (no durable final payload captured yet).
+
+Loop Update
+- 2026-02-13T19:55:06+05:30
+- tracked_now_ts: `2026-02-13T19:55:06+05:30`
+- tracked_elapsed: `42h 1m 14s`
+- active_in_progress: `M14-S2 WAC allocation path correctness (replace FIFO batch selection in WAC branches of FinishedGoodsService + InventoryAdjustmentService)`
+
+Queue Rotation (Auto-Replenish)
+- [completed] M14-S1 costing method normalization parity (align finished-good costing method normalization with raw-material normalization contracts)
+- [in_progress] M14-S2 WAC allocation path correctness (replace FIFO batch selection in WAC branches of `FinishedGoodsService` + `InventoryAdjustmentService`)
+- [ready] M14-S3 costing helper dedupe + regression matrix (consolidate duplicated `isWeightedAverage(...)` logic across factory/inventory valuation services)
+- [ready] M14-S4 accounting-portal scope invariant guard (preserve HR/PURCHASING/INVENTORY/REPORTS mapping unless replacement portal-map + endpoint docs land in same commit)
+- [ready] M14-S5 costing method alias replay matrix for finished-goods APIs (FIFO/WAC normalization + invalid-alias rejection parity with raw-material contracts)
+- [ready] M14-S6 costing output endpoint parity contract (`stock-summary` vs `inventory-valuation` vs `production-log cost-breakdown` consistency under FIFO/WAC)
+- [ready] M14-S7 locale-stable costing helper sweep (`Locale.ROOT` normalization parity across duplicated `isWeightedAverage(...)` call sites + negative locale regression checks)
+- [ready] M12-S5 discount/reference calculation parity matrix across sales->invoice->settlement + user-facing example table refresh
+- [ready] M10-S3 release-gate dry-run and blocker ledger sync (`scripts/verify_local.sh` + artifact sanity)
+- [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
+- [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
+- [ready] M11-S6 approval queue runtime contract test slice (assert FE docs match live `AdminApprovalItemDto` payload fields and action endpoint semantics)
