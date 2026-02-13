@@ -90,6 +90,52 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void dispatchUsesLegacyWeightedAverageAliasUnderTurkishLocale() {
+        Locale previous = Locale.getDefault();
+        Locale.setDefault(Locale.forLanguageTag("tr-TR"));
+        try {
+            Company company = seedCompany("WAC-DISP-ALIAS");
+            FinishedGood fg = createFinishedGood(
+                    company,
+                    "FG-WAC-ALIAS-DISP",
+                    new BigDecimal("20"),
+                    BigDecimal.ZERO,
+                    "weighted-average");
+
+            FinishedGoodBatch batchA = createBatch(fg, "BATCH-WAC-A", new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("20"));
+            batchA.setManufacturedAt(Instant.now().minusSeconds(7200));
+            batchA.setExpiryDate(LocalDate.now().plusDays(5));
+            batchA = finishedGoodBatchRepository.saveAndFlush(batchA);
+
+            FinishedGoodBatch batchB = createBatch(fg, "BATCH-WAC-B", new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("40"));
+            batchB.setManufacturedAt(Instant.now().minusSeconds(3600));
+            batchB.setExpiryDate(LocalDate.now().plusDays(30));
+            batchB = finishedGoodBatchRepository.saveAndFlush(batchB);
+
+            SalesOrder order = createOrder(company, "SO-WAC-ALIAS-" + UUID.randomUUID(), fg.getProductCode(), new BigDecimal("5"));
+            finishedGoodsService.reserveForOrder(order);
+
+            PackagingSlip slip = packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, order.getId()).stream()
+                    .filter(existing -> !existing.isBackorder())
+                    .findFirst()
+                    .orElseThrow();
+
+            finishedGoodsService.markSlipDispatched(order.getId(), slip);
+
+            List<InventoryMovement> movements = inventoryMovementRepository
+                    .findByReferenceTypeAndReferenceIdOrderByCreatedAtAsc(InventoryReference.SALES_ORDER, order.getId().toString());
+            InventoryMovement dispatchMovement = movements.stream()
+                    .filter(mv -> "DISPATCH".equalsIgnoreCase(mv.getMovementType()))
+                    .findFirst()
+                    .orElseThrow();
+
+            assertThat(dispatchMovement.getUnitCost()).isEqualByComparingTo(new BigDecimal("30"));
+        } finally {
+            Locale.setDefault(previous);
+        }
+    }
+
+    @Test
     void reserveForOrderUsesExpiryOrderWhenCostingMethodIsWac() {
         Company company = seedCompany("WAC-FEFO");
         FinishedGood fg = createFinishedGood(company, "FG-WAC-FEFO", new BigDecimal("6"), BigDecimal.ZERO, "WAC");
