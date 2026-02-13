@@ -180,6 +180,38 @@ class ProductionCatalogRawMaterialInvariantIT extends AbstractIntegrationTest {
         assertThat(rawMaterialRepository.findByCompanyAndSku(company, "RM-TIO2-OUTSIDE")).isEmpty();
     }
 
+    @Test
+    void importCatalog_rejectsFinishedGoodAccountOutsideCompanyScope() {
+        Account cogsAccount = ensureAccount("FG-COGS", "Finished Good COGS", AccountType.COGS);
+        Account revenueAccount = ensureAccount("FG-REV", "Finished Good Revenue", AccountType.REVENUE);
+        Account taxAccount = ensureAccount("FG-TAX", "Finished Good Tax", AccountType.LIABILITY);
+        Company managedCompany = companyRepository.findById(company.getId()).orElseThrow();
+        managedCompany.setDefaultCogsAccountId(cogsAccount.getId());
+        managedCompany.setDefaultRevenueAccountId(revenueAccount.getId());
+        managedCompany.setDefaultTaxAccountId(taxAccount.getId());
+        company = companyRepository.save(managedCompany);
+
+        Company foreignCompany = dataSeeder.ensureCompany(
+                "FG-FOREIGN-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(),
+                "Foreign FG Co");
+        Account foreignValuationAccount = ensureAccountFor(
+                foreignCompany,
+                "FG-INV-FOREIGN",
+                "Foreign Finished Good Inventory",
+                AccountType.ASSET);
+
+        CatalogImportResponse response = productionCatalogService.importCatalog(
+                finishedGoodCsvWithAccount("FG-OUTSIDE-01", "18.00", foreignValuationAccount.getId(), "fg_valuation_account_id"),
+                "RM-CAT-IDEMP-06"
+        );
+
+        assertThat(response.errors()).hasSize(1);
+        assertThat(response.errors().getFirst().message())
+                .contains("invalid account id")
+                .contains("fgValuationAccountId");
+        assertThat(productionProductRepository.findByCompanyAndSkuCode(company, "FG-OUTSIDE-01")).isEmpty();
+    }
+
     private Account ensureAccount(String code, String name, AccountType type) {
         return ensureAccountFor(company, code, name, type);
     }
@@ -258,6 +290,22 @@ class ProductionCatalogRawMaterialInvariantIT extends AbstractIntegrationTest {
         return new MockMultipartFile(
                 "file",
                 "raw-material-catalog-account.csv",
+                "text/csv",
+                csv.getBytes(StandardCharsets.UTF_8)
+        );
+    }
+
+    private MockMultipartFile finishedGoodCsvWithAccount(String skuCode,
+                                                         String gstRate,
+                                                         Long accountId,
+                                                         String accountColumnName) {
+        String csv = String.join("\n",
+                "brand,product_name,sku_code,category,unit_of_measure,gst_rate," + accountColumnName,
+                "FGBrand,Super Gloss " + skuCode + "," + skuCode + ",FINISHED_GOOD,LTR," + gstRate + "," + accountId
+        );
+        return new MockMultipartFile(
+                "file",
+                "finished-good-catalog-account.csv",
                 "text/csv",
                 csv.getBytes(StandardCharsets.UTF_8)
         );

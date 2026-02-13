@@ -634,7 +634,16 @@ public class ProductionCatalogService {
             // Avoid accidental brand switching when reusing SKU
             brand = product.getBrand();
         }
-        applyRowToProduct(product, company, brand, row, productName, category, sizeLabel, created);
+        applyRowToProduct(
+                product,
+                company,
+                brand,
+                row,
+                productName,
+                category,
+                sizeLabel,
+                created,
+                context.validatedRawMaterialInventoryAccounts());
         ProductionProduct saved = productRepository.save(product);
         ensureCatalogFinishedGood(company, saved);
         cacheProduct(context, saved);
@@ -780,7 +789,8 @@ public class ProductionCatalogService {
                                    String productName,
                                    String category,
                                    String sizeLabel,
-                                   boolean created) {
+                                   boolean created,
+                                   Map<Long, Long> validatedFinishedGoodAccounts) {
         if (created) {
             product.setCompany(company);
             product.setBrand(brand);
@@ -814,7 +824,11 @@ public class ProductionCatalogService {
             }
         }
         if (!isRawMaterialCategory(category)) {
-            metadata = ensureFinishedGoodAccounts(company, product.getSkuCode(), metadata);
+            metadata = ensureFinishedGoodAccounts(
+                    company,
+                    product.getSkuCode(),
+                    metadata,
+                    validatedFinishedGoodAccounts);
         }
         product.setMetadata(metadata);
     }
@@ -1015,6 +1029,32 @@ public class ProductionCatalogService {
         } catch (IllegalArgumentException ex) {
             throw new IllegalArgumentException(
                     "Raw material SKU " + sku + " references an invalid inventory account id " + accountId);
+        }
+    }
+
+    private Long requireFinishedGoodAccount(Company company,
+                                            Long accountId,
+                                            String sku,
+                                            String key,
+                                            Map<Long, Long> validatedFinishedGoodAccounts) {
+        if (accountId == null || accountId <= 0) {
+            return null;
+        }
+        if (validatedFinishedGoodAccounts != null) {
+            Long cachedAccountId = validatedFinishedGoodAccounts.get(accountId);
+            if (cachedAccountId != null) {
+                return cachedAccountId;
+            }
+        }
+        try {
+            Long validatedAccountId = companyEntityLookup.requireAccount(company, accountId).getId();
+            if (validatedFinishedGoodAccounts != null) {
+                validatedFinishedGoodAccounts.put(accountId, validatedAccountId);
+            }
+            return validatedAccountId;
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalArgumentException(
+                    "Finished good SKU " + sku + " references an invalid account id " + accountId + " for " + key);
         }
     }
 
@@ -1284,6 +1324,13 @@ public class ProductionCatalogService {
     }
 
     private Map<String, Object> ensureFinishedGoodAccounts(Company company, String sku, Map<String, Object> metadata) {
+        return ensureFinishedGoodAccounts(company, sku, metadata, null);
+    }
+
+    private Map<String, Object> ensureFinishedGoodAccounts(Company company,
+                                                           String sku,
+                                                           Map<String, Object> metadata,
+                                                           Map<Long, Long> validatedFinishedGoodAccounts) {
         Map<String, Object> working = metadata == null ? new HashMap<>() : new HashMap<>(metadata);
         var defaults = companyDefaultAccountsService.requireDefaults();
 
@@ -1306,6 +1353,21 @@ public class ProductionCatalogService {
             if (!hasLongValue(working.get(key))) {
                 throw new IllegalStateException("Default " + key + " is not configured for company " + company.getCode() +
                         ". Configure company default accounts to enable product posting.");
+            }
+        }
+        for (String key : FINISHED_GOOD_ACCOUNT_KEYS) {
+            Long accountId = metadataLong(working, key);
+            if (accountId == null) {
+                continue;
+            }
+            Long validatedAccountId = requireFinishedGoodAccount(
+                    company,
+                    accountId,
+                    sku,
+                    key,
+                    validatedFinishedGoodAccounts);
+            if (!Objects.equals(accountId, validatedAccountId)) {
+                working.put(key, validatedAccountId);
             }
         }
         return working;
