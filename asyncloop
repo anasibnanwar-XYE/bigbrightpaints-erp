@@ -2199,3 +2199,60 @@ Post-Commit Review Evidence
 - Review subagent `019c5597-378c-7fc0-beaf-397b335564db`:
   - findings: none.
   - residual note: keep latest queue block visually clear because historical queue blocks remain in file.
+
+Completed Slice (Committed)
+- 2026-02-13: `a23898aa`
+  - docs(portal): add discount/reference behavior guide across admin sales dealer.
+  - Added `docs/PORTAL_DISCOUNT_REFERENCE_BEHAVIOR_GUIDE.md` as frontend/user-facing contract for:
+    - dealer/supplier settlement discount/write-off/FX handling,
+    - replay/idempotency mismatch semantics,
+    - allocation tolerance and outstanding-amount guards,
+    - cross-portal approval semantics.
+  - Linked guide from `docs/endpoint-inventory.md`.
+  - Verification:
+    - docs-only update (no runtime tests).
+
+Post-Commit Review Evidence
+- Commit reviewed: `a23898aa`
+- `codex review --commit a23898aa`:
+  - final verdict: docs-only patch; no actionable bug in patch scope.
+- Review subagent `019c559f-308a-7f81-9f00-64a60e01abc0`:
+  - medium finding: replay docs needed explicit memo-match enforcement.
+  - low finding: outstanding-allocation rule should explicitly mention `0.01` tolerance.
+  - low finding: validation-copy examples should align with backend error strings.
+  - disposition: fixed in follow-up commit `c53f890b`.
+
+Completed Slice (Committed)
+- 2026-02-13: `c53f890b`
+  - docs(admin): publish approval action descriptor matrix and tighten replay docs.
+  - Added `docs/ADMIN_APPROVAL_ACTION_DESCRIPTOR_MATRIX.md` to explicitly describe what action each admin approval item is approving, endpoint mapping, and side-effects.
+  - Tightened replay + tolerance notes in `docs/PORTAL_DISCOUNT_REFERENCE_BEHAVIOR_GUIDE.md`.
+  - Added matrix link to `docs/endpoint-inventory.md`.
+  - Verification:
+    - docs-only update (no runtime tests).
+
+Post-Commit Review Evidence
+- Commit reviewed: `c53f890b`
+- `codex review --commit c53f890b`:
+  - final verdict: documentation aligns with referenced backend controllers/services; no actionable inaccuracies found.
+- Review subagent `019c559f-308a-7f81-9f00-64a60e01abc0`:
+  - findings: none.
+  - residual note: review was static doc-vs-code only; runtime response contract for `/api/v1/admin/approvals` was not executed in this pass.
+
+Loop Update
+- 2026-02-13T11:53:12+05:30
+- tracked_now_ts: `2026-02-13T11:53:12+05:30`
+- tracked_elapsed: `33h 59m 20s`
+- active_in_progress: `M13-S1 product import SKU/raw-material/packaging cross-module workflow invariant audit`
+
+Queue Rotation (Auto-Replenish)
+- [completed] M12-S2 user-facing discount/reference behavior docs across admin/sales/dealer portals
+- [completed] M11-S4 admin approval action descriptor clarity docs (explicit “what admin is approving” labels across queues/portals)
+- [in_progress] M13-S1 product import SKU/raw-material/packaging cross-module workflow invariant audit
+- [ready] M13-S2 product import + packaging accounting linkage and idempotency contract tests
+- [ready] M13-S3 product import/packaging admin-approval visibility parity across portals
+- [ready] M13-S4 raw-material import ownership + company-scope boundary abuse scan (SKU->raw-material->packaging chain)
+- [ready] M12-S4 discount reference calculation examples + API error-copy parity table for user docs
+- [ready] M10-S3 release-gate dry-run and blocker ledger sync (`scripts/verify_local.sh` + artifact sanity)
+- [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
+- [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
