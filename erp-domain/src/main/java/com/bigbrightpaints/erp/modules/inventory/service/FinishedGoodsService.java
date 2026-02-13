@@ -33,6 +33,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -2002,22 +2003,31 @@ public class FinishedGoodsService {
         if (onHand.compareTo(BigDecimal.ZERO) <= 0) {
             return BigDecimal.ZERO;
         }
-        if (CostingMethodUtils.isWeightedAverage(finishedGood.getCostingMethod())) {
+        String method = finishedGood.getCostingMethod() == null
+                ? "FIFO"
+                : finishedGood.getCostingMethod().trim().toUpperCase(Locale.ROOT);
+        if (CostingMethodUtils.isWeightedAverage(method)) {
             return weightedAverageCost(finishedGood);
+        }
+        List<FinishedGoodBatch> batches = new ArrayList<>(finishedGoodBatchRepository.findByFinishedGoodOrderByManufacturedAtAsc(finishedGood));
+        batches.sort(Comparator
+                .comparing(FinishedGoodBatch::getManufacturedAt, Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(FinishedGoodBatch::getId, Comparator.nullsLast(Comparator.naturalOrder())));
+        if ("LIFO".equals(method)) {
+            Collections.reverse(batches);
         }
         BigDecimal valuedStock = BigDecimal.ZERO;
         BigDecimal remaining = onHand;
-        List<FinishedGoodBatch> batches = finishedGoodBatchRepository.findByFinishedGoodOrderByManufacturedAtAsc(finishedGood);
         for (FinishedGoodBatch batch : batches) {
             if (remaining.compareTo(BigDecimal.ZERO) <= 0) {
                 break;
             }
-            BigDecimal available = safeQuantity(batch.getQuantityAvailable());
-            if (available.compareTo(BigDecimal.ZERO) <= 0) {
+            BigDecimal batchQuantity = safeQuantity(batch.getQuantityTotal());
+            if (batchQuantity.compareTo(BigDecimal.ZERO) <= 0) {
                 continue;
             }
             BigDecimal unitCost = batch.getUnitCost() != null ? batch.getUnitCost() : BigDecimal.ZERO;
-            BigDecimal used = remaining.min(available);
+            BigDecimal used = remaining.min(batchQuantity);
             valuedStock = valuedStock.add(used.multiply(unitCost));
             remaining = remaining.subtract(used);
         }

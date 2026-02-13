@@ -295,8 +295,12 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
         Company company = seedCompany("FIFO-PARITY");
         BigDecimal baselineValue = inventoryValuationService.currentSnapshot(company).totalValue();
         FinishedGood fg = createFinishedGood(company, "FG-FIFO-PARITY", new BigDecimal("5"), BigDecimal.ZERO, "FIFO");
-        createBatch(fg, "FIFO-PARITY-OLD", new BigDecimal("10"), new BigDecimal("2"), new BigDecimal("5"));
-        createBatch(fg, "FIFO-PARITY-NEW", new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("20"));
+        FinishedGoodBatch older = createBatch(fg, "FIFO-PARITY-OLD", new BigDecimal("2"), new BigDecimal("2"), new BigDecimal("5"));
+        older.setManufacturedAt(Instant.now().minusSeconds(7200));
+        finishedGoodBatchRepository.saveAndFlush(older);
+        FinishedGoodBatch newer = createBatch(fg, "FIFO-PARITY-NEW", new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("20"));
+        newer.setManufacturedAt(Instant.now().minusSeconds(3600));
+        finishedGoodBatchRepository.saveAndFlush(newer);
 
         StockSummaryDto summary = finishedGoodsService.getStockSummary().stream()
                 .filter(item -> "FG-FIFO-PARITY".equals(item.code()))
@@ -305,7 +309,7 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
         InventoryValuationService.InventorySnapshot snapshot = inventoryValuationService.currentSnapshot(company);
 
         assertThat(summary.weightedAverageCost()).isEqualByComparingTo(new BigDecimal("14"));
-        assertThat(summary.weightedAverageCost()).isNotEqualByComparingTo(new BigDecimal("12.5"));
+        assertThat(summary.weightedAverageCost()).isNotEqualByComparingTo(new BigDecimal("17.5"));
         assertThat(snapshot.totalValue().subtract(baselineValue))
                 .isEqualByComparingTo(new BigDecimal("70.00"));
     }
@@ -314,16 +318,40 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
     void stockSummaryUsesBatchValuationUnitCostForLifoGoods() {
         Company company = seedCompany("LIFO-PARITY");
         FinishedGood fg = createFinishedGood(company, "FG-LIFO-PARITY", new BigDecimal("5"), BigDecimal.ZERO, "LIFO");
-        createBatch(fg, "LIFO-PARITY-OLD", new BigDecimal("10"), new BigDecimal("2"), new BigDecimal("5"));
-        createBatch(fg, "LIFO-PARITY-NEW", new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("20"));
+        FinishedGoodBatch older = createBatch(fg, "LIFO-PARITY-OLD", new BigDecimal("2"), new BigDecimal("2"), new BigDecimal("5"));
+        older.setManufacturedAt(Instant.now().minusSeconds(7200));
+        finishedGoodBatchRepository.saveAndFlush(older);
+        FinishedGoodBatch newer = createBatch(fg, "LIFO-PARITY-NEW", new BigDecimal("10"), new BigDecimal("10"), new BigDecimal("20"));
+        newer.setManufacturedAt(Instant.now().minusSeconds(3600));
+        finishedGoodBatchRepository.saveAndFlush(newer);
 
         StockSummaryDto summary = finishedGoodsService.getStockSummary().stream()
                 .filter(item -> "FG-LIFO-PARITY".equals(item.code()))
                 .findFirst()
                 .orElseThrow();
 
+        assertThat(summary.weightedAverageCost()).isEqualByComparingTo(new BigDecimal("20"));
+        assertThat(summary.weightedAverageCost()).isNotEqualByComparingTo(new BigDecimal("17.5"));
+    }
+
+    @Test
+    void stockSummaryNonWacValuationIncludesReservedStock() {
+        Company company = seedCompany("FIFO-RESERVED-PARITY");
+        FinishedGood fg = createFinishedGood(company, "FG-FIFO-RESERVED", new BigDecimal("5"), new BigDecimal("2"), "FIFO");
+        FinishedGoodBatch reserved = createBatch(fg, "FIFO-RESERVED-OLD", new BigDecimal("2"), BigDecimal.ZERO, new BigDecimal("5"));
+        reserved.setManufacturedAt(Instant.now().minusSeconds(7200));
+        finishedGoodBatchRepository.saveAndFlush(reserved);
+        FinishedGoodBatch available = createBatch(fg, "FIFO-RESERVED-NEW", new BigDecimal("3"), new BigDecimal("3"), new BigDecimal("20"));
+        available.setManufacturedAt(Instant.now().minusSeconds(3600));
+        finishedGoodBatchRepository.saveAndFlush(available);
+
+        StockSummaryDto summary = finishedGoodsService.getStockSummary().stream()
+                .filter(item -> "FG-FIFO-RESERVED".equals(item.code()))
+                .findFirst()
+                .orElseThrow();
+
         assertThat(summary.weightedAverageCost()).isEqualByComparingTo(new BigDecimal("14"));
-        assertThat(summary.weightedAverageCost()).isNotEqualByComparingTo(new BigDecimal("12.5"));
+        assertThat(summary.weightedAverageCost()).isNotEqualByComparingTo(new BigDecimal("12"));
     }
 
     @Test
