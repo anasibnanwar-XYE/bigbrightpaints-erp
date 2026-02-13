@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.regression;
 
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
@@ -46,8 +47,11 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.util.AopTestUtils;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @DisplayName("Regression: Bulk pack accounting links for catalog-imported packaging materials")
 class BulkPackingImportedCatalogPackagingIT extends AbstractIntegrationTest {
@@ -288,6 +292,66 @@ class BulkPackingImportedCatalogPackagingIT extends AbstractIntegrationTest {
         BigDecimal totalDebit = debitByAccount.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal totalCredit = creditByAccount.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
         assertThat(totalDebit).isEqualByComparingTo(totalCredit);
+    }
+
+    @Test
+    void linkPackagingMovementsToJournal_rejectsJournalRelinkDrift() throws Exception {
+        CatalogImportResponse importResponse = productionCatalogService.importCatalog(
+                rawMaterialCsvWithAccountAlias("PACK-RM-M13S7-DRIFT", "18.00", packagingInventoryAccount.getId()),
+                "M13-S7-CAT-IMPORT-DRIFT"
+        );
+        assertThat(importResponse.errors()).isEmpty();
+        RawMaterial packagingMaterial = rawMaterialRepository.findByCompanyAndSku(company, "PACK-RM-M13S7-DRIFT").orElseThrow();
+        addRawMaterialBatch(packagingMaterial, new BigDecimal("30"), new BigDecimal("1.00"));
+        createPackagingMapping(packagingMaterial, "1L");
+
+        FinishedGood bulkFg = createFinishedGood("FG-BULK-M13S7-DRIFT", "Bulk Paint Drift", "L", bulkInventoryAccount.getId());
+        FinishedGood childFg = createFinishedGood("FG-1L-M13S7-DRIFT", "Paint 1L Drift", "UNIT", childInventoryAccount.getId());
+        FinishedGoodBatch bulkBatch = createBulkBatch(bulkFg, new BigDecimal("10"), new BigDecimal("5.00"));
+        BulkPackRequest request = new BulkPackRequest(
+                bulkBatch.getId(),
+                List.of(new BulkPackRequest.PackLine(childFg.getId(), new BigDecimal("3"), "1L", "L")),
+                null,
+                false,
+                LocalDate.now(),
+                "packer",
+                "link drift guard",
+                "M13-S7-PACK-IDEMP-DRIFT"
+        );
+        BulkPackResponse response = bulkPackingService.pack(request);
+        assertThat(response.journalEntryId()).isNotNull();
+
+        String packReference = resolvePackReference(response.childBatches().getFirst().id());
+        Long originalJournalId = response.journalEntryId();
+        List<RawMaterialMovement> rawMovements = rawMaterialMovementRepository
+                .findByRawMaterialCompanyAndReferenceTypeAndReferenceId(company, InventoryReference.PACKING_RECORD, packReference);
+        List<InventoryMovement> inventoryMovements = inventoryMovementRepository
+                .findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
+                        company,
+                        InventoryReference.PACKING_RECORD,
+                        packReference);
+        assertThat(rawMovements).allSatisfy(movement -> assertThat(movement.getJournalEntryId()).isEqualTo(originalJournalId));
+        assertThat(inventoryMovements).allSatisfy(movement -> assertThat(movement.getJournalEntryId()).isEqualTo(originalJournalId));
+
+        BulkPackingService targetService = AopTestUtils.getTargetObject(bulkPackingService);
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(
+                targetService,
+                "linkPackagingMovementsToJournal",
+                company,
+                packReference,
+                originalJournalId + 999L))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("already linked to journal");
+
+        List<RawMaterialMovement> afterGuardRawMovements = rawMaterialMovementRepository
+                .findByRawMaterialCompanyAndReferenceTypeAndReferenceId(company, InventoryReference.PACKING_RECORD, packReference);
+        List<InventoryMovement> afterGuardInventoryMovements = inventoryMovementRepository
+                .findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
+                        company,
+                        InventoryReference.PACKING_RECORD,
+                        packReference);
+        assertThat(afterGuardRawMovements).allSatisfy(movement -> assertThat(movement.getJournalEntryId()).isEqualTo(originalJournalId));
+        assertThat(afterGuardInventoryMovements).allSatisfy(movement -> assertThat(movement.getJournalEntryId()).isEqualTo(originalJournalId));
     }
 
     private Map<Long, String> snapshotRawMovements(List<RawMaterialMovement> movements) {

@@ -34,6 +34,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -583,19 +584,48 @@ public class BulkPackingService {
         List<RawMaterialMovement> movements = rawMaterialMovementRepository
                 .findByRawMaterialCompanyAndReferenceTypeAndReferenceId(company, InventoryReference.PACKING_RECORD, referenceId);
         if (!movements.isEmpty()) {
-            movements.forEach(movement -> movement.setJournalEntryId(journalEntryId));
-            rawMaterialMovementRepository.saveAll(movements);
+            List<RawMaterialMovement> toUpdate = new ArrayList<>();
+            for (RawMaterialMovement movement : movements) {
+                Long existingJournalId = movement.getJournalEntryId();
+                if (existingJournalId == null) {
+                    movement.setJournalEntryId(journalEntryId);
+                    toUpdate.add(movement);
+                    continue;
+                }
+                if (!Objects.equals(existingJournalId, journalEntryId)) {
+                    throw new ApplicationException(
+                            ErrorCode.BUSINESS_CONSTRAINT_VIOLATION,
+                            "Packing reference " + referenceId + " already linked to journal " + existingJournalId);
+                }
+            }
+            if (!toUpdate.isEmpty()) {
+                rawMaterialMovementRepository.saveAll(toUpdate);
+            }
         }
         List<InventoryMovement> inventoryMovements = inventoryMovementRepository
                 .findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
                         company,
                         InventoryReference.PACKING_RECORD,
                         referenceId);
-        if (inventoryMovements.isEmpty()) {
-            return;
+        if (!inventoryMovements.isEmpty()) {
+            List<InventoryMovement> toUpdate = new ArrayList<>();
+            for (InventoryMovement movement : inventoryMovements) {
+                Long existingJournalId = movement.getJournalEntryId();
+                if (existingJournalId == null) {
+                    movement.setJournalEntryId(journalEntryId);
+                    toUpdate.add(movement);
+                    continue;
+                }
+                if (!Objects.equals(existingJournalId, journalEntryId)) {
+                    throw new ApplicationException(
+                            ErrorCode.BUSINESS_CONSTRAINT_VIOLATION,
+                            "Packing reference " + referenceId + " already linked to journal " + existingJournalId);
+                }
+            }
+            if (!toUpdate.isEmpty()) {
+                inventoryMovementRepository.saveAll(toUpdate);
+            }
         }
-        inventoryMovements.forEach(movement -> movement.setJournalEntryId(journalEntryId));
-        inventoryMovementRepository.saveAll(inventoryMovements);
     }
 
     private FinishedGoodBatch createChildBatch(Company company,
