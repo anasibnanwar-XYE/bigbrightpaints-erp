@@ -2815,3 +2815,56 @@ Queue Rotation (Auto-Replenish)
 - [ready] M14-S4 accounting-portal scope invariant guard (preserve HR/PURCHASING/INVENTORY/REPORTS mapping unless replacement portal-map + endpoint docs land in same commit)
 - [ready] M11-S6 approval queue runtime contract test slice (assert FE docs match live `AdminApprovalItemDto` payload fields and action endpoint semantics)
 - [ready] M14-S5 costing method alias replay matrix for finished-goods APIs (FIFO/WAC normalization + invalid-alias rejection parity with raw-material contracts)
+
+Post-Commit Review Evidence
+- Commit reviewed: `a3c597f5`
+- `codex review --commit a3c597f5`:
+  - final verdict: docs-only queue/evidence append; no executable-path correctness regression introduced.
+  - captured stream: `/tmp/codex_review_a3c597f5.log`.
+- Review subagent `019c574b-f24d-70e1-a349-440bb4ac60d7`:
+  - findings: none.
+
+Loop Update
+- 2026-02-13T19:37:19+05:30
+- tracked_now_ts: `2026-02-13T19:37:19+05:30`
+- tracked_elapsed: `41h 43m 27s`
+- active_in_progress: `M13-S10 packing/non-bulk journal-link parity scan (movement linkage invariants across all packing paths)`
+
+Completed Slice (Committed)
+- 2026-02-13: `834d4ac0`
+  - fix(factory): guard non-bulk packing journal relink drift.
+  - Closed parity gap between bulk and non-bulk packing journal-link protection:
+    - `PackingService#linkPackagingMovementsToJournal` now backfills only null links and rejects conflicting non-null journal IDs with `BUSINESS_CONSTRAINT_VIOLATION` (no silent relink overwrite).
+  - Added targeted regression in `PackingServiceTest`:
+    - `recordPacking_rejectsPackagingMovementJournalRelinkDrift` validates drifted `raw_material_movements.journal_entry_id` is not overwritten and packing aborts before atomic packed-quantity update.
+  - Updated packing parser-path unit assertion to use `500ML` piece-based input in `recordPacking_postsViaAccountingFacade` and assert resolved packed quantity (`1.0`) to keep ml->liter path pinned during parity closure.
+  - Verification:
+    - `cd erp-domain && mvn -B -ntp -Dtest=PackingServiceTest#recordPacking_postsViaAccountingFacade+recordPacking_rejectsPackagingMovementJournalRelinkDrift test` -> pass (2 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `834d4ac0`
+- `codex review --commit 834d4ac0`:
+  - executed with stream capture but environment entered prolonged rollout/state-db noise and did not emit a stable terminal verdict before manual stop.
+  - captured stream: `/tmp/codex_review_834d4ac0.log`.
+- Review subagent `019c5750-fc70-72c3-a723-bfe8a81aa81a`:
+  - findings: none.
+
+Loop Update
+- 2026-02-13T19:37:19+05:30
+- tracked_now_ts: `2026-02-13T19:37:19+05:30`
+- tracked_elapsed: `41h 43m 27s`
+- active_in_progress: `M14-S1 costing method normalization parity (align finished-good costing method normalization with raw-material normalization contracts)`
+
+Queue Rotation (Auto-Replenish)
+- [completed] M13-S10 packing/non-bulk journal-link parity scan (movement linkage invariants across all packing paths)
+- [in_progress] M14-S1 costing method normalization parity (align finished-good costing method normalization with raw-material normalization contracts)
+- [ready] M12-S5 discount/reference calculation parity matrix across sales->invoice->settlement + user-facing example table refresh
+- [ready] M10-S3 release-gate dry-run and blocker ledger sync (`scripts/verify_local.sh` + artifact sanity)
+- [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
+- [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
+- [ready] M14-S2 WAC allocation path correctness (replace FIFO batch selection in WAC branches of `FinishedGoodsService` + `InventoryAdjustmentService`)
+- [ready] M14-S3 costing helper dedupe + regression matrix (consolidate duplicated `isWeightedAverage(...)` logic across factory/inventory valuation services)
+- [ready] M14-S4 accounting-portal scope invariant guard (preserve HR/PURCHASING/INVENTORY/REPORTS mapping unless replacement portal-map + endpoint docs land in same commit)
+- [ready] M11-S6 approval queue runtime contract test slice (assert FE docs match live `AdminApprovalItemDto` payload fields and action endpoint semantics)
+- [ready] M14-S5 costing method alias replay matrix for finished-goods APIs (FIFO/WAC normalization + invalid-alias rejection parity with raw-material contracts)
+- [ready] M14-S6 costing output endpoint parity contract (`stock-summary` vs `inventory-valuation` vs `production-log cost-breakdown` consistency under FIFO/WAC)
