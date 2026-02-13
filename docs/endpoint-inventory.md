@@ -3,6 +3,9 @@
 Source: `openapi.json`
 Updated: 2026-01-25
 
+Related behavior contract:
+- `docs/PORTAL_DISCOUNT_REFERENCE_BEHAVIOR_GUIDE.md`
+
 ## Summary by module
 
 | Module | Path count | Examples |
