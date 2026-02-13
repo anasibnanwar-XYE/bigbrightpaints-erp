@@ -37,6 +37,20 @@ class AccountingPortalScopeGuardScriptTest {
     }
 
     @Test
+    void guardFailsWhenHrModuleCountDriftsToZero() throws Exception {
+        FixturePaths fixturePaths = writeFixture(13);
+        replaceInFile(
+                fixturePaths.endpointInventoryDoc(),
+                "| `hr` | 11 | /api/v1/hr/employees |",
+                "| `hr` | 0 | /api/v1/hr/employees |");
+
+        ProcessResult result = runGuard(fixturePaths);
+
+        assertThat(result.exitCode()).isNotEqualTo(0);
+        assertThat(result.stderr()).contains("non-zero path count: hr");
+    }
+
+    @Test
     void guardFailsWhenEndpointMapDomainHeadingIsMissing() throws Exception {
         FixturePaths fixturePaths = writeFixture(13);
         replaceInFile(
@@ -47,7 +61,8 @@ class AccountingPortalScopeGuardScriptTest {
         ProcessResult result = runGuard(fixturePaths);
 
         assertThat(result.exitCode()).isNotEqualTo(0);
-        assertThat(result.stderr()).contains("accounting endpoint map missing required domain heading: ## Reports & Reconciliation");
+        assertThat(result.stderr()).contains("accounting endpoint map missing required domain heading");
+        assertThat(result.stderr()).contains("## Reports & Reconciliation");
     }
 
     @Test
@@ -61,7 +76,8 @@ class AccountingPortalScopeGuardScriptTest {
         ProcessResult result = runGuard(fixturePaths);
 
         assertThat(result.exitCode()).isNotEqualTo(0);
-        assertThat(result.stderr()).contains("accounting frontend handoff missing required domain heading: ## Reports & Reconciliation");
+        assertThat(result.stderr()).contains("accounting frontend handoff missing required domain heading");
+        assertThat(result.stderr()).contains("## Reports & Reconciliation");
     }
 
     @Test
@@ -75,7 +91,23 @@ class AccountingPortalScopeGuardScriptTest {
         ProcessResult result = runGuard(fixturePaths);
 
         assertThat(result.exitCode()).isNotEqualTo(0);
-        assertThat(result.stderr()).contains("accounting endpoint map missing required controller section: ### report-controller");
+        assertThat(result.stderr()).contains("accounting endpoint map missing required controller section");
+        assertThat(result.stderr()).contains("### report-controller");
+    }
+
+    @Test
+    void guardFailsWhenEndpointMapHrControllerSectionIsMissing() throws Exception {
+        FixturePaths fixturePaths = writeFixture(13);
+        replaceInFile(
+                fixturePaths.endpointMapDoc(),
+                "### hr-controller\n",
+                "");
+
+        ProcessResult result = runGuard(fixturePaths);
+
+        assertThat(result.exitCode()).isNotEqualTo(0);
+        assertThat(result.stderr()).contains("accounting endpoint map missing required controller section");
+        assertThat(result.stderr()).contains("### hr-controller");
     }
 
     private ProcessResult runGuard(FixturePaths fixturePaths) throws Exception {
@@ -100,6 +132,9 @@ class AccountingPortalScopeGuardScriptTest {
     private void replaceInFile(Path path, String target, String replacement) throws IOException {
         String original = Files.readString(path, StandardCharsets.UTF_8);
         String updated = original.replace(target, replacement);
+        if (original.equals(updated)) {
+            throw new IllegalStateException("Failed to replace fixture token in " + path + ": " + target);
+        }
         Files.writeString(path, updated, StandardCharsets.UTF_8);
     }
 
