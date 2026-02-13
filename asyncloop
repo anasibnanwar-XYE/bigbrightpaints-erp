@@ -2191,3 +2191,11 @@ Loop Update
 - tracked_now_ts: `2026-02-13T11:30:20+05:30`
 - tracked_elapsed: `33h 36m 28s`
 - active_in_progress: `M12-S2 user-facing discount/reference behavior docs across admin/sales/dealer portals`
+
+Post-Commit Review Evidence
+- Commit reviewed: `3b62b41b`
+- `codex review --commit 3b62b41b`:
+  - final verdict: patch is correct (docs-only ledger metadata update; no executable-path regression).
+- Review subagent `019c5597-378c-7fc0-beaf-397b335564db`:
+  - findings: none.
+  - residual note: keep latest queue block visually clear because historical queue blocks remain in file.
