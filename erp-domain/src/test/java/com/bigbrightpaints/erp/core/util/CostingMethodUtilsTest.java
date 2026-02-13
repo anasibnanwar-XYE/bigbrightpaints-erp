@@ -32,6 +32,9 @@ class CostingMethodUtilsTest {
         try {
             Locale.setDefault(Locale.forLanguageTag("tr-TR"));
             assertThat(CostingMethodUtils.isWeightedAverage("weighted_average")).isTrue();
+            assertThat(CostingMethodUtils.normalizeRawMaterialMethodOrDefault(" weighted_average ")).isEqualTo("WAC");
+            assertThat(CostingMethodUtils.normalizeFinishedGoodMethodOrDefault(" weighted-average ")).isEqualTo("WAC");
+            assertThat(CostingMethodUtils.canonicalizeFinishedGoodMethodForSync(" weighted_average ")).isEqualTo("WAC");
         } finally {
             Locale.setDefault(previous);
         }
