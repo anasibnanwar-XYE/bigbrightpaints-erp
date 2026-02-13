@@ -2566,3 +2566,68 @@ Queue Rotation (Auto-Replenish)
 - [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
 - [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
 - [ready] M13-S9 product-import to purchasing/accounting reference-carry consistency (SKU/raw-material/packaging document link chain)
+
+Completed Slice (Committed)
+- 2026-02-13: `ea5de159`
+  - docs(async-loop): backfill M13-S5 evidence and queue rotation.
+  - Logged previously missing `M13-S5` commit chain evidence (`34725ea4`, `67944c58`, `f040df27`, `c50ade02`) with verification/review dispositions.
+  - Rotated queue to move into `M13-S7` and replenished ready backlog.
+
+Post-Commit Review Evidence
+- Commit reviewed: `ea5de159`
+- `codex review --commit ea5de159`:
+  - final verdict: docs-only ledger update; no actionable correctness issues introduced.
+- Review subagent `019c56fa-cc56-79e3-b29f-21d37d587791`:
+  - findings: none.
+
+Completed Slice (Committed)
+- 2026-02-13: `0355149b`
+  - fix(factory): link pack inventory movements to posted journals.
+  - Closed cross-module linkage gap uncovered in `M13-S7`: bulk-pack flow now links both `raw_material_movements` and `inventory_movements` to posted pack journal id for `PACKING_RECORD` reference.
+  - Added reconciliation regression coverage in `BulkPackingImportedCatalogPackagingIT` proving imported finished-good + packaging account mappings propagate into pack journal lines and movement linkage.
+  - Verification:
+    - `cd erp-domain && mvn -B -ntp -Dtest=BulkPackingImportedCatalogPackagingIT,ProductionCatalogRawMaterialInvariantIT test` -> pass (9 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `0355149b`
+- `codex review --commit 0355149b`:
+  - command executed; long/noisy rollout stream in this environment with no durable terminal verdict captured at this ledger timestamp.
+- Review subagent `019c56fa-cc56-79e3-b29f-21d37d587791`:
+  - medium finding: linker could silently reassign existing movement journal links if invoked with a different journal id.
+  - low finding: add explicit regression for relink-drift rejection semantics.
+  - disposition: fixed in follow-up commit `f9fd898f`.
+
+Completed Slice (Committed)
+- 2026-02-13: `f9fd898f`
+  - fix(factory): guard bulk-pack movement journal relink drift.
+  - Hardened `linkPackagingMovementsToJournal` so existing non-null movement journal links cannot be overwritten with a different journal id:
+    - if existing id differs, throw `BUSINESS_CONSTRAINT_VIOLATION` with explicit reference context,
+    - only null journal link fields are backfilled.
+  - Added drift-guard regression `linkPackagingMovementsToJournal_rejectsJournalRelinkDrift` to pin invariant and ensure IDs remain unchanged after rejected relink attempt.
+  - Verification:
+    - `cd erp-domain && mvn -B -ntp -Dtest=BulkPackingImportedCatalogPackagingIT,ProductionCatalogRawMaterialInvariantIT test` -> pass (10 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `f9fd898f`
+- `codex review --commit f9fd898f`:
+  - command executed; long/noisy rollout stream in this environment with no durable terminal verdict captured yet.
+- Review subagent `019c56fa-cc56-79e3-b29f-21d37d587791`:
+  - no medium/high findings.
+  - low notes: guard intentionally fails conflicting replay attempts; callers should treat it as explicit drift signal and reuse original journal linkage.
+
+Loop Update
+- 2026-02-13T18:32:53+05:30
+- tracked_now_ts: `2026-02-13T18:32:53+05:30`
+- tracked_elapsed: `40h 39m 1s`
+- active_in_progress: `M13-S8 catalog import stale-row cache cleanup acceptance test matrix (legacy drifted rows + retry replay)`
+
+Queue Rotation (Auto-Replenish)
+- [completed] M13-S7 product import SKU/raw-material/packaging cross-module reconciliation assertions (inventory + accounting linkage)
+- [in_progress] M13-S8 catalog import stale-row cache cleanup acceptance test matrix (legacy drifted rows + retry replay)
+- [ready] M13-S9 product-import to purchasing/accounting reference-carry consistency (SKU/raw-material/packaging document link chain)
+- [ready] M13-S10 packing/non-bulk journal-link parity scan (movement linkage invariants across all packing paths)
+- [ready] M12-S5 discount/reference calculation parity matrix across sales->invoice->settlement + user-facing example table refresh
+- [ready] M11-S5 admin approval action payload parity hardening across portals (explicit action descriptors in API responses)
+- [ready] M10-S3 release-gate dry-run and blocker ledger sync (`scripts/verify_local.sh` + artifact sanity)
+- [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
+- [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction

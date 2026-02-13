@@ -1,49 +1,49 @@
 # Async Loop Continuation Prompt (Copy/Paste)
 
-Use the prompt below to resume the same autonomous loop without losing context.
+Use the prompt below to resume the autonomous predeploy loop from the current stop point.
 
 ```text
 Resume the async predeploy audit loop on branch `async-loop-predeploy-audit` in `/home/realnigga/Desktop/orchestrator_erp`.
 
+Start procedure:
+1) Read `asyncloop` fully.
+2) Read `docs/ASYNC_LOOP_OPERATIONS.md`.
+3) Continue from latest `active_in_progress` (do not reopen completed slices).
+
 Mission:
-- Continue until ERP is staging/predeployment-ready with strong accounting trust and abuse resistance.
-- Focus on static review first, then minimal safe patches with targeted invariant tests.
-- Prioritize: accounting integrity, business-logic abuse, security boundaries, cross-module invariants, duplicate logic drift, and release readiness.
+- Continue toward staging/predeployment readiness with emphasis on accounting integrity, business-logic abuse resistance, security boundaries, cross-module invariants, duplicate-logic cleanup, and release safety.
+- Prefer static review first, then minimal safe patches with targeted negative/idempotency tests.
 
 Mandatory operating rules:
-- Read `asyncloop` first and continue the latest `active_in_progress` slice.
-- Follow `docs/ASYNC_LOOP_OPERATIONS.md`.
-- Keep backlog floor >= 3 ready slices; whenever one slice is completed, add a new concrete slice.
 - Every code change must be committed.
 - After every commit:
-  1) run `codex review --commit <sha>` if available,
-  2) spawn exactly one review-only subagent for deep regression review.
-- Do not use subagents for implementation work.
-- Use Flyway V2 only for new migrations (`db/migration_v2`, `flyway_schema_history_v2`).
-- If user asks questions mid-loop, answer briefly and continue work immediately.
+  1) run `codex review --commit <sha>` (capture final verdict when possible),
+  2) run exactly one review-only subagent.
+- Subagents are review-only; implementation remains in main agent.
+- Keep backlog floor >= 3 ready slices in `asyncloop`.
+- After closing one slice, immediately add another concrete ready slice.
+- Use Flyway V2 only for any new migration/index work.
 
-Current context to start from:
-- Last completed code commit in dispatch/invoice linkage chain: `09af3991`
-  - enforces single-slip gate in `InvoiceService.issueInvoiceForOrder` before writing `order.fulfillmentInvoiceId`.
-  - includes regression test that keeps `fulfillmentInvoiceId` unset for multi-slip existing-invoice flow.
-- Prior related commits:
-  - `521d8e07` gates order-level invoice marker writes to single-slip in dispatch paths.
-  - `26ddee67` blocks order-level AR linkage drift on multi-slip replay.
-  - `ea3bd276` recomputes single-slip status at decision points.
-  - `e277cde0` anchored replay overrides with required reason.
-  - `8b7b3e73` closes multi-slip order-journal replay bypass and preserves override audit metadata.
-  - `9a8c2c42` adds replay mismatch test for existing AR journal totals.
-- Latest targeted verification already passing:
-  - `mvn -B -ntp -Dtest=SalesServiceTest,InvoiceServiceTest test` (30 tests, 0 failures).
+Current continuity anchors:
+- Latest commits (newest first):
+  - `f9fd898f` fix(factory): guard bulk-pack movement journal relink drift
+  - `0355149b` fix(factory): link pack inventory movements to posted journals
+  - `ea5de159` docs(async-loop): backfill M13-S5 evidence and queue rotation
+  - `c50ade02` fix(catalog): avoid wildcard cache purge on unresolved brand
+- Latest targeted verification:
+  - `cd erp-domain && mvn -B -ntp -Dtest=BulkPackingImportedCatalogPackagingIT,ProductionCatalogRawMaterialInvariantIT test`
+  - result: pass (10 tests, 0 failures, 0 errors)
+- Latest active slice:
+  - `M13-S8 catalog import stale-row cache cleanup acceptance test matrix (legacy drifted rows + retry replay)`
 
 Immediate next actions:
-1) Confirm there are no uncommitted owned changes from the previous step.
-2) Ensure `asyncloop` review evidence for `09af3991` is complete and consistent.
-3) Continue active slice `M5-S5`:
-   - TOCTOU risk reduction for single-vs-multi slip marker decisions,
-   - stale order-level marker cleanup/backfill strategy for drifted records.
-4) Commit each fix with targeted tests, then run commit review + review subagent.
-5) Append every step to `asyncloop` with timestamp, elapsed runtime, evidence, and replenished queue.
+1) Confirm no owned uncommitted changes exist.
+2) Re-check pending `codex review` stream outcomes for `0355149b` / `f9fd898f` and keep ledger evidence aligned.
+3) Continue `M13-S8`:
+   - characterize stale-marker cleanup behavior for already drifted import/cache rows,
+   - add acceptance tests for retry/replay on drifted records,
+   - patch minimally if invariant violations are found.
+4) Keep queue rotation healthy (1 in_progress + >=3 ready) and append all evidence to `asyncloop`.
 
 Do not stop unless explicitly told to stop.
 ```
