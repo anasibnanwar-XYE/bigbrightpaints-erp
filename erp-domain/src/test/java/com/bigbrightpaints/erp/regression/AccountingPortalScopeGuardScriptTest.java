@@ -36,6 +36,48 @@ class AccountingPortalScopeGuardScriptTest {
         assertThat(result.stderr()).contains("non-zero path count: reports");
     }
 
+    @Test
+    void guardFailsWhenEndpointMapDomainHeadingIsMissing() throws Exception {
+        FixturePaths fixturePaths = writeFixture(13);
+        replaceInFile(
+                fixturePaths.endpointMapDoc(),
+                "## Reports & Reconciliation\n",
+                "");
+
+        ProcessResult result = runGuard(fixturePaths);
+
+        assertThat(result.exitCode()).isNotEqualTo(0);
+        assertThat(result.stderr()).contains("accounting endpoint map missing required domain heading: ## Reports & Reconciliation");
+    }
+
+    @Test
+    void guardFailsWhenHandoffDomainHeadingIsMissing() throws Exception {
+        FixturePaths fixturePaths = writeFixture(13);
+        replaceInFile(
+                fixturePaths.handoffDoc(),
+                "## Reports & Reconciliation\n",
+                "");
+
+        ProcessResult result = runGuard(fixturePaths);
+
+        assertThat(result.exitCode()).isNotEqualTo(0);
+        assertThat(result.stderr()).contains("accounting frontend handoff missing required domain heading: ## Reports & Reconciliation");
+    }
+
+    @Test
+    void guardFailsWhenEndpointMapControllerSectionIsMissing() throws Exception {
+        FixturePaths fixturePaths = writeFixture(13);
+        replaceInFile(
+                fixturePaths.endpointMapDoc(),
+                "### report-controller\n",
+                "");
+
+        ProcessResult result = runGuard(fixturePaths);
+
+        assertThat(result.exitCode()).isNotEqualTo(0);
+        assertThat(result.stderr()).contains("accounting endpoint map missing required controller section: ### report-controller");
+    }
+
     private ProcessResult runGuard(FixturePaths fixturePaths) throws Exception {
         Path root = repoRoot();
         Path script = root.resolve("scripts/guard_accounting_portal_scope_contract.sh");
@@ -53,6 +95,12 @@ class AccountingPortalScopeGuardScriptTest {
         String stdout = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         String stderr = new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
         return new ProcessResult(exitCode, stdout, stderr);
+    }
+
+    private void replaceInFile(Path path, String target, String replacement) throws IOException {
+        String original = Files.readString(path, StandardCharsets.UTF_8);
+        String updated = original.replace(target, replacement);
+        Files.writeString(path, updated, StandardCharsets.UTF_8);
     }
 
     private FixturePaths writeFixture(int reportsCount) throws IOException {
