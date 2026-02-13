@@ -15,10 +15,8 @@ import com.bigbrightpaints.erp.modules.production.domain.ProductionProductReposi
 import jakarta.persistence.OptimisticLockException;
 import java.lang.reflect.Constructor;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -118,7 +116,8 @@ class ProductionCatalogServiceRetryPolicyTest {
     }
 
     @Test
-    void evictRowCache_onlyRemovesMatchingBrandNameEntryAndMarker() throws Exception {
+    void evictRowCache_resolvesBrandIdWithoutBrandCacheAndAvoidsCrossBrandPurge() throws Exception {
+        Company company = new Company();
         ProductionBrand brandA = new ProductionBrand();
         ReflectionTestUtils.setField(brandA, "id", 11L);
         brandA.setName("BrandA");
@@ -139,8 +138,6 @@ class ProductionCatalogServiceRetryPolicyTest {
         productB.setSkuCode("SKU-B");
 
         Map<String, ProductionBrand> brandsByName = new HashMap<>();
-        brandsByName.put("branda", brandA);
-        brandsByName.put("brandb", brandB);
 
         Map<String, ProductionProduct> productsBySku = new HashMap<>();
         productsBySku.put("SKU-A", productA);
@@ -150,25 +147,21 @@ class ProductionCatalogServiceRetryPolicyTest {
         productsByBrandName.put(newProductKey(brandA.getId(), "shared product"), productA);
         productsByBrandName.put(newProductKey(brandB.getId(), "shared product"), productB);
 
-        Set<Long> verifiedProductIds = new HashSet<>();
-        verifiedProductIds.add(101L);
-        verifiedProductIds.add(202L);
+        when(brandRepository.findByCompanyAndNameIgnoreCase(company, "branda")).thenReturn(Optional.of(brandA));
 
         Object context = newImportContext(
                 brandsByName,
                 productsBySku,
                 productsByBrandName,
-                new HashMap<Long, Long>(),
-                verifiedProductIds);
+                new HashMap<Long, Long>());
         Object importRow = newImportRow(1L, null, "branda", "shared product");
 
-        ReflectionTestUtils.invokeMethod(service, "evictRowCache", importRow, context);
+        ReflectionTestUtils.invokeMethod(service, "evictRowCache", company, importRow, context);
 
         assertThat(productsByBrandName.values())
                 .extracting(product -> product.getId())
                 .containsExactly(202L);
         assertThat(productsBySku).containsKeys("SKU-A", "SKU-B");
-        assertThat(verifiedProductIds).containsExactly(202L);
     }
 
     private boolean invokeIsRetryableImportFailure(Throwable error) {
@@ -190,22 +183,19 @@ class ProductionCatalogServiceRetryPolicyTest {
     private Object newImportContext(Map<String, ProductionBrand> brandsByName,
                                     Map<String, ProductionProduct> productsBySku,
                                     Map<Object, ProductionProduct> productsByBrandName,
-                                    Map<Long, Long> validatedRawMaterialInventoryAccounts,
-                                    Set<Long> verifiedProductIds) throws Exception {
+                                    Map<Long, Long> validatedRawMaterialInventoryAccounts) throws Exception {
         Class<?> importContextClass = Class.forName(ProductionCatalogService.class.getName() + "$ImportContext");
         Constructor<?> constructor = importContextClass.getDeclaredConstructor(
                 Map.class,
                 Map.class,
                 Map.class,
-                Map.class,
-                Set.class);
+                Map.class);
         constructor.setAccessible(true);
         return constructor.newInstance(
                 brandsByName,
                 productsBySku,
                 productsByBrandName,
-                validatedRawMaterialInventoryAccounts,
-                verifiedProductIds);
+                validatedRawMaterialInventoryAccounts);
     }
 
     private Object newImportRow(long recordNumber,
