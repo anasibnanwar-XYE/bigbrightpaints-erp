@@ -7,6 +7,10 @@ Related behavior contract:
 - `docs/PORTAL_DISCOUNT_REFERENCE_BEHAVIOR_GUIDE.md`
 - `docs/ADMIN_APPROVAL_ACTION_DESCRIPTOR_MATRIX.md`
 - `docs/P2P_PURCHASE_SETTLEMENT_BOUNDARY.md`
+- `docs/ACCOUNTING_PORTAL_SCOPE_GUARDRAIL.md`
+
+Portal scope guardrail:
+- HR, PURCHASING, INVENTORY, and REPORTS come under Accounting portal frontend scope.
 
 ## Summary by module
 
