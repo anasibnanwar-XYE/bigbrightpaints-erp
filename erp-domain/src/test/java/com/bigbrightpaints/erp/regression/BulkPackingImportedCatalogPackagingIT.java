@@ -32,7 +32,9 @@ import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -129,17 +131,40 @@ class BulkPackingImportedCatalogPackagingIT extends AbstractIntegrationTest {
                 .allSatisfy(movement -> assertThat(movement.getJournalEntryId()).isEqualTo(first.journalEntryId()));
         assertThat(journalEntryRepository.findByCompanyAndReferenceNumber(company, packReference)).isPresent();
         JournalEntry posted = journalEntryRepository.findByCompanyAndId(company, first.journalEntryId()).orElseThrow();
-        BigDecimal packagingCredit = posted.getLines().stream()
+        Map<Long, BigDecimal> creditByAccount = posted.getLines().stream()
                 .filter(line -> line.getAccount() != null)
-                .filter(line -> Objects.equals(line.getAccount().getId(), packagingInventoryAccount.getId()))
-                .map(line -> Optional.ofNullable(line.getCredit()).orElse(BigDecimal.ZERO))
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        assertThat(packagingCredit).isEqualByComparingTo(first.packagingCost());
+                .map(line -> Map.entry(
+                        line.getAccount().getId(),
+                        Optional.ofNullable(line.getCredit()).orElse(BigDecimal.ZERO)))
+                .filter(entry -> entry.getValue().compareTo(BigDecimal.ZERO) > 0)
+                .collect(Collectors.toMap(
+                        Map.Entry::getKey,
+                        Map.Entry::getValue,
+                        BigDecimal::add));
+        Map<Long, BigDecimal> debitByAccount = posted.getLines().stream()
+                .filter(line -> line.getAccount() != null)
+                .map(line -> Map.entry(
+                        line.getAccount().getId(),
+                        Optional.ofNullable(line.getDebit()).orElse(BigDecimal.ZERO)))
+                .filter(entry -> entry.getValue().compareTo(BigDecimal.ZERO) > 0)
+                .collect(Collectors.toMap(
+                        Map.Entry::getKey,
+                        Map.Entry::getValue,
+                        BigDecimal::add));
+        BigDecimal expectedBulkCredit = new BigDecimal("37.50");
+        assertThat(creditByAccount.keySet())
+                .containsExactlyInAnyOrder(bulkInventoryAccount.getId(), packagingInventoryAccount.getId());
+        assertThat(creditByAccount.get(packagingInventoryAccount.getId())).isEqualByComparingTo(first.packagingCost());
+        assertThat(creditByAccount.get(bulkInventoryAccount.getId())).isEqualByComparingTo(expectedBulkCredit);
+        assertThat(debitByAccount.keySet()).containsExactly(childInventoryAccount.getId());
+        BigDecimal totalDebit = debitByAccount.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal totalCredit = creditByAccount.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+        assertThat(totalDebit).isEqualByComparingTo(totalCredit);
 
         RawMaterial afterFirstPack = rawMaterialRepository.findByCompanyAndSku(company, "PACK-RM-M13S2").orElseThrow();
         assertThat(afterFirstPack.getCurrentStock()).isEqualByComparingTo("45");
-        List<Long> firstRawMovementIds = firstRawMovements.stream().map(RawMaterialMovement::getId).toList();
-        List<Long> firstInventoryMovementIds = firstInventoryMovements.stream().map(InventoryMovement::getId).toList();
+        Map<Long, String> firstRawMovementSnapshot = snapshotRawMovements(firstRawMovements);
+        Map<Long, String> firstInventoryMovementSnapshot = snapshotInventoryMovements(firstInventoryMovements);
 
         BulkPackResponse replay = bulkPackingService.pack(request);
         assertThat(replay.journalEntryId()).isEqualTo(first.journalEntryId());
@@ -157,10 +182,38 @@ class BulkPackingImportedCatalogPackagingIT extends AbstractIntegrationTest {
         assertThat(replayRawMovements).hasSize(firstRawMovements.size());
         assertThat(replayInventoryMovements).hasSize(firstInventoryMovements.size());
         assertThat(replayRawMovements.stream().map(RawMaterialMovement::getId).toList())
-                .containsExactlyElementsOf(firstRawMovementIds);
+                .containsExactlyInAnyOrderElementsOf(firstRawMovementSnapshot.keySet());
         assertThat(replayInventoryMovements.stream().map(InventoryMovement::getId).toList())
-                .containsExactlyElementsOf(firstInventoryMovementIds);
+                .containsExactlyInAnyOrderElementsOf(firstInventoryMovementSnapshot.keySet());
+        assertThat(snapshotRawMovements(replayRawMovements)).isEqualTo(firstRawMovementSnapshot);
+        assertThat(snapshotInventoryMovements(replayInventoryMovements)).isEqualTo(firstInventoryMovementSnapshot);
         assertThat(afterReplay.getCurrentStock()).isEqualByComparingTo(afterFirstPack.getCurrentStock());
+    }
+
+    private Map<Long, String> snapshotRawMovements(List<RawMaterialMovement> movements) {
+        Map<Long, String> snapshot = new HashMap<>();
+        for (RawMaterialMovement movement : movements) {
+            snapshot.put(
+                    movement.getId(),
+                    movement.getJournalEntryId() + "|"
+                            + movement.getMovementType() + "|"
+                            + Optional.ofNullable(movement.getQuantity()).orElse(BigDecimal.ZERO).stripTrailingZeros().toPlainString() + "|"
+                            + Optional.ofNullable(movement.getUnitCost()).orElse(BigDecimal.ZERO).stripTrailingZeros().toPlainString());
+        }
+        return snapshot;
+    }
+
+    private Map<Long, String> snapshotInventoryMovements(List<InventoryMovement> movements) {
+        Map<Long, String> snapshot = new HashMap<>();
+        for (InventoryMovement movement : movements) {
+            snapshot.put(
+                    movement.getId(),
+                    movement.getJournalEntryId() + "|"
+                            + movement.getMovementType() + "|"
+                            + Optional.ofNullable(movement.getQuantity()).orElse(BigDecimal.ZERO).stripTrailingZeros().toPlainString() + "|"
+                            + Optional.ofNullable(movement.getUnitCost()).orElse(BigDecimal.ZERO).stripTrailingZeros().toPlainString());
+        }
+        return snapshot;
     }
 
     private String resolvePackReference(Long childBatchId) {
