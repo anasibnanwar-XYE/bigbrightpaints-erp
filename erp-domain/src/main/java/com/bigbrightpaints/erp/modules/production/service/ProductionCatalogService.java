@@ -29,11 +29,13 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.persistence.OptimisticLockException;
 import jakarta.transaction.Transactional;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -609,6 +611,16 @@ public class ProductionCatalogService {
         } else if (importRow.productKey() != null) {
             existing = context.productsByBrandName().get(new ProductKey(brand.getId(), importRow.productKey()));
         }
+        if (existing != null) {
+            ProductionProduct refreshed = refreshCachedProductFromCurrentTransaction(company, existing);
+            if (refreshed == null) {
+                evictRowCache(importRow, context);
+                existing = null;
+            } else {
+                existing = refreshed;
+                cacheProduct(context, existing);
+            }
+        }
         if (existing == null) {
             existing = findExistingProduct(company, brand, productName, sanitizedSku);
             if (existing != null) {
@@ -780,6 +792,13 @@ public class ProductionCatalogService {
             return null;
         }
         return productRepository.findByBrandAndProductNameIgnoreCase(brand, productName).orElse(null);
+    }
+
+    private ProductionProduct refreshCachedProductFromCurrentTransaction(Company company, ProductionProduct cachedProduct) {
+        if (cachedProduct == null || cachedProduct.getId() == null) {
+            return cachedProduct;
+        }
+        return productRepository.findByCompanyAndId(company, cachedProduct.getId()).orElse(null);
     }
 
     private void applyRowToProduct(ProductionProduct product,
@@ -1468,7 +1487,9 @@ public class ProductionCatalogService {
         }
         Throwable cursor = error;
         while (cursor != null) {
-            if (cursor instanceof UnexpectedRollbackException) {
+            if (cursor instanceof UnexpectedRollbackException
+                    || cursor instanceof OptimisticLockingFailureException
+                    || cursor instanceof OptimisticLockException) {
                 return true;
             }
             cursor = cursor.getCause();
