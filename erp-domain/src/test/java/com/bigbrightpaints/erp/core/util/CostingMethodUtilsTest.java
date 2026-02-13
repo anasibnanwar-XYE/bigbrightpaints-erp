@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.util.Locale;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class CostingMethodUtilsTest {
 
@@ -34,5 +35,35 @@ class CostingMethodUtilsTest {
         } finally {
             Locale.setDefault(previous);
         }
+    }
+
+    @Test
+    void normalizeRawMaterialMethodOrDefault_canonicalizesAliasesAndRejectsUnsupported() {
+        assertThat(CostingMethodUtils.normalizeRawMaterialMethodOrDefault(null)).isEqualTo("FIFO");
+        assertThat(CostingMethodUtils.normalizeRawMaterialMethodOrDefault(" weighted-average ")).isEqualTo("WAC");
+        assertThat(CostingMethodUtils.normalizeRawMaterialMethodOrDefault("fifo")).isEqualTo("FIFO");
+
+        assertThatThrownBy(() -> CostingMethodUtils.normalizeRawMaterialMethodOrDefault("LIFO"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Unsupported costing method");
+    }
+
+    @Test
+    void normalizeFinishedGoodMethodOrDefault_supportsLifoAndRejectsUnsupported() {
+        assertThat(CostingMethodUtils.normalizeFinishedGoodMethodOrDefault(null)).isEqualTo("FIFO");
+        assertThat(CostingMethodUtils.normalizeFinishedGoodMethodOrDefault(" weighted_average ")).isEqualTo("WAC");
+        assertThat(CostingMethodUtils.normalizeFinishedGoodMethodOrDefault(" lifo ")).isEqualTo("LIFO");
+
+        assertThatThrownBy(() -> CostingMethodUtils.normalizeFinishedGoodMethodOrDefault("UNKNOWN"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Unsupported costing method");
+    }
+
+    @Test
+    void canonicalizeFinishedGoodMethodForSync_canonicalizesKnownAndPreservesUnknownTrimmed() {
+        assertThat(CostingMethodUtils.canonicalizeFinishedGoodMethodForSync(" weighted_average ")).isEqualTo("WAC");
+        assertThat(CostingMethodUtils.canonicalizeFinishedGoodMethodForSync(" lifo ")).isEqualTo("LIFO");
+        assertThat(CostingMethodUtils.canonicalizeFinishedGoodMethodForSync(null)).isEqualTo("FIFO");
+        assertThat(CostingMethodUtils.canonicalizeFinishedGoodMethodForSync(" custom_method ")).isEqualTo("custom_method");
     }
 }

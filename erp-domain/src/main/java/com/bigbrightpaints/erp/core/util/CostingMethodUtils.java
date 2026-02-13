@@ -16,4 +16,43 @@ public final class CostingMethodUtils {
                 || "WEIGHTED_AVERAGE".equals(normalized)
                 || "WEIGHTED-AVERAGE".equals(normalized);
     }
+
+    public static String normalizeRawMaterialMethodOrDefault(String method) {
+        if (method == null || method.isBlank()) {
+            return "FIFO";
+        }
+        String normalized = method.trim().toUpperCase(Locale.ROOT);
+        return switch (normalized) {
+            case "FIFO" -> "FIFO";
+            case "WAC", "WEIGHTED_AVERAGE", "WEIGHTED-AVERAGE" -> "WAC";
+            default -> throw new IllegalArgumentException("Unsupported costing method " + method);
+        };
+    }
+
+    public static String normalizeFinishedGoodMethodOrDefault(String method) {
+        if (method == null || method.isBlank()) {
+            return "FIFO";
+        }
+        String normalized = method.trim().toUpperCase(Locale.ROOT);
+        return switch (normalized) {
+            case "FIFO" -> "FIFO";
+            case "LIFO" -> "LIFO";
+            case "WAC", "WEIGHTED_AVERAGE", "WEIGHTED-AVERAGE" -> "WAC";
+            default -> throw new IllegalArgumentException("Unsupported costing method " + method);
+        };
+    }
+
+    public static String canonicalizeFinishedGoodMethodForSync(String method) {
+        if (method == null || method.isBlank()) {
+            return "FIFO";
+        }
+        String trimmed = method.trim();
+        String normalized = trimmed.toUpperCase(Locale.ROOT);
+        return switch (normalized) {
+            case "FIFO" -> "FIFO";
+            case "LIFO" -> "LIFO";
+            case "WAC", "WEIGHTED_AVERAGE", "WEIGHTED-AVERAGE" -> "WAC";
+            default -> trimmed;
+        };
+    }
 }

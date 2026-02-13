@@ -5,6 +5,7 @@ import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
+import com.bigbrightpaints.erp.core.util.CostingMethodUtils;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
@@ -1185,7 +1186,7 @@ public class ProductionCatalogService {
             finishedGood.setDiscountAccountId(discountAccountId);
             dirty = true;
         }
-        String canonicalCostingMethod = canonicalizeFinishedGoodCostingMethod(finishedGood.getCostingMethod());
+        String canonicalCostingMethod = CostingMethodUtils.canonicalizeFinishedGoodMethodForSync(finishedGood.getCostingMethod());
         if (!Objects.equals(finishedGood.getCostingMethod(), canonicalCostingMethod)) {
             finishedGood.setCostingMethod(canonicalCostingMethod);
             dirty = true;
@@ -1226,7 +1227,7 @@ public class ProductionCatalogService {
                     existing.setDiscountAccountId(discountAccountId);
                     needsSync = true;
                 }
-                String existingCanonicalCostingMethod = canonicalizeFinishedGoodCostingMethod(existing.getCostingMethod());
+                String existingCanonicalCostingMethod = CostingMethodUtils.canonicalizeFinishedGoodMethodForSync(existing.getCostingMethod());
                 if (!Objects.equals(existing.getCostingMethod(), existingCanonicalCostingMethod)) {
                     existing.setCostingMethod(existingCanonicalCostingMethod);
                     needsSync = true;
@@ -1243,19 +1244,6 @@ public class ProductionCatalogService {
             return unit.trim();
         }
         return "UNIT";
-    }
-
-    private String canonicalizeFinishedGoodCostingMethod(String method) {
-        if (!StringUtils.hasText(method)) {
-            return "FIFO";
-        }
-        String normalized = method.trim().toUpperCase(Locale.ROOT);
-        return switch (normalized) {
-            case "FIFO" -> "FIFO";
-            case "LIFO" -> "LIFO";
-            case "WAC", "WEIGHTED_AVERAGE", "WEIGHTED-AVERAGE" -> "WAC";
-            default -> method.trim();
-        };
     }
 
     private Long requiredMetadataLong(ProductionProduct product, String key) {

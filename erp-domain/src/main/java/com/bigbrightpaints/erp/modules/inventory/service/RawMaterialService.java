@@ -6,6 +6,7 @@ import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
+import com.bigbrightpaints.erp.core.util.CostingMethodUtils;
 import com.bigbrightpaints.erp.core.util.MoneyUtils;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
@@ -43,7 +44,6 @@ import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
 @Service
@@ -120,7 +120,7 @@ public class RawMaterialService {
         material.setMinStock(request.minStock() != null ? request.minStock() : BigDecimal.ZERO);
         material.setMaxStock(request.maxStock() != null ? request.maxStock() : BigDecimal.ZERO);
         material.setInventoryAccountId(request.inventoryAccountId());
-        material.setCostingMethod(normalizeCostingMethod(request.costingMethod()));
+        material.setCostingMethod(CostingMethodUtils.normalizeRawMaterialMethodOrDefault(request.costingMethod()));
         if (material.getInventoryAccountId() == null) {
             material.setInventoryAccountId(company.getDefaultInventoryAccountId());
         }
@@ -141,7 +141,7 @@ public class RawMaterialService {
         material.setMinStock(request.minStock() != null ? request.minStock() : BigDecimal.ZERO);
         material.setMaxStock(request.maxStock() != null ? request.maxStock() : BigDecimal.ZERO);
         material.setInventoryAccountId(request.inventoryAccountId());
-        material.setCostingMethod(normalizeCostingMethod(request.costingMethod()));
+        material.setCostingMethod(CostingMethodUtils.normalizeRawMaterialMethodOrDefault(request.costingMethod()));
         if (material.getInventoryAccountId() == null) {
             material.setInventoryAccountId(company.getDefaultInventoryAccountId());
         }
@@ -324,18 +324,6 @@ public class RawMaterialService {
                 material.getMinStock(), material.getMaxStock(), stockStatus(material), material.getInventoryAccountId(),
                 material.getCostingMethod(),
                 material.getMaterialType() != null ? material.getMaterialType().name() : null);
-    }
-
-    private String normalizeCostingMethod(String method) {
-        if (!StringUtils.hasText(method)) {
-            return "FIFO";
-        }
-        String normalized = method.trim().toUpperCase(Locale.ROOT);
-        return switch (normalized) {
-            case "FIFO" -> "FIFO";
-            case "WAC", "WEIGHTED_AVERAGE", "WEIGHTED-AVERAGE" -> "WAC";
-            default -> throw new IllegalArgumentException("Unsupported costing method " + method);
-        };
     }
 
     private RawMaterialBatchDto toBatchDto(RawMaterialBatch batch) {

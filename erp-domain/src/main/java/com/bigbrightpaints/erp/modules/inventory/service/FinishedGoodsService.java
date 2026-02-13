@@ -1984,16 +1984,7 @@ public class FinishedGoodsService {
     }
 
     private String normalizeCostingMethod(String method) {
-        if (!StringUtils.hasText(method)) {
-            return "FIFO";
-        }
-        String normalized = method.trim().toUpperCase(Locale.ROOT);
-        return switch (normalized) {
-            case "FIFO" -> "FIFO";
-            case "LIFO" -> "LIFO";
-            case "WAC", "WEIGHTED_AVERAGE", "WEIGHTED-AVERAGE" -> "WAC";
-            default -> throw new IllegalArgumentException("Unsupported costing method " + method);
-        };
+        return CostingMethodUtils.normalizeFinishedGoodMethodOrDefault(method);
     }
 
     public void invalidateWeightedAverageCost(Long finishedGoodId) {
