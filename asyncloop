@@ -2095,3 +2095,85 @@ Queue Rotation (Auto-Replenish)
 - [ready] M10-S3 release-gate dry-run and blocker ledger sync (`scripts/verify_local.sh` + artifact sanity)
 - [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
 - [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
+
+Loop Update
+- 2026-02-13T11:22:06+05:30
+- tracked_now_ts: `2026-02-13T11:22:06+05:30`
+- tracked_elapsed: `33h 28m 14s`
+- active_in_progress: `M12-S2 user-facing discount/reference behavior docs across admin/sales/dealer portals`
+
+Backfilled Commit Chain (Previously Unlogged In Ledger)
+- 2026-02-13: `6405f484`
+  - docs(async-loop): logged admin RBAC + accounting hardening evidence handoff continuity.
+- 2026-02-13: `95c229f5`
+  - fix(accounting): preserved replay mismatch semantics before net-cash prevalidation (dealer settlement replay path).
+- 2026-02-13: `f4944b88`
+  - fix(admin): aligned approval visibility + override headroom checks for admin queue surfaces.
+- 2026-02-13: `03127354`
+  - fix(sales): capped override dispatch amount while preserving approved-headroom guard.
+  - prior evidence anchor: `codex review --commit 03127354` no actionable regression; review-only subagent `019c5569-9140-76d1-a480-083f56dd16bf` no findings.
+- 2026-02-13: `cf530122`
+  - fix(dispatch): hardened single-active-slip marker decisions and stale-drift reconciliation.
+  - prior evidence anchor:
+    - `codex review --commit cf530122`: P2 findings on COGS marker preservation + candidate-pagination starvation risk.
+    - review-only subagent `019c5572-8ee7-7e21-8f61-8aa5400fb736`: high finding on potential deadlock lock-order.
+  - disposition: addressed by `16f0a30f` and `e7e1dfb9`.
+- 2026-02-13: `16f0a30f`
+  - fix(dispatch): aligned order/slip lock ordering to avoid deadlock.
+  - prior evidence anchor:
+    - review-only subagent `019c557a-0838-7971-b2dc-1260536c14a8`: high TOCTOU slip-order mismatch risk.
+  - disposition: addressed by `e7e1dfb9`.
+- 2026-02-13: `e7e1dfb9`
+  - fix(dispatch): closed marker reconciliation regressions (slip/order linkage conflict guard, COGS marker preservation, pagination by page walk with reconcile cap).
+  - prior evidence anchor:
+    - review-only subagent `019c557e-8d90-70a1-b2a7-1aa9132bd9f4`: no findings (residual lock-volume note only).
+
+Completed Slice (Committed)
+- 2026-02-13: `84c0724c`
+  - test(accounting): closed `M12-S3` replay prevalidation parity + FX/tolerance edge contracts.
+  - Added supplier replay precedence parity test:
+    - `settleSupplierInvoices_replayPayloadMismatchWinsOverNetCashPrevalidation`.
+  - Added tolerance-boundary coverage for dealer/supplier negative-net-cash guard (`ALLOCATION_TOLERANCE = 0.01`) with deterministic downstream validation assertions.
+  - Hardened dealer race-fallback test assertions to verify mapping-repair semantics via captured saved mapping values.
+  - Verification:
+    - `cd erp-domain && mvn -B -ntp -Dtest=AccountingServiceTest#settleDealerInvoices_dataIntegrityFallbackRepairsReferenceMapping+settleDealerInvoices_replayPayloadMismatchWinsOverNetCashPrevalidation+settleSupplierInvoices_replayPayloadMismatchWinsOverNetCashPrevalidation+settleDealerInvoices_allowsToleranceBoundaryForNegativeNetCashContribution+settleSupplierInvoices_allowsToleranceBoundaryForNegativeNetCashContribution+settleSupplierInvoices_rejectsAllocationWithNegativeNetCashContribution test` -> pass (6 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `84c0724c`
+- `codex review --commit 84c0724c`:
+  - final verdict: test-only commit; no concrete regression/correctness issue introduced.
+- Review subagent `019c5588-51fe-7920-bce0-a582c39a1b4d`:
+  - medium finding: dealer DataIntegrity fallback path coverage was weakened (catch branch not forced).
+  - disposition: fixed in follow-up `33f2b24a`.
+
+Completed Slice (Committed)
+- 2026-02-13: `33f2b24a`
+  - test(accounting): restored dealer settlement DataIntegrity fallback coverage.
+  - Adjusted dealer race fixture call sequencing (`allocationLookups < 2`) so the `saveAll` duplicate path executes and catch-branch mapping repair remains tested.
+  - Restored forced `DataIntegrityViolationException` stubs in dealer fallback scenario.
+  - Relaxed mapping-save assertion to capture the latest saved mapping value from multi-save flow and assert repaired canonical/entity linkage invariants.
+  - Verification:
+    - `cd erp-domain && mvn -B -ntp -Dtest=AccountingServiceTest#settleDealerInvoices_dataIntegrityFallbackRepairsReferenceMapping+settleDealerInvoices_replayPayloadMismatchWinsOverNetCashPrevalidation+settleSupplierInvoices_replayPayloadMismatchWinsOverNetCashPrevalidation+settleDealerInvoices_allowsToleranceBoundaryForNegativeNetCashContribution+settleSupplierInvoices_allowsToleranceBoundaryForNegativeNetCashContribution+settleSupplierInvoices_rejectsAllocationWithNegativeNetCashContribution test` -> pass (6 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `33f2b24a`
+- `codex review --commit 33f2b24a`:
+  - command executed; unstable/long-running due rollout/state-db noise in this environment, no durable final verdict captured yet.
+- Review subagent `019c558e-efa5-7e50-9aa1-95104e23b146`:
+  - flagged `List#getLast` compatibility concern.
+  - disposition: accepted as non-blocking in this repo (`erp-domain/pom.xml` pins Java 21, and targeted compilation/tests passed under Java 21 runtime).
+
+Cross-Slice Verification Snapshot (Current)
+- `cd erp-domain && mvn -B -ntp -Dtest=AdminSettingsControllerApprovalsContractTest,CreditLimitOverrideServiceTest,AdminApprovalRbacIT test` -> pass (12 tests, 0 failures, 0 errors).
+- `cd erp-domain && mvn -B -ntp -Dtest=SalesServiceTest,InvoiceServiceTest test` -> pass (51 tests, 0 failures, 0 errors).
+
+Queue Rotation (Auto-Replenish)
+- [completed] M12-S3 settlement replay prevalidation parity + FX/tolerance edge contracts
+- [in_progress] M12-S2 user-facing discount/reference behavior docs across admin/sales/dealer portals
+- [ready] M11-S4 admin approval action descriptor clarity docs (explicit “what admin is approving” labels across queues/portals)
+- [ready] M13-S1 product import SKU/raw-material/packaging cross-module workflow invariant audit
+- [ready] M13-S2 product import + packaging accounting linkage and idempotency contract tests
+- [ready] M13-S3 product import/packaging admin-approval visibility parity across portals
+- [ready] M10-S3 release-gate dry-run and blocker ledger sync (`scripts/verify_local.sh` + artifact sanity)
+- [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
+- [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
