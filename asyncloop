@@ -3963,3 +3963,18 @@ Queue Rotation (Auto-Replenish)
 - [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
 - [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
 - [ready] M11-S6 approval queue runtime contract test slice (assert FE docs match live `AdminApprovalItemDto` payload fields and action endpoint semantics)
+
+Post-Commit Review Evidence (Prior Pending Closure)
+- Commit reviewed: `bc4b1d36`
+- `codex review --commit bc4b1d36` (re-check/final capture):
+  - final verdict: added RBAC/company-isolation test coverage is consistent with existing behavior; no actionable defects identified.
+- Review subagent `019c58b2-a4b6-7ae3-996a-de4b42ab7c9e`:
+  - findings: none.
+
+Post-Commit Review Evidence
+- Commit reviewed: `966b6bbe`
+- `codex review --commit 966b6bbe`:
+  - final verdict: docs-only ledger update; no executable-path defects introduced.
+- Review subagent `019c58be-eb82-7ce2-8809-6ff0c6bf04d0`:
+  - findings: none.
+  - summary: queue invariants and M14-S19 closure evidence remain coherent.
