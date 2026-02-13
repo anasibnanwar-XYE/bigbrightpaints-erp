@@ -3332,3 +3332,59 @@ Queue Rotation (Auto-Replenish)
 - [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
 - [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
 - [ready] M11-S6 approval queue runtime contract test slice (assert FE docs match live `AdminApprovalItemDto` payload fields and action endpoint semantics)
+
+Completed Slice (Committed)
+- 2026-02-13: `e1196180`
+  - docs(async-loop): log M14-S8 tie-break closure and queue rotation.
+  - Logged `fec72ec3` and `52baa483` review/test evidence and rotated queue into `M14-S9`.
+  - Verification:
+    - docs-only ledger update (no runtime tests).
+
+Post-Commit Review Evidence
+- Commit reviewed: `e1196180`
+- `codex review --commit e1196180`:
+  - final verdict: documentation-only patch; no executable-path regressions introduced.
+- Review subagent `019c57ab-8ca2-77d3-962c-276d4edb6c37`:
+  - findings: none.
+  - residual note: keep planned concurrency tie-break coverage (`M14-S14`) in queue.
+
+Completed Slice (Committed)
+- 2026-02-13: `749cb1c6`
+  - refactor(inventory): use shared costing utility in selectors.
+  - M14-S9 closure:
+    - replaced inline weighted-average alias checks with shared `CostingMethodUtils.isWeightedAverage(...)` in:
+      - `FinishedGoodsService#selectBatchesByCostingMethod`
+      - `FinishedGoodsService#resolveDispatchUnitCost`
+      - `InventoryAdjustmentService#selectBatchesByCostingMethod`
+    - preserved `LIFO` and default `FIFO` branch behavior while centralizing locale-safe alias handling.
+  - Verification:
+    - `cd erp-domain && mvn -B -ntp -Dtest=CostingMethodUtilsTest,FinishedGoodsServiceTest#dispatchUsesLegacyWeightedAverageAliasUnderTurkishLocale+reserveForOrderTreatsLegacyWeightedAverageAliasAsWac_underTurkishLocale+reserveForOrderUsesStableBatchIdTieBreakWhenWacBatchesShareExpiryAndManufacturedAt,CR_INV_AdjustmentIdempotencyTest#adjustment_legacyWeightedAverageAlias_usesExpiryOrder_underTurkishLocale+adjustment_wacUsesStableBatchIdTieBreak_whenExpiryAndManufacturedAtMatch test` -> pass (8 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `749cb1c6`
+- `codex review --commit 749cb1c6`:
+  - final verdict: refactor is behavior-preserving; no commit-introduced regressions detected.
+- Review subagent `019c57ae-8d05-75f3-bfd7-30c049276786`:
+  - findings: none (critical/high/medium/low).
+  - residual note: keep selector-path tests in matrix for future alias/branch expansions.
+
+Loop Update
+- 2026-02-13T21:17:43+05:30
+- tracked_now_ts: `2026-02-13T21:17:43+05:30`
+- tracked_elapsed: `43h 23m 51s`
+- active_in_progress: `M14-S10 finished-good costing canonicalization parity (align create/update normalization with raw-material contracts + drift/replay negative matrix)`
+
+Queue Rotation (Auto-Replenish)
+- [completed] M14-S9 costing-method utility adoption in inventory service call sites (replace inline alias checks in dispatch/adjustment selectors + locale contract tests)
+- [in_progress] M14-S10 finished-good costing canonicalization parity (align create/update normalization with raw-material contracts + drift/replay negative matrix)
+- [ready] M14-S11 weighted-average classifier dedupe sweep (replace duplicated `isWeightedAverage(...)` logic in `BulkPackingService`, `PackagingMaterialService`, `ProductionLogService`, `InventoryValuationService` with shared utility + locale regression tests)
+- [ready] M14-S12 stock-summary method-awareness parity (prevent implicit WAC-only unit-cost output drift for FIFO/LIFO goods, or document and guard explicit endpoint contract)
+- [ready] M14-S13 cost-breakdown tenant-boundary + RBAC negative matrix (`/reports/production-logs/{id}/cost-breakdown` cross-company rejection + unauthorized-role assertions)
+- [ready] M14-S14 costing canonicalization parity for catalog/import update flows (ensure finished-good aliases are canonicalized consistently outside direct create/update API paths)
+- [ready] M14-S15 WAC tie-break + selector replay pressure matrix (catalog-imported same-expiry batches; assert no FIFO fallback regression across reserve/adjustment retry paths)
+- [ready] M14-S16 accounting portal scope invariant guard (HR/PURCHASING/INVENTORY/REPORTS remain under Accounting portal unless replacement portal map + endpoint docs land in same commit)
+- [ready] M12-S5 discount/reference calculation parity matrix across sales->invoice->settlement + user-facing example table refresh
+- [ready] M10-S3 release-gate dry-run and blocker ledger sync (`scripts/verify_local.sh` + artifact sanity)
+- [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
+- [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
+- [ready] M11-S6 approval queue runtime contract test slice (assert FE docs match live `AdminApprovalItemDto` payload fields and action endpoint semantics)
