@@ -2954,6 +2954,61 @@ Queue Rotation (Auto-Replenish)
 - [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
 - [ready] M11-S6 approval queue runtime contract test slice (assert FE docs match live `AdminApprovalItemDto` payload fields and action endpoint semantics)
 
+Post-Commit Review Evidence
+- Commit reviewed: `17fbaf21`
+- `codex review --commit 17fbaf21`:
+  - final verdict: docs-ledger patch only; no executable-path correctness issues introduced.
+  - captured stream: `/tmp/codex_review_17fbaf21.log`.
+- Review subagent `019c5776-6b9c-7643-87e7-d06c2ccde236`:
+  - status polling timed out; handle was later `not_found` with no durable payload captured.
+
+Completed Slice (Committed)
+- 2026-02-13: `4ff4e982`
+  - refactor(costing): dedupe weighted-average helper.
+  - M14-S3 closure:
+    - introduced shared helper `CostingMethodUtils.isWeightedAverage(...)` with `Locale.ROOT` normalization and blank-input fail-closed behavior.
+    - replaced duplicated `isWeightedAverage(...)` implementations in:
+      - `BulkPackingService`
+      - `PackagingMaterialService`
+      - `ProductionLogService`
+      - `InventoryValuationService`
+    - removed duplicated local helper bodies to enforce shared alias semantics by construction.
+  - Added focused regression suite `CostingMethodUtilsTest`:
+    - supported alias acceptance,
+    - unsupported/null/blank rejection,
+    - locale-stability (`tr-TR`) check.
+  - Verification:
+    - `cd erp-domain && mvn -B -ntp -Dtest=CostingMethodUtilsTest,BulkPackingServiceTest,PackagingMaterialServiceTest,InventoryValuationServiceTest test` -> pass (10 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `4ff4e982`
+- `codex review --commit 4ff4e982`:
+  - final verdict: shared-helper dedupe preserves behavior; no actionable regression identified.
+  - captured stream: `/tmp/codex_review_4ff4e982.log`.
+- Review subagent `019c577b-2e72-7142-9b15-b2d2d9b0d2c6`:
+  - no medium/high findings.
+  - verdict: no regressions across accounting, cross-module, or locale-safety invariants in reviewed scope.
+
+Loop Update
+- 2026-02-13T20:21:51+05:30
+- tracked_now_ts: `2026-02-13T20:21:51+05:30`
+- tracked_elapsed: `42h 27m 59s`
+- active_in_progress: `M14-S4 accounting-portal scope invariant guard (preserve HR/PURCHASING/INVENTORY/REPORTS mapping unless replacement portal-map + endpoint docs land in same commit)`
+
+Queue Rotation (Auto-Replenish)
+- [completed] M14-S3 costing helper dedupe + regression matrix (consolidate duplicated `isWeightedAverage(...)` logic across factory/inventory valuation services)
+- [in_progress] M14-S4 accounting-portal scope invariant guard (preserve HR/PURCHASING/INVENTORY/REPORTS mapping unless replacement portal-map + endpoint docs land in same commit)
+- [ready] M14-S5 costing method alias replay matrix for finished-goods APIs (FIFO/WAC normalization + invalid-alias rejection parity with raw-material contracts)
+- [ready] M14-S6 costing output endpoint parity contract (`stock-summary` vs `inventory-valuation` vs `production-log cost-breakdown` consistency under FIFO/WAC)
+- [ready] M14-S7 locale-stable costing helper sweep (`Locale.ROOT` normalization parity across duplicated `isWeightedAverage(...)` call sites + negative locale regression checks)
+- [ready] M14-S8 WAC FEFO tie-break determinism (same-expiry batch ordering contract + replay-safe depletion assertions across reserve/adjustment flows)
+- [ready] M14-S9 costing-method utility adoption in inventory service call sites (replace inline alias checks in dispatch/adjustment selectors + locale contract tests)
+- [ready] M12-S5 discount/reference calculation parity matrix across sales->invoice->settlement + user-facing example table refresh
+- [ready] M10-S3 release-gate dry-run and blocker ledger sync (`scripts/verify_local.sh` + artifact sanity)
+- [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
+- [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
+- [ready] M11-S6 approval queue runtime contract test slice (assert FE docs match live `AdminApprovalItemDto` payload fields and action endpoint semantics)
+
 Completed Slice (Committed)
 - 2026-02-13: `fce999de`
   - fix(inventory): use FEFO selection for WAC depletion.
