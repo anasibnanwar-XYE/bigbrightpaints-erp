@@ -1,5 +1,9 @@
 package com.bigbrightpaints.erp.modules.accounting.controller;
 
+import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
+import com.bigbrightpaints.erp.modules.production.domain.CatalogImport;
+import com.bigbrightpaints.erp.modules.production.domain.CatalogImportRepository;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,6 +22,7 @@ import org.springframework.util.MultiValueMap;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -33,6 +38,12 @@ class AccountingCatalogControllerSecurityIT extends AbstractIntegrationTest {
 
     @Autowired
     private TestRestTemplate rest;
+
+    @Autowired
+    private CatalogImportRepository catalogImportRepository;
+
+    @Autowired
+    private RawMaterialRepository rawMaterialRepository;
 
     @BeforeEach
     void setUpUsers() {
@@ -74,6 +85,34 @@ class AccountingCatalogControllerSecurityIT extends AbstractIntegrationTest {
                 "CAT-RBAC-MISMATCH-" + shortId());
 
         assertThat(mismatchResponse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void accountingCatalogImport_rejectsIdempotencyKeyPayloadMismatchWithoutPartialMutations() {
+        Company company = dataSeeder.ensureCompany(COMPANY_CODE, "Catalog Sec Co");
+        HttpHeaders accountingHeaders = authHeaders(ACCOUNTING_EMAIL, PASSWORD, COMPANY_CODE);
+        String idempotencyKey = "CAT-IDEMP-MISMATCH-" + shortId();
+        String firstSku = "RM-IDEMP-A-" + shortId();
+        String secondSku = "RM-IDEMP-B-" + shortId();
+
+        ResponseEntity<Map> firstResponse = importCatalog(accountingHeaders, firstSku, idempotencyKey);
+        assertThat(firstResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        Optional<CatalogImport> firstRecord = catalogImportRepository.findByCompanyAndIdempotencyKey(company, idempotencyKey);
+        assertThat(firstRecord).isPresent();
+
+        ResponseEntity<Map> secondResponse = importCatalog(accountingHeaders, secondSku, idempotencyKey);
+        assertThat(secondResponse.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(secondResponse.getBody()).isNotNull();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> errorData = (Map<String, Object>) secondResponse.getBody().get("data");
+        assertThat(errorData).containsEntry("code", "CONC_001");
+
+        Optional<CatalogImport> persistedRecord = catalogImportRepository.findByCompanyAndIdempotencyKey(company, idempotencyKey);
+        assertThat(persistedRecord).isPresent();
+        assertThat(persistedRecord.get().getId()).isEqualTo(firstRecord.get().getId());
+        assertThat(rawMaterialRepository.findByCompanyAndSku(company, firstSku)).isPresent();
+        assertThat(rawMaterialRepository.findByCompanyAndSku(company, secondSku)).isEmpty();
     }
 
     private ResponseEntity<Map> importCatalog(HttpHeaders headers, String sku, String idempotencyKey) {
