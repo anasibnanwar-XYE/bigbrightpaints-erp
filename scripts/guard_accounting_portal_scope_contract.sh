@@ -23,6 +23,33 @@ for path in "$GUARDRAIL_DOC" "$ENDPOINT_MAP_DOC" "$HANDOFF_DOC" "$ENDPOINT_INVEN
   rg -q "$SCOPE_SENTENCE" "$path" || fail "missing accounting portal scope invariant in $path"
 done
 
+for heading in \
+  "## Purchasing & Payables" \
+  "## Inventory & Costing" \
+  "## HR & Payroll" \
+  "## Reports & Reconciliation"; do
+  rg -q "$heading" "$ENDPOINT_MAP_DOC" \
+    || fail "accounting endpoint map missing required domain heading: $heading"
+  rg -q "$heading" "$HANDOFF_DOC" \
+    || fail "accounting frontend handoff missing required domain heading: $heading"
+done
+
+for module in hr purchasing inventory reports; do
+  rg -q "\\| \`$module\` \\|" "$ENDPOINT_INVENTORY_DOC" \
+    || fail "endpoint inventory summary missing required module row: $module"
+done
+
+for controller in \
+  "### purchasing-workflow-controller" \
+  "### raw-material-controller" \
+  "### inventory-adjustment-controller" \
+  "### hr-controller" \
+  "### hr-payroll-controller" \
+  "### report-controller"; do
+  rg -q "$controller" "$ENDPOINT_MAP_DOC" \
+    || fail "accounting endpoint map missing required controller section: $controller"
+done
+
 rg -q "docs/ACCOUNTING_PORTAL_SCOPE_GUARDRAIL.md" "$ENDPOINT_MAP_DOC" \
   || fail "accounting endpoint map must reference the scope guardrail doc"
 rg -q "docs/ACCOUNTING_PORTAL_SCOPE_GUARDRAIL.md" "$ENDPOINT_INVENTORY_DOC" \
