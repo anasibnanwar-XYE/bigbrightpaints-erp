@@ -3142,10 +3142,6 @@ class AccountingServiceTest {
 
         when(dealerRepository.lockByCompanyAndId(eq(company), eq(1L))).thenReturn(Optional.of(dealer));
         when(companyEntityLookup.requireAccount(eq(company), eq(20L))).thenReturn(cash);
-        when(invoiceRepository.lockByCompanyAndId(eq(company), eq(702L))).thenReturn(Optional.of(invoice));
-        doReturn(stubEntry(950L)).when(service).createJournalEntry(any(JournalEntryRequest.class));
-        when(companyEntityLookup.requireJournalEntry(eq(company), eq(950L))).thenReturn(createdEntry);
-        when(settlementAllocationRepository.saveAll(any())).thenThrow(new DataIntegrityViolationException("duplicate"));
 
         DealerSettlementRequest request = new DealerSettlementRequest(
                 1L,
@@ -3175,10 +3171,13 @@ class AccountingServiceTest {
 
         assertThat(response.journalEntry()).isNotNull();
         assertThat(response.journalEntry().id()).isEqualTo(951L);
-        verify(journalReferenceMappingRepository).save(mapping);
-        assertThat(mapping.getEntityId()).isEqualTo(951L);
-        assertThat(mapping.getEntityType()).isEqualTo("DEALER_SETTLEMENT");
-        assertThat(mapping.getCanonicalReference()).isEqualTo("DR-SETTLE-RACE-EXIST-1");
+        ArgumentCaptor<JournalReferenceMapping> mappingCaptor = ArgumentCaptor.forClass(JournalReferenceMapping.class);
+        verify(journalReferenceMappingRepository, times(1)).save(mappingCaptor.capture());
+        JournalReferenceMapping savedMapping = mappingCaptor.getValue();
+        assertThat(savedMapping.getLegacyReference()).isEqualTo("idemp-dr-settle-race");
+        assertThat(savedMapping.getEntityId()).isEqualTo(951L);
+        assertThat(savedMapping.getEntityType()).isEqualTo("DEALER_SETTLEMENT");
+        assertThat(savedMapping.getCanonicalReference()).isEqualTo("DR-SETTLE-RACE-EXIST-1");
         verify(invoiceSettlementPolicy, never()).applySettlement(any(), any(), any());
     }
 
@@ -3619,6 +3618,132 @@ class AccountingServiceTest {
     }
 
     @Test
+    void settleSupplierInvoices_replayPayloadMismatchWinsOverNetCashPrevalidation() {
+        Supplier supplier = new Supplier();
+        supplier.setName("Replay Supplier");
+        ReflectionTestUtils.setField(supplier, "id", 1L);
+
+        Account payable = new Account();
+        payable.setCompany(company);
+        payable.setCode("AP-SETTLE-REPLAY");
+        payable.setType(AccountType.LIABILITY);
+        ReflectionTestUtils.setField(payable, "id", 10L);
+        supplier.setPayableAccount(payable);
+
+        Account cash = new Account();
+        cash.setCompany(company);
+        cash.setCode("CASH-SETTLE-REPLAY");
+        cash.setType(AccountType.ASSET);
+        ReflectionTestUtils.setField(cash, "id", 20L);
+
+        Account discount = new Account();
+        discount.setCompany(company);
+        discount.setCode("DISC-SETTLE-REPLAY");
+        ReflectionTestUtils.setField(discount, "id", 21L);
+
+        RawMaterialPurchase purchaseA = new RawMaterialPurchase();
+        purchaseA.setCompany(company);
+        purchaseA.setSupplier(supplier);
+        ReflectionTestUtils.setField(purchaseA, "id", 801L);
+
+        RawMaterialPurchase purchaseB = new RawMaterialPurchase();
+        purchaseB.setCompany(company);
+        purchaseB.setSupplier(supplier);
+        ReflectionTestUtils.setField(purchaseB, "id", 802L);
+
+        JournalEntry existingEntry = new JournalEntry();
+        ReflectionTestUtils.setField(existingEntry, "id", 1951L);
+        existingEntry.setSupplier(supplier);
+        existingEntry.setReferenceNumber("AP-SETTLE-REPLAY-NETCASH-1");
+
+        com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocation existingRowA =
+                new com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocation();
+        existingRowA.setCompany(company);
+        existingRowA.setPartnerType(com.bigbrightpaints.erp.modules.accounting.domain.PartnerType.SUPPLIER);
+        existingRowA.setSupplier(supplier);
+        existingRowA.setPurchase(purchaseA);
+        existingRowA.setJournalEntry(existingEntry);
+        existingRowA.setSettlementDate(LocalDate.of(2024, 4, 9));
+        existingRowA.setAllocationAmount(new BigDecimal("100.00"));
+        existingRowA.setDiscountAmount(BigDecimal.ZERO);
+        existingRowA.setWriteOffAmount(BigDecimal.ZERO);
+        existingRowA.setFxDifferenceAmount(BigDecimal.ZERO);
+        existingRowA.setIdempotencyKey("IDEMP-AP-SETTLE-REPLAY-NETCASH");
+
+        com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocation existingRowB =
+                new com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocation();
+        existingRowB.setCompany(company);
+        existingRowB.setPartnerType(com.bigbrightpaints.erp.modules.accounting.domain.PartnerType.SUPPLIER);
+        existingRowB.setSupplier(supplier);
+        existingRowB.setPurchase(purchaseB);
+        existingRowB.setJournalEntry(existingEntry);
+        existingRowB.setSettlementDate(LocalDate.of(2024, 4, 9));
+        existingRowB.setAllocationAmount(new BigDecimal("200.00"));
+        existingRowB.setDiscountAmount(BigDecimal.ZERO);
+        existingRowB.setWriteOffAmount(BigDecimal.ZERO);
+        existingRowB.setFxDifferenceAmount(BigDecimal.ZERO);
+        existingRowB.setIdempotencyKey("IDEMP-AP-SETTLE-REPLAY-NETCASH");
+
+        when(supplierRepository.lockByCompanyAndId(eq(company), eq(1L))).thenReturn(Optional.of(supplier));
+        when(companyEntityLookup.requireAccount(eq(company), eq(20L))).thenReturn(cash);
+        when(companyEntityLookup.requireAccount(eq(company), eq(21L))).thenReturn(discount);
+        when(journalReferenceMappingRepository.findAllByCompanyAndLegacyReferenceIgnoreCase(
+                eq(company), eq("idemp-ap-settle-replay-netcash")))
+                .thenReturn(List.of());
+        when(journalReferenceResolver.findExistingEntry(eq(company), eq("AP-SETTLE-REPLAY-NETCASH-1")))
+                .thenReturn(Optional.empty());
+        when(journalReferenceMappingRepository.reserveReferenceMapping(
+                eq(company.getId()),
+                eq("idemp-ap-settle-replay-netcash"),
+                eq("AP-SETTLE-REPLAY-NETCASH-1"),
+                eq("SUPPLIER_SETTLEMENT"),
+                any()))
+                .thenReturn(1);
+        when(settlementAllocationRepository.findByCompanyAndIdempotencyKeyIgnoreCaseOrderByCreatedAtAscIdAsc(
+                eq(company), eq("IDEMP-AP-SETTLE-REPLAY-NETCASH")))
+                .thenReturn(List.of(existingRowA, existingRowB));
+
+        SupplierSettlementRequest request = new SupplierSettlementRequest(
+                1L,
+                20L,
+                21L,
+                null,
+                null,
+                null,
+                LocalDate.of(2024, 4, 9),
+                "AP-SETTLE-REPLAY-NETCASH-1",
+                "Supplier settlement replay",
+                "IDEMP-AP-SETTLE-REPLAY-NETCASH",
+                Boolean.FALSE,
+                List.of(
+                        new SettlementAllocationRequest(
+                                null,
+                                801L,
+                                new BigDecimal("100.00"),
+                                new BigDecimal("120.00"),
+                                BigDecimal.ZERO,
+                                BigDecimal.ZERO,
+                                null
+                        ),
+                        new SettlementAllocationRequest(
+                                null,
+                                802L,
+                                new BigDecimal("200.00"),
+                                BigDecimal.ZERO,
+                                BigDecimal.ZERO,
+                                BigDecimal.ZERO,
+                                null
+                        )
+                )
+        );
+
+        assertThatThrownBy(() -> accountingService.settleSupplierInvoices(request))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("different settlement payload")
+                .satisfies(ex -> assertThat(ex).hasMessageNotContaining("negative net cash contribution"));
+    }
+
+    @Test
     void settleDealerInvoices_appliesGrossAmountToInvoice() {
         AccountingService service = spy(accountingService);
 
@@ -3965,6 +4090,64 @@ class AccountingServiceTest {
     }
 
     @Test
+    void settleDealerInvoices_allowsToleranceBoundaryForNegativeNetCashContribution() {
+        Dealer dealer = new Dealer();
+        dealer.setName("Dealer");
+        Account receivable = new Account();
+        receivable.setCompany(company);
+        receivable.setCode("AR");
+        receivable.setType(AccountType.ASSET);
+        ReflectionTestUtils.setField(receivable, "id", 10L);
+        dealer.setReceivableAccount(receivable);
+        ReflectionTestUtils.setField(dealer, "id", 1L);
+
+        when(dealerRepository.lockByCompanyAndId(eq(company), eq(1L))).thenReturn(Optional.of(dealer));
+        when(journalReferenceMappingRepository.findAllByCompanyAndLegacyReferenceIgnoreCase(
+                eq(company), eq("idemp-neg-cash-dealer-tolerance")))
+                .thenReturn(List.of());
+        when(journalReferenceMappingRepository.reserveReferenceMapping(
+                eq(company.getId()),
+                eq("idemp-neg-cash-dealer-tolerance"),
+                eq("REF-NEG-CASH-DEALER-TOLERANCE"),
+                eq("DEALER_SETTLEMENT"),
+                any()))
+                .thenReturn(1);
+
+        DealerSettlementRequest request = new DealerSettlementRequest(
+                1L,
+                20L,
+                null,
+                null,
+                null,
+                null,
+                LocalDate.of(2024, 5, 1),
+                "REF-NEG-CASH-DEALER-TOLERANCE",
+                "Dealer settlement",
+                "IDEMP-NEG-CASH-DEALER-TOLERANCE",
+                Boolean.FALSE,
+                List.of(
+                        new SettlementAllocationRequest(
+                                5L,
+                                null,
+                                new BigDecimal("100.00"),
+                                new BigDecimal("100.01"),
+                                BigDecimal.ZERO,
+                                BigDecimal.ZERO,
+                                "tolerance-boundary allocation"
+                        )
+                ),
+                null
+        );
+
+        assertThatThrownBy(() -> accountingService.settleDealerInvoices(request))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Discount account is required when a discount is applied")
+                .satisfies(ex -> assertThat(ex).hasMessageNotContaining("negative net cash contribution"));
+        verify(journalReferenceMappingRepository, times(1))
+                .reserveReferenceMapping(any(), any(), any(), any(), any());
+    }
+
+    @Test
     void settleDealerInvoices_rejectsMissingInvoiceAllocation() {
         Dealer dealer = new Dealer();
         dealer.setName("Dealer");
@@ -4244,6 +4427,70 @@ class AccountingServiceTest {
                 .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("negative net cash contribution");
         verify(journalReferenceMappingRepository, never())
+                .reserveReferenceMapping(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void settleSupplierInvoices_allowsToleranceBoundaryForNegativeNetCashContribution() {
+        Supplier supplier = new Supplier();
+        supplier.setName("Supplier");
+        Account payable = new Account();
+        payable.setCompany(company);
+        payable.setCode("AP");
+        payable.setType(AccountType.LIABILITY);
+        ReflectionTestUtils.setField(payable, "id", 10L);
+        supplier.setPayableAccount(payable);
+        ReflectionTestUtils.setField(supplier, "id", 1L);
+
+        Account cash = new Account();
+        cash.setCompany(company);
+        cash.setCode("CASH");
+        cash.setType(AccountType.ASSET);
+        ReflectionTestUtils.setField(cash, "id", 20L);
+
+        when(supplierRepository.lockByCompanyAndId(eq(company), eq(1L))).thenReturn(Optional.of(supplier));
+        when(companyEntityLookup.requireAccount(eq(company), eq(20L))).thenReturn(cash);
+        when(journalReferenceMappingRepository.findAllByCompanyAndLegacyReferenceIgnoreCase(
+                eq(company), eq("idemp-neg-cash-supplier-tolerance")))
+                .thenReturn(List.of());
+        when(journalReferenceMappingRepository.reserveReferenceMapping(
+                eq(company.getId()),
+                eq("idemp-neg-cash-supplier-tolerance"),
+                eq("REF-NEG-CASH-SUPPLIER-TOLERANCE"),
+                eq("SUPPLIER_SETTLEMENT"),
+                any()))
+                .thenReturn(1);
+
+        SupplierSettlementRequest request = new SupplierSettlementRequest(
+                1L,
+                20L,
+                null,
+                null,
+                null,
+                null,
+                LocalDate.of(2024, 5, 1),
+                "REF-NEG-CASH-SUPPLIER-TOLERANCE",
+                "Supplier settlement",
+                "IDEMP-NEG-CASH-SUPPLIER-TOLERANCE",
+                Boolean.FALSE,
+                List.of(
+                        new SettlementAllocationRequest(
+                                null,
+                                2L,
+                                new BigDecimal("100.00"),
+                                new BigDecimal("100.01"),
+                                BigDecimal.ZERO,
+                                BigDecimal.ZERO,
+                                "tolerance-boundary allocation"
+                        )
+                )
+        );
+
+        assertThatThrownBy(() -> accountingService.settleSupplierInvoices(request))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Discount account is required when a discount is applied")
+                .satisfies(ex -> assertThat(ex).hasMessageNotContaining("negative net cash contribution"));
+        verify(journalReferenceMappingRepository, times(1))
                 .reserveReferenceMapping(any(), any(), any(), any(), any());
     }
 
