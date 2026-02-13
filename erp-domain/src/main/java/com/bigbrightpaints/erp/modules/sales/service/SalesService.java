@@ -814,58 +814,101 @@ public class SalesService {
     public DispatchMarkerReconciliationResponse reconcileStaleOrderLevelMarkers(int limit) {
         Company company = companyContextService.requireCurrentCompany();
         int safeLimit = Math.max(1, Math.min(limit, 500));
-        Page<Long> candidates = salesOrderRepository.findDispatchMarkerCandidateIdsByCompanyOrderByCreatedAtDescIdDesc(
-                company,
-                PageRequest.of(0, safeLimit));
         List<Long> reconciledOrderIds = new ArrayList<>();
-        for (Long orderId : candidates.getContent()) {
-            Optional<SalesOrder> orderOpt = salesOrderRepository.findWithItemsByCompanyAndIdForUpdate(company, orderId);
-            if (orderOpt.isEmpty()) {
-                continue;
+        int scannedOrders = 0;
+        int pageSize = Math.max(1, Math.min(safeLimit, 200));
+        int pageNumber = 0;
+        while (reconciledOrderIds.size() < safeLimit) {
+            Page<Long> candidates = salesOrderRepository.findDispatchMarkerCandidateIdsByCompanyOrderByCreatedAtDescIdDesc(
+                    company,
+                    PageRequest.of(pageNumber, pageSize));
+            if (candidates.isEmpty()) {
+                break;
             }
-            SalesOrder order = orderOpt.get();
-            List<PackagingSlip> orderSlips = findOrderSlips(company, orderId, true);
-            PackagingSlip singleActiveSlip = findSingleActiveSlip(orderSlips);
-            boolean singleActiveSlipForOrder = singleActiveSlip != null;
-
-            Long invoiceId = null;
-            Long salesJournalEntryId = null;
-            Long cogsJournalEntryId = null;
-            if (singleActiveSlipForOrder) {
-                invoiceId = singleActiveSlip.getInvoiceId();
-                salesJournalEntryId = singleActiveSlip.getJournalEntryId();
-                cogsJournalEntryId = singleActiveSlip.getCogsJournalEntryId();
-                if (cogsJournalEntryId == null) {
-                    String slipNumber = singleActiveSlip.getSlipNumber();
-                    String cogsReferenceId = resolveCogsReferenceId(singleActiveSlip, slipNumber);
-                    cogsJournalEntryId = findCogsJournalId(company, cogsReferenceId);
-                    if (cogsJournalEntryId == null
-                            && StringUtils.hasText(slipNumber)
-                            && !slipNumber.trim().equalsIgnoreCase(cogsReferenceId)) {
-                        cogsJournalEntryId = findCogsJournalId(company, slipNumber.trim());
-                    }
-                }
-                if (invoiceId == null && salesJournalEntryId == null && cogsJournalEntryId == null) {
-                    // Avoid destructive cleanup when no slip-level anchors are available yet.
+            for (Long orderId : candidates.getContent()) {
+                scannedOrders++;
+                Optional<SalesOrder> orderOpt = salesOrderRepository.findWithItemsByCompanyAndIdForUpdate(company, orderId);
+                if (orderOpt.isEmpty()) {
                     continue;
                 }
-            }
+                SalesOrder order = orderOpt.get();
+                List<PackagingSlip> orderSlips = findOrderSlips(company, orderId, true);
+                PackagingSlip singleActiveSlip = findSingleActiveSlip(orderSlips);
+                boolean singleActiveSlipForOrder = singleActiveSlip != null;
 
-            boolean updated = reconcileOrderLevelDispatchMarkers(
-                    order,
-                    invoiceId,
-                    salesJournalEntryId,
-                    cogsJournalEntryId,
-                    singleActiveSlipForOrder);
-            if (updated) {
-                salesOrderRepository.save(order);
-                reconciledOrderIds.add(orderId);
+                Long invoiceId = null;
+                Long salesJournalEntryId = null;
+                Long cogsJournalEntryId = null;
+                if (singleActiveSlipForOrder) {
+                    invoiceId = singleActiveSlip.getInvoiceId();
+                    salesJournalEntryId = singleActiveSlip.getJournalEntryId();
+                    cogsJournalEntryId = singleActiveSlip.getCogsJournalEntryId();
+                    if (cogsJournalEntryId == null) {
+                        String slipNumber = singleActiveSlip.getSlipNumber();
+                        String cogsReferenceId = resolveCogsReferenceId(singleActiveSlip, slipNumber);
+                        cogsJournalEntryId = findCogsJournalId(company, cogsReferenceId);
+                        if (cogsJournalEntryId == null
+                                && StringUtils.hasText(slipNumber)
+                                && !slipNumber.trim().equalsIgnoreCase(cogsReferenceId)) {
+                            cogsJournalEntryId = findCogsJournalId(company, slipNumber.trim());
+                        }
+                    }
+                    if (cogsJournalEntryId == null) {
+                        cogsJournalEntryId = resolveCogsMarkerForReconciliation(
+                                company,
+                                order,
+                                singleActiveSlip,
+                                null);
+                    }
+                    if (invoiceId == null && salesJournalEntryId == null && cogsJournalEntryId == null) {
+                        // Avoid destructive cleanup when no slip-level anchors are available yet.
+                        continue;
+                    }
+                }
+
+                boolean updated = reconcileOrderLevelDispatchMarkers(
+                        order,
+                        invoiceId,
+                        salesJournalEntryId,
+                        cogsJournalEntryId,
+                        singleActiveSlipForOrder);
+                if (updated) {
+                    salesOrderRepository.save(order);
+                    reconciledOrderIds.add(orderId);
+                    if (reconciledOrderIds.size() >= safeLimit) {
+                        break;
+                    }
+                }
             }
+            if (!candidates.hasNext()) {
+                break;
+            }
+            pageNumber++;
         }
         return new DispatchMarkerReconciliationResponse(
-                candidates.getContent().size(),
+                scannedOrders,
                 reconciledOrderIds.size(),
                 List.copyOf(reconciledOrderIds));
+    }
+
+    private Long resolveCogsMarkerForReconciliation(Company company,
+                                                    SalesOrder order,
+                                                    PackagingSlip slip,
+                                                    Long resolvedCogsJournalId) {
+        Long cogsJournalEntryId = resolvedCogsJournalId;
+        if (cogsJournalEntryId != null || slip == null) {
+            return cogsJournalEntryId;
+        }
+        String slipNumber = slip.getSlipNumber();
+        String cogsReferenceId = resolveCogsReferenceId(slip, slipNumber);
+        boolean hasCogsJournal = accountingFacade.hasCogsJournalFor(cogsReferenceId)
+                || (StringUtils.hasText(slipNumber)
+                && !slipNumber.trim().equalsIgnoreCase(cogsReferenceId)
+                && accountingFacade.hasCogsJournalFor(slipNumber.trim()));
+        if (hasCogsJournal) {
+            return order != null ? order.getCogsJournalEntryId() : null;
+        }
+        return null;
     }
 
     private GstTreatment resolveGstTreatment(String value) {
@@ -1603,12 +1646,6 @@ public class SalesService {
         }
         SalesOrder order = requireOrderForUpdate(company, salesOrderId);
         List<PackagingSlip> orderSlips = findOrderSlips(company, salesOrderId, true);
-        if (orderSlips.isEmpty() && requestedSlipId != null) {
-            Optional<PackagingSlip> lockedSlip = packagingSlipRepository.findAndLockByIdAndCompany(requestedSlipId, company);
-            if (lockedSlip != null && lockedSlip.isPresent()) {
-                orderSlips = List.of(lockedSlip.get());
-            }
-        }
         if (orderSlips.isEmpty()) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
                     "Packing slip not found for order " + salesOrderId);
@@ -1630,6 +1667,15 @@ public class SalesService {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
                         "No active packing slip found for order " + salesOrderId);
             }
+        }
+        Long lockedOrderId = order.getId();
+        Long slipOrderId = slip.getSalesOrder() != null ? slip.getSalesOrder().getId() : null;
+        if (lockedOrderId != null && slipOrderId != null && !lockedOrderId.equals(slipOrderId)) {
+            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
+                    "Packing slip order linkage changed; retry dispatch")
+                    .withDetail("packingSlipId", slip.getId())
+                    .withDetail("expectedOrderId", lockedOrderId)
+                    .withDetail("actualOrderId", slipOrderId);
         }
         boolean singleActiveSlipForOrder = hasSingleActiveSlip(orderSlips);
         String slipNumber = slip.getSlipNumber();
@@ -1724,11 +1770,16 @@ public class SalesService {
                 if (slipUpdated) {
                     packagingSlipRepository.save(slip);
                 }
+                Long cogsMarkerForReconciliation = resolveCogsMarkerForReconciliation(
+                        company,
+                        order,
+                        slip,
+                        existingCogsJournalId);
                 boolean orderUpdated = reconcileOrderLevelDispatchMarkers(
                         order,
                         existingInvoiceId,
                         existingJeId,
-                        existingCogsJournalId,
+                        cogsMarkerForReconciliation,
                         singleActiveSlipForOrder);
                 String nextStatus = resolveOrderStatusAfterDispatch(order, orderSlips);
                 if (!nextStatus.equalsIgnoreCase(order.getStatus())) {

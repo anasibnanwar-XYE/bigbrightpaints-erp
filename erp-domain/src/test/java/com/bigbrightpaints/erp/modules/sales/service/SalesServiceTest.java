@@ -542,6 +542,7 @@ class SalesServiceTest {
         slip.getLines().add(slipLine);
 
         when(packagingSlipRepository.findAndLockByIdAndCompany(55L, company)).thenReturn(Optional.of(slip));
+        when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, 10L)).thenReturn(List.of(slip));
         when(companyEntityLookup.requireSalesOrder(company, 10L)).thenReturn(order);
         when(dealerRepository.lockByCompanyAndId(company, dealer.getId())).thenReturn(Optional.of(dealer));
         when(dealerLedgerService.currentBalance(dealer.getId())).thenReturn(BigDecimal.ZERO);
@@ -1505,6 +1506,66 @@ class SalesServiceTest {
         assertNull(multiSlipOrder.getSalesJournalEntryId());
         assertNull(multiSlipOrder.getCogsJournalEntryId());
         assertNull(multiSlipOrder.getFulfillmentInvoiceId());
+    }
+
+    @Test
+    void reconcileStaleOrderLevelMarkersPaginatesUntilReconcileLimitReached() {
+        SalesOrder healthyOrder = new SalesOrder();
+        setField(healthyOrder, "id", 10L);
+        healthyOrder.setCompany(company);
+
+        SalesOrder driftedOrder = new SalesOrder();
+        setField(driftedOrder, "id", 20L);
+        driftedOrder.setCompany(company);
+        driftedOrder.setSalesJournalEntryId(801L);
+        driftedOrder.setCogsJournalEntryId(802L);
+        driftedOrder.setFulfillmentInvoiceId(803L);
+
+        when(salesOrderRepository.findDispatchMarkerCandidateIdsByCompanyOrderByCreatedAtDescIdDesc(
+                company, PageRequest.of(0, 1)))
+                .thenReturn(new PageImpl<>(List.of(10L), PageRequest.of(0, 1), 2));
+        when(salesOrderRepository.findDispatchMarkerCandidateIdsByCompanyOrderByCreatedAtDescIdDesc(
+                company, PageRequest.of(1, 1)))
+                .thenReturn(new PageImpl<>(List.of(20L), PageRequest.of(1, 1), 2));
+
+        when(salesOrderRepository.findWithItemsByCompanyAndIdForUpdate(company, 10L))
+                .thenReturn(Optional.of(healthyOrder));
+        when(salesOrderRepository.findWithItemsByCompanyAndIdForUpdate(company, 20L))
+                .thenReturn(Optional.of(driftedOrder));
+        when(salesOrderRepository.save(ArgumentMatchers.any(SalesOrder.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        PackagingSlip healthySlip = new PackagingSlip();
+        setField(healthySlip, "id", 55L);
+        healthySlip.setCompany(company);
+        healthySlip.setSalesOrder(healthyOrder);
+        healthySlip.setStatus("DISPATCHED");
+
+        PackagingSlip driftedSlipA = new PackagingSlip();
+        setField(driftedSlipA, "id", 65L);
+        driftedSlipA.setCompany(company);
+        driftedSlipA.setSalesOrder(driftedOrder);
+        driftedSlipA.setStatus("DISPATCHED");
+
+        PackagingSlip driftedSlipB = new PackagingSlip();
+        setField(driftedSlipB, "id", 66L);
+        driftedSlipB.setCompany(company);
+        driftedSlipB.setSalesOrder(driftedOrder);
+        driftedSlipB.setStatus("PENDING");
+
+        when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, 10L))
+                .thenReturn(List.of(healthySlip));
+        when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, 20L))
+                .thenReturn(List.of(driftedSlipA, driftedSlipB));
+
+        DispatchMarkerReconciliationResponse response = salesService.reconcileStaleOrderLevelMarkers(1);
+
+        assertEquals(2, response.scannedOrders());
+        assertEquals(1, response.reconciledOrders());
+        assertEquals(List.of(20L), response.reconciledOrderIds());
+        assertNull(driftedOrder.getSalesJournalEntryId());
+        assertNull(driftedOrder.getCogsJournalEntryId());
+        assertNull(driftedOrder.getFulfillmentInvoiceId());
     }
 
     @Test
