@@ -2177,3 +2177,17 @@ Queue Rotation (Auto-Replenish)
 - [ready] M10-S3 release-gate dry-run and blocker ledger sync (`scripts/verify_local.sh` + artifact sanity)
 - [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
 - [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
+
+Post-Commit Review Evidence
+- Commit reviewed: `40b5966a`
+- `codex review --commit 40b5966a`:
+  - final verdict: docs-only ledger patch; no concrete correctness issue introduced.
+- Review subagent `019c5594-a149-7893-a15b-3a67c9831dc0`:
+  - findings: none.
+  - residual note: multiple historical queue blocks can confuse “current queue” readers; keep latest block clearly timestamped.
+
+Loop Update
+- 2026-02-13T11:30:20+05:30
+- tracked_now_ts: `2026-02-13T11:30:20+05:30`
+- tracked_elapsed: `33h 36m 28s`
+- active_in_progress: `M12-S2 user-facing discount/reference behavior docs across admin/sales/dealer portals`
