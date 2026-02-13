@@ -4103,3 +4103,91 @@ Queue Rotation (Auto-Replenish)
 - [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
 - [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
 - [ready] M11-S6 approval queue runtime contract test slice (assert FE docs match live `AdminApprovalItemDto` payload fields and action endpoint semantics)
+
+Post-Commit Review Evidence
+- Commit reviewed: `4655cd52`
+- `codex review --commit 4655cd52`:
+  - final verdict: docs-only ledger append; no executable behavior/config/test regressions introduced.
+- Review subagent `019c58d5-5dc5-7520-b933-674cde47ebf1`:
+  - findings: none.
+  - summary: ledger/review evidence consistency and queue-floor invariants verified (>= 3 ready retained).
+
+Completed Slice (Committed)
+- 2026-02-14: `f948e4ad`
+  - test(guard): expand accounting portal drift negatives.
+  - M14-S23 closure (initial pass):
+    - expanded `AccountingPortalScopeGuardScriptTest` fail-closed matrix with missing endpoint-map heading, missing handoff heading, and missing controller-section fixture cases.
+    - retained existing module-count drift negative (`reports -> 0`) and happy-path fixture pass coverage.
+  - Verification:
+    - `cd /home/realnigga/Desktop/orchestrator_erp/erp-domain && mvn -B -ntp -Dtest=AccountingPortalScopeGuardScriptTest test` -> pass (5 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `f948e4ad`
+- `codex review --commit f948e4ad`:
+  - final verdict: targeted negative-path test additions align with guard behavior; no introduced bug/regression.
+- Review subagent `019c58d7-c428-7d50-a84c-ff15776a2b8b`:
+  - findings:
+    - medium: negative-matrix skewed to `reports` variants only (coverage blind spot).
+    - low: assertions overly coupled to full error strings.
+    - low: fixture replace helper did not fail if token replacement was a no-op.
+  - disposition: remediated immediately in follow-up commit `51a13e0f`.
+
+Completed Slice (Committed)
+- 2026-02-14: `51a13e0f`
+  - test(guard): harden portal scope negative fixtures.
+  - M14-S23 closure (finalized after review findings):
+    - added HR module-count drift negative (`hr -> 0`) and HR controller-section drift negative to remove `reports`-only blind spot.
+    - relaxed heading/controller assertions to stable semantic fragments + expected token instead of exact full message text.
+    - hardened fixture mutation helper to throw when requested replacement token is missing (prevents silent false positives).
+  - Verification:
+    - `cd /home/realnigga/Desktop/orchestrator_erp/erp-domain && mvn -B -ntp -Dtest=AccountingPortalScopeGuardScriptTest test` -> pass (7 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `51a13e0f`
+- `codex review --commit 51a13e0f`:
+  - final verdict: follow-up hardening remains test-only and does not introduce behavior or correctness regressions.
+- Review subagent `019c58db-e828-7d33-ae80-1460f64c8356`:
+  - findings: none.
+  - summary: follow-up correctly addresses prior coverage/fragility concerns and keeps guard regression suite robust.
+
+Completed Slice (Committed)
+- 2026-02-14: `5cc5d535`
+  - test(accounting): enforce catalog import idempotency mismatch.
+  - M14-S24 closure:
+    - added endpoint-level idempotency mismatch contract in `AccountingCatalogControllerSecurityIT`:
+      - same `Idempotency-Key` + different payload returns `409 CONC_001`.
+      - persisted `CatalogImport` identity remains stable (no second import record).
+      - second payload SKU does not materialize in raw-material inventory (no partial mutation on mismatch).
+    - test runs through authenticated accounting-role multipart endpoint path (`/api/v1/accounting/catalog/import`) to lock API-level behavior.
+  - Verification:
+    - `cd /home/realnigga/Desktop/orchestrator_erp/erp-domain && mvn -B -ntp -Dtest=AccountingCatalogControllerSecurityIT test` -> pass (3 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `5cc5d535`
+- `codex review --commit 5cc5d535`:
+  - final verdict: integration-test-only commit; assertions align with intended idempotency mismatch behavior and introduce no blocking issues.
+- Review subagent `019c58de-5ead-7a41-aaf8-523cd4433ff3`:
+  - findings: none.
+  - note: non-blocking residual gaps queued for follow-up (concurrent race branch + broader side-effect table assertions).
+
+Loop Update
+- 2026-02-14T02:53:12+05:30
+- tracked_now_ts: `2026-02-14T02:53:12+05:30`
+- tracked_elapsed: `48h 59m 20s`
+- active_in_progress: `M14-S25 accounting catalog import multipart abuse matrix (missing/empty file part, wrong content-type, and oversized row rejection must fail safe without creating product/raw-material rows)`
+
+Queue Rotation (Auto-Replenish)
+- [completed] M14-S23 portal-scope guard negative matrix (simulate dropped section/module anchors in temp docs fixture to prove fail-closed behavior)
+- [completed] M14-S24 accounting catalog import idempotency mismatch guard (`/api/v1/accounting/catalog/import` same idempotency key + payload hash mismatch must fail deterministically with no partial product/raw-material mutations)
+- [in_progress] M14-S25 accounting catalog import multipart abuse matrix (missing/empty file part, wrong content-type, and oversized row rejection must fail safe without creating product/raw-material rows)
+- [ready] M14-S26 finished-good costing alias parity sweep for read paths (ensure stock-summary and inventory-valuation canonicalize legacy weighted-average aliases identically, with unsupported-method fallback explicitly covered)
+- [ready] M14-S27 endpoint-inventory cross-portal drift detector (fail if hr/purchasing/inventory/reports rows fall to zero or disappear while accounting portal map still claims ownership)
+- [ready] M14-S28 cross-module costing predicate dedupe map (consolidate duplicated `isWeightedAverage(...)` decision points across BulkPackingService/PackagingMaterialService/ProductionLogService/InventoryValuationService into one canonical helper + parity tests)
+- [ready] M14-S29 inventory adjustment selector-routing integration assertions (prove WAC/LIFO/FIFO branch parity between reserve and adjustment flows with deterministic batch-order fixtures)
+- [ready] M14-S30 catalog-import idempotency mismatch concurrent race matrix (parallel same key + different payload requests must deterministically produce one winner + one `CONC_001`, with no split-brain import record)
+- [ready] M14-S31 catalog-import mismatch side-effect boundary audit (assert production brand/product tables and audit payload counters remain unchanged on mismatch-reject path)
+- [ready] M12-S5 discount/reference calculation parity matrix across sales->invoice->settlement + user-facing example table refresh
+- [ready] M10-S3 release-gate dry-run and blocker ledger sync (`scripts/verify_local.sh` + artifact sanity)
+- [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
+- [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
+- [ready] M11-S6 approval queue runtime contract test slice (assert FE docs match live `AdminApprovalItemDto` payload fields and action endpoint semantics)
