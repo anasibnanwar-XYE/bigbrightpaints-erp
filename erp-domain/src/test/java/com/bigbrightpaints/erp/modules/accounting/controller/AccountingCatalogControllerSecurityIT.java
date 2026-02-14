@@ -250,7 +250,7 @@ class AccountingCatalogControllerSecurityIT extends AbstractIntegrationTest {
 
         ResponseEntity<Map> response = importCatalogWithoutFile(accountingHeaders, idempotencyKey);
 
-        assertThat(response.getStatusCode().is4xxClientError()).isTrue();
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(catalogImportRepository.findByCompanyAndIdempotencyKey(company, idempotencyKey)).isEmpty();
     }
 
@@ -291,6 +291,44 @@ class AccountingCatalogControllerSecurityIT extends AbstractIntegrationTest {
     }
 
     @Test
+    void accountingCatalogImport_acceptsApplicationCsvContentType() {
+        Company company = dataSeeder.ensureCompany(COMPANY_CODE, "Catalog Sec Co");
+        HttpHeaders accountingHeaders = authHeaders(ACCOUNTING_EMAIL, PASSWORD, COMPANY_CODE);
+        String idempotencyKey = "CAT-ALLOW-APPLICATION-CSV-" + shortId();
+        String sku = "RM-ALLOW-APPLICATION-CSV-" + shortId();
+
+        ResponseEntity<Map> response = importCatalogWithCustomFile(
+                accountingHeaders,
+                catalogCsvContent(sku),
+                "catalog-" + sku + ".csv",
+                "application/csv",
+                idempotencyKey);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(catalogImportRepository.findByCompanyAndIdempotencyKey(company, idempotencyKey)).isPresent();
+        assertThat(rawMaterialRepository.findByCompanyAndSku(company, sku)).isPresent();
+    }
+
+    @Test
+    void accountingCatalogImport_acceptsVndMsExcelContentType() {
+        Company company = dataSeeder.ensureCompany(COMPANY_CODE, "Catalog Sec Co");
+        HttpHeaders accountingHeaders = authHeaders(ACCOUNTING_EMAIL, PASSWORD, COMPANY_CODE);
+        String idempotencyKey = "CAT-ALLOW-VND-MS-EXCEL-" + shortId();
+        String sku = "RM-ALLOW-VND-MS-EXCEL-" + shortId();
+
+        ResponseEntity<Map> response = importCatalogWithCustomFile(
+                accountingHeaders,
+                catalogCsvContent(sku),
+                "catalog-" + sku + ".csv",
+                "application/vnd.ms-excel",
+                idempotencyKey);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(catalogImportRepository.findByCompanyAndIdempotencyKey(company, idempotencyKey)).isPresent();
+        assertThat(rawMaterialRepository.findByCompanyAndSku(company, sku)).isPresent();
+    }
+
+    @Test
     void accountingCatalogImport_rejectsDisallowedMimeEvenWhenFileNameLooksCsv() {
         Company company = dataSeeder.ensureCompany(COMPANY_CODE, "Catalog Sec Co");
         HttpHeaders accountingHeaders = authHeaders(ACCOUNTING_EMAIL, PASSWORD, COMPANY_CODE);
@@ -316,11 +354,10 @@ class AccountingCatalogControllerSecurityIT extends AbstractIntegrationTest {
         String idempotencyKey = "CAT-MISSING-TYPE-CSV-" + shortId();
         String sku = "RM-MISSING-TYPE-CSV-" + shortId();
 
-        ResponseEntity<Map> response = importCatalogWithCustomFile(
+        ResponseEntity<Map> response = importCatalogWithoutPartContentType(
                 accountingHeaders,
                 catalogCsvContent(sku),
                 "catalog-" + sku + ".csv",
-                null,
                 idempotencyKey);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -339,14 +376,17 @@ class AccountingCatalogControllerSecurityIT extends AbstractIntegrationTest {
         String idempotencyKey = "CAT-MISSING-TYPE-TXT-" + shortId();
         String sku = "RM-MISSING-TYPE-TXT-" + shortId();
 
-        ResponseEntity<Map> response = importCatalogWithCustomFile(
+        ResponseEntity<Map> response = importCatalogWithoutPartContentType(
                 accountingHeaders,
                 catalogCsvContent(sku),
                 "catalog-" + sku + ".txt",
-                null,
                 idempotencyKey);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(response.getBody()).isNotNull();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> errorData = (Map<String, Object>) response.getBody().get("data");
+        assertThat(errorData).containsEntry("code", "FILE_003");
         assertThat(catalogImportRepository.findByCompanyAndIdempotencyKey(company, idempotencyKey)).isEmpty();
         assertThat(rawMaterialRepository.findByCompanyAndSku(company, sku)).isEmpty();
     }
@@ -430,6 +470,29 @@ class AccountingCatalogControllerSecurityIT extends AbstractIntegrationTest {
                 "/api/v1/accounting/catalog/import",
                 HttpMethod.POST,
                 new HttpEntity<>(body, requestHeaders),
+                Map.class);
+    }
+
+    private ResponseEntity<Map> importCatalogWithoutPartContentType(HttpHeaders headers,
+                                                                    String csvContent,
+                                                                    String fileName,
+                                                                    String idempotencyKey) {
+        String boundary = "----CatalogBoundary" + shortId();
+        String multipartBody = "--" + boundary + "\r\n"
+                + "Content-Disposition: form-data; name=\"file\"; filename=\"" + fileName + "\"\r\n"
+                + "\r\n"
+                + csvContent + "\r\n"
+                + "--" + boundary + "--\r\n";
+
+        HttpHeaders requestHeaders = new HttpHeaders();
+        requestHeaders.putAll(headers);
+        requestHeaders.set("Content-Type", "multipart/form-data; boundary=" + boundary);
+        requestHeaders.set("Idempotency-Key", idempotencyKey);
+
+        return rest.exchange(
+                "/api/v1/accounting/catalog/import",
+                HttpMethod.POST,
+                new HttpEntity<>(multipartBody, requestHeaders),
                 Map.class);
     }
 
