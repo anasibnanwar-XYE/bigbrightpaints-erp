@@ -4463,3 +4463,56 @@ Queue Rotation (Auto-Replenish)
 - [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
 - [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
 - [ready] M11-S6 approval queue runtime contract test slice (assert FE docs match live `AdminApprovalItemDto` payload fields and action endpoint semantics)
+
+Post-Commit Review Evidence
+- Commit reviewed: `3be970dd`
+- `codex review --commit 3be970dd`:
+  - final verdict: docs-only ledger append; no executable/config/test behavior changed and no actionable regression found.
+- Review subagent `019c5a50-f085-7290-b7bb-44d09a41118c`:
+  - findings: none.
+  - summary: ledger continuity + backlog floor invariants remain intact.
+
+Completed Slice (Committed)
+- 2026-02-14: `dbc5d778`
+  - test(accounting): enforce catalog idempotency race mismatch.
+  - M14-S30 closure:
+    - added concurrent same-idempotency-key + different-payload acceptance test in `AccountingCatalogControllerSecurityIT` (`accountingCatalogImport_concurrentMismatchProducesSingleWinnerAndConflict`).
+    - synchronized two parallel `/api/v1/accounting/catalog/import` requests with barrier latches.
+    - asserted deterministic race contract:
+      - exactly one `200 OK` winner,
+      - exactly one `409 CONC_001` loser,
+      - exactly one persisted `CatalogImport` record for the key,
+      - exactly one SKU mutation (no split-brain side effects).
+  - Verification:
+    - `cd /home/realnigga/Desktop/orchestrator_erp/erp-domain && mvn -B -ntp -Dtest=AccountingCatalogControllerSecurityIT test` -> pass (9 tests, 0 failures, 0 errors).
+    - `cd /home/realnigga/Desktop/orchestrator_erp/erp-domain && for i in 1 2 3; do mvn -B -ntp -Dtest=AccountingCatalogControllerSecurityIT#accountingCatalogImport_concurrentMismatchProducesSingleWinnerAndConflict test; done` -> pass (3/3 race reruns).
+
+Post-Commit Review Evidence
+- Commit reviewed: `dbc5d778`
+- `codex review --commit dbc5d778`:
+  - final verdict: test-only race coverage aligns with intended contract; no introduced defect or reliability regression.
+  - reviewer reruns: targeted concurrent mismatch test and class-level run both pass during review.
+- Review subagent `019c5a52-dbee-7d10-bff6-875dffba4803`:
+  - findings: none.
+  - summary: barrier synchronization + status/XOR assertions are sufficient to prove one-winner/one-conflict and no split-brain mutation.
+
+Loop Update
+- 2026-02-14T09:39:02+05:30
+- tracked_now_ts: `2026-02-14T09:39:02+05:30`
+- tracked_elapsed: `55h 45m 10s`
+- active_in_progress: `M14-S31 catalog-import mismatch side-effect boundary audit (assert production brand/product tables and audit payload counters remain unchanged on mismatch-reject path)`
+- continuity_recheck: `0355149b` / `f9fd898f` / `a1d05cd7` evidence remains finalized and consistent.
+
+Queue Rotation (Auto-Replenish)
+- [completed] M14-S30 catalog-import idempotency mismatch concurrent race matrix (parallel same key + different payload requests must deterministically produce one winner + one `CONC_001`, with no split-brain import record)
+- [in_progress] M14-S31 catalog-import mismatch side-effect boundary audit (assert production brand/product tables and audit payload counters remain unchanged on mismatch-reject path)
+- [ready] M14-S32 catalog-import MIME fallback boundary contract (missing `Content-Type` + `.csv` filename accepted; explicit disallowed MIME rejected; docs/error-status matrix updated atomically)
+- [ready] M14-S33 costing token-shape + canonicalization boundary matrix (finished-good/raw-material create/update/import parity; malformed token rejection + unsupported legacy preservation contracts)
+- [ready] M14-S34 finished-good request costing normalization parity gate (align create/update/import request normalization with raw-material service contract, including alias canonicalization and malformed-token rejection)
+- [ready] M14-S35 raw-material WAC null-average fail-safe contract (if weighted-average repository returns null/blank path output, valuation/reporting must remain deterministic and never silently understate inventory)
+- [ready] M14-S36 catalog-import concurrent winner provenance contract (winner replay with same payload must stay stable after mismatch conflict; loser payload must never materialize across retry attempts)
+- [ready] M12-S5 discount/reference calculation parity matrix across sales->invoice->settlement + user-facing example table refresh
+- [ready] M10-S3 release-gate dry-run and blocker ledger sync (`scripts/verify_local.sh` + artifact sanity)
+- [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
+- [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
+- [ready] M11-S6 approval queue runtime contract test slice (assert FE docs match live `AdminApprovalItemDto` payload fields and action endpoint semantics)
