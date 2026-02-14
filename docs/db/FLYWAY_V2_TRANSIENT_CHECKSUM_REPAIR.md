@@ -47,7 +47,7 @@ mvn -B -ntp -f erp-domain/pom.xml org.flywaydb:flyway-maven-plugin:migrate \
 3. Re-run guard script and confirm exit code `0`.
 
 ## Post-V13 index rebuild workflow (exit code 3)
-Run during a maintenance window:
+Run during a maintenance window and outside an explicit transaction block:
 ```sql
 DROP INDEX CONCURRENTLY IF EXISTS public.idx_invoices_company_order_status_norm;
 CREATE INDEX CONCURRENTLY idx_invoices_company_order_status_norm
