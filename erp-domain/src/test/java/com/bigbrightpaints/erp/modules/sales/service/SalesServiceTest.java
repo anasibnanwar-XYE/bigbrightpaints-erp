@@ -1982,7 +1982,7 @@ class SalesServiceTest {
     }
 
     @Test
-    void createOrderCashPaymentModeBypassesDealerCreditLimit() {
+    void createOrderCashPaymentModeStillEnforcesDealerCreditLimit() {
         setupProduct("SKU3-CASH", BigDecimal.valueOf(200), BigDecimal.ZERO);
         FinishedGood finishedGood = buildFinishedGood("SKU3-CASH");
         finishedGood.setRevenueAccountId(5L);
@@ -2013,10 +2013,8 @@ class SalesServiceTest {
                 null,
                 " cash ");
 
-        SalesOrderDto dto = salesService.createOrder(request);
-
-        assertEquals("RESERVED", dto.status());
-        verify(dealerLedgerService, never()).currentBalance(420L);
+        assertThrows(IllegalStateException.class, () -> salesService.createOrder(request));
+        verify(dealerLedgerService).currentBalance(420L);
     }
 
     @Test

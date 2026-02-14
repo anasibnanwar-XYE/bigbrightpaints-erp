@@ -116,7 +116,7 @@ public class SalesService {
     private static final String CREDIT_REQUEST_STATUS_PENDING = "PENDING";
     private static final String DEFAULT_ORDER_PAYMENT_MODE = "CREDIT";
     private static final Set<String> VALID_ORDER_PAYMENT_MODES = Set.of("CASH", "CREDIT", "SPLIT");
-    private static final Set<String> CREDIT_EXPOSURE_PAYMENT_MODES = Set.of("CREDIT", "SPLIT");
+    private static final Set<String> CREDIT_EXPOSURE_PAYMENT_MODES = Set.of("CASH", "CREDIT", "SPLIT");
 
     private final CompanyContextService companyContextService;
     private final DealerRepository dealerRepository;
@@ -1401,6 +1401,8 @@ public class SalesService {
     }
 
     private boolean requiresCreditLimitCheck(String paymentMode) {
+        // Sales orders are fulfilled against receivable exposure; cash collection is settled
+        // through accounting receipts later, so order booking must always enforce credit policy.
         return CREDIT_EXPOSURE_PAYMENT_MODES.contains(paymentMode);
     }
 
