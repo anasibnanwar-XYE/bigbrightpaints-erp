@@ -33,26 +33,32 @@ else
 fi
 
 VERIFY_LOCAL_SKIP_GUARD=false
+VERIFY_LOCAL_GUARD_DB_NAME="${FLYWAY_GUARD_DB_NAME:-${PGDATABASE:-}}"
 
 if [[ "$MIGRATION_SET" == "v2" ]]; then
   echo "[gate-release] flyway v2 transient checksum guard"
   CHECKSUM_GUARD_LOG="$ARTIFACT_DIR/flyway-v2-transient-checksum-guard.txt"
 
   if [[ -n "${FLYWAY_GUARD_DB_NAME:-}" && -n "${PGDATABASE:-}" && "${FLYWAY_GUARD_DB_NAME}" != "${PGDATABASE}" ]]; then
-    echo "[gate-release] FLYWAY_GUARD_DB_NAME (${FLYWAY_GUARD_DB_NAME}) must match PGDATABASE (${PGDATABASE}) when both are set" | tee "$CHECKSUM_GUARD_LOG" >&2
-    exit 3
+    echo "[gate-release] WARNING: FLYWAY_GUARD_DB_NAME and PGDATABASE differ; gate_release guard checks FLYWAY_GUARD_DB_NAME and verify_local guard checks PGDATABASE" | tee "$CHECKSUM_GUARD_LOG" >&2
+    VERIFY_LOCAL_GUARD_DB_NAME="$PGDATABASE"
   fi
 
   GUARD_DB_NAME="${FLYWAY_GUARD_DB_NAME:-${PGDATABASE:-}}"
   if [[ -z "${FLYWAY_GUARD_DB_NAME:-}" && -n "${PGDATABASE:-}" ]]; then
     echo "[gate-release] deriving FLYWAY_GUARD_DB_NAME from PGDATABASE=$PGDATABASE" | tee "$CHECKSUM_GUARD_LOG"
     export FLYWAY_GUARD_DB_NAME="$PGDATABASE"
+    VERIFY_LOCAL_GUARD_DB_NAME="$PGDATABASE"
   fi
 
   if [[ -n "$GUARD_DB_NAME" ]]; then
     if bash "$ROOT_DIR/scripts/guard_flyway_v2_transient_checksum.sh" "$GUARD_DB_NAME" >"$CHECKSUM_GUARD_LOG" 2>&1; then
       cat "$CHECKSUM_GUARD_LOG"
-      VERIFY_LOCAL_SKIP_GUARD=true
+      if [[ "$VERIFY_LOCAL_GUARD_DB_NAME" == "$GUARD_DB_NAME" ]]; then
+        VERIFY_LOCAL_SKIP_GUARD=true
+      else
+        echo "[gate-release] verify_local will re-run flyway guard against PGDATABASE target" | tee -a "$CHECKSUM_GUARD_LOG"
+      fi
     else
       guard_exit=$?
       cat "$CHECKSUM_GUARD_LOG" >&2
@@ -67,7 +73,7 @@ if [[ "$MIGRATION_SET" == "v2" ]]; then
 fi
 
 echo "[gate-release] strict local verify"
-MIGRATION_SET="$MIGRATION_SET" VERIFY_LOCAL_SKIP_TESTS=true VERIFY_LOCAL_SKIP_FLYWAY_GUARD="$VERIFY_LOCAL_SKIP_GUARD" VERIFY_LOCAL_GUARD_ALREADY_EXECUTED="$VERIFY_LOCAL_SKIP_GUARD" FAIL_ON_FINDINGS=true bash "$ROOT_DIR/scripts/verify_local.sh"
+MIGRATION_SET="$MIGRATION_SET" FLYWAY_GUARD_DB_NAME="$VERIFY_LOCAL_GUARD_DB_NAME" VERIFY_LOCAL_SKIP_TESTS=true VERIFY_LOCAL_SKIP_FLYWAY_GUARD="$VERIFY_LOCAL_SKIP_GUARD" VERIFY_LOCAL_GUARD_ALREADY_EXECUTED="$VERIFY_LOCAL_SKIP_GUARD" FAIL_ON_FINDINGS=true bash "$ROOT_DIR/scripts/verify_local.sh"
 
 echo "[gate-release] truth suite strict mode"
 (

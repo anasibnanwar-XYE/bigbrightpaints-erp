@@ -54,7 +54,10 @@ if [[ "$MIGRATION_SET" == "v2" ]]; then
     exit 3
   fi
 
-  if [[ "$SKIP_FLYWAY_GUARD" == "true" && "$DELEGATED_GUARD_EXECUTED" != "true" ]]; then
+  if [[ "$SKIP_FLYWAY_GUARD" == "true" && "${REQUIRE_FLYWAY_V2_GUARD:-false}" == "true" ]]; then
+    echo "[verify_local] ignore flyway v2 transient checksum delegation while REQUIRE_FLYWAY_V2_GUARD=true"
+    SKIP_FLYWAY_GUARD=false
+  elif [[ "$SKIP_FLYWAY_GUARD" == "true" && "$DELEGATED_GUARD_EXECUTED" != "true" ]]; then
     echo "[verify_local] ignore flyway v2 transient checksum delegation (VERIFY_LOCAL_GUARD_ALREADY_EXECUTED=true not set)"
     SKIP_FLYWAY_GUARD=false
   fi
