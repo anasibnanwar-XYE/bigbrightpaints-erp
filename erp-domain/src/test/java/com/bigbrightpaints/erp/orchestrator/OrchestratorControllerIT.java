@@ -245,6 +245,68 @@ public class OrchestratorControllerIT extends AbstractIntegrationTest {
     }
 
     @Test
+    void fulfillment_auto_key_normalizes_status_case_for_replay() {
+        String token = loginToken();
+        HttpHeaders headers = authHeaders(token);
+        long outboxBefore = outboxEventRepository.count();
+
+        Map<String, Object> lowerCaseBody = Map.of(
+                "status", "processing",
+                "notes", "start production case-normalized");
+        Map<String, Object> upperCaseBody = Map.of(
+                "status", "PROCESSING",
+                "notes", "start production case-normalized");
+
+        ResponseEntity<Map> firstResponse = rest.exchange(
+                "/api/v1/orchestrator/orders/" + seededOrderId + "/fulfillment",
+                HttpMethod.POST,
+                new HttpEntity<>(lowerCaseBody, headers),
+                Map.class);
+
+        ResponseEntity<Map> secondResponse = rest.exchange(
+                "/api/v1/orchestrator/orders/" + seededOrderId + "/fulfillment",
+                HttpMethod.POST,
+                new HttpEntity<>(upperCaseBody, headers),
+                Map.class);
+
+        assertThat(firstResponse.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        assertThat(secondResponse.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        String traceId = (String) firstResponse.getBody().get("traceId");
+        assertThat(secondResponse.getBody().get("traceId")).isEqualTo(traceId);
+        assertThat(outboxEventRepository.count()).isEqualTo(outboxBefore + 1);
+    }
+
+    @Test
+    void fulfillment_request_id_fallback_hashes_oversized_request_id() {
+        String token = loginToken();
+        HttpHeaders headers = authHeaders(token);
+        headers.add("X-Request-Id", "req-" + "x".repeat(420));
+        long outboxBefore = outboxEventRepository.count();
+
+        Map<String, Object> body = Map.of(
+                "status", "PROCESSING",
+                "notes", "start production oversized request id");
+
+        ResponseEntity<Map> firstResponse = rest.exchange(
+                "/api/v1/orchestrator/orders/" + seededOrderId + "/fulfillment",
+                HttpMethod.POST,
+                new HttpEntity<>(body, headers),
+                Map.class);
+
+        ResponseEntity<Map> secondResponse = rest.exchange(
+                "/api/v1/orchestrator/orders/" + seededOrderId + "/fulfillment",
+                HttpMethod.POST,
+                new HttpEntity<>(body, headers),
+                Map.class);
+
+        assertThat(firstResponse.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        assertThat(secondResponse.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        String traceId = (String) firstResponse.getBody().get("traceId");
+        assertThat(secondResponse.getBody().get("traceId")).isEqualTo(traceId);
+        assertThat(outboxEventRepository.count()).isEqualTo(outboxBefore + 1);
+    }
+
+    @Test
     void payroll_run_is_disabled_by_default_in_code_red() {
         String token = loginToken();
         HttpHeaders headers = authHeaders(token);

@@ -14,6 +14,7 @@ import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import org.apache.commons.codec.digest.DigestUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -24,6 +25,8 @@ import org.springframework.util.StringUtils;
 public class CommandDispatcher {
 
     private static final Logger log = LoggerFactory.getLogger(CommandDispatcher.class);
+    private static final int MAX_REQUEST_ID_LENGTH = 128;
+    private static final String REQUEST_ID_HASH_PREFIX = "RIDH|";
 
     private final WorkflowService workflowService;
     private final IntegrationCoordinator integrationCoordinator;
@@ -354,9 +357,16 @@ public class CommandDispatcher {
     }
 
     private String normalizeRequestId(String requestId, String idempotencyKey) {
-        if (StringUtils.hasText(requestId)) {
-            return requestId.trim();
+        String normalized = StringUtils.hasText(requestId) ? requestId.trim() : null;
+        if (!StringUtils.hasText(normalized)) {
+            normalized = StringUtils.hasText(idempotencyKey) ? idempotencyKey.trim() : null;
         }
-        return idempotencyKey;
+        if (!StringUtils.hasText(normalized)) {
+            return null;
+        }
+        if (normalized.length() <= MAX_REQUEST_ID_LENGTH) {
+            return normalized;
+        }
+        return REQUEST_ID_HASH_PREFIX + DigestUtils.sha256Hex(normalized);
     }
 }

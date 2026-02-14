@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.Principal;
+import java.util.Locale;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -30,6 +31,7 @@ import org.springframework.util.StringUtils;
 @RestController
 @RequestMapping("/api/v1/orchestrator")
 public class OrchestratorController {
+    private static final int MAX_IDEMPOTENCY_KEY_LENGTH = 255;
 
     private final CommandDispatcher commandDispatcher;
     private final TraceService traceService;
@@ -48,7 +50,10 @@ public class OrchestratorController {
                                                              @org.springframework.web.bind.annotation.RequestHeader(value = "X-Request-Id", required = false) String requestId,
                                                              Principal principal) {
         String companyCode = requireCompanyCode();
-        ApproveOrderRequest normalized = new ApproveOrderRequest(orderId, request.approvedBy(), request.totalAmount());
+        ApproveOrderRequest normalized = new ApproveOrderRequest(
+                orderId,
+                canonicalText(request.approvedBy()),
+                normalizeAmount(request.totalAmount()));
         String traceId = commandDispatcher.approveOrder(
                 normalized,
                 resolveIdempotencyKey(
@@ -72,15 +77,18 @@ public class OrchestratorController {
                                                              @org.springframework.web.bind.annotation.RequestHeader(value = "X-Request-Id", required = false) String requestId,
                                                              Principal principal) {
         String companyCode = requireCompanyCode();
+        OrderFulfillmentRequest normalized = new OrderFulfillmentRequest(
+                normalizeFulfillmentStatus(request.status()),
+                canonicalNullableText(request.notes()));
         String traceId = commandDispatcher.updateOrderFulfillment(
                 orderId,
-                request,
+                normalized,
                 resolveIdempotencyKey(
                         idempotencyKey,
                         requestId,
                         "ORCH.ORDER.FULFILLMENT.UPDATE",
                         companyCode,
-                        orderId + "|" + canonicalText(request.status()) + "|" + canonicalText(request.notes())
+                        orderId + "|" + canonicalText(normalized.status()) + "|" + canonicalText(normalized.notes())
                 ),
                 requestId,
                 companyCode,
@@ -97,8 +105,8 @@ public class OrchestratorController {
                                                          Principal principal) {
         String companyCode = requireCompanyCode();
         DispatchRequest normalized = new DispatchRequest(batchId,
-                request.requestedBy(),
-                request.postingAmount());
+                canonicalText(request.requestedBy()),
+                normalizeAmount(request.postingAmount()));
         String traceId = commandDispatcher.dispatchBatch(
                 normalized,
                 resolveIdempotencyKey(
@@ -139,16 +147,22 @@ public class OrchestratorController {
                                                            @org.springframework.web.bind.annotation.RequestHeader(value = "X-Request-Id", required = false) String requestId,
                                                            Principal principal) {
         String companyCode = requireCompanyCode();
+        PayrollRunRequest normalized = new PayrollRunRequest(
+                request.payrollDate(),
+                canonicalText(request.initiatedBy()),
+                request.debitAccountId(),
+                request.creditAccountId(),
+                normalizeAmount(request.postingAmount()));
         String traceId = commandDispatcher.runPayroll(
-                request,
+                normalized,
                 resolveIdempotencyKey(
                         idempotencyKey,
                         requestId,
                         "ORCH.PAYROLL.RUN",
                         companyCode,
-                        request.payrollDate() + "|" + canonicalText(request.initiatedBy()) + "|"
-                                + request.debitAccountId() + "|" + request.creditAccountId() + "|"
-                                + canonicalAmount(request.postingAmount())
+                        normalized.payrollDate() + "|" + canonicalText(normalized.initiatedBy()) + "|"
+                                + normalized.debitAccountId() + "|" + normalized.creditAccountId() + "|"
+                                + canonicalAmount(normalized.postingAmount())
                 ),
                 requestId,
                 companyCode,
@@ -199,14 +213,30 @@ public class OrchestratorController {
             return idempotencyKey.trim();
         }
         if (StringUtils.hasText(requestId)) {
-            return "REQ|" + commandName + "|" + requestId.trim();
+            String requestScoped = "REQ|" + commandName + "|" + requestId.trim();
+            if (requestScoped.length() <= MAX_IDEMPOTENCY_KEY_LENGTH) {
+                return requestScoped;
+            }
+            return "REQH|" + commandName + "|" + sha256Hex(requestScoped);
         }
         String source = commandName + "|" + canonicalText(companyCode) + "|" + canonicalText(payloadSignature);
         return "AUTO|" + commandName + "|" + sha256Hex(source);
     }
 
+    private static String normalizeFulfillmentStatus(String status) {
+        return canonicalText(status).toUpperCase(Locale.ROOT);
+    }
+
     private static String canonicalText(String value) {
         return value == null ? "" : value.trim();
+    }
+
+    private static String canonicalNullableText(String value) {
+        return value == null ? null : value.trim();
+    }
+
+    private static BigDecimal normalizeAmount(BigDecimal amount) {
+        return amount == null ? null : amount.stripTrailingZeros();
     }
 
     private static String canonicalAmount(BigDecimal amount) {
