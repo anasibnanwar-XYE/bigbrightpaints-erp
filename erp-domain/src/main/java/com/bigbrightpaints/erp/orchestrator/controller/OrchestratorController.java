@@ -52,8 +52,8 @@ public class OrchestratorController {
         String companyCode = requireCompanyCode();
         ApproveOrderRequest normalized = new ApproveOrderRequest(
                 orderId,
-                canonicalText(request.approvedBy()),
-                normalizeAmount(request.totalAmount()));
+                request.approvedBy(),
+                request.totalAmount());
         String traceId = commandDispatcher.approveOrder(
                 normalized,
                 resolveIdempotencyKey(
@@ -77,12 +77,13 @@ public class OrchestratorController {
                                                              @org.springframework.web.bind.annotation.RequestHeader(value = "X-Request-Id", required = false) String requestId,
                                                              Principal principal) {
         String companyCode = requireCompanyCode();
+        boolean hasExplicitIdempotencyKey = StringUtils.hasText(idempotencyKey);
         OrderFulfillmentRequest normalized = new OrderFulfillmentRequest(
                 normalizeFulfillmentStatus(request.status()),
                 canonicalNullableText(request.notes()));
         String traceId = commandDispatcher.updateOrderFulfillment(
                 orderId,
-                normalized,
+                hasExplicitIdempotencyKey ? request : normalized,
                 resolveIdempotencyKey(
                         idempotencyKey,
                         requestId,
@@ -105,8 +106,8 @@ public class OrchestratorController {
                                                          Principal principal) {
         String companyCode = requireCompanyCode();
         DispatchRequest normalized = new DispatchRequest(batchId,
-                canonicalText(request.requestedBy()),
-                normalizeAmount(request.postingAmount()));
+                request.requestedBy(),
+                request.postingAmount());
         String traceId = commandDispatcher.dispatchBatch(
                 normalized,
                 resolveIdempotencyKey(
@@ -149,10 +150,10 @@ public class OrchestratorController {
         String companyCode = requireCompanyCode();
         PayrollRunRequest normalized = new PayrollRunRequest(
                 request.payrollDate(),
-                canonicalText(request.initiatedBy()),
+                request.initiatedBy(),
                 request.debitAccountId(),
                 request.creditAccountId(),
-                normalizeAmount(request.postingAmount()));
+                request.postingAmount());
         String traceId = commandDispatcher.runPayroll(
                 normalized,
                 resolveIdempotencyKey(
@@ -233,10 +234,6 @@ public class OrchestratorController {
 
     private static String canonicalNullableText(String value) {
         return value == null ? null : value.trim();
-    }
-
-    private static BigDecimal normalizeAmount(BigDecimal amount) {
-        return amount == null ? null : amount.stripTrailingZeros();
     }
 
     private static String canonicalAmount(BigDecimal amount) {

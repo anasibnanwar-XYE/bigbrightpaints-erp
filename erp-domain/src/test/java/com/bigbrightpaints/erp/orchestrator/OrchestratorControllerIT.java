@@ -307,6 +307,35 @@ public class OrchestratorControllerIT extends AbstractIntegrationTest {
     }
 
     @Test
+    void fulfillment_explicit_idempotency_key_keeps_payload_case_contract() {
+        String token = loginToken();
+        HttpHeaders headers = authHeaders(token);
+        headers.add("Idempotency-Key", "idem-" + UUID.randomUUID());
+
+        Map<String, Object> lowerCaseBody = Map.of(
+                "status", "processing",
+                "notes", "explicit key payload contract");
+        Map<String, Object> upperCaseBody = Map.of(
+                "status", "PROCESSING",
+                "notes", "explicit key payload contract");
+
+        ResponseEntity<Map> firstResponse = rest.exchange(
+                "/api/v1/orchestrator/orders/" + seededOrderId + "/fulfillment",
+                HttpMethod.POST,
+                new HttpEntity<>(lowerCaseBody, headers),
+                Map.class);
+
+        ResponseEntity<Map> secondResponse = rest.exchange(
+                "/api/v1/orchestrator/orders/" + seededOrderId + "/fulfillment",
+                HttpMethod.POST,
+                new HttpEntity<>(upperCaseBody, headers),
+                Map.class);
+
+        assertThat(firstResponse.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        assertThat(secondResponse.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+    }
+
+    @Test
     void payroll_run_is_disabled_by_default_in_code_red() {
         String token = loginToken();
         HttpHeaders headers = authHeaders(token);
