@@ -29,6 +29,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Service
 public class DealerPortalService {
@@ -261,22 +262,15 @@ public class DealerPortalService {
         
         BigDecimal currentBalance = dealerLedgerService.currentBalance(dealer.getId());
         Map<String, Object> aging = buildAgingView(dealer);
-        
+
         List<Invoice> invoices = invoiceRepository.findByCompanyAndDealerOrderByIssueDateDesc(
                 dealer.getCompany(), dealer);
         long pendingInvoices = invoices.stream()
                 .filter(i -> i.getOutstandingAmount() != null && i.getOutstandingAmount().compareTo(BigDecimal.ZERO) > 0)
                 .count();
-        List<SalesOrder> orders = salesOrderRepository.findByCompanyAndDealerOrderByCreatedAtDesc(
-                dealer.getCompany(), dealer);
-        long pendingOrderCount = orders.stream()
-                .filter(this::contributesPendingCreditExposure)
-                .count();
-        BigDecimal pendingOrderExposure = orders.stream()
-                .filter(this::contributesPendingCreditExposure)
-                .map(order -> order.getTotalAmount() != null ? order.getTotalAmount() : BigDecimal.ZERO)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        
+        long pendingOrderCount = resolvePendingOrderCount(dealer, null);
+        BigDecimal pendingOrderExposure = resolvePendingOrderExposure(dealer, null);
+
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("dealerId", dealer.getId());
         result.put("dealerName", dealer.getName());
@@ -298,12 +292,16 @@ public class DealerPortalService {
         Dealer dealer = getCurrentDealer();
         List<SalesOrder> orders = salesOrderRepository.findByCompanyAndDealerOrderByCreatedAtDesc(
                 dealer.getCompany(), dealer);
-        
+        Set<Long> activeInvoicedOrderIds = invoiceRepository.findActiveSalesOrderIdsByCompanyAndDealer(
+                dealer.getCompany(),
+                dealer
+        );
+
         List<Map<String, Object>> orderList = new ArrayList<>();
         long pendingOrderCount = 0L;
         BigDecimal pendingOrderExposure = BigDecimal.ZERO;
         for (SalesOrder order : orders) {
-            boolean pendingCreditExposure = contributesPendingCreditExposure(order);
+            boolean pendingCreditExposure = contributesPendingCreditExposure(order, activeInvoicedOrderIds);
             Map<String, Object> orderMap = new LinkedHashMap<>();
             orderMap.put("id", order.getId());
             orderMap.put("orderNumber", order.getOrderNumber());
@@ -390,9 +388,18 @@ public class DealerPortalService {
         return exposure != null ? exposure : BigDecimal.ZERO;
     }
 
-    private boolean contributesPendingCreditExposure(SalesOrder order) {
+    private long resolvePendingOrderCount(Dealer dealer, Long excludeOrderId) {
+        return salesOrderRepository.countPendingCreditExposureByCompanyAndDealer(
+                dealer.getCompany(),
+                dealer,
+                SalesOrderCreditExposurePolicy.pendingCreditExposureStatuses(),
+                excludeOrderId
+        );
+    }
+
+    private boolean contributesPendingCreditExposure(SalesOrder order, Set<Long> activeInvoicedOrderIds) {
         return order != null
-                && order.getFulfillmentInvoiceId() == null
+                && (activeInvoicedOrderIds == null || !activeInvoicedOrderIds.contains(order.getId()))
                 && SalesOrderCreditExposurePolicy.isPendingCreditExposureStatus(order.getStatus());
     }
 }

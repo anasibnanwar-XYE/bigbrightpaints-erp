@@ -1877,7 +1877,7 @@ class SalesServiceTest {
     }
 
     @Test
-    void createOrderCreditLimitIncludesPendingOrderExposure() {
+    void createOrderCreditLimitIgnoresPendingOrderExposureProjection() {
         setupProduct("SKU3-EXPOSURE", BigDecimal.valueOf(200), BigDecimal.ZERO);
         FinishedGood finishedGood = buildFinishedGood("SKU3-EXPOSURE");
         finishedGood.setRevenueAccountId(5L);
@@ -1888,12 +1888,13 @@ class SalesServiceTest {
         when(dealerRepository.lockByCompanyAndId(company, dealer.getId())).thenReturn(Optional.of(dealer));
         when(orderNumberService.nextOrderNumber(company)).thenReturn("SO-EXPOSURE-42");
         when(dealerLedgerService.currentBalance(422L)).thenReturn(BigDecimal.valueOf(400));
-        when(salesOrderRepository.sumPendingCreditExposureByCompanyAndDealer(
-                eq(company),
-                eq(dealer),
-                ArgumentMatchers.anySet(),
-                ArgumentMatchers.isNull()))
-                .thenReturn(BigDecimal.valueOf(500));
+        when(salesOrderRepository.save(ArgumentMatchers.any(SalesOrder.class))).thenAnswer(invocation -> {
+            SalesOrder entity = invocation.getArgument(0);
+            if (entity.getId() == null) {
+                setField(entity, "id", 4220L);
+            }
+            return entity;
+        });
 
         SalesOrderRequest request = new SalesOrderRequest(
                 422L,
@@ -1906,12 +1907,78 @@ class SalesServiceTest {
                 null,
                 null);
 
-        assertThrows(IllegalStateException.class, () -> salesService.createOrder(request));
-        verify(salesOrderRepository).sumPendingCreditExposureByCompanyAndDealer(
-                eq(company),
-                eq(dealer),
+        SalesOrderDto dto = salesService.createOrder(request);
+
+        assertEquals("RESERVED", dto.status());
+        verify(salesOrderRepository, never()).sumPendingCreditExposureByCompanyAndDealer(
+                ArgumentMatchers.any(),
+                ArgumentMatchers.any(),
                 ArgumentMatchers.anySet(),
-                ArgumentMatchers.isNull());
+                ArgumentMatchers.any());
+    }
+
+    @Test
+    void createOrderCreditLimitFailureReturnsExistingIdempotentReplay() {
+        setupProduct("SKU3-RACE", BigDecimal.valueOf(200), BigDecimal.ZERO);
+        FinishedGood finishedGood = buildFinishedGood("SKU3-RACE");
+        finishedGood.setRevenueAccountId(5L);
+        when(finishedGoodRepository.findByCompanyAndProductCode(company, "SKU3-RACE"))
+                .thenReturn(Optional.of(finishedGood));
+        Dealer dealer = dealerWithCreditLimit(423L, BigDecimal.valueOf(1000));
+        when(companyEntityLookup.requireDealer(company, 423L)).thenReturn(dealer);
+        when(dealerRepository.lockByCompanyAndId(company, dealer.getId())).thenReturn(Optional.of(dealer));
+        when(orderNumberService.nextOrderNumber(company)).thenReturn("SO-RACE-42");
+        when(dealerLedgerService.currentBalance(423L)).thenReturn(BigDecimal.valueOf(950));
+
+        SalesOrder existing = new SalesOrder();
+        setField(existing, "id", 4230L);
+        existing.setCompany(company);
+        existing.setDealer(dealer);
+        existing.setOrderNumber("SO-RACE-42");
+        existing.setStatus("RESERVED");
+        existing.setCurrency("INR");
+        existing.setGstTreatment("NONE");
+        existing.setGstInclusive(false);
+        existing.setGstRate(BigDecimal.ZERO);
+        existing.setSubtotalAmount(BigDecimal.valueOf(200));
+        existing.setGstTotal(BigDecimal.ZERO);
+        existing.setGstRoundingAdjustment(BigDecimal.ZERO);
+        existing.setTotalAmount(BigDecimal.valueOf(200));
+        existing.setIdempotencyHash(DigestUtils.sha256Hex("423|200|INR|NONE|false|0||SKU3-RACE:1:200:0"));
+        SalesOrderItem existingItem = new SalesOrderItem();
+        setField(existingItem, "id", 4231L);
+        existingItem.setSalesOrder(existing);
+        existingItem.setProductCode("SKU3-RACE");
+        existingItem.setDescription("Desc");
+        existingItem.setQuantity(BigDecimal.ONE);
+        existingItem.setUnitPrice(BigDecimal.valueOf(200));
+        existingItem.setLineSubtotal(BigDecimal.valueOf(200));
+        existingItem.setGstRate(BigDecimal.ZERO);
+        existingItem.setGstAmount(BigDecimal.ZERO);
+        existingItem.setLineTotal(BigDecimal.valueOf(200));
+        existing.getItems().add(existingItem);
+
+        when(salesOrderRepository.findByCompanyAndIdempotencyKey(company, "SO-RACE-KEY"))
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(existing));
+
+        SalesOrderRequest request = new SalesOrderRequest(
+                423L,
+                BigDecimal.valueOf(200),
+                "INR",
+                null,
+                List.of(new SalesOrderItemRequest("SKU3-RACE", "Desc", BigDecimal.ONE, BigDecimal.valueOf(200), null)),
+                "NONE",
+                null,
+                null,
+                "SO-RACE-KEY",
+                "CREDIT");
+
+        SalesOrderDto dto = salesService.createOrder(request);
+
+        assertEquals(existing.getId(), dto.id());
+        assertEquals("SO-RACE-42", dto.orderNumber());
+        verify(salesOrderRepository, never()).save(any(SalesOrder.class));
     }
 
     @Test

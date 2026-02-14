@@ -104,11 +104,38 @@ public interface SalesOrderRepository extends JpaRepository<SalesOrder, Long> {
             from SalesOrder o
             where o.company = :company
               and o.dealer = :dealer
-              and o.fulfillmentInvoiceId is null
-              and upper(o.status) in :statuses
+              and o.status in :statuses
               and (:excludeOrderId is null or o.id <> :excludeOrderId)
+              and not exists (
+                    select 1
+                    from Invoice i
+                    where i.company = :company
+                      and i.salesOrder = o
+                      and (i.status is null or i.status not in ('DRAFT', 'VOID', 'REVERSED'))
+              )
             """)
     BigDecimal sumPendingCreditExposureByCompanyAndDealer(
+            @Param("company") Company company,
+            @Param("dealer") Dealer dealer,
+            @Param("statuses") Set<String> statuses,
+            @Param("excludeOrderId") Long excludeOrderId);
+
+    @Query("""
+            select count(o)
+            from SalesOrder o
+            where o.company = :company
+              and o.dealer = :dealer
+              and o.status in :statuses
+              and (:excludeOrderId is null or o.id <> :excludeOrderId)
+              and not exists (
+                    select 1
+                    from Invoice i
+                    where i.company = :company
+                      and i.salesOrder = o
+                      and (i.status is null or i.status not in ('DRAFT', 'VOID', 'REVERSED'))
+              )
+            """)
+    long countPendingCreditExposureByCompanyAndDealer(
             @Param("company") Company company,
             @Param("dealer") Dealer dealer,
             @Param("statuses") Set<String> statuses,

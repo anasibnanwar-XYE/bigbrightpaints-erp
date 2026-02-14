@@ -6,7 +6,7 @@ This document captures the current backend contract for sales-order payment mode
 ## Payment Modes
 - `CREDIT`:
   - Dealer credit-limit check is enforced at order create/update.
-  - Order contributes to credit-exposure workflow paths.
+  - Enforcement currently uses posted receivable outstanding + attempted order value.
 - `SPLIT`:
   - Dealer credit-limit check is enforced (split still has credit exposure).
   - Allocation-leg posting rules are tracked in `M15-S6` (pending hardening).
@@ -57,13 +57,15 @@ This document captures the current backend contract for sales-order payment mode
   - `CONFIRMED`
   - `ON_HOLD`
 - Exposure excludes rows already linked to fulfillment invoice markers.
+- Exposure also excludes orders with active invoice rows (`status` not in `DRAFT/VOID/REVERSED`) to avoid double counting partially invoiced multi-slip orders.
 - Dealer portal payloads now expose:
   - `pendingOrderExposure`
   - `creditUsed` (`totalOutstanding + pendingOrderExposure`)
   - `pendingOrderCount` and per-order `pendingCreditExposure` flags.
+- Pending exposure is currently a dealer-visibility/monitoring metric; hard credit-limit rejection remains tied to posted outstanding + attempted order amount until split-payment account mapping is fully unified (`M15-S6/M15-S7`).
 
 ## User-Facing Summary
 - Selecting `CASH` should not show credit-limit rejection.
-- Selecting `CREDIT` or `SPLIT` may show credit-limit rejection when projected exposure exceeds limit.
+- Selecting `CREDIT` or `SPLIT` may show credit-limit rejection when posted outstanding + attempted order exceeds dealer limit.
 - Dealer dashboard/aging credit usage includes pre-invoice pending production/order commitments.
 - Retry/replay of the same order request must return the same order outcome without creating duplicates, including requests crossing adjacent deployment versions.

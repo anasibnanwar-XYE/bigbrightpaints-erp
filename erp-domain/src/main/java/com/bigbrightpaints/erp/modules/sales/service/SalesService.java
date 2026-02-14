@@ -388,7 +388,14 @@ public class SalesService {
         }
         try {
             SalesOrderDto created = transactionTemplate.execute(status ->
-                    createOrderInternal(company, request, idempotencyKey, requestSignature));
+                    createOrderInternal(
+                            company,
+                            request,
+                            idempotencyKey,
+                            requestSignature,
+                            legacyDefaultPaymentIdempotencyKey,
+                            legacyDefaultPaymentRequestSignature
+                    ));
             if (created == null) {
                 throw new IllegalStateException("Failed to create sales order for " + idempotencyKey);
             }
@@ -412,7 +419,9 @@ public class SalesService {
     private SalesOrderDto createOrderInternal(Company company,
                                               SalesOrderRequest request,
                                               String idempotencyKey,
-                                              String requestSignature) {
+                                              String requestSignature,
+                                              String legacyDefaultPaymentIdempotencyKey,
+                                              String legacyDefaultPaymentRequestSignature) {
         Optional<SalesOrder> existing = salesOrderRepository.findByCompanyAndIdempotencyKey(company, idempotencyKey);
         if (existing.isPresent()) {
             return resolveExistingOrder(
@@ -449,7 +458,21 @@ public class SalesService {
         OrderAmountSummary amounts = mapOrderItems(order, items, gstTreatment, orderLevelRate, gstInclusive);
         validateTotalAmount(request.totalAmount(), amounts.total());
         if (requiresCreditLimitCheck(paymentMode)) {
-            enforceCreditLimit(company, order.getDealer(), amounts.total(), null);
+            try {
+                enforceCreditLimit(company, order.getDealer(), amounts.total());
+            } catch (IllegalStateException ex) {
+                Optional<SalesOrderDto> replay = resolveCreateOrderReplayAfterCreditFailure(
+                        company,
+                        idempotencyKey,
+                        legacyDefaultPaymentIdempotencyKey,
+                        requestSignature,
+                        legacyDefaultPaymentRequestSignature
+                );
+                if (replay.isPresent()) {
+                    return replay.get();
+                }
+                throw ex;
+            }
         }
         SalesOrder saved = salesOrderRepository.save(order);
 
@@ -470,6 +493,31 @@ public class SalesService {
 
         eventPublisher.publishEvent(new SalesOrderCreatedEvent(saved.getId(), company.getCode(), saved.getTotalAmount()));
         return toDto(saved);
+    }
+
+    private Optional<SalesOrderDto> resolveCreateOrderReplayAfterCreditFailure(Company company,
+                                                                                String idempotencyKey,
+                                                                                String legacyDefaultPaymentIdempotencyKey,
+                                                                                String requestSignature,
+                                                                                String legacyDefaultPaymentRequestSignature) {
+        Optional<SalesOrderDto> canonicalReplay = resolveOrderByIdempotencyKey(
+                company,
+                idempotencyKey,
+                requestSignature,
+                legacyDefaultPaymentRequestSignature
+        );
+        if (canonicalReplay.isPresent()) {
+            return canonicalReplay;
+        }
+        if (!StringUtils.hasText(legacyDefaultPaymentIdempotencyKey)) {
+            return Optional.empty();
+        }
+        return resolveOrderByIdempotencyKey(
+                company,
+                legacyDefaultPaymentIdempotencyKey,
+                requestSignature,
+                legacyDefaultPaymentRequestSignature
+        );
     }
 
     private SalesOrderDto resolveIdempotentOrderInternal(Company company,
@@ -653,7 +701,7 @@ public class SalesService {
         OrderAmountSummary amounts = mapOrderItems(order, items, gstTreatment, orderLevelRate, gstInclusive);
         validateTotalAmount(request.totalAmount(), amounts.total());
         if (requiresCreditLimitCheck(paymentMode)) {
-            enforceCreditLimit(order.getCompany(), order.getDealer(), amounts.total(), order.getId());
+            enforceCreditLimit(order.getCompany(), order.getDealer(), amounts.total());
         }
         salesOrderRepository.save(order);
         FinishedGoodsService.InventoryReservationResult reservationResult = finishedGoodsService.reserveForOrder(order);
@@ -1298,11 +1346,11 @@ public class SalesService {
         }
     }
 
-    private void enforceCreditLimit(Company company, Dealer dealer, BigDecimal orderTotal, Long excludeOrderId) {
+    private void enforceCreditLimit(Company company, Dealer dealer, BigDecimal orderTotal) {
         if (dealer == null || dealer.getId() == null) {
             return;
         }
-        Dealer lockedDealer = dealerRepository.lockByCompanyAndId(dealer.getCompany(), dealer.getId())
+        Dealer lockedDealer = dealerRepository.lockByCompanyAndId(company, dealer.getId())
                 .orElseThrow(() -> new IllegalArgumentException("Dealer not found"));
         BigDecimal limit = lockedDealer.getCreditLimit();
         if (limit == null || limit.compareTo(BigDecimal.ZERO) <= 0) {
@@ -1312,24 +1360,14 @@ public class SalesService {
         if (outstanding == null) {
             outstanding = BigDecimal.ZERO;
         }
-        BigDecimal pendingExposure = salesOrderRepository.sumPendingCreditExposureByCompanyAndDealer(
-                company,
-                lockedDealer,
-                SalesOrderCreditExposurePolicy.pendingCreditExposureStatuses(),
-                excludeOrderId
-        );
-        if (pendingExposure == null) {
-            pendingExposure = BigDecimal.ZERO;
-        }
         BigDecimal total = orderTotal == null ? BigDecimal.ZERO : orderTotal;
-        BigDecimal currentExposure = outstanding.add(pendingExposure);
-        BigDecimal projected = currentExposure.add(total);
+        BigDecimal projected = outstanding.add(total);
         if (projected.compareTo(limit) > 0) {
             throw new IllegalStateException(String.format(
-                    "Dealer %s credit limit exceeded. Limit %.2f, current exposure %.2f, attempted order %.2f",
+                    "Dealer %s credit limit exceeded. Limit %.2f, outstanding %.2f, attempted order %.2f",
                     lockedDealer.getName(),
                     limit,
-                    currentExposure,
+                    outstanding,
                     total));
         }
     }

@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.invoice.domain;
 
 import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
@@ -15,6 +16,7 @@ import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
 
@@ -28,6 +30,17 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
 
     @EntityGraph(attributePaths = {"lines", "dealer"})
     List<Invoice> findByCompanyAndDealerOrderByIssueDateDesc(Company company, Dealer dealer);
+
+    @Query("""
+            select distinct i.salesOrder.id
+            from Invoice i
+            where i.company = :company
+              and i.dealer = :dealer
+              and i.salesOrder is not null
+              and (i.status is null or i.status not in ('DRAFT', 'VOID', 'REVERSED'))
+            """)
+    Set<Long> findActiveSalesOrderIdsByCompanyAndDealer(@Param("company") Company company,
+                                                         @Param("dealer") Dealer dealer);
 
     @EntityGraph(attributePaths = {"lines", "dealer"})
     Page<Invoice> findByCompanyOrderByIssueDateDescIdDesc(Company company, Pageable pageable);
@@ -68,6 +81,12 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
 
     @EntityGraph(attributePaths = "lines")
     Optional<Invoice> findByCompanyAndId(Company company, Long id);
+
+    @EntityGraph(attributePaths = {"lines", "dealer", "salesOrder"})
+    Optional<Invoice> findByCompanyAndJournalEntry(Company company, JournalEntry journalEntry);
+
+    @EntityGraph(attributePaths = {"dealer", "salesOrder"})
+    List<Invoice> findByCompanyAndJournalEntry_IdIn(Company company, List<Long> journalEntryIds);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select i from Invoice i where i.company = :company and i.id = :id")

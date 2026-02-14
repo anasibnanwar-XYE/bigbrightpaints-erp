@@ -94,12 +94,13 @@ class DealerPortalControllerSecurityIT extends AbstractIntegrationTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         Map<?, ?> data = (Map<?, ?>) response.getBody().get("data");
         assertThat(asLong(data.get("dealerId"))).isEqualTo(dealerA.getId());
-        assertThat(data.get("invoiceCount")).isEqualTo(1);
+        assertThat(((Number) data.get("invoiceCount")).longValue()).isGreaterThanOrEqualTo(1L);
         List<?> invoices = (List<?>) data.get("invoices");
-        assertThat(invoices).hasSize(1);
-        Map<?, ?> invoice = (Map<?, ?>) invoices.getFirst();
-        assertThat(asLong(invoice.get("id"))).isEqualTo(invoiceA.getId());
-        assertThat(asLong(invoice.get("id"))).isNotEqualTo(invoiceB.getId());
+        assertThat(invoices)
+                .map(Map.class::cast)
+                .extracting(map -> asLong(map.get("id")))
+                .contains(invoiceA.getId())
+                .doesNotContain(invoiceB.getId());
     }
 
     @Test
@@ -208,6 +209,48 @@ class DealerPortalControllerSecurityIT extends AbstractIntegrationTest {
                 .orElseThrow();
         assertThat((Boolean) pendingOrder.get("pendingCreditExposure")).isTrue();
         assertThat(pendingOrder.get("status")).isEqualTo("PENDING_PRODUCTION");
+    }
+
+    @Test
+    @DisplayName("Dealer portal excludes invoiced orders from pending-credit exposure totals")
+    void dealerPortalOrders_excludesInvoicedOrdersFromPendingExposure() {
+        Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
+        SalesOrder invoicedOrder = upsertOrder(
+                company,
+                dealerA,
+                "SO-PORTAL-A-INVOICED",
+                "PENDING_PRODUCTION",
+                new BigDecimal("4000.00")
+        );
+        Invoice linkedInvoice = upsertInvoice(company, dealerA, "INV-PORTAL-A-LINKED");
+        linkedInvoice.setStatus("ISSUED");
+        linkedInvoice.setSalesOrder(invoicedOrder);
+        linkedInvoice.setSubtotal(new BigDecimal("3000.00"));
+        linkedInvoice.setTaxTotal(new BigDecimal("540.00"));
+        linkedInvoice.setTotalAmount(new BigDecimal("3540.00"));
+        linkedInvoice.setOutstandingAmount(new BigDecimal("1200.00"));
+        invoiceRepository.saveAndFlush(linkedInvoice);
+
+        HttpHeaders headers = authHeaders(DEALER_A_EMAIL, PASSWORD);
+        ResponseEntity<Map> response = rest.exchange(
+                "/api/v1/dealer-portal/orders",
+                HttpMethod.GET,
+                new HttpEntity<>(headers),
+                Map.class
+        );
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<?, ?> data = (Map<?, ?>) response.getBody().get("data");
+        assertThat(((Number) data.get("pendingOrderCount")).longValue()).isEqualTo(1L);
+        assertThat(new BigDecimal(String.valueOf(data.get("pendingOrderExposure"))))
+                .isEqualByComparingTo("5000.00");
+        List<?> orders = (List<?>) data.get("orders");
+        Map<?, ?> invoicedOrderMap = orders.stream()
+                .map(Map.class::cast)
+                .filter(order -> invoicedOrder.getOrderNumber().equals(order.get("orderNumber")))
+                .findFirst()
+                .orElseThrow();
+        assertThat((Boolean) invoicedOrderMap.get("pendingCreditExposure")).isFalse();
     }
 
     private HttpHeaders authHeaders(String email, String password) {
