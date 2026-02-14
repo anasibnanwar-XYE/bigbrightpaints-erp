@@ -503,8 +503,8 @@ public class SalesService {
                 .append('|').append(normalizeText(request.gstTreatment()))
                 .append('|').append(Boolean.TRUE.equals(request.gstInclusive()))
                 .append('|').append(amountToken(request.gstRate()))
-                .append('|').append(normalizeText(request.notes()))
-                .append('|').append(normalizeOrderPaymentMode(request.paymentMode()));
+                .append('|').append(normalizeText(request.notes()));
+        appendPaymentModeSignatureToken(signature, normalizeOrderPaymentMode(request.paymentMode()));
         request.items().stream()
                 .sorted(orderRequestComparator())
                 .forEach(item -> signature.append('|')
@@ -523,8 +523,8 @@ public class SalesService {
                 .append('|').append(normalizeText(order.getGstTreatment()))
                 .append('|').append(order.isGstInclusive())
                 .append('|').append(amountToken(order.getGstRate()))
-                .append('|').append(normalizeText(order.getNotes()))
-                .append('|').append(DEFAULT_ORDER_PAYMENT_MODE);
+                .append('|').append(normalizeText(order.getNotes()));
+        appendPaymentModeSignatureToken(signature, DEFAULT_ORDER_PAYMENT_MODE);
         order.getItems().stream()
                 .sorted(orderItemComparator())
                 .forEach(item -> signature.append('|')
@@ -1277,6 +1277,12 @@ public class SalesService {
 
     private boolean requiresCreditLimitCheck(String paymentMode) {
         return CREDIT_EXPOSURE_PAYMENT_MODES.contains(paymentMode);
+    }
+
+    private void appendPaymentModeSignatureToken(StringBuilder signature, String normalizedPaymentMode) {
+        if (!DEFAULT_ORDER_PAYMENT_MODE.equals(normalizedPaymentMode)) {
+            signature.append('|').append(normalizedPaymentMode);
+        }
     }
 
     /**

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
 import java.util.List;
+import org.apache.commons.codec.digest.DigestUtils;
 import org.junit.jupiter.api.Test;
 
 class SalesOrderRequestTest {
@@ -63,5 +64,26 @@ class SalesOrderRequestTest {
         SalesOrderRequest two = new SalesOrderRequest(null, new BigDecimal("100"), "INR", null, List.of(item),
                 "NONE", BigDecimal.ZERO, false, null);
         assertThat(one.resolveIdempotencyKey()).isEqualTo(two.resolveIdempotencyKey());
+    }
+
+    @Test
+    void resolveIdempotencyKey_defaultCreditMode_matchesLegacyFormat() {
+        SalesOrderItemRequest item = new SalesOrderItemRequest("FG-1", "Item", new BigDecimal("2"), new BigDecimal("10"), null);
+        SalesOrderRequest request = new SalesOrderRequest(7L, new BigDecimal("100"), "inr", null, List.of(item),
+                "NONE", BigDecimal.ZERO, false, null, "CREDIT");
+
+        String legacyPayload = "7|100|INR|FG-1:2:10";
+        assertThat(request.resolveIdempotencyKey()).isEqualTo(DigestUtils.sha256Hex(legacyPayload));
+    }
+
+    @Test
+    void resolveIdempotencyKey_nonDefaultPaymentMode_changesHash() {
+        SalesOrderItemRequest item = new SalesOrderItemRequest("FG-1", "Item", new BigDecimal("2"), new BigDecimal("10"), null);
+        SalesOrderRequest defaultCredit = new SalesOrderRequest(7L, new BigDecimal("100"), "INR", null, List.of(item),
+                "NONE", BigDecimal.ZERO, false, null, null);
+        SalesOrderRequest cash = new SalesOrderRequest(7L, new BigDecimal("100"), "INR", null, List.of(item),
+                "NONE", BigDecimal.ZERO, false, null, "cash");
+
+        assertThat(cash.resolveIdempotencyKey()).isNotEqualTo(defaultCredit.resolveIdempotencyKey());
     }
 }

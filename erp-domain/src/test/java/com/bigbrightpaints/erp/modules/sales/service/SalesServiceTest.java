@@ -46,6 +46,7 @@ import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlip;
 import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipLine;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyAccountingSettingsService;
+import org.apache.commons.codec.digest.DigestUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -58,6 +59,7 @@ import org.mockito.quality.Strictness;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.TransactionStatus;
@@ -1960,6 +1962,65 @@ class SalesServiceTest {
 
         assertEquals(ErrorCode.VALIDATION_INVALID_INPUT, ex.getErrorCode());
         verifyNoInteractions(dealerLedgerService);
+    }
+
+    @Test
+    void createOrderIdempotentRetry_acceptsLegacyStoredSignatureWithoutPaymentModeSegment() {
+        setupProduct("SKU3-IDEMP", BigDecimal.valueOf(100), BigDecimal.ZERO);
+        FinishedGood finishedGood = buildFinishedGood("SKU3-IDEMP");
+        finishedGood.setRevenueAccountId(5L);
+        when(finishedGoodRepository.findByCompanyAndProductCode(company, "SKU3-IDEMP"))
+                .thenReturn(Optional.of(finishedGood));
+        when(orderNumberService.nextOrderNumber(company)).thenReturn("SO-IDEMP-1");
+        when(salesOrderRepository.save(ArgumentMatchers.any(SalesOrder.class)))
+                .thenThrow(new DataIntegrityViolationException("duplicate idempotency key"));
+
+        SalesOrder existing = new SalesOrder();
+        setField(existing, "id", 901L);
+        existing.setCompany(company);
+        existing.setOrderNumber("SO-IDEMP-1");
+        existing.setStatus("RESERVED");
+        existing.setCurrency("INR");
+        existing.setGstTreatment("NONE");
+        existing.setGstInclusive(false);
+        existing.setGstRate(BigDecimal.ZERO);
+        existing.setSubtotalAmount(BigDecimal.valueOf(100));
+        existing.setGstTotal(BigDecimal.ZERO);
+        existing.setGstRoundingAdjustment(BigDecimal.ZERO);
+        existing.setTotalAmount(BigDecimal.valueOf(100));
+        existing.setIdempotencyHash(DigestUtils.sha256Hex("null|100|INR|NONE|false|0||SKU3-IDEMP:1:100:0"));
+        SalesOrderItem existingItem = new SalesOrderItem();
+        setField(existingItem, "id", 911L);
+        existingItem.setSalesOrder(existing);
+        existingItem.setProductCode("SKU3-IDEMP");
+        existingItem.setDescription("Desc");
+        existingItem.setQuantity(BigDecimal.ONE);
+        existingItem.setUnitPrice(BigDecimal.valueOf(100));
+        existingItem.setLineSubtotal(BigDecimal.valueOf(100));
+        existingItem.setGstRate(BigDecimal.ZERO);
+        existingItem.setGstAmount(BigDecimal.ZERO);
+        existingItem.setLineTotal(BigDecimal.valueOf(100));
+        existing.getItems().add(existingItem);
+
+        when(salesOrderRepository.findByCompanyAndIdempotencyKey(company, "SO-IDEMP-KEY"))
+                .thenReturn(Optional.of(existing));
+
+        SalesOrderRequest request = new SalesOrderRequest(
+                null,
+                BigDecimal.valueOf(100),
+                "INR",
+                null,
+                List.of(new SalesOrderItemRequest("SKU3-IDEMP", "Desc", BigDecimal.ONE, BigDecimal.valueOf(100), null)),
+                "NONE",
+                null,
+                null,
+                "SO-IDEMP-KEY",
+                "CREDIT");
+
+        SalesOrderDto dto = salesService.createOrder(request);
+
+        assertEquals(existing.getId(), dto.id());
+        assertEquals("SO-IDEMP-1", dto.orderNumber());
     }
 
     @Test

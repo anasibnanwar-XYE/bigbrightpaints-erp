@@ -20,6 +20,8 @@ public record SalesOrderRequest(
         String idempotencyKey,
         String paymentMode
 ) {
+    private static final String DEFAULT_PAYMENT_MODE = "CREDIT";
+
     public SalesOrderRequest(
             Long dealerId,
             BigDecimal totalAmount,
@@ -36,7 +38,7 @@ public record SalesOrderRequest(
 
     public String normalizedPaymentMode() {
         if (paymentMode == null || paymentMode.isBlank()) {
-            return "CREDIT";
+            return DEFAULT_PAYMENT_MODE;
         }
         return paymentMode.trim().toUpperCase(Locale.ROOT);
     }
@@ -46,10 +48,13 @@ public record SalesOrderRequest(
             return idempotencyKey.trim();
         }
         StringBuilder sb = new StringBuilder();
+        String normalizedPaymentMode = normalizedPaymentMode();
         sb.append(dealerId == null ? "null" : dealerId)
                 .append('|').append(totalAmount)
-                .append('|').append(currency == null ? "" : currency.trim().toUpperCase(Locale.ROOT))
-                .append('|').append(normalizedPaymentMode());
+                .append('|').append(currency == null ? "" : currency.trim().toUpperCase(Locale.ROOT));
+        if (!DEFAULT_PAYMENT_MODE.equals(normalizedPaymentMode)) {
+            sb.append('|').append(normalizedPaymentMode);
+        }
         for (SalesOrderItemRequest item : items) {
             sb.append('|')
                     .append(item.productCode() == null ? "" : item.productCode().trim().toUpperCase(Locale.ROOT))
