@@ -150,6 +150,43 @@ public class OrchestratorControllerIT extends AbstractIntegrationTest {
     }
 
     @Test
+    void approve_order_request_id_fallback_normalizes_equivalent_payload_replay() {
+        String token = loginToken();
+        HttpHeaders headers = authHeaders(token);
+        headers.add("X-Request-Id", "req-" + UUID.randomUUID());
+        long outboxBefore = outboxEventRepository.count();
+
+        Map<String, Object> firstBody = Map.of(
+                "orderId", String.valueOf(seededOrderId),
+                "approvedBy", " orch@bbp.com ",
+                "totalAmount", new BigDecimal("5000.00")
+        );
+
+        Map<String, Object> secondBody = Map.of(
+                "orderId", String.valueOf(seededOrderId),
+                "approvedBy", "orch@bbp.com",
+                "totalAmount", new BigDecimal("5000")
+        );
+
+        ResponseEntity<Map> firstResponse = rest.exchange(
+                "/api/v1/orchestrator/orders/" + seededOrderId + "/approve",
+                HttpMethod.POST,
+                new HttpEntity<>(firstBody, headers),
+                Map.class);
+
+        ResponseEntity<Map> secondResponse = rest.exchange(
+                "/api/v1/orchestrator/orders/" + seededOrderId + "/approve",
+                HttpMethod.POST,
+                new HttpEntity<>(secondBody, headers),
+                Map.class);
+
+        assertThat(firstResponse.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        assertThat(secondResponse.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        assertThat(secondResponse.getBody().get("traceId")).isEqualTo(firstResponse.getBody().get("traceId"));
+        assertThat(outboxEventRepository.count()).isEqualTo(outboxBefore + 1);
+    }
+
+    @Test
     void approve_order_rejects_idempotency_mismatch() {
         String token = loginToken();
         HttpHeaders headers = authHeaders(token);

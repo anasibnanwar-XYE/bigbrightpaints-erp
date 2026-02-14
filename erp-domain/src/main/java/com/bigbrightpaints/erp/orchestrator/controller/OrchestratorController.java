@@ -50,12 +50,17 @@ public class OrchestratorController {
                                                              @org.springframework.web.bind.annotation.RequestHeader(value = "X-Request-Id", required = false) String requestId,
                                                              Principal principal) {
         String companyCode = requireCompanyCode();
-        ApproveOrderRequest normalized = new ApproveOrderRequest(
+        boolean hasExplicitIdempotencyKey = StringUtils.hasText(idempotencyKey);
+        ApproveOrderRequest raw = new ApproveOrderRequest(
                 orderId,
                 request.approvedBy(),
                 request.totalAmount());
+        ApproveOrderRequest normalized = new ApproveOrderRequest(
+                orderId,
+                canonicalText(request.approvedBy()),
+                normalizeAmount(request.totalAmount()));
         String traceId = commandDispatcher.approveOrder(
-                normalized,
+                hasExplicitIdempotencyKey ? raw : normalized,
                 resolveIdempotencyKey(
                         idempotencyKey,
                         requestId,
@@ -105,11 +110,15 @@ public class OrchestratorController {
                                                          @org.springframework.web.bind.annotation.RequestHeader(value = "X-Request-Id", required = false) String requestId,
                                                          Principal principal) {
         String companyCode = requireCompanyCode();
-        DispatchRequest normalized = new DispatchRequest(batchId,
+        boolean hasExplicitIdempotencyKey = StringUtils.hasText(idempotencyKey);
+        DispatchRequest raw = new DispatchRequest(batchId,
                 request.requestedBy(),
                 request.postingAmount());
+        DispatchRequest normalized = new DispatchRequest(batchId,
+                canonicalText(request.requestedBy()),
+                normalizeAmount(request.postingAmount()));
         String traceId = commandDispatcher.dispatchBatch(
-                normalized,
+                hasExplicitIdempotencyKey ? raw : normalized,
                 resolveIdempotencyKey(
                         idempotencyKey,
                         requestId,
@@ -148,14 +157,21 @@ public class OrchestratorController {
                                                            @org.springframework.web.bind.annotation.RequestHeader(value = "X-Request-Id", required = false) String requestId,
                                                            Principal principal) {
         String companyCode = requireCompanyCode();
-        PayrollRunRequest normalized = new PayrollRunRequest(
+        boolean hasExplicitIdempotencyKey = StringUtils.hasText(idempotencyKey);
+        PayrollRunRequest raw = new PayrollRunRequest(
                 request.payrollDate(),
                 request.initiatedBy(),
                 request.debitAccountId(),
                 request.creditAccountId(),
                 request.postingAmount());
+        PayrollRunRequest normalized = new PayrollRunRequest(
+                request.payrollDate(),
+                canonicalText(request.initiatedBy()),
+                request.debitAccountId(),
+                request.creditAccountId(),
+                normalizeAmount(request.postingAmount()));
         String traceId = commandDispatcher.runPayroll(
-                normalized,
+                hasExplicitIdempotencyKey ? raw : normalized,
                 resolveIdempotencyKey(
                         idempotencyKey,
                         requestId,
@@ -234,6 +250,10 @@ public class OrchestratorController {
 
     private static String canonicalNullableText(String value) {
         return value == null ? null : value.trim();
+    }
+
+    private static BigDecimal normalizeAmount(BigDecimal amount) {
+        return amount == null ? null : amount.stripTrailingZeros();
     }
 
     private static String canonicalAmount(BigDecimal amount) {
