@@ -565,6 +565,8 @@ public class FinishedGoodsService {
                 reservations.stream()
                         .map(r -> r.getFinishedGood().getId())
                         .collect(Collectors.toSet()));
+        // Guard against stale WAC snapshots loaded before dispatch starts.
+        lockedGoods.keySet().forEach(wacCache::remove);
 
         Map<String, DispatchPostingBuilder> postingBuilders = new HashMap<>();
         List<FinishedGoodBatch> batchesToSave = new ArrayList<>();
@@ -879,6 +881,8 @@ public class FinishedGoodsService {
             line.setShippedQuantity(shipped);
             line.setBackorderQuantity(backorder);
             line.setNotes(conf.notes());
+            // Re-resolve cost from current persistence state instead of stale cache snapshots.
+            wacCache.remove(fg.getId());
             BigDecimal unitCost = resolveDispatchUnitCost(fg, batch);
             requireNonZeroDispatchCost(fg, unitCost, shipped);
             line.setUnitCost(unitCost);

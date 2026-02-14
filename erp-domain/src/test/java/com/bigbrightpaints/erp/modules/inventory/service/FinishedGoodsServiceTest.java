@@ -91,6 +91,73 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void dispatchInvalidatesStaleWacCacheBeforePostingCost() {
+        Company company = seedCompany("WAC-DISP-CACHE");
+        FinishedGood fg = createFinishedGood(company, "FG-WAC-DISP-CACHE", new BigDecimal("10"), new BigDecimal("5"), "WAC");
+        FinishedGoodBatch batch = createBatch(fg, "BATCH-WAC-DISP-CACHE", new BigDecimal("10"), BigDecimal.ZERO, new BigDecimal("20"));
+        SalesOrder order = createOrder(company, "SO-WAC-DISP-CACHE-" + UUID.randomUUID(), fg.getProductCode(), new BigDecimal("5"));
+        PackagingSlip slip = createSlip(company, order, "RESERVED", batch, new BigDecimal("5"));
+        createReservation(order, fg, batch, new BigDecimal("5"));
+
+        BigDecimal primedCachedCost = finishedGoodsService.currentWeightedAverageCost(fg);
+        assertThat(primedCachedCost).isEqualByComparingTo(new BigDecimal("20"));
+
+        batch.setUnitCost(new BigDecimal("37"));
+        finishedGoodBatchRepository.saveAndFlush(batch);
+
+        finishedGoodsService.markSlipDispatched(order.getId(), slip);
+
+        InventoryMovement dispatchMovement = inventoryMovementRepository
+                .findByReferenceTypeAndReferenceIdOrderByCreatedAtAsc(InventoryReference.SALES_ORDER, order.getId().toString())
+                .stream()
+                .filter(mv -> "DISPATCH".equalsIgnoreCase(mv.getMovementType()))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(dispatchMovement.getUnitCost()).isEqualByComparingTo(new BigDecimal("37"));
+        assertThat(dispatchMovement.getUnitCost()).isNotEqualByComparingTo(primedCachedCost);
+    }
+
+    @Test
+    void confirmDispatchInvalidatesStaleWacCacheBeforePostingCost() {
+        Company company = seedCompany("WAC-CONFIRM-CACHE");
+        FinishedGood fg = createFinishedGood(company, "FG-WAC-CONFIRM-CACHE", new BigDecimal("10"), new BigDecimal("5"), "WAC");
+        FinishedGoodBatch batch = createBatch(fg, "BATCH-WAC-CONFIRM-CACHE", new BigDecimal("10"), BigDecimal.ZERO, new BigDecimal("22"));
+        SalesOrder order = createOrder(company, "SO-WAC-CONFIRM-CACHE-" + UUID.randomUUID(), fg.getProductCode(), new BigDecimal("5"));
+        PackagingSlip slip = createSlip(company, order, "RESERVED", batch, new BigDecimal("5"));
+        createReservation(order, fg, batch, new BigDecimal("5"));
+
+        BigDecimal primedCachedCost = finishedGoodsService.currentWeightedAverageCost(fg);
+        assertThat(primedCachedCost).isEqualByComparingTo(new BigDecimal("22"));
+
+        batch.setUnitCost(new BigDecimal("31"));
+        finishedGoodBatchRepository.saveAndFlush(batch);
+
+        PackagingSlipLine line = slip.getLines().getFirst();
+        DispatchConfirmationRequest request = new DispatchConfirmationRequest(
+                slip.getId(),
+                List.of(new DispatchConfirmationRequest.LineConfirmation(line.getId(), new BigDecimal("5"), null)),
+                null,
+                null,
+                null);
+
+        finishedGoodsService.confirmDispatch(request, "tester");
+
+        PackagingSlip refreshedSlip = packagingSlipRepository.findByIdAndCompany(slip.getId(), company).orElseThrow();
+        assertThat(refreshedSlip.getLines().getFirst().getUnitCost()).isEqualByComparingTo(new BigDecimal("31"));
+
+        InventoryMovement dispatchMovement = inventoryMovementRepository
+                .findByReferenceTypeAndReferenceIdOrderByCreatedAtAsc(InventoryReference.SALES_ORDER, order.getId().toString())
+                .stream()
+                .filter(mv -> "DISPATCH".equalsIgnoreCase(mv.getMovementType()))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(dispatchMovement.getUnitCost()).isEqualByComparingTo(new BigDecimal("31"));
+        assertThat(dispatchMovement.getUnitCost()).isNotEqualByComparingTo(primedCachedCost);
+    }
+
+    @Test
     void dispatchUsesLegacyWeightedAverageAliasUnderTurkishLocale() {
         Locale previous = Locale.getDefault();
         Locale.setDefault(Locale.forLanguageTag("tr-TR"));
