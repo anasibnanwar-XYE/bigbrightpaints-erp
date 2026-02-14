@@ -4187,6 +4187,13 @@ class AccountingServiceTest {
         settlementCashAccount.setName("Cash");
         ReflectionTestUtils.setField(settlementCashAccount, "id", 20L);
 
+        Account adjustmentAssetAccount = new Account();
+        adjustmentAssetAccount.setCompany(company);
+        adjustmentAssetAccount.setType(AccountType.ASSET);
+        adjustmentAssetAccount.setCode("ADJ-ASSET");
+        adjustmentAssetAccount.setName("Adjustment Asset");
+        ReflectionTestUtils.setField(adjustmentAssetAccount, "id", 99L);
+
         JournalEntry existingEntry = new JournalEntry();
         existingEntry.getLines().add(journalLine(
                 existingEntry,
@@ -4200,6 +4207,13 @@ class AccountingServiceTest {
                 settlementCashAccount,
                 "payment-bank",
                 new BigDecimal("40.00"),
+                BigDecimal.ZERO
+        ));
+        existingEntry.getLines().add(journalLine(
+                existingEntry,
+                adjustmentAssetAccount,
+                "non-payment-adjustment",
+                new BigDecimal("5.00"),
                 BigDecimal.ZERO
         ));
         existing.setJournalEntry(existingEntry);

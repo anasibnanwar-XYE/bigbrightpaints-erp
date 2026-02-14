@@ -2409,6 +2409,10 @@ public class AccountingService {
             return Optional.empty();
         }
         Map<DealerPaymentSignature, Integer> requestPaymentSignatures = dealerPaymentSignatureCountsFromRequest(request);
+        Set<Long> requestPaymentAccountIds = requestPaymentSignatures.keySet().stream()
+                .map(DealerPaymentSignature::accountId)
+                .filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
 
         Long dealerId = request.dealerId();
         Set<Long> invoiceIds = request.allocations().stream()
@@ -2447,7 +2451,8 @@ public class AccountingService {
             if (!allocationSignatureCountsFromRows(existing).equals(requestSignatures)) {
                 continue;
             }
-            if (!dealerPaymentSignatureCountsFromExistingRows(existing).equals(requestPaymentSignatures)) {
+            if (!dealerPaymentSignatureCountsFromExistingRows(existing, requestPaymentAccountIds)
+                    .equals(requestPaymentSignatures)) {
                 continue;
             }
             return Optional.of(candidateKey);
@@ -4844,9 +4849,10 @@ public class AccountingService {
     }
 
     private Map<DealerPaymentSignature, Integer> dealerPaymentSignatureCountsFromExistingRows(
-            List<PartnerSettlementAllocation> allocations) {
+            List<PartnerSettlementAllocation> allocations,
+            Set<Long> paymentAccountIds) {
         Map<DealerPaymentSignature, Integer> counts = new HashMap<>();
-        if (allocations == null || allocations.isEmpty()) {
+        if (allocations == null || allocations.isEmpty() || paymentAccountIds == null || paymentAccountIds.isEmpty()) {
             return counts;
         }
         JournalEntry entry = allocations.stream()
@@ -4861,6 +4867,10 @@ public class AccountingService {
             if (line == null || line.getAccount() == null || line.getAccount().getId() == null) {
                 continue;
             }
+            Long accountId = line.getAccount().getId();
+            if (!paymentAccountIds.contains(accountId)) {
+                continue;
+            }
             BigDecimal debit = normalizeAmount(line.getDebit());
             if (debit.compareTo(BigDecimal.ZERO) <= 0) {
                 continue;
@@ -4872,7 +4882,7 @@ public class AccountingService {
             if (isReceivableAccount(account) || isPayableAccount(account)) {
                 continue;
             }
-            counts.merge(new DealerPaymentSignature(account.getId(), debit), 1, Integer::sum);
+            counts.merge(new DealerPaymentSignature(accountId, debit), 1, Integer::sum);
         }
         return counts;
     }
