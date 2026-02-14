@@ -5154,3 +5154,101 @@ Queue Rotation (Auto-Replenish)
 - [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
 - [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
 - [ready] M11-S6 approval queue runtime contract test slice (assert FE docs match live `AdminApprovalItemDto` payload fields and action endpoint semantics)
+
+Continuity Check
+- 2026-02-14T12:56:26+05:30
+- e6a4f36a review-chain note: previously logged subagent verdict (`019c5a98-9d60-7b42-a537-61b46666fa3d`) remains present in active tail; no historical gap.
+
+Completed Slice (Committed)
+- 2026-02-14: `d9864097`
+  - test(factory): enforce WAC null-average fallback parity.
+  - M14-S42 execution (initial pass):
+    - added `consumePackagingMaterial_wacNullAverageFallsBackToBatchCostDeterministically`.
+    - added `consumePackagingMaterial_wacNullAverageRejectsZeroCostWhenPackagingRequired`.
+    - added `TS_FactoryRawMaterialWacFallbackContractTest` to lock WAC-null fallback contract markers across packaging/bulk/production services.
+  - Verification:
+    - `cd /home/realnigga/Desktop/orchestrator_erp/erp-domain && mvn -B -ntp -Dtest=PackagingMaterialServiceTest#consumePackagingMaterial_wacNullAverageFallsBackToBatchCostDeterministically,PackagingMaterialServiceTest#consumePackagingMaterial_wacNullAverageRejectsZeroCostWhenPackagingRequired,TS_FactoryRawMaterialWacFallbackContractTest test` -> pass (4 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `d9864097`
+- `codex review --commit d9864097`:
+  - final verdict: test-only commit, no actionable regression identified in changed lines.
+- Review subagent `019c5af7-96ac-72b1-ac4e-9ee57ab37cbb`:
+  - findings: high/medium test-efficacy gaps (fallback ambiguity + static-contract brittleness).
+  - disposition: fixed in follow-up commits `eace4fcd`, `92d8d2f9`, `5c8ebb99`.
+
+Follow-up Hardening (Committed)
+- 2026-02-14: `eace4fcd`
+  - test(factory): harden null-wac fallback regression guards.
+  - changed null-WAC packaging test to partial consumption (`3` units, expected total `7.00`) to distinguish batch fallback from weighted-average misuse.
+  - tightened truth-suite fallback checks to ordered signature assertions.
+  - Verification:
+    - `cd /home/realnigga/Desktop/orchestrator_erp/erp-domain && mvn -B -ntp -Dtest=PackagingMaterialServiceTest#consumePackagingMaterial_wacNullAverageFallsBackToBatchCostDeterministically,PackagingMaterialServiceTest#consumePackagingMaterial_wacNullAverageRejectsZeroCostWhenPackagingRequired,TS_FactoryRawMaterialWacFallbackContractTest test` -> pass (4 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `eace4fcd`
+- `codex review --commit eace4fcd`:
+  - final verdict: test adjustments aligned with current service behavior; no concrete regression introduced.
+- Review subagent `019c5afc-f402-7c23-ba4a-e84221a2e320`:
+  - findings: medium/low residuals (bulk/production runtime coverage and movement-level validation still incomplete).
+  - disposition: addressed in `92d8d2f9` and `5c8ebb99`.
+
+Follow-up Hardening (Committed)
+- 2026-02-14: `92d8d2f9`
+  - test(factory): add runtime null-wac fallback movement guards.
+  - added runtime movement-level assertions to `PackagingMaterialServiceTest` fallback test.
+  - added `consumePackagingMaterials_wacNullAverageFallsBackToBatchUnitCosts` in `BulkPackingServiceIdempotencyTest` (private-path runtime guard for legacy bulk fallback branch).
+  - added `ProductionLogServiceCostingFallbackTest` for production issue-path null-WAC fallback movement unit-cost allocation.
+  - Verification:
+    - `cd /home/realnigga/Desktop/orchestrator_erp/erp-domain && mvn -B -ntp -Dtest=PackagingMaterialServiceTest#consumePackagingMaterial_wacNullAverageFallsBackToBatchCostDeterministically,PackagingMaterialServiceTest#consumePackagingMaterial_wacNullAverageRejectsZeroCostWhenPackagingRequired,BulkPackingServiceIdempotencyTest#consumePackagingMaterials_wacNullAverageFallsBackToBatchUnitCosts,ProductionLogServiceCostingFallbackTest,TS_FactoryRawMaterialWacFallbackContractTest test` -> pass (6 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `92d8d2f9`
+- `codex review --commit 92d8d2f9`:
+  - final verdict: patch is correct; no actionable defect identified.
+- Review subagent `019c5b04-d1db-7cf3-8968-c36fa8d9d2db`:
+  - findings: medium/low (lenient context stub risk + ordering brittleness).
+  - disposition: fixed in `5c8ebb99`.
+
+Follow-up Stabilization (Committed)
+- 2026-02-14: `5c8ebb99`
+  - test(factory): tighten fallback test isolation and stability.
+  - removed class-level `lenient` company-context stub; restored strict per-test stubbing via `stubCurrentCompany()` for pack() scenarios only.
+  - converted movement assertions to order-agnostic `anySatisfy`/`allSatisfy` checks while preserving required cost/quantity invariants.
+  - Verification:
+    - `cd /home/realnigga/Desktop/orchestrator_erp/erp-domain && mvn -B -ntp -Dtest=PackagingMaterialServiceTest#consumePackagingMaterial_wacNullAverageFallsBackToBatchCostDeterministically,PackagingMaterialServiceTest#consumePackagingMaterial_wacNullAverageRejectsZeroCostWhenPackagingRequired,BulkPackingServiceIdempotencyTest#consumePackagingMaterials_wacNullAverageFallsBackToBatchUnitCosts,ProductionLogServiceCostingFallbackTest,TS_FactoryRawMaterialWacFallbackContractTest test` -> pass (6 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `5c8ebb99`
+- `codex review --commit 5c8ebb99`:
+  - final verdict: test-only setup/assertion tightening; no concrete regression introduced.
+- Review subagent `019c5b08-b805-72c0-8592-b01469c7d88a`:
+  - findings: none.
+  - residual risk note: fallback coverage remains predominantly unit-level (reflection/private-path), so integration-level journal-linkage regression checks remain future hardening candidates.
+
+Completed Slice (Resolved)
+- M14-S42 raw-material WAC null-average factory-flow parity matrix
+  - closure basis: `d9864097` + `eace4fcd` + `92d8d2f9` + `5c8ebb99` review chain converged with no open actionable findings.
+
+Loop Update
+- 2026-02-14T12:56:26+05:30
+- tracked_now_ts: `2026-02-14T12:56:26+05:30`
+- tracked_elapsed: `59h 02m 34s`
+- active_in_progress: `M14-S43 catalog-import winner provenance cross-company fence (same idempotency key reused across different companies must remain company-scoped with no winner/loser bleed-over)`
+- continuity_recheck: `0355149b` / `f9fd898f` / `a1d05cd7` evidence chain remains aligned.
+
+Queue Rotation (Auto-Replenish)
+- [completed] M14-S42 raw-material WAC null-average factory-flow parity matrix (bulk packing/packaging/production issue flows must apply deterministic batch-cost fallback without zero-cost understatement)
+- [in_progress] M14-S43 catalog-import winner provenance cross-company fence (same idempotency key reused across different companies must remain company-scoped with no winner/loser bleed-over)
+- [ready] M14-S44 catalog-import idempotency key canonicalization abuse guard (whitespace/case-varied key replays must remain deterministic, company-scoped, and side-effect-free)
+- [ready] M14-S45 catalog-import MIME parameter injection guard (allowlist-token prefix/suffix tricks and malformed parameter tails must remain fail-closed with zero persistence side effects)
+- [ready] M14-S46 raw-material malformed-costing canonicalization fence (create/update/import vectors must reject non-canonical costing tokens uniformly and preserve entity state across retries)
+- [ready] M14-S47 finished-good WAC cache drift replay guard (dispatch + adjustment retry chains must invalidate cached weighted-average snapshots so replayed postings never reuse stale pre-mutation unit costs)
+- [ready] M14-S48 costing-selection enum drift guard (new/legacy costing tokens must remain centrally mapped via `CostingMethodUtils` with no per-module fallback forks)
+- [ready] M14-S49 catalog-import retry-winner ledger/journal silence guard (stale-retry loser payloads must never produce duplicate accounting side effects while winner replay remains idempotent)
+- [ready] M11-S7 accounting-portal scope invariant lock (HR, PURCHASING, INVENTORY, REPORTS remain under Accounting portal unless replacement portal map + endpoint docs are updated atomically)
+- [ready] M12-S5 discount/reference calculation parity matrix across sales->invoice->settlement + user-facing example table refresh
+- [ready] M10-S3 release-gate dry-run and blocker ledger sync (`scripts/verify_local.sh` + artifact sanity)
+- [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
+- [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
+- [ready] M11-S6 approval queue runtime contract test slice (assert FE docs match live `AdminApprovalItemDto` payload fields and action endpoint semantics)
