@@ -59,8 +59,8 @@ assert_numeric_token "V12 version" "$V12_VERSION"
 assert_numeric_token "V13 version" "$V13_VERSION"
 
 # PostgreSQL folds unquoted identifiers to lowercase; normalize env-provided tokens to match.
-SCHEMA_NAME="${SCHEMA_NAME,,}"
-HISTORY_TABLE="${HISTORY_TABLE,,}"
+SCHEMA_NAME="$(printf '%s' "$SCHEMA_NAME" | tr '[:upper:]' '[:lower:]')"
+HISTORY_TABLE="$(printf '%s' "$HISTORY_TABLE" | tr '[:upper:]' '[:lower:]')"
 
 export PGPASSWORD="$DB_PASSWORD"
 
@@ -82,7 +82,7 @@ if [[ "$table_exists" != "t" ]]; then
   exit 0
 fi
 
-history_table_ref="${SCHEMA_NAME}.${HISTORY_TABLE}"
+history_table_ref="\"${SCHEMA_NAME}\".\"${HISTORY_TABLE}\""
 v12_success_count="$(psql_query "SELECT count(*) FROM ${history_table_ref} WHERE version='${V12_VERSION}' AND success;")"
 v13_success_count="$(psql_query "SELECT count(*) FROM ${history_table_ref} WHERE version='${V13_VERSION}' AND success;")"
 v12_checksum="$(psql_query "SELECT checksum FROM ${history_table_ref} WHERE version='${V12_VERSION}' AND success ORDER BY installed_rank DESC LIMIT 1;")"
