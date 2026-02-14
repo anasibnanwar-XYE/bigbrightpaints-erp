@@ -2954,6 +2954,48 @@ Queue Rotation (Auto-Replenish)
 - [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
 - [ready] M11-S6 approval queue runtime contract test slice (assert FE docs match live `AdminApprovalItemDto` payload fields and action endpoint semantics)
 
+Completed Slice (Committed)
+- 2026-02-14: `861da57c`
+  - test(inventory): enforce malformed costing retry fail-closed matrix.
+  - M14-S39 closure pass:
+    - added `raw_material_create_repeated_malformed_costing_retries_stay_fail_closed_and_side_effect_free` in `RawMaterialAndProductUpdateIT`.
+    - added `raw_material_update_concurrent_malformed_retries_stay_side_effect_free` in `RawMaterialAndProductUpdateIT`.
+    - enforced repeated malformed-token retries stay fail-closed on create/update with no cross-company side effects under concurrent requests.
+  - Verification:
+    - `cd /home/realnigga/Desktop/orchestrator_erp/erp-domain && mvn -B -ntp -Dtest=RawMaterialAndProductUpdateIT#raw_material_create_rejects_malformed_costing_token,RawMaterialAndProductUpdateIT#raw_material_create_repeated_malformed_costing_retries_stay_fail_closed_and_side_effect_free,RawMaterialAndProductUpdateIT#raw_material_update_rejects_malformed_costing_token_without_mutation,RawMaterialAndProductUpdateIT#raw_material_update_concurrent_malformed_retries_stay_side_effect_free test` -> pass (4 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `861da57c`
+- `codex review --commit 861da57c`:
+  - final verdict: no discrete regression or correctness issue introduced by this change.
+- Review subagent `019c5ada-c088-7a91-b175-b3ecb936fbbb`:
+  - findings: none.
+  - summary: new tests are coherent with fail-closed malformed-token expectations and side-effect-free retries.
+  - residual risk: concurrent invalid-update check currently exercises two simultaneous requests only.
+
+Loop Update
+- 2026-02-14T12:05:00+05:30
+- tracked_now_ts: `2026-02-14T12:05:00+05:30`
+- tracked_elapsed: `58h 11m 08s`
+- active_in_progress: `M14-S40 finished-good batch-selection parity guard (assert WAC paths never regress to FIFO allocation queries in dispatch/adjustment flows; add negative regression tests)`
+- continuity_recheck: `0355149b` / `f9fd898f` / `a1d05cd7` evidence chain remains aligned.
+
+Queue Rotation (Auto-Replenish)
+- [completed] M14-S39 raw-material malformed-token replay matrix (repeat invalid costing payloads across create/update must stay fail-closed and side-effect-free under company-scoped concurrent retries)
+- [in_progress] M14-S40 finished-good batch-selection parity guard (assert WAC paths never regress to FIFO allocation queries in dispatch/adjustment flows; add negative regression tests)
+- [ready] M14-S41 costing-helper centralization guard (enforce shared costing decision helper usage across inventory/factory/reporting services; document and test anti-duplication contract)
+- [ready] M14-S42 raw-material WAC null-average factory-flow parity matrix (bulk packing/packaging/production issue flows must apply deterministic batch-cost fallback without zero-cost understatement)
+- [ready] M14-S43 catalog-import winner provenance cross-company fence (same idempotency key reused across different companies must remain company-scoped with no winner/loser bleed-over)
+- [ready] M14-S44 catalog-import idempotency key canonicalization abuse guard (whitespace/case-varied key replays must remain deterministic, company-scoped, and side-effect-free)
+- [ready] M14-S45 catalog-import MIME parameter injection guard (allowlist-token prefix/suffix tricks and malformed parameter tails must remain fail-closed with zero persistence side effects)
+- [ready] M14-S46 raw-material malformed-costing canonicalization fence (create/update/import vectors must reject non-canonical costing tokens uniformly and preserve entity state across retries)
+- [ready] M11-S7 accounting-portal scope invariant lock (HR, PURCHASING, INVENTORY, REPORTS remain under Accounting portal unless replacement portal map + endpoint docs are updated atomically)
+- [ready] M12-S5 discount/reference calculation parity matrix across sales->invoice->settlement + user-facing example table refresh
+- [ready] M10-S3 release-gate dry-run and blocker ledger sync (`scripts/verify_local.sh` + artifact sanity)
+- [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
+- [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
+- [ready] M11-S6 approval queue runtime contract test slice (assert FE docs match live `AdminApprovalItemDto` payload fields and action endpoint semantics)
+
 Post-Commit Review Evidence
 - Commit reviewed: `64a06e24`
 - `codex review --commit 64a06e24`:
