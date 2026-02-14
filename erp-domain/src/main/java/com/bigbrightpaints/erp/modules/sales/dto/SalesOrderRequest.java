@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 
 import java.math.BigDecimal;
+import java.util.Locale;
 import java.util.List;
 
 public record SalesOrderRequest(
@@ -16,8 +17,30 @@ public record SalesOrderRequest(
         String gstTreatment,
         BigDecimal gstRate,
         Boolean gstInclusive,
-        String idempotencyKey
+        String idempotencyKey,
+        String paymentMode
 ) {
+    public SalesOrderRequest(
+            Long dealerId,
+            BigDecimal totalAmount,
+            String currency,
+            String notes,
+            List<@Valid SalesOrderItemRequest> items,
+            String gstTreatment,
+            BigDecimal gstRate,
+            Boolean gstInclusive,
+            String idempotencyKey
+    ) {
+        this(dealerId, totalAmount, currency, notes, items, gstTreatment, gstRate, gstInclusive, idempotencyKey, null);
+    }
+
+    public String normalizedPaymentMode() {
+        if (paymentMode == null || paymentMode.isBlank()) {
+            return "CREDIT";
+        }
+        return paymentMode.trim().toUpperCase(Locale.ROOT);
+    }
+
     public String resolveIdempotencyKey() {
         if (idempotencyKey != null && !idempotencyKey.isBlank()) {
             return idempotencyKey.trim();
@@ -25,10 +48,11 @@ public record SalesOrderRequest(
         StringBuilder sb = new StringBuilder();
         sb.append(dealerId == null ? "null" : dealerId)
                 .append('|').append(totalAmount)
-                .append('|').append(currency == null ? "" : currency.trim().toUpperCase());
+                .append('|').append(currency == null ? "" : currency.trim().toUpperCase(Locale.ROOT))
+                .append('|').append(normalizedPaymentMode());
         for (SalesOrderItemRequest item : items) {
             sb.append('|')
-                    .append(item.productCode() == null ? "" : item.productCode().trim().toUpperCase())
+                    .append(item.productCode() == null ? "" : item.productCode().trim().toUpperCase(Locale.ROOT))
                     .append(':').append(item.quantity())
                     .append(':').append(item.unitPrice());
         }

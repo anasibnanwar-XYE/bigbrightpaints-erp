@@ -114,6 +114,9 @@ public class SalesService {
             "REJECTED"
     );
     private static final String CREDIT_REQUEST_STATUS_PENDING = "PENDING";
+    private static final String DEFAULT_ORDER_PAYMENT_MODE = "CREDIT";
+    private static final Set<String> VALID_ORDER_PAYMENT_MODES = Set.of("CASH", "CREDIT", "SPLIT");
+    private static final Set<String> CREDIT_EXPOSURE_PAYMENT_MODES = Set.of("CREDIT", "SPLIT");
 
     private final CompanyContextService companyContextService;
     private final DealerRepository dealerRepository;
@@ -415,6 +418,7 @@ public class SalesService {
         }
         GstTreatment gstTreatment = resolveGstTreatment(request.gstTreatment());
         BigDecimal orderLevelRate = resolveOrderLevelRate(company, gstTreatment, request.gstRate());
+        String paymentMode = normalizeOrderPaymentMode(request.paymentMode());
         boolean gstInclusive = Boolean.TRUE.equals(request.gstInclusive());
         Dealer dealer = null;
         if (request.dealerId() != null) {
@@ -438,7 +442,9 @@ public class SalesService {
         order.setGstInclusive(gstInclusive);
         OrderAmountSummary amounts = mapOrderItems(order, items, gstTreatment, orderLevelRate, gstInclusive);
         validateTotalAmount(request.totalAmount(), amounts.total());
-        enforceCreditLimit(order.getDealer(), amounts.total());
+        if (requiresCreditLimitCheck(paymentMode)) {
+            enforceCreditLimit(order.getDealer(), amounts.total());
+        }
         SalesOrder saved = salesOrderRepository.save(order);
 
         // Reserve available stock - shortages will be handled as production tasks
@@ -497,7 +503,8 @@ public class SalesService {
                 .append('|').append(normalizeText(request.gstTreatment()))
                 .append('|').append(Boolean.TRUE.equals(request.gstInclusive()))
                 .append('|').append(amountToken(request.gstRate()))
-                .append('|').append(normalizeText(request.notes()));
+                .append('|').append(normalizeText(request.notes()))
+                .append('|').append(normalizeOrderPaymentMode(request.paymentMode()));
         request.items().stream()
                 .sorted(orderRequestComparator())
                 .forEach(item -> signature.append('|')
@@ -516,7 +523,8 @@ public class SalesService {
                 .append('|').append(normalizeText(order.getGstTreatment()))
                 .append('|').append(order.isGstInclusive())
                 .append('|').append(amountToken(order.getGstRate()))
-                .append('|').append(normalizeText(order.getNotes()));
+                .append('|').append(normalizeText(order.getNotes()))
+                .append('|').append(DEFAULT_ORDER_PAYMENT_MODE);
         order.getItems().stream()
                 .sorted(orderItemComparator())
                 .forEach(item -> signature.append('|')
@@ -560,6 +568,7 @@ public class SalesService {
         assertOrderMutable(order, "update");
         GstTreatment gstTreatment = resolveGstTreatment(request.gstTreatment());
         BigDecimal orderLevelRate = resolveOrderLevelRate(order.getCompany(), gstTreatment, request.gstRate());
+        String paymentMode = normalizeOrderPaymentMode(request.paymentMode());
         boolean gstInclusive = Boolean.TRUE.equals(request.gstInclusive());
         Dealer dealer = null;
         if (request.dealerId() != null) {
@@ -581,7 +590,9 @@ public class SalesService {
         order.setGstInclusive(gstInclusive);
         OrderAmountSummary amounts = mapOrderItems(order, items, gstTreatment, orderLevelRate, gstInclusive);
         validateTotalAmount(request.totalAmount(), amounts.total());
-        enforceCreditLimit(order.getDealer(), amounts.total());
+        if (requiresCreditLimitCheck(paymentMode)) {
+            enforceCreditLimit(order.getDealer(), amounts.total());
+        }
         salesOrderRepository.save(order);
         FinishedGoodsService.InventoryReservationResult reservationResult = finishedGoodsService.reserveForOrder(order);
         if (reservationResult != null) {
@@ -1249,6 +1260,23 @@ public class SalesService {
                     outstanding,
                     total));
         }
+    }
+
+    private String normalizeOrderPaymentMode(String rawMode) {
+        String normalized = StringUtils.hasText(rawMode)
+                ? rawMode.trim().toUpperCase(Locale.ROOT)
+                : DEFAULT_ORDER_PAYMENT_MODE;
+        if (!VALID_ORDER_PAYMENT_MODES.contains(normalized)) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Unsupported sales order payment mode: " + normalized)
+                    .withDetail("paymentMode", normalized)
+                    .withDetail("allowedPaymentModes", VALID_ORDER_PAYMENT_MODES);
+        }
+        return normalized;
+    }
+
+    private boolean requiresCreditLimitCheck(String paymentMode) {
+        return CREDIT_EXPOSURE_PAYMENT_MODES.contains(paymentMode);
     }
 
     /**

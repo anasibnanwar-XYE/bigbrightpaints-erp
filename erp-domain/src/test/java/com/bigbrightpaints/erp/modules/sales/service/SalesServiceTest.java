@@ -1876,6 +1876,93 @@ class SalesServiceTest {
     }
 
     @Test
+    void createOrderCashPaymentModeBypassesDealerCreditLimit() {
+        setupProduct("SKU3-CASH", BigDecimal.valueOf(200), BigDecimal.ZERO);
+        FinishedGood finishedGood = buildFinishedGood("SKU3-CASH");
+        finishedGood.setRevenueAccountId(5L);
+        when(finishedGoodRepository.findByCompanyAndProductCode(company, "SKU3-CASH"))
+                .thenReturn(Optional.of(finishedGood));
+        Dealer dealer = dealerWithCreditLimit(420L, BigDecimal.valueOf(1000));
+        when(companyEntityLookup.requireDealer(company, 420L)).thenReturn(dealer);
+        when(dealerRepository.lockByCompanyAndId(company, dealer.getId())).thenReturn(Optional.of(dealer));
+        when(orderNumberService.nextOrderNumber(company)).thenReturn("SO-CASH-42");
+        when(dealerLedgerService.currentBalance(420L)).thenReturn(BigDecimal.valueOf(950));
+        when(salesOrderRepository.save(ArgumentMatchers.any(SalesOrder.class))).thenAnswer(invocation -> {
+            SalesOrder entity = invocation.getArgument(0);
+            if (entity.getId() == null) {
+                setField(entity, "id", 520L);
+            }
+            return entity;
+        });
+
+        SalesOrderRequest request = new SalesOrderRequest(
+                420L,
+                BigDecimal.valueOf(200),
+                "INR",
+                null,
+                List.of(new SalesOrderItemRequest("SKU3-CASH", "Desc", BigDecimal.ONE, BigDecimal.valueOf(200), null)),
+                "NONE",
+                null,
+                null,
+                null,
+                " cash ");
+
+        SalesOrderDto dto = salesService.createOrder(request);
+
+        assertEquals("RESERVED", dto.status());
+        verify(dealerLedgerService, never()).currentBalance(420L);
+    }
+
+    @Test
+    void createOrderSplitPaymentModeStillEnforcesDealerCreditLimit() {
+        setupProduct("SKU3-SPLIT", BigDecimal.valueOf(200), BigDecimal.ZERO);
+        FinishedGood finishedGood = buildFinishedGood("SKU3-SPLIT");
+        finishedGood.setRevenueAccountId(5L);
+        when(finishedGoodRepository.findByCompanyAndProductCode(company, "SKU3-SPLIT"))
+                .thenReturn(Optional.of(finishedGood));
+        Dealer dealer = dealerWithCreditLimit(421L, BigDecimal.valueOf(1000));
+        when(companyEntityLookup.requireDealer(company, 421L)).thenReturn(dealer);
+        when(dealerRepository.lockByCompanyAndId(company, dealer.getId())).thenReturn(Optional.of(dealer));
+        when(orderNumberService.nextOrderNumber(company)).thenReturn("SO-SPLIT-42");
+        when(dealerLedgerService.currentBalance(421L)).thenReturn(BigDecimal.valueOf(950));
+
+        SalesOrderRequest request = new SalesOrderRequest(
+                421L,
+                BigDecimal.valueOf(200),
+                "INR",
+                null,
+                List.of(new SalesOrderItemRequest("SKU3-SPLIT", "Desc", BigDecimal.ONE, BigDecimal.valueOf(200), null)),
+                "NONE",
+                null,
+                null,
+                null,
+                "SPLIT");
+
+        assertThrows(IllegalStateException.class, () -> salesService.createOrder(request));
+        verify(dealerLedgerService).currentBalance(421L);
+    }
+
+    @Test
+    void createOrderRejectsUnsupportedPaymentMode() {
+        SalesOrderRequest request = new SalesOrderRequest(
+                null,
+                BigDecimal.valueOf(100),
+                "INR",
+                null,
+                List.of(new SalesOrderItemRequest("SKU-BAD-MODE", "Desc", BigDecimal.ONE, BigDecimal.valueOf(100), null)),
+                "NONE",
+                null,
+                null,
+                null,
+                "WIRE_TRANSFER");
+
+        ApplicationException ex = assertThrows(ApplicationException.class, () -> salesService.createOrder(request));
+
+        assertEquals(ErrorCode.VALIDATION_INVALID_INPUT, ex.getErrorCode());
+        verifyNoInteractions(dealerLedgerService);
+    }
+
+    @Test
     void createOrderUsesCompanyDefaultGstForOrderTotal() {
         company.setDefaultGstRate(BigDecimal.valueOf(15));
         setupProduct("SKU4", BigDecimal.valueOf(100), BigDecimal.ZERO);
