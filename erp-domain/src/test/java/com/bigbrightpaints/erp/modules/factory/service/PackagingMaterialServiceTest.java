@@ -153,6 +153,67 @@ class PackagingMaterialServiceTest {
         verify(rawMaterialBatchRepository).calculateWeightedAverageCost(material);
     }
 
+    @Test
+    void consumePackagingMaterial_wacNullAverageFallsBackToBatchCostDeterministically() {
+        ReflectionTestUtils.setField(packagingMaterialService, "requirePackaging", false);
+        RawMaterial material = rawMaterial(13L, 700L, new BigDecimal("10"), "WAC");
+        PackagingSizeMapping mapping = packagingMapping(material, 1);
+
+        RawMaterialBatch batchA = batch(301L, new BigDecimal("2"), new BigDecimal("1.00"));
+        RawMaterialBatch batchB = batch(302L, new BigDecimal("2"), new BigDecimal("5.00"));
+
+        when(mappingRepository.findActiveByCompanyAndPackagingSizeIgnoreCase(company, "1L"))
+                .thenReturn(List.of(mapping));
+        when(rawMaterialRepository.lockByCompanyAndId(company, 13L)).thenReturn(Optional.of(material));
+        when(rawMaterialBatchRepository.findAvailableBatchesFIFO(material))
+                .thenReturn(List.of(batchA, batchB));
+        when(rawMaterialBatchRepository.calculateWeightedAverageCost(material))
+                .thenReturn(null);
+        when(rawMaterialBatchRepository.deductQuantityIfSufficient(eq(301L), any())).thenReturn(1);
+        when(rawMaterialBatchRepository.deductQuantityIfSufficient(eq(302L), any())).thenReturn(1);
+        when(rawMaterialMovementRepository.save(any(RawMaterialMovement.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(rawMaterialRepository.save(any(RawMaterial.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        PackagingConsumptionResult result = packagingMaterialService.consumePackagingMaterial("1L", 4, "PACK-REF");
+
+        assertThat(result.mappingFound()).isTrue();
+        assertThat(result.totalCost()).isEqualByComparingTo("12.00");
+        assertThat(result.quantity()).isEqualByComparingTo("4");
+        assertThat(result.accountTotalsOrEmpty()).containsEntry(700L, new BigDecimal("12.00"));
+        verify(rawMaterialBatchRepository).calculateWeightedAverageCost(material);
+    }
+
+    @Test
+    void consumePackagingMaterial_wacNullAverageRejectsZeroCostWhenPackagingRequired() {
+        ReflectionTestUtils.setField(packagingMaterialService, "requirePackaging", true);
+        RawMaterial material = rawMaterial(14L, 800L, new BigDecimal("5"), "WAC");
+        PackagingSizeMapping mapping = packagingMapping(material, 1);
+        RawMaterialBatch batchA = batch(401L, new BigDecimal("2"), null);
+
+        when(mappingRepository.findActiveByCompanyAndPackagingSizeIgnoreCase(company, "1L"))
+                .thenReturn(List.of(mapping));
+        when(rawMaterialRepository.lockByCompanyAndId(company, 14L)).thenReturn(Optional.of(material));
+        when(rawMaterialBatchRepository.findAvailableBatchesFIFO(material))
+                .thenReturn(List.of(batchA));
+        when(rawMaterialBatchRepository.calculateWeightedAverageCost(material))
+                .thenReturn(null);
+        when(rawMaterialBatchRepository.deductQuantityIfSufficient(eq(401L), any())).thenReturn(1);
+        when(rawMaterialMovementRepository.save(any(RawMaterialMovement.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(rawMaterialRepository.save(any(RawMaterial.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        assertThatThrownBy(() -> packagingMaterialService.consumePackagingMaterial("1L", 1, "PACK-REF"))
+                .isInstanceOf(ApplicationException.class)
+                .satisfies(ex -> {
+                    ApplicationException appEx = (ApplicationException) ex;
+                    assertThat(appEx.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT);
+                    assertThat(appEx.getMessage()).contains("produced zero cost");
+                });
+    }
+
     private RawMaterial rawMaterial(Long id, Long accountId, BigDecimal stock, String costingMethod) {
         RawMaterial material = new RawMaterial();
         ReflectionTestUtils.setField(material, "id", id);
