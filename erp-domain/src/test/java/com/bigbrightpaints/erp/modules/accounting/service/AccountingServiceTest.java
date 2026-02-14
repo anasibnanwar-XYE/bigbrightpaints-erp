@@ -46,6 +46,7 @@ import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocation;
 import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocationRepository;
 import com.bigbrightpaints.erp.modules.invoice.service.InvoiceSettlementPolicy;
 import com.bigbrightpaints.erp.core.audit.AuditService;
@@ -4041,6 +4042,56 @@ class AccountingServiceTest {
         String keyB = ReflectionTestUtils.invokeMethod(accountingService, "buildDealerSettlementIdempotencyKey", requestB);
 
         assertThat(keyA).isEqualTo(keyB);
+    }
+
+    @Test
+    void resolveDealerSettlementIdempotencyKey_prefersLegacyAutoKeyWhenReplayExists() {
+        DealerSettlementRequest request = new DealerSettlementRequest(
+                1L,
+                null,
+                null,
+                null,
+                null,
+                null,
+                LocalDate.of(2024, 5, 1),
+                null,
+                null,
+                null,
+                Boolean.FALSE,
+                List.of(new SettlementAllocationRequest(
+                        701L,
+                        null,
+                        new BigDecimal("100.00"),
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        null
+                )),
+                List.of(
+                        new SettlementPaymentRequest(20L, new BigDecimal("60.00"), "CASH"),
+                        new SettlementPaymentRequest(20L, new BigDecimal("40.00"), "BANK")
+                )
+        );
+
+        String canonicalKey = ReflectionTestUtils.invokeMethod(accountingService, "buildDealerSettlementIdempotencyKey", request);
+        String legacyKey = ReflectionTestUtils.invokeMethod(accountingService, "buildLegacyDealerSettlementIdempotencyKey", request);
+        assertThat(canonicalKey).isNotEqualTo(legacyKey);
+
+        var existing = new PartnerSettlementAllocation();
+        existing.setCompany(company);
+        existing.setIdempotencyKey(legacyKey);
+
+        when(settlementAllocationRepository.findByCompanyAndIdempotencyKeyIgnoreCaseOrderByCreatedAtAscIdAsc(
+                eq(company), eq(legacyKey))).thenReturn(List.of(existing));
+
+        String resolved = ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "resolveDealerSettlementIdempotencyKey",
+                company,
+                request
+        );
+
+        assertThat(resolved).isEqualTo(legacyKey);
     }
 
     @Test

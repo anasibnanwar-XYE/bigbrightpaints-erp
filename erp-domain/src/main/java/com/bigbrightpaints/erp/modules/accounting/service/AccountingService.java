@@ -1685,9 +1685,7 @@ public class AccountingService {
     @Transactional
     public PartnerSettlementResponse settleDealerInvoices(DealerSettlementRequest request) {
         Company company = companyContextService.requireCurrentCompany();
-        String trimmedIdempotencyKey = StringUtils.hasText(request.idempotencyKey())
-                ? request.idempotencyKey().trim()
-                : (StringUtils.hasText(request.referenceNumber()) ? request.referenceNumber().trim() : buildDealerSettlementIdempotencyKey(request));
+        String trimmedIdempotencyKey = resolveDealerSettlementIdempotencyKey(company, request);
         if (!StringUtils.hasText(trimmedIdempotencyKey)) {
             throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
                     "Idempotency key is required for dealer settlements");
@@ -2371,6 +2369,28 @@ public class AccountingService {
         }
         throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
                 "Idempotency key or reference number is required for " + label);
+    }
+
+    private String resolveDealerSettlementIdempotencyKey(Company company, DealerSettlementRequest request) {
+        if (request == null) {
+            return "";
+        }
+        if (StringUtils.hasText(request.idempotencyKey())) {
+            return request.idempotencyKey().trim();
+        }
+        if (StringUtils.hasText(request.referenceNumber())) {
+            return request.referenceNumber().trim();
+        }
+
+        String canonicalKey = buildDealerSettlementIdempotencyKey(request);
+        String legacyKey = buildLegacyDealerSettlementIdempotencyKey(request);
+
+        if (StringUtils.hasText(legacyKey)
+                && !legacyKey.equalsIgnoreCase(canonicalKey)
+                && (hasExistingSettlementAllocations(company, legacyKey) || hasExistingIdempotencyMapping(company, legacyKey))) {
+            return legacyKey;
+        }
+        return canonicalKey;
     }
 
     private String normalizeIdempotencyMappingKey(String idempotencyKey) {
@@ -3982,6 +4002,20 @@ public class AccountingService {
     }
 
     private String buildDealerSettlementIdempotencyKey(DealerSettlementRequest request) {
+        Comparator<SettlementPaymentRequest> paymentComparator = Comparator
+                .comparing(SettlementPaymentRequest::accountId, Comparator.nullsLast(Long::compareTo))
+                .thenComparing(SettlementPaymentRequest::amount, Comparator.nullsLast(BigDecimal::compareTo));
+        return buildDealerSettlementIdempotencyKey(request, paymentComparator);
+    }
+
+    private String buildLegacyDealerSettlementIdempotencyKey(DealerSettlementRequest request) {
+        Comparator<SettlementPaymentRequest> paymentComparator = Comparator
+                .comparing(SettlementPaymentRequest::accountId, Comparator.nullsLast(Long::compareTo));
+        return buildDealerSettlementIdempotencyKey(request, paymentComparator);
+    }
+
+    private String buildDealerSettlementIdempotencyKey(DealerSettlementRequest request,
+                                                       Comparator<SettlementPaymentRequest> paymentComparator) {
         if (request == null) {
             return UUID.randomUUID().toString();
         }
@@ -4001,9 +4035,7 @@ public class AccountingService {
         }
         List<SettlementPaymentRequest> payments = request.payments() != null
                 ? request.payments().stream()
-                .sorted(Comparator
-                        .comparing(SettlementPaymentRequest::accountId, Comparator.nullsLast(Long::compareTo))
-                        .thenComparing(SettlementPaymentRequest::amount, Comparator.nullsLast(BigDecimal::compareTo)))
+                .sorted(paymentComparator)
                 .toList()
                 : List.of();
         for (SettlementPaymentRequest payment : payments) {
