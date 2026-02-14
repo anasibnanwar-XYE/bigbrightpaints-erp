@@ -834,6 +834,63 @@ class AccountingCatalogControllerSecurityIT extends AbstractIntegrationTest {
         assertThat(rawMaterialRepository.findByCompanyAndSku(company, sku)).isEmpty();
     }
 
+    @Test
+    void accountingCatalogImport_rejectsMalformedLegacyRawMaterialCostingAndReplayStaysStable() {
+        Company company = dataSeeder.ensureCompany(COMPANY_CODE, "Catalog Sec Co");
+        HttpHeaders accountingHeaders = authHeaders(ACCOUNTING_EMAIL, PASSWORD, COMPANY_CODE);
+        String idempotencyKey = "CAT-LEGACY-BAD-COST-" + shortId();
+        String sku = "RM-LEGACY-BAD-COST-" + shortId();
+        String legacyName = "Legacy Raw Material " + shortId();
+        String incomingName = "Incoming Name " + shortId();
+
+        RawMaterial legacy = new RawMaterial();
+        legacy.setCompany(company);
+        legacy.setName(legacyName);
+        legacy.setSku(sku);
+        legacy.setUnitType("KG");
+        legacy.setCostingMethod("FIFO/WAC");
+        rawMaterialRepository.saveAndFlush(legacy);
+
+        ResponseEntity<Map> firstResponse = importCatalogWithCustomFile(
+                accountingHeaders,
+                catalogCsvContent(sku, incomingName),
+                "catalog-" + sku + ".csv",
+                "text/csv",
+                idempotencyKey);
+        ResponseEntity<Map> replayResponse = importCatalogWithCustomFile(
+                accountingHeaders,
+                catalogCsvContent(sku, incomingName),
+                "catalog-" + sku + ".csv",
+                "text/csv",
+                idempotencyKey);
+
+        assertThat(firstResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(replayResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertImportResponseContainsCostingMethodError(firstResponse);
+        assertImportResponseContainsCostingMethodError(replayResponse);
+
+        RawMaterial persisted = rawMaterialRepository.findByCompanyAndSku(company, sku).orElseThrow();
+        assertThat(persisted.getName()).isEqualTo(legacyName);
+        assertThat(persisted.getCostingMethod()).isEqualTo("FIFO/WAC");
+        assertThat(productionProductRepository.findByCompanyAndSkuCode(company, sku)).isEmpty();
+        CatalogImport importRecord = catalogImportRepository.findByCompanyAndIdempotencyKey(company, idempotencyKey)
+                .orElseThrow();
+        assertThat(importRecord.getRowsProcessed()).isZero();
+    }
+
+    @SuppressWarnings("unchecked")
+    private void assertImportResponseContainsCostingMethodError(ResponseEntity<Map> response) {
+        assertThat(response.getBody()).isNotNull();
+        Map<String, Object> data = (Map<String, Object>) response.getBody().get("data");
+        assertThat(data).containsEntry("rowsProcessed", 0);
+        List<Map<String, Object>> errors = (List<Map<String, Object>>) data.get("errors");
+        assertThat(errors).isNotEmpty();
+        boolean containsUnsupportedCostingError = errors.stream()
+                .map(error -> String.valueOf(error.get("message")))
+                .anyMatch(message -> message.contains("Unsupported costing method"));
+        assertThat(containsUnsupportedCostingError).isTrue();
+    }
+
     private ResponseEntity<Map> importCatalog(HttpHeaders headers, String sku, String idempotencyKey) {
         return importCatalogWithCustomFile(
                 headers,

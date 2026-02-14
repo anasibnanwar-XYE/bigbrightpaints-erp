@@ -1054,7 +1054,7 @@ public class ProductionCatalogService {
         if (product.getGstRate() != null) {
             material.setGstRate(percent(product.getGstRate()));
         }
-        String canonicalCostingMethod = CostingMethodUtils.canonicalizeRawMaterialMethodForSync(material.getCostingMethod());
+        String canonicalCostingMethod = CostingMethodUtils.normalizeRawMaterialMethodOrDefault(material.getCostingMethod());
         if (!Objects.equals(material.getCostingMethod(), canonicalCostingMethod)) {
             material.setCostingMethod(canonicalCostingMethod);
         }
