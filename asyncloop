@@ -6589,3 +6589,70 @@ Queue Rotation (Auto-Replenish)
 - [ready] M14-S48 costing-selection enum drift guard (new/legacy costing tokens must remain centrally mapped via `CostingMethodUtils` with no per-module fallback forks)
 - [ready] M14-S49 catalog-import retry-winner ledger/journal silence guard (stale-retry loser payloads must never produce duplicate accounting side effects while winner replay remains idempotent)
 - [ready] M11-S7 accounting-portal scope invariant lock (HR, PURCHASING, INVENTORY, REPORTS remain under Accounting portal unless replacement portal map + endpoint docs are updated atomically)
+
+Completed Slice (Committed)
+- 2026-02-15: `58e12d09`
+  - test(sales): make malformed parity assertions baseline-aware.
+  - M15-S23 execution (initial pass):
+    - refactored malformed-sibling parity IT to compute pending count/exposure assertions from pre-call baseline snapshots instead of fixed post-state literals.
+    - preserved dealer/admin parity checks while reducing sensitivity to unrelated seeded-fixture drift.
+  - Verification:
+    - `mvn -s /tmp/codex-mvn-settings.xml -B -ntp -f erp-domain/pom.xml -Dtest=DealerPortalControllerSecurityIT#dealerAdminPendingExposureParity_handlesVoidAndMalformedSiblingInvoiceTokens test` -> pass (1 test, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `58e12d09`
+- `codex review --commit 58e12d09`:
+  - final verdict captured: no concrete regression introduced; baseline-aware assertions align with intended behavior.
+- Review subagent `019c5e23-b40f-7453-a4c1-f9ea76b7cee4`:
+  - findings:
+    - medium: delta-only assertions could mask absolute regressions if baseline itself is wrong.
+  - disposition: fixed immediately in follow-up commit `e373ab9b` by anchoring explicit baseline invariant assertions.
+
+Follow-up Hardening (Committed)
+- 2026-02-15: `e373ab9b`
+  - test(sales): anchor malformed parity baseline invariants.
+  - changes:
+    - added explicit baseline assertions (`pendingOrderCount=1`, `pendingOrderExposure=5000.00`) before mutation path to retain absolute correctness guard while keeping delta assertions.
+  - Verification:
+    - `mvn -s /tmp/codex-mvn-settings.xml -B -ntp -f erp-domain/pom.xml -Dtest=DealerPortalControllerSecurityIT#dealerAdminPendingExposureParity_handlesVoidAndMalformedSiblingInvoiceTokens test` -> pass (1 test, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `e373ab9b`
+- `codex review --commit e373ab9b`:
+  - final verdict captured: no regression; assertions strengthen baseline anchoring.
+- Review subagent `019c5e29-028a-7611-a3b9-f5598d22472a`:
+  - findings: none.
+  - residual note: baseline constants are intentionally coupled to setup fixture and must be updated if fixture changes.
+
+Completed Slice (Resolved)
+- M15-S23 pending-exposure parity fixture-independence hardening
+  - closure basis: `58e12d09` + `e373ab9b`.
+  - contract status:
+    - malformed-sibling parity IT now uses baseline delta checks.
+    - absolute baseline invariants remain explicitly anchored.
+
+Loop Update
+- 2026-02-15T03:32:14+05:30
+- tracked_now_ts: `2026-02-15T03:32:14+05:30`
+- tracked_elapsed: `73h 38m 22s`
+- active_in_progress: `M15-S24 flyway-v2 guard CI preflight hook (wire transient-checksum guard into release/predeploy checks with deterministic non-zero exit handling)`
+- continuity_recheck:
+  - pending-exposure parity chain remains closed across malformed token cases.
+  - next risk is ensuring the new flyway-v2 checksum guard is consistently enforced in predeploy automation.
+
+Queue Rotation (Auto-Replenish)
+- [completed] M15-S23 pending-exposure parity fixture-independence hardening (derive expected pending count/exposure deltas from baseline snapshots instead of fixed aggregate literals)
+- [in_progress] M15-S24 flyway-v2 guard CI preflight hook (wire transient-checksum guard into release/predeploy checks with deterministic non-zero exit handling)
+- [ready] M15-S8 payroll account default/bootstrap guard (`SALARY-EXP` missing account should fail with deterministic provisioning guidance/guard rails)
+- [ready] M15-S9 sales/dealer accounting method-map docs refresh (internal + user-facing docs for cash/credit/split formulas, account mapping rules, idempotency headers, and pending-order credit exposure semantics)
+- [ready] M15-S10 cross-module idempotency contract unification matrix (standardize header semantics + helper parity across sales/production/accounting endpoint families)
+- [ready] M15-S11 recognized-revenue/pending-credit contract docs + endpoint parity matrix (internal and user-facing portal docs must match shipment gate + pending exposure behavior)
+- [ready] M15-S12 idempotency header contract convergence doc+runtime assert sweep (sales/production/accounting entrypoints must share canonical header semantics and error model)
+- [ready] M15-S15 pending-status normalization performance guard (evaluate/land Flyway V2-safe functional index or normalized-token strategy so aggregate pending-status predicates retain index-friendly plans under high order volume)
+- [ready] M15-S16 dealer-settlement replay e2e defense-in-depth matrix (optional end-to-end `settleDealerInvoices` replay assertion where adjustment debit lines coexist with split payments to further harden payment-account bounded remap behavior)
+- [ready] M15-S18 dispatch replay COGS reference payload parity guard (assert `postCogsJournal` reference/memo/line payload stability on replay anchors and prevent wrong-reference postings under override replay paths)
+- [ready] M15-S19 dispatch replay slip-number fallback + AR-overload guard matrix (cover `hasCogsJournalFor` alternate slip-number fallback and explicitly lock both `postSalesJournal` overload paths against duplicate replay posting)
+- [ready] M15-S25 flyway-v2 V7 FK integrity unblock matrix (isolate and remediate `V7__enterprise_audit_ml_events.sql` FK target uniqueness mismatch so full v2 migrate verification can run cleanly)
+- [ready] M14-S48 costing-selection enum drift guard (new/legacy costing tokens must remain centrally mapped via `CostingMethodUtils` with no per-module fallback forks)
+- [ready] M14-S49 catalog-import retry-winner ledger/journal silence guard (stale-retry loser payloads must never produce duplicate accounting side effects while winner replay remains idempotent)
+- [ready] M11-S7 accounting-portal scope invariant lock (HR, PURCHASING, INVENTORY, REPORTS remain under Accounting portal unless replacement portal map + endpoint docs are updated atomically)
