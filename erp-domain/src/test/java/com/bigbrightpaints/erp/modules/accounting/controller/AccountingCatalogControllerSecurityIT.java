@@ -52,6 +52,7 @@ class AccountingCatalogControllerSecurityIT extends AbstractIntegrationTest {
     private static final String PASSWORD = "CatalogSec123!";
     private static final String ADMIN_EMAIL = "catalog-sec-admin@bbp.com";
     private static final String ACCOUNTING_EMAIL = "catalog-sec-accounting@bbp.com";
+    private static final String OTHER_ACCOUNTING_EMAIL = "catalog-sec-accounting-b@bbp.com";
     private static final String SALES_EMAIL = "catalog-sec-sales@bbp.com";
 
     @Autowired
@@ -78,6 +79,8 @@ class AccountingCatalogControllerSecurityIT extends AbstractIntegrationTest {
         dataSeeder.ensureUser(ACCOUNTING_EMAIL, PASSWORD, "Catalog Sec Accounting", COMPANY_CODE, List.of("ROLE_ACCOUNTING"));
         dataSeeder.ensureUser(SALES_EMAIL, PASSWORD, "Catalog Sec Sales", COMPANY_CODE, List.of("ROLE_SALES"));
         dataSeeder.ensureCompany(OTHER_COMPANY_CODE, "Catalog Sec Other Co");
+        dataSeeder.ensureUser(OTHER_ACCOUNTING_EMAIL, PASSWORD, "Catalog Sec Accounting B", OTHER_COMPANY_CODE,
+                List.of("ROLE_ACCOUNTING"));
     }
 
     @Test
@@ -112,6 +115,44 @@ class AccountingCatalogControllerSecurityIT extends AbstractIntegrationTest {
                 "CAT-RBAC-MISMATCH-" + shortId());
 
         assertThat(mismatchResponse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void accountingCatalogImport_sameIdempotencyKeyAcrossCompaniesRemainsCompanyScoped() {
+        Company company = dataSeeder.ensureCompany(COMPANY_CODE, "Catalog Sec Co");
+        Company otherCompany = dataSeeder.ensureCompany(OTHER_COMPANY_CODE, "Catalog Sec Other Co");
+        HttpHeaders companyHeaders = authHeaders(ACCOUNTING_EMAIL, PASSWORD, COMPANY_CODE);
+        HttpHeaders otherCompanyHeaders = authHeaders(OTHER_ACCOUNTING_EMAIL, PASSWORD, OTHER_COMPANY_CODE);
+        String idempotencyKey = "CAT-XCOMP-" + shortId();
+        String companyWinnerSku = "RM-XCOMP-A-" + shortId();
+        String otherCompanyWinnerSku = "RM-XCOMP-B-" + shortId();
+        String companyLoserSku = "RM-XCOMP-A-LOSER-" + shortId();
+        String otherCompanyLoserSku = "RM-XCOMP-B-LOSER-" + shortId();
+
+        ResponseEntity<Map> companyWinnerResponse = importCatalog(companyHeaders, companyWinnerSku, idempotencyKey);
+        ResponseEntity<Map> otherCompanyWinnerResponse = importCatalog(otherCompanyHeaders, otherCompanyWinnerSku, idempotencyKey);
+        assertThat(companyWinnerResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(otherCompanyWinnerResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        CatalogImport companyWinnerRecord = catalogImportRepository
+                .findByCompanyAndIdempotencyKey(company, idempotencyKey)
+                .orElseThrow();
+        CatalogImport otherCompanyWinnerRecord = catalogImportRepository
+                .findByCompanyAndIdempotencyKey(otherCompany, idempotencyKey)
+                .orElseThrow();
+        assertThat(companyWinnerRecord.getId()).isNotEqualTo(otherCompanyWinnerRecord.getId());
+
+        ResponseEntity<Map> companyLoserResponse = importCatalog(companyHeaders, companyLoserSku, idempotencyKey);
+        ResponseEntity<Map> otherCompanyLoserResponse = importCatalog(otherCompanyHeaders, otherCompanyLoserSku, idempotencyKey);
+        assertThat(companyLoserResponse.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(otherCompanyLoserResponse.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+
+        assertThat(rawMaterialRepository.findByCompanyAndSku(company, companyWinnerSku)).isPresent();
+        assertThat(rawMaterialRepository.findByCompanyAndSku(otherCompany, otherCompanyWinnerSku)).isPresent();
+        assertThat(rawMaterialRepository.findByCompanyAndSku(company, otherCompanyWinnerSku)).isEmpty();
+        assertThat(rawMaterialRepository.findByCompanyAndSku(otherCompany, companyWinnerSku)).isEmpty();
+        assertThat(rawMaterialRepository.findByCompanyAndSku(company, companyLoserSku)).isEmpty();
+        assertThat(rawMaterialRepository.findByCompanyAndSku(otherCompany, otherCompanyLoserSku)).isEmpty();
     }
 
     @Test
