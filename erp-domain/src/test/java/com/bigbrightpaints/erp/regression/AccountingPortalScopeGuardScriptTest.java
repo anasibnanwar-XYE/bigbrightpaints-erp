@@ -155,6 +155,36 @@ class AccountingPortalScopeGuardScriptTest {
         assertThat(result.stderr()).contains("/api/v1/reports/inventory-valuation");
     }
 
+    @Test
+    void guardFailsWhenEndpointMapMethodTokenIsMalformed() throws Exception {
+        FixturePaths fixturePaths = writeFixture(13);
+        replaceInFile(
+                fixturePaths.endpointMapDoc(),
+                "| `GET /api/v1/purchasing/purchase-orders` |\n",
+                "| `, /api/v1/purchasing/purchase-orders` |\n");
+
+        ProcessResult result = runGuard(fixturePaths);
+
+        assertThat(result.exitCode()).isNotEqualTo(0);
+        assertThat(result.stderr()).contains("required purchasing endpoint evidence missing");
+        assertThat(result.stderr()).contains("/api/v1/purchasing/purchase-orders");
+    }
+
+    @Test
+    void guardFailsWhenEndpointInventoryMethodTokenIsMalformed() throws Exception {
+        FixturePaths fixturePaths = writeFixture(13);
+        replaceInFile(
+                fixturePaths.endpointInventoryDoc(),
+                "- `GET` `/api/v1/hr/employees`\n",
+                "- `,` `/api/v1/hr/employees`\n");
+
+        ProcessResult result = runGuard(fixturePaths);
+
+        assertThat(result.exitCode()).isNotEqualTo(0);
+        assertThat(result.stderr()).contains("required hr endpoint evidence missing");
+        assertThat(result.stderr()).contains("/api/v1/hr/employees");
+    }
+
     private ProcessResult runGuard(FixturePaths fixturePaths) throws Exception {
         Path root = repoRoot();
         Path script = root.resolve("scripts/guard_accounting_portal_scope_contract.sh");

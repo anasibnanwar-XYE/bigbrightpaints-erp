@@ -15,17 +15,23 @@ fail() {
   exit 1
 }
 
+escape_regex() {
+  printf '%s' "$1" | sed -E 's/[][(){}.^$*+?|\\]/\\&/g'
+}
+
 assert_endpoint_contract() {
   local module="$1"
   local endpoint="$2"
+  local escaped_endpoint
+  escaped_endpoint="$(escape_regex "$endpoint")"
 
-  rg -q -- "^- \\x60[A-Z, ]+\\x60 \\x60$endpoint\\x60$" "$ENDPOINT_INVENTORY_DOC" \
+  rg -q -- "^- \\x60[A-Z]+(, [A-Z]+)*\\x60 \\x60$escaped_endpoint\\x60\\r?$" "$ENDPOINT_INVENTORY_DOC" \
     || fail "required $module endpoint evidence missing in endpoint inventory bullets ($endpoint) in $ENDPOINT_INVENTORY_DOC"
 
-  rg -q -- "^\\| \\x60[A-Z, ]+ $endpoint\\x60 \\|" "$ENDPOINT_MAP_DOC" \
+  rg -q -- "^\\| \\x60[A-Z]+(, [A-Z]+)* $escaped_endpoint\\x60 \\|([^|]*\\|)*\\r?$" "$ENDPOINT_MAP_DOC" \
     || fail "required $module endpoint evidence missing in endpoint map rows ($endpoint) in $ENDPOINT_MAP_DOC"
 
-  rg -q -- "^\\| \\x60[^|]+\\x60 \\| [A-Z]+ \\| \\x60$endpoint\\x60 \\|" "$HANDOFF_DOC" \
+  rg -q -- "^\\| \\x60[^|]+\\x60 \\| [A-Z]+ \\| \\x60$escaped_endpoint\\x60 \\|([^|]*\\|)*\\r?$" "$HANDOFF_DOC" \
     || fail "required $module endpoint evidence missing in handoff rows ($endpoint) in $HANDOFF_DOC"
 }
 
