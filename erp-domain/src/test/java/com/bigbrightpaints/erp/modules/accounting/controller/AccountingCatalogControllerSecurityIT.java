@@ -243,6 +243,88 @@ class AccountingCatalogControllerSecurityIT extends AbstractIntegrationTest {
     }
 
     @Test
+    void accountingCatalogImport_concurrentMismatchWinnerReplayStaysStableAndLoserNeverMaterializes() throws Exception {
+        Company company = dataSeeder.ensureCompany(COMPANY_CODE, "Catalog Sec Co");
+        HttpHeaders accountingHeaders = authHeaders(ACCOUNTING_EMAIL, PASSWORD, COMPANY_CODE);
+        String idempotencyKey = "CAT-IDEMP-RACE-REPLAY-" + shortId();
+        String firstSku = "RM-RACE-R1-" + shortId();
+        String secondSku = "RM-RACE-R2-" + shortId();
+
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<ResponseEntity<Map>> firstFuture = pool.submit(() ->
+                    importCatalogAfterBarrier(accountingHeaders, firstSku, idempotencyKey, ready, start));
+            Future<ResponseEntity<Map>> secondFuture = pool.submit(() ->
+                    importCatalogAfterBarrier(accountingHeaders, secondSku, idempotencyKey, ready, start));
+
+            assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+
+            ResponseEntity<Map> firstResponse = firstFuture.get(30, TimeUnit.SECONDS);
+            ResponseEntity<Map> secondResponse = secondFuture.get(30, TimeUnit.SECONDS);
+            List<ResponseEntity<Map>> responses = List.of(firstResponse, secondResponse);
+
+            long okCount = responses.stream().filter(response -> response.getStatusCode() == HttpStatus.OK).count();
+            long conflictCount = responses.stream().filter(response -> response.getStatusCode() == HttpStatus.CONFLICT).count();
+            assertThat(okCount).isEqualTo(1);
+            assertThat(conflictCount).isEqualTo(1);
+
+            boolean firstWon = firstResponse.getStatusCode() == HttpStatus.OK;
+            String winnerSku = firstWon ? firstSku : secondSku;
+            String loserSku = firstWon ? secondSku : firstSku;
+
+            CatalogImport winnerRecord = catalogImportRepository.findByCompanyAndIdempotencyKey(company, idempotencyKey)
+                    .orElseThrow();
+            Long winnerRecordId = winnerRecord.getId();
+            Integer winnerRowsProcessed = winnerRecord.getRowsProcessed();
+            Integer winnerProductsCreated = winnerRecord.getProductsCreated();
+            Integer winnerProductsUpdated = winnerRecord.getProductsUpdated();
+            Integer winnerRawMaterialsSeeded = winnerRecord.getRawMaterialsSeeded();
+            String winnerErrorsJson = winnerRecord.getErrorsJson();
+
+            ResponseEntity<Map> winnerReplay = importCatalog(accountingHeaders, winnerSku, idempotencyKey);
+            assertThat(winnerReplay.getStatusCode()).isEqualTo(HttpStatus.OK);
+            assertThat(winnerReplay.getBody()).isNotNull();
+            @SuppressWarnings("unchecked")
+            Map<String, Object> winnerReplayData = (Map<String, Object>) winnerReplay.getBody().get("data");
+            assertThat(winnerReplayData).containsEntry("rowsProcessed", winnerRowsProcessed);
+            assertThat(winnerReplayData).containsEntry("productsCreated", winnerProductsCreated);
+            assertThat(winnerReplayData).containsEntry("productsUpdated", winnerProductsUpdated);
+            assertThat(winnerReplayData).containsEntry("rawMaterialsSeeded", winnerRawMaterialsSeeded);
+
+            ResponseEntity<Map> loserReplayFirst = importCatalog(accountingHeaders, loserSku, idempotencyKey);
+            assertThat(loserReplayFirst.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+            assertThat(loserReplayFirst.getBody()).isNotNull();
+            @SuppressWarnings("unchecked")
+            Map<String, Object> loserReplayFirstError = (Map<String, Object>) loserReplayFirst.getBody().get("data");
+            assertThat(loserReplayFirstError).containsEntry("code", "CONC_001");
+
+            ResponseEntity<Map> loserReplaySecond = importCatalog(accountingHeaders, loserSku, idempotencyKey);
+            assertThat(loserReplaySecond.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+            assertThat(loserReplaySecond.getBody()).isNotNull();
+            @SuppressWarnings("unchecked")
+            Map<String, Object> loserReplaySecondError = (Map<String, Object>) loserReplaySecond.getBody().get("data");
+            assertThat(loserReplaySecondError).containsEntry("code", "CONC_001");
+
+            CatalogImport persistedAfterReplays = catalogImportRepository.findByCompanyAndIdempotencyKey(company, idempotencyKey)
+                    .orElseThrow();
+            assertThat(persistedAfterReplays.getId()).isEqualTo(winnerRecordId);
+            assertThat(persistedAfterReplays.getRowsProcessed()).isEqualTo(winnerRowsProcessed);
+            assertThat(persistedAfterReplays.getProductsCreated()).isEqualTo(winnerProductsCreated);
+            assertThat(persistedAfterReplays.getProductsUpdated()).isEqualTo(winnerProductsUpdated);
+            assertThat(persistedAfterReplays.getRawMaterialsSeeded()).isEqualTo(winnerRawMaterialsSeeded);
+            assertThat(persistedAfterReplays.getErrorsJson()).isEqualTo(winnerErrorsJson);
+
+            assertThat(rawMaterialRepository.findByCompanyAndSku(company, winnerSku)).isPresent();
+            assertThat(rawMaterialRepository.findByCompanyAndSku(company, loserSku)).isEmpty();
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
     void accountingCatalogImport_rejectsMissingFilePartWithoutMutations() {
         Company company = dataSeeder.ensureCompany(COMPANY_CODE, "Catalog Sec Co");
         HttpHeaders accountingHeaders = authHeaders(ACCOUNTING_EMAIL, PASSWORD, COMPANY_CODE);
