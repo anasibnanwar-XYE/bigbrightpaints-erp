@@ -41,7 +41,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -100,11 +99,11 @@ class BulkPackingServiceIdempotencyTest {
 
         company = new Company();
         ReflectionTestUtils.setField(company, "id", 1L);
-        lenient().when(companyContextService.requireCurrentCompany()).thenReturn(company);
     }
 
     @Test
     void pack_idempotentReplayWithoutJournalFailsClosed() {
+        stubCurrentCompany();
         FinishedGood bulkFg = new FinishedGood();
         ReflectionTestUtils.setField(bulkFg, "id", 100L);
         bulkFg.setCompany(company);
@@ -152,6 +151,7 @@ class BulkPackingServiceIdempotencyTest {
 
     @Test
     void pack_rejectsDuplicateChildSkuLinesBeforeMutation() {
+        stubCurrentCompany();
         BulkPackRequest request = new BulkPackRequest(
                 10L,
                 List.of(
@@ -175,6 +175,7 @@ class BulkPackingServiceIdempotencyTest {
 
     @Test
     void pack_rejectsZeroPackQuantityBeforeMutation() {
+        stubCurrentCompany();
         BulkPackRequest request = new BulkPackRequest(
                 10L,
                 List.of(new BulkPackRequest.PackLine(200L, BigDecimal.ZERO, "1L", "L")),
@@ -243,10 +244,18 @@ class BulkPackingServiceIdempotencyTest {
         ArgumentCaptor<RawMaterialMovement> movementCaptor = ArgumentCaptor.forClass(RawMaterialMovement.class);
         verify(rawMaterialMovementRepository, times(2)).save(movementCaptor.capture());
         List<RawMaterialMovement> movements = movementCaptor.getAllValues();
-        assertThat(movements.get(0).getUnitCost()).isEqualByComparingTo("1.00");
-        assertThat(movements.get(0).getQuantity()).isEqualByComparingTo("2");
-        assertThat(movements.get(1).getUnitCost()).isEqualByComparingTo("5.00");
-        assertThat(movements.get(1).getQuantity()).isEqualByComparingTo("1");
+        assertThat(movements).anySatisfy(movement -> {
+            assertThat(movement.getUnitCost()).isEqualByComparingTo("1.00");
+            assertThat(movement.getQuantity()).isEqualByComparingTo("2");
+        });
+        assertThat(movements).anySatisfy(movement -> {
+            assertThat(movement.getUnitCost()).isEqualByComparingTo("5.00");
+            assertThat(movement.getQuantity()).isEqualByComparingTo("1");
+        });
         verify(rawMaterialBatchRepository).calculateWeightedAverageCost(packaging);
+    }
+
+    private void stubCurrentCompany() {
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
     }
 }

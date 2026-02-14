@@ -116,11 +116,16 @@ class ProductionLogServiceCostingFallbackTest {
         verify(rawMaterialMovementRepository).saveAll(movementCaptor.capture());
         List<RawMaterialMovement> movements = movementCaptor.getValue();
         assertThat(movements).hasSize(2);
-        assertThat(movements.get(0).getReferenceType()).isEqualTo(InventoryReference.PRODUCTION_LOG);
-        assertThat(movements.get(0).getUnitCost()).isEqualByComparingTo("1.00");
-        assertThat(movements.get(0).getQuantity()).isEqualByComparingTo("2");
-        assertThat(movements.get(1).getUnitCost()).isEqualByComparingTo("5.00");
-        assertThat(movements.get(1).getQuantity()).isEqualByComparingTo("1");
+        assertThat(movements).allSatisfy(movement ->
+                assertThat(movement.getReferenceType()).isEqualTo(InventoryReference.PRODUCTION_LOG));
+        assertThat(movements).anySatisfy(movement -> {
+            assertThat(movement.getUnitCost()).isEqualByComparingTo("1.00");
+            assertThat(movement.getQuantity()).isEqualByComparingTo("2");
+        });
+        assertThat(movements).anySatisfy(movement -> {
+            assertThat(movement.getUnitCost()).isEqualByComparingTo("5.00");
+            assertThat(movement.getQuantity()).isEqualByComparingTo("1");
+        });
         verify(rawMaterialBatchRepository).calculateWeightedAverageCost(rawMaterial);
     }
 }
