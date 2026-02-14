@@ -79,12 +79,16 @@ public class PortalInsightsControllerIT extends AbstractIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        long seed = System.nanoTime();
+        String seedSuffix = Long.toUnsignedString(seed);
+        String codeSuffix = seedSuffix.substring(Math.max(0, seedSuffix.length() - 6));
+
         company = dataSeeder.ensureCompany(COMPANY_CODE, "Acme Corp");
         dataSeeder.ensureUser(ADMIN_EMAIL, ADMIN_PASSWORD, "Admin", COMPANY_CODE, List.of("ROLE_ADMIN"));
 
         SalesOrder order = new SalesOrder();
         order.setCompany(company);
-        order.setOrderNumber("ORD-PORTAL");
+        order.setOrderNumber("ORD-PORTAL-" + codeSuffix);
         order.setStatus("APPROVED");
         order.setTotalAmount(BigDecimal.valueOf(125000));
         order.setCurrency("INR");
@@ -94,7 +98,7 @@ public class PortalInsightsControllerIT extends AbstractIntegrationTest {
         PackagingSlip slip = new PackagingSlip();
         slip.setCompany(company);
         slip.setSalesOrder(order);
-        slip.setSlipNumber("SLIP-1");
+        slip.setSlipNumber("SLIP-" + codeSuffix);
         slip.setStatus("DISPATCHED");
         packagingSlipRepository.save(slip);
 
@@ -102,7 +106,7 @@ public class PortalInsightsControllerIT extends AbstractIntegrationTest {
         employee.setCompany(company);
         employee.setFirstName("Harper");
         employee.setLastName("Singh");
-        employee.setEmail("harper@acme.dev");
+        employee.setEmail("harper+" + codeSuffix + "@acme.dev");
         employee.setRole("Production specialists");
         employee.setStatus("ACTIVE");
         employee.setHiredDate(LocalDate.now().minusMonths(6));
@@ -111,7 +115,7 @@ public class PortalInsightsControllerIT extends AbstractIntegrationTest {
         RawMaterial material = new RawMaterial();
         material.setCompany(company);
         material.setName("Titanium dioxide");
-        material.setSku("RM-TIO2");
+        material.setSku("RM-TIO2-" + codeSuffix);
         material.setUnitType("KG");
         material.setCurrentStock(new BigDecimal("10"));
         material.setReorderLevel(new BigDecimal("12"));
@@ -119,7 +123,7 @@ public class PortalInsightsControllerIT extends AbstractIntegrationTest {
 
         FinishedGood finishedGood = new FinishedGood();
         finishedGood.setCompany(company);
-        finishedGood.setProductCode("FG-BBP");
+        finishedGood.setProductCode("FG-BBP-" + codeSuffix);
         finishedGood.setName("Premium paint kit");
         finishedGood.setCurrentStock(new BigDecimal("40"));
         finishedGood.setReservedStock(new BigDecimal("5"));
@@ -127,7 +131,7 @@ public class PortalInsightsControllerIT extends AbstractIntegrationTest {
 
         ProductionPlan plan = new ProductionPlan();
         plan.setCompany(company);
-        plan.setPlanNumber("PLAN-1");
+        plan.setPlanNumber("PLAN-" + codeSuffix);
         plan.setProductName("Paint run");
         plan.setQuantity(100);
         plan.setPlannedDate(LocalDate.now());
@@ -137,7 +141,7 @@ public class PortalInsightsControllerIT extends AbstractIntegrationTest {
         ProductionBatch batch = new ProductionBatch();
         batch.setCompany(company);
         batch.setPlan(plan);
-        batch.setBatchNumber("BATCH-1");
+        batch.setBatchNumber("BATCH-" + codeSuffix);
         batch.setQuantityProduced(82);
         batch.setProducedAt(Instant.now());
         productionBatchRepository.save(batch);
@@ -160,19 +164,20 @@ public class PortalInsightsControllerIT extends AbstractIntegrationTest {
 
         PayrollRun payrollRun = new PayrollRun();
         payrollRun.setCompany(company);
-        LocalDate payrollStart = LocalDate.now().minusDays(30);
-        LocalDate payrollEnd = LocalDate.now().minusDays(1);
+        long payrollOffset = Math.floorMod(seed, 1000L);
+        LocalDate payrollEnd = LocalDate.now().minusDays(1 + payrollOffset);
+        LocalDate payrollStart = payrollEnd.minusDays(29);
         payrollRun.setRunType(PayrollRun.RunType.MONTHLY);
         payrollRun.setPeriodStart(payrollStart);
         payrollRun.setPeriodEnd(payrollEnd);
         payrollRun.setRunDate(payrollEnd);
-        payrollRun.setRunNumber("PR-M-" + payrollEnd);
+        payrollRun.setRunNumber("PR-M-" + payrollEnd + "-" + codeSuffix);
         payrollRun.setStatus("DRAFT");
         payrollRunRepository.save(payrollRun);
 
         Account account = new Account();
         account.setCompany(company);
-        account.setCode("1000");
+        account.setCode("1000-" + codeSuffix);
         account.setName("Cash");
         account.setType(AccountType.ASSET);
         account.setBalance(new BigDecimal("250000"));
@@ -200,6 +205,51 @@ public class PortalInsightsControllerIT extends AbstractIntegrationTest {
         Map<?, ?> workforceData = (Map<?, ?>) workforce.getBody().get("data");
         assertThat(workforceData).isNotNull();
         assertThat((List<?>) workforceData.get("squads")).isNotEmpty();
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void dashboardRevenueIncludesOnlyShipmentRecognizedOrders() {
+        SalesOrder shipped = new SalesOrder();
+        shipped.setCompany(company);
+        shipped.setOrderNumber("ORD-PORTAL-SHIP");
+        shipped.setStatus(" shipped ");
+        shipped.setTotalAmount(new BigDecimal("88000"));
+        shipped.setCurrency("INR");
+        salesOrderRepository.saveAndFlush(shipped);
+
+        SalesOrder completed = new SalesOrder();
+        completed.setCompany(company);
+        completed.setOrderNumber("ORD-PORTAL-COMP");
+        completed.setStatus("COMPLETED");
+        completed.setTotalAmount(new BigDecimal("12000"));
+        completed.setCurrency("INR");
+        salesOrderRepository.saveAndFlush(completed);
+
+        SalesOrder pending = new SalesOrder();
+        pending.setCompany(company);
+        pending.setOrderNumber("ORD-PORTAL-PEND");
+        pending.setStatus("PENDING_PRODUCTION");
+        pending.setTotalAmount(new BigDecimal("65000"));
+        pending.setCurrency("INR");
+        salesOrderRepository.saveAndFlush(pending);
+
+        HttpHeaders headers = authenticatedHeaders();
+        ResponseEntity<Map> dashboard = rest.exchange("/api/v1/portal/dashboard", HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+        assertThat(dashboard.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        Map<?, ?> dashboardData = (Map<?, ?>) dashboard.getBody().get("data");
+        assertThat(dashboardData).isNotNull();
+        List<Map<String, Object>> highlights = (List<Map<String, Object>>) dashboardData.get("highlights");
+        assertThat(highlights).isNotNull();
+
+        Map<String, Object> revenue = highlights.stream()
+                .filter(metric -> "Revenue run rate".equals(metric.get("label")))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(revenue.get("value")).isEqualTo("₹100000.00");
+        assertThat(revenue.get("detail")).isEqualTo("Last 30d: ₹100000.00");
     }
 
     private HttpHeaders authenticatedHeaders() {

@@ -44,11 +44,18 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
 @Transactional(readOnly = true)
 public class PortalInsightsService {
+    private static final Set<String> REVENUE_RECOGNIZED_ORDER_STATUSES = Set.of(
+            "SHIPPED",
+            "FULFILLED",
+            "COMPLETED",
+            "CLOSED"
+    );
 
     private final CompanyContextService companyContextService;
     private final SalesOrderRepository salesOrderRepository;
@@ -104,9 +111,12 @@ public class PortalInsightsService {
         List<PackagingSlip> slips = packagingSlipRepository.findByCompanyOrderByCreatedAtDesc(company);
         List<Employee> employees = employeeRepository.findByCompanyOrderByFirstNameAsc(company);
         List<ProductionPlan> plans = productionPlanRepository.findByCompanyOrderByPlannedDateDesc(company);
+        List<SalesOrder> recognizedRevenueOrders = orders.stream()
+                .filter(this::isRevenueRecognizedOrder)
+                .toList();
 
-        String revenue = currency(totalAmount(orders));
-        String last30 = currency(sumWithin(orders, 30, company));
+        String revenue = currency(totalAmount(recognizedRevenueOrders));
+        String last30 = currency(sumWithin(recognizedRevenueOrders, 30, company));
         long dealers = dealerRepository.findByCompanyOrderByNameAsc(company).size();
         long activeEmployees = employees.stream().filter(emp -> "ACTIVE".equalsIgnoreCase(emp.getStatus())).count();
         double fulfilment = ratio(
@@ -290,6 +300,13 @@ public class PortalInsightsService {
                 .filter(order -> order.getCreatedAt() != null && order.getCreatedAt().isAfter(cutoff))
                 .map(SalesOrder::getTotalAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private boolean isRevenueRecognizedOrder(SalesOrder order) {
+        if (order == null || order.getStatus() == null) {
+            return false;
+        }
+        return REVENUE_RECOGNIZED_ORDER_STATUSES.contains(order.getStatus().trim().toUpperCase(Locale.ROOT));
     }
 
     private static double ratio(long numerator, long denominator) {
