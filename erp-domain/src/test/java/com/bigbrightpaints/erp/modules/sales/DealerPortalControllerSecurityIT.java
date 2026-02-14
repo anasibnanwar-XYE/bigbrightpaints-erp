@@ -253,6 +253,59 @@ class DealerPortalControllerSecurityIT extends AbstractIntegrationTest {
         assertThat((Boolean) invoicedOrderMap.get("pendingCreditExposure")).isFalse();
     }
 
+    @Test
+    @DisplayName("Dealer portal pending exposure follows sales-order invoice linkage")
+    void dealerPortalOrders_pendingExposureUsesSalesOrderInvoiceLinkageEvenWhenInvoiceDealerDrifts() {
+        Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
+        SalesOrder linkedOrder = upsertOrder(
+                company,
+                dealerA,
+                "SO-PORTAL-A-LINK-DRIFT",
+                "PENDING_PRODUCTION",
+                new BigDecimal("3600.00")
+        );
+        Invoice driftedInvoice = upsertInvoice(company, dealerB, "INV-PORTAL-A-LINK-DRIFT");
+        driftedInvoice.setStatus("ISSUED");
+        driftedInvoice.setSalesOrder(linkedOrder);
+        driftedInvoice.setSubtotal(new BigDecimal("3000.00"));
+        driftedInvoice.setTaxTotal(new BigDecimal("540.00"));
+        driftedInvoice.setTotalAmount(new BigDecimal("3540.00"));
+        driftedInvoice.setOutstandingAmount(new BigDecimal("900.00"));
+        invoiceRepository.saveAndFlush(driftedInvoice);
+
+        HttpHeaders headers = authHeaders(DEALER_A_EMAIL, PASSWORD);
+        ResponseEntity<Map> ordersResponse = rest.exchange(
+                "/api/v1/dealer-portal/orders",
+                HttpMethod.GET,
+                new HttpEntity<>(headers),
+                Map.class
+        );
+
+        assertThat(ordersResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<?, ?> ordersData = (Map<?, ?>) ordersResponse.getBody().get("data");
+        assertThat(((Number) ordersData.get("pendingOrderCount")).longValue()).isEqualTo(1L);
+        assertThat(new BigDecimal(String.valueOf(ordersData.get("pendingOrderExposure"))))
+                .isEqualByComparingTo("5000.00");
+        List<?> orders = (List<?>) ordersData.get("orders");
+        Map<?, ?> linkedOrderMap = orders.stream()
+                .map(Map.class::cast)
+                .filter(order -> linkedOrder.getOrderNumber().equals(order.get("orderNumber")))
+                .findFirst()
+                .orElseThrow();
+        assertThat((Boolean) linkedOrderMap.get("pendingCreditExposure")).isFalse();
+
+        ResponseEntity<Map> dashboardResponse = rest.exchange(
+                "/api/v1/dealer-portal/dashboard",
+                HttpMethod.GET,
+                new HttpEntity<>(headers),
+                Map.class
+        );
+        assertThat(dashboardResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<?, ?> dashboardData = (Map<?, ?>) dashboardResponse.getBody().get("data");
+        assertThat(new BigDecimal(String.valueOf(dashboardData.get("pendingOrderExposure"))))
+                .isEqualByComparingTo("5000.00");
+    }
+
     private HttpHeaders authHeaders(String email, String password) {
         Map<String, Object> payload = Map.of(
                 "email", email,
