@@ -5056,3 +5056,55 @@ Queue Rotation (Auto-Replenish)
 - [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
 - [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
 - [ready] M11-S6 approval queue runtime contract test slice (assert FE docs match live `AdminApprovalItemDto` payload fields and action endpoint semantics)
+
+Continuity Check
+- 2026-02-14T12:16:13+05:30
+- ledger_tail_repair: prior `M14-S39` closure + queue rotation append (`5cfdff0f`) exists in-file but was inserted mid-ledger due repeated context matches; latest EOF state is restated here for operational continuity.
+
+Docs-Only Review Evidence
+- Commit reviewed: `5cfdff0f`
+- Review-only subagent `019c5adc-c1d6-77a0-9e99-6a5c970a4847`:
+  - findings: none.
+  - summary: ledger coherence confirmed (single `in_progress`, ready backlog floor satisfied, closure trace complete).
+
+Completed Slice (Committed)
+- 2026-02-14: `f8012723`
+  - test(inventory): guard wac dispatch against fifo regression.
+  - M14-S40 closure pass:
+    - added `dispatch_wacUsesWeightedAverageCost_andRejectsFifoCostRegression` in `CR_INV_AdjustmentIdempotencyTest`.
+    - asserts WAC dispatch posting cost resolves to weighted-average (`28.00`) and explicitly rejects FIFO/batch-unit-cost regressions (`16.00` / `40.00`).
+    - asserts batch depletion remains on WAC expiry-priority branch (FIFO-preferred manufactured-older batch remains untouched).
+  - Verification:
+    - `cd /home/realnigga/Desktop/orchestrator_erp/erp-domain && mvn -B -ntp -Dtest=CR_INV_AdjustmentIdempotencyTest#dispatch_wacUsesWeightedAverageCost_andRejectsFifoCostRegression,CR_INV_AdjustmentIdempotencyTest#adjustment_wacUsesExpiryOrderedBatchSelection_andIdempotentReplayDoesNotDoubleDeplete test` -> pass (2 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `f8012723`
+- `codex review --commit f8012723`:
+  - final verdict: test-only change; no actionable regressions identified.
+- Review subagent `019c5ae5-9a01-73d3-9147-167819759eed`:
+  - findings: none.
+  - summary: dispatch WAC guard coverage is coherent with existing behavior and introduces no production-path mutation.
+  - residual risk: test uses `Instant.now()` / `LocalDate.now()` seeded metadata; if timing flake appears, pinning clock fixtures is the fallback.
+
+Loop Update
+- 2026-02-14T12:16:13+05:30
+- tracked_now_ts: `2026-02-14T12:16:13+05:30`
+- tracked_elapsed: `58h 22m 21s`
+- active_in_progress: `M14-S41 costing-helper centralization guard (enforce shared costing decision helper usage across inventory/factory/reporting services; document and test anti-duplication contract)`
+- continuity_recheck: `0355149b` / `f9fd898f` / `a1d05cd7` evidence chain remains aligned.
+
+Queue Rotation (Auto-Replenish)
+- [completed] M14-S40 finished-good batch-selection parity guard (assert WAC paths never regress to FIFO allocation queries in dispatch/adjustment flows; add negative regression tests)
+- [in_progress] M14-S41 costing-helper centralization guard (enforce shared costing decision helper usage across inventory/factory/reporting services; document and test anti-duplication contract)
+- [ready] M14-S42 raw-material WAC null-average factory-flow parity matrix (bulk packing/packaging/production issue flows must apply deterministic batch-cost fallback without zero-cost understatement)
+- [ready] M14-S43 catalog-import winner provenance cross-company fence (same idempotency key reused across different companies must remain company-scoped with no winner/loser bleed-over)
+- [ready] M14-S44 catalog-import idempotency key canonicalization abuse guard (whitespace/case-varied key replays must remain deterministic, company-scoped, and side-effect-free)
+- [ready] M14-S45 catalog-import MIME parameter injection guard (allowlist-token prefix/suffix tricks and malformed parameter tails must remain fail-closed with zero persistence side effects)
+- [ready] M14-S46 raw-material malformed-costing canonicalization fence (create/update/import vectors must reject non-canonical costing tokens uniformly and preserve entity state across retries)
+- [ready] M14-S47 finished-good WAC cache drift replay guard (dispatch + adjustment retry chains must invalidate cached weighted-average snapshots so replayed postings never reuse stale pre-mutation unit costs)
+- [ready] M11-S7 accounting-portal scope invariant lock (HR, PURCHASING, INVENTORY, REPORTS remain under Accounting portal unless replacement portal map + endpoint docs are updated atomically)
+- [ready] M12-S5 discount/reference calculation parity matrix across sales->invoice->settlement + user-facing example table refresh
+- [ready] M10-S3 release-gate dry-run and blocker ledger sync (`scripts/verify_local.sh` + artifact sanity)
+- [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
+- [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
+- [ready] M11-S6 approval queue runtime contract test slice (assert FE docs match live `AdminApprovalItemDto` payload fields and action endpoint semantics)
