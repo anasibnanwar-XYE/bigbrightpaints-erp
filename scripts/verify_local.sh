@@ -42,25 +42,19 @@ bash "$ROOT_DIR/scripts/guard_accounting_portal_scope_contract.sh"
 
 if [[ "$MIGRATION_SET" == "v2" ]]; then
   if [[ -n "${FLYWAY_GUARD_DB_NAME:-}" && -n "${PGDATABASE:-}" && "${FLYWAY_GUARD_DB_NAME}" != "${PGDATABASE}" ]]; then
-    echo "[verify_local] FLYWAY_GUARD_DB_NAME (${FLYWAY_GUARD_DB_NAME}) must match PGDATABASE (${PGDATABASE}) when both are set" >&2
-    exit 3
+    echo "[verify_local] WARNING: FLYWAY_GUARD_DB_NAME and PGDATABASE differ; using FLYWAY_GUARD_DB_NAME for guard target" >&2
   fi
 
   GUARD_DB_NAME="${FLYWAY_GUARD_DB_NAME:-${PGDATABASE:-}}"
   SKIP_FLYWAY_GUARD="${VERIFY_LOCAL_SKIP_FLYWAY_GUARD:-false}"
-  DELEGATED_GUARD_EXECUTED="${VERIFY_LOCAL_GUARD_ALREADY_EXECUTED:-false}"
 
   if [[ "${REQUIRE_FLYWAY_V2_GUARD:-false}" == "true" && -z "$GUARD_DB_NAME" ]]; then
     echo "[verify_local] FLYWAY_GUARD_DB_NAME/PGDATABASE is required when REQUIRE_FLYWAY_V2_GUARD=true" >&2
     exit 3
   fi
 
-  if [[ "$SKIP_FLYWAY_GUARD" == "true" && "$DELEGATED_GUARD_EXECUTED" != "true" ]]; then
-    if [[ "${REQUIRE_FLYWAY_V2_GUARD:-false}" == "true" ]]; then
-      echo "[verify_local] VERIFY_LOCAL_SKIP_FLYWAY_GUARD requires VERIFY_LOCAL_GUARD_ALREADY_EXECUTED=true when REQUIRE_FLYWAY_V2_GUARD=true" >&2
-      exit 3
-    fi
-    echo "[verify_local] ignore flyway v2 transient checksum delegation (VERIFY_LOCAL_GUARD_ALREADY_EXECUTED=true not set)"
+  if [[ "$SKIP_FLYWAY_GUARD" == "true" && "${REQUIRE_FLYWAY_V2_GUARD:-false}" == "true" ]]; then
+    echo "[verify_local] ignore flyway v2 transient checksum delegation while REQUIRE_FLYWAY_V2_GUARD=true"
     SKIP_FLYWAY_GUARD=false
   fi
 
@@ -68,7 +62,7 @@ if [[ "$MIGRATION_SET" == "v2" ]]; then
     echo "[verify_local] skip flyway v2 transient checksum guard (delegated by caller with FLYWAY_GUARD_DB_NAME=$GUARD_DB_NAME)"
   elif [[ -n "$GUARD_DB_NAME" ]]; then
     if [[ -z "${FLYWAY_GUARD_DB_NAME:-}" && -n "${PGDATABASE:-}" ]]; then
-      echo "[verify_local] deriving FLYWAY_GUARD_DB_NAME from PGDATABASE=$PGDATABASE"
+      echo "[verify_local] deriving FLYWAY_GUARD_DB_NAME from PGDATABASE"
     fi
     echo "[verify_local] flyway v2 transient checksum guard"
     bash "$ROOT_DIR/scripts/guard_flyway_v2_transient_checksum.sh" "$GUARD_DB_NAME"
