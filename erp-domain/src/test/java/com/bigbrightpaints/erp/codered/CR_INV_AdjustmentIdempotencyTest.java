@@ -24,6 +24,10 @@ import com.bigbrightpaints.erp.modules.inventory.dto.InventoryAdjustmentDto;
 import com.bigbrightpaints.erp.modules.inventory.dto.InventoryAdjustmentRequest;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
 import com.bigbrightpaints.erp.modules.inventory.service.InventoryAdjustmentService;
+import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
+import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderItem;
+import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipRepository;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 import com.bigbrightpaints.erp.test.support.TestDateUtils;
 import org.junit.jupiter.api.AfterEach;
@@ -55,6 +59,8 @@ class CR_INV_AdjustmentIdempotencyTest extends AbstractIntegrationTest {
     @Autowired private InventoryAdjustmentService inventoryAdjustmentService;
     @Autowired private InventoryAdjustmentRepository inventoryAdjustmentRepository;
     @Autowired private JournalEntryRepository journalEntryRepository;
+    @Autowired private SalesOrderRepository salesOrderRepository;
+    @Autowired private PackagingSlipRepository packagingSlipRepository;
 
     @AfterEach
     void clearCompanyContext() {
@@ -402,6 +408,17 @@ class CR_INV_AdjustmentIdempotencyTest extends AbstractIntegrationTest {
         assertThat(olderAfter.getQuantityAvailable()).isEqualByComparingTo(new BigDecimal("3"));
     }
 
+    @Test
+    void reserveAndAdjustment_selectSameBatchBranchAcrossCostingMethods() {
+        String companyCode = "CR-INV-SEL-PAR-" + shortId();
+        Company company = bootstrapCompany(companyCode);
+        Map<String, Account> accounts = ensureAccounts(company);
+
+        assertReserveAdjustmentSelectorParity(companyCode, company, accounts, "FIFO", true);
+        assertReserveAdjustmentSelectorParity(companyCode, company, accounts, "LIFO", false);
+        assertReserveAdjustmentSelectorParity(companyCode, company, accounts, "WAC", false);
+    }
+
     private Company bootstrapCompany(String companyCode) {
         dataSeeder.ensureCompany(companyCode, companyCode + " Ltd");
         CompanyContextHolder.setCompanyId(companyCode);
@@ -520,6 +537,161 @@ class CR_INV_AdjustmentIdempotencyTest extends AbstractIntegrationTest {
         } finally {
             CompanyContextHolder.clear();
         }
+    }
+
+    private void assertReserveAdjustmentSelectorParity(String companyCode,
+                                                       Company company,
+                                                       Map<String, Account> accounts,
+                                                       String costingMethod,
+                                                       boolean expectedPrimarySelection) {
+        String fixtureId = costingMethod + "-" + shortId();
+        Instant primaryManufacturedAt = Instant.now().minus(Duration.ofHours(4));
+        Instant secondaryManufacturedAt = Instant.now().minus(Duration.ofHours(1));
+        LocalDate primaryExpiry = LocalDate.now().plusDays(30);
+        LocalDate secondaryExpiry = LocalDate.now().plusDays(3);
+
+        FinishedGood reserveFinishedGood = ensureFinishedGood(
+                company,
+                "FG-RES-" + fixtureId,
+                accounts,
+                costingMethod);
+        Long reservePrimaryBatchId = seedBatchWithMetadata(
+                company,
+                reserveFinishedGood,
+                "BATCH-RES-" + fixtureId + "-A",
+                new BigDecimal("3"),
+                new BigDecimal("10.00"),
+                primaryManufacturedAt,
+                primaryExpiry);
+        Long reserveSecondaryBatchId = seedBatchWithMetadata(
+                company,
+                reserveFinishedGood,
+                "BATCH-RES-" + fixtureId + "-B",
+                new BigDecimal("3"),
+                new BigDecimal("11.00"),
+                secondaryManufacturedAt,
+                secondaryExpiry);
+
+        Long reservedBatchId = reserveSingleUnitAndResolveBatch(companyCode, company, reserveFinishedGood);
+        boolean reservePickedPrimary = reservePrimaryBatchId.equals(reservedBatchId);
+        assertThat(reservedBatchId)
+                .isIn(reservePrimaryBatchId, reserveSecondaryBatchId);
+
+        FinishedGood adjustmentFinishedGood = ensureFinishedGood(
+                company,
+                "FG-ADJ-" + fixtureId,
+                accounts,
+                costingMethod);
+        Long adjustmentPrimaryBatchId = seedBatchWithMetadata(
+                company,
+                adjustmentFinishedGood,
+                "BATCH-ADJ-" + fixtureId + "-A",
+                new BigDecimal("3"),
+                new BigDecimal("10.00"),
+                primaryManufacturedAt,
+                primaryExpiry);
+        Long adjustmentSecondaryBatchId = seedBatchWithMetadata(
+                company,
+                adjustmentFinishedGood,
+                "BATCH-ADJ-" + fixtureId + "-B",
+                new BigDecimal("3"),
+                new BigDecimal("11.00"),
+                secondaryManufacturedAt,
+                secondaryExpiry);
+
+        Long adjustedBatchId = applySingleUnitAdjustmentAndResolveBatch(
+                companyCode,
+                company,
+                accounts,
+                adjustmentFinishedGood,
+                costingMethod,
+                adjustmentPrimaryBatchId,
+                adjustmentSecondaryBatchId);
+        boolean adjustmentPickedPrimary = adjustmentPrimaryBatchId.equals(adjustedBatchId);
+
+        assertThat(adjustmentPickedPrimary).isEqualTo(reservePickedPrimary);
+        assertThat(reservePickedPrimary).isEqualTo(expectedPrimarySelection);
+    }
+
+    private Long reserveSingleUnitAndResolveBatch(String companyCode, Company company, FinishedGood finishedGood) {
+        SalesOrder order = createOrder(
+                company,
+                "SO-SEL-PAR-" + shortId(),
+                finishedGood.getProductCode(),
+                BigDecimal.ONE);
+
+        CompanyContextHolder.setCompanyId(companyCode);
+        try {
+            finishedGoodsService.reserveForOrder(order);
+        } finally {
+            CompanyContextHolder.clear();
+        }
+
+        return packagingSlipRepository.findByCompanyAndSalesOrderId(company, order.getId())
+                .filter(slip -> !slip.isBackorder())
+                .orElseThrow()
+                .getLines()
+                .getFirst()
+                .getFinishedGoodBatch()
+                .getId();
+    }
+
+    private Long applySingleUnitAdjustmentAndResolveBatch(String companyCode,
+                                                          Company company,
+                                                          Map<String, Account> accounts,
+                                                          FinishedGood finishedGood,
+                                                          String costingMethod,
+                                                          Long primaryBatchId,
+                                                          Long secondaryBatchId) {
+        InventoryAdjustmentRequest request = new InventoryAdjustmentRequest(
+                TestDateUtils.safeDate(company),
+                InventoryAdjustmentType.DAMAGED,
+                accounts.get("VAR").getId(),
+                "selector parity " + costingMethod,
+                false,
+                "INV-ADJ-SEL-" + UUID.randomUUID(),
+                List.of(new InventoryAdjustmentRequest.LineRequest(
+                        finishedGood.getId(),
+                        BigDecimal.ONE,
+                        new BigDecimal("10.00"),
+                        "selector parity adjustment")));
+
+        CompanyContextHolder.setCompanyId(companyCode);
+        try {
+            inventoryAdjustmentService.createAdjustment(request);
+        } finally {
+            CompanyContextHolder.clear();
+        }
+
+        FinishedGoodBatch primaryAfter = finishedGoodBatchRepository.findById(primaryBatchId).orElseThrow();
+        FinishedGoodBatch secondaryAfter = finishedGoodBatchRepository.findById(secondaryBatchId).orElseThrow();
+
+        boolean primaryDepletedByOne = primaryAfter.getQuantityTotal().compareTo(new BigDecimal("2")) == 0
+                && primaryAfter.getQuantityAvailable().compareTo(new BigDecimal("2")) == 0;
+        boolean secondaryDepletedByOne = secondaryAfter.getQuantityTotal().compareTo(new BigDecimal("2")) == 0
+                && secondaryAfter.getQuantityAvailable().compareTo(new BigDecimal("2")) == 0;
+
+        assertThat(primaryDepletedByOne ^ secondaryDepletedByOne).isTrue();
+        return primaryDepletedByOne ? primaryBatchId : secondaryBatchId;
+    }
+
+    private SalesOrder createOrder(Company company, String orderNumber, String productCode, BigDecimal quantity) {
+        SalesOrder order = new SalesOrder();
+        order.setCompany(company);
+        order.setOrderNumber(orderNumber);
+        order.setStatus("PENDING");
+        order.setTotalAmount(BigDecimal.ZERO);
+        order.setCurrency("INR");
+
+        SalesOrderItem item = new SalesOrderItem();
+        item.setSalesOrder(order);
+        item.setProductCode(productCode);
+        item.setQuantity(quantity);
+        item.setUnitPrice(BigDecimal.ONE);
+        item.setLineSubtotal(BigDecimal.ZERO);
+        item.setLineTotal(BigDecimal.ZERO);
+        order.getItems().add(item);
+        return salesOrderRepository.saveAndFlush(order);
     }
 
     private static String shortId() {
