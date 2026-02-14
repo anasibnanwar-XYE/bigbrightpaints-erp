@@ -5655,3 +5655,85 @@ Queue Rotation (Auto-Replenish)
 - [ready] M14-S48 costing-selection enum drift guard (new/legacy costing tokens must remain centrally mapped via `CostingMethodUtils` with no per-module fallback forks)
 - [ready] M14-S49 catalog-import retry-winner ledger/journal silence guard (stale-retry loser payloads must never produce duplicate accounting side effects while winner replay remains idempotent)
 - [ready] M11-S7 accounting-portal scope invariant lock (HR, PURCHASING, INVENTORY, REPORTS remain under Accounting portal unless replacement portal map + endpoint docs are updated atomically)
+
+Completed Slice (Committed)
+- 2026-02-14: `3b8e3824`
+  - fix(portal): gate dashboard revenue to shipment-recognized orders.
+  - M15-S2 execution (initial pass):
+    - moved dashboard recognized-revenue visibility away from raw order totals toward shipment-recognized order states.
+  - Verification:
+    - superseded by follow-up matrix in `fb2b44d9` / `5b3add36` after review findings.
+
+Post-Commit Review Evidence
+- Commit reviewed: `3b8e3824`
+- `codex review --commit 3b8e3824`:
+  - findings: `P1` partial-dispatch underreport risk and `P2` `CLOSED` overreport risk from status-only revenue derivation.
+  - disposition: fixed in follow-up commit `fb2b44d9`.
+- Review subagent `019c5bc3-e08e-7930-8691-9003dbc42f33`:
+  - findings: aligned (`CLOSED` overreport + status-model drift concerns).
+  - disposition: converged with `codex review`; moved to immediate follow-up.
+
+Follow-up Hardening (Committed)
+- 2026-02-14: `fb2b44d9`
+  - fix(portal): derive dashboard revenue from recognized invoices.
+  - changes:
+    - switched portal dashboard revenue metric source to recognized invoices (`ISSUED` / `PAID` / `PARTIAL`) instead of sales-order status labels.
+    - expanded `PortalInsightsControllerIT` scenario seeding to assert invoice-driven recognized revenue behavior.
+    - refreshed `docs/sales-payment-accounting-contract.md` to document invoice-based recognized-revenue semantics.
+  - Verification:
+    - `cd /home/realnigga/Desktop/orchestrator_erp/erp-domain && mvn -B -ntp -Dtest=PortalInsightsControllerIT#dashboardOperationsAndWorkforceEndpointsReturnData+dashboardRevenueUsesRecognizedInvoicesNotOrderStatus test` -> pass (2 tests, 0 failures, 0 errors).
+    - `cd /home/realnigga/Desktop/orchestrator_erp/erp-domain && mvn -B -ntp -Dtest=PortalInsightsControllerIT test` -> pass (2 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `fb2b44d9`
+- `codex review --commit fb2b44d9`:
+  - findings: `P2` avoidable heavy invoice entity-graph fetch in dashboard path, `P3` dead sales-order query in dashboard path.
+  - disposition: fixed in follow-up commit `5b3add36`.
+- Review subagent `019c5bcf-0c0f-7bc3-a590-573fc8cd9a53`:
+  - findings: same (`P2` aggregate query required, `P3` dead query removal).
+  - disposition: converged with `codex review`; moved to immediate follow-up.
+
+Follow-up Hardening (Committed)
+- 2026-02-14: `5b3add36`
+  - fix(portal): optimize dashboard revenue aggregation.
+  - changes:
+    - replaced invoice-list hydration with scalar JPQL aggregate sums for recognized revenue and recognized last-30-day window.
+    - removed dead dashboard sales-order fetch.
+    - preserved trim/case-normalized invoice-status semantics in the aggregate path to keep replay/value parity.
+  - Verification:
+    - `cd /home/realnigga/Desktop/orchestrator_erp/erp-domain && mvn -B -ntp -Dtest=PortalInsightsControllerIT#dashboardOperationsAndWorkforceEndpointsReturnData+dashboardRevenueUsesRecognizedInvoicesNotOrderStatus test` -> pass (2 tests, 0 failures, 0 errors).
+    - `cd /home/realnigga/Desktop/orchestrator_erp/erp-domain && mvn -B -ntp -Dtest=PortalInsightsControllerIT test` -> pass (2 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `5b3add36`
+- `codex review --commit 5b3add36`:
+  - final verdict: no correctness regressions identified; optimization accepted.
+- Review subagent `019c5bd9-2c87-7872-b609-5ee57cc523aa`:
+  - findings: none (`no findings`).
+
+Completed Slice (Resolved)
+- M15-S2 revenue recognition shipment gate
+  - closure basis: `3b8e3824` + `fb2b44d9` + `5b3add36` with converged review chain and green portal regression matrix.
+
+Loop Update
+- 2026-02-14T16:42:58+05:30
+- tracked_now_ts: `2026-02-14T16:42:58+05:30`
+- tracked_elapsed: `62h 49m 6s`
+- active_in_progress: `M15-S3 production start idempotency contract hardening (remove missing-header brittleness while preserving exactly-once semantics)`
+- continuity_recheck: `e6a4f36a` docs-only review chain remains logged in tail (`codex review` + subagent `019c5a98-9d60-7b42-a537-61b46666fa3d`); `M15-S2` chain appended.
+
+Queue Rotation (Auto-Replenish)
+- [completed] M15-S2 revenue recognition shipment gate (defer revenue posting/visibility until shipment dispatch confirmation)
+- [in_progress] M15-S3 production start idempotency contract hardening (remove missing-header brittleness while preserving exactly-once semantics)
+- [ready] M15-S4 dealer credit exposure pending-order projection (open production-pending orders must contribute to dealer utilized-credit metrics)
+- [ready] M15-S5 dealer pending-order visibility parity (dealer-facing pending order lists must match admin/order lifecycle truth)
+- [ready] M15-S6 split-payment allocation correctness (cash+credit split settlements must persist allocation legs and accounting postings deterministically)
+- [ready] M15-S7 sales cash-account auto-mapping boundary (standard cash/credit account selection must be backend-driven and policy-safe)
+- [ready] M15-S8 payroll account default/bootstrap guard (`SALARY-EXP` missing account should fail with deterministic provisioning guidance/guard rails)
+- [ready] M15-S9 sales/dealer accounting method-map docs refresh (internal + user-facing docs for cash/credit/split formulas, account mapping rules, idempotency headers, and pending-order credit exposure semantics)
+- [ready] M15-S10 cross-module idempotency contract unification matrix (standardize header semantics + helper parity across sales/production/accounting endpoint families)
+- [ready] M15-S11 recognized-revenue/pending-credit contract docs + endpoint parity matrix (internal and user-facing portal docs must match shipment gate + pending exposure behavior)
+- [ready] M15-S12 idempotency header contract convergence doc+runtime assert sweep (sales/production/accounting entrypoints must share canonical header semantics and error model)
+- [ready] M14-S48 costing-selection enum drift guard (new/legacy costing tokens must remain centrally mapped via `CostingMethodUtils` with no per-module fallback forks)
+- [ready] M14-S49 catalog-import retry-winner ledger/journal silence guard (stale-retry loser payloads must never produce duplicate accounting side effects while winner replay remains idempotent)
+- [ready] M11-S7 accounting-portal scope invariant lock (HR, PURCHASING, INVENTORY, REPORTS remain under Accounting portal unless replacement portal map + endpoint docs are updated atomically)
