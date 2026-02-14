@@ -67,7 +67,7 @@ if [[ "$MIGRATION_SET" == "v2" ]]; then
 fi
 
 echo "[gate-release] strict local verify"
-MIGRATION_SET="$MIGRATION_SET" VERIFY_LOCAL_SKIP_TESTS=true VERIFY_LOCAL_SKIP_FLYWAY_GUARD="$VERIFY_LOCAL_SKIP_GUARD" FAIL_ON_FINDINGS=true bash "$ROOT_DIR/scripts/verify_local.sh"
+MIGRATION_SET="$MIGRATION_SET" VERIFY_LOCAL_SKIP_TESTS=true VERIFY_LOCAL_SKIP_FLYWAY_GUARD="$VERIFY_LOCAL_SKIP_GUARD" VERIFY_LOCAL_GUARD_ALREADY_EXECUTED="$VERIFY_LOCAL_SKIP_GUARD" FAIL_ON_FINDINGS=true bash "$ROOT_DIR/scripts/verify_local.sh"
 
 echo "[gate-release] truth suite strict mode"
 (
