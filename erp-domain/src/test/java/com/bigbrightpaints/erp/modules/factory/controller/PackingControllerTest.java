@@ -30,8 +30,9 @@ class PackingControllerTest {
     private BulkPackingService bulkPackingService;
 
     @Test
-    void recordPacking_rejectsWhenIdempotencyKeyMissing() {
+    void recordPacking_appliesAutoIdempotencyKeyWhenHeaderAndBodyMissing() {
         PackingController controller = new PackingController(packingService, bulkPackingService);
+        when(packingService.recordPacking(any())).thenReturn(null);
 
         PackingRequest request = new PackingRequest(
                 1L,
@@ -41,9 +42,11 @@ class PackingControllerTest {
                 List.of(new PackingLineRequest("10L", new BigDecimal("1"), 1, 1, 1))
         );
 
-        assertThatThrownBy(() -> controller.recordPacking(null, request))
-                .isInstanceOf(ApplicationException.class)
-                .hasMessageContaining("Idempotency-Key header or request.idempotencyKey is required");
+        controller.recordPacking(null, null, request);
+
+        ArgumentCaptor<PackingRequest> captor = ArgumentCaptor.forClass(PackingRequest.class);
+        verify(packingService).recordPacking(captor.capture());
+        assertThat(captor.getValue().idempotencyKey()).startsWith("AUTO|FACTORY.PACKING.RECORD|");
     }
 
     @Test
@@ -58,7 +61,7 @@ class PackingControllerTest {
                 List.of(new PackingLineRequest("10L", new BigDecimal("1"), 1, 1, 1))
         );
 
-        assertThatThrownBy(() -> controller.recordPacking("header-key", request))
+        assertThatThrownBy(() -> controller.recordPacking("header-key", null, request))
                 .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Idempotency key mismatch");
     }
@@ -76,10 +79,31 @@ class PackingControllerTest {
                 List.of(new PackingLineRequest("10L", new BigDecimal("1"), 1, 1, 1))
         );
 
-        controller.recordPacking("header-key", request);
+        controller.recordPacking("header-key", null, request);
 
         ArgumentCaptor<PackingRequest> captor = ArgumentCaptor.forClass(PackingRequest.class);
         verify(packingService).recordPacking(captor.capture());
         assertThat(captor.getValue().idempotencyKey()).isEqualTo("header-key");
+    }
+
+    @Test
+    void recordPacking_appliesRequestIdFallbackWhenIdempotencyMissing() {
+        PackingController controller = new PackingController(packingService, bulkPackingService);
+        when(packingService.recordPacking(any())).thenReturn(null);
+
+        PackingRequest request = new PackingRequest(
+                1L,
+                LocalDate.of(2026, 2, 6),
+                "packer",
+                null,
+                List.of(new PackingLineRequest("10L", new BigDecimal("1"), 1, 1, 1))
+        );
+
+        controller.recordPacking(null, "req-123", request);
+
+        ArgumentCaptor<PackingRequest> captor = ArgumentCaptor.forClass(PackingRequest.class);
+        verify(packingService).recordPacking(captor.capture());
+        assertThat(captor.getValue().idempotencyKey())
+                .isEqualTo("REQ|FACTORY.PACKING.RECORD|req-123");
     }
 }

@@ -7,17 +7,20 @@ import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import jakarta.validation.Valid;
+import java.math.BigDecimal;
+import java.util.List;
+import org.apache.commons.codec.digest.DigestUtils;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-
 @RestController
 @RequestMapping("/api/v1/factory")
 @PreAuthorize("hasAnyAuthority('ROLE_FACTORY','ROLE_ACCOUNTING','ROLE_ADMIN')")
 public class PackingController {
+    private static final int MAX_IDEMPOTENCY_KEY_LENGTH = 255;
+    private static final String PACKING_COMMAND = "FACTORY.PACKING.RECORD";
 
     private final PackingService packingService;
     private final BulkPackingService bulkPackingService;
@@ -30,8 +33,9 @@ public class PackingController {
     @PostMapping("/packing-records")
     public ResponseEntity<ApiResponse<ProductionLogDetailDto>> recordPacking(
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            @RequestHeader(value = "X-Request-Id", required = false) String requestId,
             @Valid @RequestBody PackingRequest request) {
-        PackingRequest resolved = applyIdempotencyKey(request, idempotencyKey);
+        PackingRequest resolved = applyIdempotencyKey(request, idempotencyKey, requestId);
         return ResponseEntity.ok(ApiResponse.success("Packing recorded", packingService.recordPacking(resolved)));
     }
 
@@ -82,34 +86,75 @@ public class PackingController {
         return ResponseEntity.ok(ApiResponse.success(bulkPackingService.listChildBatches(parentBatchId)));
     }
 
-    private PackingRequest applyIdempotencyKey(PackingRequest request, String headerKey) {
+    private PackingRequest applyIdempotencyKey(PackingRequest request, String headerKey, String requestId) {
         if (request == null) {
             throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
                     "Packing request is required");
         }
-        String bodyKey = request.idempotencyKey();
-        if (!StringUtils.hasText(bodyKey) && !StringUtils.hasText(headerKey)) {
-            throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
-                    "Idempotency-Key header or request.idempotencyKey is required");
-        }
+        String bodyKey = StringUtils.hasText(request.idempotencyKey()) ? request.idempotencyKey().trim() : null;
+        String normalizedHeader = StringUtils.hasText(headerKey) ? headerKey.trim() : null;
         if (StringUtils.hasText(bodyKey)) {
-            if (StringUtils.hasText(headerKey) && !bodyKey.trim().equals(headerKey.trim())) {
+            if (StringUtils.hasText(normalizedHeader) && !bodyKey.equals(normalizedHeader)) {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
                         "Idempotency key mismatch between header and request body")
-                        .withDetail("headerKey", headerKey)
+                        .withDetail("headerKey", normalizedHeader)
                         .withDetail("bodyKey", bodyKey);
             }
-            return request;
+            return requestWithIdempotencyKey(request, bodyKey);
         }
-        if (!StringUtils.hasText(headerKey)) {
-            return request;
+        if (StringUtils.hasText(normalizedHeader)) {
+            return requestWithIdempotencyKey(request, normalizedHeader);
         }
-        return new PackingRequest(
-                request.productionLogId(),
+        return requestWithIdempotencyKey(request, resolveFallbackIdempotencyKey(request, requestId));
+    }
+
+    private PackingRequest requestWithIdempotencyKey(PackingRequest request, String idempotencyKey) {
+        return new PackingRequest(request.productionLogId(),
                 request.packedDate(),
                 request.packedBy(),
-                headerKey.trim(),
-                request.lines()
-        );
+                idempotencyKey,
+                request.lines());
+    }
+
+    private String resolveFallbackIdempotencyKey(PackingRequest request, String requestId) {
+        if (StringUtils.hasText(requestId)) {
+            String requestScoped = "REQ|" + PACKING_COMMAND + "|" + requestId.trim();
+            if (requestScoped.length() <= MAX_IDEMPOTENCY_KEY_LENGTH) {
+                return requestScoped;
+            }
+            return "REQH|" + PACKING_COMMAND + "|" + DigestUtils.sha256Hex(requestScoped);
+        }
+        return "AUTO|" + PACKING_COMMAND + "|" + DigestUtils.sha256Hex(buildRequestSignature(request));
+    }
+
+    private String buildRequestSignature(PackingRequest request) {
+        StringBuilder payload = new StringBuilder();
+        payload.append("log=").append(request.productionLogId())
+                .append("|date=").append(request.packedDate())
+                .append("|by=").append(clean(request.packedBy()));
+        if (request.lines() != null) {
+            int idx = 0;
+            for (PackingLineRequest line : request.lines()) {
+                idx++;
+                payload.append("|line").append(idx).append(':')
+                        .append(clean(line.packagingSize()))
+                        .append(':').append(decimalToken(line.quantityLiters()))
+                        .append(':').append(line.piecesCount())
+                        .append(':').append(line.boxesCount())
+                        .append(':').append(line.piecesPerBox());
+            }
+        }
+        return payload.toString();
+    }
+
+    private String decimalToken(BigDecimal value) {
+        if (value == null) {
+            return "";
+        }
+        return value.stripTrailingZeros().toPlainString();
+    }
+
+    private String clean(String value) {
+        return value == null ? "" : value.trim();
     }
 }

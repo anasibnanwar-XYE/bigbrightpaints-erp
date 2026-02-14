@@ -112,7 +112,7 @@ Verified role behavior for manufacturing scope:
 | `mfg_orders` | GET | `/api/v1/sales/orders` | - | dealerId (query), page (query), size (query), status (query) | Yes | Conditional | Yes |
 | `mfg_packBulkToSizes` | POST | `/api/v1/factory/pack` | bulkBatchId (body), packagingMaterials[].materialId (body), packagingMaterials[].quantity (body), packs (body), packs[].childSkuId (body), packs[].quantity (body) | notes (body), packDate (body), packagingMaterials (body), packagingMaterials[].unit (body), packedBy (body), packs[].sizeLabel (body), packs[].unit (body) | No | No | No |
 | `mfg_packingHistory` | GET | `/api/v1/factory/production-logs/{productionLogId}/packing-history` | productionLogId (path) | - | Yes | No | Yes |
-| `mfg_recordPacking` | POST | `/api/v1/factory/packing-records` | lines (body), lines[].packagingSize (body), productionLogId (body) | lines[].boxesCount (body), lines[].piecesCount (body), lines[].piecesPerBox (body), lines[].quantityLiters (body), packedBy (body), packedDate (body) | No | No | No |
+| `mfg_recordPacking` | POST | `/api/v1/factory/packing-records` | lines (body), lines[].packagingSize (body), productionLogId (body) | lines[].boxesCount (body), lines[].piecesCount (body), lines[].piecesPerBox (body), lines[].quantityLiters (body), packedBy (body), packedDate (body), `Idempotency-Key` (header), `X-Request-Id` (header) | No | No | No |
 | `mfg_updateSlipStatus` | PATCH | `/api/v1/dispatch/slip/{slipId}/status` | slipId (path), status (query) | - | No | No | Conditional |
 
 ### Manufacturing Inventory & Masters
@@ -167,8 +167,8 @@ Verified role behavior for manufacturing scope:
 - `POST /api/v1/orchestrator/dispatch` and `POST /api/v1/orchestrator/dispatch/{orderId}` are exposed in OpenAPI, but backend implementation returns `410 GONE` and points to `/api/v1/sales/dispatch/confirm`.
 - `POST /api/v1/dispatch/confirm` and `POST /api/v1/sales/dispatch/confirm` overlap in purpose but differ in role gates and request shape; frontend should choose one canonical command path.
 - `POST /api/v1/factory/packing-records` and `POST /api/v1/factory/packing-records/{productionLogId}/complete` have no explicit method-level role gate in controller (authenticated-only behavior via global security).
-- `POST /api/v1/factory/packing-records` requires idempotency key at runtime (header or body) via controller logic, but OpenAPI does not mark this as required.
-- Orchestrator command endpoints mark `Idempotency-Key` header optional in signature but enforce it in code (`requireIdempotencyKey`), creating spec/runtime mismatch.
+- `POST /api/v1/factory/packing-records` supports three runtime idempotency modes: explicit `Idempotency-Key`, `X-Request-Id` fallback, or deterministic payload-derived auto key. OpenAPI does not describe this contract.
+- Orchestrator command endpoints now support `Idempotency-Key` optional mode with request-id/payload fallback key synthesis; OpenAPI still lacks this fallback contract detail.
 - `DELETE /api/v1/factory/production-plans/{id}` returns `204 No Content` in controller, while OpenAPI map reports only `200` success semantics.
 - Most scoped endpoints define no explicit error responses in OpenAPI (only `200`), including mutating commands.
 - Generated operation IDs with suffixes (`dashboard_1`, `batches_1`, `confirmDispatch_1`) are unstable for client SDK naming.
@@ -329,7 +329,7 @@ Button naming standard for universal profile controls (use exactly):
 
 1. Pick one dispatch confirmation command path (recommended: `/api/v1/sales/dispatch/confirm`) and feature-flag/deprecate the other in UI.
 2. Confirm with backend whether packing-record endpoints should be factory-only; if yes, add method-level `@PreAuthorize` before release.
-3. Align OpenAPI with runtime idempotency requirements for orchestrator and packing commands.
+3. Align OpenAPI with runtime idempotency fallback contracts for orchestrator and packing commands (`Idempotency-Key`, `X-Request-Id`, payload auto-key).
 4. Decide whether factory users should access manufacturing reports; current backend blocks them.
 5. Add contract tests for role matrix (`factory`, `admin`, `sales`, `accounting`) on critical routes: packing, dispatch confirm, raw-material intake, packaging mapping writes.
 
