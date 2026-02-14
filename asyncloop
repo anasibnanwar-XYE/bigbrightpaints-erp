@@ -5863,3 +5863,66 @@ Queue Rotation (Auto-Replenish)
 - [ready] M14-S48 costing-selection enum drift guard (new/legacy costing tokens must remain centrally mapped via `CostingMethodUtils` with no per-module fallback forks)
 - [ready] M14-S49 catalog-import retry-winner ledger/journal silence guard (stale-retry loser payloads must never produce duplicate accounting side effects while winner replay remains idempotent)
 - [ready] M11-S7 accounting-portal scope invariant lock (HR, PURCHASING, INVENTORY, REPORTS remain under Accounting portal unless replacement portal map + endpoint docs are updated atomically)
+
+Completed Slice (Committed)
+- 2026-02-14: `994ad787`
+  - fix(sales): align dealer/admin pending-order summaries.
+  - M15-S5 execution (initial pass):
+    - aligned dealer dashboard pending-order summary to reuse `buildAgingView(...)` pending count/exposure values.
+    - surfaced `pendingOrderCount` in aging output so dealer dashboard + admin dealer-aging share one summary derivation path.
+    - added admin/dealer drift-parity regression `adminDealerAging_pendingSummaryMatchesDealerOrdersEvenWhenInvoiceDealerDrifts`.
+  - Verification:
+    - `cd /home/realnigga/Desktop/orchestrator_erp/erp-domain && mvn -B -ntp -Dtest=DealerPortalControllerSecurityIT test` -> pass (10 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `994ad787`
+- `codex review --commit 994ad787`:
+  - terminal verdict captured from review stream: patch is correct; no functional regressions identified in reviewed scope.
+- Review subagent `019c5cb4-8141-7522-a362-a4d2a8110c63`:
+  - finding: medium parity gap where order list used normalized status (`trim+upper`) but aggregate pending-count/exposure JPQL used exact `o.status in :statuses`, allowing mixed-case/padded statuses to drift dealer/admin summaries.
+  - disposition: fixed in follow-up commit `e2ebb98e`.
+
+Follow-up Hardening (Committed)
+- 2026-02-14: `e2ebb98e`
+  - fix(sales): normalize pending-summary status matching.
+  - changes:
+    - normalized pending aggregate predicates in `SalesOrderRepository` via `upper(trim(o.status)) in :statuses` for both count and exposure queries.
+    - added regression `pendingOrderSummaries_normalizeStatusTokensAcrossDealerAndAdminViews` to assert dealer orders, dealer dashboard, and admin dealer-aging remain parity-aligned under mixed-case/space-padded pending status tokens.
+    - added explicit cleanup in new IT to avoid cross-test state leakage.
+  - Verification:
+    - `cd /home/realnigga/Desktop/orchestrator_erp/erp-domain && mvn -B -ntp -Dtest=DealerPortalControllerSecurityIT test` -> pass (11 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `e2ebb98e`
+- `codex review --commit e2ebb98e`:
+  - command executed end-to-end with commit analysis; final review verdict captured: no actionable regressions introduced by patch.
+- Review subagent `019c5cbb-c806-7111-89e1-f8dd09b411df`:
+  - finding: medium performance caution that function-wrapped status predicate may reduce status-index usage quality as order volume grows.
+  - disposition: queued as follow-up slice `M15-S15` (performance/index guard using Flyway V2 only if migration/index work is selected).
+
+Completed Slice (Resolved)
+- M15-S5 dealer pending-order visibility parity
+  - closure basis: `994ad787` + `e2ebb98e` with converged review chain and green dealer/admin parity regression matrix.
+
+Loop Update
+- 2026-02-14T20:54:38+05:30
+- tracked_now_ts: `2026-02-14T20:54:38+05:30`
+- tracked_elapsed: `67h 00m 46s`
+- active_in_progress: `M15-S6 split-payment allocation correctness (cash+credit split settlements must persist allocation legs and accounting postings deterministically)`
+- continuity_recheck: `M15-S5` review finding on status-normalization parity is closed by `e2ebb98e`; performance caution carried forward into queued `M15-S15`.
+
+Queue Rotation (Auto-Replenish)
+- [completed] M15-S5 dealer pending-order visibility parity (dealer-facing pending order lists must match admin/order lifecycle truth)
+- [in_progress] M15-S6 split-payment allocation correctness (cash+credit split settlements must persist allocation legs and accounting postings deterministically)
+- [ready] M15-S7 sales cash-account auto-mapping boundary (standard cash/credit account selection must be backend-driven and policy-safe)
+- [ready] M15-S8 payroll account default/bootstrap guard (`SALARY-EXP` missing account should fail with deterministic provisioning guidance/guard rails)
+- [ready] M15-S9 sales/dealer accounting method-map docs refresh (internal + user-facing docs for cash/credit/split formulas, account mapping rules, idempotency headers, and pending-order credit exposure semantics)
+- [ready] M15-S10 cross-module idempotency contract unification matrix (standardize header semantics + helper parity across sales/production/accounting endpoint families)
+- [ready] M15-S11 recognized-revenue/pending-credit contract docs + endpoint parity matrix (internal and user-facing portal docs must match shipment gate + pending exposure behavior)
+- [ready] M15-S12 idempotency header contract convergence doc+runtime assert sweep (sales/production/accounting entrypoints must share canonical header semantics and error model)
+- [ready] M15-S13 dealer pending-exposure invoice predicate parity sweep (align dashboard aggregate and dealer-order pending markers to one active-invoice exclusion contract)
+- [ready] M15-S14 dealer/admin pending-exposure drift parity matrix (assert dealer dashboard/order list and admin dealer-aging view stay parity-aligned on pending count/exposure under invoice-dealer mismatch and partial-invoice edge states)
+- [ready] M15-S15 pending-status normalization performance guard (evaluate/land Flyway V2-safe functional index or normalized-token strategy so aggregate pending-status predicates retain index-friendly plans under high order volume)
+- [ready] M14-S48 costing-selection enum drift guard (new/legacy costing tokens must remain centrally mapped via `CostingMethodUtils` with no per-module fallback forks)
+- [ready] M14-S49 catalog-import retry-winner ledger/journal silence guard (stale-retry loser payloads must never produce duplicate accounting side effects while winner replay remains idempotent)
+- [ready] M11-S7 accounting-portal scope invariant lock (HR, PURCHASING, INVENTORY, REPORTS remain under Accounting portal unless replacement portal map + endpoint docs are updated atomically)
