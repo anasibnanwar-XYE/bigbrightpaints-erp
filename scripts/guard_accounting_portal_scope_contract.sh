@@ -39,6 +39,19 @@ for module in hr purchasing inventory reports; do
     || fail "endpoint inventory summary missing required module row with non-zero path count: $module"
 done
 
+for required in \
+  "hr:/api/v1/hr/" \
+  "purchasing:/api/v1/purchasing/" \
+  "inventory:/api/v1/finished-goods/stock-summary" \
+  "reports:/api/v1/reports/inventory-valuation"; do
+  module="${required%%:*}"
+  pattern="${required#*:}"
+  for path in "$ENDPOINT_INVENTORY_DOC" "$ENDPOINT_MAP_DOC" "$HANDOFF_DOC"; do
+    rg -q "$pattern" "$path" \
+      || fail "required $module endpoint evidence missing ($pattern) in $path"
+  done
+done
+
 for controller in \
   "### purchasing-workflow-controller" \
   "### raw-material-controller" \

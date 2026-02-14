@@ -110,6 +110,21 @@ class AccountingPortalScopeGuardScriptTest {
         assertThat(result.stderr()).contains("### hr-controller");
     }
 
+    @Test
+    void guardFailsWhenEndpointMapInventoryEvidenceIsMissing() throws Exception {
+        FixturePaths fixturePaths = writeFixture(13);
+        replaceInFile(
+                fixturePaths.endpointMapDoc(),
+                "- /api/v1/finished-goods/stock-summary\n",
+                "");
+
+        ProcessResult result = runGuard(fixturePaths);
+
+        assertThat(result.exitCode()).isNotEqualTo(0);
+        assertThat(result.stderr()).contains("required inventory endpoint evidence missing");
+        assertThat(result.stderr()).contains("/api/v1/finished-goods/stock-summary");
+    }
+
     private ProcessResult runGuard(FixturePaths fixturePaths) throws Exception {
         Path root = repoRoot();
         Path script = root.resolve("scripts/guard_accounting_portal_scope_contract.sh");
@@ -166,6 +181,10 @@ class AccountingPortalScopeGuardScriptTest {
                 ### hr-payroll-controller
                 ## Reports & Reconciliation
                 ### report-controller
+                - /api/v1/purchasing/purchase-orders
+                - /api/v1/finished-goods/stock-summary
+                - /api/v1/reports/inventory-valuation
+                - /api/v1/hr/employees
                 """);
 
         Files.writeString(handoffDoc, """
@@ -175,6 +194,10 @@ class AccountingPortalScopeGuardScriptTest {
                 ## Inventory & Costing
                 ## HR & Payroll
                 ## Reports & Reconciliation
+                - /api/v1/purchasing/purchase-orders
+                - /api/v1/finished-goods/stock-summary
+                - /api/v1/reports/inventory-valuation
+                - /api/v1/hr/employees
                 """);
 
         Files.writeString(endpointInventoryDoc, """
