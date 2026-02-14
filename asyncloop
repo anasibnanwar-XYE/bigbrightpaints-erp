@@ -4832,3 +4832,53 @@ Queue Rotation (Auto-Replenish)
 - [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
 - [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
 - [ready] M11-S6 approval queue runtime contract test slice (assert FE docs match live `AdminApprovalItemDto` payload fields and action endpoint semantics)
+
+Post-Commit Review Evidence
+- Commit reviewed: `3ab2afc6`
+- `codex review --commit 3ab2afc6`:
+  - final verdict: docs-only `asyncloop` append; no executable/config/test/runtime regression introduced.
+- Review subagent `019c5a90-b62b-7f91-88cd-407ada7858d5`:
+  - findings: none.
+  - summary: evidence chain completeness, queue rotation order, active slice continuity, and backlog-floor coverage remain coherent.
+
+Completed Slice (Committed)
+- 2026-02-14: `d1654242`
+  - test(accounting): lock catalog import winner replay provenance.
+  - M14-S36 closure pass:
+    - added `accountingCatalogImport_concurrentMismatchWinnerReplayStaysStableAndLoserNeverMaterializes` in `AccountingCatalogControllerSecurityIT`.
+    - asserts concurrent mismatch yields exactly one winner + one `CONC_001` conflict.
+    - asserts winner replay with same payload remains stable (`200 OK`) with unchanged persisted `CatalogImport` counters/identity.
+    - asserts repeated loser payload replays stay conflict (`CONC_001`) and loser SKU never materializes.
+  - Verification:
+    - `cd /home/realnigga/Desktop/orchestrator_erp/erp-domain && mvn -B -ntp -Dtest=AccountingCatalogControllerSecurityIT#accountingCatalogImport_concurrentMismatchProducesSingleWinnerAndConflict,AccountingCatalogControllerSecurityIT#accountingCatalogImport_concurrentMismatchWinnerReplayStaysStableAndLoserNeverMaterializes test` -> pass (2 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `d1654242`
+- `codex review --commit d1654242`:
+  - final verdict: test-only commit; assertions are coherent with existing idempotency/concurrency contracts and no concrete defect identified.
+- Review subagent `019c5a95-d0e5-75f2-8807-4cbec66e4ab5`:
+  - findings: none.
+  - summary: race/replay coverage now enforces single-winner persistence, deterministic winner replay, and loser non-materialization across retries.
+
+Loop Update
+- 2026-02-14T10:49:59+05:30
+- tracked_now_ts: `2026-02-14T10:49:59+05:30`
+- tracked_elapsed: `56h 56m 07s`
+- active_in_progress: `M14-S37 catalog-import stale-row cache cleanup acceptance matrix (legacy drifted rows + retry replay must clear stale flags without mutating winner payload)`
+- continuity_recheck: `0355149b` / `f9fd898f` / `a1d05cd7` evidence chain remains aligned.
+
+Queue Rotation (Auto-Replenish)
+- [completed] M14-S36 catalog-import concurrent winner provenance contract (winner replay with same payload must stay stable after mismatch conflict; loser payload must never materialize across retry attempts)
+- [in_progress] M14-S37 catalog-import stale-row cache cleanup acceptance matrix (legacy drifted rows + retry replay must clear stale flags without mutating winner payload)
+- [ready] M14-S38 catalog-import MIME token canonicalization matrix (mixed-case/parameterized content-type parsing must remain fail-closed for disallowed families while preserving allowlist aliases)
+- [ready] M14-S39 raw-material malformed-token replay matrix (repeat invalid costing payloads across create/update must stay fail-closed and side-effect-free under company-scoped concurrent retries)
+- [ready] M14-S40 finished-good batch-selection parity guard (assert WAC paths never regress to FIFO allocation queries in dispatch/adjustment flows; add negative regression tests)
+- [ready] M14-S41 costing-helper centralization guard (enforce shared costing decision helper usage across inventory/factory/reporting services; document and test anti-duplication contract)
+- [ready] M14-S42 raw-material WAC null-average factory-flow parity matrix (bulk packing/packaging/production issue flows must apply deterministic batch-cost fallback without zero-cost understatement)
+- [ready] M14-S43 catalog-import winner provenance cross-company fence (same idempotency key reused across different companies must remain company-scoped with no winner/loser bleed-over)
+- [ready] M11-S7 accounting-portal scope invariant lock (HR, PURCHASING, INVENTORY, REPORTS remain under Accounting portal unless replacement portal map + endpoint docs are updated atomically)
+- [ready] M12-S5 discount/reference calculation parity matrix across sales->invoice->settlement + user-facing example table refresh
+- [ready] M10-S3 release-gate dry-run and blocker ledger sync (`scripts/verify_local.sh` + artifact sanity)
+- [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
+- [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
+- [ready] M11-S6 approval queue runtime contract test slice (assert FE docs match live `AdminApprovalItemDto` payload fields and action endpoint semantics)
