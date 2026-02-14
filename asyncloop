@@ -6282,3 +6282,54 @@ Queue Rotation (Auto-Replenish)
 - [ready] M14-S48 costing-selection enum drift guard (new/legacy costing tokens must remain centrally mapped via `CostingMethodUtils` with no per-module fallback forks)
 - [ready] M14-S49 catalog-import retry-winner ledger/journal silence guard (stale-retry loser payloads must never produce duplicate accounting side effects while winner replay remains idempotent)
 - [ready] M11-S7 accounting-portal scope invariant lock (HR, PURCHASING, INVENTORY, REPORTS remain under Accounting portal unless replacement portal map + endpoint docs are updated atomically)
+
+Completed Slice (Committed)
+- 2026-02-15: `5f939199`
+  - test(sales): lock mixed-invoice pending-exposure parity.
+  - M15-S14 execution:
+    - added dealer/admin parity IT for mixed sibling invoices on one order (inactive `reversed` + active drifted `issued`) to assert that any active invoice excludes pending exposure consistently.
+    - enforced dealer orders, dealer dashboard, and admin aging parity assertions under the mixed-state edge.
+    - included explicit cleanup for inserted orders/invoices to avoid cross-test contamination in repeated full-class execution.
+  - Verification:
+    - `mvn -s /tmp/codex-mvn-settings.xml -B -ntp -f erp-domain/pom.xml -Dtest=DealerPortalControllerSecurityIT test` -> pass (13 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `5f939199`
+- `codex review --commit 5f939199`:
+  - command executed; session entered prolonged rollout/state-db noise and non-terminating analysis stream with no durable terminal verdict capture.
+  - disposition: terminated after no-progress windows; no concrete high/medium regression signal surfaced in captured stream.
+- Review subagent `019c5dee-d40c-7dc3-8bc7-f3ee900bbca7`:
+  - findings: none (`no findings`).
+  - residual non-blocking notes:
+    - parity logic remains split across two query paths (`InvoiceRepository` active-id lookup vs `SalesOrderRepository` `not exists` aggregate predicates), so future edits should keep both synchronized.
+    - optional additional sibling-matrix coverage (`void`, `null`, malformed tokens) remains open hardening.
+
+Completed Slice (Resolved)
+- M15-S14 dealer/admin pending-exposure drift parity matrix
+  - closure basis: `8cc190d7` + `5f939199` with normalized invoice-status predicates and mixed-sibling invoice parity coverage across dealer orders/dashboard/admin aging.
+
+Loop Update
+- 2026-02-15T02:27:55+05:30
+- tracked_now_ts: `2026-02-15T02:27:55+05:30`
+- tracked_elapsed: `72h 34m 03s`
+- active_in_progress: `M15-S20 invoice-status normalization performance index guard (evaluate Flyway V2-safe indexing strategy for normalized invoice status predicates used in pending-exposure paths)`
+- continuity_recheck:
+  - pending-exposure correctness/parity chain (`M15-S13`/`M15-S14`) is closed.
+  - next risk is query-plan quality for normalized status predicates under production volume.
+
+Queue Rotation (Auto-Replenish)
+- [completed] M15-S14 dealer/admin pending-exposure drift parity matrix (assert dealer dashboard/order list and admin dealer-aging view stay parity-aligned on pending count/exposure under invoice-dealer mismatch and partial-invoice edge states)
+- [in_progress] M15-S20 invoice-status normalization performance index guard (evaluate Flyway V2-safe functional/expressional indexing strategy for `upper(trim(status))` invoice predicates used in pending-exposure paths)
+- [ready] M15-S8 payroll account default/bootstrap guard (`SALARY-EXP` missing account should fail with deterministic provisioning guidance/guard rails)
+- [ready] M15-S9 sales/dealer accounting method-map docs refresh (internal + user-facing docs for cash/credit/split formulas, account mapping rules, idempotency headers, and pending-order credit exposure semantics)
+- [ready] M15-S10 cross-module idempotency contract unification matrix (standardize header semantics + helper parity across sales/production/accounting endpoint families)
+- [ready] M15-S11 recognized-revenue/pending-credit contract docs + endpoint parity matrix (internal and user-facing portal docs must match shipment gate + pending exposure behavior)
+- [ready] M15-S12 idempotency header contract convergence doc+runtime assert sweep (sales/production/accounting entrypoints must share canonical header semantics and error model)
+- [ready] M15-S15 pending-status normalization performance guard (evaluate/land Flyway V2-safe functional index or normalized-token strategy so aggregate pending-status predicates retain index-friendly plans under high order volume)
+- [ready] M15-S16 dealer-settlement replay e2e defense-in-depth matrix (optional end-to-end `settleDealerInvoices` replay assertion where adjustment debit lines coexist with split payments to further harden payment-account bounded remap behavior)
+- [ready] M15-S18 dispatch replay COGS reference payload parity guard (assert `postCogsJournal` reference/memo/line payload stability on replay anchors and prevent wrong-reference postings under override replay paths)
+- [ready] M15-S19 dispatch replay slip-number fallback + AR-overload guard matrix (cover `hasCogsJournalFor` alternate slip-number fallback and explicitly lock both `postSalesJournal` overload paths against duplicate replay posting)
+- [ready] M15-S21 mixed-invoice sibling malformed-status parity matrix (add dealer/admin parity coverage for `void`/`null`/malformed status tokens coexisting with active/inactive sibling invoices on a single order)
+- [ready] M14-S48 costing-selection enum drift guard (new/legacy costing tokens must remain centrally mapped via `CostingMethodUtils` with no per-module fallback forks)
+- [ready] M14-S49 catalog-import retry-winner ledger/journal silence guard (stale-retry loser payloads must never produce duplicate accounting side effects while winner replay remains idempotent)
+- [ready] M11-S7 accounting-portal scope invariant lock (HR, PURCHASING, INVENTORY, REPORTS remain under Accounting portal unless replacement portal map + endpoint docs are updated atomically)
