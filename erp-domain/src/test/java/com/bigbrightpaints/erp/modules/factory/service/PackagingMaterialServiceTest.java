@@ -176,12 +176,12 @@ class PackagingMaterialServiceTest {
         when(rawMaterialRepository.save(any(RawMaterial.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
-        PackagingConsumptionResult result = packagingMaterialService.consumePackagingMaterial("1L", 4, "PACK-REF");
+        PackagingConsumptionResult result = packagingMaterialService.consumePackagingMaterial("1L", 3, "PACK-REF");
 
         assertThat(result.mappingFound()).isTrue();
-        assertThat(result.totalCost()).isEqualByComparingTo("12.00");
-        assertThat(result.quantity()).isEqualByComparingTo("4");
-        assertThat(result.accountTotalsOrEmpty()).containsEntry(700L, new BigDecimal("12.00"));
+        assertThat(result.totalCost()).isEqualByComparingTo("7.00");
+        assertThat(result.quantity()).isEqualByComparingTo("3");
+        assertThat(result.accountTotalsOrEmpty()).containsEntry(700L, new BigDecimal("7.00"));
         verify(rawMaterialBatchRepository).calculateWeightedAverageCost(material);
     }
 

@@ -24,25 +24,27 @@ class TS_FactoryRawMaterialWacFallbackContractTest {
 
     @Test
     void packagingAndProductionFallbackToBatchCostWhenWacUnavailable() {
-        TruthSuiteFileAssert.assertContains(
+        TruthSuiteFileAssert.assertContainsInOrder(
                 PACKAGING_MATERIAL_SERVICE,
-                "weightedAverageCost != null",
-                "Optional.ofNullable(batch.getCostPerUnit()).orElse(BigDecimal.ZERO)");
-        TruthSuiteFileAssert.assertContains(
+                "BigDecimal unitCost = weightedAverageCost != null",
+                ": Optional.ofNullable(batch.getCostPerUnit()).orElse(BigDecimal.ZERO);");
+        TruthSuiteFileAssert.assertContainsInOrder(
                 PRODUCTION_LOG_SERVICE,
-                "weightedAverageCost != null",
-                "Optional.ofNullable(batch.getCostPerUnit()).orElse(BigDecimal.ZERO)");
-        TruthSuiteFileAssert.assertContains(
+                "BigDecimal unitCost = weightedAverageCost != null",
+                ": Optional.ofNullable(batch.getCostPerUnit()).orElse(BigDecimal.ZERO);");
+        TruthSuiteFileAssert.assertContainsInOrder(
                 BULK_PACKING_SERVICE,
-                "weightedAverageCost != null",
-                "(batch.getCostPerUnit() != null ? batch.getCostPerUnit() : BigDecimal.ZERO)");
+                "BigDecimal unitCost = weightedAverageCost != null",
+                ": (batch.getCostPerUnit() != null ? batch.getCostPerUnit() : BigDecimal.ZERO);");
     }
 
     private void assertWacNullFallbackPattern(String relativePath) {
-        TruthSuiteFileAssert.assertContains(
+        TruthSuiteFileAssert.assertContainsInOrder(
                 relativePath,
+                "BigDecimal weightedAverageCost = CostingMethodUtils.selectWeightedAverageValue(",
                 "CostingMethodUtils.selectWeightedAverageValue(",
                 "() -> rawMaterialBatchRepository.calculateWeightedAverageCost(",
-                "() -> null);");
+                "() -> null);",
+                "BigDecimal unitCost = weightedAverageCost != null");
     }
 }
