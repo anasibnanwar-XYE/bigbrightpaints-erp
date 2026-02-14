@@ -24,6 +24,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -113,6 +118,55 @@ class AccountingCatalogControllerSecurityIT extends AbstractIntegrationTest {
         assertThat(persistedRecord.get().getId()).isEqualTo(firstRecord.get().getId());
         assertThat(rawMaterialRepository.findByCompanyAndSku(company, firstSku)).isPresent();
         assertThat(rawMaterialRepository.findByCompanyAndSku(company, secondSku)).isEmpty();
+    }
+
+    @Test
+    void accountingCatalogImport_concurrentMismatchProducesSingleWinnerAndConflict() throws Exception {
+        Company company = dataSeeder.ensureCompany(COMPANY_CODE, "Catalog Sec Co");
+        HttpHeaders accountingHeaders = authHeaders(ACCOUNTING_EMAIL, PASSWORD, COMPANY_CODE);
+        String idempotencyKey = "CAT-IDEMP-RACE-" + shortId();
+        String firstSku = "RM-RACE-A-" + shortId();
+        String secondSku = "RM-RACE-B-" + shortId();
+
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<ResponseEntity<Map>> firstFuture = pool.submit(() ->
+                    importCatalogAfterBarrier(accountingHeaders, firstSku, idempotencyKey, ready, start));
+            Future<ResponseEntity<Map>> secondFuture = pool.submit(() ->
+                    importCatalogAfterBarrier(accountingHeaders, secondSku, idempotencyKey, ready, start));
+
+            assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+
+            ResponseEntity<Map> firstResponse = firstFuture.get(30, TimeUnit.SECONDS);
+            ResponseEntity<Map> secondResponse = secondFuture.get(30, TimeUnit.SECONDS);
+            List<ResponseEntity<Map>> responses = List.of(firstResponse, secondResponse);
+
+            long okCount = responses.stream().filter(response -> response.getStatusCode() == HttpStatus.OK).count();
+            long conflictCount = responses.stream().filter(response -> response.getStatusCode() == HttpStatus.CONFLICT).count();
+            assertThat(okCount).isEqualTo(1);
+            assertThat(conflictCount).isEqualTo(1);
+
+            ResponseEntity<Map> conflictResponse = responses.stream()
+                    .filter(response -> response.getStatusCode() == HttpStatus.CONFLICT)
+                    .findFirst()
+                    .orElseThrow();
+            assertThat(conflictResponse.getBody()).isNotNull();
+            @SuppressWarnings("unchecked")
+            Map<String, Object> errorData = (Map<String, Object>) conflictResponse.getBody().get("data");
+            assertThat(errorData).containsEntry("code", "CONC_001");
+
+            Optional<CatalogImport> persistedRecord = catalogImportRepository.findByCompanyAndIdempotencyKey(company, idempotencyKey);
+            assertThat(persistedRecord).isPresent();
+
+            boolean firstCreated = rawMaterialRepository.findByCompanyAndSku(company, firstSku).isPresent();
+            boolean secondCreated = rawMaterialRepository.findByCompanyAndSku(company, secondSku).isPresent();
+            assertThat(firstCreated ^ secondCreated).isTrue();
+        } finally {
+            pool.shutdownNow();
+        }
     }
 
     @Test
@@ -219,6 +273,25 @@ class AccountingCatalogControllerSecurityIT extends AbstractIntegrationTest {
                 "catalog-" + sku + ".csv",
                 "text/csv",
                 idempotencyKey);
+    }
+
+    private ResponseEntity<Map> importCatalogAfterBarrier(HttpHeaders headers,
+                                                          String sku,
+                                                          String idempotencyKey,
+                                                          CountDownLatch ready,
+                                                          CountDownLatch start) {
+        ready.countDown();
+        try {
+            if (!start.await(5, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("Timed out waiting to start concurrent import");
+            }
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while awaiting concurrent import start", ex);
+        }
+        HttpHeaders perCallHeaders = new HttpHeaders();
+        perCallHeaders.putAll(headers);
+        return importCatalog(perCallHeaders, sku, idempotencyKey);
     }
 
     private ResponseEntity<Map> importCatalogWithCustomFile(HttpHeaders headers,
