@@ -4961,15 +4961,22 @@ public class AccountingService {
             counts.merge(signature, 1, Integer::sum);
             candidateLines.add(new ExistingDealerPaymentLine(signature, normalizeLineDescription(line.getDescription())));
         }
-        if (requestPaymentSignatures == null || requestPaymentSignatures.isEmpty() || counts.equals(requestPaymentSignatures)) {
+        if (requestPaymentSignatures == null || requestPaymentSignatures.isEmpty()) {
             return counts;
         }
         List<SettlementAdjustmentSignature> adjustmentSignatures = buildSettlementAdjustmentSignaturesFromRows(allocations);
         if (adjustmentSignatures.isEmpty()) {
             return counts;
         }
+        List<BigDecimal> adjustmentRemovalTargets = new ArrayList<>();
         List<List<Integer>> candidateIndexesByAdjustment = new ArrayList<>();
         for (SettlementAdjustmentSignature adjustmentSignature : adjustmentSignatures) {
+            BigDecimal nonPaymentAmount = adjustmentDebitAmountOnNonPaymentAccounts(
+                    entry,
+                    paymentAccountIds,
+                    adjustmentSignature.normalizedDescription());
+            BigDecimal remaining = adjustmentSignature.amount().subtract(nonPaymentAmount);
+            adjustmentRemovalTargets.add(normalizeAmount(remaining.compareTo(BigDecimal.ZERO) > 0 ? remaining : BigDecimal.ZERO));
             List<Integer> candidateIndexes = new ArrayList<>();
             for (int i = 0; i < candidateLines.size(); i++) {
                 ExistingDealerPaymentLine line = candidateLines.get(i);
@@ -4984,6 +4991,7 @@ public class AccountingService {
         if (canMatchRequestSignaturesWithOptionalAdjustmentExclusions(
                 0,
                 adjustmentSignatures,
+                adjustmentRemovalTargets,
                 candidateIndexesByAdjustment,
                 candidateLines,
                 new HashSet<>(),
@@ -4991,7 +4999,38 @@ public class AccountingService {
                 requestPaymentSignatures)) {
             return new HashMap<>(requestPaymentSignatures);
         }
+        boolean hasPositiveRemovalTarget = adjustmentRemovalTargets.stream()
+                .anyMatch(amount -> amount.compareTo(BigDecimal.ZERO) > 0);
+        if (hasPositiveRemovalTarget && counts.equals(requestPaymentSignatures)) {
+            return new HashMap<>();
+        }
         return counts;
+    }
+
+    private BigDecimal adjustmentDebitAmountOnNonPaymentAccounts(JournalEntry entry,
+                                                                 Set<Long> paymentAccountIds,
+                                                                 String normalizedDescription) {
+        if (entry == null || entry.getLines() == null || !StringUtils.hasText(normalizedDescription)) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+        BigDecimal total = BigDecimal.ZERO;
+        for (JournalLine line : entry.getLines()) {
+            if (line == null || line.getAccount() == null || line.getAccount().getId() == null) {
+                continue;
+            }
+            if (paymentAccountIds != null && paymentAccountIds.contains(line.getAccount().getId())) {
+                continue;
+            }
+            if (!normalizeLineDescription(line.getDescription()).equals(normalizedDescription)) {
+                continue;
+            }
+            BigDecimal debit = normalizeAmount(line.getDebit());
+            if (debit.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+            total = total.add(debit);
+        }
+        return normalizeAmount(total);
     }
 
     private List<SettlementAdjustmentSignature> buildSettlementAdjustmentSignaturesFromRows(
@@ -5035,6 +5074,7 @@ public class AccountingService {
     private boolean canMatchRequestSignaturesWithOptionalAdjustmentExclusions(
             int adjustmentIndex,
             List<SettlementAdjustmentSignature> adjustmentSignatures,
+            List<BigDecimal> adjustmentRemovalTargets,
             List<List<Integer>> candidateIndexesByAdjustment,
             List<ExistingDealerPaymentLine> candidateLines,
             Set<Integer> removedIndexes,
@@ -5043,22 +5083,25 @@ public class AccountingService {
         if (adjustmentIndex >= adjustmentSignatures.size()) {
             return workingCounts.equals(requestPaymentSignatures);
         }
-        if (canMatchRequestSignaturesWithOptionalAdjustmentExclusions(
-                adjustmentIndex + 1,
-                adjustmentSignatures,
-                candidateIndexesByAdjustment,
-                candidateLines,
-                removedIndexes,
-                workingCounts,
-                requestPaymentSignatures)) {
-            return true;
+        BigDecimal requiredRemoval = adjustmentRemovalTargets.get(adjustmentIndex);
+        if (requiredRemoval.compareTo(BigDecimal.ZERO) == 0) {
+            return canMatchRequestSignaturesWithOptionalAdjustmentExclusions(
+                    adjustmentIndex + 1,
+                    adjustmentSignatures,
+                    adjustmentRemovalTargets,
+                    candidateIndexesByAdjustment,
+                    candidateLines,
+                    removedIndexes,
+                    workingCounts,
+                    requestPaymentSignatures);
         }
         return tryMatchAdjustmentRemovalCombination(
                 adjustmentIndex,
                 candidateIndexesByAdjustment.get(adjustmentIndex),
                 0,
-                adjustmentSignatures.get(adjustmentIndex).amount(),
+                requiredRemoval,
                 adjustmentSignatures,
+                adjustmentRemovalTargets,
                 candidateIndexesByAdjustment,
                 candidateLines,
                 removedIndexes,
@@ -5072,6 +5115,7 @@ public class AccountingService {
             int candidateOffset,
             BigDecimal remainingAmount,
             List<SettlementAdjustmentSignature> adjustmentSignatures,
+            List<BigDecimal> adjustmentRemovalTargets,
             List<List<Integer>> candidateIndexesByAdjustment,
             List<ExistingDealerPaymentLine> candidateLines,
             Set<Integer> removedIndexes,
@@ -5081,6 +5125,7 @@ public class AccountingService {
             return canMatchRequestSignaturesWithOptionalAdjustmentExclusions(
                     adjustmentIndex + 1,
                     adjustmentSignatures,
+                    adjustmentRemovalTargets,
                     candidateIndexesByAdjustment,
                     candidateLines,
                     removedIndexes,
@@ -5110,6 +5155,7 @@ public class AccountingService {
                     i + 1,
                     remainingAmount.subtract(lineAmount),
                     adjustmentSignatures,
+                    adjustmentRemovalTargets,
                     candidateIndexesByAdjustment,
                     candidateLines,
                     removedIndexes,
