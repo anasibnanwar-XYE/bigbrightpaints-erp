@@ -6,6 +6,7 @@ import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatch;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatchRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryMovementRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
@@ -179,5 +180,45 @@ class InventoryValuationServiceTest {
         assertThat(snapshot.lowStockItems()).isZero();
         verify(rawMaterialBatchRepository).calculateWeightedAverageCost(material);
         verify(rawMaterialBatchRepository, never()).findByRawMaterial(material);
+    }
+
+    @Test
+    void currentSnapshot_rawMaterialWacFallsBackToBatchValuationWhenAverageMissing() {
+        Company company = new Company();
+        company.setCode("CR-RM-WAC-NULL");
+        company.setName("CR RM WAC NULL");
+        company.setTimezone("UTC");
+
+        com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial material =
+                new com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial();
+        material.setCompany(company);
+        material.setName("Pigment B");
+        material.setSku("RM-WAC-NULL");
+        material.setCurrentStock(new BigDecimal("5"));
+        material.setCostingMethod("WAC");
+
+        RawMaterialBatch early = new RawMaterialBatch();
+        early.setBatchCode("RM-WAC-NULL-1");
+        early.setReceivedAt(Instant.parse("2026-01-01T00:00:00Z"));
+        early.setQuantity(new BigDecimal("2"));
+        early.setCostPerUnit(new BigDecimal("4"));
+
+        RawMaterialBatch late = new RawMaterialBatch();
+        late.setBatchCode("RM-WAC-NULL-2");
+        late.setReceivedAt(Instant.parse("2026-01-02T00:00:00Z"));
+        late.setQuantity(new BigDecimal("3"));
+        late.setCostPerUnit(new BigDecimal("6"));
+
+        when(rawMaterialRepository.findByCompanyOrderByNameAsc(company)).thenReturn(List.of(material));
+        when(rawMaterialBatchRepository.calculateWeightedAverageCost(material)).thenReturn(null);
+        when(rawMaterialBatchRepository.findByRawMaterial(material)).thenReturn(List.of(late, early));
+        when(finishedGoodRepository.findByCompanyOrderByProductCodeAsc(company)).thenReturn(List.of());
+
+        InventoryValuationService.InventorySnapshot snapshot = inventoryValuationService.currentSnapshot(company);
+
+        assertThat(snapshot.totalValue()).isEqualByComparingTo("26.00");
+        assertThat(snapshot.lowStockItems()).isZero();
+        verify(rawMaterialBatchRepository).calculateWeightedAverageCost(material);
+        verify(rawMaterialBatchRepository).findByRawMaterial(material);
     }
 }

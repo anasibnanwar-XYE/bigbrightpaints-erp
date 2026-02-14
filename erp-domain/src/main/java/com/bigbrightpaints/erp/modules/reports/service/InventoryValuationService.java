@@ -216,19 +216,24 @@ public class InventoryValuationService {
                 material.getCostingMethod(),
                 () -> {
                     BigDecimal avgCost = rawMaterialBatchRepository.calculateWeightedAverageCost(material);
-                    if (avgCost == null) {
-                        return BigDecimal.ZERO;
+                    if (avgCost != null) {
+                        return remaining.multiply(avgCost);
                     }
-                    return remaining.multiply(avgCost);
+                    // Fail-safe: if WAC aggregate is missing, fall back to deterministic batch valuation.
+                    return valueFromRawMaterialBatches(material, remaining);
                 },
-                () -> {
-                    List<RawMaterialBatch> batches = rawMaterialBatchRepository.findByRawMaterial(material).stream()
-                            .sorted((a, b) -> a.getReceivedAt().compareTo(b.getReceivedAt()))
-                            .toList();
-                    return consumeValuation(remaining, batches.stream()
-                            .map(batch -> new CostSlice(batch.getQuantity(), batch.getCostPerUnit()))
-                            .toList());
-                });
+                () -> valueFromRawMaterialBatches(material, remaining));
+    }
+
+    private BigDecimal valueFromRawMaterialBatches(RawMaterial material, BigDecimal remaining) {
+        List<RawMaterialBatch> batches = rawMaterialBatchRepository.findByRawMaterial(material).stream()
+                .sorted(Comparator
+                        .comparing(RawMaterialBatch::getReceivedAt, Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(RawMaterialBatch::getId, Comparator.nullsLast(Comparator.naturalOrder())))
+                .toList();
+        return consumeValuation(remaining, batches.stream()
+                .map(batch -> new CostSlice(batch.getQuantity(), batch.getCostPerUnit()))
+                .toList());
     }
 
     private BigDecimal valueFromFinishedGood(FinishedGood finishedGood) {
