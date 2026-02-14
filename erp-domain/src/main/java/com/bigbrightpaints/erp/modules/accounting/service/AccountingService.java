@@ -2391,10 +2391,14 @@ public class AccountingService {
         }
 
         String legacyKey = buildLegacyDealerSettlementIdempotencyKey(request);
-        if (StringUtils.hasText(legacyKey)
-                && !legacyKey.equalsIgnoreCase(canonicalKey)
-                && (hasExistingSettlementAllocations(company, legacyKey) || hasExistingIdempotencyMapping(company, legacyKey))) {
-            return legacyKey;
+        if (StringUtils.hasText(legacyKey) && !legacyKey.equalsIgnoreCase(canonicalKey)) {
+            boolean hasLegacyAllocations = hasExistingSettlementAllocations(company, legacyKey);
+            if (hasLegacyAllocations && dealerSettlementReplayKeyMatchesRequest(company, request, legacyKey)) {
+                return legacyKey;
+            }
+            if (!hasLegacyAllocations && hasExistingIdempotencyMapping(company, legacyKey)) {
+                return legacyKey;
+            }
         }
         return canonicalKey;
     }
@@ -2458,6 +2462,39 @@ public class AccountingService {
             return Optional.of(candidateKey);
         }
         return Optional.empty();
+    }
+
+    private boolean dealerSettlementReplayKeyMatchesRequest(Company company,
+                                                            DealerSettlementRequest request,
+                                                            String candidateKey) {
+        if (company == null || request == null || !StringUtils.hasText(candidateKey)) {
+            return false;
+        }
+        List<PartnerSettlementAllocation> existing = findAllocationsByIdempotencyKey(company, candidateKey);
+        if (existing.isEmpty()) {
+            return false;
+        }
+        Map<String, Integer> requestSignatures = allocationSignatureCountsFromRequests(
+                request.allocations() != null ? request.allocations() : List.of());
+        if (requestSignatures.isEmpty()) {
+            return false;
+        }
+        Long dealerId = request.dealerId();
+        boolean dealerMismatch = existing.stream().anyMatch(row ->
+                row.getDealer() == null || !Objects.equals(row.getDealer().getId(), dealerId));
+        if (dealerMismatch) {
+            return false;
+        }
+        if (!allocationSignatureCountsFromRows(existing).equals(requestSignatures)) {
+            return false;
+        }
+        Map<DealerPaymentSignature, Integer> requestPaymentSignatures = dealerPaymentSignatureCountsFromRequest(request);
+        Set<Long> requestPaymentAccountIds = requestPaymentSignatures.keySet().stream()
+                .map(DealerPaymentSignature::accountId)
+                .filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
+        return dealerPaymentSignatureCountsFromExistingRows(existing, requestPaymentAccountIds)
+                .equals(requestPaymentSignatures);
     }
 
     private String normalizeIdempotencyMappingKey(String idempotencyKey) {
@@ -4075,23 +4112,49 @@ public class AccountingService {
         Comparator<SettlementPaymentRequest> paymentComparator = Comparator
                 .comparing(SettlementPaymentRequest::accountId, Comparator.nullsLast(Long::compareTo))
                 .thenComparing(SettlementPaymentRequest::amount, Comparator.nullsLast(BigDecimal::compareTo));
-        return buildDealerSettlementIdempotencyKey(request, paymentComparator);
+        return buildDealerSettlementIdempotencyKey(request, paymentComparator, true);
     }
 
     private String buildLegacyDealerSettlementIdempotencyKey(DealerSettlementRequest request) {
         Comparator<SettlementPaymentRequest> paymentComparator = Comparator
                 .comparing(SettlementPaymentRequest::accountId, Comparator.nullsLast(Long::compareTo));
-        return buildDealerSettlementIdempotencyKey(request, paymentComparator);
+        return buildDealerSettlementIdempotencyKey(request, paymentComparator, false);
     }
 
     private String buildDealerSettlementIdempotencyKey(DealerSettlementRequest request,
-                                                       Comparator<SettlementPaymentRequest> paymentComparator) {
-        List<SettlementPaymentRequest> orderedPayments = request != null && request.payments() != null
-                ? request.payments().stream()
-                .sorted(paymentComparator)
-                .toList()
-                : List.of();
+                                                       Comparator<SettlementPaymentRequest> paymentComparator,
+                                                       boolean includeImplicitCashFallback) {
+        List<SettlementPaymentRequest> orderedPayments =
+                orderedDealerSettlementPaymentsForFingerprint(request, paymentComparator, includeImplicitCashFallback);
         return buildDealerSettlementIdempotencyKey(request, orderedPayments);
+    }
+
+    private List<SettlementPaymentRequest> orderedDealerSettlementPaymentsForFingerprint(
+            DealerSettlementRequest request,
+            Comparator<SettlementPaymentRequest> paymentComparator,
+            boolean includeImplicitCashFallback) {
+        if (request == null) {
+            return List.of();
+        }
+        if (request.payments() != null && !request.payments().isEmpty()) {
+            return request.payments().stream()
+                    .sorted(paymentComparator)
+                    .toList();
+        }
+        if (!includeImplicitCashFallback || request.cashAccountId() == null) {
+            return List.of();
+        }
+        SettlementTotals totals = computeSettlementTotals(request.allocations());
+        BigDecimal cashAmount = totals.totalApplied()
+                .add(totals.totalFxGain())
+                .subtract(totals.totalFxLoss())
+                .subtract(totals.totalDiscount())
+                .subtract(totals.totalWriteOff());
+        if (cashAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            return List.of();
+        }
+        // Include implicit single-tender cash mode in canonical fingerprint to bind account mapping.
+        return List.of(new SettlementPaymentRequest(request.cashAccountId(), cashAmount, "AUTO"));
     }
 
     private String buildDealerSettlementIdempotencyKey(DealerSettlementRequest request,
