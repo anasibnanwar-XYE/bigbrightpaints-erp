@@ -5560,3 +5560,98 @@ Queue Rotation (Auto-Replenish)
 - [ready] M11-S7 accounting-portal scope invariant lock (HR, PURCHASING, INVENTORY, REPORTS remain under Accounting portal unless replacement portal map + endpoint docs are updated atomically)
 - [ready] M10-S3 release-gate dry-run and blocker ledger sync (`scripts/verify_local.sh` + artifact sanity)
 - [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
+
+Completed Slice (Committed)
+- 2026-02-14: `21422f86`
+  - fix(sales): bypass dealer credit checks for pure cash orders.
+  - M15-S1 execution (initial pass):
+    - added `paymentMode` request support (`CASH`/`CREDIT`/`SPLIT`) with strict normalization.
+    - enforced credit-limit checks only on credit-exposure modes (`CREDIT`, `SPLIT`); pure `CASH` bypasses dealer credit-limit rejection.
+    - added focused regressions:
+      - `createOrderCashPaymentModeBypassesDealerCreditLimit`
+      - `createOrderSplitPaymentModeStillEnforcesDealerCreditLimit`
+      - `createOrderRejectsUnsupportedPaymentMode`
+  - Verification:
+    - `cd /home/realnigga/Desktop/orchestrator_erp/erp-domain && mvn -B -ntp -Dtest=SalesServiceTest#createOrderRespectsDealerCreditLimit+createOrderCashPaymentModeBypassesDealerCreditLimit+createOrderSplitPaymentModeStillEnforcesDealerCreditLimit+createOrderRejectsUnsupportedPaymentMode+createOrderThrowsWhenCreditLimitExceeded test` -> pass (5 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `21422f86`
+- `codex review --commit 21422f86`:
+  - findings: `P1` auto-derived idempotency-key drift for default-credit payloads, and `P2` stored-signature mismatch on legacy retries.
+  - disposition: fixed in follow-up commit `e20d131b`.
+- Review subagent `019c5b5d-8d56-7651-9e5a-cc3f7e37fab2`:
+  - findings: same compatibility regressions confirmed.
+  - disposition: converged with `codex review`; moved to immediate follow-up.
+
+Follow-up Hardening (Committed)
+- 2026-02-14: `e20d131b`
+  - fix(sales): preserve idempotency compatibility for payment modes.
+  - changes:
+    - restored default-credit canonical compatibility by omitting default payment token from canonical key/signature derivation.
+    - added regressions for default-credit canonical stability and legacy explicit-key replay acceptance.
+  - Verification:
+    - `cd /home/realnigga/Desktop/orchestrator_erp/erp-domain && mvn -B -ntp -Dtest=SalesOrderRequestTest,SalesServiceTest#createOrderRespectsDealerCreditLimit+createOrderCashPaymentModeBypassesDealerCreditLimit+createOrderSplitPaymentModeStillEnforcesDealerCreditLimit+createOrderRejectsUnsupportedPaymentMode+createOrderIdempotentRetry_acceptsLegacyStoredSignatureWithoutPaymentModeSegment+createOrderThrowsWhenCreditLimitExceeded test` -> pass (15 tests, 0 failures, 0 errors).
+    - `cd /home/realnigga/Desktop/orchestrator_erp/erp-domain && mvn -B -ntp -Dtest=SalesServiceTest,SalesOrderRequestTest test` -> pass (57 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `e20d131b`
+- `codex review --commit e20d131b`:
+  - findings: `P1` adjacent-upgrade drift remained for immediate prior default-credit `|CREDIT` key/signature shape.
+  - disposition: fixed in follow-up commit `ae755100` with explicit bridge acceptance.
+- Review subagent `019c5b66-d3be-7721-8fd9-a554db8f7136`:
+  - findings: same adjacent-upgrade compatibility regression confirmed.
+
+Follow-up Hardening (Committed)
+- 2026-02-14: `ae755100`
+  - fix(sales): bridge adjacent idempotency key/signature formats.
+  - changes:
+    - introduced explicit legacy-default-credit key bridge (`resolveIdempotencyKeyIncludingDefaultPaymentMode`) for replay lookup.
+    - accepted both canonical and adjacent-legacy default-credit signature shapes during replay.
+    - canonicalized upgraded replay rows by rewriting stored hash to canonical shape after successful legacy match.
+    - added regressions:
+      - `resolveIdempotencyKeyIncludingDefaultPaymentMode_keepsTransitionalDefaultCreditShape`
+      - `createOrderIdempotentRetry_acceptsStoredSignatureWithDefaultPaymentModeSegment`
+      - `createOrderAutoIdempotencyRetry_acceptsLegacyDefaultCreditKeyShape`
+  - Verification:
+    - `cd /home/realnigga/Desktop/orchestrator_erp/erp-domain && mvn -B -ntp -Dtest=SalesOrderRequestTest,SalesServiceTest#createOrderRespectsDealerCreditLimit+createOrderCashPaymentModeBypassesDealerCreditLimit+createOrderSplitPaymentModeStillEnforcesDealerCreditLimit+createOrderRejectsUnsupportedPaymentMode+createOrderIdempotentRetry_acceptsStoredSignatureWithDefaultPaymentModeSegment+createOrderAutoIdempotencyRetry_acceptsLegacyDefaultCreditKeyShape+createOrderThrowsWhenCreditLimitExceeded test` -> pass (17 tests, 0 failures, 0 errors).
+    - `cd /home/realnigga/Desktop/orchestrator_erp/erp-domain && mvn -B -ntp -Dtest=SalesServiceTest,SalesOrderRequestTest test` -> pass (59 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `ae755100`
+- `codex review --commit ae755100`:
+  - terminal verdict captured from review stream: `findings: []`, overall correctness `patch is correct`.
+  - note: review process emitted prolonged rollout/internal-agent noise after verdict capture; no additional actionable findings surfaced.
+- Review subagent `019c5b70-4420-71b1-8eda-ea9e6ae182af`:
+  - findings: none (`no findings`).
+
+Completed Slice (Resolved)
+- M15-S1 sales-order cash-vs-credit gating fix
+  - closure basis: `21422f86` + `e20d131b` + `ae755100` with green focused/full sales matrices and converged review chain.
+
+Docs Update (Internal + User-Facing)
+- Added `docs/sales-payment-accounting-contract.md` documenting:
+  - `CASH`/`CREDIT`/`SPLIT` backend enforcement rules.
+  - canonical + adjacent-legacy idempotency key/signature replay contract.
+  - accounting/lifecycle notes tied to active backlog slices (`M15-S2`..`M15-S9`).
+
+Loop Update
+- 2026-02-14T14:50:51+05:30
+- tracked_now_ts: `2026-02-14T14:50:51+05:30`
+- tracked_elapsed: `60h 56m 59s`
+- active_in_progress: `M15-S2 revenue recognition shipment gate (defer revenue posting/visibility until shipment dispatch confirmation)`
+- continuity_recheck: `e6a4f36a` docs-only review-chain remains present in tail (`codex review` + subagent `019c5a98-9d60-7b42-a537-61b46666fa3d`).
+
+Queue Rotation (Auto-Replenish)
+- [completed] M15-S1 sales-order cash-vs-credit gating fix (pure-cash orders must bypass credit-limit rejection; credit and mixed exposure must still enforce policy)
+- [in_progress] M15-S2 revenue recognition shipment gate (defer revenue posting/visibility until shipment dispatch confirmation)
+- [ready] M15-S3 production start idempotency contract hardening (remove missing-header brittleness while preserving exactly-once semantics)
+- [ready] M15-S4 dealer credit exposure pending-order projection (open production-pending orders must contribute to dealer utilized-credit metrics)
+- [ready] M15-S5 dealer pending-order visibility parity (dealer-facing pending order lists must match admin/order lifecycle truth)
+- [ready] M15-S6 split-payment allocation correctness (cash+credit split settlements must persist allocation legs and accounting postings deterministically)
+- [ready] M15-S7 sales cash-account auto-mapping boundary (standard cash/credit account selection must be backend-driven and policy-safe)
+- [ready] M15-S8 payroll account default/bootstrap guard (`SALARY-EXP` missing account should fail with deterministic provisioning guidance/guard rails)
+- [ready] M15-S9 sales/dealer accounting method-map docs refresh (internal + user-facing docs for cash/credit/split formulas, account mapping rules, idempotency headers, and pending-order credit exposure semantics)
+- [ready] M15-S10 cross-module idempotency contract unification matrix (standardize header semantics + helper parity across sales/production/accounting endpoint families)
+- [ready] M14-S48 costing-selection enum drift guard (new/legacy costing tokens must remain centrally mapped via `CostingMethodUtils` with no per-module fallback forks)
+- [ready] M14-S49 catalog-import retry-winner ledger/journal silence guard (stale-retry loser payloads must never produce duplicate accounting side effects while winner replay remains idempotent)
+- [ready] M11-S7 accounting-portal scope invariant lock (HR, PURCHASING, INVENTORY, REPORTS remain under Accounting portal unless replacement portal map + endpoint docs are updated atomically)

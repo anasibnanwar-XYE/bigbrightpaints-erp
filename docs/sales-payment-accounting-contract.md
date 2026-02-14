@@ -1,0 +1,35 @@
+# Sales Payment and Accounting Contract
+
+## Scope
+This document captures the current backend contract for sales-order payment modes, credit-limit enforcement, and idempotency behavior.
+
+## Payment Modes
+- `CREDIT`:
+  - Dealer credit-limit check is enforced at order create/update.
+  - Order contributes to credit-exposure workflow paths.
+- `SPLIT`:
+  - Dealer credit-limit check is enforced (split still has credit exposure).
+  - Allocation-leg posting rules are tracked in `M15-S6` (pending hardening).
+- `CASH`:
+  - Dealer credit-limit check is bypassed at order create/update.
+  - Cash orders must not be blocked by dealer outstanding-balance checks.
+
+## Idempotency Contract (Sales Order Create)
+- Canonical request signature uses normalized payload fields and appends payment mode token only for non-default modes.
+- Canonical auto-derived idempotency key appends payment mode token only for non-default modes.
+- Compatibility bridge is active for adjacent deployed format drift:
+  - Legacy default-credit key shape (`...|CREDIT|...`) is still accepted.
+  - Legacy default-credit signature shape (`...|CREDIT|...`) is still accepted.
+  - Accepted legacy signatures are upgraded in-place to canonical signature form on replay.
+
+## Accounting and Lifecycle Notes
+- Revenue recognition must remain shipment-gated; order creation alone should not expose recognized revenue (`M15-S2`).
+- Dealer utilized-credit reporting must include pending/open commitments (`M15-S4`).
+- Dealer pending-order visibility must match admin lifecycle truth (`M15-S5`).
+- Cash/credit account mapping should be backend-policy driven, not ad-hoc operator selection (`M15-S7`).
+- Payroll required-account guardrails (for `SALARY-EXP`) are tracked in `M15-S8`.
+
+## User-Facing Summary
+- Selecting `CASH` should not show credit-limit rejection.
+- Selecting `CREDIT` or `SPLIT` may show credit-limit rejection when projected exposure exceeds limit.
+- Retry/replay of the same order request must return the same order outcome without creating duplicates, including requests crossing adjacent deployment versions.
