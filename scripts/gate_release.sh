@@ -32,6 +32,25 @@ else
   exit 1
 fi
 
+if [[ "$MIGRATION_SET" == "v2" ]]; then
+  echo "[gate-release] flyway v2 transient checksum guard"
+  CHECKSUM_GUARD_LOG="$ARTIFACT_DIR/flyway-v2-transient-checksum-guard.txt"
+  if [[ -n "${FLYWAY_GUARD_DB_NAME:-}" ]]; then
+    if bash "$ROOT_DIR/scripts/guard_flyway_v2_transient_checksum.sh" "$FLYWAY_GUARD_DB_NAME" >"$CHECKSUM_GUARD_LOG" 2>&1; then
+      cat "$CHECKSUM_GUARD_LOG"
+    else
+      guard_exit=$?
+      cat "$CHECKSUM_GUARD_LOG" >&2
+      exit "$guard_exit"
+    fi
+  elif [[ "${REQUIRE_FLYWAY_V2_GUARD:-false}" == "true" ]]; then
+    echo "[gate-release] FLYWAY_GUARD_DB_NAME is required when REQUIRE_FLYWAY_V2_GUARD=true" | tee "$CHECKSUM_GUARD_LOG" >&2
+    exit 2
+  else
+    echo "[gate-release] skip flyway v2 transient checksum guard (set FLYWAY_GUARD_DB_NAME to enable)" | tee "$CHECKSUM_GUARD_LOG"
+  fi
+fi
+
 echo "[gate-release] strict local verify"
 MIGRATION_SET="$MIGRATION_SET" VERIFY_LOCAL_SKIP_TESTS=true FAIL_ON_FINDINGS=true bash "$ROOT_DIR/scripts/verify_local.sh"
 

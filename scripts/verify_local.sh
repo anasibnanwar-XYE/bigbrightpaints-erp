@@ -40,6 +40,18 @@ bash "$ROOT_DIR/scripts/guard_orchestrator_correlation_contract.sh"
 echo "[verify_local] accounting portal scope contract guard"
 bash "$ROOT_DIR/scripts/guard_accounting_portal_scope_contract.sh"
 
+if [[ "$MIGRATION_SET" == "v2" ]]; then
+  if [[ -n "${FLYWAY_GUARD_DB_NAME:-}" ]]; then
+    echo "[verify_local] flyway v2 transient checksum guard"
+    bash "$ROOT_DIR/scripts/guard_flyway_v2_transient_checksum.sh" "$FLYWAY_GUARD_DB_NAME"
+  elif [[ "${REQUIRE_FLYWAY_V2_GUARD:-false}" == "true" ]]; then
+    echo "[verify_local] FLYWAY_GUARD_DB_NAME is required when REQUIRE_FLYWAY_V2_GUARD=true" >&2
+    exit 2
+  else
+    echo "[verify_local] skip flyway v2 transient checksum guard (set FLYWAY_GUARD_DB_NAME to enable)"
+  fi
+fi
+
 echo "[verify_local] time api scan"
 bash "$ROOT_DIR/scripts/time_api_scan.sh"
 
