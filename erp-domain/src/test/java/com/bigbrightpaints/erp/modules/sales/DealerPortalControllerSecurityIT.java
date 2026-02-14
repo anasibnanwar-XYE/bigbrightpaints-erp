@@ -121,6 +121,7 @@ class DealerPortalControllerSecurityIT extends AbstractIntegrationTest {
                 .isEqualByComparingTo("1180.00");
         assertThat(new BigDecimal(String.valueOf(data.get("pendingOrderExposure"))))
                 .isEqualByComparingTo("5000.00");
+        assertThat(((Number) data.get("pendingOrderCount")).longValue()).isEqualTo(1L);
         assertThat(new BigDecimal(String.valueOf(data.get("creditUsed"))))
                 .isEqualByComparingTo("6180.00");
         assertThat(new BigDecimal(String.valueOf(data.get("availableCredit"))))
@@ -304,6 +305,53 @@ class DealerPortalControllerSecurityIT extends AbstractIntegrationTest {
         Map<?, ?> dashboardData = (Map<?, ?>) dashboardResponse.getBody().get("data");
         assertThat(new BigDecimal(String.valueOf(dashboardData.get("pendingOrderExposure"))))
                 .isEqualByComparingTo("5000.00");
+        assertThat(((Number) dashboardData.get("pendingOrderCount")).longValue()).isEqualTo(1L);
+    }
+
+    @Test
+    @DisplayName("Admin dealer aging pending summary matches dealer pending-order signals")
+    void adminDealerAging_pendingSummaryMatchesDealerOrdersEvenWhenInvoiceDealerDrifts() {
+        Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
+        SalesOrder linkedOrder = upsertOrder(
+                company,
+                dealerA,
+                "SO-PORTAL-A-ADMIN-DRIFT",
+                "PENDING_PRODUCTION",
+                new BigDecimal("3600.00")
+        );
+        Invoice driftedInvoice = upsertInvoice(company, dealerB, "INV-PORTAL-A-ADMIN-DRIFT");
+        driftedInvoice.setStatus("ISSUED");
+        driftedInvoice.setSalesOrder(linkedOrder);
+        driftedInvoice.setSubtotal(new BigDecimal("3000.00"));
+        driftedInvoice.setTaxTotal(new BigDecimal("540.00"));
+        driftedInvoice.setTotalAmount(new BigDecimal("3540.00"));
+        driftedInvoice.setOutstandingAmount(new BigDecimal("900.00"));
+        invoiceRepository.saveAndFlush(driftedInvoice);
+
+        HttpHeaders dealerHeaders = authHeaders(DEALER_A_EMAIL, PASSWORD);
+        ResponseEntity<Map> dealerOrdersResponse = rest.exchange(
+                "/api/v1/dealer-portal/orders",
+                HttpMethod.GET,
+                new HttpEntity<>(dealerHeaders),
+                Map.class
+        );
+        assertThat(dealerOrdersResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<?, ?> dealerOrdersData = (Map<?, ?>) dealerOrdersResponse.getBody().get("data");
+
+        HttpHeaders adminHeaders = authHeaders(ADMIN_EMAIL, PASSWORD);
+        ResponseEntity<Map> adminAgingResponse = rest.exchange(
+                "/api/v1/dealers/" + dealerA.getId() + "/aging",
+                HttpMethod.GET,
+                new HttpEntity<>(adminHeaders),
+                Map.class
+        );
+        assertThat(adminAgingResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<?, ?> adminAgingData = (Map<?, ?>) adminAgingResponse.getBody().get("data");
+
+        assertThat(((Number) adminAgingData.get("pendingOrderCount")).longValue())
+                .isEqualTo(((Number) dealerOrdersData.get("pendingOrderCount")).longValue());
+        assertThat(new BigDecimal(String.valueOf(adminAgingData.get("pendingOrderExposure"))))
+                .isEqualByComparingTo(new BigDecimal(String.valueOf(dealerOrdersData.get("pendingOrderExposure"))));
     }
 
     private HttpHeaders authHeaders(String email, String password) {

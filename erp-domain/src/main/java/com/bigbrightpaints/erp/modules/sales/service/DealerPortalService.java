@@ -235,6 +235,7 @@ public class DealerPortalService {
         agingBuckets.put("61-90 days", days61to90);
         agingBuckets.put("90+ days", over90);
         
+        long pendingOrderCount = resolvePendingOrderCount(dealer, null);
         BigDecimal pendingOrderExposure = resolvePendingOrderExposure(dealer, null);
         BigDecimal creditUsed = totalOutstanding.add(pendingOrderExposure);
         BigDecimal creditLimit = dealer.getCreditLimit() != null ? dealer.getCreditLimit() : BigDecimal.ZERO;
@@ -248,6 +249,7 @@ public class DealerPortalService {
         result.put("dealerName", dealer.getName());
         result.put("creditLimit", creditLimit);
         result.put("totalOutstanding", totalOutstanding);
+        result.put("pendingOrderCount", pendingOrderCount);
         result.put("pendingOrderExposure", pendingOrderExposure);
         result.put("creditUsed", creditUsed);
         result.put("availableCredit", availableCredit);
@@ -268,8 +270,8 @@ public class DealerPortalService {
         long pendingInvoices = invoices.stream()
                 .filter(i -> i.getOutstandingAmount() != null && i.getOutstandingAmount().compareTo(BigDecimal.ZERO) > 0)
                 .count();
-        long pendingOrderCount = resolvePendingOrderCount(dealer, null);
-        BigDecimal pendingOrderExposure = resolvePendingOrderExposure(dealer, null);
+        long pendingOrderCount = ((Number) aging.get("pendingOrderCount")).longValue();
+        BigDecimal pendingOrderExposure = (BigDecimal) aging.get("pendingOrderExposure");
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("dealerId", dealer.getId());
