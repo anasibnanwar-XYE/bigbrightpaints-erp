@@ -6029,7 +6029,7 @@ Post-Commit Review Evidence
 - `codex review --commit 03e8d5b4`:
   - command executed with prolonged rollout/state-db noise during startup, then completed with final reviewer verdict.
   - final verdict: no concrete correctness regressions identified in the scoped commit diff.
-  - recheck_finalized_at: `2026-02-14T22:03:05+05:30` (codex review session `78174`; supersedes earlier provisional/noise-only capture state).
+  - recheck_corroboration_at: `2026-02-14T22:03:05+05:30` (codex review session `78174`; corroborates the final verdict above and documents transition from earlier provisional/noise-only capture state).
 - Review subagent `019c5cf2-5091-79e1-b630-16846585711b`:
   - findings: none (`no findings`).
   - residual non-blocking note: optional end-to-end replay-path assertion can be added for extra confidence (defense-in-depth, not a closure blocker).
