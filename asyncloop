@@ -5510,3 +5510,53 @@ Queue Rotation (Auto-Replenish)
 - [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
 - [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
 - [ready] M11-S6 approval queue runtime contract test slice (assert FE docs match live `AdminApprovalItemDto` payload fields and action endpoint semantics)
+
+Completed Slice (Committed)
+- 2026-02-14: `e2683bab`
+  - fix(inventory): invalidate stale WAC cache before dispatch costing.
+  - M14-S47 execution:
+    - invalidated per-finished-good WAC cache at dispatch start in `markSlipDispatched(...)` before cost resolution.
+    - invalidated per-line WAC cache in `confirmDispatch(...)` immediately before dispatch unit-cost resolution.
+    - added regression tests in `FinishedGoodsServiceTest`:
+      - `dispatchInvalidatesStaleWacCacheBeforePostingCost`
+      - `confirmDispatchInvalidatesStaleWacCacheBeforePostingCost`
+    - tests prime stale WAC cache, drift batch unit cost, and assert dispatch uses refreshed cost (not stale cached value).
+  - Verification:
+    - `cd /home/realnigga/Desktop/orchestrator_erp/erp-domain && mvn -B -ntp -Dtest=FinishedGoodsServiceTest#dispatchInvalidatesStaleWacCacheBeforePostingCost+confirmDispatchInvalidatesStaleWacCacheBeforePostingCost+dispatchUsesWacIncludingReserved+dispatchUsesLegacyWeightedAverageAliasUnderTurkishLocale test` -> pass (4 tests, 0 failures, 0 errors).
+    - `cd /home/realnigga/Desktop/orchestrator_erp/erp-domain && mvn -B -ntp -Dtest=CR_INV_AdjustmentIdempotencyTest#adjustment_wacUsesExpiryOrderedBatchSelection_andIdempotentReplayDoesNotDoubleDeplete test` -> pass (1 test, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `e2683bab`
+- `codex review --commit e2683bab`:
+  - completed with environment rollout/state-db noise; terminal verdict captured: no actionable regressions introduced.
+- Review subagent `019c5b4e-b964-7252-8de2-e5539d8fd5c8`:
+  - findings: none.
+  - summary: cache invalidation points are correctly scoped before cost resolution and preserve inventory/accounting/idempotency invariants.
+
+Completed Slice (Resolved)
+- M14-S47 finished-good WAC cache drift replay guard
+  - closure basis: `e2683bab` + focused pass matrix + converged review chain.
+
+Loop Update
+- 2026-02-14T14:12:46+05:30
+- tracked_now_ts: `2026-02-14T14:12:46+05:30`
+- tracked_elapsed: `60h 18m 54s`
+- active_in_progress: `M15-S1 sales-order cash-vs-credit gating fix (pure-cash orders must bypass credit-limit rejection; credit and mixed exposure must still enforce policy)`
+- continuity_recheck: `98708515` / `e2683bab` review-evidence chain appended.
+
+Queue Rotation (Auto-Replenish)
+- [completed] M14-S47 finished-good WAC cache drift replay guard (dispatch + adjustment retry chains must invalidate cached weighted-average snapshots so replayed postings never reuse stale pre-mutation unit costs)
+- [in_progress] M15-S1 sales-order cash-vs-credit gating fix (pure-cash orders must bypass credit-limit rejection; credit and mixed exposure must still enforce policy)
+- [ready] M15-S2 revenue recognition shipment gate (defer revenue posting/visibility until shipment dispatch confirmation)
+- [ready] M15-S3 production start idempotency contract hardening (remove missing-header brittleness while preserving exactly-once semantics)
+- [ready] M15-S4 dealer credit exposure pending-order projection (open production-pending orders must contribute to dealer utilized-credit metrics)
+- [ready] M15-S5 dealer pending-order visibility parity (dealer-facing pending order lists must match admin/order lifecycle truth)
+- [ready] M15-S6 split-payment allocation correctness (cash+credit split settlements must persist allocation legs and accounting postings deterministically)
+- [ready] M15-S7 sales cash-account auto-mapping boundary (standard cash/credit account selection must be backend-driven and policy-safe)
+- [ready] M15-S8 payroll account default/bootstrap guard (`SALARY-EXP` missing account should fail with deterministic provisioning guidance/guard rails)
+- [ready] M15-S9 sales/dealer accounting method-map docs refresh (internal + user-facing docs for cash/credit/split formulas, account mapping rules, idempotency headers, and pending-order credit exposure semantics)
+- [ready] M14-S48 costing-selection enum drift guard (new/legacy costing tokens must remain centrally mapped via `CostingMethodUtils` with no per-module fallback forks)
+- [ready] M14-S49 catalog-import retry-winner ledger/journal silence guard (stale-retry loser payloads must never produce duplicate accounting side effects while winner replay remains idempotent)
+- [ready] M11-S7 accounting-portal scope invariant lock (HR, PURCHASING, INVENTORY, REPORTS remain under Accounting portal unless replacement portal map + endpoint docs are updated atomically)
+- [ready] M10-S3 release-gate dry-run and blocker ledger sync (`scripts/verify_local.sh` + artifact sanity)
+- [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
