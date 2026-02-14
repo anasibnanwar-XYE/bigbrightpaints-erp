@@ -58,6 +58,7 @@ class TS_CostingHelperCentralizationContractTest {
 
     @Test
     void modulesDoNotDeclareLocalWeightedAverageHelperCopies() {
+        assertNoLocalWeightedAverageHelper(RAW_MATERIAL_SERVICE);
         assertNoLocalWeightedAverageHelper(FINISHED_GOODS_SERVICE);
         assertNoLocalWeightedAverageHelper(INVENTORY_ADJUSTMENT_SERVICE);
         assertNoLocalWeightedAverageHelper(INVENTORY_VALUATION_SERVICE);
@@ -71,6 +72,8 @@ class TS_CostingHelperCentralizationContractTest {
         assertThat(source).doesNotContain("private boolean isWeightedAverage(");
         assertThat(source).doesNotContain("private static boolean isWeightedAverage(");
         assertThat(source).doesNotContain("private String normalizeRawMaterialMethod(");
+        assertThat(source).doesNotContain("private static String normalizeRawMaterialMethod(");
         assertThat(source).doesNotContain("private String normalizeFinishedGoodMethod(");
+        assertThat(source).doesNotContain("private static String normalizeFinishedGoodMethod(");
     }
 }
