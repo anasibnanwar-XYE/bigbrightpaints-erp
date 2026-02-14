@@ -70,7 +70,7 @@ These are cross-portal APIs reused in Accounting Portal for auth/session/profile
 
 | Function | Method | Path | Required params | Optional params | Cache | Debounce | Idempotent |
 |---|---|---|---|---|---|---|---|
-| `acctCatalogImportCatalog` | POST | `/api/v1/accounting/catalog/import` | file (body) | Idempotency-Key (header) | No | No | No |
+| `acctCatalogImportCatalog` | POST | `/api/v1/accounting/catalog/import` | file (multipart body; if file-part `Content-Type` is absent, filename must end with `.csv`) | Idempotency-Key (header) | No | No | No |
 | `acctCatalogListProducts` | GET | `/api/v1/accounting/catalog/products` | - | - | Yes | No | Yes |
 | `acctCatalogCreateProduct` | POST | `/api/v1/accounting/catalog/products` | category (body), productName (body) | basePrice (body), brandCode (body), brandId (body), brandName (body), customSkuCode (body), defaultColour (body), gstRate (body), metadata (body), minDiscountPercent (body), minSellingPrice (body), sizeLabel (body), unitOfMeasure (body) | No | No | No |
 | `acctCatalogCreateVariants` | POST | `/api/v1/accounting/catalog/products/bulk-variants` | baseProductName (body), category (body), colors (body), sizes (body) | basePrice (body), brandCode (body), brandId (body), brandName (body), gstRate (body), metadata (body), minDiscountPercent (body), minSellingPrice (body), skuPrefix (body), unitOfMeasure (body) | No | No | No |
@@ -330,8 +330,7 @@ These are cross-portal APIs reused in Accounting Portal for auth/session/profile
 - `POST /api/v1/accounting/catalog/products` is mutating but defines only `200` (missing richer status semantics).
 - `POST /api/v1/accounting/catalog/products/bulk-variants` documents no explicit error responses (only: 200).
 - `POST /api/v1/accounting/catalog/products/bulk-variants` is mutating but defines only `200` (missing richer status semantics).
-- `POST /api/v1/accounting/catalog/import` documents no explicit error responses (only: 200).
-- `POST /api/v1/accounting/catalog/import` is mutating but defines only `200` (missing richer status semantics).
+- `POST /api/v1/accounting/catalog/import` now documents multipart guard semantics: missing/empty file -> 400, explicit disallowed MIME -> 422 (`FILE_003`), idempotency mismatch -> 409 (`CONC_001`).
 - `PATCH /api/v1/hr/leave-requests/{id}/status` documents no explicit error responses (only: 200).
 - `PATCH /api/v1/hr/leave-requests/{id}/status` is mutating but defines only `200` (missing richer status semantics).
 - `GET /api/v1/reports/wastage` documents no explicit error responses (only: 200).

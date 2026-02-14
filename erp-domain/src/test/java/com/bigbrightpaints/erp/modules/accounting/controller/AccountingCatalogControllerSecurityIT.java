@@ -310,6 +310,48 @@ class AccountingCatalogControllerSecurityIT extends AbstractIntegrationTest {
     }
 
     @Test
+    void accountingCatalogImport_acceptsMissingFileContentTypeWhenFileNameIsCsv() {
+        Company company = dataSeeder.ensureCompany(COMPANY_CODE, "Catalog Sec Co");
+        HttpHeaders accountingHeaders = authHeaders(ACCOUNTING_EMAIL, PASSWORD, COMPANY_CODE);
+        String idempotencyKey = "CAT-MISSING-TYPE-CSV-" + shortId();
+        String sku = "RM-MISSING-TYPE-CSV-" + shortId();
+
+        ResponseEntity<Map> response = importCatalogWithCustomFile(
+                accountingHeaders,
+                catalogCsvContent(sku),
+                "catalog-" + sku + ".csv",
+                null,
+                idempotencyKey);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isNotNull();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) response.getBody().get("data");
+        assertThat(data).containsEntry("rowsProcessed", 1);
+        assertThat(catalogImportRepository.findByCompanyAndIdempotencyKey(company, idempotencyKey)).isPresent();
+        assertThat(rawMaterialRepository.findByCompanyAndSku(company, sku)).isPresent();
+    }
+
+    @Test
+    void accountingCatalogImport_rejectsMissingFileContentTypeWhenFileNameIsNotCsv() {
+        Company company = dataSeeder.ensureCompany(COMPANY_CODE, "Catalog Sec Co");
+        HttpHeaders accountingHeaders = authHeaders(ACCOUNTING_EMAIL, PASSWORD, COMPANY_CODE);
+        String idempotencyKey = "CAT-MISSING-TYPE-TXT-" + shortId();
+        String sku = "RM-MISSING-TYPE-TXT-" + shortId();
+
+        ResponseEntity<Map> response = importCatalogWithCustomFile(
+                accountingHeaders,
+                catalogCsvContent(sku),
+                "catalog-" + sku + ".txt",
+                null,
+                idempotencyKey);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(catalogImportRepository.findByCompanyAndIdempotencyKey(company, idempotencyKey)).isEmpty();
+        assertThat(rawMaterialRepository.findByCompanyAndSku(company, sku)).isEmpty();
+    }
+
+    @Test
     void accountingCatalogImport_rejectsOversizedRowWithoutInventoryMutation() {
         Company company = dataSeeder.ensureCompany(COMPANY_CODE, "Catalog Sec Co");
         HttpHeaders accountingHeaders = authHeaders(ACCOUNTING_EMAIL, PASSWORD, COMPANY_CODE);
