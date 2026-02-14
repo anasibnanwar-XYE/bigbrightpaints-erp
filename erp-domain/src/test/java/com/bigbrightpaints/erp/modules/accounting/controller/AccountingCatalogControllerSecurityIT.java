@@ -27,6 +27,7 @@ import org.springframework.util.MultiValueMap;
 import jakarta.persistence.EntityManager;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -153,6 +154,61 @@ class AccountingCatalogControllerSecurityIT extends AbstractIntegrationTest {
         assertThat(rawMaterialRepository.findByCompanyAndSku(otherCompany, companyWinnerSku)).isEmpty();
         assertThat(rawMaterialRepository.findByCompanyAndSku(company, companyLoserSku)).isEmpty();
         assertThat(rawMaterialRepository.findByCompanyAndSku(otherCompany, otherCompanyLoserSku)).isEmpty();
+    }
+
+    @Test
+    void accountingCatalogImport_idempotencyKeyWhitespaceVariantsReplayDeterministically() {
+        Company company = dataSeeder.ensureCompany(COMPANY_CODE, "Catalog Sec Co");
+        HttpHeaders accountingHeaders = authHeaders(ACCOUNTING_EMAIL, PASSWORD, COMPANY_CODE);
+        String baseKey = "CAT-IDEM-WS-" + shortId();
+        String paddedKey = "   " + baseKey + "   ";
+        String winnerSku = "RM-IDEM-WS-WIN-" + shortId();
+        String loserSku = "RM-IDEM-WS-LOSE-" + shortId();
+
+        ResponseEntity<Map> winnerResponse = importCatalog(accountingHeaders, winnerSku, paddedKey);
+        ResponseEntity<Map> replayResponse = importCatalog(accountingHeaders, winnerSku, baseKey);
+        assertThat(winnerResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(replayResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        CatalogImport winnerRecord = catalogImportRepository.findByCompanyAndIdempotencyKey(company, baseKey)
+                .orElseThrow();
+        assertThat(winnerRecord.getIdempotencyKey()).isEqualTo(baseKey);
+
+        ResponseEntity<Map> mismatchResponse = importCatalog(accountingHeaders, loserSku, paddedKey);
+        assertThat(mismatchResponse.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(rawMaterialRepository.findByCompanyAndSku(company, winnerSku)).isPresent();
+        assertThat(rawMaterialRepository.findByCompanyAndSku(company, loserSku)).isEmpty();
+    }
+
+    @Test
+    void accountingCatalogImport_idempotencyKeyCaseVariantsStayDeterministicPerVariant() {
+        Company company = dataSeeder.ensureCompany(COMPANY_CODE, "Catalog Sec Co");
+        HttpHeaders accountingHeaders = authHeaders(ACCOUNTING_EMAIL, PASSWORD, COMPANY_CODE);
+        String upperKey = "CAT-IDEM-CASE-" + shortId();
+        String lowerKey = upperKey.toLowerCase(Locale.ROOT);
+        String upperWinnerSku = "RM-IDEM-CASE-UP-" + shortId();
+        String lowerWinnerSku = "RM-IDEM-CASE-LO-" + shortId();
+        String upperLoserSku = "RM-IDEM-CASE-UP-LOSE-" + shortId();
+        String lowerLoserSku = "RM-IDEM-CASE-LO-LOSE-" + shortId();
+
+        ResponseEntity<Map> upperWinnerResponse = importCatalog(accountingHeaders, upperWinnerSku, upperKey);
+        ResponseEntity<Map> lowerWinnerResponse = importCatalog(accountingHeaders, lowerWinnerSku, lowerKey);
+        assertThat(upperWinnerResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(lowerWinnerResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        CatalogImport upperRecord = catalogImportRepository.findByCompanyAndIdempotencyKey(company, upperKey).orElseThrow();
+        CatalogImport lowerRecord = catalogImportRepository.findByCompanyAndIdempotencyKey(company, lowerKey).orElseThrow();
+        assertThat(upperRecord.getId()).isNotEqualTo(lowerRecord.getId());
+
+        ResponseEntity<Map> upperLoserResponse = importCatalog(accountingHeaders, upperLoserSku, upperKey);
+        ResponseEntity<Map> lowerLoserResponse = importCatalog(accountingHeaders, lowerLoserSku, lowerKey);
+        assertThat(upperLoserResponse.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(lowerLoserResponse.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+
+        assertThat(rawMaterialRepository.findByCompanyAndSku(company, upperWinnerSku)).isPresent();
+        assertThat(rawMaterialRepository.findByCompanyAndSku(company, lowerWinnerSku)).isPresent();
+        assertThat(rawMaterialRepository.findByCompanyAndSku(company, upperLoserSku)).isEmpty();
+        assertThat(rawMaterialRepository.findByCompanyAndSku(company, lowerLoserSku)).isEmpty();
     }
 
     @Test
