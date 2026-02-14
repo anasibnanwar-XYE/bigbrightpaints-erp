@@ -4734,3 +4734,50 @@ Queue Rotation (Auto-Replenish)
 - [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
 - [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
 - [ready] M11-S6 approval queue runtime contract test slice (assert FE docs match live `AdminApprovalItemDto` payload fields and action endpoint semantics)
+
+Completed Slice (Committed)
+- 2026-02-14: `ddc7d8df`
+  - test(inventory): assert finished-good malformed costing create is side-effect free.
+  - M14-S34 closure pass:
+    - added `finished_good_create_rejects_malformed_costing_token_without_side_effects`.
+    - asserts malformed `costingMethod` token (`WAC;DROP`) returns `400` and preserves company-scoped invariants.
+    - asserts no finished-good row creation in current or foreign company and no current-company count drift on reject path.
+  - Verification:
+    - `cd /home/realnigga/Desktop/orchestrator_erp/erp-domain && mvn -B -ntp -Dtest=RawMaterialAndProductUpdateIT test` -> pass (19 tests, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `ddc7d8df`
+- `codex review --commit ddc7d8df`:
+  - final verdict: commit only adds integration-test coverage; behavior remains consistent and `RawMaterialAndProductUpdateIT` rerun passed.
+- Review subagent `019c5a83-921d-7de0-ac2e-5991fb0b48fe`:
+  - findings: none.
+  - summary: test-only delta; no accounting/security/idempotency regression risk introduced in production paths.
+
+Static Drift Recheck
+- user-noted costing hotspots rechecked against current mainline code:
+  - `FinishedGoodsService` create/update paths normalize request costing via `normalizeCostingMethod(...)`.
+  - `FinishedGoodsService` and `InventoryAdjustmentService` both resolve batch selection through `CostingMethodUtils.resolveFinishedGoodBatchSelectionMethod(...)` (WAC/LIFO/FIFO switch centralized).
+  - no duplicate local `isWeightedAverage(...)` implementations detected in current `factory`/`inventory`/`reports` service modules; shared `CostingMethodUtils` path is active.
+
+Loop Update
+- 2026-02-14T10:29:34+05:30
+- tracked_now_ts: `2026-02-14T10:29:34+05:30`
+- tracked_elapsed: `56h 35m 42s`
+- active_in_progress: `M14-S35 raw-material WAC null-average fail-safe contract (if weighted-average repository returns null/blank path output, valuation/reporting must remain deterministic and never silently understate inventory)`
+- continuity_recheck: `0355149b` / `f9fd898f` / `a1d05cd7` evidence chain remains aligned.
+
+Queue Rotation (Auto-Replenish)
+- [completed] M14-S34 finished-good request costing normalization parity gate (align create/update/import request normalization with raw-material service contract, including alias canonicalization and malformed-token rejection)
+- [in_progress] M14-S35 raw-material WAC null-average fail-safe contract (if weighted-average repository returns null/blank path output, valuation/reporting must remain deterministic and never silently understate inventory)
+- [ready] M14-S36 catalog-import concurrent winner provenance contract (winner replay with same payload must stay stable after mismatch conflict; loser payload must never materialize across retry attempts)
+- [ready] M14-S37 catalog-import stale-row cache cleanup acceptance matrix (legacy drifted rows + retry replay must clear stale flags without mutating winner payload)
+- [ready] M14-S38 catalog-import MIME token canonicalization matrix (mixed-case/parameterized content-type parsing must remain fail-closed for disallowed families while preserving allowlist aliases)
+- [ready] M14-S39 raw-material malformed-token replay matrix (repeat invalid costing payloads across create/update must stay fail-closed and side-effect-free under company-scoped concurrent retries)
+- [ready] M14-S40 finished-good batch-selection parity guard (assert WAC paths never regress to FIFO allocation queries in dispatch/adjustment flows; add negative regression tests)
+- [ready] M14-S41 costing-helper centralization guard (enforce shared costing decision helper usage across inventory/factory/reporting services; document and test anti-duplication contract)
+- [ready] M11-S7 accounting-portal scope invariant lock (HR, PURCHASING, INVENTORY, REPORTS remain under Accounting portal unless replacement portal map + endpoint docs are updated atomically)
+- [ready] M12-S5 discount/reference calculation parity matrix across sales->invoice->settlement + user-facing example table refresh
+- [ready] M10-S3 release-gate dry-run and blocker ledger sync (`scripts/verify_local.sh` + artifact sanity)
+- [ready] M9-S5 capture EXPLAIN + index-candidate evidence for journal/allocation replay hotspot queries (Flyway V2-ready)
+- [ready] M2-S12 replay mismatch guard helper extraction to enforce parity by construction
+- [ready] M11-S6 approval queue runtime contract test slice (assert FE docs match live `AdminApprovalItemDto` payload fields and action endpoint semantics)
