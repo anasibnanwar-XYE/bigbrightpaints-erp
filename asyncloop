@@ -6333,3 +6333,98 @@ Queue Rotation (Auto-Replenish)
 - [ready] M14-S48 costing-selection enum drift guard (new/legacy costing tokens must remain centrally mapped via `CostingMethodUtils` with no per-module fallback forks)
 - [ready] M14-S49 catalog-import retry-winner ledger/journal silence guard (stale-retry loser payloads must never produce duplicate accounting side effects while winner replay remains idempotent)
 - [ready] M11-S7 accounting-portal scope invariant lock (HR, PURCHASING, INVENTORY, REPORTS remain under Accounting portal unless replacement portal map + endpoint docs are updated atomically)
+
+Completed Slice (Committed)
+- 2026-02-15: `129784bc`
+  - perf(db): add normalized invoice-status indexes for pending exposure.
+  - M15-S20 execution:
+    - added Flyway v2 normalized index `idx_invoices_company_order_status_norm` on `(company_id, sales_order_id, upper(trim(status)))` for pending-exposure predicates.
+    - added companion null-status partial index for pending-exposure branch parity on legacy/null tokens.
+  - Verification:
+    - `mvn -s /tmp/codex-mvn-settings.xml -B -ntp -f erp-domain/pom.xml -Dtest=DealerPortalControllerSecurityIT#dealerAdminPendingExposureParity_excludesOrderWhenAnyActiveInvoiceExistsAcrossMixedStates test` -> pass (1 test, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `129784bc`
+- `codex review --commit 129784bc`:
+  - final verdict captured: low finding only (`idx_invoices_company_order_status_null` impossible under `invoices.status NOT NULL` in v2 schema).
+- Review subagent `019c5df6-ad8b-74e3-ad8e-baa1432134ac`:
+  - findings:
+    - high: non-concurrent index creation lock risk under live write traffic.
+    - medium: `IF NOT EXISTS` may hide pre-existing index-definition drift.
+  - disposition: opened immediate follow-up hardening chain (`bc2d54c6` then `f10d583f`) and preserved forward-only migration policy constraints.
+
+Follow-up Hardening (Committed)
+- 2026-02-15: `bc2d54c6`
+  - fix(db): harden v2 invoice-status index migration safety.
+  - changes:
+    - attempted concurrent build + non-transactional migration override and removed dead null-status index path.
+  - Verification:
+    - `mvn -s /tmp/codex-mvn-settings.xml -B -ntp -f erp-domain/pom.xml -Dtest=DealerPortalControllerSecurityIT#dealerAdminPendingExposureParity_excludesOrderWhenAnyActiveInvoiceExistsAcrossMixedStates test` -> pass (1 test, 0 failures, 0 errors).
+    - `mvn -s /tmp/codex-mvn-settings.xml -B -ntp -f erp-domain/pom.xml -Dtest=DealerPortalControllerSecurityIT#dealerAdminPendingExposureParity_excludesOrderWhenAnyActiveInvoiceExistsAcrossMixedStates -Dspring.flyway.locations=classpath:db/migration_v2 -Dspring.flyway.table=flyway_schema_history_v2 test` -> fail before V12 (`V7__enterprise_audit_ml_events.sql` FK constraint issue in v2 chain, unrelated to current slice).
+
+Post-Commit Review Evidence
+- Commit reviewed: `bc2d54c6`
+- `codex review --commit bc2d54c6`:
+  - command executed; session entered prolonged rollout/state-db churn and was interrupted after no-progress windows.
+- Review subagent `019c5dfc-a410-74d2-af8f-36b5dc05b109`:
+  - findings:
+    - high: in-place versioned migration rewrite risk (checksum/upgrade safety).
+    - medium: brittle retry/recovery path for concurrent index migration under non-transactional run.
+  - disposition: fixed via forward-only correction commit `f10d583f` (restore original `V12` text and move correction to new migration `V13`).
+
+Follow-up Hardening (Committed)
+- 2026-02-15: `f10d583f`
+  - fix(db): forward-fix invoice pending-exposure index convergence.
+  - changes:
+    - restored `V12__invoice_pending_exposure_status_norm_indexes.sql` to the original `129784bc` shape to keep checksum continuity for environments that ran the initial slice.
+    - removed non-transactional sidecar config from the transient hardening attempt.
+    - added `V13__invoice_pending_exposure_index_convergence.sql` to forward-drop the null-status companion index.
+  - Verification:
+    - `mvn -s /tmp/codex-mvn-settings.xml -B -ntp -f erp-domain/pom.xml -Dtest=DealerPortalControllerSecurityIT#dealerAdminPendingExposureParity_excludesOrderWhenAnyActiveInvoiceExistsAcrossMixedStates test` -> pass (1 test, 0 failures, 0 errors).
+
+Post-Commit Review Evidence
+- Commit reviewed: `f10d583f`
+- `codex review --commit f10d583f`:
+  - final verdict captured: P1 warning on versioned-migration rewrite risk if transient commit `bc2d54c6` had been applied in any environment.
+- Review subagent `019c5e02-bdc1-7da3-834f-5c740b48e19e`:
+  - findings:
+    - critical/high flagged around possible checksum drift for environments that might have run transient `bc2d54c6` `V12` content.
+    - medium noted `IF NOT EXISTS` drift masking and V12+V13 DDL churn.
+  - disposition:
+    - accepted with constraint note: final branch state restores `V12` to the initial committed shape from `129784bc`; no further versioned-file rewrites are open.
+    - operational caveat tracked: if any environment consumed transient `bc2d54c6`, run Flyway repair before applying later migrations.
+    - blocking/high correctness regression not observed in sales/dealer pending-exposure behavior.
+
+Completed Slice (Resolved)
+- M15-S20 invoice-status normalization performance index guard
+  - closure basis: `129784bc` + `f10d583f`.
+  - contract status:
+    - normalized status predicate index exists under Flyway v2.
+    - impossible null-status companion index path removed via forward migration.
+    - forward-only migration policy restored after transient hardening detour.
+
+Loop Update
+- 2026-02-15T02:51:46+05:30
+- tracked_now_ts: `2026-02-15T02:51:46+05:30`
+- tracked_elapsed: `72h 57m 54s`
+- active_in_progress: `M15-S21 mixed-invoice sibling malformed-status parity matrix (add dealer/admin parity coverage for void/null/malformed status tokens coexisting with active/inactive sibling invoices on one order)`
+- continuity_recheck:
+  - pending-exposure correctness/parity chain remains intact from `M15-S13`/`M15-S14`; M15-S20 migration hardening landed with forward-only convergence.
+  - forced flyway-v2 full-chain validation remains blocked upstream at `V7__enterprise_audit_ml_events.sql` FK issue (unrelated to this slice); tracked for follow-up queue.
+
+Queue Rotation (Auto-Replenish)
+- [completed] M15-S20 invoice-status normalization performance index guard (evaluate Flyway V2-safe functional/expressional indexing strategy for `upper(trim(status))` invoice predicates used in pending-exposure paths)
+- [in_progress] M15-S21 mixed-invoice sibling malformed-status parity matrix (add dealer/admin parity coverage for `void`/`null`/malformed status tokens coexisting with active/inactive sibling invoices on a single order)
+- [ready] M15-S8 payroll account default/bootstrap guard (`SALARY-EXP` missing account should fail with deterministic provisioning guidance/guard rails)
+- [ready] M15-S9 sales/dealer accounting method-map docs refresh (internal + user-facing docs for cash/credit/split formulas, account mapping rules, idempotency headers, and pending-order credit exposure semantics)
+- [ready] M15-S10 cross-module idempotency contract unification matrix (standardize header semantics + helper parity across sales/production/accounting endpoint families)
+- [ready] M15-S11 recognized-revenue/pending-credit contract docs + endpoint parity matrix (internal and user-facing portal docs must match shipment gate + pending exposure behavior)
+- [ready] M15-S12 idempotency header contract convergence doc+runtime assert sweep (sales/production/accounting entrypoints must share canonical header semantics and error model)
+- [ready] M15-S15 pending-status normalization performance guard (evaluate/land Flyway V2-safe functional index or normalized-token strategy so aggregate pending-status predicates retain index-friendly plans under high order volume)
+- [ready] M15-S16 dealer-settlement replay e2e defense-in-depth matrix (optional end-to-end `settleDealerInvoices` replay assertion where adjustment debit lines coexist with split payments to further harden payment-account bounded remap behavior)
+- [ready] M15-S18 dispatch replay COGS reference payload parity guard (assert `postCogsJournal` reference/memo/line payload stability on replay anchors and prevent wrong-reference postings under override replay paths)
+- [ready] M15-S19 dispatch replay slip-number fallback + AR-overload guard matrix (cover `hasCogsJournalFor` alternate slip-number fallback and explicitly lock both `postSalesJournal` overload paths against duplicate replay posting)
+- [ready] M15-S22 flyway-v2 transient-checksum repair runbook + guard script (document and script detection/repair workflow for environments that consumed transient versioned-migration artifacts)
+- [ready] M14-S48 costing-selection enum drift guard (new/legacy costing tokens must remain centrally mapped via `CostingMethodUtils` with no per-module fallback forks)
+- [ready] M14-S49 catalog-import retry-winner ledger/journal silence guard (stale-retry loser payloads must never produce duplicate accounting side effects while winner replay remains idempotent)
+- [ready] M11-S7 accounting-portal scope invariant lock (HR, PURCHASING, INVENTORY, REPORTS remain under Accounting portal unless replacement portal map + endpoint docs are updated atomically)
