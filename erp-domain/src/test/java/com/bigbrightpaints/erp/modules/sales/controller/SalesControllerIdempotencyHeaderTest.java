@@ -63,12 +63,15 @@ class SalesControllerIdempotencyHeaderTest {
     }
 
     @Test
-    void createOrder_rejectsPrimaryLegacyHeaderMismatch() {
+    void createOrder_prefersPrimaryHeaderWhenPrimaryLegacyMismatch() {
         SalesController controller = new SalesController(salesService, dealerService);
+        when(salesService.createOrder(any())).thenReturn(null);
 
-        assertThatThrownBy(() -> controller.createOrder("hdr-001", "legacy-001", requestWithoutIdempotencyKey()))
-                .isInstanceOf(ApplicationException.class)
-                .hasMessageContaining("Idempotency key header mismatch");
+        controller.createOrder("hdr-001", "legacy-001", requestWithoutIdempotencyKey());
+
+        ArgumentCaptor<SalesOrderRequest> captor = ArgumentCaptor.forClass(SalesOrderRequest.class);
+        verify(salesService).createOrder(captor.capture());
+        assertThat(captor.getValue().idempotencyKey()).isEqualTo("hdr-001");
     }
 
     private SalesOrderRequest requestWithoutIdempotencyKey() {

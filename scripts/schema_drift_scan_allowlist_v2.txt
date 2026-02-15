@@ -1,0 +1,9 @@
+# Flyway v2 schema drift allowlist.
+# Baseline entries below are currently accepted for deterministic scan hygiene.
+# Add only when reviewed and linked to migration ownership evidence.
+
+V7__enterprise_audit_ml_events.sql
+V8__idempotency_case_insensitive_lookup_indexes.sql
+V9__dealer_portal_user_binding_hardening.sql
+V10__accounting_replay_hotspot_indexes.sql
+V12__invoice_pending_exposure_status_norm_indexes.sql

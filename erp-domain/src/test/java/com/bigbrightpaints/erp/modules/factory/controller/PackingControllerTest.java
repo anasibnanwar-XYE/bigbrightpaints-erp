@@ -150,8 +150,9 @@ class PackingControllerTest {
     }
 
     @Test
-    void recordPacking_rejectsPrimaryLegacyHeaderMismatch() {
+    void recordPacking_prefersPrimaryHeaderWhenPrimaryLegacyMismatch() {
         PackingController controller = new PackingController(packingService, bulkPackingService);
+        when(packingService.recordPacking(any())).thenReturn(null);
 
         PackingRequest request = new PackingRequest(
                 1L,
@@ -161,8 +162,10 @@ class PackingControllerTest {
                 List.of(new PackingLineRequest("10L", new BigDecimal("1"), 1, 1, 1))
         );
 
-        assertThatThrownBy(() -> controller.recordPacking("header-key", "legacy-key", null, request))
-                .isInstanceOf(ApplicationException.class)
-                .hasMessageContaining("Idempotency key header mismatch");
+        controller.recordPacking("header-key", "legacy-key", null, request);
+
+        ArgumentCaptor<PackingRequest> captor = ArgumentCaptor.forClass(PackingRequest.class);
+        verify(packingService).recordPacking(captor.capture());
+        assertThat(captor.getValue().idempotencyKey()).isEqualTo("header-key");
     }
 }

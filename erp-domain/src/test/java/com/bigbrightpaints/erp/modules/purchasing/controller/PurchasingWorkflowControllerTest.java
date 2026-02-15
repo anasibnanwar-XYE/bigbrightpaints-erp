@@ -48,12 +48,15 @@ class PurchasingWorkflowControllerTest {
     }
 
     @Test
-    void createGoodsReceipt_rejectsPrimaryLegacyHeaderMismatch() {
+    void createGoodsReceipt_prefersPrimaryHeaderWhenPrimaryLegacyMismatch() {
         PurchasingWorkflowController controller = new PurchasingWorkflowController(purchasingService);
+        when(purchasingService.createGoodsReceipt(any())).thenReturn(null);
 
-        assertThatThrownBy(() -> controller.createGoodsReceipt("hdr-001", "legacy-001", requestWithoutIdempotencyKey()))
-                .isInstanceOf(ApplicationException.class)
-                .hasMessageContaining("Idempotency key header mismatch");
+        controller.createGoodsReceipt("hdr-001", "legacy-001", requestWithoutIdempotencyKey());
+
+        ArgumentCaptor<GoodsReceiptRequest> captor = ArgumentCaptor.forClass(GoodsReceiptRequest.class);
+        verify(purchasingService).createGoodsReceipt(captor.capture());
+        assertThat(captor.getValue().idempotencyKey()).isEqualTo("hdr-001");
     }
 
     @Test

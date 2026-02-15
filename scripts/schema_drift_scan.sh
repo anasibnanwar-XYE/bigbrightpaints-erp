@@ -2,10 +2,65 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-MIGRATIONS_DIR="$ROOT_DIR/erp-domain/src/main/resources/db/migration"
-ALLOWLIST_FILE="$ROOT_DIR/scripts/schema_drift_scan_allowlist.txt"
+MIGRATION_SET="${MIGRATION_SET:-v1}"
+MIGRATIONS_DIR="${MIGRATIONS_DIR:-}"
+ALLOWLIST_FILE="${ALLOWLIST_FILE:-}"
 
 FAIL_ON_FINDINGS="${FAIL_ON_FINDINGS:-false}"
+
+usage() {
+  cat <<USAGE
+Usage: bash scripts/schema_drift_scan.sh [--migration-set <v1|v2>] [--migrations-dir <dir>] [--allowlist <file>]
+USAGE
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --migration-set)
+      MIGRATION_SET="${2:-}"
+      shift 2
+      ;;
+    --migrations-dir)
+      MIGRATIONS_DIR="${2:-}"
+      shift 2
+      ;;
+    --allowlist)
+      ALLOWLIST_FILE="${2:-}"
+      shift 2
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "[schema_drift_scan] unknown arg: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+if [[ -z "$MIGRATIONS_DIR" ]]; then
+  case "$MIGRATION_SET" in
+    v1)
+      MIGRATIONS_DIR="$ROOT_DIR/erp-domain/src/main/resources/db/migration"
+      ;;
+    v2)
+      MIGRATIONS_DIR="$ROOT_DIR/erp-domain/src/main/resources/db/migration_v2"
+      ;;
+    *)
+      echo "[schema_drift_scan] invalid --migration-set: $MIGRATION_SET" >&2
+      exit 2
+      ;;
+  esac
+fi
+
+if [[ -z "$ALLOWLIST_FILE" ]]; then
+  case "$MIGRATION_SET" in
+    v1) ALLOWLIST_FILE="$ROOT_DIR/scripts/schema_drift_scan_allowlist.txt" ;;
+    v2) ALLOWLIST_FILE="$ROOT_DIR/scripts/schema_drift_scan_allowlist_v2.txt" ;;
+  esac
+fi
 
 if [[ ! -d "$MIGRATIONS_DIR" ]]; then
   echo "[schema_drift_scan] missing migrations dir: $MIGRATIONS_DIR"
@@ -19,6 +74,7 @@ else
 fi
 
 echo "[schema_drift_scan] scanning: $MIGRATIONS_DIR"
+echo "[schema_drift_scan] migration set: $MIGRATION_SET"
 echo "[schema_drift_scan] using: $SEARCH_TOOL"
 
 findings=0

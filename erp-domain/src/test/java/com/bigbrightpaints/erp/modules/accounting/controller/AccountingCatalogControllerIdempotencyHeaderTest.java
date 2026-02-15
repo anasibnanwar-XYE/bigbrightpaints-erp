@@ -32,13 +32,14 @@ class AccountingCatalogControllerIdempotencyHeaderTest {
     }
 
     @Test
-    void importCatalog_rejectsPrimaryLegacyHeaderMismatch() {
+    void importCatalog_prefersPrimaryHeaderWhenPrimaryLegacyMismatch() {
         ProductionCatalogService productionCatalogService = mock(ProductionCatalogService.class);
+        when(productionCatalogService.importCatalog(any(), any())).thenReturn(null);
         AccountingCatalogController controller = new AccountingCatalogController(productionCatalogService);
 
-        assertThatThrownBy(() -> controller.importCatalog(csvFile(), "hdr-001", "legacy-001"))
-                .isInstanceOf(ApplicationException.class)
-                .hasMessageContaining("Idempotency key header mismatch");
+        controller.importCatalog(csvFile(), "hdr-001", "legacy-001");
+
+        verify(productionCatalogService).importCatalog(any(), eq("hdr-001"));
     }
 
     private MultipartFile csvFile() {

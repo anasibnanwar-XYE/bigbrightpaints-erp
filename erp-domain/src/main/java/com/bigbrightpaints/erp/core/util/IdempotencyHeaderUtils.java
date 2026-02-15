@@ -12,12 +12,6 @@ public final class IdempotencyHeaderUtils {
     public static String resolveHeaderKey(String idempotencyKeyHeader, String legacyIdempotencyKeyHeader) {
         String primary = trimToNull(idempotencyKeyHeader);
         String legacy = trimToNull(legacyIdempotencyKeyHeader);
-        if (primary != null && legacy != null && !primary.equals(legacy)) {
-            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
-                    "Idempotency key header mismatch between Idempotency-Key and X-Idempotency-Key")
-                    .withDetail("idempotencyKeyHeader", primary)
-                    .withDetail("legacyIdempotencyKeyHeader", legacy);
-        }
         return primary != null ? primary : legacy;
     }
 

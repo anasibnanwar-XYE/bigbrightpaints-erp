@@ -212,8 +212,9 @@ public class AccountingController {
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
     public ResponseEntity<ApiResponse<JournalEntryDto>> recordDealerReceipt(
             @Valid @RequestBody DealerReceiptRequest request,
-            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
-        DealerReceiptRequest resolved = applyIdempotencyKey(request, idempotencyKey);
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            @RequestHeader(value = "X-Idempotency-Key", required = false) String legacyIdempotencyKey) {
+        DealerReceiptRequest resolved = applyIdempotencyKey(request, idempotencyKey, legacyIdempotencyKey);
         return ResponseEntity.ok(ApiResponse.success("Receipt recorded", accountingService.recordDealerReceipt(resolved)));
     }
 
@@ -221,8 +222,9 @@ public class AccountingController {
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
     public ResponseEntity<ApiResponse<JournalEntryDto>> recordDealerHybridReceipt(
             @Valid @RequestBody DealerReceiptSplitRequest request,
-            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
-        DealerReceiptSplitRequest resolved = applyIdempotencyKey(request, idempotencyKey);
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            @RequestHeader(value = "X-Idempotency-Key", required = false) String legacyIdempotencyKey) {
+        DealerReceiptSplitRequest resolved = applyIdempotencyKey(request, idempotencyKey, legacyIdempotencyKey);
         return ResponseEntity.ok(ApiResponse.success("Receipt recorded", accountingService.recordDealerReceiptSplit(resolved)));
     }
 
@@ -242,8 +244,9 @@ public class AccountingController {
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
     public ResponseEntity<ApiResponse<JournalEntryDto>> recordSupplierPayment(
             @Valid @RequestBody SupplierPaymentRequest request,
-            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
-        SupplierPaymentRequest resolved = applyIdempotencyKey(request, idempotencyKey);
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            @RequestHeader(value = "X-Idempotency-Key", required = false) String legacyIdempotencyKey) {
+        SupplierPaymentRequest resolved = applyIdempotencyKey(request, idempotencyKey, legacyIdempotencyKey);
         return ResponseEntity.ok(ApiResponse.success("Supplier payment recorded", accountingService.recordSupplierPayment(resolved)));
     }
 
@@ -251,8 +254,9 @@ public class AccountingController {
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
     public ResponseEntity<ApiResponse<PartnerSettlementResponse>> settleSupplier(
             @Valid @RequestBody SupplierSettlementRequest request,
-            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
-        SupplierSettlementRequest resolved = applyIdempotencyKey(request, idempotencyKey);
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            @RequestHeader(value = "X-Idempotency-Key", required = false) String legacyIdempotencyKey) {
+        SupplierSettlementRequest resolved = applyIdempotencyKey(request, idempotencyKey, legacyIdempotencyKey);
         return ResponseEntity.ok(ApiResponse.success("Settlement recorded", accountingService.settleSupplierInvoices(resolved)));
     }
 
@@ -274,11 +278,17 @@ public class AccountingController {
         return ResponseEntity.ok(ApiResponse.success("Accrual posted", accountingService.postAccrual(request)));
     }
 
-    private DealerReceiptRequest applyIdempotencyKey(DealerReceiptRequest request, String idempotencyKey) {
+    private DealerReceiptRequest applyIdempotencyKey(DealerReceiptRequest request,
+                                                     String idempotencyKeyHeader,
+                                                     String legacyIdempotencyKeyHeader) {
         if (request == null) {
             return request;
         }
-        if (StringUtils.hasText(request.idempotencyKey()) || !StringUtils.hasText(idempotencyKey)) {
+        String resolvedKey = com.bigbrightpaints.erp.core.util.IdempotencyHeaderUtils.resolveBodyOrHeaderKey(
+                request.idempotencyKey(),
+                idempotencyKeyHeader,
+                legacyIdempotencyKeyHeader);
+        if (!StringUtils.hasText(resolvedKey) || StringUtils.hasText(request.idempotencyKey())) {
             return request;
         }
         return new DealerReceiptRequest(
@@ -287,16 +297,22 @@ public class AccountingController {
                 request.amount(),
                 request.referenceNumber(),
                 request.memo(),
-                idempotencyKey,
+                resolvedKey,
                 request.allocations()
         );
     }
 
-    private DealerReceiptSplitRequest applyIdempotencyKey(DealerReceiptSplitRequest request, String idempotencyKey) {
+    private DealerReceiptSplitRequest applyIdempotencyKey(DealerReceiptSplitRequest request,
+                                                          String idempotencyKeyHeader,
+                                                          String legacyIdempotencyKeyHeader) {
         if (request == null) {
             return request;
         }
-        if (StringUtils.hasText(request.idempotencyKey()) || !StringUtils.hasText(idempotencyKey)) {
+        String resolvedKey = com.bigbrightpaints.erp.core.util.IdempotencyHeaderUtils.resolveBodyOrHeaderKey(
+                request.idempotencyKey(),
+                idempotencyKeyHeader,
+                legacyIdempotencyKeyHeader);
+        if (!StringUtils.hasText(resolvedKey) || StringUtils.hasText(request.idempotencyKey())) {
             return request;
         }
         return new DealerReceiptSplitRequest(
@@ -304,15 +320,21 @@ public class AccountingController {
                 request.incomingLines(),
                 request.referenceNumber(),
                 request.memo(),
-                idempotencyKey
+                resolvedKey
         );
     }
 
-    private SupplierPaymentRequest applyIdempotencyKey(SupplierPaymentRequest request, String idempotencyKey) {
+    private SupplierPaymentRequest applyIdempotencyKey(SupplierPaymentRequest request,
+                                                       String idempotencyKeyHeader,
+                                                       String legacyIdempotencyKeyHeader) {
         if (request == null) {
             return request;
         }
-        if (StringUtils.hasText(request.idempotencyKey()) || !StringUtils.hasText(idempotencyKey)) {
+        String resolvedKey = com.bigbrightpaints.erp.core.util.IdempotencyHeaderUtils.resolveBodyOrHeaderKey(
+                request.idempotencyKey(),
+                idempotencyKeyHeader,
+                legacyIdempotencyKeyHeader);
+        if (!StringUtils.hasText(resolvedKey) || StringUtils.hasText(request.idempotencyKey())) {
             return request;
         }
         return new SupplierPaymentRequest(
@@ -321,16 +343,22 @@ public class AccountingController {
                 request.amount(),
                 request.referenceNumber(),
                 request.memo(),
-                idempotencyKey,
+                resolvedKey,
                 request.allocations()
         );
     }
 
-    private SupplierSettlementRequest applyIdempotencyKey(SupplierSettlementRequest request, String idempotencyKey) {
+    private SupplierSettlementRequest applyIdempotencyKey(SupplierSettlementRequest request,
+                                                          String idempotencyKeyHeader,
+                                                          String legacyIdempotencyKeyHeader) {
         if (request == null) {
             return request;
         }
-        if (StringUtils.hasText(request.idempotencyKey()) || !StringUtils.hasText(idempotencyKey)) {
+        String resolvedKey = com.bigbrightpaints.erp.core.util.IdempotencyHeaderUtils.resolveBodyOrHeaderKey(
+                request.idempotencyKey(),
+                idempotencyKeyHeader,
+                legacyIdempotencyKeyHeader);
+        if (!StringUtils.hasText(resolvedKey) || StringUtils.hasText(request.idempotencyKey())) {
             return request;
         }
         return new SupplierSettlementRequest(
@@ -343,7 +371,7 @@ public class AccountingController {
                 request.settlementDate(),
                 request.referenceNumber(),
                 request.memo(),
-                idempotencyKey,
+                resolvedKey,
                 request.adminOverride(),
                 request.allocations()
         );
