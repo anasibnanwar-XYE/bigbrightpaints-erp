@@ -155,6 +155,7 @@ class AccountingControllerExceptionHandlerTest {
         assertThat(response.getStatusCode()).isEqualTo(status);
         ApiResponse<Map<String, Object>> body = response.getBody();
         assertThat(body).isNotNull();
+        assertThat(body.success()).isFalse();
         assertThat(body.message()).isEqualTo(reason);
         assertThat(body.data()).containsEntry("code", code.getCode());
         assertThat(body.data()).containsEntry("reason", reason);
