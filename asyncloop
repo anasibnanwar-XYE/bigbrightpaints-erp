@@ -8583,3 +8583,62 @@ Queue Rotation (Auto-Replenish)
 - [ready] M17-S5 Test-lane signal overhaul (flake quarantine SLA, release invariant map, deterministic retry matrix)
 - [ready] M17-S6 Staging rehearsal evidence pack + rollback drill (immutable SHA evidence bundle)
 - [ready] M16-S6 audit ownership guard matrix extension (carry-over closure to keep audit-contract hardening queue alive)
+
+Completed Slice (Committed)
+- 2026-02-15: `b9bb34e7`
+  - docs(spec): align agent workflow and add deep enterprise deploy blueprint.
+  - completed `M17-S1` governance alignment deliverables:
+    - updated `AGENTS.md` canonical source order to include stabilization control-plane and deep spec.
+    - added explicit multi-agent throughput policy and lane guidance (`fast_lane` / `strict_lane`).
+    - reconciled control-plane ownership between `docs/ENTERPRISE_BACKEND_STABILIZATION_PLAN.md` and `docs/CODE-RED/stabilization-plan.md`.
+    - added deep program spec: `docs/ERP_ENTERPRISE_DEPLOYMENT_DEEP_SPEC.md` with SKU lifecycle, O2C/P2P/production/payroll contracts, accounting anti-drift model, CI/release phases.
+    - updated `docs/INDEX.md` discovery links.
+
+Post-Commit Review Evidence
+- Commit reviewed: `b9bb34e7`
+- `codex review --commit b9bb34e7`:
+  - exit status: `0`
+  - finding: P2 docs-runbook mismatch in deep spec lane labels vs executable command names.
+  - disposition: fixed immediately in follow-up `27fba6b8`.
+
+Follow-up Hardening (Committed)
+- 2026-02-15: `27fba6b8`
+  - docs(spec): use executable gate commands in deep spec lanes.
+  - changes:
+    - replaced abstract lane labels with runnable commands:
+      - `bash scripts/gate_fast.sh`
+      - `bash scripts/gate_core.sh`
+      - `bash scripts/gate_release.sh`
+      - `bash scripts/gate_reconciliation.sh`
+      - `bash scripts/gate_quality.sh`
+
+Verification
+- `bash ci/lint-knowledgebase.sh` -> pass.
+- `bash ci/lint-knowledgebase.sh` (after follow-up) -> pass.
+
+Post-Commit Review Evidence
+- Commit reviewed: `27fba6b8`
+- `codex review --commit 27fba6b8`:
+  - exit status: `0`
+  - summary: docs-only command correction; no actionable regressions.
+- Review subagent `019c61c7-26c1-7622-b4d1-f9da5514a8f5`:
+  - findings: none.
+
+Loop Update
+- 2026-02-15T20:20:17+05:30
+- tracked_now_ts: `2026-02-15T20:20:17+05:30`
+- tracked_elapsed: `90h 26m 25s`
+- active_in_progress: `M17-S2 OpenAPI contract gate + portal parity matrix (block undocumented contract drift and alias ambiguity)`
+- continuity_recheck:
+  - governance alignment is now committed and review-corrected.
+  - deep deploy spec is discoverable from AGENTS and docs index.
+  - next highest-risk gap is contract drift prevention between backend API and frontend handoff docs.
+
+Queue Rotation (Auto-Replenish)
+- [completed] M17-S1 governance alignment and deep-spec bootstrap (align AGENTS/index/CODE-RED/asyncloop ownership hierarchy and multi-agent execution posture)
+- [in_progress] M17-S2 OpenAPI contract gate + portal parity matrix (block undocumented contract drift and alias ambiguity)
+- [ready] M17-S3 Top-5 duplicate write-path closure sweep (canonical path + alias parity tests + prod gating where needed)
+- [ready] M17-S4 Accounting anti-drift sentinel expansion (closed-period drift + unlinked artifacts + reconciliation fail-closed hooks)
+- [ready] M17-S5 Test-lane signal overhaul (flake quarantine SLA, release invariant map, deterministic retry matrix)
+- [ready] M17-S6 Staging rehearsal evidence pack + rollback drill (immutable SHA evidence bundle)
+- [ready] M16-S6 audit ownership guard matrix extension (carry-over closure to keep audit-contract hardening queue alive)
