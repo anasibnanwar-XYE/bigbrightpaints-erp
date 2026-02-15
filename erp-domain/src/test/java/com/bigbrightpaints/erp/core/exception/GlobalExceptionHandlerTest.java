@@ -177,7 +177,13 @@ class GlobalExceptionHandlerTest {
         ArgumentCaptor<Map<String, String>> metadataCaptor = ArgumentCaptor.forClass(Map.class);
         verify(auditService).logFailure(eq(AuditEvent.INTEGRATION_FAILURE), metadataCaptor.capture());
         Map<String, String> metadata = metadataCaptor.getValue();
-        assertThat(metadata).doesNotContainKey("detail");
+        assertThat(metadata)
+                .doesNotContainKey("detail")
+                .containsEntry("category", "request-parse")
+                .containsEntry(IntegrationFailureMetadataSchema.KEY_FAILURE_CODE, "MALFORMED_REQUEST_PAYLOAD")
+                .containsEntry(IntegrationFailureMetadataSchema.KEY_ERROR_CATEGORY, "VALIDATION")
+                .containsEntry(IntegrationFailureMetadataSchema.KEY_ALERT_ROUTING_VERSION, "INTEGRATION_FAILURE_V1")
+                .containsEntry(IntegrationFailureMetadataSchema.KEY_ALERT_ROUTE, "SEV3_TICKET");
     }
 
     @Test

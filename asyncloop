@@ -8839,3 +8839,13 @@ Loop Iteration Evidence - 2026-02-15T23:58:49+05:30
   - Result: PASS (Tests run: 104, Failures: 0, Errors: 0, Skipped: 0)
 - Commit review prep:
   - run subagent regression review on this commit next.
+## 2026-02-16 M3-S6 routing integrity coverage when detail omitted
+- Scope:
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/core/exception/GlobalExceptionHandlerTest.java`
+- Change summary:
+  - Strengthened malformed-request empty-detail test to assert routing/schema metadata remains intact (`failureCode`, `errorCategory`, `routingVersion`, `alertRoute`) while `detail` is absent.
+- Verification:
+  - `cd erp-domain && mvn -B -ntp -Dtest=GlobalExceptionHandlerTest test`
+  - Result: PASS (Tests run: 13, Failures: 0, Errors: 0, Skipped: 0)
+- Next gate:
+  - commit review subagent on this commit.
