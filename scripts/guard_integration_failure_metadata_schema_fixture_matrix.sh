@@ -166,4 +166,22 @@ class Fixture {
 JAVA
 )"
 
+run_case "non_integration_event_with_literal_token_arg_pass" 0 "$(cat <<'JAVA'
+package com.example;
+
+import static com.bigbrightpaints.erp.core.audit.AuditEvent.INTEGRATION_FAILURE;
+
+class Fixture {
+    private void validIntegrationFailureProducer() {
+        IntegrationFailureMetadataSchema.applyRequiredFields(metadata, "X", "Y", "Z", "SEV3_TICKET");
+        auditService.logFailure(AuditEvent.INTEGRATION_FAILURE, metadata);
+    }
+
+    private void nonIntegrationEventWithLiteralTokenArg() {
+        auditService.logFailure(AuditEvent.PRODUCTION_LOGGED, INTEGRATION_FAILURE);
+    }
+}
+JAVA
+)"
+
 echo "[guard_integration_failure_metadata_schema_fixture_matrix] OK"
