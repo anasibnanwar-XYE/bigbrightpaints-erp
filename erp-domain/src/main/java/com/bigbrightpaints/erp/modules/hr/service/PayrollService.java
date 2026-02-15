@@ -37,7 +37,7 @@ public class PayrollService {
 
     private static final BigDecimal ADVANCE_DEDUCTION_CAP = new BigDecimal("0.20");
     private static final String PAYROLL_ACCOUNTS_CANONICAL_PATH = "/api/v1/accounting/accounts";
-    private static final String PAYROLL_BOOTSTRAP_MIGRATION = "V79__payroll_gl_accounts.sql";
+    private static final String PAYROLL_MIGRATION_SET = "v2";
     private static final Map<String, AccountType> REQUIRED_PAYROLL_ACCOUNT_TYPES = Map.of(
             "SALARY-EXP", AccountType.EXPENSE,
             "WAGE-EXP", AccountType.EXPENSE,
@@ -49,11 +49,6 @@ public class PayrollService {
             "WAGE-EXP",
             "SALARY-PAYABLE",
             "EMP-ADV"
-    );
-    private static final Set<String> LEGACY_BOOTSTRAP_MIGRATION_ACCOUNT_CODES = Set.of(
-            "SALARY-EXP",
-            "WAGE-EXP",
-            "SALARY-PAYABLE"
     );
 
     private final PayrollRunRepository payrollRunRepository;
@@ -929,13 +924,9 @@ public class PayrollService {
                             .withDetail("accountCode", normalizedCode)
                             .withDetail("expectedAccountType", expectedTypeName)
                             .withDetail("requiredPayrollAccounts", REQUIRED_PAYROLL_ACCOUNTS)
+                            .withDetail("migrationSet", PAYROLL_MIGRATION_SET)
+                            .withDetail("manualProvisioningRequired", true)
                             .withDetail("canonicalPath", PAYROLL_ACCOUNTS_CANONICAL_PATH);
-
-                    if (LEGACY_BOOTSTRAP_MIGRATION_ACCOUNT_CODES.contains(normalizedCode)) {
-                        exception.withDetail("bootstrapMigration", PAYROLL_BOOTSTRAP_MIGRATION);
-                    } else {
-                        exception.withDetail("manualProvisioningRequired", true);
-                    }
 
                     return exception;
                 });

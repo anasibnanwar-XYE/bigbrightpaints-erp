@@ -210,8 +210,10 @@ class CR_PayrollIdempotencyConcurrencyTest extends AbstractIntegrationTest {
                         Map<String, Object> details = appEx.getDetails();
                         assertThat(details).containsEntry("accountCode", "SALARY-EXP");
                         assertThat(details).containsEntry("expectedAccountType", "EXPENSE");
-                        assertThat(details).containsEntry("bootstrapMigration", "V79__payroll_gl_accounts.sql");
+                        assertThat(details).containsEntry("migrationSet", "v2");
+                        assertThat(details).containsEntry("manualProvisioningRequired", true);
                         assertThat(details).containsEntry("canonicalPath", "/api/v1/accounting/accounts");
+                        assertThat(details).doesNotContainKey("bootstrapMigration");
                         assertThat(details).containsKey("requiredPayrollAccounts");
                         @SuppressWarnings("unchecked")
                         List<Object> requiredAccounts = (List<Object>) details.get("requiredPayrollAccounts");
@@ -260,6 +262,7 @@ class CR_PayrollIdempotencyConcurrencyTest extends AbstractIntegrationTest {
                         Map<String, Object> details = appEx.getDetails();
                         assertThat(details).containsEntry("accountCode", "EMP-ADV");
                         assertThat(details).containsEntry("expectedAccountType", "ASSET");
+                        assertThat(details).containsEntry("migrationSet", "v2");
                         assertThat(details).containsEntry("manualProvisioningRequired", true);
                         assertThat(details).doesNotContainKey("bootstrapMigration");
                     });
