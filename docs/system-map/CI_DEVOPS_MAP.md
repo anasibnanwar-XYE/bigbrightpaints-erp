@@ -9,7 +9,7 @@
 - `verify_local`
 
 ## Trigger map (when each runs)
-- `gate_fast`: on PRs and workflow_dispatch with `diff_base`; validates changed-file coverage + selected truth tests.
+- `gate_fast`: on PRs and workflow_dispatch with `DIFF_BASE` (workflow input `diff_base`); validates changed-file coverage + selected truth tests.
 - `gate_core`: on push to `main`; runs core checks plus module coverage gate.
 - `gate_release`: on tags and workflow_dispatch release path; runs strict v2 predeploy checks and release matrix.
 - `gate_reconciliation`: on tags and release workflow_dispatch; focuses on reconciliation test suites and mismatch summary.
@@ -33,6 +33,7 @@
 - For final ledger closure runs, execute:
   - `DIFF_BASE=<RELEASE_ANCHOR_SHA> GATE_FAST_RELEASE_VALIDATION_MODE=true bash scripts/gate_fast.sh`
 - In release validation mode, `HEAD~N` references are intentionally rejected; always pass a concrete SHA.
+- In release validation mode, vacuous changed-file coverage is fail-closed.
 - Do not weaken line/branch thresholds to bypass broad historical diffs; rotate `RELEASE_ANCHOR_SHA` only after a fully green ledger-gate bundle.
 
 ## Async-loop final ledger gate order (staging)
