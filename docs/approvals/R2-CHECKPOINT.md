@@ -27,7 +27,7 @@ Update this file in every high-risk change set.
 ## Rollback Owner
 - Name: Release & Ops owner (designated by orchestrator)
 - Role: release governance
-- Rollback decision SLA: immediate for policy regressions
+- Rollback decision SLA: immediate for policy, retry-durability, or migration regressions
 
 ## Expiry
 - Approval valid until (UTC): 2026-02-22T00:00:00Z
