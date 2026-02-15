@@ -8,6 +8,10 @@ Use this file as the naming source of truth for cross-module docs and execution 
 - `partner`: canonical cross-module term for external commercial entities.
 - `dealer`: sales/O2C role specialization of `partner`.
 - `supplier`: purchasing/P2P role specialization of `partner`.
+- v2 API/DTO naming stability:
+  - keep public request/response fields and endpoint semantics role-specific (`dealer*`, `supplier*`).
+  - do not rename role fields/endpoints to `partner*` in v2 migrations.
+  - use `partner*` only for shared internal abstractions and role-agnostic conflict metadata keys.
 
 ## Idempotency and replay terms
 - `idempotencyKey`: canonical field name for replay identity in headers, conflict details, and metadata.

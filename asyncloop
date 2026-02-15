@@ -9540,3 +9540,22 @@ Review Queue Update
 Loop Update
 - tracked_now_ts: `2026-02-16T03:22:50+05:30`
 - active_in_progress: `M19-S5 review queue drain (blocked) + async-loop hardening continuation`
+
+[2026-02-16] M19-S25 canonical vocabulary guardrail: partner abstraction vs v2 role-specific API naming
+- Completed Slice (Docs):
+  - Updated `docs/system-map/CANONICAL_VOCABULARY.md` with explicit v2 naming guardrail:
+    - public API/DTO field and endpoint semantics remain role-specific (`dealer*`, `supplier*`)
+    - `partner*` reserved for shared internal abstractions + role-agnostic conflict metadata
+    - no `dealer/supplier -> partner` rename in v2 migration scope
+
+- Verification:
+  - `bash ci/lint-knowledgebase.sh` (PASS)
+
+Review Queue Update
+- subagent dispatch still blocked by active-agent cap (max 6).
+- pending code-review queue unchanged:
+  - `2962800b`, `50d78915`, `6c51730e`, `2b2fb143`, `7451e7cf`, `a82746af`, `3358cb2a`, `18c3825d`, `f271fb5e`, `4d0d508f`, `b4511068`, `3d6a7599`
+
+Loop Update
+- tracked_now_ts: `2026-02-16T03:24:00+05:30`
+- active_in_progress: `M19-S5 review queue drain (blocked) + next async-loop hardening slice`
