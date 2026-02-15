@@ -32,6 +32,15 @@ else
   exit 1
 fi
 
+echo "[gate-release] flyway guard contract guard"
+GUARD_CONTRACT_LOG="$ARTIFACT_DIR/flyway-guard-contract-guard.txt"
+if bash "$ROOT_DIR/scripts/guard_flyway_guard_contract.sh" >"$GUARD_CONTRACT_LOG" 2>&1; then
+  cat "$GUARD_CONTRACT_LOG"
+else
+  cat "$GUARD_CONTRACT_LOG" >&2
+  exit 1
+fi
+
 VERIFY_LOCAL_SKIP_GUARD=false
 ALLOW_GUARD_DB_MISMATCH="${ALLOW_FLYWAY_GUARD_DB_MISMATCH:-false}"
 

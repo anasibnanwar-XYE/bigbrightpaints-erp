@@ -40,6 +40,9 @@ bash "$ROOT_DIR/scripts/guard_orchestrator_correlation_contract.sh"
 echo "[verify_local] accounting portal scope contract guard"
 bash "$ROOT_DIR/scripts/guard_accounting_portal_scope_contract.sh"
 
+echo "[verify_local] flyway guard contract guard"
+bash "$ROOT_DIR/scripts/guard_flyway_guard_contract.sh"
+
 if [[ "$MIGRATION_SET" == "v2" ]]; then
   ALLOW_GUARD_DB_MISMATCH="${ALLOW_FLYWAY_GUARD_DB_MISMATCH:-false}"
   if [[ -n "${FLYWAY_GUARD_DB_NAME:-}" && -n "${PGDATABASE:-}" && "${FLYWAY_GUARD_DB_NAME}" != "${PGDATABASE}" ]]; then
