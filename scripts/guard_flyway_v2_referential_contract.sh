@@ -390,17 +390,17 @@ def add_contract(contracts, table, cols):
 
 
 def add_fk(foreign_keys, src_table, src_cols, ref_table, ref_cols, source):
-    if src_table and src_cols and ref_table and ref_cols:
+    if src_table and src_cols and ref_table:
         foreign_keys.append({
             "src_table": src_table,
             "src_cols": tuple(src_cols),
             "ref_table": ref_table,
-            "ref_cols": tuple(ref_cols),
+            "ref_cols": tuple(ref_cols) if ref_cols else None,
             "source": source,
         })
 
 
-def parse_create_table_statement(statement, path, line, contracts, foreign_keys):
+def parse_create_table_statement(statement, path, line, contracts, primary_keys, foreign_keys):
     create_match = re.match(
         rf"(?is)^CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?P<table>{QUAL_IDENT})\s*\(",
         statement,
@@ -421,19 +421,22 @@ def parse_create_table_statement(statement, path, line, contracts, foreign_keys)
         if not entry:
             continue
         entry_no_constraint = re.sub(rf"(?is)^CONSTRAINT\s+{IDENT}\s+", "", entry).strip()
-        key_match = re.match(r"(?is)^(PRIMARY\s+KEY|UNIQUE)\s*\((?P<cols>.*)\)$", entry_no_constraint)
+        key_match = re.match(r"(?is)^(?P<kind>PRIMARY\s+KEY|UNIQUE)\s*\((?P<cols>.*)\)$", entry_no_constraint)
         if key_match:
             cols = normalize_column_list(key_match.group("cols"))
             add_contract(contracts, table, cols)
+            if key_match.group("kind").upper().startswith("PRIMARY"):
+                add_contract(primary_keys, table, cols)
             continue
         fk_match = re.match(
-            rf"(?is)^FOREIGN\s+KEY\s*\((?P<src>.*)\)\s+REFERENCES\s+(?P<ref_table>{QUAL_IDENT})\s*\((?P<ref_cols>.*)\)",
+            rf"(?is)^FOREIGN\s+KEY\s*\((?P<src>.*)\)\s+REFERENCES\s+(?P<ref_table>{QUAL_IDENT})(?:\s*\((?P<ref_cols>.*)\))?",
             entry_no_constraint,
         )
         if fk_match:
             src_cols = normalize_column_list(fk_match.group("src"))
             ref_table = normalize_table(fk_match.group("ref_table"))
-            ref_cols = normalize_column_list(fk_match.group("ref_cols"))
+            ref_cols_raw = fk_match.group("ref_cols")
+            ref_cols = normalize_column_list(ref_cols_raw) if ref_cols_raw else None
             add_fk(foreign_keys, table, src_cols, ref_table, ref_cols, source)
             continue
         col_match = re.match(rf"(?is)^(?P<col>{IDENT})\s+", entry)
@@ -441,19 +444,23 @@ def parse_create_table_statement(statement, path, line, contracts, foreign_keys)
             continue
         col = normalize_column_token(col_match.group("col"))
         tail = entry[col_match.end():]
-        if re.search(r"(?is)\bPRIMARY\s+KEY\b", tail) or re.search(r"(?is)\bUNIQUE\b", tail):
+        if re.search(r"(?is)\bPRIMARY\s+KEY\b", tail):
+            add_contract(contracts, table, (col,))
+            add_contract(primary_keys, table, (col,))
+        elif re.search(r"(?is)\bUNIQUE\b", tail):
             add_contract(contracts, table, (col,))
         col_fk = re.search(
-            rf"(?is)\bREFERENCES\s+(?P<ref_table>{QUAL_IDENT})\s*\((?P<ref_cols>[^)]*)\)",
+            rf"(?is)\bREFERENCES\s+(?P<ref_table>{QUAL_IDENT})(?:\s*\((?P<ref_cols>[^)]*)\))?",
             tail,
         )
         if col_fk:
             ref_table = normalize_table(col_fk.group("ref_table"))
-            ref_cols = normalize_column_list(col_fk.group("ref_cols"))
+            ref_cols_raw = col_fk.group("ref_cols")
+            ref_cols = normalize_column_list(ref_cols_raw) if ref_cols_raw else None
             add_fk(foreign_keys, table, (col,), ref_table, ref_cols, source)
 
 
-def parse_alter_contracts(sql, path, contracts, foreign_keys):
+def parse_alter_contracts(sql, path, contracts, primary_keys, foreign_keys):
     alter_pattern = re.compile(
         rf"(?is)ALTER\s+TABLE(?:\s+ONLY)?\s+(?:IF\s+EXISTS\s+)?(?P<table>{QUAL_IDENT})(?P<body>.*?);"
     )
@@ -467,13 +474,16 @@ def parse_alter_contracts(sql, path, contracts, foreign_keys):
         ):
             cols = normalize_column_list(key.group("cols"))
             add_contract(contracts, table, cols)
+            if key.group("kind").upper().startswith("PRIMARY"):
+                add_contract(primary_keys, table, cols)
         for fk in re.finditer(
-            rf"(?is)\bADD\s+(?:CONSTRAINT\s+{IDENT}\s+)?FOREIGN\s+KEY\s*\((?P<src>[^)]*)\)\s+REFERENCES\s+(?P<ref_table>{QUAL_IDENT})\s*\((?P<ref_cols>[^)]*)\)",
+            rf"(?is)\bADD\s+(?:CONSTRAINT\s+{IDENT}\s+)?FOREIGN\s+KEY\s*\((?P<src>[^)]*)\)\s+REFERENCES\s+(?P<ref_table>{QUAL_IDENT})(?:\s*\((?P<ref_cols>[^)]*)\))?",
             body,
         ):
             src_cols = normalize_column_list(fk.group("src"))
             ref_table = normalize_table(fk.group("ref_table"))
-            ref_cols = normalize_column_list(fk.group("ref_cols"))
+            ref_cols_raw = fk.group("ref_cols")
+            ref_cols = normalize_column_list(ref_cols_raw) if ref_cols_raw else None
             add_fk(foreign_keys, table, src_cols, ref_table, ref_cols, source)
 
 
@@ -497,14 +507,15 @@ def main():
 
     files = [pathlib.Path(arg) for arg in sys.argv[2:]]
     contracts = defaultdict(set)
+    primary_keys = defaultdict(set)
     foreign_keys = []
 
     for path in files:
         raw_sql = path.read_text(encoding="utf-8")
         sql = strip_sql_comments(raw_sql)
         for statement, line in iter_statements(sql):
-            parse_create_table_statement(statement, path, line, contracts, foreign_keys)
-        parse_alter_contracts(sql, path, contracts, foreign_keys)
+            parse_create_table_statement(statement, path, line, contracts, primary_keys, foreign_keys)
+        parse_alter_contracts(sql, path, contracts, primary_keys, foreign_keys)
         parse_unique_indexes(sql, path, contracts)
 
     if not foreign_keys:
@@ -513,6 +524,17 @@ def main():
 
     violations = []
     for fk in foreign_keys:
+        if fk["ref_cols"] is None:
+            pk_candidates = primary_keys.get(fk["ref_table"], set())
+            match = any(len(cols) == len(fk["src_cols"]) for cols in pk_candidates)
+            if not match:
+                known_pk = ", ".join(f"({', '.join(cols)})" for cols in sorted(pk_candidates)) if pk_candidates else "none"
+                violations.append(
+                    f"{fk['source']}: {fk['src_table']}({', '.join(fk['src_cols'])}) -> "
+                    f"{fk['ref_table']}(PRIMARY KEY shorthand) lacks compatible PK target (known PKs: {known_pk})"
+                )
+            continue
+
         candidates = contracts.get(fk["ref_table"], set())
         if fk["ref_cols"] not in candidates:
             known = ", ".join(f"({', '.join(cols)})" for cols in sorted(candidates)) if candidates else "none"

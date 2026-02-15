@@ -30,6 +30,8 @@ require_callsite "$GATE_RELEASE_SRC" 'guard_flyway_v2_migration_ownership_fixtur
 require_callsite "$VERIFY_LOCAL_SRC" 'guard_flyway_v2_migration_ownership_fixture_matrix.sh' 'verify_local ownership fixture matrix'
 require_callsite "$GATE_RELEASE_SRC" 'guard_flyway_v2_referential_contract.sh' 'gate_release referential contract canary'
 require_callsite "$VERIFY_LOCAL_SRC" 'guard_flyway_v2_referential_contract.sh' 'verify_local referential contract canary'
+require_callsite "$GATE_RELEASE_SRC" 'guard_flyway_v2_referential_contract_fixture_matrix.sh' 'gate_release referential fixture matrix'
+require_callsite "$VERIFY_LOCAL_SRC" 'guard_flyway_v2_referential_contract_fixture_matrix.sh' 'verify_local referential fixture matrix'
 
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
@@ -62,6 +64,7 @@ for stub in \
   guard_flyway_v2_migration_ownership.sh \
   guard_flyway_v2_migration_ownership_fixture_matrix.sh \
   guard_flyway_v2_referential_contract.sh \
+  guard_flyway_v2_referential_contract_fixture_matrix.sh \
   time_api_scan.sh \
   release_migration_matrix.sh; do
   cat > "$TMP_ROOT/scripts/$stub" <<'STUB'

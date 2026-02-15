@@ -68,6 +68,15 @@ else
   exit 1
 fi
 
+echo "[gate-release] flyway v2 referential contract fixture matrix"
+REFERENTIAL_FIXTURE_LOG="$ARTIFACT_DIR/flyway-v2-referential-contract-fixture-matrix.txt"
+if bash "$ROOT_DIR/scripts/guard_flyway_v2_referential_contract_fixture_matrix.sh" >"$REFERENTIAL_FIXTURE_LOG" 2>&1; then
+  cat "$REFERENTIAL_FIXTURE_LOG"
+else
+  cat "$REFERENTIAL_FIXTURE_LOG" >&2
+  exit 1
+fi
+
 VERIFY_LOCAL_SKIP_GUARD=false
 ALLOW_GUARD_DB_MISMATCH="${ALLOW_FLYWAY_GUARD_DB_MISMATCH:-false}"
 

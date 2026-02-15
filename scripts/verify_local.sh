@@ -49,6 +49,9 @@ if [[ "$MIGRATION_SET" == "v2" ]]; then
 
   echo "[verify_local] flyway v2 referential contract canary"
   bash "$ROOT_DIR/scripts/guard_flyway_v2_referential_contract.sh"
+
+  echo "[verify_local] flyway v2 referential contract fixture matrix"
+  bash "$ROOT_DIR/scripts/guard_flyway_v2_referential_contract_fixture_matrix.sh"
 fi
 
 echo "[verify_local] flyway guard contract guard"
