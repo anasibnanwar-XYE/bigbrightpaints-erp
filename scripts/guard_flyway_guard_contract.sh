@@ -55,6 +55,7 @@ for stub in \
   flyway_overlap_scan.sh \
   guard_orchestrator_correlation_contract.sh \
   guard_accounting_portal_scope_contract.sh \
+  guard_flyway_v2_migration_ownership.sh \
   time_api_scan.sh \
   release_migration_matrix.sh; do
   cat > "$TMP_ROOT/scripts/$stub" <<'STUB'

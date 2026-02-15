@@ -41,6 +41,15 @@ else
   exit 1
 fi
 
+echo "[gate-release] flyway v2 migration ownership guard"
+MIGRATION_OWNERSHIP_LOG="$ARTIFACT_DIR/flyway-v2-migration-ownership-guard.txt"
+if bash "$ROOT_DIR/scripts/guard_flyway_v2_migration_ownership.sh" >"$MIGRATION_OWNERSHIP_LOG" 2>&1; then
+  cat "$MIGRATION_OWNERSHIP_LOG"
+else
+  cat "$MIGRATION_OWNERSHIP_LOG" >&2
+  exit 1
+fi
+
 VERIFY_LOCAL_SKIP_GUARD=false
 ALLOW_GUARD_DB_MISMATCH="${ALLOW_FLYWAY_GUARD_DB_MISMATCH:-false}"
 
