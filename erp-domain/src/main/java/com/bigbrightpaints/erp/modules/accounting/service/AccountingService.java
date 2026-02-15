@@ -140,13 +140,6 @@ public class AccountingService {
     @Value("${erp.accounting.event-trail.strict:true}")
     private boolean strictAccountingEventTrail = true;
 
-    /**
-     * When false, suppresses legacy summary audit-log writes for accounting events that are already
-     * captured in the structured accounting event trail.
-     */
-    @Value("${erp.audit.accounting.legacy-summary-events.enabled:true}")
-    private boolean legacyAccountingSummaryEventsEnabled = true;
-
     public AccountingService(CompanyContextService companyContextService,
                              AccountRepository accountRepository,
                              JournalEntryRepository journalEntryRepository,
@@ -3564,7 +3557,7 @@ public class AccountingService {
     }
 
     private void logAuditSuccessAfterCommit(AuditEvent event, Map<String, String> metadata) {
-        if (event == null || !shouldEmitLegacyAccountingSummaryEvent(event)) {
+        if (event == null || !shouldEmitAuditServiceSuccessEvent(event)) {
             return;
         }
         Map<String, String> capturedMetadata = metadata != null ? new HashMap<>(metadata) : null;
@@ -3581,10 +3574,7 @@ public class AccountingService {
         auditService.logSuccess(event, capturedMetadata);
     }
 
-    private boolean shouldEmitLegacyAccountingSummaryEvent(AuditEvent event) {
-        if (legacyAccountingSummaryEventsEnabled) {
-            return true;
-        }
+    private boolean shouldEmitAuditServiceSuccessEvent(AuditEvent event) {
         return event != AuditEvent.JOURNAL_ENTRY_POSTED
                 && event != AuditEvent.JOURNAL_ENTRY_REVERSED
                 && event != AuditEvent.SETTLEMENT_RECORDED;

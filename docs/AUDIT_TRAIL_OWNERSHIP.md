@@ -15,14 +15,13 @@ Keep audit coverage complete without running duplicate audit-processing paths fo
 
 ## De-dup Policy
 - Accounting journal/reversal/settlement summary events are captured by AccountingEventStore as the structured source of truth.
-- Legacy summary writes for these events in `AuditService` are disabled by default through:
-  - `erp.audit.accounting.legacy-summary-events.enabled=false`
-- Test profiles keep legacy summary writes enabled (`true`) to preserve existing code-red/compatibility assertions during transition.
+- Legacy summary success writes for these events in `AuditService` are fully decommissioned (not toggle-controlled).
+- No profile may re-enable legacy summary success writes for `JOURNAL_ENTRY_POSTED`, `JOURNAL_ENTRY_REVERSED`, or `SETTLEMENT_RECORDED`.
 - `AuditService` remains active for failure and security/admin signal paths.
 
 ## Change-Control Rule
 - Any change to this ownership split must update, in the same commit:
   - this file,
   - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingService.java`,
-  - runtime config defaults in `application*.yml`,
+  - runtime/test config contract in `application*.yml` (legacy summary toggle block must remain absent),
   - guard script `scripts/guard_audit_trail_ownership_contract.sh`.

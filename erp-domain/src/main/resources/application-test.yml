@@ -13,10 +13,6 @@ spring:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
 erp:
-  audit:
-    accounting:
-      legacy-summary-events:
-        enabled: true
   dispatch:
     debit-account-id: ${ERP_DISPATCH_DEBIT_ACCOUNT_ID:0}
     credit-account-id: ${ERP_DISPATCH_CREDIT_ACCOUNT_ID:0}

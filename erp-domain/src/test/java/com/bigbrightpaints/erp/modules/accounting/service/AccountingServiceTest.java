@@ -299,7 +299,7 @@ class AccountingServiceTest {
     }
 
     @Test
-    void reverseJournalEntry_logsSuccessAudit_afterCommitOnly() {
+    void reverseJournalEntry_suppressesLegacySummaryAudit_afterCommit() {
         LocalDate today = LocalDate.of(2024, 4, 1);
         when(companyClock.today(company)).thenReturn(today);
         AccountingPeriod openPeriod = new AccountingPeriod();
@@ -330,7 +330,7 @@ class AccountingServiceTest {
             verify(auditService, never()).logSuccess(eq(AuditEvent.JOURNAL_ENTRY_REVERSED), any());
         });
 
-        verify(auditService).logSuccess(eq(AuditEvent.JOURNAL_ENTRY_REVERSED), any());
+        verify(auditService, never()).logSuccess(eq(AuditEvent.JOURNAL_ENTRY_REVERSED), any());
     }
 
     @Test
@@ -369,14 +369,13 @@ class AccountingServiceTest {
     }
 
     @Test
-    void reverseJournalEntry_skipsLegacySummaryAudit_whenPolicyDisabled() {
+    void reverseJournalEntry_skipsLegacySummaryAudit_withoutToggle() {
         LocalDate today = LocalDate.of(2024, 4, 1);
         when(companyClock.today(company)).thenReturn(today);
         AccountingPeriod openPeriod = new AccountingPeriod();
         when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(openPeriod);
 
         AccountingService service = spy(accountingService);
-        ReflectionTestUtils.setField(service, "legacyAccountingSummaryEventsEnabled", false);
         JournalEntry original = reversalSourceEntry(502L, "REV-AUDIT-POLICY", today);
         JournalEntry reversal = new JournalEntry();
         ReflectionTestUtils.setField(reversal, "id", 902L);
@@ -1002,7 +1001,7 @@ class AccountingServiceTest {
                 .containsEntry("alertRoutingVersion", "ACCOUNTING_EVENT_TRAIL_V1")
                 .containsEntry("alertRoute", "SEV3_TICKET")
                 .doesNotContainKey("error");
-        verify(auditService).logSuccess(eq(AuditEvent.JOURNAL_ENTRY_POSTED), any());
+        verify(auditService, never()).logSuccess(eq(AuditEvent.JOURNAL_ENTRY_POSTED), any());
     }
 
     @Test
@@ -1252,7 +1251,7 @@ class AccountingServiceTest {
                 .containsEntry("errorType", "ApplicationException")
                 .containsEntry("alertRoutingVersion", "ACCOUNTING_EVENT_TRAIL_V1")
                 .containsEntry("alertRoute", "SEV2_URGENT");
-        verify(auditService).logSuccess(eq(AuditEvent.JOURNAL_ENTRY_REVERSED), any());
+        verify(auditService, never()).logSuccess(eq(AuditEvent.JOURNAL_ENTRY_REVERSED), any());
     }
 
     @Test
@@ -1298,7 +1297,7 @@ class AccountingServiceTest {
                 .containsEntry("errorType", "ApplicationException")
                 .containsEntry("alertRoutingVersion", "ACCOUNTING_EVENT_TRAIL_V1")
                 .containsEntry("alertRoute", "SEV1_PAGE");
-        verify(auditService).logSuccess(eq(AuditEvent.JOURNAL_ENTRY_REVERSED), any());
+        verify(auditService, never()).logSuccess(eq(AuditEvent.JOURNAL_ENTRY_REVERSED), any());
     }
 
     @Test
@@ -1335,7 +1334,7 @@ class AccountingServiceTest {
         JournalEntryDto result = service.reverseJournalEntry(611L, request);
         assertThat(result.id()).isEqualTo(911L);
         verify(auditService).logFailure(eq(AuditEvent.INTEGRATION_FAILURE), org.mockito.ArgumentMatchers.<Map<String, String>>any());
-        verify(auditService).logSuccess(eq(AuditEvent.JOURNAL_ENTRY_REVERSED), any());
+        verify(auditService, never()).logSuccess(eq(AuditEvent.JOURNAL_ENTRY_REVERSED), any());
     }
 
     @Test
