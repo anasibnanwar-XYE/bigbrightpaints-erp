@@ -144,7 +144,7 @@ mapfile -t missing_pk_tables < <(
       probe = segment
       while (match(probe, /not[[:space:]]+null([^[:alnum:]_]|$)/) > 0) {
         before = substr(probe, 1, RSTART - 1)
-        if (before !~ /is[[:space:]]*$/) {
+        if (before !~ /(^|[^[:alnum:]_])is[[:space:]]*$/) {
           return 1
         }
         probe = substr(probe, RSTART + RLENGTH)
