@@ -9166,3 +9166,21 @@ Loop Update
   - `2962800b`
   - `50d78915`
   - `6c51730e`
+
+[2026-02-16] M19-S9 replay vocabulary literal dedupe (controller contract tests)
+- Completed Slice (Committed): centralized replay-reason literals
+  - Commit `2b2fb143`: introduced class-level constants in `AccountingControllerExceptionHandlerTest`
+    - `REPLAY_REASON_SUPPLIER`
+    - `REPLAY_REASON_DEALER`
+    - `REPLAY_REASON_PARTNER_TYPE`
+  - Replaced repeated inline reason strings to prevent drift while preserving exact contract wording.
+- Verification:
+  - `cd erp-domain && mvn -B -ntp -Dtest=AccountingControllerExceptionHandlerTest test` (PASS: 6/6)
+
+Review Queue Update
+- subagent review dispatch still blocked by active-agent cap (max 6).
+- queued code commits: `2962800b`, `50d78915`, `6c51730e`, `2b2fb143`
+
+Loop Update
+- tracked_now_ts: `2026-02-16T02:49:35+05:30`
+- active_in_progress: `M19-S5 review queue drain (blocked) + next assertion dedupe slice`
