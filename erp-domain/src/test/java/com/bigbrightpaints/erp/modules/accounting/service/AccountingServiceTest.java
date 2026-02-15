@@ -3620,6 +3620,7 @@ class AccountingServiceTest {
                             .containsEntry(IntegrationFailureMetadataSchema.KEY_PARTNER_ID, 1L);
                 })
                 .hasMessageContaining("Dealer settlement idempotency key is reserved but allocation not found");
+        verify(journalEntryRepository, never()).save(any(JournalEntry.class));
     }
 
     @Test
@@ -6669,6 +6670,7 @@ class AccountingServiceTest {
                             .containsEntry(IntegrationFailureMetadataSchema.KEY_PARTNER_ID, 1L);
                 })
                 .hasMessageContaining("Supplier settlement idempotency key is reserved but allocation not found");
+        verify(journalEntryRepository, never()).save(any(JournalEntry.class));
     }
 
     @Test
