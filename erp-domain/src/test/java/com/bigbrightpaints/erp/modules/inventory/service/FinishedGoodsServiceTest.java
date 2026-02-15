@@ -520,7 +520,7 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void stockSummaryNonWacValuationIncludesReservedStock() {
+    void stockSummaryNonWacValuationUsesAvailableBatchQuantity() {
         Company company = seedCompany("FIFO-RESERVED-PARITY");
         FinishedGood fg = createFinishedGood(company, "FG-FIFO-RESERVED", new BigDecimal("5"), new BigDecimal("2"), "FIFO");
         FinishedGoodBatch reserved = createBatch(fg, "FIFO-RESERVED-OLD", new BigDecimal("2"), BigDecimal.ZERO, new BigDecimal("5"));
@@ -535,8 +535,8 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
                 .findFirst()
                 .orElseThrow();
 
-        assertThat(summary.weightedAverageCost()).isEqualByComparingTo(new BigDecimal("14"));
-        assertThat(summary.weightedAverageCost()).isNotEqualByComparingTo(new BigDecimal("12"));
+        assertThat(summary.weightedAverageCost()).isEqualByComparingTo(new BigDecimal("12"));
+        assertThat(summary.weightedAverageCost()).isNotEqualByComparingTo(new BigDecimal("14"));
     }
 
     @Test

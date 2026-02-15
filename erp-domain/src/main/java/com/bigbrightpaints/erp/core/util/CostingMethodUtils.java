@@ -78,7 +78,12 @@ public final class CostingMethodUtils {
         return switch (normalized) {
             case "FIFO" -> "FIFO";
             case "WAC", "WEIGHTED_AVERAGE", "WEIGHTED-AVERAGE" -> "WAC";
-            default -> trimmed;
+            default -> {
+                if (normalized.matches("[A-Z0-9_-]+")) {
+                    yield trimmed;
+                }
+                throw new IllegalArgumentException("Unsupported costing method " + method);
+            }
         };
     }
 
