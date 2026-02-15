@@ -25,6 +25,11 @@ Feature expansion is not the goal unless required to remove workflow risk.
   - still run `bash ci/lint-knowledgebase.sh` before commit.
 - Code-risk review rule:
   - for any runtime/config/schema/test logic change, run commit review + reviewer subagent.
+- Review-queue saturation rule:
+  - if reviewer subagent dispatch is blocked by agent-cap limits, continue bounded slices with full proof (targeted tests + required gates),
+  - record blocked review queue in `asyncloop` after each slice,
+  - retry reviewer dispatch each cycle,
+  - do not mark async-loop final closure complete until queued code commits receive reviewer outcomes.
 - Proof rule:
   - every “done” claim requires commands + outputs recorded in `asyncloop`.
 
@@ -37,6 +42,10 @@ Feature expansion is not the goal unless required to remove workflow risk.
 - Unified domain vocabulary for external entities:
   - use `partner` as the canonical cross-module term,
   - use `dealer` and `supplier` only for role-specific flows.
+- v2 contract stability:
+  - keep external API/DTO field names and endpoint semantics role-specific (`dealer*`, `supplier*`),
+  - reserve `partner*` for internal abstractions and shared metadata keys,
+  - defer any public rename to a future explicit versioned contract migration.
 - API contracts treated as product assets, not byproducts.
 
 ### 3.2 Required architecture deliverables
@@ -253,6 +262,13 @@ Acceptance criteria:
    - `bash scripts/gate_release.sh`
 4. Store command outputs and artifact paths in `asyncloop`.
 5. Rotate `RELEASE_ANCHOR_SHA` only after all required ledger gates pass and evidence is recorded.
+
+### 14.4 Reviewer queue saturation checkpoint
+When reviewer-agent capacity is externally saturated:
+1. Keep code slices small and revert to strongest local proof for each slice (targeted tests minimum; lane gates as required by risk).
+2. Append queue status + blocked reason in `asyncloop` with pending commit SHAs.
+3. Retry reviewer-subagent dispatch at least once each loop cycle.
+4. Before final staging closure, ensure every queued code commit has reviewer outcome (findings or explicit no-findings).
 
 ## 15) Virtual Accountant Vision (Deferred Until Stable Base)
 This remains strategic vision after stabilization:
