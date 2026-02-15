@@ -5909,6 +5909,211 @@ class AccountingServiceTest {
     }
 
     @Test
+    void settleDealerInvoices_nonLeaderReplayAllowsInactiveCashAccountAndRepairsReferenceMapping() {
+        Dealer dealer = new Dealer();
+        dealer.setName("Replay Dealer");
+        ReflectionTestUtils.setField(dealer, "id", 1L);
+
+        Account receivable = new Account();
+        receivable.setCompany(company);
+        receivable.setCode("AR-REPLAY");
+        receivable.setType(AccountType.ASSET);
+        ReflectionTestUtils.setField(receivable, "id", 10L);
+        dealer.setReceivableAccount(receivable);
+
+        Account cash = new Account();
+        cash.setCompany(company);
+        cash.setCode("CASH-REPLAY");
+        cash.setType(AccountType.ASSET);
+        cash.setActive(false);
+        ReflectionTestUtils.setField(cash, "id", 20L);
+
+        var invoice = new com.bigbrightpaints.erp.modules.invoice.domain.Invoice();
+        invoice.setCompany(company);
+        invoice.setDealer(dealer);
+        ReflectionTestUtils.setField(invoice, "id", 701L);
+
+        JournalEntry existingEntry = new JournalEntry();
+        ReflectionTestUtils.setField(existingEntry, "id", 901L);
+        existingEntry.setDealer(dealer);
+        existingEntry.setReferenceNumber("DR-SETTLE-REPLAY-1");
+        existingEntry.setMemo("Dealer settlement replay");
+        existingEntry.getLines().add(journalLine(existingEntry, cash, "Dealer settlement replay", new BigDecimal("100.00"), BigDecimal.ZERO));
+        existingEntry.getLines().add(journalLine(existingEntry, receivable, "Dealer settlement replay", BigDecimal.ZERO, new BigDecimal("100.00")));
+
+        PartnerSettlementAllocation existingRow = new PartnerSettlementAllocation();
+        existingRow.setCompany(company);
+        existingRow.setPartnerType(com.bigbrightpaints.erp.modules.accounting.domain.PartnerType.DEALER);
+        existingRow.setDealer(dealer);
+        existingRow.setInvoice(invoice);
+        existingRow.setJournalEntry(existingEntry);
+        existingRow.setSettlementDate(LocalDate.of(2024, 4, 9));
+        existingRow.setAllocationAmount(new BigDecimal("100.00"));
+        existingRow.setDiscountAmount(BigDecimal.ZERO);
+        existingRow.setWriteOffAmount(BigDecimal.ZERO);
+        existingRow.setFxDifferenceAmount(BigDecimal.ZERO);
+        existingRow.setIdempotencyKey("IDEMP-DR-REPLAY");
+        existingRow.setMemo(null);
+
+        JournalReferenceMapping mapping = new JournalReferenceMapping();
+        mapping.setCompany(company);
+        mapping.setLegacyReference("idemp-dr-replay");
+        mapping.setCanonicalReference("DR-SETTLE-REPLAY-1");
+        mapping.setEntityType("DEALER_SETTLEMENT");
+        mapping.setEntityId(null);
+
+        when(dealerRepository.lockByCompanyAndId(eq(company), eq(1L))).thenReturn(Optional.of(dealer));
+        when(companyEntityLookup.requireAccount(eq(company), eq(20L))).thenReturn(cash);
+        when(journalReferenceMappingRepository.findAllByCompanyAndLegacyReferenceIgnoreCase(eq(company), eq("idemp-dr-replay")))
+                .thenReturn(List.of(mapping));
+        when(journalReferenceResolver.findExistingEntry(eq(company), eq("DR-SETTLE-REPLAY-1")))
+                .thenReturn(Optional.of(existingEntry));
+        when(settlementAllocationRepository.findByCompanyAndIdempotencyKeyIgnoreCaseOrderByCreatedAtAscIdAsc(eq(company), eq("IDEMP-DR-REPLAY")))
+                .thenReturn(List.of(existingRow));
+
+        DealerSettlementRequest request = new DealerSettlementRequest(
+                1L,
+                20L,
+                null,
+                null,
+                null,
+                null,
+                LocalDate.of(2024, 4, 9),
+                null,
+                "Dealer settlement replay",
+                "IDEMP-DR-REPLAY",
+                Boolean.FALSE,
+                List.of(new SettlementAllocationRequest(
+                        701L,
+                        null,
+                        new BigDecimal("100.00"),
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        null
+                )),
+                null
+        );
+
+        PartnerSettlementResponse response = accountingService.settleDealerInvoices(request);
+
+        assertThat(response.journalEntry()).isNotNull();
+        assertThat(response.journalEntry().id()).isEqualTo(901L);
+        verify(journalReferenceMappingRepository).save(mapping);
+        assertThat(mapping.getEntityId()).isEqualTo(901L);
+        assertThat(mapping.getEntityType()).isEqualTo("DEALER_SETTLEMENT");
+        assertThat(mapping.getCanonicalReference()).isEqualTo("DR-SETTLE-REPLAY-1");
+    }
+
+    @Test
+    void settleDealerInvoices_nonLeaderReplayAllowsLegacyInvoiceDiscountAdjustments() {
+        Dealer dealer = new Dealer();
+        dealer.setName("Replay Dealer");
+        ReflectionTestUtils.setField(dealer, "id", 1L);
+
+        Account receivable = new Account();
+        receivable.setCompany(company);
+        receivable.setCode("AR-REPLAY");
+        receivable.setType(AccountType.ASSET);
+        ReflectionTestUtils.setField(receivable, "id", 10L);
+        dealer.setReceivableAccount(receivable);
+
+        Account cash = new Account();
+        cash.setCompany(company);
+        cash.setCode("CASH-REPLAY");
+        cash.setType(AccountType.ASSET);
+        ReflectionTestUtils.setField(cash, "id", 20L);
+
+        Account discount = new Account();
+        discount.setCompany(company);
+        discount.setCode("DISC-REPLAY");
+        discount.setType(AccountType.EXPENSE);
+        ReflectionTestUtils.setField(discount, "id", 30L);
+
+        var invoice = new com.bigbrightpaints.erp.modules.invoice.domain.Invoice();
+        invoice.setCompany(company);
+        invoice.setDealer(dealer);
+        ReflectionTestUtils.setField(invoice, "id", 701L);
+
+        JournalEntry existingEntry = new JournalEntry();
+        ReflectionTestUtils.setField(existingEntry, "id", 904L);
+        existingEntry.setDealer(dealer);
+        existingEntry.setReferenceNumber("DR-SETTLE-REPLAY-ADJ-1");
+        existingEntry.setMemo("Dealer settlement replay");
+        existingEntry.getLines().addAll(List.of(
+                journalLine(existingEntry, cash, "Dealer settlement replay", new BigDecimal("90.00"), BigDecimal.ZERO),
+                journalLine(existingEntry, discount, "Settlement discount", new BigDecimal("10.00"), BigDecimal.ZERO),
+                journalLine(existingEntry, receivable, "Dealer settlement replay", BigDecimal.ZERO, new BigDecimal("100.00"))
+        ));
+
+        PartnerSettlementAllocation existingRow = new PartnerSettlementAllocation();
+        existingRow.setCompany(company);
+        existingRow.setPartnerType(com.bigbrightpaints.erp.modules.accounting.domain.PartnerType.DEALER);
+        existingRow.setDealer(dealer);
+        existingRow.setInvoice(invoice);
+        existingRow.setJournalEntry(existingEntry);
+        existingRow.setSettlementDate(LocalDate.of(2024, 4, 9));
+        existingRow.setAllocationAmount(new BigDecimal("100.00"));
+        existingRow.setDiscountAmount(new BigDecimal("10.00"));
+        existingRow.setWriteOffAmount(BigDecimal.ZERO);
+        existingRow.setFxDifferenceAmount(BigDecimal.ZERO);
+        existingRow.setIdempotencyKey("IDEMP-DR-REPLAY-ADJ");
+        existingRow.setMemo("Legacy invoice discount");
+
+        JournalReferenceMapping mapping = new JournalReferenceMapping();
+        mapping.setCompany(company);
+        mapping.setLegacyReference("idemp-dr-replay-adj");
+        mapping.setCanonicalReference("DR-SETTLE-REPLAY-ADJ-1");
+        mapping.setEntityType("DEALER_SETTLEMENT");
+        mapping.setEntityId(null);
+
+        when(dealerRepository.lockByCompanyAndId(eq(company), eq(1L))).thenReturn(Optional.of(dealer));
+        when(companyEntityLookup.requireAccount(eq(company), eq(20L))).thenReturn(cash);
+        when(companyEntityLookup.requireAccount(eq(company), eq(30L))).thenReturn(discount);
+        when(journalReferenceMappingRepository.findAllByCompanyAndLegacyReferenceIgnoreCase(eq(company), eq("idemp-dr-replay-adj")))
+                .thenReturn(List.of(mapping));
+        when(journalReferenceResolver.findExistingEntry(eq(company), eq("DR-SETTLE-REPLAY-ADJ-1")))
+                .thenReturn(Optional.of(existingEntry));
+        when(settlementAllocationRepository.findByCompanyAndIdempotencyKeyIgnoreCaseOrderByCreatedAtAscIdAsc(eq(company), eq("IDEMP-DR-REPLAY-ADJ")))
+                .thenReturn(List.of(existingRow));
+
+        DealerSettlementRequest request = new DealerSettlementRequest(
+                1L,
+                20L,
+                30L,
+                null,
+                null,
+                null,
+                LocalDate.of(2024, 4, 9),
+                null,
+                "Dealer settlement replay",
+                "IDEMP-DR-REPLAY-ADJ",
+                Boolean.FALSE,
+                List.of(new SettlementAllocationRequest(
+                        701L,
+                        null,
+                        new BigDecimal("100.00"),
+                        new BigDecimal("10.00"),
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        "Legacy invoice discount"
+                )),
+                null
+        );
+
+        PartnerSettlementResponse response = accountingService.settleDealerInvoices(request);
+
+        assertThat(response.journalEntry()).isNotNull();
+        assertThat(response.journalEntry().id()).isEqualTo(904L);
+        assertThat(response.totalApplied()).isEqualByComparingTo("100.00");
+        assertThat(response.totalDiscount()).isEqualByComparingTo("10.00");
+        verify(journalReferenceMappingRepository).save(mapping);
+        verify(journalReferenceMappingRepository, never())
+                .reserveReferenceMapping(any(), any(), any(), any(), any());
+        verify(journalEntryRepository, never()).save(any());
+    }
+
+    @Test
     void settleSupplierInvoices_allowsOnAccountAllocationWithoutMemo() {
         AccountingService service = spy(accountingService);
 
