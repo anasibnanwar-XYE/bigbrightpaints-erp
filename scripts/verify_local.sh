@@ -43,6 +43,9 @@ bash "$ROOT_DIR/scripts/guard_accounting_portal_scope_contract.sh"
 if [[ "$MIGRATION_SET" == "v2" ]]; then
   echo "[verify_local] flyway v2 migration ownership guard"
   bash "$ROOT_DIR/scripts/guard_flyway_v2_migration_ownership.sh"
+
+  echo "[verify_local] flyway v2 referential contract canary"
+  bash "$ROOT_DIR/scripts/guard_flyway_v2_referential_contract.sh"
 fi
 
 echo "[verify_local] flyway guard contract guard"
