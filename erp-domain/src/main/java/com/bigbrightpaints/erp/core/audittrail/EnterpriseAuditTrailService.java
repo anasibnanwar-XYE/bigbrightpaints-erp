@@ -30,7 +30,9 @@ import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -59,6 +61,10 @@ public class EnterpriseAuditTrailService {
     private final ObjectMapper objectMapper;
     private final String auditPrivateKey;
 
+    @Autowired
+    @Lazy
+    private EnterpriseAuditTrailService self;
+
     public EnterpriseAuditTrailService(
             AuditActionEventRepository auditActionEventRepository,
             MlInteractionEventRepository mlInteractionEventRepository,
@@ -72,17 +78,23 @@ public class EnterpriseAuditTrailService {
         this.auditPrivateKey = auditPrivateKey;
     }
 
+    public void recordBusinessEvent(AuditActionEventCommand command) {
+        UserAccount actorSnapshot = command != null
+                ? (command.actorUserOverride() != null ? command.actorUserOverride() : resolveCurrentActor().orElse(null))
+                : null;
+        EnterpriseAuditTrailService dispatcher = self != null ? self : this;
+        dispatcher.recordBusinessEventAsync(command, actorSnapshot);
+    }
+
     @Async
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void recordBusinessEvent(AuditActionEventCommand command) {
+    public void recordBusinessEventAsync(AuditActionEventCommand command, UserAccount actorSnapshot) {
         try {
             if (command == null || command.company() == null) {
                 return;
             }
             Company company = command.company();
-            UserAccount actor = command.actorUserOverride() != null
-                    ? command.actorUserOverride()
-                    : resolveCurrentActor().orElse(null);
+            UserAccount actor = actorSnapshot != null ? actorSnapshot : command.actorUserOverride();
 
             AuditActionEvent event = new AuditActionEvent();
             event.setCompanyId(company.getId());
