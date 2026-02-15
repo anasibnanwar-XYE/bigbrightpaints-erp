@@ -125,4 +125,26 @@ class AccountingControllerExceptionHandlerTest {
                 .containsEntry(IntegrationFailureMetadataSchema.KEY_PARTNER_TYPE, "DEALER")
                 .containsEntry(IntegrationFailureMetadataSchema.KEY_PARTNER_ID, 1L);
     }
+
+    @Test
+    void handleApplicationException_partnerReplayConflictWithoutDetailsOmitsDetailsKey() {
+        AccountingController controller = new AccountingController(
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        ApplicationException ex = new ApplicationException(
+                ErrorCode.CONCURRENCY_CONFLICT,
+                "Idempotency key already used for another supplier");
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRequestURI("/api/v1/accounting/settlements/suppliers");
+
+        ResponseEntity<ApiResponse<Map<String, Object>>> response =
+                controller.handleApplicationException(ex, request);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        ApiResponse<Map<String, Object>> body = response.getBody();
+        assertThat(body).isNotNull();
+        assertThat(body.message()).isEqualTo("Idempotency key already used for another supplier");
+        assertThat(body.data()).containsEntry("reason", "Idempotency key already used for another supplier");
+        assertThat(body.data()).containsEntry("path", "/api/v1/accounting/settlements/suppliers");
+        assertThat(body.data()).doesNotContainKey("details");
+    }
 }

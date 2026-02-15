@@ -6870,11 +6870,21 @@ class AccountingServiceTest {
 
     @Test
     void partnerMismatchMessage_fallbackUsesPartnerTypeWording() {
+        String dealerMessage = ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "partnerMismatchMessage",
+                com.bigbrightpaints.erp.modules.accounting.domain.PartnerType.DEALER);
+        String supplierMessage = ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "partnerMismatchMessage",
+                com.bigbrightpaints.erp.modules.accounting.domain.PartnerType.SUPPLIER);
         String message = ReflectionTestUtils.invokeMethod(
                 accountingService,
                 "partnerMismatchMessage",
                 (com.bigbrightpaints.erp.modules.accounting.domain.PartnerType) null);
 
+        assertThat(dealerMessage).isEqualTo("Idempotency key already used for another dealer");
+        assertThat(supplierMessage).isEqualTo("Idempotency key already used for another supplier");
         assertThat(message).isEqualTo("Idempotency key already used for another partner type");
     }
 
