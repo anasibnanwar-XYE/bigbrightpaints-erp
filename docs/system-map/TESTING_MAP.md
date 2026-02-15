@@ -21,6 +21,19 @@
 - `hr`: payroll lifecycle and run-state tests under `modules/hr`.
 - `orchestrator`: orchestration + correlation tests under `erp-domain/src/test/java/com/bigbrightpaints/erp/orchestrator`.
 
+## Accounting controller contract anchors (idempotency/replay)
+- `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/accounting/controller/AccountingControllerExceptionHandlerTest.java`
+  - error envelope shape (`code`, `reason`, `path`, `traceId`)
+  - replay conflict metadata details (`idempotencyKey`, `partnerType`, `partnerId`)
+  - role-specific replay reason wording (`dealer`, `supplier`, fallback `partner type`)
+- `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/accounting/controller/AccountingControllerIdempotencyHeaderParityTest.java`
+  - primary vs legacy header precedence (`Idempotency-Key` over `X-Idempotency-Key`)
+  - body/header mismatch rejection contract
+  - parity across dealer receipt, dealer hybrid receipt, supplier payment, supplier settlement
+- `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/accounting/controller/AccountingControllerActivityContractTest.java`
+  - account activity alias contract (`startDate/endDate` vs `from/to`)
+  - accounting date-context contract (company timezone + company-clock current date)
+
 ## Contract/guarded tests and maps
 - Truth suite catalog: `docs/CODE-RED/confidence-suite/TEST_CATALOG.json`.
 - Canonical flow assertions: `erp-domain/docs/CROSS_MODULE_LINKAGE_MATRIX.md`, `erp-domain/docs/ORDER_TO_CASH_STATE_MACHINES.md`, `erp-domain/docs/PROCURE_TO_PAY_STATE_MACHINES.md`.
