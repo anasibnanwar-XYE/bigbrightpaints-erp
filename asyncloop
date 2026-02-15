@@ -6855,3 +6855,95 @@ Queue Rotation (Auto-Replenish)
 - [ready] M14-S48 costing-selection enum drift guard (new/legacy costing tokens must remain centrally mapped via `CostingMethodUtils` with no per-module fallback forks)
 - [ready] M14-S49 catalog-import retry-winner ledger/journal silence guard (stale-retry loser payloads must never produce duplicate accounting side effects while winner replay remains idempotent)
 - [ready] M11-S7 accounting-portal scope invariant lock (HR, PURCHASING, INVENTORY, REPORTS remain under Accounting portal unless replacement portal map + endpoint docs are updated atomically)
+
+Completed Slice (Committed)
+- 2026-02-15: `3c04d0a0`
+  - chore(ci): add flyway guard contract regression harness.
+  - M15-S26 initial implementation:
+    - added `scripts/guard_flyway_guard_contract.sh` and wired it into `scripts/gate_release.sh` + `scripts/verify_local.sh`.
+    - initial harness used literal-marker checks for mismatch/delegation/required-mode guard contract.
+  - Verification:
+    - `bash -n scripts/guard_flyway_guard_contract.sh` -> pass.
+    - `bash -n scripts/gate_release.sh` -> pass.
+    - `bash -n scripts/verify_local.sh` -> pass.
+    - `bash scripts/guard_flyway_guard_contract.sh` -> pass.
+
+Post-Commit Review Evidence
+- Commit reviewed: `3c04d0a0`
+- `codex review --commit 3c04d0a0`:
+  - command executed; session affected by rollout churn and no stable final verdict captured.
+- Review subagent `019c5f5e-904f-7aa0-83f1-710dc9e819aa`:
+  - findings:
+    - high: literal-string harness can be bypassed (comments/dead code preserving markers).
+    - medium: formatting refactors can create false-positive CI failures.
+  - disposition: fixed immediately in `6ddb0899` with behavior-driven contract assertions.
+
+Follow-up Hardening (Committed)
+- 2026-02-15: `6ddb0899`
+  - fix(ci): make flyway guard contract checks behavior-driven.
+  - changes:
+    - replaced textual marker checks with hermetic sandbox execution harness.
+    - added explicit behavior cases for mismatch fail-closed/allow override, required-mode skip prevention, missing-marker delegation prevention, and gate->verify propagation checks.
+  - Verification:
+    - `bash -n scripts/guard_flyway_guard_contract.sh` -> pass.
+    - `bash scripts/guard_flyway_guard_contract.sh` -> pass.
+
+Post-Commit Review Evidence
+- Commit reviewed: `6ddb0899`
+- `codex review --commit 6ddb0899`:
+  - command executed; session affected by rollout churn and no stable final verdict captured.
+- Review subagent `019c5f62-2ef4-7f41-9f51-aac3ff85d838`:
+  - findings:
+    - medium: delegated skip happy-path (`VERIFY_LOCAL_SKIP_FLYWAY_GUARD=true` + `VERIFY_LOCAL_GUARD_ALREADY_EXECUTED=true`) was not explicitly asserted.
+  - disposition: fixed immediately in `0bcb8980`.
+
+Follow-up Hardening (Committed)
+- 2026-02-15: `0bcb8980`
+  - fix(ci): cover delegated skip path in guard contract harness.
+  - changes:
+    - added explicit case asserting delegated skip with execution marker keeps checksum guard suppressed.
+  - Verification:
+    - `bash -n scripts/guard_flyway_guard_contract.sh` -> pass.
+    - `bash scripts/guard_flyway_guard_contract.sh` -> pass.
+
+Post-Commit Review Evidence
+- Commit reviewed: `0bcb8980`
+- `codex review --commit 0bcb8980`:
+  - final verdict: patch only extends delegated-skip coverage; no functional regression introduced.
+- Review subagent `019c5f65-59d7-7e53-8b75-f9b063951a71`:
+  - findings: none.
+
+Completed Slice (Resolved)
+- M15-S26 release-guard contract regression harness (add lightweight script-level assertions for mismatch/delegation/required-mode combinations to reduce policy oscillation risk)
+  - closure basis: `3c04d0a0` + `6ddb0899` + `0bcb8980`.
+  - contract status:
+    - harness now validates behavior, not brittle text markers.
+    - delegated skip/replay/required-mode/mismatch paths are all asserted in one fast CI-safe script.
+
+Loop Update
+- 2026-02-15T09:14:35+05:30
+- tracked_now_ts: `2026-02-15T09:14:35+05:30`
+- tracked_elapsed: `79h 20m 43s`
+- active_in_progress: `M15-S27 v2 migration ownership/consistency guard (assert all migration_v2 versions are tracked and contain explicit PK targets for downstream FK references)`
+- continuity_recheck:
+  - pending-exposure canaries remain queued (`M15-S13R2`, `M15-S14R2`).
+  - flyway guard contract drift is now automatically detected by behavior tests.
+
+Queue Rotation (Auto-Replenish)
+- [completed] M15-S26 release-guard contract regression harness (add lightweight script-level assertions for mismatch/delegation/required-mode combinations to reduce policy oscillation risk)
+- [in_progress] M15-S27 v2 migration ownership/consistency guard (assert all `migration_v2` versions are tracked and contain explicit PK targets for downstream FK references)
+- [ready] M15-S13R2 pending-exposure predicate parity recurring canary (scheduled rerun after next CI/release-guard script change)
+- [ready] M15-S14R2 dealer/admin pending-order parity recurring canary (scheduled rerun after next sales/accounting exposure logic touch)
+- [ready] M15-S8 payroll account default/bootstrap guard (`SALARY-EXP` missing account should fail with deterministic provisioning guidance/guard rails)
+- [ready] M15-S9 sales/dealer accounting method-map docs refresh (internal + user-facing docs for cash/credit/split formulas, account mapping rules, idempotency headers, and pending-order credit exposure semantics)
+- [ready] M15-S10 cross-module idempotency contract unification matrix (standardize header semantics + helper parity across sales/production/accounting endpoint families)
+- [ready] M15-S11 recognized-revenue/pending-credit contract docs + endpoint parity matrix (internal and user-facing portal docs must match shipment gate + pending exposure behavior)
+- [ready] M15-S12 idempotency header contract convergence doc+runtime assert sweep (sales/production/accounting entrypoints must share canonical header semantics and error model)
+- [ready] M15-S15 pending-status normalization performance guard (evaluate/land Flyway V2-safe functional index or normalized-token strategy so aggregate pending-status predicates retain index-friendly plans under high order volume)
+- [ready] M15-S16 dealer-settlement replay e2e defense-in-depth matrix (optional end-to-end `settleDealerInvoices` replay assertion where adjustment debit lines coexist with split payments to further harden payment-account bounded remap behavior)
+- [ready] M15-S18 dispatch replay COGS reference payload parity guard (assert `postCogsJournal` reference/memo/line payload stability on replay anchors and prevent wrong-reference postings under override replay paths)
+- [ready] M15-S19 dispatch replay slip-number fallback + AR-overload guard matrix (cover `hasCogsJournalFor` alternate slip-number fallback and explicitly lock both `postSalesJournal` overload paths against duplicate replay posting)
+- [ready] M15-S28 flyway-v2 migration referential contract canary (run lightweight SQL catalog check ensuring all FK references in migration_v2 target PK/unique columns)
+- [ready] M14-S48 costing-selection enum drift guard (new/legacy costing tokens must remain centrally mapped via `CostingMethodUtils` with no per-module fallback forks)
+- [ready] M14-S49 catalog-import retry-winner ledger/journal silence guard (stale-retry loser payloads must never produce duplicate accounting side effects while winner replay remains idempotent)
+- [ready] M11-S7 accounting-portal scope invariant lock (HR, PURCHASING, INVENTORY, REPORTS remain under Accounting portal unless replacement portal map + endpoint docs are updated atomically)
