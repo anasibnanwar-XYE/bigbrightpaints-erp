@@ -121,11 +121,15 @@ class IntegrationFailureMetadataSchemaContractTest {
 
     private void assertRequiredSchema(Map<String, String> metadata) {
         assertThat(metadata)
-                .containsKeys("failureCode", "errorCategory", "alertRoutingVersion", "alertRoute");
-        assertThat(metadata.get("failureCode")).isNotBlank();
-        assertThat(metadata.get("errorCategory")).isNotBlank();
-        assertThat(metadata.get("alertRoutingVersion")).isNotBlank();
-        assertThat(metadata.get("alertRoute")).isNotBlank();
+                .containsKeys(
+                        IntegrationFailureMetadataSchema.KEY_FAILURE_CODE,
+                        IntegrationFailureMetadataSchema.KEY_ERROR_CATEGORY,
+                        IntegrationFailureMetadataSchema.KEY_ALERT_ROUTING_VERSION,
+                        IntegrationFailureMetadataSchema.KEY_ALERT_ROUTE);
+        assertThat(metadata.get(IntegrationFailureMetadataSchema.KEY_FAILURE_CODE)).isNotBlank();
+        assertThat(metadata.get(IntegrationFailureMetadataSchema.KEY_ERROR_CATEGORY)).isNotBlank();
+        assertThat(metadata.get(IntegrationFailureMetadataSchema.KEY_ALERT_ROUTING_VERSION)).isNotBlank();
+        assertThat(metadata.get(IntegrationFailureMetadataSchema.KEY_ALERT_ROUTE)).isNotBlank();
     }
 
     private AccountingService buildAccountingService(AuditService auditService) {

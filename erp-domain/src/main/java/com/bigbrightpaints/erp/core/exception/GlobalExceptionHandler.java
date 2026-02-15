@@ -2,6 +2,7 @@ package com.bigbrightpaints.erp.core.exception;
 
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.IntegrationFailureAlertRoutingPolicy;
+import com.bigbrightpaints.erp.core.audit.IntegrationFailureMetadataSchema;
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.modules.auth.exception.InvalidMfaException;
 import com.bigbrightpaints.erp.modules.auth.exception.MfaRequiredException;
@@ -496,11 +497,13 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
         Map<String, String> metadata = new HashMap<>();
         metadata.put("category", "settlement-failure");
-        metadata.put("failureCode", failureCode);
-        metadata.put("errorCategory", errorCategory);
+        IntegrationFailureMetadataSchema.applyRequiredFields(
+                metadata,
+                failureCode,
+                errorCategory,
+                IntegrationFailureAlertRoutingPolicy.ROUTING_VERSION,
+                IntegrationFailureAlertRoutingPolicy.resolveRoute(failureCode, errorCategory));
         metadata.put("errorCode", ex.getErrorCode() != null ? ex.getErrorCode().getCode() : ErrorCode.UNKNOWN_ERROR.getCode());
-        metadata.put("alertRoutingVersion", IntegrationFailureAlertRoutingPolicy.ROUTING_VERSION);
-        metadata.put("alertRoute", IntegrationFailureAlertRoutingPolicy.resolveRoute(failureCode, errorCategory));
         metadata.put("traceId", traceId);
         metadata.put("requestMethod", request.getMethod());
         metadata.put("requestPath", requestPath);
@@ -582,10 +585,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         metadata.put("traceId", traceId);
         metadata.put("reason", reason);
         String failureCode = IntegrationFailureAlertRoutingPolicy.MALFORMED_REQUEST_FAILURE_CODE;
-        metadata.put("failureCode", failureCode);
-        metadata.put("errorCategory", "VALIDATION");
-        metadata.put("alertRoutingVersion", IntegrationFailureAlertRoutingPolicy.ROUTING_VERSION);
-        metadata.put("alertRoute",
+        IntegrationFailureMetadataSchema.applyRequiredFields(
+                metadata,
+                failureCode,
+                "VALIDATION",
+                IntegrationFailureAlertRoutingPolicy.ROUTING_VERSION,
                 IntegrationFailureAlertRoutingPolicy.resolveRoute(failureCode, "request-parse"));
         if (request != null) {
             metadata.put("requestMethod", request.getMethod());

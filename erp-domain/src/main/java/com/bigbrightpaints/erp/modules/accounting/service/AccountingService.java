@@ -3,6 +3,7 @@ package com.bigbrightpaints.erp.modules.accounting.service;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
+import com.bigbrightpaints.erp.core.audit.IntegrationFailureMetadataSchema;
 import com.bigbrightpaints.erp.core.config.SystemSettingsService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
@@ -3771,12 +3772,13 @@ public class AccountingService {
         }
         String failureCode = AccountingEventTrailAlertRoutingPolicy.ACCOUNTING_EVENT_TRAIL_FAILURE_CODE;
         String errorCategory = classifyEventTrailFailure(ex);
-        metadata.put("failureCode", failureCode);
-        metadata.put("errorCategory", errorCategory);
-        metadata.put("errorType", ex.getClass().getSimpleName());
-        metadata.put("alertRoutingVersion", AccountingEventTrailAlertRoutingPolicy.ROUTING_VERSION);
-        metadata.put("alertRoute",
+        IntegrationFailureMetadataSchema.applyRequiredFields(
+                metadata,
+                failureCode,
+                errorCategory,
+                AccountingEventTrailAlertRoutingPolicy.ROUTING_VERSION,
                 AccountingEventTrailAlertRoutingPolicy.resolveRoute(failureCode, errorCategory, policy));
+        metadata.put("errorType", ex.getClass().getSimpleName());
         try {
             auditService.logFailure(AuditEvent.INTEGRATION_FAILURE, metadata);
         } catch (Exception auditEx) {

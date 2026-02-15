@@ -11,10 +11,10 @@ public final class IntegrationFailureAlertRoutingPolicy {
     public static final String ROUTING_VERSION = "INTEGRATION_FAILURE_V1";
     public static final String MALFORMED_REQUEST_FAILURE_CODE = "MALFORMED_REQUEST_PAYLOAD";
     public static final String SETTLEMENT_OPERATION_FAILURE_CODE = "SETTLEMENT_OPERATION_FAILED";
-    public static final String ROUTE_SEV1_PAGE = "SEV1_PAGE";
-    public static final String ROUTE_SEV2_URGENT = "SEV2_URGENT";
-    public static final String ROUTE_SEV3_TICKET = "SEV3_TICKET";
-    public static final String ROUTE_UNMAPPED = "UNMAPPED";
+    public static final String ROUTE_SEV1_PAGE = IntegrationFailureAlertRoute.SEV1_PAGE;
+    public static final String ROUTE_SEV2_URGENT = IntegrationFailureAlertRoute.SEV2_URGENT;
+    public static final String ROUTE_SEV3_TICKET = IntegrationFailureAlertRoute.SEV3_TICKET;
+    public static final String ROUTE_UNMAPPED = IntegrationFailureAlertRoute.UNMAPPED;
 
     private IntegrationFailureAlertRoutingPolicy() {
     }

@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.accounting.service;
 
+import com.bigbrightpaints.erp.core.audit.IntegrationFailureAlertRoute;
 import java.util.Locale;
 import org.springframework.util.StringUtils;
 
@@ -11,10 +12,10 @@ final class AccountingEventTrailAlertRoutingPolicy {
 
     static final String ACCOUNTING_EVENT_TRAIL_FAILURE_CODE = "ACCOUNTING_EVENT_TRAIL_PERSISTENCE_FAILURE";
     static final String ROUTING_VERSION = "ACCOUNTING_EVENT_TRAIL_V1";
-    static final String ROUTE_SEV1_PAGE = "SEV1_PAGE";
-    static final String ROUTE_SEV2_URGENT = "SEV2_URGENT";
-    static final String ROUTE_SEV3_TICKET = "SEV3_TICKET";
-    static final String ROUTE_UNMAPPED = "UNMAPPED";
+    static final String ROUTE_SEV1_PAGE = IntegrationFailureAlertRoute.SEV1_PAGE;
+    static final String ROUTE_SEV2_URGENT = IntegrationFailureAlertRoute.SEV2_URGENT;
+    static final String ROUTE_SEV3_TICKET = IntegrationFailureAlertRoute.SEV3_TICKET;
+    static final String ROUTE_UNMAPPED = IntegrationFailureAlertRoute.UNMAPPED;
 
     private AccountingEventTrailAlertRoutingPolicy() {
     }
