@@ -9099,3 +9099,32 @@ Queue Rotation
   - centralize repeated conflict-detail assertions to reduce brittle duplicate literals while preserving partner metadata contract.
 - [ready] M19-S7 async-loop artifact pointer normalization
   - attach latest targeted test and commit-review evidence links with stable key names.
+
+[2026-02-16] M19-S6 replay conflict assertion dedupe across service/runtime tests (completed)
+- Completed Slice (Committed): service-level replay detail assertion dedupe
+  - Commit `50d78915`: consolidated repeated replay detail checks into `assertPartnerReplayDetails(...)` in `AccountingServiceTest`.
+  - Replaced duplicated detail-map assertions in dealer/supplier replay race, partner-mismatch, and payload-mismatch scenarios.
+  - Canonical metadata contract preserved for all paths:
+    - `idempotencyKey`
+    - `partnerType`
+    - `partnerId`
+- Verification:
+  - `cd erp-domain && mvn -B -ntp -Dtest=AccountingServiceTest test` (PASS: 96/96)
+
+Review Queue Update
+- subagent review dispatch attempts for `2962800b` and `50d78915` are currently blocked by active-agent cap (max 6); both queued for immediate retry once slot opens.
+
+Loop Update
+- tracked_now_ts: `2026-02-16T02:46:15+05:30`
+- active_in_progress: `M19-S5 review queue drain + M19-S7 artifact pointer normalization`
+- review_queue_pending:
+  - `2962800b` (code, pending subagent slot)
+  - `50d78915` (code, pending subagent slot)
+
+Queue Rotation
+- [in_progress] M19-S5 pending code-review queue drain
+  - obtain subagent slot and complete commit-level reviews for `2962800b`, `50d78915`; apply fixes if any findings.
+- [ready] M19-S7 async-loop artifact pointer normalization
+  - add stable evidence pointers for targeted test runs and review-queue state.
+- [ready] M19-S8 controller/service replay vocabulary guard tightening
+  - reinforce shared partner metadata wording across controller/service negative-path contracts without changing domain-level supplier/dealer semantics.
