@@ -257,6 +257,34 @@ class TS_RuntimeAccountingReplayConflictExecutableCoverageTest {
                         11L));
     }
 
+    @Test
+    void replayConflictDetail_allowsNullIdempotencyKeyAndPartnerId() {
+        AccountingService service = accountingService();
+        List<JournalEntryRequest.JournalLineRequest> expectedLines = List.of(
+                new JournalEntryRequest.JournalLineRequest(101L, "memo", new BigDecimal("50.00"), BigDecimal.ZERO)
+        );
+
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(
+                service,
+                "validatePartnerJournalReplay",
+                null,
+                PartnerType.DEALER,
+                null,
+                "memo",
+                null,
+                expectedLines,
+                "payload mismatch"))
+                .isInstanceOf(ApplicationException.class)
+                .satisfies(throwable -> {
+                    ApplicationException ex = (ApplicationException) throwable;
+                    assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.CONCURRENCY_CONFLICT);
+                    assertThat(ex.getDetails())
+                            .containsEntry(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, null)
+                            .containsEntry(IntegrationFailureMetadataSchema.KEY_PARTNER_TYPE, "DEALER")
+                            .doesNotContainKey(IntegrationFailureMetadataSchema.KEY_PARTNER_ID);
+                });
+    }
+
     private void assertReplayConflict(ApplicationException ex,
                                       String idempotencyKey,
                                       String partnerType,
