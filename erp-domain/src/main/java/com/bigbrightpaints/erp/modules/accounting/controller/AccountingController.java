@@ -11,6 +11,7 @@ import com.bigbrightpaints.erp.modules.accounting.service.TemporalBalanceService
 import com.bigbrightpaints.erp.modules.accounting.service.AccountHierarchyService;
 import com.bigbrightpaints.erp.modules.accounting.service.AgingReportService;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
+import com.bigbrightpaints.erp.modules.accounting.service.AccountingAuditTrailService;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
@@ -56,6 +57,7 @@ public class AccountingController {
     private final AccountHierarchyService accountHierarchyService;
     private final AgingReportService agingReportService;
     private final CompanyDefaultAccountsService companyDefaultAccountsService;
+    private final AccountingAuditTrailService accountingAuditTrailService;
     private final CompanyContextService companyContextService;
     private final CompanyClock companyClock;
 
@@ -70,6 +72,7 @@ public class AccountingController {
                                 AccountHierarchyService accountHierarchyService,
                                 AgingReportService agingReportService,
                                 CompanyDefaultAccountsService companyDefaultAccountsService,
+                                AccountingAuditTrailService accountingAuditTrailService,
                                 CompanyContextService companyContextService,
                                 CompanyClock companyClock) {
         this.accountingService = accountingService;
@@ -83,6 +86,7 @@ public class AccountingController {
         this.accountHierarchyService = accountHierarchyService;
         this.agingReportService = agingReportService;
         this.companyDefaultAccountsService = companyDefaultAccountsService;
+        this.accountingAuditTrailService = accountingAuditTrailService;
         this.companyContextService = companyContextService;
         this.companyClock = companyClock;
     }
@@ -284,11 +288,11 @@ public class AccountingController {
         if (request == null) {
             return request;
         }
-        String resolvedKey = com.bigbrightpaints.erp.core.util.IdempotencyHeaderUtils.resolveBodyOrHeaderKey(
+        String resolvedKey = resolveHeaderOnlyIdempotencyKey(
                 request.idempotencyKey(),
                 idempotencyKeyHeader,
                 legacyIdempotencyKeyHeader);
-        if (!StringUtils.hasText(resolvedKey) || StringUtils.hasText(request.idempotencyKey())) {
+        if (!StringUtils.hasText(resolvedKey)) {
             return request;
         }
         return new DealerReceiptRequest(
@@ -308,11 +312,11 @@ public class AccountingController {
         if (request == null) {
             return request;
         }
-        String resolvedKey = com.bigbrightpaints.erp.core.util.IdempotencyHeaderUtils.resolveBodyOrHeaderKey(
+        String resolvedKey = resolveHeaderOnlyIdempotencyKey(
                 request.idempotencyKey(),
                 idempotencyKeyHeader,
                 legacyIdempotencyKeyHeader);
-        if (!StringUtils.hasText(resolvedKey) || StringUtils.hasText(request.idempotencyKey())) {
+        if (!StringUtils.hasText(resolvedKey)) {
             return request;
         }
         return new DealerReceiptSplitRequest(
@@ -330,11 +334,11 @@ public class AccountingController {
         if (request == null) {
             return request;
         }
-        String resolvedKey = com.bigbrightpaints.erp.core.util.IdempotencyHeaderUtils.resolveBodyOrHeaderKey(
+        String resolvedKey = resolveHeaderOnlyIdempotencyKey(
                 request.idempotencyKey(),
                 idempotencyKeyHeader,
                 legacyIdempotencyKeyHeader);
-        if (!StringUtils.hasText(resolvedKey) || StringUtils.hasText(request.idempotencyKey())) {
+        if (!StringUtils.hasText(resolvedKey)) {
             return request;
         }
         return new SupplierPaymentRequest(
@@ -354,11 +358,11 @@ public class AccountingController {
         if (request == null) {
             return request;
         }
-        String resolvedKey = com.bigbrightpaints.erp.core.util.IdempotencyHeaderUtils.resolveBodyOrHeaderKey(
+        String resolvedKey = resolveHeaderOnlyIdempotencyKey(
                 request.idempotencyKey(),
                 idempotencyKeyHeader,
                 legacyIdempotencyKeyHeader);
-        if (!StringUtils.hasText(resolvedKey) || StringUtils.hasText(request.idempotencyKey())) {
+        if (!StringUtils.hasText(resolvedKey)) {
             return request;
         }
         return new SupplierSettlementRequest(
@@ -375,6 +379,19 @@ public class AccountingController {
                 request.adminOverride(),
                 request.allocations()
         );
+    }
+
+    private String resolveHeaderOnlyIdempotencyKey(String bodyIdempotencyKey,
+                                                   String idempotencyKeyHeader,
+                                                   String legacyIdempotencyKeyHeader) {
+        String resolvedKey = com.bigbrightpaints.erp.core.util.IdempotencyHeaderUtils.resolveBodyOrHeaderKey(
+                bodyIdempotencyKey,
+                idempotencyKeyHeader,
+                legacyIdempotencyKeyHeader);
+        if (!StringUtils.hasText(resolvedKey) || StringUtils.hasText(bodyIdempotencyKey)) {
+            return null;
+        }
+        return resolvedKey;
     }
 
     @GetMapping("/gst/return")
@@ -598,6 +615,7 @@ public class AccountingController {
 
     /* Audit digest */
     @GetMapping("/audit/digest")
+    @Deprecated(forRemoval = false, since = "2026-02-11")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
     public ResponseEntity<ApiResponse<AuditDigestResponse>> auditDigest(@RequestParam(required = false) String from,
                                                                         @RequestParam(required = false) String to) {
@@ -608,6 +626,7 @@ public class AccountingController {
     }
 
     @GetMapping(value = "/audit/digest.csv", produces = "text/csv")
+    @Deprecated(forRemoval = false, since = "2026-02-11")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
     public ResponseEntity<String> auditDigestCsv(@RequestParam(required = false) String from,
                                                  @RequestParam(required = false) String to) {
@@ -615,6 +634,29 @@ public class AccountingController {
                 from != null ? java.time.LocalDate.parse(from) : null,
                 to != null ? java.time.LocalDate.parse(to) : null);
         return ResponseEntity.ok(csv);
+    }
+
+    @GetMapping("/audit/transactions")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<com.bigbrightpaints.erp.shared.dto.PageResponse<AccountingTransactionAuditListItemDto>>> transactionAudit(
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to,
+            @RequestParam(required = false) String module,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String reference,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        LocalDate fromDate = from != null ? LocalDate.parse(from) : null;
+        LocalDate toDate = to != null ? LocalDate.parse(to) : null;
+        return ResponseEntity.ok(ApiResponse.success(
+                accountingAuditTrailService.listTransactions(fromDate, toDate, module, status, reference, page, size)));
+    }
+
+    @GetMapping("/audit/transactions/{journalEntryId}")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<AccountingTransactionAuditDetailDto>> transactionAuditDetail(@PathVariable Long journalEntryId) {
+        return ResponseEntity.ok(ApiResponse.success(
+                accountingAuditTrailService.transactionDetail(journalEntryId)));
     }
 
     // ==================== TEMPORAL QUERIES (Snapshots + Journal Lines) ====================
