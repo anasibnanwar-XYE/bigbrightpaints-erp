@@ -9498,3 +9498,27 @@ Review Queue Update
 Loop Update
 - tracked_now_ts: `2026-02-16T03:17:40+05:30`
 - active_in_progress: `M19-S5 review queue drain (blocked) + next async-loop hardening slice selection`
+
+[2026-02-16] M19-S23 dealer/supplier replay parity test alignment (service-level non-leader path)
+- Completed Slice (Committed):
+  - Commit `3d6a7599`
+  - File:
+    - `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingServiceTest.java`
+  - Added dealer-settlement counterparts to supplier non-leader replay parity scenarios:
+    - `settleDealerInvoices_nonLeaderReplayAllowsInactiveCashAccountAndRepairsReferenceMapping`
+    - `settleDealerInvoices_nonLeaderReplayAllowsLegacyInvoiceDiscountAdjustments`
+  - Purpose:
+    - close asymmetric replay-coverage gap between dealer and supplier settlement paths.
+    - enforce canonical partner-role invariants while preserving role-specific wording.
+
+- Verification:
+  - `cd erp-domain && mvn -B -ntp -Dtest=AccountingServiceTest test` (PASS: 98/98)
+
+Review Queue Update
+- subagent dispatch for `3d6a7599` blocked by active-agent cap (max 6); queued for retry.
+- pending code-review queue:
+  - `2962800b`, `50d78915`, `6c51730e`, `2b2fb143`, `7451e7cf`, `a82746af`, `3358cb2a`, `18c3825d`, `f271fb5e`, `4d0d508f`, `b4511068`, `3d6a7599`
+
+Loop Update
+- tracked_now_ts: `2026-02-16T03:22:20+05:30`
+- active_in_progress: `M19-S5 review queue drain (blocked) + next async-loop hardening slice`
