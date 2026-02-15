@@ -3007,13 +3007,17 @@ public class AccountingService {
     }
 
     private String partnerMismatchMessage(PartnerType partnerType) {
+        return "Idempotency key already used for another " + partnerMismatchSubject(partnerType);
+    }
+
+    private String partnerMismatchSubject(PartnerType partnerType) {
         if (partnerType == PartnerType.DEALER) {
-            return "Idempotency key already used for another dealer";
+            return "dealer";
         }
         if (partnerType == PartnerType.SUPPLIER) {
-            return "Idempotency key already used for another supplier";
+            return "supplier";
         }
-        return "Idempotency key already used for another partner type";
+        return "partner type";
     }
 
     private void validateCreditNoteIdempotency(String idempotencyKey,
