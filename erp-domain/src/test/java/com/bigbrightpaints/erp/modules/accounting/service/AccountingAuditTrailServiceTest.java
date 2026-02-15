@@ -3,6 +3,7 @@ package com.bigbrightpaints.erp.modules.accounting.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
@@ -10,6 +11,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLine;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocationRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingTransactionAuditDetailDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingTransactionAuditListItemDto;
@@ -44,6 +46,8 @@ class AccountingAuditTrailServiceTest {
     @Mock
     private JournalEntryRepository journalEntryRepository;
     @Mock
+    private JournalLineRepository journalLineRepository;
+    @Mock
     private AccountingEventRepository accountingEventRepository;
     @Mock
     private PartnerSettlementAllocationRepository settlementAllocationRepository;
@@ -59,6 +63,7 @@ class AccountingAuditTrailServiceTest {
         service = new AccountingAuditTrailService(
                 companyContextService,
                 journalEntryRepository,
+                journalLineRepository,
                 accountingEventRepository,
                 settlementAllocationRepository,
                 invoiceRepository,
@@ -105,6 +110,8 @@ class AccountingAuditTrailServiceTest {
 
         when(journalEntryRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(PageRequest.class)))
                 .thenReturn(new PageImpl<>(List.of(entry)));
+        when(journalLineRepository.summarizeTotalsByJournalEntryIds(eq(List.of(11L))))
+                .thenReturn(List.of(totals(11L, "2000.00", "2000.00")));
         when(invoiceRepository.findByCompanyAndJournalEntry_IdIn(eq(company), eq(List.of(11L)))).thenReturn(List.of());
         when(rawMaterialPurchaseRepository.findByCompanyAndJournalEntry_IdIn(eq(company), eq(List.of(11L)))).thenReturn(List.of());
         when(settlementAllocationRepository.findByCompanyAndJournalEntry_IdIn(eq(company), eq(List.of(11L)))).thenReturn(List.of());
@@ -121,6 +128,21 @@ class AccountingAuditTrailServiceTest {
         assertThat(row.totalDebit()).isEqualByComparingTo("2000.00");
         assertThat(row.totalCredit()).isEqualByComparingTo("2000.00");
         assertThat(row.consistencyStatus()).isEqualTo("OK");
+    }
+
+    @Test
+    void listTransactions_shortCircuitsLookupsWhenPageIsEmpty() {
+        Company company = new Company();
+        company.setCode("BBP");
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(journalEntryRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(PageRequest.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        PageResponse<AccountingTransactionAuditListItemDto> result = service.listTransactions(
+                null, null, null, null, null, 0, 50);
+
+        assertThat(result.content()).isEmpty();
+        verifyNoInteractions(journalLineRepository, invoiceRepository, rawMaterialPurchaseRepository, settlementAllocationRepository);
     }
 
     @Test
@@ -187,5 +209,24 @@ class AccountingAuditTrailServiceTest {
         } catch (ReflectiveOperationException ex) {
             throw new RuntimeException(ex);
         }
+    }
+
+    private static JournalLineRepository.JournalEntryLineTotals totals(Long journalEntryId, String totalDebit, String totalCredit) {
+        return new JournalLineRepository.JournalEntryLineTotals() {
+            @Override
+            public Long getJournalEntryId() {
+                return journalEntryId;
+            }
+
+            @Override
+            public BigDecimal getTotalDebit() {
+                return new BigDecimal(totalDebit);
+            }
+
+            @Override
+            public BigDecimal getTotalCredit() {
+                return new BigDecimal(totalCredit);
+            }
+        };
     }
 }

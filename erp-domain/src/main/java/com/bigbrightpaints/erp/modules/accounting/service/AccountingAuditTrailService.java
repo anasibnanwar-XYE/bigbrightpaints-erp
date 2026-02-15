@@ -6,6 +6,7 @@ import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLine;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocation;
 import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocationRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingTransactionAuditDetailDto;
@@ -43,8 +44,11 @@ import org.springframework.util.StringUtils;
 @Service
 public class AccountingAuditTrailService {
 
+    private static final JournalTotals ZERO_TOTALS = new JournalTotals(BigDecimal.ZERO, BigDecimal.ZERO);
+
     private final CompanyContextService companyContextService;
     private final JournalEntryRepository journalEntryRepository;
+    private final JournalLineRepository journalLineRepository;
     private final AccountingEventRepository accountingEventRepository;
     private final PartnerSettlementAllocationRepository settlementAllocationRepository;
     private final InvoiceRepository invoiceRepository;
@@ -52,12 +56,14 @@ public class AccountingAuditTrailService {
 
     public AccountingAuditTrailService(CompanyContextService companyContextService,
                                        JournalEntryRepository journalEntryRepository,
+                                       JournalLineRepository journalLineRepository,
                                        AccountingEventRepository accountingEventRepository,
                                        PartnerSettlementAllocationRepository settlementAllocationRepository,
                                        InvoiceRepository invoiceRepository,
                                        RawMaterialPurchaseRepository rawMaterialPurchaseRepository) {
         this.companyContextService = companyContextService;
         this.journalEntryRepository = journalEntryRepository;
+        this.journalLineRepository = journalLineRepository;
         this.accountingEventRepository = accountingEventRepository;
         this.settlementAllocationRepository = settlementAllocationRepository;
         this.invoiceRepository = invoiceRepository;
@@ -89,6 +95,17 @@ public class AccountingAuditTrailService {
                 PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.DESC, "entryDate", "id")));
 
         List<Long> journalIds = data.getContent().stream().map(JournalEntry::getId).toList();
+        if (journalIds.isEmpty()) {
+            return PageResponse.of(List.of(), data.getTotalElements(), safePage, safeSize);
+        }
+        Map<Long, JournalTotals> totalsByJournal = journalLineRepository
+                .summarizeTotalsByJournalEntryIds(journalIds)
+                .stream()
+                .collect(Collectors.toMap(
+                        JournalLineRepository.JournalEntryLineTotals::getJournalEntryId,
+                        row -> new JournalTotals(
+                                row.getTotalDebit() != null ? row.getTotalDebit() : BigDecimal.ZERO,
+                                row.getTotalCredit() != null ? row.getTotalCredit() : BigDecimal.ZERO)));
         Map<Long, Invoice> invoiceByJournal = invoiceRepository.findByCompanyAndJournalEntry_IdIn(company, journalIds).stream()
                 .filter(invoice -> invoice.getJournalEntry() != null && invoice.getJournalEntry().getId() != null)
                 .collect(Collectors.toMap(invoice -> invoice.getJournalEntry().getId(), invoice -> invoice, (left, right) -> left));
@@ -101,14 +118,9 @@ public class AccountingAuditTrailService {
                 .collect(Collectors.groupingBy(allocation -> allocation.getJournalEntry().getId()));
 
         List<AccountingTransactionAuditListItemDto> rows = data.getContent().stream().map(entry -> {
-            BigDecimal totalDebit = entry.getLines().stream()
-                    .map(JournalLine::getDebit)
-                    .filter(Objects::nonNull)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-            BigDecimal totalCredit = entry.getLines().stream()
-                    .map(JournalLine::getCredit)
-                    .filter(Objects::nonNull)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            JournalTotals totals = totalsByJournal.getOrDefault(entry.getId(), ZERO_TOTALS);
+            BigDecimal totalDebit = totals.totalDebit();
+            BigDecimal totalCredit = totals.totalCredit();
             Invoice invoice = invoiceByJournal.get(entry.getId());
             RawMaterialPurchase purchase = purchaseByJournal.get(entry.getId());
             List<PartnerSettlementAllocation> allocations = allocationsByJournal.getOrDefault(entry.getId(), List.of());
@@ -470,5 +482,8 @@ public class AccountingAuditTrailService {
     }
 
     private record ConsistencyResult(String status, List<String> notes) {
+    }
+
+    private record JournalTotals(BigDecimal totalDebit, BigDecimal totalCredit) {
     }
 }

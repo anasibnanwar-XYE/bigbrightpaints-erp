@@ -7,9 +7,18 @@ import org.springframework.data.repository.query.Param;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 
 public interface JournalLineRepository extends JpaRepository<JournalLine, Long> {
+
+    interface JournalEntryLineTotals {
+        Long getJournalEntryId();
+
+        BigDecimal getTotalDebit();
+
+        BigDecimal getTotalCredit();
+    }
 
     @Query("""
             select line from JournalLine line
@@ -62,4 +71,14 @@ public interface JournalLineRepository extends JpaRepository<JournalLine, Long> 
     BigDecimal netBalanceUpTo(@Param("company") Company company,
                               @Param("accountId") Long accountId,
                               @Param("end") LocalDate end);
+
+    @Query("""
+            select line.journalEntry.id as journalEntryId,
+                   coalesce(sum(line.debit), 0) as totalDebit,
+                   coalesce(sum(line.credit), 0) as totalCredit
+            from JournalLine line
+            where line.journalEntry.id in :journalEntryIds
+            group by line.journalEntry.id
+            """)
+    List<JournalEntryLineTotals> summarizeTotalsByJournalEntryIds(@Param("journalEntryIds") Collection<Long> journalEntryIds);
 }
