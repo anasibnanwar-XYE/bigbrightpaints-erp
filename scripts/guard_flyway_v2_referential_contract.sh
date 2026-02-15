@@ -489,8 +489,15 @@ def parse_create_table_statement(statement, path, line, contracts, contract_coun
             add_contract(contracts, contract_counts, table, (col,))
             add_primary_key(primary_keys, table, (col,))
             if table:
-                inferred_name = f"{table.split('.')[-1]}_pkey"
-                remember_constraint(constraint_defs, table, inferred_name, "PRIMARY", (col,))
+                pk_constraint_match = re.search(
+                    rf"(?is)\bCONSTRAINT\s+(?P<cname>{IDENT})\s+PRIMARY\s+KEY\b",
+                    tail,
+                )
+                if pk_constraint_match:
+                    constraint_name = normalize_ident(pk_constraint_match.group("cname"))
+                else:
+                    constraint_name = f"{table.split('.')[-1]}_pkey"
+                remember_constraint(constraint_defs, table, constraint_name, "PRIMARY", (col,))
         elif re.search(r"(?is)\bUNIQUE\b", tail):
             add_contract(contracts, contract_counts, table, (col,))
         col_fk = re.search(

@@ -145,4 +145,22 @@ ALTER TABLE ONLY public.child_redefined_pk
 SQL
 )"
 
+run_case "column_level_named_pk_survives_default_pkey_drop_if_exists" 0 "$(cat <<'SQL'
+CREATE TABLE public.parent_named_colpk (
+    id bigint CONSTRAINT parent_named_colpk_custom PRIMARY KEY
+);
+ALTER TABLE ONLY public.parent_named_colpk
+    DROP CONSTRAINT IF EXISTS parent_named_colpk_pkey;
+
+CREATE TABLE public.child_named_colpk (
+    id bigint NOT NULL,
+    parent_id bigint NOT NULL
+);
+ALTER TABLE ONLY public.child_named_colpk
+    ADD CONSTRAINT child_named_colpk_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.child_named_colpk
+    ADD CONSTRAINT child_named_colpk_fk FOREIGN KEY (parent_id) REFERENCES public.parent_named_colpk;
+SQL
+)"
+
 echo "[guard_flyway_v2_referential_contract_fixture_matrix] OK"
