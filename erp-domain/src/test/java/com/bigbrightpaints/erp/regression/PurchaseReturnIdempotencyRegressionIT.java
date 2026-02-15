@@ -64,11 +64,17 @@ class PurchaseReturnIdempotencyRegressionIT extends AbstractIntegrationTest {
     private Supplier supplier;
     private RawMaterial material;
     private RawMaterialPurchase purchase;
+    private LocalDate invoiceDate;
+    private LocalDate firstReturnDate;
+    private LocalDate secondReturnDate;
 
     @BeforeEach
     void setUp() {
         String seedSuffix = Long.toString(System.nanoTime());
         String seedBatchCode = "RM-LF022-B1-" + seedSuffix;
+        invoiceDate = LocalDate.now().minusDays(5);
+        firstReturnDate = invoiceDate.plusDays(4);
+        secondReturnDate = invoiceDate.plusDays(5);
         company = dataSeeder.ensureCompany(COMPANY_CODE, "LF-022 Materials");
         CompanyContextHolder.setCompanyId(COMPANY_CODE);
 
@@ -107,7 +113,7 @@ class PurchaseReturnIdempotencyRegressionIT extends AbstractIntegrationTest {
         seeded.setCompany(company);
         seeded.setSupplier(supplier);
         seeded.setInvoiceNumber("PR-LF022-INV-" + seedSuffix);
-        seeded.setInvoiceDate(LocalDate.of(2026, 1, 10));
+        seeded.setInvoiceDate(invoiceDate);
         seeded.setTotalAmount(new BigDecimal("20.00"));
         seeded.setOutstandingAmount(new BigDecimal("20.00"));
         seeded.setStatus("POSTED");
@@ -139,7 +145,7 @@ class PurchaseReturnIdempotencyRegressionIT extends AbstractIntegrationTest {
                 new BigDecimal("4.00"),
                 new BigDecimal("5.00"),
                 "PR-LF022-001",
-                LocalDate.of(2026, 1, 14),
+                firstReturnDate,
                 "Damaged"
         );
 
@@ -180,7 +186,7 @@ class PurchaseReturnIdempotencyRegressionIT extends AbstractIntegrationTest {
                 new BigDecimal("2.00"),
                 new BigDecimal("5.00"),
                 "PR-LF022-010",
-                LocalDate.of(2026, 1, 14),
+                firstReturnDate,
                 "Damaged"
         );
         purchasingService.recordPurchaseReturn(firstReturn);
@@ -196,7 +202,7 @@ class PurchaseReturnIdempotencyRegressionIT extends AbstractIntegrationTest {
                 new BigDecimal("2.00"),
                 new BigDecimal("5.00"),
                 "PR-LF022-011",
-                LocalDate.of(2026, 1, 15),
+                secondReturnDate,
                 "Damaged"
         );
         purchasingService.recordPurchaseReturn(secondReturn);
@@ -215,7 +221,7 @@ class PurchaseReturnIdempotencyRegressionIT extends AbstractIntegrationTest {
                 new BigDecimal("3.00"),
                 new BigDecimal("5.00"),
                 "PR-LF022-020",
-                LocalDate.of(2026, 1, 14),
+                firstReturnDate,
                 "Damaged"
         );
         purchasingService.recordPurchaseReturn(firstReturn);
@@ -227,7 +233,7 @@ class PurchaseReturnIdempotencyRegressionIT extends AbstractIntegrationTest {
                 new BigDecimal("2.00"),
                 new BigDecimal("5.00"),
                 "PR-LF022-021",
-                LocalDate.of(2026, 1, 15),
+                secondReturnDate,
                 "Damaged"
         );
 

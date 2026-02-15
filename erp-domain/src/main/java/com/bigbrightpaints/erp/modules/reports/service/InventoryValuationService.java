@@ -259,7 +259,12 @@ public class InventoryValuationService {
             Collections.reverse(batches);
         }
         return consumeValuation(remaining, batches.stream()
-                .map(batch -> new CostSlice(safe(batch.getQuantityTotal()), batch.getUnitCost()))
+                .map(batch -> {
+                    BigDecimal available = batch.getQuantityAvailable() != null
+                            ? batch.getQuantityAvailable()
+                            : batch.getQuantityTotal();
+                    return new CostSlice(safe(available), batch.getUnitCost());
+                })
                 .toList());
     }
 

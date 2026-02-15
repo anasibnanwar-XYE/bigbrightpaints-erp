@@ -2019,7 +2019,10 @@ public class FinishedGoodsService {
             if (remaining.compareTo(BigDecimal.ZERO) <= 0) {
                 break;
             }
-            BigDecimal batchQuantity = safeQuantity(batch.getQuantityTotal());
+            BigDecimal availableQuantity = batch.getQuantityAvailable() != null
+                    ? batch.getQuantityAvailable()
+                    : batch.getQuantityTotal();
+            BigDecimal batchQuantity = safeQuantity(availableQuantity);
             if (batchQuantity.compareTo(BigDecimal.ZERO) <= 0) {
                 continue;
             }

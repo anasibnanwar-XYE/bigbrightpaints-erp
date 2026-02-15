@@ -38,7 +38,7 @@ class InventoryValuationServiceTest {
     @InjectMocks private InventoryValuationService inventoryValuationService;
 
     @Test
-    void currentSnapshot_fifoUsesOnHandBatchQuantityWhenAvailableIsLower() {
+    void currentSnapshot_fifoUsesAvailableBatchQuantityWhenAvailableIsLower() {
         Company company = new Company();
         company.setCode("CR-FIFO");
         company.setName("CR FIFO");
@@ -72,7 +72,7 @@ class InventoryValuationServiceTest {
 
         InventoryValuationService.InventorySnapshot snapshot = inventoryValuationService.currentSnapshot(company);
 
-        assertThat(snapshot.totalValue()).isEqualByComparingTo("175.00");
+        assertThat(snapshot.totalValue()).isEqualByComparingTo("150.00");
         assertThat(snapshot.lowStockItems()).isZero();
     }
 
@@ -116,7 +116,7 @@ class InventoryValuationServiceTest {
     }
 
     @Test
-    void currentSnapshot_fifoIncludesReservedStockInValuation() {
+    void currentSnapshot_fifoUsesAvailableStockForValuationEvenWithReservedQuantity() {
         Company company = new Company();
         company.setCode("CR-RES");
         company.setName("CR RES");
@@ -151,7 +151,7 @@ class InventoryValuationServiceTest {
 
         InventoryValuationService.InventorySnapshot snapshot = inventoryValuationService.currentSnapshot(company);
 
-        assertThat(snapshot.totalValue()).isEqualByComparingTo("140.00");
+        assertThat(snapshot.totalValue()).isEqualByComparingTo("100.00");
         assertThat(snapshot.lowStockItems()).isZero();
     }
 

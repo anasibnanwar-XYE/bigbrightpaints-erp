@@ -141,7 +141,7 @@ class ReportInventoryParityIT extends AbstractIntegrationTest {
                 .collect(Collectors.toMap(row -> String.valueOf(row.get("code")), row -> row));
 
         assertThat(asDecimal(byCode.get(fifoCode).get("weightedAverageCost")))
-                .isEqualByComparingTo(new BigDecimal("14"));
+                .isEqualByComparingTo(new BigDecimal("20"));
         assertThat(asDecimal(byCode.get(lifoCode).get("weightedAverageCost")))
                 .isEqualByComparingTo(new BigDecimal("20"));
         assertThat(asDecimal(byCode.get(wacCode).get("weightedAverageCost")))
@@ -149,7 +149,9 @@ class ReportInventoryParityIT extends AbstractIntegrationTest {
         assertThat(asDecimal(byCode.get(wacAliasCode).get("weightedAverageCost")))
                 .isEqualByComparingTo(new BigDecimal("10.4"));
         assertThat(asDecimal(byCode.get(legacyFallbackCode).get("weightedAverageCost")))
-                .isEqualByComparingTo(new BigDecimal("14"));
+                .isEqualByComparingTo(new BigDecimal("20"));
+        assertThat(asDecimal(byCode.get(reservedDriftCode).get("weightedAverageCost")))
+                .isEqualByComparingTo(BigDecimal.ZERO);
 
         BigDecimal expectedValueDelta = trackedRows.stream()
                 .map(row -> asDecimal(row.get("currentStock")).multiply(asDecimal(row.get("weightedAverageCost"))))

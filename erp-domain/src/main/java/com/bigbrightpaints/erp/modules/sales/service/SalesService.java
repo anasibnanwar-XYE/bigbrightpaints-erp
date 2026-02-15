@@ -1796,7 +1796,7 @@ public class SalesService {
             throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD, "packingSlipId or orderId is required");
         }
         if (requestedSlipId != null) {
-            Optional<PackagingSlip> referencedSlipOpt = packagingSlipRepository.findByIdAndCompany(requestedSlipId, company);
+            Optional<PackagingSlip> referencedSlipOpt = packagingSlipRepository.findAndLockByIdAndCompany(request.packingSlipId(), company);
             if (referencedSlipOpt == null) {
                 referencedSlipOpt = Optional.empty();
             }
@@ -2558,6 +2558,11 @@ public class SalesService {
             latestOrderSlips = List.of(slip);
         }
         boolean singleActiveSlipAfterDispatch = hasSingleActiveSlip(latestOrderSlips);
+        if (singleActiveSlipAfterDispatch) {
+            order.setSalesJournalEntryId(arJournalEntryId);
+            order.setCogsJournalEntryId(cogsJournalId);
+            order.setFulfillmentInvoiceId(invoice.getId());
+        }
         boolean orderUpdated = reconcileOrderLevelDispatchMarkers(
                 order,
                 invoice.getId(),
