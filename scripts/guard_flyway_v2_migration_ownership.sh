@@ -194,22 +194,44 @@ mapfile -t missing_pk_tables < <(
         }
 
         if (unique_pending_open[table_name]) {
-          open_pos = index(segment, "(")
-          if (open_pos == 0) {
+          pending_segment = segment
+          sub(/^[[:space:]]+/, "", pending_segment)
+          if (pending_segment == "") {
             return
           }
-          unique_open[table_name] = 1
+
+          if (substr(pending_segment, 1, 1) == "(") {
+            open_pos = index(segment, "(")
+            unique_open[table_name] = 1
+            unique_pending_open[table_name] = 0
+            segment = substr(segment, open_pos + 1)
+            continue
+          }
+
+          if (pending_segment ~ /^(NULLS|NOT|DISTINCT)([^[:alnum:]_]|$)/) {
+            open_pos = index(segment, "(")
+            if (open_pos == 0) {
+              return
+            }
+            unique_open[table_name] = 1
+            unique_pending_open[table_name] = 0
+            segment = substr(segment, open_pos + 1)
+            continue
+          }
+
           unique_pending_open[table_name] = 0
-          segment = substr(segment, open_pos + 1)
           continue
         }
 
         if (match(toupper(segment), /UNIQUE[[:space:]]*\(/) == 0) {
           if (match(toupper(segment), /UNIQUE([^[:alnum:]_]|$)/) > 0) {
             trailing = substr(segment, RSTART + RLENGTH)
+            unique_pending_open[table_name] = 1
             if (trailing ~ /^[[:space:]]*$/) {
-              unique_pending_open[table_name] = 1
+              return
             }
+            segment = trailing
+            continue
           }
           return
         }

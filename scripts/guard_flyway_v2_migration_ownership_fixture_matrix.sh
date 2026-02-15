@@ -99,6 +99,20 @@ ALTER TABLE ONLY public.fixture_multiline_unique
 SQL
 )"
 
+run_case "multiline_unique_nulls_not_distinct_pass" 0 "$(cat <<'SQL'
+CREATE TABLE public.fixture_unique_nulls_not_distinct (
+    id bigint NOT NULL,
+    token bigint
+);
+
+ALTER TABLE ONLY public.fixture_unique_nulls_not_distinct
+    ADD CONSTRAINT fixture_unique_nulls_not_distinct_id_key UNIQUE NULLS NOT DISTINCT
+    (
+        id
+    );
+SQL
+)"
+
 run_case "missing_pk_contract_fails" 1 "$(cat <<'SQL'
 CREATE TABLE public.fixture_missing_pk (
     id bigint CHECK ((id IS NOT NULL)) NOT NULL,
@@ -119,6 +133,22 @@ CREATE UNIQUE INDEX fixture_unique_using_index_token_idx
 ALTER TABLE ONLY public.fixture_unique_using_index
     ADD CONSTRAINT fixture_unique_using_index_token_key UNIQUE USING INDEX fixture_unique_using_index_token_idx,
     ADD CONSTRAINT fixture_unique_using_index_token_fk FOREIGN KEY (id) REFERENCES public.fixture_unique_using_index(token);
+SQL
+)"
+
+run_case "multiline_unique_using_index_then_fk_does_not_satisfy_id_contract" 1 "$(cat <<'SQL'
+CREATE TABLE public.fixture_unique_using_index_multiline (
+    id bigint NOT NULL,
+    token bigint NOT NULL
+);
+
+CREATE UNIQUE INDEX fixture_unique_using_index_multiline_token_idx
+    ON public.fixture_unique_using_index_multiline USING btree (token);
+
+ALTER TABLE ONLY public.fixture_unique_using_index_multiline
+    ADD CONSTRAINT fixture_unique_using_index_multiline_token_key UNIQUE
+    USING INDEX fixture_unique_using_index_multiline_token_idx,
+    ADD CONSTRAINT fixture_unique_using_index_multiline_token_fk FOREIGN KEY (id) REFERENCES public.fixture_unique_using_index_multiline(token);
 SQL
 )"
 
