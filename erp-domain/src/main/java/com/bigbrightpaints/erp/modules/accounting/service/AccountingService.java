@@ -2999,9 +2999,11 @@ public class AccountingService {
                                                                   String idempotencyKey,
                                                                   PartnerType partnerType,
                                                                   Long partnerId) {
+        String normalizedIdempotencyKey = StringUtils.hasText(idempotencyKey) ? idempotencyKey.trim() : idempotencyKey;
+        String partnerTypeDetail = partnerType != null ? partnerType.name() : "null";
         ApplicationException exception = new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT, message)
-                .withDetail(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, idempotencyKey)
-                .withDetail(IntegrationFailureMetadataSchema.KEY_PARTNER_TYPE, partnerType != null ? partnerType.name() : "null");
+                .withDetail(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, normalizedIdempotencyKey)
+                .withDetail(IntegrationFailureMetadataSchema.KEY_PARTNER_TYPE, partnerTypeDetail);
         if (partnerId != null) {
             exception.withDetail(IntegrationFailureMetadataSchema.KEY_PARTNER_ID, partnerId);
         }
