@@ -167,7 +167,7 @@ Review each workflow with this method:
 - Ensure split allocation has deterministic ordering and replay behavior.
 
 ### 8.2 Acceptance criteria
-- Same idempotency key + same payload returns same result.
+- Same `idempotencyKey` + same payload returns same result.
 - Same key + different payload conflicts cleanly.
 - Outstanding values never become inconsistent/negative due to replay races.
 
