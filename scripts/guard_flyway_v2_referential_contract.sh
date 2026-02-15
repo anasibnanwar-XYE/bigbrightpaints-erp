@@ -146,7 +146,7 @@ def strip_sql_comments(raw):
     in_single = False
     in_double = False
     in_line_comment = False
-    in_block_comment = False
+    block_comment_depth = 0
     dollar_tag = None
     i = 0
     while i < len(raw):
@@ -158,10 +158,18 @@ def strip_sql_comments(raw):
                 buf.append("\n")
             i += 1
             continue
-        if in_block_comment:
-            if ch == "*" and nxt == "/":
-                in_block_comment = False
+        if block_comment_depth > 0:
+            if ch == "/" and nxt == "*":
+                block_comment_depth += 1
                 i += 2
+                continue
+            if ch == "*" and nxt == "/":
+                block_comment_depth -= 1
+                i += 2
+                if block_comment_depth == 0 and i < len(raw):
+                    upcoming = raw[i]
+                    if not upcoming.isspace() and (not buf or not buf[-1].isspace()):
+                        buf.append(" ")
                 continue
             if ch == "\n":
                 buf.append("\n")
@@ -201,7 +209,9 @@ def strip_sql_comments(raw):
             i += 2
             continue
         if ch == "/" and nxt == "*":
-            in_block_comment = True
+            if buf and not buf[-1].isspace():
+                buf.append(" ")
+            block_comment_depth = 1
             i += 2
             continue
         if ch == "'":
