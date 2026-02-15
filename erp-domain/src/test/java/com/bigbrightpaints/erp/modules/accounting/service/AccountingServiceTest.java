@@ -3614,10 +3614,7 @@ class AccountingServiceTest {
         assertThatThrownBy(() -> accountingService.settleDealerInvoices(request))
                 .isInstanceOfSatisfying(ApplicationException.class, ex -> {
                     assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INTERNAL_CONCURRENCY_FAILURE);
-                    assertThat(ex.getDetails())
-                            .containsEntry(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, "IDEMP-DR-RACE-MISS")
-                            .containsEntry(IntegrationFailureMetadataSchema.KEY_PARTNER_TYPE, "DEALER")
-                            .containsEntry(IntegrationFailureMetadataSchema.KEY_PARTNER_ID, 1L);
+                    assertPartnerReplayDetails(ex, "IDEMP-DR-RACE-MISS", "DEALER", 1L);
                 })
                 .hasMessageContaining("Dealer settlement idempotency key is reserved but allocation not found");
     }
@@ -3716,10 +3713,7 @@ class AccountingServiceTest {
         assertThatThrownBy(() -> accountingService.settleDealerInvoices(request))
                 .isInstanceOfSatisfying(ApplicationException.class, ex -> {
                     assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.CONCURRENCY_CONFLICT);
-                    assertThat(ex.getDetails())
-                            .containsEntry(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, "IDEMP-DR-RACE-PARTNER")
-                            .containsEntry(IntegrationFailureMetadataSchema.KEY_PARTNER_TYPE, "DEALER")
-                            .containsEntry(IntegrationFailureMetadataSchema.KEY_PARTNER_ID, 1L);
+                    assertPartnerReplayDetails(ex, "IDEMP-DR-RACE-PARTNER", "DEALER", 1L);
                 })
                 .hasMessageContaining("another dealer");
     }
@@ -3849,10 +3843,7 @@ class AccountingServiceTest {
 
         assertThatThrownBy(() -> accountingService.settleDealerInvoices(request))
                 .isInstanceOfSatisfying(ApplicationException.class, ex -> {
-                    assertThat(ex.getDetails())
-                            .containsEntry(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, "IDEMP-DR-SETTLE-REPLAY-NETCASH")
-                            .containsEntry(IntegrationFailureMetadataSchema.KEY_PARTNER_TYPE, "DEALER")
-                            .containsEntry(IntegrationFailureMetadataSchema.KEY_PARTNER_ID, 1L);
+                    assertPartnerReplayDetails(ex, "IDEMP-DR-SETTLE-REPLAY-NETCASH", "DEALER", 1L);
                 })
                 .hasMessageContaining("different settlement payload")
                 .satisfies(ex -> assertThat(ex).hasMessageNotContaining("negative net cash contribution"));
@@ -3980,10 +3971,7 @@ class AccountingServiceTest {
 
         assertThatThrownBy(() -> accountingService.settleSupplierInvoices(request))
                 .isInstanceOfSatisfying(ApplicationException.class, ex -> {
-                    assertThat(ex.getDetails())
-                            .containsEntry(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, "IDEMP-AP-SETTLE-REPLAY-NETCASH")
-                            .containsEntry(IntegrationFailureMetadataSchema.KEY_PARTNER_TYPE, "SUPPLIER")
-                            .containsEntry(IntegrationFailureMetadataSchema.KEY_PARTNER_ID, 1L);
+                    assertPartnerReplayDetails(ex, "IDEMP-AP-SETTLE-REPLAY-NETCASH", "SUPPLIER", 1L);
                 })
                 .hasMessageContaining("different settlement payload")
                 .satisfies(ex -> assertThat(ex).hasMessageNotContaining("negative net cash contribution"));
@@ -6663,10 +6651,7 @@ class AccountingServiceTest {
         assertThatThrownBy(() -> accountingService.settleSupplierInvoices(request))
                 .isInstanceOfSatisfying(ApplicationException.class, ex -> {
                     assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INTERNAL_CONCURRENCY_FAILURE);
-                    assertThat(ex.getDetails())
-                            .containsEntry(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, "IDEMP-AP-RACE-MISS")
-                            .containsEntry(IntegrationFailureMetadataSchema.KEY_PARTNER_TYPE, "SUPPLIER")
-                            .containsEntry(IntegrationFailureMetadataSchema.KEY_PARTNER_ID, 1L);
+                    assertPartnerReplayDetails(ex, "IDEMP-AP-RACE-MISS", "SUPPLIER", 1L);
                 })
                 .hasMessageContaining("Supplier settlement idempotency key is reserved but allocation not found");
     }
@@ -6755,10 +6740,7 @@ class AccountingServiceTest {
         assertThatThrownBy(() -> accountingService.settleSupplierInvoices(request))
                 .isInstanceOfSatisfying(ApplicationException.class, ex -> {
                     assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.CONCURRENCY_CONFLICT);
-                    assertThat(ex.getDetails())
-                            .containsEntry(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, "IDEMP-AP-RACE-PARTNER")
-                            .containsEntry(IntegrationFailureMetadataSchema.KEY_PARTNER_TYPE, "SUPPLIER")
-                            .containsEntry(IntegrationFailureMetadataSchema.KEY_PARTNER_ID, 1L);
+                    assertPartnerReplayDetails(ex, "IDEMP-AP-RACE-PARTNER", "SUPPLIER", 1L);
                 })
                 .hasMessageContaining("another supplier");
     }
@@ -6886,6 +6868,16 @@ class AccountingServiceTest {
         assertThat(dealerMessage).isEqualTo("Idempotency key already used for another dealer");
         assertThat(supplierMessage).isEqualTo("Idempotency key already used for another supplier");
         assertThat(message).isEqualTo("Idempotency key already used for another partner type");
+    }
+
+    private void assertPartnerReplayDetails(ApplicationException ex,
+                                            String idempotencyKey,
+                                            String partnerType,
+                                            Long partnerId) {
+        assertThat(ex.getDetails())
+                .containsEntry(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, idempotencyKey)
+                .containsEntry(IntegrationFailureMetadataSchema.KEY_PARTNER_TYPE, partnerType)
+                .containsEntry(IntegrationFailureMetadataSchema.KEY_PARTNER_ID, partnerId);
     }
 
     private JournalLine journalLine(JournalEntry entry,
