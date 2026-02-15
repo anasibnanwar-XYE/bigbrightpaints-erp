@@ -109,7 +109,7 @@ Button naming standard for universal profile controls (use exactly):
 | Route | Purpose | Backend-enforced gate (exact) |
 |---|---|---|
 | `/dealer/credit-requests` | Dealer submits credit-limit increase requests for admin/accounting review. | `ROLE_DEALER` (`POST /api/v1/dealer-portal/credit-requests`) |
-| `/dealer/dashboard` | Dealer financial snapshot: balance, outstanding, available credit, pending invoices. | `ROLE_DEALER` (`/api/v1/dealer-portal/dashboard`) |
+| `/dealer/dashboard` | Dealer financial snapshot: balance, outstanding, pending order exposure, credit used, available credit, pending invoices. | `ROLE_DEALER` (`/api/v1/dealer-portal/dashboard`) |
 | `/dealer/ledger` | Dealer ledger entries and running balance view. | `ROLE_DEALER` |
 | `/dealer/invoices` | Invoice listing with status/outstanding and PDF download. | `ROLE_DEALER` |
 | `/dealer/aging` | Aging bucket view + overdue invoice list. | `ROLE_DEALER` |
@@ -122,7 +122,7 @@ Button naming standard for universal profile controls (use exactly):
 - Loading state: KPI card skeletons.
 - Empty state: no receivable snapshot available.
 - Error state: retry panel with support hint.
-- Suggested table/tiles: dealerName, currentBalance, creditLimit, availableCredit, totalOutstanding, pendingInvoices, agingBuckets.
+- Suggested table/tiles: dealerName, currentBalance, creditLimit, totalOutstanding, pendingOrderExposure, pendingOrderCount, creditUsed, availableCredit, pendingInvoices, agingBuckets.
 - Suggested form fields: optional date/view filter only if backend later supports it.
 - Role gate: `ROLE_DEALER`.
 
@@ -158,7 +158,7 @@ Button naming standard for universal profile controls (use exactly):
 - Loading state: order table skeleton.
 - Empty state: no orders yet.
 - Error state: retry + fallback info.
-- Suggested table columns: orderNumber, createdAt, status, totalAmount, notes.
+- Suggested table columns: orderNumber, createdAt, status, totalAmount, pendingCreditExposure, notes.
 - Suggested form fields: local-only filters (status/date).
 - Role gate: `ROLE_DEALER`.
 
@@ -216,3 +216,15 @@ Expected queue semantics for dealer-origin requests:
 Frontend note:
 - Dealer portal itself does not approve/reject; it only submits.
 - If you add status tracking UI later, poll dealer-facing request state from dealer-compatible read APIs and map to admin decisions (`APPROVED`/`REJECTED`) without exposing admin-only endpoints in dealer client.
+
+## Delta Update (2026-02-15): Pending Exposure Semantics + Flyway Baseline (V2)
+
+- Flyway baseline is single `V2` (`db/migration_v2`, `flyway_schema_history_v2`).
+- Dealer pending exposure fields are contract fields, not UI-derived guesses:
+  - dashboard/aging/orders surfaces expose `pendingOrderExposure`, `pendingOrderCount`, and per-order `pendingCreditExposure`.
+  - `creditUsed = totalOutstanding + pendingOrderExposure`.
+- Pending exposure status set is centralized and includes:
+  - `BOOKED`, `RESERVED`, `PENDING_PRODUCTION`, `PENDING_INVENTORY`, `PROCESSING`, `READY_TO_SHIP`, `CONFIRMED`, `ON_HOLD`.
+- Invoice-link exclusion rule:
+  - if an order has any active sibling invoice (status normalized and not in `DRAFT/VOID/REVERSED`), that order is excluded from pending exposure.
+  - `VOID`-only sibling invoice chains continue to count as pending exposure.

@@ -2,8 +2,10 @@
 
 ## Scope
 This document captures the current backend contract for sales-order payment modes, credit-limit enforcement, and idempotency behavior.
+- Flyway baseline for this contract is **V2** (`db/migration_v2`, `flyway_schema_history_v2`).
 
 ## Payment Modes
+- Allowed order payment modes are exactly `CASH`, `CREDIT`, `SPLIT` (default is `CREDIT` when omitted).
 - `CREDIT`:
   - Dealer credit-limit check is enforced at order create/update.
   - Enforcement currently uses posted receivable outstanding + attempted order value.
@@ -13,6 +15,23 @@ This document captures the current backend contract for sales-order payment mode
 - `CASH`:
   - Dealer credit-limit check is enforced at order create/update.
   - Cash collection is still settled downstream via accounting receipt/settlement flows; `paymentMode=CASH` does not bypass order-time credit policy.
+
+## Accounting Method Map (Dealer Collection Paths)
+- `recordDealerReceipt` (`cashAccountId` + explicit invoice allocations):
+  - Journal shape: `Dr cash/bank account`, `Cr dealer receivable`.
+  - Requires allocation rows; each allocation must target a dealer invoice.
+- `recordDealerReceiptSplit` (`incomingLines[]`):
+  - Journal shape: each incoming line debits its cash/bank account; one receivable credit line is posted for total receipt.
+  - Requires at least one incoming line and rejects totals above open receivable exposure.
+- `recordDealerSettlement` (allocation + optional payments):
+  - Net cash formula: `cashAmount = totalApplied + totalFxGain - totalFxLoss - totalDiscount - totalWriteOff`.
+  - If `payments[]` is provided, `sum(payments.amount)` must equal `cashAmount`.
+  - If `payments[]` is omitted and `cashAmount > 0`, `cashAccountId` is required and used as implicit single-tender mapping.
+- Payment-account validation (all collection paths):
+  - account must be active.
+  - account must be `ASSET`.
+  - account must not be AR/AP control.
+- Settlement/receipt idempotency binds account mapping (request/account/amount signatures are replay-validated).
 
 ## Idempotency Contract (Sales Order Create)
 - Canonical request signature uses normalized payload fields and appends payment mode token only for non-default modes.
@@ -57,7 +76,7 @@ This document captures the current backend contract for sales-order payment mode
   - `CONFIRMED`
   - `ON_HOLD`
 - Exposure excludes rows already linked to fulfillment invoice markers.
-- Exposure also excludes orders with active invoice rows (`status` not in `DRAFT/VOID/REVERSED`) to avoid double counting partially invoiced multi-slip orders.
+- Exposure also excludes orders with active invoice rows (`status` normalized and not in `DRAFT/VOID/REVERSED`) to avoid double counting partially invoiced multi-slip orders.
 - Dealer portal payloads now expose:
   - `pendingOrderExposure`
   - `creditUsed` (`totalOutstanding + pendingOrderExposure`)

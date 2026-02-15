@@ -78,10 +78,10 @@ Verified role behavior for sales scope:
 | `sales_cancelOrder` | POST | `/api/v1/sales/orders/{id}/cancel` | id (path) | reason (body) | No | No | No |
 | `sales_confirmDispatch` | POST | `/api/v1/sales/dispatch/confirm` | lines[].shipQty (body) | adminOverrideCreditLimit (body), confirmedBy (body), dispatchNotes (body), lines (body), lines[].batchId (body), lines[].discount (body), lines[].lineId (body), lines[].notes (body), lines[].priceOverride (body), lines[].taxInclusive (body), lines[].taxRate (body), orderId (body), overrideRequestId (body), packingSlipId (body) | No | No | No |
 | `sales_confirmOrder` | POST | `/api/v1/sales/orders/{id}/confirm` | id (path) | - | No | No | No |
-| `sales_createOrder` | POST | `/api/v1/sales/orders` | items (body), items[].productCode (body), items[].quantity (body), items[].unitPrice (body), totalAmount (body) | currency (body), dealerId (body), gstInclusive (body), gstRate (body), gstTreatment (body), idempotencyKey (body), items[].description (body), items[].gstRate (body), notes (body) | No | No | Conditional |
+| `sales_createOrder` | POST | `/api/v1/sales/orders` | items (body), items[].productCode (body), items[].quantity (body), items[].unitPrice (body), totalAmount (body) | currency (body), dealerId (body), gstInclusive (body), gstRate (body), gstTreatment (body), idempotencyKey (body), items[].description (body), items[].gstRate (body), notes (body), paymentMode (body: `CASH|CREDIT|SPLIT`) | No | No | Conditional |
 | `sales_deleteOrder` | DELETE | `/api/v1/sales/orders/{id}` | id (path) | - | No | No | Yes |
 | `sales_orders` | GET | `/api/v1/sales/orders` | - | dealerId (query), page (query), size (query), status (query) | Yes | Conditional | Yes |
-| `sales_updateOrder` | PUT | `/api/v1/sales/orders/{id}` | id (path), items (body), items[].productCode (body), items[].quantity (body), items[].unitPrice (body), totalAmount (body) | currency (body), dealerId (body), gstInclusive (body), gstRate (body), gstTreatment (body), idempotencyKey (body), items[].description (body), items[].gstRate (body), notes (body) | No | No | Yes |
+| `sales_updateOrder` | PUT | `/api/v1/sales/orders/{id}` | id (path), items (body), items[].productCode (body), items[].quantity (body), items[].unitPrice (body), totalAmount (body) | currency (body), dealerId (body), gstInclusive (body), gstRate (body), gstTreatment (body), idempotencyKey (body), items[].description (body), items[].gstRate (body), notes (body), paymentMode (body: `CASH|CREDIT|SPLIT`) | No | No | Yes |
 | `sales_updateStatus` | PATCH | `/api/v1/sales/orders/{id}/status` | id (path) | status (body) | No | No | Conditional |
 
 ### Dealers & Receivables Touchpoints
@@ -216,7 +216,8 @@ Button naming standard for universal profile controls (use exactly):
 - Empty state: no orders found + create CTA.
 - Error state: inline form validation + row action toast + rollback on failed optimistic updates.
 - Suggested table columns: orderId, dealer, status, totalAmount, currency, createdAt, confirmedAt.
-- Suggested form fields: dealerId, items[], quantity, unitPrice, tax flags, notes, totalAmount.
+- Suggested form fields: dealerId, items[], quantity, unitPrice, tax flags, notes, totalAmount, paymentMode (`CASH|CREDIT|SPLIT`).
+- Validation note: credit-limit rejection can occur for all three payment modes; do not special-case `CASH` as a credit-policy bypass.
 - Role gate: read broad; write sales/admin only.
 
 ### `/sales/dealers`
@@ -233,7 +234,7 @@ Button naming standard for universal profile controls (use exactly):
 - Loading state: tab-level loading (ledger/invoices/aging).
 - Empty state: dealer has no receivable history.
 - Error state: tab retry + action toast.
-- Suggested table columns: invoiceNo, invoiceDate, dueDate, outstandingAmount, daysOverdue, holdStatus.
+- Suggested table columns: invoiceNo, invoiceDate, dueDate, outstandingAmount, daysOverdue, holdStatus, pendingOrderExposure, pendingOrderCount, creditUsed.
 - Suggested form fields: dunning hold params (`overdueDays`, `minAmount`).
 - Role gate: viewing allows dealer role with self-check; hold action excludes dealer role.
 
@@ -370,3 +371,21 @@ For finance/accounting users operating in sales surfaces:
 
 Recommended pattern:
 - Add “Open in Accounting Audit Trail” link from dispatch confirmation success/result drawer.
+
+## Delta Update (2026-02-15): Payment-Mode + Idempotency + Pending Exposure Contract (Flyway V2)
+
+- Flyway baseline is single `V2` (`db/migration_v2`, `flyway_schema_history_v2`).
+- Sales order payment mode map:
+  - allowed values: `CASH`, `CREDIT`, `SPLIT`.
+  - default when omitted: `CREDIT`.
+  - create/update credit-limit checks remain active for all three modes.
+- Sales order idempotency compatibility:
+  - canonical payload signatures/derived keys omit the default `CREDIT` token.
+  - legacy default-credit signature/key shapes including `|CREDIT|` are still accepted on replay.
+- Orchestrator idempotency header precedence:
+  - `Idempotency-Key` header first.
+  - fallback to `X-Request-Id`.
+  - fallback to deterministic auto-derived key when both headers are absent.
+- Dealer pending exposure semantics shown in receivables views:
+  - pending statuses are centrally mapped (`BOOKED`, `RESERVED`, `PENDING_PRODUCTION`, `PENDING_INVENTORY`, `PROCESSING`, `READY_TO_SHIP`, `CONFIRMED`, `ON_HOLD`).
+  - orders with active sibling invoices are excluded from pending exposure (`DRAFT`/`VOID`/`REVERSED` invoices do not count as active).
