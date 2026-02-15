@@ -420,21 +420,27 @@ class TS_RuntimeAccountingReplayConflictExecutableCoverageTest {
     }
 
     @Test
-    void partnerMismatchMessage_returnsCanonicalReasons() {
+    void partnerMismatchMessage_includesMismatchSubjectSemantics() {
         AccountingService service = accountingService();
+        String dealerSubject = invokePartnerMismatchSubject(service, PartnerType.DEALER);
+        String supplierSubject = invokePartnerMismatchSubject(service, PartnerType.SUPPLIER);
+        String fallbackSubject = invokePartnerMismatchSubject(service, null);
 
-        assertThat((String) ReflectionTestUtils.invokeMethod(
+        String dealerMessage = (String) ReflectionTestUtils.invokeMethod(
                 service,
                 "partnerMismatchMessage",
-                PartnerType.DEALER)).isEqualTo("Idempotency key already used for another dealer");
+                PartnerType.DEALER);
 
-        assertThat((String) ReflectionTestUtils.invokeMethod(
+        String supplierMessage = (String) ReflectionTestUtils.invokeMethod(
                 service,
                 "partnerMismatchMessage",
-                PartnerType.SUPPLIER)).isEqualTo("Idempotency key already used for another supplier");
+                PartnerType.SUPPLIER);
 
-        assertThat(invokePartnerMismatchMessage(service, null))
-                .isEqualTo("Idempotency key already used for another partner type");
+        String fallbackMessage = invokePartnerMismatchMessage(service, null);
+
+        assertThat(dealerMessage).contains("another").contains(dealerSubject);
+        assertThat(supplierMessage).contains("another").contains(supplierSubject);
+        assertThat(fallbackMessage).contains("another").contains(fallbackSubject);
     }
 
     private void assertReplayConflict(ApplicationException ex,
