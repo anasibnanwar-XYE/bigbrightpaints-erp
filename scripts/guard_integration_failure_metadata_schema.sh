@@ -14,6 +14,11 @@ fail() {
   exit 1
 }
 
+for required_command in rg awk; do
+  command -v "$required_command" >/dev/null 2>&1 \
+    || fail "required command not found: $required_command"
+done
+
 [[ -d "$SOURCE_ROOT" ]] || fail "missing source root: $SOURCE_ROOT"
 
 mapfile -t producer_files < <(rg -l "$LOG_FAILURE_PATTERN" "$SOURCE_ROOT")

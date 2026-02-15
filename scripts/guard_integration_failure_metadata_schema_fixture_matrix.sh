@@ -9,6 +9,11 @@ fail() {
   exit 1
 }
 
+for required_command in mktemp cp cat; do
+  command -v "$required_command" >/dev/null 2>&1 \
+    || fail "missing required command: $required_command"
+done
+
 [[ -f "$SOURCE_GUARD" ]] || fail "missing source guard script: $SOURCE_GUARD"
 
 TMP_ROOT="$(mktemp -d)"
