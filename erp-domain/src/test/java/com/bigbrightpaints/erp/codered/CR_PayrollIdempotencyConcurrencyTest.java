@@ -35,6 +35,7 @@ import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -168,6 +169,57 @@ class CR_PayrollIdempotencyConcurrencyTest extends AbstractIntegrationTest {
             assertThat(line.getAccount().getCode()).isEqualTo("EMP-ADV");
             assertThat(line.getCredit()).isEqualByComparingTo("200.00");
         });
+    }
+
+    @Test
+    void payrollPosting_missingSalaryExpenseAccount_failsWithDeterministicProvisioningGuidance() {
+        String companyCode = "CR-PAY-MISS-SALARY-" + shortId();
+        Company company = bootstrapCompany(companyCode);
+        ensurePayrollAccounts(company);
+
+        accountRepository.findByCompanyAndCodeIgnoreCase(company, "SALARY-EXP").ifPresent(accountRepository::delete);
+        accountRepository.flush();
+
+        LocalDate anchor = TestDateUtils.safeDate(company);
+        LocalDate start = anchor.minusDays(30);
+        LocalDate end = anchor.minusDays(1);
+
+        CompanyContextHolder.setCompanyId(companyCode);
+        var runDto = payrollService.createPayrollRun(new PayrollService.CreatePayrollRunRequest(
+                PayrollRun.RunType.MONTHLY,
+                start,
+                end,
+                "CODE-RED missing salary expense account"
+        ));
+        CompanyContextHolder.clear();
+
+        PayrollRun run = payrollRunRepository.findByCompanyAndId(company, runDto.id()).orElseThrow();
+        run.setStatus(PayrollRun.PayrollStatus.APPROVED);
+        payrollRunRepository.save(run);
+        seedMinimalPayrollLines(company, run, BigDecimal.valueOf(1000));
+
+        CompanyContextHolder.setCompanyId(companyCode);
+        try {
+            assertThatThrownBy(() -> payrollService.postPayrollToAccounting(run.getId()))
+                    .isInstanceOf(ApplicationException.class)
+                    .satisfies(ex -> {
+                        ApplicationException appEx = (ApplicationException) ex;
+                        assertThat(appEx.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_REFERENCE);
+                        assertThat(appEx.getMessage()).contains("SALARY-EXP");
+                        assertThat(appEx.getMessage()).contains("expected type: EXPENSE");
+                        Map<String, Object> details = appEx.getDetails();
+                        assertThat(details).containsEntry("accountCode", "SALARY-EXP");
+                        assertThat(details).containsEntry("expectedAccountType", "EXPENSE");
+                        assertThat(details).containsEntry("bootstrapMigration", "V79__payroll_gl_accounts.sql");
+                        assertThat(details).containsEntry("canonicalPath", "/api/v1/accounting/accounts");
+                        assertThat(details).containsKey("requiredPayrollAccounts");
+                        @SuppressWarnings("unchecked")
+                        List<Object> requiredAccounts = (List<Object>) details.get("requiredPayrollAccounts");
+                        assertThat(requiredAccounts).contains("SALARY-EXP", "WAGE-EXP", "SALARY-PAYABLE", "EMP-ADV");
+                    });
+        } finally {
+            CompanyContextHolder.clear();
+        }
     }
 
     @Test

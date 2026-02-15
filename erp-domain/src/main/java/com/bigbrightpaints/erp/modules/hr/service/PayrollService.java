@@ -7,6 +7,7 @@ import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest.JournalLineRequest;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
@@ -35,6 +36,20 @@ import java.util.*;
 public class PayrollService {
 
     private static final BigDecimal ADVANCE_DEDUCTION_CAP = new BigDecimal("0.20");
+    private static final String PAYROLL_ACCOUNTS_CANONICAL_PATH = "/api/v1/accounting/accounts";
+    private static final String PAYROLL_BOOTSTRAP_MIGRATION = "V79__payroll_gl_accounts.sql";
+    private static final Map<String, AccountType> REQUIRED_PAYROLL_ACCOUNT_TYPES = Map.of(
+            "SALARY-EXP", AccountType.EXPENSE,
+            "WAGE-EXP", AccountType.EXPENSE,
+            "SALARY-PAYABLE", AccountType.LIABILITY,
+            "EMP-ADV", AccountType.ASSET
+    );
+    private static final List<String> REQUIRED_PAYROLL_ACCOUNTS = List.of(
+            "SALARY-EXP",
+            "WAGE-EXP",
+            "SALARY-PAYABLE",
+            "EMP-ADV"
+    );
 
     private final PayrollRunRepository payrollRunRepository;
     private final PayrollRunLineRepository payrollRunLineRepository;
@@ -896,11 +911,20 @@ public class PayrollService {
     }
 
     private Account findAccountByCode(Company company, String code) {
-        return accountRepository.findByCompanyAndCodeIgnoreCase(company, code)
-            .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
-                    "Required account not found: " + code + ". Please create it in Chart of Accounts.")
-                    .withDetail("accountCode", code)
-                    .withDetail("canonicalPath", "/api/v1/accounting/accounts"));
+        String normalizedCode = StringUtils.hasText(code) ? code.trim().toUpperCase(Locale.ROOT) : "";
+        AccountType expectedType = REQUIRED_PAYROLL_ACCOUNT_TYPES.get(normalizedCode);
+        String expectedTypeName = expectedType != null ? expectedType.name() : "UNKNOWN";
+
+        return accountRepository.findByCompanyAndCodeIgnoreCase(company, normalizedCode)
+                .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                        "Required payroll account not found: " + normalizedCode
+                                + " (expected type: " + expectedTypeName + "). "
+                                + "Provision this account in Chart of Accounts before posting payroll.")
+                        .withDetail("accountCode", normalizedCode)
+                        .withDetail("expectedAccountType", expectedTypeName)
+                        .withDetail("requiredPayrollAccounts", REQUIRED_PAYROLL_ACCOUNTS)
+                        .withDetail("bootstrapMigration", PAYROLL_BOOTSTRAP_MIGRATION)
+                        .withDetail("canonicalPath", PAYROLL_ACCOUNTS_CANONICAL_PATH));
     }
 
     private String getCurrentUser() {

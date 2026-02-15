@@ -41,6 +41,15 @@ else
   exit 1
 fi
 
+echo "[gate-release] payroll account bootstrap contract guard"
+PAYROLL_BOOTSTRAP_GUARD_LOG="$ARTIFACT_DIR/payroll-account-bootstrap-contract-guard.txt"
+if bash "$ROOT_DIR/scripts/guard_payroll_account_bootstrap_contract.sh" >"$PAYROLL_BOOTSTRAP_GUARD_LOG" 2>&1; then
+  cat "$PAYROLL_BOOTSTRAP_GUARD_LOG"
+else
+  cat "$PAYROLL_BOOTSTRAP_GUARD_LOG" >&2
+  exit 1
+fi
+
 echo "[gate-release] flyway v2 migration ownership guard"
 MIGRATION_OWNERSHIP_LOG="$ARTIFACT_DIR/flyway-v2-migration-ownership-guard.txt"
 if bash "$ROOT_DIR/scripts/guard_flyway_v2_migration_ownership.sh" >"$MIGRATION_OWNERSHIP_LOG" 2>&1; then

@@ -41,6 +41,9 @@ echo "[verify_local] accounting portal scope contract guard"
 bash "$ROOT_DIR/scripts/guard_accounting_portal_scope_contract.sh"
 
 if [[ "$MIGRATION_SET" == "v2" ]]; then
+  echo "[verify_local] payroll account bootstrap contract guard"
+  bash "$ROOT_DIR/scripts/guard_payroll_account_bootstrap_contract.sh"
+
   echo "[verify_local] flyway v2 migration ownership guard"
   bash "$ROOT_DIR/scripts/guard_flyway_v2_migration_ownership.sh"
 
