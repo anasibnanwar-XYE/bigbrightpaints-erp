@@ -32,17 +32,26 @@ for file in "${producer_files[@]}"; do
   [[ "${#log_lines[@]}" -gt 0 ]] || fail "producer pattern matched file scan but no log lines resolved for $file"
 
   for log_line in "${log_lines[@]}"; do
-    has_preceding_schema=false
+    method_start_line="$(
+      awk -v target="$log_line" '
+        NR <= target && $0 ~ /^[[:space:]]*(public|private|protected)[^;]*\([^\)]*\)[[:space:]]*\{/ { line=NR }
+        END { if (line) print line; else print 1 }
+      ' "$file"
+    )"
+
+    has_schema_in_method=false
     for helper_line in "${helper_lines[@]}"; do
-      if (( helper_line <= log_line )); then
-        has_preceding_schema=true
+      if (( helper_line >= method_start_line && helper_line <= log_line )); then
+        has_schema_in_method=true
       else
-        break
+        if (( helper_line > log_line )); then
+          break
+        fi
       fi
     done
 
-    if [[ "$has_preceding_schema" != true ]]; then
-      fail "producer $file has INTEGRATION_FAILURE log at line $log_line without preceding schema helper"
+    if [[ "$has_schema_in_method" != true ]]; then
+      fail "producer $file has INTEGRATION_FAILURE log at line $log_line without schema helper in method scope"
     fi
   done
 done
