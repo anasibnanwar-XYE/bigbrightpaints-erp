@@ -41,8 +41,13 @@ echo "[verify_local] accounting portal scope contract guard"
 bash "$ROOT_DIR/scripts/guard_accounting_portal_scope_contract.sh"
 
 if [[ "$MIGRATION_SET" == "v2" ]]; then
+  ALLOW_GUARD_DB_MISMATCH="${ALLOW_FLYWAY_GUARD_DB_MISMATCH:-false}"
   if [[ -n "${FLYWAY_GUARD_DB_NAME:-}" && -n "${PGDATABASE:-}" && "${FLYWAY_GUARD_DB_NAME}" != "${PGDATABASE}" ]]; then
-    echo "[verify_local] WARNING: FLYWAY_GUARD_DB_NAME and PGDATABASE differ; using FLYWAY_GUARD_DB_NAME for guard target" >&2
+    if [[ "$ALLOW_GUARD_DB_MISMATCH" != "true" ]]; then
+      echo "[verify_local] FLYWAY_GUARD_DB_NAME and PGDATABASE differ. Set ALLOW_FLYWAY_GUARD_DB_MISMATCH=true only for intentional split-target runs." >&2
+      exit 4
+    fi
+    echo "[verify_local] WARNING: FLYWAY_GUARD_DB_NAME and PGDATABASE differ; using FLYWAY_GUARD_DB_NAME due to ALLOW_FLYWAY_GUARD_DB_MISMATCH=true" >&2
   fi
 
   GUARD_DB_NAME="${FLYWAY_GUARD_DB_NAME:-${PGDATABASE:-}}"
