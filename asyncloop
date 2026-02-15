@@ -9317,3 +9317,23 @@ Review Queue Update
 Loop Update
 - tracked_now_ts: `2026-02-16T02:57:40+05:30`
 - active_in_progress: `M19-S5 review queue drain (blocked) + continued system-map/contract hardening`
+
+[2026-02-16] M19-S16 idempotency blank-body fallback parity closure
+- Completed Slice (Committed): blank-body idempotency fallback coverage across controller endpoints
+  - Commit `18c3825d`: `AccountingControllerIdempotencyHeaderParityTest`
+  - Added explicit blank-body (`"   "`) key fallback tests:
+    - `recordDealerReceipt_blankBodyKeyFallsBackToHeader`
+    - `recordDealerHybridReceipt_blankBodyKeyFallsBackToHeader`
+    - `recordSupplierPayment_blankBodyKeyFallsBackToHeader`
+    - `settleSupplier_blankBodyKeyFallsBackToHeader`
+- Verification:
+  - `cd erp-domain && mvn -B -ntp -Dtest=AccountingControllerIdempotencyHeaderParityTest test` (PASS: 16/16)
+
+Review Queue Update
+- subagent dispatch for `18c3825d` blocked by active-agent cap (max 6); queued.
+- pending code-review queue now:
+  - `2962800b`, `50d78915`, `6c51730e`, `2b2fb143`, `7451e7cf`, `a82746af`, `3358cb2a`, `18c3825d`
+
+Loop Update
+- tracked_now_ts: `2026-02-16T02:59:30+05:30`
+- active_in_progress: `M19-S5 review queue drain (blocked) + continued idempotency/replay contract hardening`
