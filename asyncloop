@@ -6947,3 +6947,206 @@ Queue Rotation (Auto-Replenish)
 - [ready] M14-S48 costing-selection enum drift guard (new/legacy costing tokens must remain centrally mapped via `CostingMethodUtils` with no per-module fallback forks)
 - [ready] M14-S49 catalog-import retry-winner ledger/journal silence guard (stale-retry loser payloads must never produce duplicate accounting side effects while winner replay remains idempotent)
 - [ready] M11-S7 accounting-portal scope invariant lock (HR, PURCHASING, INVENTORY, REPORTS remain under Accounting portal unless replacement portal map + endpoint docs are updated atomically)
+
+Completed Slice (Committed)
+- 2026-02-15: `9fd16da1`
+  - chore(ci): add flyway v2 migration ownership contract guard.
+  - M15-S27 initial implementation:
+    - added `scripts/guard_flyway_v2_migration_ownership.sh`.
+    - wired guard execution into `scripts/verify_local.sh` (`MIGRATION_SET=v2`) and `scripts/gate_release.sh` artifact flow.
+    - updated `scripts/guard_flyway_guard_contract.sh` stubs for new guard path.
+  - Verification:
+    - `bash -n scripts/guard_flyway_v2_migration_ownership.sh` -> pass.
+    - `bash scripts/guard_flyway_v2_migration_ownership.sh` -> pass.
+    - `bash scripts/guard_flyway_guard_contract.sh` -> pass.
+
+Post-Commit Review Evidence
+- Commit reviewed: `9fd16da1`
+- `codex review --commit 9fd16da1`:
+  - command executed (prior loop session); no stable final summary persisted due rollout churn.
+- Review subagent `019c5f69-9712-77b1-891f-05875edeb33b`:
+  - findings:
+    - high: GNU-only `sort -V` portability break.
+    - medium: multiline `UNIQUE(id)` false-negative parsing gap.
+  - disposition: fixed immediately via follow-up chain below.
+
+Follow-up Hardening (Committed)
+- 2026-02-15: `d372a78e`
+  - fix(ci): harden flyway v2 ownership guard parsing.
+  - changes:
+    - replaced GNU-only ordering with portable sort path.
+    - moved to statement-oriented parser for multiline PK/UNIQUE recognition.
+  - Verification:
+    - `bash -n scripts/guard_flyway_v2_migration_ownership.sh` -> pass.
+    - `bash scripts/guard_flyway_v2_migration_ownership.sh` -> pass.
+    - `bash scripts/guard_flyway_guard_contract.sh` -> pass.
+
+Post-Commit Review Evidence
+- Commit reviewed: `d372a78e`
+- `codex review --commit d372a78e`:
+  - findings: parser could match dynamic/quoted SQL and split on raw `;` (false pass/fail risk).
+- Review subagent `019c5f6e-b6d6-72c2-aca7-50aa0041715b`:
+  - findings:
+    - high: `RS=";"` split breaks literals and DO-block parsing.
+    - medium: broad `id bigint NOT NULL` scan over text/comments.
+    - low: `IGNORECASE` portability risk.
+  - disposition: fixed immediately in `f2e9f527`.
+
+Follow-up Hardening (Committed)
+- 2026-02-15: `f2e9f527`
+  - fix(ci): avoid false positives in v2 ownership guard.
+  - changes:
+    - reverted to anchored line-state parsing.
+    - removed `IGNORECASE` dependency; explicit normalization used.
+    - restored DO-block compatible ALTER detection and multiline UNIQUE handling.
+  - Verification:
+    - `bash -n scripts/guard_flyway_v2_migration_ownership.sh` -> pass.
+    - `bash scripts/guard_flyway_v2_migration_ownership.sh` -> pass.
+    - `bash scripts/guard_flyway_guard_contract.sh` -> pass.
+
+Post-Commit Review Evidence
+- Commit reviewed: `f2e9f527`
+- `codex review --commit f2e9f527`:
+  - findings: composite UNIQUE and single-line CREATE edge cases still misclassified.
+- Review subagent `019c5f73-8d6c-7053-a7d4-f8753e2900c3`:
+  - findings:
+    - high: composite `UNIQUE(id, ...)` incorrectly accepted.
+    - high: single-line `CREATE TABLE ... id bigint NOT NULL ...` miss.
+    - medium: brittle CREATE-end detection.
+  - disposition: fixed immediately in `410b7574`.
+
+Follow-up Hardening (Committed)
+- 2026-02-15: `410b7574`
+  - fix(ci): tighten v2 ownership guard sql parsing.
+  - changes:
+    - enforced exact `UNIQUE(id)` interpretation.
+    - added create-depth tracking for split terminators and inline CREATE coverage.
+  - Verification:
+    - `bash -n scripts/guard_flyway_v2_migration_ownership.sh` -> pass.
+    - `bash scripts/guard_flyway_v2_migration_ownership.sh` -> pass.
+    - `bash scripts/guard_flyway_guard_contract.sh` -> pass.
+
+Post-Commit Review Evidence
+- Commit reviewed: `410b7574`
+- `codex review --commit 410b7574`:
+  - findings: delimiter/segment edge cases and quote-sensitive parsing drift remained.
+- Review subagent `019c5f79-7c55-74d0-897d-0496796e994d`:
+  - findings:
+    - high: `id` detection misses some valid forms.
+    - medium: parenthesis depth not quote-safe.
+    - low: quoted-literal UNIQUE scan risk.
+  - disposition: fixed immediately via `4ef2793a`, `2cb5e7ea`, `912d85e1`, `dfb2f41d`.
+
+Follow-up Hardening (Committed)
+- 2026-02-15: `4ef2793a`
+  - fix(ci): handle multi-unique and id forms in guard.
+  - changes:
+    - parse all `UNIQUE(...)` clauses on a line.
+    - broaden `id bigint ... not null` form detection.
+    - added quote-aware depth counting path.
+  - Verification:
+    - `bash -n scripts/guard_flyway_v2_migration_ownership.sh` -> pass.
+    - `bash scripts/guard_flyway_v2_migration_ownership.sh` -> pass.
+    - `bash scripts/guard_flyway_guard_contract.sh` -> pass.
+    - synthetic parser canaries (python3+awk extracted from script) -> pass.
+
+Post-Commit Review Evidence
+- Commit reviewed: `4ef2793a`
+- `codex review --commit 4ef2793a`:
+  - findings: `NOT NULL` ordering and quoted-identifier apostrophe edge gaps.
+- Review subagent `019c5f7e-bf22-7361-99fe-87c2464e327c`:
+  - findings:
+    - medium: `IS NOT NULL` ordering could suppress true `NOT NULL` detection.
+    - low: apostrophe handling in quoted identifiers.
+  - disposition: fixed immediately in `2cb5e7ea` + `912d85e1`.
+
+Follow-up Hardening (Committed)
+- 2026-02-15: `2cb5e7ea`
+  - fix(ci): harden guard parsing for quoted and inline sql.
+  - changes:
+    - introduced literal stripping for CREATE/ALTER scan before PK/UNIQUE parsing.
+    - improved `NOT NULL` detection to skip `IS NOT NULL` expression-only hits.
+  - Verification:
+    - `bash -n scripts/guard_flyway_v2_migration_ownership.sh` -> pass.
+    - `bash scripts/guard_flyway_v2_migration_ownership.sh` -> pass.
+    - `bash scripts/guard_flyway_guard_contract.sh` -> pass.
+    - synthetic edge-case matrix -> pass.
+
+Post-Commit Review Evidence
+- Commit reviewed: `2cb5e7ea`
+- `codex review --commit 2cb5e7ea`:
+  - findings persisted around keyword-boundary precision and quoted identifier handling.
+- Review subagent `019c5f8b-28b0-7752-8e73-05ce231308ff`:
+  - findings:
+    - medium: `is` suffix boundary could false-negative valid `NOT NULL`.
+    - low: fixture-matrix coverage suggestion.
+  - disposition: medium fixed immediately in `dfb2f41d`; low tracked for future guard-fixture slice.
+
+Follow-up Hardening (Committed)
+- 2026-02-15: `912d85e1`
+  - fix(ci): stabilize id and quote parsing in guard.
+  - changes:
+    - double-quoted identifier state handling added.
+    - iterative `NOT NULL` scan introduced for `CHECK ... IS NOT NULL ... NOT NULL` ordering.
+  - Verification:
+    - `bash -n scripts/guard_flyway_v2_migration_ownership.sh` -> pass.
+    - `bash scripts/guard_flyway_v2_migration_ownership.sh` -> pass.
+    - `bash scripts/guard_flyway_guard_contract.sh` -> pass.
+    - synthetic apostrophe/check-order canaries -> pass.
+
+Follow-up Hardening (Committed)
+- 2026-02-15: `dfb2f41d`
+  - fix(ci): tighten not-null keyword boundary in guard.
+  - changes:
+    - keyword-boundary check hardened so identifier suffixes like `analysis` do not mimic `is` token semantics.
+  - Verification:
+    - `bash -n scripts/guard_flyway_v2_migration_ownership.sh` -> pass.
+    - `bash scripts/guard_flyway_v2_migration_ownership.sh` -> pass.
+    - `bash scripts/guard_flyway_guard_contract.sh` -> pass.
+    - synthetic boundary canaries (`analysis`, `foo$is`, check-order) -> pass.
+
+Post-Commit Review Evidence
+- Commit reviewed: `dfb2f41d`
+- `codex review --commit dfb2f41d`:
+  - final verdict: no high/medium regressions; patch accepted.
+- Review subagent `019c5f91-7e71-7103-9c05-92df211a2287`:
+  - findings:
+    - high: none.
+    - medium: none.
+    - low: `$` token boundary hardening suggestion for future refinement.
+  - disposition: accepted as low follow-up; no blocking correctness gap remains.
+
+Completed Slice (Resolved)
+- M15-S27 v2 migration ownership/consistency guard (assert all `migration_v2` versions are tracked and contain explicit PK targets for downstream FK references)
+  - closure basis: `9fd16da1` + `d372a78e` + `f2e9f527` + `410b7574` + `4ef2793a` + `2cb5e7ea` + `912d85e1` + `dfb2f41d`.
+  - closure evidence:
+    - guard now enforces tracked-v2 migration ownership and exact PK/UNIQUE(id) contract with multiline/inline and quoted SQL edge-case coverage.
+    - repeated review loops converged to no outstanding high/medium findings.
+
+Loop Update
+- 2026-02-15T10:05:07+05:30
+- tracked_now_ts: `2026-02-15T10:05:07+05:30`
+- tracked_elapsed: `80h 11m 15s`
+- active_in_progress: `M15-S28 flyway-v2 migration referential contract canary (run lightweight SQL catalog check ensuring all FK references in migration_v2 target PK/unique columns)`
+- continuity_recheck:
+  - pending-exposure parity recurring canaries remain queued (`M15-S13R2`, `M15-S14R2`).
+  - release/guard ownership chain is now stabilized with no high/medium open findings.
+
+Queue Rotation (Auto-Replenish)
+- [completed] M15-S27 v2 migration ownership/consistency guard (assert all `migration_v2` versions are tracked and contain explicit PK targets for downstream FK references)
+- [in_progress] M15-S28 flyway-v2 migration referential contract canary (run lightweight SQL catalog check ensuring all FK references in migration_v2 target PK/unique columns)
+- [ready] M15-S13R2 pending-exposure predicate parity recurring canary (scheduled rerun after next CI/release-guard script change)
+- [ready] M15-S14R2 dealer/admin pending-order parity recurring canary (scheduled rerun after next sales/accounting exposure logic touch)
+- [ready] M15-S29 guard fixture matrix hardening (add deterministic fixture script covering quoted identifiers with apostrophes, `$` suffix token boundaries, `CHECK ... IS NOT NULL` ordering, and E-string literal/semicolon edge cases)
+- [ready] M15-S8 payroll account default/bootstrap guard (`SALARY-EXP` missing account should fail with deterministic provisioning guidance/guard rails)
+- [ready] M15-S9 sales/dealer accounting method-map docs refresh (internal + user-facing docs for cash/credit/split formulas, account mapping rules, idempotency headers, and pending-order credit exposure semantics)
+- [ready] M15-S10 cross-module idempotency contract unification matrix (standardize header semantics + helper parity across sales/production/accounting endpoint families)
+- [ready] M15-S11 recognized-revenue/pending-credit contract docs + endpoint parity matrix (internal and user-facing portal docs must match shipment gate + pending exposure behavior)
+- [ready] M15-S12 idempotency header contract convergence doc+runtime assert sweep (sales/production/accounting entrypoints must share canonical header semantics and error model)
+- [ready] M15-S15 pending-status normalization performance guard (evaluate/land Flyway V2-safe functional index or normalized-token strategy so aggregate pending-status predicates retain index-friendly plans under high order volume)
+- [ready] M15-S16 dealer-settlement replay e2e defense-in-depth matrix (optional end-to-end `settleDealerInvoices` replay assertion where adjustment debit lines coexist with split payments to further harden payment-account bounded remap behavior)
+- [ready] M15-S18 dispatch replay COGS reference payload parity guard (assert `postCogsJournal` reference/memo/line payload stability on replay anchors and prevent wrong-reference postings under override replay paths)
+- [ready] M15-S19 dispatch replay slip-number fallback + AR-overload guard matrix (cover `hasCogsJournalFor` alternate slip-number fallback and explicitly lock both `postSalesJournal` overload paths against duplicate replay posting)
+- [ready] M14-S48 costing-selection enum drift guard (new/legacy costing tokens must remain centrally mapped via `CostingMethodUtils` with no per-module fallback forks)
+- [ready] M14-S49 catalog-import retry-winner ledger/journal silence guard (stale-retry loser payloads must never produce duplicate accounting side effects while winner replay remains idempotent)
+- [ready] M11-S7 accounting-portal scope invariant lock (HR, PURCHASING, INVENTORY, REPORTS remain under Accounting portal unless replacement portal map + endpoint docs are updated atomically)
