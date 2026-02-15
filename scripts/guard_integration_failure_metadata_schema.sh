@@ -34,7 +34,7 @@ for file in "${producer_files[@]}"; do
   for log_line in "${log_lines[@]}"; do
     method_start_line="$(
       awk -v target="$log_line" '
-        NR <= target && $0 ~ /^[[:space:]]*(public|private|protected)[^;]*\([^\)]*\)[[:space:]]*\{/ { line=NR }
+        NR <= target && $0 ~ /^[[:space:]]*(public|private|protected)[^;]*\([^\)]*\)/ { line=NR }
         END { if (line) print line; else print 1 }
       ' "$file"
     )"
