@@ -323,6 +323,70 @@
       "quality_flake_monitor": true
     },
     {
+      "id": "ts-costing-helper-centralization",
+      "test_path": "erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/crossmodule/TS_CostingHelperCentralizationContractTest.java",
+      "owner": "erp-domain-team",
+      "class": "critical",
+      "module": "CrossModule",
+      "gate_membership": [
+        "gate-fast",
+        "gate-core",
+        "gate-release",
+        "gate-reconciliation",
+        "gate-quality"
+      ],
+      "tags": [
+        "critical",
+        "reconciliation"
+      ],
+      "accounting_math_critical": true,
+      "cross_module_critical": true,
+      "quality_flake_monitor": true
+    },
+    {
+      "id": "ts-factory-raw-material-wac-fallback",
+      "test_path": "erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/manufacturing/TS_FactoryRawMaterialWacFallbackContractTest.java",
+      "owner": "erp-domain-team",
+      "class": "critical",
+      "module": "Manufacturing",
+      "gate_membership": [
+        "gate-fast",
+        "gate-core",
+        "gate-release",
+        "gate-reconciliation",
+        "gate-quality"
+      ],
+      "tags": [
+        "critical",
+        "reconciliation"
+      ],
+      "accounting_math_critical": true,
+      "cross_module_critical": true,
+      "quality_flake_monitor": true
+    },
+    {
+      "id": "ts-p2p-purchase-settlement-boundary",
+      "test_path": "erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/p2p/TS_P2PPurchaseSettlementBoundaryTest.java",
+      "owner": "erp-domain-team",
+      "class": "critical",
+      "module": "P2P",
+      "gate_membership": [
+        "gate-fast",
+        "gate-core",
+        "gate-release",
+        "gate-reconciliation",
+        "gate-quality"
+      ],
+      "tags": [
+        "abuse",
+        "critical",
+        "reconciliation"
+      ],
+      "accounting_math_critical": true,
+      "cross_module_critical": true,
+      "quality_flake_monitor": true
+    },
+    {
       "id": "ts-runtime-module-executable-coverage",
       "test_path": "erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimeModuleExecutableCoverageTest.java",
       "owner": "erp-domain-team",

@@ -18,9 +18,9 @@ Human-friendly alias: `AGENTMAP.md`.
 
 ## Canonical Sources (Progressive Disclosure)
 1. `docs/INDEX.md` (repo snapshot + doc map)
-2. `docs/ERP_STAGING_MASTER_PLAN.md` (final stability-first staging plan)
-3. `docs/ENTERPRISE_BACKEND_STABILIZATION_PLAN.md` (execution control-plane)
-4. `docs/ERP_ENTERPRISE_DEPLOYMENT_DEEP_SPEC.md` (domain + deployment blueprint)
+2. `docs/system-map/Goal/ERP_STAGING_MASTER_PLAN.md` (final stability-first staging plan)
+3. `docs/system-map/Goal/ENTERPRISE_BACKEND_STABILIZATION_PLAN.md` (execution control-plane)
+4. `docs/system-map/Goal/ERP_ENTERPRISE_DEPLOYMENT_DEEP_SPEC.md` (domain + deployment blueprint)
 5. `docs/ARCHITECTURE.md` (boundaries + dependency rules)
 6. `docs/agents/CATALOG.md` (who does what)
 7. `docs/agents/PERMISSIONS.md` (who can do what)
