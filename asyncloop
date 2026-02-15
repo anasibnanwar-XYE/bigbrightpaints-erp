@@ -8125,3 +8125,54 @@ Queue Rotation (Auto-Replenish)
 - [ready] M14-S53 runtime inventory valuation parity fix (`quantityAvailable` vs `quantityTotal` contract restoration with executable coverage assertions)
 - [ready] M14-S54 purchase-return idempotency regression closure (locked-period boundary setup + replay matrix stabilization for partial/final return flows)
 - [ready] M11-S7 accounting-portal scope invariant lock (HR, PURCHASING, INVENTORY, REPORTS remain under Accounting portal unless replacement portal map + endpoint docs are updated atomically)
+
+Completed Slice (Committed)
+- 2026-02-15: `a41960ea`
+  - fix(regressions): close M14-S55 malformed costing and fifo parity.
+  - M14-S55 closure:
+    - `canonicalizeRawMaterialMethodForSync` now rejects malformed legacy tokens (e.g. `FIFO/WAC`) while still preserving unknown canonical-safe tokens (`[A-Z0-9_-]+`) for sync compatibility.
+    - finished-goods non-WAC stock-summary parity assertion now enforces `quantityAvailable` valuation contract (`12` vs legacy `14` expectation).
+
+Verification
+- `mvn -B -ntp -Dtest=AccountingCatalogControllerSecurityIT#accountingCatalogImport_rejectsMalformedLegacyRawMaterialCostingAndReplayStaysStable,FinishedGoodsServiceTest#stockSummaryNonWacValuationUsesAvailableBatchQuantity,ProductionCatalogRawMaterialInvariantIT,ReportInventoryParityIT,InventoryValuationServiceTest,TS_RuntimeInventoryValuationExecutableCoverageTest test` -> pass (`22` tests, `0` failures, `0` errors).
+- `mvn -B -ntp -Dtest=AccountingControllerActivityContractTest,AccountingControllerExceptionHandlerTest,AccountingAuditTrailServiceTest,SupplierSettlementRequestJsonCompatTest test` -> pass (`8` tests, `0` failures, `0` errors).
+- `mvn -B -ntp -Dtest=CreditDebitNoteIT,TS_DoubleEntryMathInvariantTest,TS_SubledgerControlReconciliationContractTest test` -> pass (`31` tests, `0` failures, `0` errors).
+- `FAIL_ON_FINDINGS=true bash scripts/schema_drift_scan.sh --migration-set v2` -> pass (`findings=0`).
+- `FAIL_ON_FINDINGS=true bash scripts/flyway_overlap_scan.sh --migration-set v2` -> pass (`findings=0`).
+- `bash ci/check-architecture.sh` -> pass.
+- `bash scripts/verify_local.sh` -> pass (`1160` tests, `0` failures, `0` errors, `4` skipped; build success; jacoco checks met).
+
+Post-Commit Review Evidence
+- Commit reviewed: `a41960ea`
+- `codex review --commit a41960ea`:
+  - exit status: `0`.
+  - final verdict: no introduced defects.
+- Review subagent `019c60ff-fe33-79d0-b9c9-4a6e5f96655a`:
+  - findings:
+    - warned that stricter raw-material token validation could disrupt legacy sync rows.
+    - warned that stock-summary non-WAC valuation may understate reserved inventory.
+  - disposition:
+    - malformed-token path is intentionally fail-closed and row-scoped (validated by `AccountingCatalogControllerSecurityIT`).
+    - `quantityAvailable` semantics remain canonical by executable truth contract (`TS_RuntimeInventoryValuationExecutableCoverageTest`).
+
+Accounting Controller Workflow Classification
+- Active `AccountingController` and `JournalEntryRepository` changes are workflow-facing (audit transaction endpoints + enriched fetch graph) rather than docs/noise.
+- Workflow safety evidence: controller/service/accounting invariants above all passed under current branch state.
+
+Loop Update
+- 2026-02-15T16:51:24+05:30
+- tracked_now_ts: `2026-02-15T16:51:24+05:30`
+- tracked_elapsed: `86h 57m 32s`
+- active_in_progress: `M11-S7 accounting-portal scope invariant lock (HR, PURCHASING, INVENTORY, REPORTS ownership guard continuity)`
+- continuity_recheck:
+  - M14-S55 blocker is closed.
+  - full `verify_local` now green end-to-end on Flyway v2 path.
+  - v2 schema drift/overlap remains stable (`findings=0`).
+
+Queue Rotation (Auto-Replenish)
+- [completed] M14-S55 full verify_local rerun and next failing-slice isolation
+- [in_progress] M11-S7 accounting-portal scope invariant lock (HR, PURCHASING, INVENTORY, REPORTS remain under Accounting portal unless replacement portal map + endpoint docs are updated atomically)
+- [ready] M14-S51 production-catalog unsupported-costing invariants reconciliation (preserve unknown costing method tokens through import/update sync paths without violating validation boundaries)
+- [ready] M14-S52 O2C linkage contract restoration in `SalesService` (reinstate expected slip locking + sales journal linkage snippets/contracts with focused truthsuite coverage)
+- [ready] M14-S53 runtime inventory valuation parity fix (`quantityAvailable` vs `quantityTotal` contract restoration with executable coverage assertions)
+- [ready] M14-S54 purchase-return idempotency regression closure (locked-period boundary setup + replay matrix stabilization for partial/final return flows)
