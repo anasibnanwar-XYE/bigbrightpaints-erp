@@ -95,4 +95,34 @@ class AccountingControllerExceptionHandlerTest {
                 .containsEntry(IntegrationFailureMetadataSchema.KEY_PARTNER_TYPE, "SUPPLIER")
                 .containsEntry(IntegrationFailureMetadataSchema.KEY_PARTNER_ID, 1L);
     }
+
+    @Test
+    void handleApplicationException_preservesPartnerReplayDetailsForDealerPath() {
+        AccountingController controller = new AccountingController(
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        ApplicationException ex = new ApplicationException(
+                ErrorCode.CONCURRENCY_CONFLICT,
+                "Idempotency key already used for another dealer")
+                .withDetail(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, "IDEMP-DR-RACE-PARTNER")
+                .withDetail(IntegrationFailureMetadataSchema.KEY_PARTNER_TYPE, "DEALER")
+                .withDetail(IntegrationFailureMetadataSchema.KEY_PARTNER_ID, 1L);
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRequestURI("/api/v1/accounting/settlements/dealers");
+
+        ResponseEntity<ApiResponse<Map<String, Object>>> response =
+                controller.handleApplicationException(ex, request);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        ApiResponse<Map<String, Object>> body = response.getBody();
+        assertThat(body).isNotNull();
+        assertThat(body.message()).isEqualTo("Idempotency key already used for another dealer");
+        assertThat(body.data()).containsEntry("reason", "Idempotency key already used for another dealer");
+        assertThat(body.data()).containsEntry("path", "/api/v1/accounting/settlements/dealers");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> details = (Map<String, Object>) body.data().get("details");
+        assertThat(details)
+                .containsEntry(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, "IDEMP-DR-RACE-PARTNER")
+                .containsEntry(IntegrationFailureMetadataSchema.KEY_PARTNER_TYPE, "DEALER")
+                .containsEntry(IntegrationFailureMetadataSchema.KEY_PARTNER_ID, 1L);
+    }
 }
