@@ -48,14 +48,14 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);
     private static final Set<String> SETTLEMENT_FAILURE_DETAIL_ALLOWLIST = Set.of(
-            "idempotencyKey",
-            "partnerType",
-            "partnerId",
-            "invoiceId",
-            "purchaseId",
-            "outstandingAmount",
-            "appliedAmount",
-            "allocationCount");
+            IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY,
+            IntegrationFailureMetadataSchema.KEY_PARTNER_TYPE,
+            IntegrationFailureMetadataSchema.KEY_PARTNER_ID,
+            IntegrationFailureMetadataSchema.KEY_INVOICE_ID,
+            IntegrationFailureMetadataSchema.KEY_PURCHASE_ID,
+            IntegrationFailureMetadataSchema.KEY_OUTSTANDING_AMOUNT,
+            IntegrationFailureMetadataSchema.KEY_APPLIED_AMOUNT,
+            IntegrationFailureMetadataSchema.KEY_ALLOCATION_COUNT);
 
     @Autowired(required = false)
     private AuditService auditService;

@@ -119,6 +119,20 @@ class IntegrationFailureMetadataSchemaContractTest {
                 });
     }
 
+    @Test
+    void settlementOptionalMetadataKeyVocabularyIsStable() {
+        assertThat(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY).isEqualTo("idempotencyKey");
+        assertThat(IntegrationFailureMetadataSchema.KEY_PARTNER_TYPE).isEqualTo("partnerType");
+        assertThat(IntegrationFailureMetadataSchema.KEY_PARTNER_ID).isEqualTo("partnerId");
+        assertThat(IntegrationFailureMetadataSchema.KEY_INVOICE_ID).isEqualTo("invoiceId");
+        assertThat(IntegrationFailureMetadataSchema.KEY_PURCHASE_ID).isEqualTo("purchaseId");
+        assertThat(IntegrationFailureMetadataSchema.KEY_OUTSTANDING_AMOUNT).isEqualTo("outstandingAmount");
+        assertThat(IntegrationFailureMetadataSchema.KEY_APPLIED_AMOUNT).isEqualTo("appliedAmount");
+        assertThat(IntegrationFailureMetadataSchema.KEY_ALLOCATION_COUNT).isEqualTo("allocationCount");
+        assertThat(IntegrationFailureMetadataSchema.KEY_JOURNAL_ENTRY_ID).isEqualTo("journalEntryId");
+        assertThat(IntegrationFailureMetadataSchema.KEY_SETTLEMENT_DATE).isEqualTo("settlementDate");
+    }
+
     private void assertRequiredSchema(Map<String, String> metadata) {
         assertThat(metadata)
                 .containsKeys(

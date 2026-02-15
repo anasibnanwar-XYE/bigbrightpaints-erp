@@ -3615,9 +3615,9 @@ class AccountingServiceTest {
                 .isInstanceOfSatisfying(ApplicationException.class, ex -> {
                     assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INTERNAL_CONCURRENCY_FAILURE);
                     assertThat(ex.getDetails())
-                            .containsEntry("idempotencyKey", "IDEMP-DR-RACE-MISS")
-                            .containsEntry("partnerType", "DEALER")
-                            .containsEntry("partnerId", 1L);
+                            .containsEntry(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, "IDEMP-DR-RACE-MISS")
+                            .containsEntry(IntegrationFailureMetadataSchema.KEY_PARTNER_TYPE, "DEALER")
+                            .containsEntry(IntegrationFailureMetadataSchema.KEY_PARTNER_ID, 1L);
                 })
                 .hasMessageContaining("Dealer settlement idempotency key is reserved but allocation not found");
     }
@@ -6552,9 +6552,9 @@ class AccountingServiceTest {
                 .isInstanceOfSatisfying(ApplicationException.class, ex -> {
                     assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INTERNAL_CONCURRENCY_FAILURE);
                     assertThat(ex.getDetails())
-                            .containsEntry("idempotencyKey", "IDEMP-AP-RACE-MISS")
-                            .containsEntry("partnerType", "SUPPLIER")
-                            .containsEntry("partnerId", 1L);
+                            .containsEntry(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, "IDEMP-AP-RACE-MISS")
+                            .containsEntry(IntegrationFailureMetadataSchema.KEY_PARTNER_TYPE, "SUPPLIER")
+                            .containsEntry(IntegrationFailureMetadataSchema.KEY_PARTNER_ID, 1L);
                 })
                 .hasMessageContaining("Supplier settlement idempotency key is reserved but allocation not found");
     }

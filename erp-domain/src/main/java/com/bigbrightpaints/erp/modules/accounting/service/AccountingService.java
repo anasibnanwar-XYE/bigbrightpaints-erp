@@ -1744,9 +1744,9 @@ public class AccountingService {
             }
             throw new ApplicationException(ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
                     "Dealer settlement idempotency key is reserved but allocation not found")
-                    .withDetail("idempotencyKey", trimmedIdempotencyKey)
-                    .withDetail("partnerType", PartnerType.DEALER.name())
-                    .withDetail("partnerId", dealer.getId());
+                    .withDetail(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, trimmedIdempotencyKey)
+                    .withDetail(IntegrationFailureMetadataSchema.KEY_PARTNER_TYPE, PartnerType.DEALER.name())
+                    .withDetail(IntegrationFailureMetadataSchema.KEY_PARTNER_ID, dealer.getId());
         }
 
         List<PartnerSettlementAllocation> existingAllocations = findAllocationsByIdempotencyKey(company, trimmedIdempotencyKey);
@@ -1893,20 +1893,20 @@ public class AccountingService {
                 .toList();
 
         Map<String, String> auditMetadata = new HashMap<>();
-        auditMetadata.put("partnerType", PartnerType.DEALER.name());
+        auditMetadata.put(IntegrationFailureMetadataSchema.KEY_PARTNER_TYPE, PartnerType.DEALER.name());
         if (dealer.getId() != null) {
-            auditMetadata.put("partnerId", dealer.getId().toString());
+            auditMetadata.put(IntegrationFailureMetadataSchema.KEY_PARTNER_ID, dealer.getId().toString());
         }
         if (journalEntryDto != null && journalEntryDto.id() != null) {
-            auditMetadata.put("journalEntryId", journalEntryDto.id().toString());
+            auditMetadata.put(IntegrationFailureMetadataSchema.KEY_JOURNAL_ENTRY_ID, journalEntryDto.id().toString());
         }
         if (entryDate != null) {
-            auditMetadata.put("settlementDate", entryDate.toString());
+            auditMetadata.put(IntegrationFailureMetadataSchema.KEY_SETTLEMENT_DATE, entryDate.toString());
         }
         if (trimmedIdempotencyKey != null) {
-            auditMetadata.put("idempotencyKey", trimmedIdempotencyKey);
+            auditMetadata.put(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, trimmedIdempotencyKey);
         }
-        auditMetadata.put("allocationCount", Integer.toString(settlementRows.size()));
+        auditMetadata.put(IntegrationFailureMetadataSchema.KEY_ALLOCATION_COUNT, Integer.toString(settlementRows.size()));
         auditMetadata.put("totalApplied", totalApplied.toPlainString());
         auditMetadata.put("cashAmount", cashAmount.toPlainString());
         auditMetadata.put("totalDiscount", totalDiscount.toPlainString());
@@ -1965,9 +1965,9 @@ public class AccountingService {
             }
             throw new ApplicationException(ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
                     "Supplier settlement idempotency key is reserved but allocation not found")
-                    .withDetail("idempotencyKey", trimmedIdempotencyKey)
-                    .withDetail("partnerType", PartnerType.SUPPLIER.name())
-                    .withDetail("partnerId", supplier.getId());
+                    .withDetail(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, trimmedIdempotencyKey)
+                    .withDetail(IntegrationFailureMetadataSchema.KEY_PARTNER_TYPE, PartnerType.SUPPLIER.name())
+                    .withDetail(IntegrationFailureMetadataSchema.KEY_PARTNER_ID, supplier.getId());
         }
 
         List<PartnerSettlementAllocation> existingAllocations = findAllocationsByIdempotencyKey(company, trimmedIdempotencyKey);
@@ -2114,20 +2114,20 @@ public class AccountingService {
                 .toList();
 
         Map<String, String> auditMetadata = new HashMap<>();
-        auditMetadata.put("partnerType", PartnerType.SUPPLIER.name());
+        auditMetadata.put(IntegrationFailureMetadataSchema.KEY_PARTNER_TYPE, PartnerType.SUPPLIER.name());
         if (supplier.getId() != null) {
-            auditMetadata.put("partnerId", supplier.getId().toString());
+            auditMetadata.put(IntegrationFailureMetadataSchema.KEY_PARTNER_ID, supplier.getId().toString());
         }
         if (journalEntryDto != null && journalEntryDto.id() != null) {
-            auditMetadata.put("journalEntryId", journalEntryDto.id().toString());
+            auditMetadata.put(IntegrationFailureMetadataSchema.KEY_JOURNAL_ENTRY_ID, journalEntryDto.id().toString());
         }
         if (entryDate != null) {
-            auditMetadata.put("settlementDate", entryDate.toString());
+            auditMetadata.put(IntegrationFailureMetadataSchema.KEY_SETTLEMENT_DATE, entryDate.toString());
         }
         if (trimmedIdempotencyKey != null) {
-            auditMetadata.put("idempotencyKey", trimmedIdempotencyKey);
+            auditMetadata.put(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, trimmedIdempotencyKey);
         }
-        auditMetadata.put("allocationCount", Integer.toString(settlementRows.size()));
+        auditMetadata.put(IntegrationFailureMetadataSchema.KEY_ALLOCATION_COUNT, Integer.toString(settlementRows.size()));
         auditMetadata.put("totalApplied", totalApplied.toPlainString());
         auditMetadata.put("cashAmount", lineDraft.cashAmount().toPlainString());
         auditMetadata.put("totalDiscount", totalDiscount.toPlainString());
@@ -2950,37 +2950,37 @@ public class AccountingService {
         if (entry == null) {
             throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
                     "Idempotency key already used but journal entry is missing")
-                    .withDetail("idempotencyKey", idempotencyKey);
+                    .withDetail(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, idempotencyKey);
         }
         if (partnerType == PartnerType.DEALER) {
             if (entry.getDealer() == null || !Objects.equals(entry.getDealer().getId(), partnerId)) {
                 throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
                         "Idempotency key already used for another dealer")
-                        .withDetail("idempotencyKey", idempotencyKey);
+                        .withDetail(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, idempotencyKey);
             }
         } else if (partnerType == PartnerType.SUPPLIER) {
             if (entry.getSupplier() == null || !Objects.equals(entry.getSupplier().getId(), partnerId)) {
                 throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
                         "Idempotency key already used for another supplier")
-                        .withDetail("idempotencyKey", idempotencyKey);
+                        .withDetail(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, idempotencyKey);
             }
         } else {
             throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
                     "Idempotency key already used for another partner type")
-                    .withDetail("idempotencyKey", idempotencyKey)
-                    .withDetail("partnerType", partnerType != null ? partnerType.name() : "null");
+                    .withDetail(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, idempotencyKey)
+                    .withDetail(IntegrationFailureMetadataSchema.KEY_PARTNER_TYPE, partnerType != null ? partnerType.name() : "null");
         }
         if (StringUtils.hasText(memo) && !Objects.equals(entry.getMemo(), memo)) {
             throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
                     "Idempotency key already used with a different memo")
-                    .withDetail("idempotencyKey", idempotencyKey);
+                    .withDetail(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, idempotencyKey);
         }
         Map<JournalLineSignature, Integer> existingLines = lineSignatureCounts(entry.getLines());
         Map<JournalLineSignature, Integer> expected = lineSignatureCountsFromRequests(expectedLines);
         if (!existingLines.equals(expected)) {
             throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
                     payloadMismatchMessage)
-                    .withDetail("idempotencyKey", idempotencyKey);
+                    .withDetail(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, idempotencyKey);
         }
     }
 

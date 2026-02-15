@@ -8851,3 +8851,5 @@ Loop Iteration Evidence - 2026-02-15T23:58:49+05:30
   - commit review subagent on this commit.
 
 [2026-02-16] M3-S7 non-leader replay settlement detail guards: added service-level tests for dealer/supplier paths asserting ApplicationException detail payload includes idempotencyKey, partnerType, partnerId (source-level). Verification: cd erp-domain && mvn -B -ntp -Dtest=AccountingServiceTest test (PASS).
+
+[2026-02-16] M3-S8 settlement metadata vocabulary unification: introduced shared optional key constants in IntegrationFailureMetadataSchema and replaced hard-coded settlement metadata keys in AccountingService + GlobalExceptionHandler + targeted tests (dealer/supplier non-leader replay details, allowlist propagation, contract stability). Verification: cd erp-domain && mvn -B -ntp -Dtest=AccountingServiceTest,GlobalExceptionHandlerTest,IntegrationFailureMetadataSchemaContractTest test (PASS: 109/109).
