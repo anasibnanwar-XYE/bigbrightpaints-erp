@@ -20,8 +20,7 @@ class AccountingControllerExceptionHandlerTest {
 
     @Test
     void handleApplicationException_returnsStructuredReasonPayload() {
-        AccountingController controller = new AccountingController(
-                null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        AccountingController controller = controller();
         ApplicationException ex = new ApplicationException(
                 ErrorCode.VALIDATION_INVALID_REFERENCE,
                 "Supplier payable account AP-SKEINA requires a supplier context")
@@ -50,8 +49,7 @@ class AccountingControllerExceptionHandlerTest {
 
     @Test
     void handleApplicationException_keepsBadRequestContractWithStructuredPayload() {
-        AccountingController controller = new AccountingController(
-                null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        AccountingController controller = controller();
         ApplicationException ex = new ApplicationException(
                 ErrorCode.BUSINESS_INVALID_STATE,
                 "Payroll must be posted before payment");
@@ -73,8 +71,7 @@ class AccountingControllerExceptionHandlerTest {
 
     @Test
     void handleApplicationException_preservesPartnerReplayDetailsForSupplierPath() {
-        AccountingController controller = new AccountingController(
-                null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        AccountingController controller = controller();
         ApplicationException ex = new ApplicationException(
                 ErrorCode.CONCURRENCY_CONFLICT,
                 REPLAY_REASON_SUPPLIER)
@@ -99,8 +96,7 @@ class AccountingControllerExceptionHandlerTest {
 
     @Test
     void handleApplicationException_preservesPartnerReplayDetailsForDealerPath() {
-        AccountingController controller = new AccountingController(
-                null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        AccountingController controller = controller();
         ApplicationException ex = new ApplicationException(
                 ErrorCode.CONCURRENCY_CONFLICT,
                 REPLAY_REASON_DEALER)
@@ -125,8 +121,7 @@ class AccountingControllerExceptionHandlerTest {
 
     @Test
     void handleApplicationException_preservesFallbackPartnerReplayReason() {
-        AccountingController controller = new AccountingController(
-                null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        AccountingController controller = controller();
         ApplicationException ex = new ApplicationException(
                 ErrorCode.CONCURRENCY_CONFLICT,
                 REPLAY_REASON_PARTNER_TYPE);
@@ -147,8 +142,7 @@ class AccountingControllerExceptionHandlerTest {
 
     @Test
     void handleApplicationException_partnerReplayConflictWithoutDetailsOmitsDetailsKey() {
-        AccountingController controller = new AccountingController(
-                null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+        AccountingController controller = controller();
         ApplicationException ex = new ApplicationException(
                 ErrorCode.CONCURRENCY_CONFLICT,
                 REPLAY_REASON_SUPPLIER);
@@ -199,5 +193,10 @@ class AccountingControllerExceptionHandlerTest {
                 .containsEntry(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, idempotencyKey)
                 .containsEntry(IntegrationFailureMetadataSchema.KEY_PARTNER_TYPE, partnerType)
                 .containsEntry(IntegrationFailureMetadataSchema.KEY_PARTNER_ID, partnerId);
+    }
+
+    private AccountingController controller() {
+        return new AccountingController(
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 }
