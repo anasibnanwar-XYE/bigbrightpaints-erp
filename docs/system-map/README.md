@@ -4,6 +4,7 @@ Repository navigation layer for fast orientation and duplicate overlap triage.
 
 Contents:
 - `REPO_OVERVIEW.md`: high-level architecture and duplicate/overlap queue.
+- `CANONICAL_VOCABULARY.md`: cross-module naming contract for entities, idempotency, and ledger-gate terms.
 - `MODULE_BOUNDARIES.md`: module package boundaries and allowed inter-module direction.
 - `CROSS_MODULE_WORKFLOWS.md`: canonical O2C/P2P/Production-to-Pack/Payroll/Period Close chains.
 - `CI_DEVOPS_MAP.md`: gate and script mapping with validation and artifacts.
