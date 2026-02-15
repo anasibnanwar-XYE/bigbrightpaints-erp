@@ -55,8 +55,8 @@ Standardize safe migration planning, validation, and rollback drills.
 - Migration: `erp-domain/src/main/resources/db/migration_v2/V15__accounting_audit_read_model_hotspot_indexes.sql`
 - Change type: performance indexes for accounting audit read-model (`journal_entries`, `journal_lines`, `invoices`, `raw_material_purchases`).
 - Safety profile:
-  - runs with `-- flyway:executeInTransaction=false`.
-  - uses `CREATE INDEX CONCURRENTLY` to reduce write blocking on hot tables.
+  - rollout is split into one-index-per-migration steps (`V15`..`V18`) to minimize partial-failure impact.
+  - index builds are transactional; schedule apply during low-write window.
 - Required rollout posture:
   - run during controlled low-write window.
   - monitor index build progress and query latency during apply.

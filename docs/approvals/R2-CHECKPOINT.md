@@ -57,7 +57,8 @@ Update this file in every high-risk change set.
 - Migration artifact: `erp-domain/src/main/resources/db/migration_v2/V15__accounting_audit_read_model_hotspot_indexes.sql`
 - Risk class: R2 (accounting audit read-model performance indexes on hot tables)
 - Deployment safety control:
-  - migration is explicitly `-- flyway:executeInTransaction=false` and uses `CREATE INDEX CONCURRENTLY` for all indexes to avoid table-wide write blocking during rollout.
+  - index rollout is sliced into sequential migrations (`V15`..`V18`) with one index per migration to reduce blast radius on partial failure.
+  - execute during controlled low-write window because index creation is transactional (no concurrent DDL).
 - Validation evidence:
   - `cd erp-domain && mvn -B -ntp -Dtest=AccountingAuditTrailServiceTest,AccountingControllerActivityContractTest test` -> pass (`6` tests, `0` failures, `0` errors)
   - `FAIL_ON_FINDINGS=true bash scripts/schema_drift_scan.sh --migration-set v2` -> pass (`findings=0`)

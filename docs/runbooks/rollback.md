@@ -60,6 +60,6 @@ Provide deterministic rollback steps for application and database failures.
 - Primary strategy: forward-fix (preferred) if planner or migration timing issues appear after apply.
 - Emergency rollback path for V15 indexes:
   1. open maintenance governance window and reduce write pressure.
-  2. apply compensating migration with `DROP INDEX CONCURRENTLY` for affected index names.
+  2. apply compensating migration with `DROP INDEX` for affected index names.
   3. rerun accounting audit list smoke checks and reconciliation sanity checks.
   4. keep compensating migration artifact and verification logs attached to incident record.
