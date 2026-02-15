@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.inventory.controller;
 
+import com.bigbrightpaints.erp.core.util.IdempotencyHeaderUtils;
 import com.bigbrightpaints.erp.modules.inventory.dto.*;
 import com.bigbrightpaints.erp.modules.inventory.service.RawMaterialService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
@@ -66,17 +67,25 @@ public class RawMaterialController {
     @PostMapping("/raw-material-batches/{rawMaterialId}")
     public ResponseEntity<ApiResponse<RawMaterialBatchDto>> createBatch(@PathVariable Long rawMaterialId,
                                                                         @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+                                                                        @RequestHeader(value = "X-Idempotency-Key", required = false) String legacyIdempotencyKey,
                                                                         @Valid @RequestBody RawMaterialBatchRequest request) {
+        String resolvedIdempotencyKey = resolveIdempotencyHeader(idempotencyKey, legacyIdempotencyKey);
         return ResponseEntity.ok(ApiResponse.success("Batch recorded",
-                rawMaterialService.createBatch(rawMaterialId, request, idempotencyKey)));
+                rawMaterialService.createBatch(rawMaterialId, request, resolvedIdempotencyKey)));
     }
 
     @PostMapping("/raw-materials/intake")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
     public ResponseEntity<ApiResponse<RawMaterialBatchDto>> intake(
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            @RequestHeader(value = "X-Idempotency-Key", required = false) String legacyIdempotencyKey,
             @Valid @RequestBody RawMaterialIntakeRequest request) {
+        String resolvedIdempotencyKey = resolveIdempotencyHeader(idempotencyKey, legacyIdempotencyKey);
         return ResponseEntity.ok(ApiResponse.success("Intake recorded",
-                rawMaterialService.intake(request, idempotencyKey)));
+                rawMaterialService.intake(request, resolvedIdempotencyKey)));
+    }
+
+    private String resolveIdempotencyHeader(String idempotencyKey, String legacyIdempotencyKey) {
+        return IdempotencyHeaderUtils.resolveHeaderKey(idempotencyKey, legacyIdempotencyKey);
     }
 }
