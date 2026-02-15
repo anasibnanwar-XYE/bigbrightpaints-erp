@@ -74,6 +74,7 @@ High-risk deltas (auth/payroll/ledger/migrations/permissions/destructive ops) re
 - suggest minimal remediation
 - attach evidence (test/guard output)
 - enforce at least one reviewer agent per slice (orchestrator layer rule)
+- docs-only exception: reviewer-agent and commit-review steps can be skipped when no runtime/config/schema/test files changed; require `bash ci/lint-knowledgebase.sh` pass evidence.
 
 Frontend doc changes must preserve portal ownership taxonomy:
 - Accounting Portal: accounting + inventory + hr + reports + invoice

@@ -22,15 +22,19 @@ to move the ERP toward staging/predeployment readiness.
   - location: `erp-domain/src/main/resources/db/migration_v2`
   - history table: `flyway_schema_history_v2`
 - Every change must be committed (no loose code changes left behind).
-- After every commit:
+- After every runtime/config/schema/test commit:
   - run commit review (`codex review --commit <sha>` when available),
   - spawn one review-only subagent for deep regression/abuse review.
+- Docs-only commit exception:
+  - skip commit review/subagent,
+  - run `bash ci/lint-knowledgebase.sh` and log pass status.
 - Subagents are for commit review only. Main implementation/audit work stays in
   the primary agent.
 - Maintain backlog floor: at least 3 `ready` slices in `asyncloop`.
 - After a completed slice, immediately add a new concrete slice.
 - Orchestrator routing/review must follow `agents/orchestrator-layer.yaml`.
 - Decisions must be proof-backed (tests/guards/traces), not assumption-backed.
+- Scope priority source is `docs/ERP_STAGING_MASTER_PLAN.md`.
 
 ## Execution Loop (One Iteration)
 1. Pick highest-risk `in_progress` or top `ready` slice from `asyncloop`.

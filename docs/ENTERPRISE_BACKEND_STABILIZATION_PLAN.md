@@ -8,6 +8,7 @@ This is the canonical control-plane entrypoint for making the backend enterprise
 It does not replace detailed technical docs. It defines execution order, hard gates, and completion evidence.
 
 ## Relationship to Existing Plans
+- `docs/ERP_STAGING_MASTER_PLAN.md` is the final stability-first staging plan and priority source for scope decisions.
 - This file is the orchestration layer for planning and execution priority.
 - `docs/CODE-RED/stabilization-plan.md` and `docs/CODE-RED/plan-v2.md` remain the detailed technical backlog and implementation history.
 - If conflicts appear:
@@ -46,6 +47,7 @@ It does not replace detailed technical docs. It defines execution order, hard ga
 
 ## Canonical Sources
 - Live execution ledger: `asyncloop`
+- Final scope plan: `docs/ERP_STAGING_MASTER_PLAN.md`
 - Deep implementation blueprint: `docs/ERP_ENTERPRISE_DEPLOYMENT_DEEP_SPEC.md`
 - Release gate and blocker truth:
   - `docs/CODE-RED/P0_DEPLOY_BLOCKERS.md`
@@ -67,9 +69,10 @@ It does not replace detailed technical docs. It defines execution order, hard ga
 4. Run smallest proving harness first, then broaden only as needed.
 5. For large slices, split bounded implementation work across worker agents in parallel; keep one orchestrator owner.
 6. Commit.
-7. Run commit review and one review subagent (minimum).
-8. Fix review findings immediately.
-9. Append evidence + queue rotation in `asyncloop`.
+7. For runtime/config/schema/test logic commits: run commit review and one review subagent (minimum).
+8. For docs-only commits: skip commit-review/subagent and run `bash ci/lint-knowledgebase.sh`.
+9. Fix review findings immediately (for reviewed commits).
+10. Append evidence + queue rotation in `asyncloop`.
 
 ## Program Phases
 

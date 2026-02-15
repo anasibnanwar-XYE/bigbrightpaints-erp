@@ -18,22 +18,24 @@ Human-friendly alias: `AGENTMAP.md`.
 
 ## Canonical Sources (Progressive Disclosure)
 1. `docs/INDEX.md` (repo snapshot + doc map)
-2. `docs/ENTERPRISE_BACKEND_STABILIZATION_PLAN.md` (canonical execution control-plane)
-3. `docs/ERP_ENTERPRISE_DEPLOYMENT_DEEP_SPEC.md` (full domain + deployment spec)
-4. `docs/ARCHITECTURE.md` (boundaries + dependency rules)
-5. `docs/agents/CATALOG.md` (who does what)
-6. `docs/agents/PERMISSIONS.md` (who can do what)
-7. `docs/agents/WORKFLOW.md` (lifecycle, CI/CD, rollback)
-8. `docs/agents/ENTERPRISE_MODE.md` (near-deployment policy profiles)
-9. `docs/agents/ORCHESTRATION_LAYER.md` (real orchestrator control plane)
-10. Domain contracts: `erp-domain/docs/INDEX.md`
-11. Async loop runbook: `docs/ASYNC_LOOP_OPERATIONS.md` + `asyncloop`
+2. `docs/ERP_STAGING_MASTER_PLAN.md` (final stability-first staging plan)
+3. `docs/ENTERPRISE_BACKEND_STABILIZATION_PLAN.md` (execution control-plane)
+4. `docs/ERP_ENTERPRISE_DEPLOYMENT_DEEP_SPEC.md` (domain + deployment blueprint)
+5. `docs/ARCHITECTURE.md` (boundaries + dependency rules)
+6. `docs/agents/CATALOG.md` (who does what)
+7. `docs/agents/PERMISSIONS.md` (who can do what)
+8. `docs/agents/WORKFLOW.md` (lifecycle, CI/CD, rollback)
+9. `docs/agents/ENTERPRISE_MODE.md` (near-deployment policy profiles)
+10. `docs/agents/ORCHESTRATION_LAYER.md` (real orchestrator control plane)
+11. Domain contracts: `erp-domain/docs/INDEX.md`
+12. Async loop runbook: `docs/ASYNC_LOOP_OPERATIONS.md` + `asyncloop`
 
 ## Autonomous Throughput Policy
 - This repository is not single-agent-only. Multi-agent execution is the default for large slices.
 - Primary orchestrator agent owns intent, safety, and final merge quality.
 - Worker agents may own bounded implementation slices in parallel when paths are independent.
 - Review agents must run on every commit with severity-tagged findings and file anchors.
+- Docs-only exception: for docs-only commits, skip commit-review/subagent and run `bash ci/lint-knowledgebase.sh` only.
 - Progressive-disclosure rule: agents must load only the docs needed for the current slice instead of bulk-reading all docs.
 - Use lane selection to avoid rule overload:
   - `fast_lane` for low-risk docs/guards/refactors with targeted checks.

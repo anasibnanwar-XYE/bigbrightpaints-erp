@@ -9,7 +9,8 @@ Master Mission (Do Not Stop Until Done)
 Non-Stop Operating Rules
 - After each completed step: update plan + append this file.
 - Every code change must be committed.
-- After each commit: run `codex review --commit <sha>` and log result here.
+- After each runtime/config/schema/test commit: run `codex review --commit <sha>` and log result here.
+- Docs-only commit exception: skip commit review/subagent and run `bash ci/lint-knowledgebase.sh` only.
 - Prioritize exploitable vulnerabilities and accounting/invariant failures over cosmetic work.
 - Validate by targeted abuse + invariant tests, not doc assumptions.
 - Auto-replenish rule: whenever one planned task is marked completed, immediately add at least one new concrete task slice.
@@ -8655,3 +8656,26 @@ Queue Replenish
 - [ready] M17-S6 Staging rehearsal evidence pack + rollback drill (immutable SHA evidence bundle)
 - [ready] M17-S7 Virtual-accountant readiness contract (intent schema + simulation/approval chain, no autonomous posting)
 - [ready] M16-S6 audit ownership guard matrix extension (carry-over closure to keep audit-contract hardening queue alive)
+
+Master Plan Refresh (Final Scope Contract)
+- 2026-02-15T20:33:27+05:30
+- source of truth: `docs/ERP_STAGING_MASTER_PLAN.md`
+- scope policy:
+  - stability/deployability first,
+  - selective workflow redesign only where evidence shows messiness/risk/duplication,
+  - no broad feature expansion.
+- docs-only review policy now active:
+  - docs-only commits skip `codex review` and subagent review,
+  - require `bash ci/lint-knowledgebase.sh` pass evidence.
+
+Queue Rotation (Master Plan M18)
+- [in_progress] M18-S1 docs-only review-skip policy and runbook alignment closure
+- [ready] M18-S2 multi-tenant authority hardening (`SUPER_ADMIN` tenant creation, tenant-scoped `ADMIN` only)
+- [ready] M18-S3 cross-module workflow census + selective redesign decisions (O2C/P2P/production/payroll)
+- [ready] M18-S4 approval and override hardening matrix (dealer/supplier/accounting)
+- [ready] M18-S5 split-payment + settlement idempotency/race closure
+- [ready] M18-S6 GST/non-GST flow hardening and stage-1 GST integration readiness
+- [ready] M18-S7 product template + color/size variant lifecycle stabilization
+- [ready] M18-S8 sales-target governance fix (admin assigns, salesperson cannot self-target)
+- [ready] M18-S9 JSON API contract gate + frontend parity docs enforcement
+- [ready] M18-S10 staging rehearsal evidence pack + rollback drill completion
