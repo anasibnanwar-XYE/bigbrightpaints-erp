@@ -9446,3 +9446,34 @@ Loop Update
 Loop Update
 - tracked_now_ts: `2026-02-16T03:09:40+05:30`
 - active_in_progress: `M19-S5 review queue drain (blocked by agent cap) + continuous gate/contract hardening`
+
+[2026-02-16] M19-S21 dealer-settlement idempotency header parity closed (code + tests)
+- Completed Slice (Committed): dealer settlement path aligned with canonical controller parity contract
+  - Commit `b4511068`
+  - Code:
+    - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/controller/AccountingController.java`
+    - `settleDealer(...)` now accepts primary + legacy idempotency headers and resolves via controller parity flow before service call.
+    - Added `applyIdempotencyKey(DealerSettlementRequest, ...)` with same header/body precedence + fail-closed semantics as peer endpoints.
+  - Tests:
+    - `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/accounting/controller/AccountingControllerIdempotencyHeaderParityTest.java`
+      - added dealer-settlement legacy-primary-mismatch-blank cases.
+    - `erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimeAccountingReplayConflictExecutableCoverageTest.java`
+      - extended cross-endpoint critical runtime matrix to include dealer settlement for:
+        - blank body fallback
+        - body key precedence
+        - no-header null preservation
+        - null-request passthrough
+
+- Verification:
+  - `cd erp-domain && mvn -B -ntp -Dtest=AccountingControllerIdempotencyHeaderParityTest,TS_RuntimeAccountingReplayConflictExecutableCoverageTest test` (PASS: 39/39)
+  - `DIFF_BASE=06d85e792d2a80cd9fc1f8e5dc15d6dfa15dd93e GATE_FAST_RELEASE_VALIDATION_MODE=true bash scripts/gate_fast.sh` (PASS)
+    - changed-file coverage: line `65/65` (100%), branch `54/54` (100%)
+
+Review Queue Update
+- subagent dispatch for `b4511068` blocked by active-agent cap (max 6); queued for retry.
+- pending code-review queue:
+  - `2962800b`, `50d78915`, `6c51730e`, `2b2fb143`, `7451e7cf`, `a82746af`, `3358cb2a`, `18c3825d`, `f271fb5e`, `4d0d508f`, `b4511068`
+
+Loop Update
+- tracked_now_ts: `2026-02-16T03:16:20+05:30`
+- active_in_progress: `M19-S5 review queue drain (blocked) + system-map vocabulary scope hardening`

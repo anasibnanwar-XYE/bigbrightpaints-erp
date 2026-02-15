@@ -28,6 +28,12 @@ Use this file as the naming source of truth for cross-module docs and execution 
 ## Idempotency header parity contract
 - Canonical primary header: `Idempotency-Key`.
 - Legacy compatibility header: `X-Idempotency-Key`.
+- Accounting controller parity scope (must stay behavior-identical across all):
+  - dealer receipt
+  - dealer hybrid receipt
+  - dealer settlement
+  - supplier payment
+  - supplier settlement
 - Precedence rules at accounting controller boundary:
   - request body key wins only when it matches the effective header key.
   - when body key is blank or absent, resolve from headers (primary preferred over legacy).
