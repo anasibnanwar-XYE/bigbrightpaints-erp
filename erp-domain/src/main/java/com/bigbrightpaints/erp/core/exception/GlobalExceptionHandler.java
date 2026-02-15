@@ -643,9 +643,30 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         if (value == null) {
             return "";
         }
-        if (value.length() <= 500) {
-            return value;
+        String sanitized = sanitizeMetadataValue(value);
+        if (sanitized.length() <= 500) {
+            return sanitized;
         }
-        return value.substring(0, 500);
+        return sanitized.substring(0, 500);
+    }
+
+    private String sanitizeMetadataValue(String value) {
+        StringBuilder normalized = new StringBuilder(value.length());
+        boolean previousWhitespace = false;
+        for (int index = 0; index < value.length(); index++) {
+            char current = value.charAt(index);
+            boolean isControlCharacter = Character.isISOControl(current);
+            boolean isWhitespaceCharacter = Character.isWhitespace(current);
+            if (isControlCharacter || isWhitespaceCharacter) {
+                if (!previousWhitespace) {
+                    normalized.append(' ');
+                    previousWhitespace = true;
+                }
+                continue;
+            }
+            normalized.append(current);
+            previousWhitespace = false;
+        }
+        return normalized.toString().trim();
     }
 }

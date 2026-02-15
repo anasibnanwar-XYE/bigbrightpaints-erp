@@ -250,6 +250,59 @@ class GlobalExceptionHandlerTest {
                 .containsEntry("partnerId", "55");
     }
 
+    @Test
+    void settlementConcurrencyFailure_sanitizesAllowlistedControlCharacters() throws Exception {
+        GlobalExceptionHandler handler = new GlobalExceptionHandler();
+        setActiveProfile(handler, "dev");
+        AuditService auditService = mock(AuditService.class);
+        setAuditService(handler, auditService);
+
+        ApplicationException ex = new ApplicationException(
+                ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
+                "Supplier settlement idempotency key is reserved but allocation not found")
+                .withDetail("idempotencyKey", "\nSUP-SETTLE-KEY-1\t")
+                .withDetail("partnerType", "SUPPLIER\r\n")
+                .withDetail("partnerId", " 55 ");
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/accounting/settlements/suppliers");
+
+        handler.handleApplicationException(ex, request);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, String>> metadataCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(auditService).logFailure(eq(AuditEvent.INTEGRATION_FAILURE), metadataCaptor.capture());
+        Map<String, String> metadata = metadataCaptor.getValue();
+        assertThat(metadata)
+                .containsEntry("idempotencyKey", "SUP-SETTLE-KEY-1")
+                .containsEntry("partnerType", "SUPPLIER")
+                .containsEntry("partnerId", "55");
+    }
+
+    @Test
+    void settlementConcurrencyFailure_truncatesSanitizedMetadataToLimit() throws Exception {
+        GlobalExceptionHandler handler = new GlobalExceptionHandler();
+        setActiveProfile(handler, "dev");
+        AuditService auditService = mock(AuditService.class);
+        setAuditService(handler, auditService);
+
+        String rawIdempotencyKey = "\n" + "K".repeat(520) + "\t";
+        ApplicationException ex = new ApplicationException(
+                ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
+                "Supplier settlement idempotency key is reserved but allocation not found")
+                .withDetail("idempotencyKey", rawIdempotencyKey);
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/accounting/settlements/suppliers");
+
+        handler.handleApplicationException(ex, request);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, String>> metadataCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(auditService).logFailure(eq(AuditEvent.INTEGRATION_FAILURE), metadataCaptor.capture());
+        Map<String, String> metadata = metadataCaptor.getValue();
+        assertThat(metadata.get("idempotencyKey"))
+                .hasSize(500)
+                .doesNotContain("\n")
+                .doesNotContain("\t");
+    }
+
     private static void setActiveProfile(GlobalExceptionHandler handler, String value) throws Exception {
         Field field = GlobalExceptionHandler.class.getDeclaredField("activeProfile");
         field.setAccessible(true);

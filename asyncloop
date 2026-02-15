@@ -8807,3 +8807,17 @@ Loop Iteration Evidence - 2026-02-15T23:58:49+05:30
   - Result: PASS (Tests run: 100, Failures: 0, Errors: 0, Skipped: 0)
 - Residual risk:
   - Allowlist coverage currently bounded to known settlement keys; any new key requires explicit allowlist extension.
+## 2026-02-16 M3-S4 telemetry metadata sanitization hardening
+- Scope:
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/core/exception/GlobalExceptionHandler.java`
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/core/exception/GlobalExceptionHandlerTest.java`
+- Change summary:
+  - Hardened `trimMetadata` to sanitize ISO control chars + whitespace normalization before 500-char truncation.
+  - Added regression tests for allowlisted settlement metadata:
+    - control character sanitization
+    - sanitized-value truncation boundary
+- Verification:
+  - `cd erp-domain && mvn -B -ntp -Dtest=GlobalExceptionHandlerTest,AccountingServiceTest test`
+  - Result: PASS (Tests run: 102, Failures: 0, Errors: 0, Skipped: 0)
+- Residual risk:
+  - Service-to-handler end-to-end propagation for settlement idempotency concurrency still validated via component tests (service + handler) rather than a single integration chain test.
