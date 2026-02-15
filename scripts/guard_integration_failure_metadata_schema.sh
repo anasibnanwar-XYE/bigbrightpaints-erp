@@ -4,7 +4,6 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SOURCE_ROOT="$ROOT_DIR/erp-domain/src/main/java"
 REMEDIATION_COMMAND="bash scripts/guard_integration_failure_metadata_schema.sh"
-INTEGRATION_EVENT_PATTERN='AuditEvent\.INTEGRATION_FAILURE'
 LOG_FAILURE_PATTERN='logFailure\('
 SCHEMA_PATTERN='IntegrationFailureMetadataSchema\.applyRequiredFields\('
 MANUAL_REQUIRED_KEY_PATTERN='put\("failureCode"|put\("errorCategory"|put\("alertRoutingVersion"|put\("alertRoute"'
@@ -25,28 +24,39 @@ processed_producers=0
 for file in "${producer_files[@]}"; do
   mapfile -t log_lines < <(
     awk '
-      BEGIN { in_call = 0; start = 0; buffer = "" }
+      function paren_delta(input, opens, closes, tmp) {
+        tmp = input
+        opens = gsub(/\(/, "", tmp)
+        tmp = input
+        closes = gsub(/\)/, "", tmp)
+        return opens - closes
+      }
+      BEGIN { in_call = 0; start = 0; depth = 0; buffer = "" }
       {
         if (!in_call && $0 ~ /logFailure[[:space:]]*\(/) {
           in_call = 1
           start = NR
+          depth = paren_delta($0)
           buffer = $0 "\n"
-          if ($0 ~ /\);/) {
+          if (depth <= 0) {
             if (buffer ~ /AuditEvent\.INTEGRATION_FAILURE/) {
               print start
             }
             in_call = 0
+            depth = 0
             buffer = ""
           }
           next
         }
         if (in_call) {
+          depth += paren_delta($0)
           buffer = buffer $0 "\n"
-          if ($0 ~ /\);/) {
+          if (depth <= 0) {
             if (buffer ~ /AuditEvent\.INTEGRATION_FAILURE/) {
               print start
             }
             in_call = 0
+            depth = 0
             buffer = ""
           }
         }
