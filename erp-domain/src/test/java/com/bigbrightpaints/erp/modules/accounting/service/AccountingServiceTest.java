@@ -3722,6 +3722,10 @@ class AccountingServiceTest {
                             .containsEntry(IntegrationFailureMetadataSchema.KEY_PARTNER_ID, 1L);
                 })
                 .hasMessageContaining("another dealer");
+        verify(settlementAllocationRepository, atLeastOnce())
+                .findByCompanyAndIdempotencyKeyIgnoreCaseOrderByCreatedAtAscIdAsc(eq(company), eq("IDEMP-DR-RACE-PARTNER"));
+        verify(settlementAllocationRepository, never())
+                .findByCompanyAndIdempotencyKey(eq(company), eq("IDEMP-DR-RACE-PARTNER"));
     }
 
     @Test
@@ -6761,6 +6765,10 @@ class AccountingServiceTest {
                             .containsEntry(IntegrationFailureMetadataSchema.KEY_PARTNER_ID, 1L);
                 })
                 .hasMessageContaining("another supplier");
+        verify(settlementAllocationRepository, atLeastOnce())
+                .findByCompanyAndIdempotencyKeyIgnoreCaseOrderByCreatedAtAscIdAsc(eq(company), eq("IDEMP-AP-RACE-PARTNER"));
+        verify(settlementAllocationRepository, never())
+                .findByCompanyAndIdempotencyKey(eq(company), eq("IDEMP-AP-RACE-PARTNER"));
     }
 
     @Test
