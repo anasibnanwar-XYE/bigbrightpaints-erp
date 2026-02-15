@@ -29,9 +29,7 @@ class AccountingControllerActivityContractTest {
         TemporalBalanceService temporalBalanceService = mock(TemporalBalanceService.class);
         CompanyContextService companyContextService = mock(CompanyContextService.class);
         CompanyClock companyClock = mock(CompanyClock.class);
-        AccountingController controller = new AccountingController(
-                null, null, null, null, null, null, null, temporalBalanceService, null, null, null,
-                companyContextService, companyClock);
+        AccountingController controller = controller(temporalBalanceService, companyContextService, companyClock);
 
         TemporalBalanceService.AccountActivityReport report = new TemporalBalanceService.AccountActivityReport(
                 "CASH",
@@ -65,8 +63,7 @@ class AccountingControllerActivityContractTest {
 
     @Test
     void getAccountActivity_rejectsMissingDateParameters() {
-        AccountingController controller = new AccountingController(
-                null, null, null, null, null, null, null, null, null, null, null, null, null);
+        AccountingController controller = controller(null, null, null);
 
         assertThatThrownBy(() -> controller.getAccountActivity(1L, null, null, null, null))
                 .isInstanceOf(ApplicationException.class)
@@ -78,9 +75,7 @@ class AccountingControllerActivityContractTest {
         TemporalBalanceService temporalBalanceService = mock(TemporalBalanceService.class);
         CompanyContextService companyContextService = mock(CompanyContextService.class);
         CompanyClock companyClock = mock(CompanyClock.class);
-        AccountingController controller = new AccountingController(
-                null, null, null, null, null, null, null, temporalBalanceService, null, null, null,
-                companyContextService, companyClock);
+        AccountingController controller = controller(temporalBalanceService, companyContextService, companyClock);
 
         Company company = new Company();
         company.setCode("BBP");
@@ -96,5 +91,13 @@ class AccountingControllerActivityContractTest {
         assertThat(response.getBody().data()).containsEntry("companyCode", "BBP");
         assertThat(response.getBody().data()).containsEntry("timezone", "Asia/Kolkata");
         assertThat(response.getBody().data()).containsEntry("today", LocalDate.of(2026, 2, 10));
+    }
+
+    private AccountingController controller(TemporalBalanceService temporalBalanceService,
+                                           CompanyContextService companyContextService,
+                                           CompanyClock companyClock) {
+        return new AccountingController(
+                null, null, null, null, null, null, null, temporalBalanceService, null, null, null,
+                null, companyContextService, companyClock);
     }
 }
