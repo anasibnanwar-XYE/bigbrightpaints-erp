@@ -8255,3 +8255,11 @@ Queue Rotation (Auto-Replenish)
 - [ready] M16-S3 enterprise audit retry durability upgrade (evaluate persistent/outbox-backed retry path vs in-memory queue for process restarts)
 - [ready] M16-S4 accounting audit read-model performance hardening (index/query-plan validation for high-cardinality event timelines)
 - [ready] M16-S5 legacy summary audit decommission plan (remove compatibility toggles/tests once all workflows consume canonical structured trails)
+
+Pause Checkpoint
+- 2026-02-15T17:39:28+05:30
+- owned_uncommitted_paths: none (code state unchanged during this verify replay)
+- last_targeted_verification_command: `bash scripts/verify_local.sh`
+- last_observed_line_before_pause: `Unusual negative balance -6561.56 for ASSET account CASH` (during long-running cod-red fuzz segment for company `168`)
+- reason_for_pause: full verify replay was interrupted mid-run after guards passed; no deterministic red failure was reached before interruption.
+- immediate_next_action: rerun `bash scripts/verify_local.sh` to completion and capture the first deterministic failing test line (if any) as M16-S2 blocker evidence.
