@@ -527,14 +527,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             return;
         }
         for (String key : SETTLEMENT_FAILURE_DETAIL_ALLOWLIST) {
-            Object value = ex.getDetails().get(key);
-            if (value == null) {
-                continue;
-            }
-            String normalized = trimMetadata(String.valueOf(value));
-            if (StringUtils.hasText(normalized)) {
-                metadata.put(key, normalized);
-            }
+            putTrimmedMetadataIfPresent(metadata, key, ex.getDetails().get(key));
         }
     }
 
@@ -623,7 +616,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             metadata.put("requestPath", request.getRequestURI());
         }
         if (StringUtils.hasText(detail)) {
-            metadata.put("detail", trimMetadata(detail));
+            putTrimmedMetadataIfPresent(metadata, "detail", detail);
         }
         auditService.logFailure(AuditEvent.INTEGRATION_FAILURE, metadata);
     }
@@ -648,6 +641,16 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             return sanitized;
         }
         return sanitized.substring(0, 500);
+    }
+
+    private void putTrimmedMetadataIfPresent(Map<String, String> metadata, String key, Object value) {
+        if (metadata == null || value == null) {
+            return;
+        }
+        String normalized = trimMetadata(String.valueOf(value));
+        if (StringUtils.hasText(normalized)) {
+            metadata.put(key, normalized);
+        }
     }
 
     private String sanitizeMetadataValue(String value) {

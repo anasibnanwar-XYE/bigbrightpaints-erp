@@ -135,6 +135,52 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    void malformedJson_auditDetailIsSanitized() throws Exception {
+        GlobalExceptionHandler handler = new GlobalExceptionHandler();
+        setActiveProfile(handler, "dev");
+        AuditService auditService = mock(AuditService.class);
+        setAuditService(handler, auditService);
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/accounting/settlements/suppliers");
+        HttpMessageNotReadableException ex = new HttpMessageNotReadableException(
+                "JSON parse error", new IllegalArgumentException("\nUnrecognized\t field \"payments\"\r\n"));
+
+        handler.handleHttpMessageNotReadable(
+                ex, new HttpHeaders(), HttpStatus.BAD_REQUEST, new ServletWebRequest(request));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, String>> metadataCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(auditService).logFailure(eq(AuditEvent.INTEGRATION_FAILURE), metadataCaptor.capture());
+        Map<String, String> metadata = metadataCaptor.getValue();
+        assertThat(metadata.get("detail"))
+                .isEqualTo("Unrecognized field \"payments\"")
+                .doesNotContain("\n")
+                .doesNotContain("\r")
+                .doesNotContain("\t");
+    }
+
+    @Test
+    void malformedJson_auditDetailOmittedWhenSanitizedEmpty() throws Exception {
+        GlobalExceptionHandler handler = new GlobalExceptionHandler();
+        setActiveProfile(handler, "dev");
+        AuditService auditService = mock(AuditService.class);
+        setAuditService(handler, auditService);
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/accounting/settlements/suppliers");
+        HttpMessageNotReadableException ex = new HttpMessageNotReadableException(
+                "JSON parse error", new IllegalArgumentException("\u0001\u0002"));
+
+        handler.handleHttpMessageNotReadable(
+                ex, new HttpHeaders(), HttpStatus.BAD_REQUEST, new ServletWebRequest(request));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, String>> metadataCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(auditService).logFailure(eq(AuditEvent.INTEGRATION_FAILURE), metadataCaptor.capture());
+        Map<String, String> metadata = metadataCaptor.getValue();
+        assertThat(metadata).doesNotContainKey("detail");
+    }
+
+    @Test
     void settlementValidationFailure_isAuditedWithDeterministicTelemetry() throws Exception {
         GlobalExceptionHandler handler = new GlobalExceptionHandler();
         setActiveProfile(handler, "dev");

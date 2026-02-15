@@ -8821,3 +8821,21 @@ Loop Iteration Evidence - 2026-02-15T23:58:49+05:30
   - Result: PASS (Tests run: 102, Failures: 0, Errors: 0, Skipped: 0)
 - Residual risk:
   - Service-to-handler end-to-end propagation for settlement idempotency concurrency still validated via component tests (service + handler) rather than a single integration chain test.
+- Commit review gate (`2e46a7a5`): PASS (no findings)
+- Review residuals queued:
+  - add malformed-request detail sanitization test coverage
+  - add sanitized-empty metadata behavior coverage
+## 2026-02-16 M3-S5 malformed-request telemetry sanitization + dedupe
+- Scope:
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/core/exception/GlobalExceptionHandler.java`
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/core/exception/GlobalExceptionHandlerTest.java`
+- Change summary:
+  - Deduped metadata insertion with `putTrimmedMetadataIfPresent(...)`.
+  - Applied helper to settlement detail and malformed-request `detail` paths.
+  - Ensured `detail` is omitted when sanitized value is empty.
+  - Added malformed-request tests for sanitized detail and empty-sanitized omission.
+- Verification:
+  - `cd erp-domain && mvn -B -ntp -Dtest=GlobalExceptionHandlerTest,AccountingServiceTest test`
+  - Result: PASS (Tests run: 104, Failures: 0, Errors: 0, Skipped: 0)
+- Commit review prep:
+  - run subagent regression review on this commit next.
