@@ -50,6 +50,15 @@ else
   exit 1
 fi
 
+echo "[gate-release] flyway v2 migration ownership fixture matrix"
+MIGRATION_OWNERSHIP_FIXTURE_LOG="$ARTIFACT_DIR/flyway-v2-migration-ownership-fixture-matrix.txt"
+if bash "$ROOT_DIR/scripts/guard_flyway_v2_migration_ownership_fixture_matrix.sh" >"$MIGRATION_OWNERSHIP_FIXTURE_LOG" 2>&1; then
+  cat "$MIGRATION_OWNERSHIP_FIXTURE_LOG"
+else
+  cat "$MIGRATION_OWNERSHIP_FIXTURE_LOG" >&2
+  exit 1
+fi
+
 echo "[gate-release] flyway v2 referential contract canary"
 REFERENTIAL_CONTRACT_LOG="$ARTIFACT_DIR/flyway-v2-referential-contract-guard.txt"
 if bash "$ROOT_DIR/scripts/guard_flyway_v2_referential_contract.sh" >"$REFERENTIAL_CONTRACT_LOG" 2>&1; then

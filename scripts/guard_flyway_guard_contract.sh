@@ -26,6 +26,8 @@ done
 # Ensure release/verify entrypoints continue invoking this guard.
 require_callsite "$GATE_RELEASE_SRC" 'guard_flyway_guard_contract.sh' 'gate_release preflight contract guard'
 require_callsite "$VERIFY_LOCAL_SRC" 'guard_flyway_guard_contract.sh' 'verify_local preflight contract guard'
+require_callsite "$GATE_RELEASE_SRC" 'guard_flyway_v2_migration_ownership_fixture_matrix.sh' 'gate_release ownership fixture matrix'
+require_callsite "$VERIFY_LOCAL_SRC" 'guard_flyway_v2_migration_ownership_fixture_matrix.sh' 'verify_local ownership fixture matrix'
 require_callsite "$GATE_RELEASE_SRC" 'guard_flyway_v2_referential_contract.sh' 'gate_release referential contract canary'
 require_callsite "$VERIFY_LOCAL_SRC" 'guard_flyway_v2_referential_contract.sh' 'verify_local referential contract canary'
 
@@ -58,6 +60,7 @@ for stub in \
   guard_orchestrator_correlation_contract.sh \
   guard_accounting_portal_scope_contract.sh \
   guard_flyway_v2_migration_ownership.sh \
+  guard_flyway_v2_migration_ownership_fixture_matrix.sh \
   guard_flyway_v2_referential_contract.sh \
   time_api_scan.sh \
   release_migration_matrix.sh; do

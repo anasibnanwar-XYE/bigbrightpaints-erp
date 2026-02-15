@@ -46,6 +46,7 @@ mapfile -t missing_pk_tables < <(
 
     function reset_unique_state(table_name) {
       unique_open[table_name] = 0
+      unique_pending_open[table_name] = 0
       unique_buffer[table_name] = ""
     }
 
@@ -192,7 +193,21 @@ mapfile -t missing_pk_tables < <(
           continue
         }
 
+        if (unique_pending_open[table_name]) {
+          open_pos = index(segment, "(")
+          if (open_pos == 0) {
+            return
+          }
+          unique_open[table_name] = 1
+          unique_pending_open[table_name] = 0
+          segment = substr(segment, open_pos + 1)
+          continue
+        }
+
         if (match(toupper(segment), /UNIQUE[[:space:]]*\(/) == 0) {
+          if (match(toupper(segment), /UNIQUE([^[:alnum:]_]|$)/) > 0) {
+            unique_pending_open[table_name] = 1
+          }
           return
         }
         open_pos = RSTART + RLENGTH - 1
