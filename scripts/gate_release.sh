@@ -41,6 +41,15 @@ else
   exit 1
 fi
 
+echo "[gate-release] integration-failure schema fixture matrix"
+INTEGRATION_FAILURE_SCHEMA_FIXTURE_LOG="$ARTIFACT_DIR/integration-failure-metadata-schema-fixture-matrix.txt"
+if bash "$ROOT_DIR/scripts/guard_integration_failure_metadata_schema_fixture_matrix.sh" >"$INTEGRATION_FAILURE_SCHEMA_FIXTURE_LOG" 2>&1; then
+  cat "$INTEGRATION_FAILURE_SCHEMA_FIXTURE_LOG"
+else
+  cat "$INTEGRATION_FAILURE_SCHEMA_FIXTURE_LOG" >&2
+  exit 1
+fi
+
 echo "[gate-release] flyway guard contract guard"
 GUARD_CONTRACT_LOG="$ARTIFACT_DIR/flyway-guard-contract-guard.txt"
 if bash "$ROOT_DIR/scripts/guard_flyway_guard_contract.sh" >"$GUARD_CONTRACT_LOG" 2>&1; then

@@ -40,6 +40,15 @@ else
   exit 1
 fi
 
+echo "[gate-core] integration-failure schema fixture matrix"
+INTEGRATION_FAILURE_SCHEMA_FIXTURE_LOG="$ARTIFACT_DIR/integration-failure-metadata-schema-fixture-matrix.txt"
+if bash "$ROOT_DIR/scripts/guard_integration_failure_metadata_schema_fixture_matrix.sh" >"$INTEGRATION_FAILURE_SCHEMA_FIXTURE_LOG" 2>&1; then
+  cat "$INTEGRATION_FAILURE_SCHEMA_FIXTURE_LOG"
+else
+  cat "$INTEGRATION_FAILURE_SCHEMA_FIXTURE_LOG" >&2
+  exit 1
+fi
+
 echo "[gate-core] accounting portal scope contract guard"
 PORTAL_SCOPE_GUARD_LOG="$ARTIFACT_DIR/accounting-portal-scope-guard.txt"
 if bash "$ROOT_DIR/scripts/guard_accounting_portal_scope_contract.sh" >"$PORTAL_SCOPE_GUARD_LOG" 2>&1; then
