@@ -9128,3 +9128,23 @@ Queue Rotation
   - add stable evidence pointers for targeted test runs and review-queue state.
 - [ready] M19-S8 controller/service replay vocabulary guard tightening
   - reinforce shared partner metadata wording across controller/service negative-path contracts without changing domain-level supplier/dealer semantics.
+
+[2026-02-16] M19-S8 controller/service replay vocabulary guard tightening (completed)
+- Completed Slice (Committed): controller fallback replay-reason contract + detail assertion dedupe
+  - Commit `6c51730e`: in `AccountingControllerExceptionHandlerTest`
+    - deduped partner replay detail checks via `assertPartnerReplayDetails(...)`
+    - added `handleApplicationException_preservesFallbackPartnerReplayReason` to lock fallback wording: `Idempotency key already used for another partner type`
+    - enforced fallback envelope on `/api/v1/accounting/settlements/partners` with no `details` payload
+- Verification:
+  - `cd erp-domain && mvn -B -ntp -Dtest=AccountingControllerExceptionHandlerTest test` (PASS: 6/6)
+
+Review Queue Update
+- subagent review dispatch remains blocked by active-agent cap (max 6).
+- queued commits for immediate review when slot opens:
+  - `2962800b`
+  - `50d78915`
+  - `6c51730e`
+
+Loop Update
+- tracked_now_ts: `2026-02-16T02:47:10+05:30`
+- active_in_progress: `M19-S5 review queue drain + M19-S7 artifact pointer normalization`
