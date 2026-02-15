@@ -41,3 +41,14 @@ Update this file in every high-risk change set.
 ## Test Waiver (Only if no tests changed)
 - Reason tests are unchanged: this change set is policy/docs/CI guard wiring only
 - Compensating controls (gates/reviews/monitors): architecture/doc/review/enterprise guard scripts executed and passing
+
+## Migration Addendum (2026-02-15, V14)
+- Migration artifact: `erp-domain/src/main/resources/db/migration_v2/V14__audit_action_event_retry_queue.sql`
+- Risk class: R2 (new persistent retry queue for enterprise audit durability)
+- Validation evidence:
+  - `cd erp-domain && mvn -B -ntp -Dtest=EnterpriseAuditTrailServiceTest test` -> pass (`5` tests, `0` failures, `0` errors)
+  - `FAIL_ON_FINDINGS=true bash scripts/schema_drift_scan.sh --migration-set v2` -> pass (`findings=0`)
+  - `FAIL_ON_FINDINGS=true bash scripts/flyway_overlap_scan.sh --migration-set v2` -> pass (`findings=0`)
+- Rollback/forward-fix strategy:
+  - If pre-release failure occurs before rollout, drop pending V14 from deploy set and ship with in-memory retry fallback.
+  - If V14 is applied and rollback is needed, use forward-fix only (do not edit applied migration); disable persisted path via service fallback behavior while issuing compensating migration in next version.
