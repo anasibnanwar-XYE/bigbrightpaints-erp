@@ -179,3 +179,4 @@ All conditions must be true:
 - `M17-S4`: CI artifact contract hardening (release SHA evidence bundle).
 - `M17-S5`: Flyway v2 checksum transition automation in release pipeline.
 - `M17-S6`: Staging deploy rehearsal runbook execution with evidence capture template.
+- `M17-S7`: Virtual-accountant readiness contract (intent schema + simulation/approval chain, no autonomous posting).

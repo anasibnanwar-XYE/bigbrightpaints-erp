@@ -58,6 +58,17 @@ Target outcome:
   - inventory valuation method,
   - posting profile (inventory/WIP/COGS/revenue/tax mappings where applicable).
 
+### 4.1.1 Variant model for colors and sizes (required)
+- Add a product-template + variant model:
+  - `product_template` (brand, category, base tax and account profile),
+  - `variant_dimensions` (color, size, finish, pack-size),
+  - `product_variant` (template + dimension tuple + sellable SKU).
+- SKU generation must be deterministic and human-readable:
+  - example pattern: `<brand>-<family>-<color>-<size>-<pack>`.
+- Prevent duplicate variants per company by unique dimension tuple constraints.
+- Support barcode/alternate-code mapping for warehouse and POS integrations.
+- All variant SKUs must map to correct inventory and accounting profiles.
+
 ### 4.2 SKU lifecycle flow (end-to-end)
 1. Master creation/import -> validated SKU identity and account mappings.
 2. Procurement intake -> raw material stock + AP posting at supplier invoice stage.
@@ -69,10 +80,19 @@ Target outcome:
 8. Returns/reversals -> explicit reversal links and control-account integrity.
 9. Period close -> snapshot freeze and deterministic as-of reporting.
 
+### 4.2.1 Human-friendly product workflow
+1. Create product template once.
+2. Select allowed dimensions (colors/sizes/pack options).
+3. Auto-generate variant SKUs and review before publish.
+4. Bulk import/edit variants with preview + conflict detection.
+5. Publish variants with pricing/accounting profiles in one guided step.
+6. Block publish if any required accounting mapping is missing.
+
 ### 4.3 Exit criteria for SKU track
 - no duplicate SKU creation under concurrent import,
 - deterministic SKU lookup for all write paths,
 - stock movements and journals fully linkable by reference + IDs.
+- variant creation/update flow can be completed by non-technical users without manual data repair.
 
 ## 5. Domain Workflow Specification
 
@@ -138,6 +158,23 @@ Implement or enforce scheduled and predeploy checks for:
 ### 6.3 Accounting hard-stop policy
 - if drift sentinel finds P0 rows, deployment is blocked,
 - fail-open logging-only behavior is disallowed for accounting-critical writes in strict policy modes.
+
+### 6.4 Human-centered accounting workflow redesign targets
+- Guided posting flows with clear intent labels:
+  - sale, purchase, expense, payroll, adjustment, accrual, reversal.
+- Pre-post preview shows:
+  - accounts hit,
+  - debit/credit totals,
+  - period and tax impact,
+  - linked documents that will be created/updated.
+- Post-submit confirmation returns:
+  - journal reference,
+  - affected ledger/subledger rows,
+  - reconciliation status delta.
+- For risky operations (period close, manual adjustments, reversals):
+  - mandatory reason code,
+  - approval path,
+  - immutable audit trail with actor and trace context.
 
 ## 7. API Contract and Frontend Documentation Specification
 
@@ -268,10 +305,51 @@ For strict-lane slices, required review stack:
 - Flake budget below agreed threshold for release window.
 - Frontend contract docs synchronized with OpenAPI on each release SHA.
 
-## 13. Immediate Execution Queue Seed
+## 13. Virtual Accountant Readiness Specification (Post-Stabilization Foundation)
+
+Objective:
+- Prepare the ERP so a future accounting-specialized ML/LLM assistant can safely execute workflows through structured intents with human-in-loop supervision.
+
+### 13.1 Intent contract
+- Introduce a strict `AccountingIntentRequest` JSON schema (versioned):
+  - `intentType` (expense, sale, purchase, settlement, payroll, adjustment, etc),
+  - `companyContext`,
+  - `sourceNarration`,
+  - `extractedFacts`,
+  - `confidence`,
+  - `proposedActions[]` with deterministic workflow mapping.
+- Natural language examples (for future NLP stage) must map to this schema:
+  - example: \"bought $200 ChatGPT plan\" -> expense intent with vendor/category/tax/account suggestions.
+
+### 13.2 Human-in-loop safety contract
+- Every ML-proposed action executes in simulation mode first.
+- UI must show \"what will happen\" before approval:
+  - documents created/updated,
+  - journal lines,
+  - balances impacted,
+  - reconciliation effect.
+- User must explicitly approve/reject each proposed action set.
+- Approved actions execute via the same canonical ERP APIs (no bypass path).
+
+### 13.3 Audit and traceability contract
+- Persist full chain:
+  - natural-language request hash,
+  - extracted intent JSON,
+  - approval decision and approver,
+  - final ERP operation ids (journal/invoice/settlement ids),
+  - rollback/reversal link if corrected.
+
+### 13.4 Readiness exit criteria before ML activation
+- base ERP stabilization/deploy gates are fully green,
+- intent schema + simulation API is in place,
+- approval/audit chain proven in integration tests,
+- no direct auto-posting from NLP layer without explicit user approval.
+
+## 14. Immediate Execution Queue Seed
 - `M17-S1`: AGENTS and async-loop governance alignment (multi-agent + review-chain enforcement).
 - `M17-S2`: OpenAPI contract drift guard + portal endpoint parity checks.
 - `M17-S3`: Top-5 duplicate write-path closures with alias parity tests.
 - `M17-S4`: Accounting drift sentinel expansion + reconciliation gating.
 - `M17-S5`: Test-lane rationalization and flake quarantine with expiry policy.
 - `M17-S6`: Staging rehearsal evidence pack template and rollback drill execution.
+- `M17-S7`: Virtual-accountant intent schema + simulation/approval contract (no autonomous posting yet).

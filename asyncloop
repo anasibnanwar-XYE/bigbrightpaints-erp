@@ -8642,3 +8642,16 @@ Queue Rotation (Auto-Replenish)
 - [ready] M17-S5 Test-lane signal overhaul (flake quarantine SLA, release invariant map, deterministic retry matrix)
 - [ready] M17-S6 Staging rehearsal evidence pack + rollback drill (immutable SHA evidence bundle)
 - [ready] M16-S6 audit ownership guard matrix extension (carry-over closure to keep audit-contract hardening queue alive)
+
+Plan Refinement Checkpoint
+- 2026-02-15T20:20:17+05:30
+- scope: expand final deep spec for variant SKU flow + human-friendly accounting workflow + virtual-accountant readiness contract.
+
+Queue Replenish
+- [in_progress] M17-S2 OpenAPI contract gate + portal parity matrix (block undocumented contract drift and alias ambiguity)
+- [ready] M17-S3 Top-5 duplicate write-path closure sweep (canonical path + alias parity tests + prod gating where needed)
+- [ready] M17-S4 Accounting anti-drift sentinel expansion (closed-period drift + unlinked artifacts + reconciliation fail-closed hooks)
+- [ready] M17-S5 Test-lane signal overhaul (flake quarantine SLA, release invariant map, deterministic retry matrix)
+- [ready] M17-S6 Staging rehearsal evidence pack + rollback drill (immutable SHA evidence bundle)
+- [ready] M17-S7 Virtual-accountant readiness contract (intent schema + simulation/approval chain, no autonomous posting)
+- [ready] M16-S6 audit ownership guard matrix extension (carry-over closure to keep audit-contract hardening queue alive)
