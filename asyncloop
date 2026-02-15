@@ -7724,14 +7724,15 @@ Loop Update
 - 2026-02-15T13:30:14+05:30
 - tracked_now_ts: `2026-02-15T13:30:14+05:30`
 - tracked_elapsed: `83h 36m 22s`
-- active_in_progress: `M15-S9 sales/dealer accounting method-map docs refresh (internal + user-facing docs for cash/credit/split formulas, account mapping rules, idempotency headers, and pending-order credit exposure semantics)`
+- active_in_progress: `M15-S9 sales/dealer accounting method-map docs refresh (internal + user-facing docs for cash/credit/split formulas, account mapping rules, idempotency headers, and pending-order credit exposure semantics; Flyway V2/V2/V2 only)`
 - continuity_recheck:
-  - dealer/admin pending-order parity canary remains green on Flyway V2 after payroll guardrail chain changes.
+  - dealer/admin pending-order parity canary remains green on Flyway V2/V2/V2 after payroll guardrail chain changes.
+  - explicit loop baseline: migration/test/guard paths are Flyway V2 only (`db/migration_v2` + `flyway_schema_history_v2`), with no V1 fallback.
   - queue now advances to docs-method-map refresh slice.
 
 Queue Rotation (Auto-Replenish)
 - [completed] M15-S14R2 dealer/admin pending-order parity recurring canary (scheduled rerun after next sales/accounting exposure logic touch)
-- [in_progress] M15-S9 sales/dealer accounting method-map docs refresh (internal + user-facing docs for cash/credit/split formulas, account mapping rules, idempotency headers, and pending-order credit exposure semantics)
+- [in_progress] M15-S9 sales/dealer accounting method-map docs refresh (internal + user-facing docs for cash/credit/split formulas, account mapping rules, idempotency headers, and pending-order credit exposure semantics; Flyway V2/V2/V2 only)
 - [ready] M15-S10 cross-module idempotency contract unification matrix (standardize header semantics + helper parity across sales/production/accounting endpoint families)
 - [ready] M15-S11 recognized-revenue/pending-credit contract docs + endpoint parity matrix (internal and user-facing portal docs must match shipment gate + pending exposure behavior)
 - [ready] M15-S12 idempotency header contract convergence doc+runtime assert sweep (sales/production/accounting entrypoints must share canonical header semantics and error model)
