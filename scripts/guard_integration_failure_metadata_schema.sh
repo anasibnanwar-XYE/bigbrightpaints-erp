@@ -4,9 +4,11 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SOURCE_ROOT="$ROOT_DIR/erp-domain/src/main/java"
 REMEDIATION_COMMAND="bash scripts/guard_integration_failure_metadata_schema.sh"
-PRODUCER_PATTERN='logFailure\(AuditEvent\.INTEGRATION_FAILURE'
+INTEGRATION_EVENT_PATTERN='AuditEvent\.INTEGRATION_FAILURE'
+LOG_FAILURE_PATTERN='logFailure\('
 SCHEMA_PATTERN='IntegrationFailureMetadataSchema\.applyRequiredFields\('
 MANUAL_REQUIRED_KEY_PATTERN='put\("failureCode"|put\("errorCategory"|put\("alertRoutingVersion"|put\("alertRoute"'
+LOG_LOOKAHEAD_LINES=8
 
 fail() {
   echo "[guard_integration_failure_metadata_schema] ERROR: $1" >&2
@@ -16,20 +18,32 @@ fail() {
 
 [[ -d "$SOURCE_ROOT" ]] || fail "missing source root: $SOURCE_ROOT"
 
-mapfile -t producer_files < <(rg -l "$PRODUCER_PATTERN" "$SOURCE_ROOT")
+mapfile -t producer_files < <(rg -l "$INTEGRATION_EVENT_PATTERN" "$SOURCE_ROOT")
 
-[[ "${#producer_files[@]}" -gt 0 ]] || fail "no INTEGRATION_FAILURE producers found under $SOURCE_ROOT"
+[[ "${#producer_files[@]}" -gt 0 ]] || fail "no files with INTEGRATION_FAILURE references found under $SOURCE_ROOT"
 
+processed_producers=0
 for file in "${producer_files[@]}"; do
+  mapfile -t all_log_lines < <(rg -n "$LOG_FAILURE_PATTERN" "$file" | cut -d: -f1)
+  [[ "${#all_log_lines[@]}" -gt 0 ]] || continue
+
+  log_lines=()
+  for log_line in "${all_log_lines[@]}"; do
+    end_line=$((log_line + LOG_LOOKAHEAD_LINES))
+    if sed -n "${log_line},${end_line}p" "$file" | rg -q "$INTEGRATION_EVENT_PATTERN"; then
+      log_lines+=("$log_line")
+    fi
+  done
+
+  [[ "${#log_lines[@]}" -gt 0 ]] || continue
+  processed_producers=$((processed_producers + 1))
+
   if rg -q "$MANUAL_REQUIRED_KEY_PATTERN" "$file"; then
     fail "producer $file still writes required metadata keys manually; use IntegrationFailureMetadataSchema only"
   fi
 
   mapfile -t helper_lines < <(rg -n "$SCHEMA_PATTERN" "$file" | cut -d: -f1)
   [[ "${#helper_lines[@]}" -gt 0 ]] || fail "producer $file does not call IntegrationFailureMetadataSchema.applyRequiredFields"
-
-  mapfile -t log_lines < <(rg -n "$PRODUCER_PATTERN" "$file" | cut -d: -f1)
-  [[ "${#log_lines[@]}" -gt 0 ]] || fail "producer pattern matched file scan but no log lines resolved for $file"
 
   for log_line in "${log_lines[@]}"; do
     method_start_line="$(
@@ -55,5 +69,7 @@ for file in "${producer_files[@]}"; do
     fi
   done
 done
+
+[[ "$processed_producers" -gt 0 ]] || fail "no INTEGRATION_FAILURE log producers found under $SOURCE_ROOT"
 
 echo "[guard_integration_failure_metadata_schema] OK"
