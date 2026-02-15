@@ -2948,40 +2948,64 @@ public class AccountingService {
                                               List<JournalEntryRequest.JournalLineRequest> expectedLines,
                                               String payloadMismatchMessage) {
         if (entry == null) {
-            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
-                    "Idempotency key already used but journal entry is missing")
-                    .withDetail(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, idempotencyKey);
+            throw replayConflictWithPartnerContext(
+                    "Idempotency key already used but journal entry is missing",
+                    idempotencyKey,
+                    partnerType,
+                    partnerId);
         }
         if (partnerType == PartnerType.DEALER) {
             if (entry.getDealer() == null || !Objects.equals(entry.getDealer().getId(), partnerId)) {
-                throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
-                        "Idempotency key already used for another dealer")
-                        .withDetail(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, idempotencyKey);
+                throw replayConflictWithPartnerContext(
+                        "Idempotency key already used for another dealer",
+                        idempotencyKey,
+                        partnerType,
+                        partnerId);
             }
         } else if (partnerType == PartnerType.SUPPLIER) {
             if (entry.getSupplier() == null || !Objects.equals(entry.getSupplier().getId(), partnerId)) {
-                throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
-                        "Idempotency key already used for another supplier")
-                        .withDetail(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, idempotencyKey);
+                throw replayConflictWithPartnerContext(
+                        "Idempotency key already used for another supplier",
+                        idempotencyKey,
+                        partnerType,
+                        partnerId);
             }
         } else {
-            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
-                    "Idempotency key already used for another partner type")
-                    .withDetail(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, idempotencyKey)
-                    .withDetail(IntegrationFailureMetadataSchema.KEY_PARTNER_TYPE, partnerType != null ? partnerType.name() : "null");
+            throw replayConflictWithPartnerContext(
+                    "Idempotency key already used for another partner type",
+                    idempotencyKey,
+                    partnerType,
+                    partnerId);
         }
         if (StringUtils.hasText(memo) && !Objects.equals(entry.getMemo(), memo)) {
-            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
-                    "Idempotency key already used with a different memo")
-                    .withDetail(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, idempotencyKey);
+            throw replayConflictWithPartnerContext(
+                    "Idempotency key already used with a different memo",
+                    idempotencyKey,
+                    partnerType,
+                    partnerId);
         }
         Map<JournalLineSignature, Integer> existingLines = lineSignatureCounts(entry.getLines());
         Map<JournalLineSignature, Integer> expected = lineSignatureCountsFromRequests(expectedLines);
         if (!existingLines.equals(expected)) {
-            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
-                    payloadMismatchMessage)
-                    .withDetail(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, idempotencyKey);
+            throw replayConflictWithPartnerContext(
+                    payloadMismatchMessage,
+                    idempotencyKey,
+                    partnerType,
+                    partnerId);
         }
+    }
+
+    private ApplicationException replayConflictWithPartnerContext(String message,
+                                                                  String idempotencyKey,
+                                                                  PartnerType partnerType,
+                                                                  Long partnerId) {
+        ApplicationException exception = new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT, message)
+                .withDetail(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, idempotencyKey)
+                .withDetail(IntegrationFailureMetadataSchema.KEY_PARTNER_TYPE, partnerType != null ? partnerType.name() : "null");
+        if (partnerId != null) {
+            exception.withDetail(IntegrationFailureMetadataSchema.KEY_PARTNER_ID, partnerId);
+        }
+        return exception;
     }
 
     private void validateCreditNoteIdempotency(String idempotencyKey,
@@ -4901,15 +4925,21 @@ public class AccountingService {
             return true;
         });
         if (partnerMismatch) {
-            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT, "Idempotency key already used for another partner")
-                    .withDetail("idempotencyKey", idempotencyKey);
+            throw replayConflictWithPartnerContext(
+                    "Idempotency key already used for another partner",
+                    idempotencyKey,
+                    partnerType,
+                    partnerId);
         }
 
         Map<String, Integer> existingSignatures = allocationSignatureCountsFromRows(existing);
         Map<String, Integer> requestSignatures = allocationSignatureCountsFromRequests(allocations);
         if (!existingSignatures.equals(requestSignatures)) {
-            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT, "Idempotency key already used for a different settlement payload")
-                    .withDetail("idempotencyKey", idempotencyKey);
+            throw replayConflictWithPartnerContext(
+                    "Idempotency key already used for a different settlement payload",
+                    idempotencyKey,
+                    partnerType,
+                    partnerId);
         }
     }
 

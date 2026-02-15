@@ -3746,7 +3746,12 @@ class AccountingServiceTest {
         );
 
         assertThatThrownBy(() -> accountingService.settleDealerInvoices(request))
-                .isInstanceOf(ApplicationException.class)
+                .isInstanceOfSatisfying(ApplicationException.class, ex -> {
+                    assertThat(ex.getDetails())
+                            .containsEntry(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, "IDEMP-DR-SETTLE-REPLAY-NETCASH")
+                            .containsEntry(IntegrationFailureMetadataSchema.KEY_PARTNER_TYPE, "DEALER")
+                            .containsEntry(IntegrationFailureMetadataSchema.KEY_PARTNER_ID, 1L);
+                })
                 .hasMessageContaining("different settlement payload")
                 .satisfies(ex -> assertThat(ex).hasMessageNotContaining("negative net cash contribution"));
     }
@@ -3872,7 +3877,12 @@ class AccountingServiceTest {
         );
 
         assertThatThrownBy(() -> accountingService.settleSupplierInvoices(request))
-                .isInstanceOf(ApplicationException.class)
+                .isInstanceOfSatisfying(ApplicationException.class, ex -> {
+                    assertThat(ex.getDetails())
+                            .containsEntry(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, "IDEMP-AP-SETTLE-REPLAY-NETCASH")
+                            .containsEntry(IntegrationFailureMetadataSchema.KEY_PARTNER_TYPE, "SUPPLIER")
+                            .containsEntry(IntegrationFailureMetadataSchema.KEY_PARTNER_ID, 1L);
+                })
                 .hasMessageContaining("different settlement payload")
                 .satisfies(ex -> assertThat(ex).hasMessageNotContaining("negative net cash contribution"));
     }
