@@ -488,6 +488,9 @@ def parse_create_table_statement(statement, path, line, contracts, contract_coun
         if re.search(r"(?is)\bPRIMARY\s+KEY\b", tail):
             add_contract(contracts, contract_counts, table, (col,))
             add_primary_key(primary_keys, table, (col,))
+            if table:
+                inferred_name = f"{table.split('.')[-1]}_pkey"
+                remember_constraint(constraint_defs, table, inferred_name, "PRIMARY", (col,))
         elif re.search(r"(?is)\bUNIQUE\b", tail):
             add_contract(contracts, contract_counts, table, (col,))
         col_fk = re.search(
@@ -518,6 +521,8 @@ def parse_alter_contracts(sql, path, contracts, contract_counts, primary_keys, f
             constraint_name = normalize_ident(key.group("constraint")) if key.group("constraint") else None
             if key.group("kind").upper().startswith("PRIMARY"):
                 add_primary_key(primary_keys, table, cols)
+                if not constraint_name and table:
+                    constraint_name = f"{table.split('.')[-1]}_pkey"
                 remember_constraint(constraint_defs, table, constraint_name, "PRIMARY", cols)
             elif constraint_name:
                 remember_constraint(constraint_defs, table, constraint_name, "UNIQUE", cols)
