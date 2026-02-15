@@ -82,14 +82,11 @@ class AccountingControllerExceptionHandlerTest {
         ResponseEntity<ApiResponse<Map<String, Object>>> response =
                 controller.handleApplicationException(ex, request);
 
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        ApiResponse<Map<String, Object>> body = response.getBody();
-        assertThat(body).isNotNull();
-        assertThat(body.message()).isEqualTo("Idempotency key already used for another supplier");
-        assertThat(body.data()).containsEntry("reason", "Idempotency key already used for another supplier");
-        assertThat(body.data()).containsEntry("path", "/api/v1/accounting/settlements/suppliers");
-        @SuppressWarnings("unchecked")
-        Map<String, Object> details = (Map<String, Object>) body.data().get("details");
+        ApiResponse<Map<String, Object>> body = assertReplayErrorEnvelope(
+                response,
+                "Idempotency key already used for another supplier",
+                "/api/v1/accounting/settlements/suppliers");
+        Map<String, Object> details = requireDetails(body);
         assertThat(details)
                 .containsEntry(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, "IDEMP-AP-RACE-PARTNER")
                 .containsEntry(IntegrationFailureMetadataSchema.KEY_PARTNER_TYPE, "SUPPLIER")
@@ -112,14 +109,11 @@ class AccountingControllerExceptionHandlerTest {
         ResponseEntity<ApiResponse<Map<String, Object>>> response =
                 controller.handleApplicationException(ex, request);
 
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        ApiResponse<Map<String, Object>> body = response.getBody();
-        assertThat(body).isNotNull();
-        assertThat(body.message()).isEqualTo("Idempotency key already used for another dealer");
-        assertThat(body.data()).containsEntry("reason", "Idempotency key already used for another dealer");
-        assertThat(body.data()).containsEntry("path", "/api/v1/accounting/settlements/dealers");
-        @SuppressWarnings("unchecked")
-        Map<String, Object> details = (Map<String, Object>) body.data().get("details");
+        ApiResponse<Map<String, Object>> body = assertReplayErrorEnvelope(
+                response,
+                "Idempotency key already used for another dealer",
+                "/api/v1/accounting/settlements/dealers");
+        Map<String, Object> details = requireDetails(body);
         assertThat(details)
                 .containsEntry(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, "IDEMP-DR-RACE-PARTNER")
                 .containsEntry(IntegrationFailureMetadataSchema.KEY_PARTNER_TYPE, "DEALER")
@@ -139,12 +133,29 @@ class AccountingControllerExceptionHandlerTest {
         ResponseEntity<ApiResponse<Map<String, Object>>> response =
                 controller.handleApplicationException(ex, request);
 
+        ApiResponse<Map<String, Object>> body = assertReplayErrorEnvelope(
+                response,
+                "Idempotency key already used for another supplier",
+                "/api/v1/accounting/settlements/suppliers");
+        assertThat(body.data()).doesNotContainKey("details");
+    }
+
+    private ApiResponse<Map<String, Object>> assertReplayErrorEnvelope(
+            ResponseEntity<ApiResponse<Map<String, Object>>> response,
+            String reason,
+            String path) {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         ApiResponse<Map<String, Object>> body = response.getBody();
         assertThat(body).isNotNull();
-        assertThat(body.message()).isEqualTo("Idempotency key already used for another supplier");
-        assertThat(body.data()).containsEntry("reason", "Idempotency key already used for another supplier");
-        assertThat(body.data()).containsEntry("path", "/api/v1/accounting/settlements/suppliers");
-        assertThat(body.data()).doesNotContainKey("details");
+        assertThat(body.message()).isEqualTo(reason);
+        assertThat(body.data()).containsEntry("reason", reason);
+        assertThat(body.data()).containsEntry("path", path);
+        return body;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> requireDetails(ApiResponse<Map<String, Object>> body) {
+        assertThat(body.data()).containsKey("details");
+        return (Map<String, Object>) body.data().get("details");
     }
 }
