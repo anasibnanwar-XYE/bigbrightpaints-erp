@@ -23,6 +23,10 @@ jwt:
   secret: "test-secret-should-be-at-least-32-bytes-long-1234"
 
 erp:
+  audit:
+    accounting:
+      legacy-summary-events:
+        enabled: true
   auto-approval:
     enabled: false
   security:

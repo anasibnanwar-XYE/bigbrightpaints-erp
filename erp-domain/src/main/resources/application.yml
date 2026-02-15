@@ -108,6 +108,10 @@ erp:
         webhook-url: ${ERP_SECURITY_NOTIFICATIONS_SLACK_WEBHOOK_URL:}
     audit:
       private-key: ${ERP_SECURITY_AUDIT_PRIVATE_KEY:dev-audit-private-key}
+  audit:
+    accounting:
+      legacy-summary-events:
+        enabled: false
   accounting:
     enable-triple-entry: true
     financial-year-start: 04-01

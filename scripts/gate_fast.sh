@@ -86,6 +86,15 @@ else
   exit 1
 fi
 
+echo "[gate-fast] audit trail ownership contract guard"
+AUDIT_TRAIL_OWNERSHIP_GUARD_LOG="$ARTIFACT_DIR/audit-trail-ownership-guard.txt"
+if bash "$ROOT_DIR/scripts/guard_audit_trail_ownership_contract.sh" >"$AUDIT_TRAIL_OWNERSHIP_GUARD_LOG" 2>&1; then
+  cat "$AUDIT_TRAIL_OWNERSHIP_GUARD_LOG"
+else
+  cat "$AUDIT_TRAIL_OWNERSHIP_GUARD_LOG" >&2
+  exit 1
+fi
+
 echo "[gate-fast] run critical truth tests"
 (
   cd "$ROOT_DIR/erp-domain"

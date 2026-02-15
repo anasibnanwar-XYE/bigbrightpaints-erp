@@ -34,6 +34,7 @@ require_callsite "$GATE_RELEASE_SRC" 'guard_flyway_v2_referential_contract_fixtu
 require_callsite "$VERIFY_LOCAL_SRC" 'guard_flyway_v2_referential_contract_fixture_matrix.sh' 'verify_local referential fixture matrix'
 require_callsite "$GATE_RELEASE_SRC" 'guard_payroll_account_bootstrap_contract.sh' 'gate_release payroll bootstrap contract guard'
 require_callsite "$VERIFY_LOCAL_SRC" 'guard_payroll_account_bootstrap_contract.sh' 'verify_local payroll bootstrap contract guard'
+require_callsite "$VERIFY_LOCAL_SRC" 'guard_audit_trail_ownership_contract.sh' 'verify_local audit trail ownership contract guard'
 
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
@@ -63,6 +64,7 @@ for stub in \
   flyway_overlap_scan.sh \
   guard_orchestrator_correlation_contract.sh \
   guard_accounting_portal_scope_contract.sh \
+  guard_audit_trail_ownership_contract.sh \
   guard_payroll_account_bootstrap_contract.sh \
   guard_flyway_v2_migration_ownership.sh \
   guard_flyway_v2_migration_ownership_fixture_matrix.sh \

@@ -3,8 +3,11 @@ package com.bigbrightpaints.erp.core.audittrail;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
@@ -43,12 +46,7 @@ class EnterpriseAuditTrailServiceTest {
 
     @Test
     void recordBusinessEvent_dispatchesActorSnapshotFromSecurityContext() {
-        EnterpriseAuditTrailService service = new EnterpriseAuditTrailService(
-                auditActionEventRepository,
-                mlInteractionEventRepository,
-                companyContextService,
-                new ObjectMapper(),
-                "test-audit-key");
+        EnterpriseAuditTrailService service = newService();
 
         EnterpriseAuditTrailService selfProxy = mock(EnterpriseAuditTrailService.class);
         doNothing().when(selfProxy).recordBusinessEventAsync(any(), any());
@@ -72,12 +70,7 @@ class EnterpriseAuditTrailServiceTest {
 
     @Test
     void recordBusinessEventAsync_prefersProvidedActorSnapshot() {
-        EnterpriseAuditTrailService service = new EnterpriseAuditTrailService(
-                auditActionEventRepository,
-                mlInteractionEventRepository,
-                companyContextService,
-                new ObjectMapper(),
-                "test-audit-key");
+        EnterpriseAuditTrailService service = newService();
 
         Company company = new Company();
         setField(company, "id", 7L);
@@ -95,6 +88,77 @@ class EnterpriseAuditTrailServiceTest {
         AuditActionEvent saved = eventCaptor.getValue();
         assertThat(saved.getActorUserId()).isEqualTo(300L);
         assertThat(saved.getActorIdentifier()).isEqualTo("snapshot@bbp.com");
+    }
+
+    @Test
+    void recordBusinessEventAsync_queuesFailure_andScheduledRetryPersistsEvent() {
+        EnterpriseAuditTrailService service = newService();
+        Company company = new Company();
+        setField(company, "id", 9L);
+        UserAccount snapshotActor = user(444L, "retry-user@bbp.com");
+        AuditActionEventCommand command = command(company, null);
+
+        when(auditActionEventRepository.save(any(AuditActionEvent.class)))
+                .thenThrow(new RuntimeException("db unavailable"))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.recordBusinessEventAsync(command, snapshotActor);
+        assertThat(service.pendingBusinessEventRetryQueueSize()).isEqualTo(1);
+
+        service.retryQueuedBusinessEvents();
+
+        verify(auditActionEventRepository, times(2)).save(any(AuditActionEvent.class));
+        assertThat(service.pendingBusinessEventRetryQueueSize()).isZero();
+    }
+
+    @Test
+    void retryQueuedBusinessEvents_dropsAfterConfiguredMaxAttempts() {
+        EnterpriseAuditTrailService service = newService();
+        setField(service, "businessEventRetryMaxAttempts", 2);
+
+        Company company = new Company();
+        setField(company, "id", 11L);
+        AuditActionEventCommand command = command(company, null);
+
+        doThrow(new RuntimeException("persistent failure"))
+                .when(auditActionEventRepository)
+                .save(any(AuditActionEvent.class));
+
+        service.recordBusinessEventAsync(command, null);
+        assertThat(service.pendingBusinessEventRetryQueueSize()).isEqualTo(1);
+
+        service.retryQueuedBusinessEvents();
+
+        verify(auditActionEventRepository, times(2)).save(any(AuditActionEvent.class));
+        assertThat(service.pendingBusinessEventRetryQueueSize()).isZero();
+    }
+
+    @Test
+    void recordBusinessEventAsync_honorsRetryQueueCapacity() {
+        EnterpriseAuditTrailService service = newService();
+        setField(service, "businessEventRetryMaxQueueSize", 1);
+
+        Company company = new Company();
+        setField(company, "id", 13L);
+
+        doThrow(new RuntimeException("db unavailable"))
+                .when(auditActionEventRepository)
+                .save(any(AuditActionEvent.class));
+
+        service.recordBusinessEventAsync(command(company, null), null);
+        service.recordBusinessEventAsync(command(company, null), null);
+
+        verify(auditActionEventRepository, times(2)).save(any(AuditActionEvent.class));
+        assertThat(service.pendingBusinessEventRetryQueueSize()).isEqualTo(1);
+    }
+
+    private EnterpriseAuditTrailService newService() {
+        return new EnterpriseAuditTrailService(
+                auditActionEventRepository,
+                mlInteractionEventRepository,
+                companyContextService,
+                new ObjectMapper(),
+                "test-audit-key");
     }
 
     private static AuditActionEventCommand command(Company company, UserAccount actorOverride) {

@@ -369,6 +369,41 @@ class AccountingServiceTest {
     }
 
     @Test
+    void reverseJournalEntry_skipsLegacySummaryAudit_whenPolicyDisabled() {
+        LocalDate today = LocalDate.of(2024, 4, 1);
+        when(companyClock.today(company)).thenReturn(today);
+        AccountingPeriod openPeriod = new AccountingPeriod();
+        when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(openPeriod);
+
+        AccountingService service = spy(accountingService);
+        ReflectionTestUtils.setField(service, "legacyAccountingSummaryEventsEnabled", false);
+        JournalEntry original = reversalSourceEntry(502L, "REV-AUDIT-POLICY", today);
+        JournalEntry reversal = new JournalEntry();
+        ReflectionTestUtils.setField(reversal, "id", 902L);
+
+        when(companyEntityLookup.requireJournalEntry(company, 502L)).thenReturn(original);
+        when(companyEntityLookup.requireJournalEntry(company, 902L)).thenReturn(reversal);
+        when(journalEntryRepository.save(any(JournalEntry.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        doReturn(stubEntry(902L)).when(service).createJournalEntry(any(JournalEntryRequest.class));
+
+        JournalEntryReversalRequest request = new JournalEntryReversalRequest(
+                today,
+                false,
+                "Test reversal",
+                "Audit suppression policy",
+                Boolean.FALSE
+        );
+
+        TransactionTemplate transactionTemplate = new TransactionTemplate(new ResourcelessTransactionManager());
+        transactionTemplate.executeWithoutResult(status -> {
+            JournalEntryDto result = service.reverseJournalEntry(502L, request);
+            assertThat(result.id()).isEqualTo(902L);
+        });
+
+        verify(auditService, never()).logSuccess(eq(AuditEvent.JOURNAL_ENTRY_REVERSED), any());
+    }
+
+    @Test
     void createJournalEntry_rejectsDealerWithoutReceivableAccount() {
         LocalDate today = LocalDate.of(2024, 3, 15);
         when(companyClock.today(company)).thenReturn(today);

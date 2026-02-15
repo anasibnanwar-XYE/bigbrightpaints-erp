@@ -66,6 +66,13 @@ docs/ops_and_debug/
 interview/
 tasks/erp_logic_audit/
 
+# Generated artifact docs (non-canonical)
+docs/admin-portal-endpoint-map.md
+docs/dealer-portal-endpoint-map.md
+docs/manufacturing-portal-endpoint-map.md
+docs/sales-portal-endpoint-map.md
+docs/iam-diagram.md
+
 # Large generated files
 
 # Local async-loop artifacts (generated, non-canonical)

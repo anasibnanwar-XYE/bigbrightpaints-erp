@@ -6,12 +6,17 @@ spring:
     driver-class-name: org.postgresql.Driver
   flyway:
     enabled: true
-    locations: classpath:db/migration
+    locations: ${SPRING_FLYWAY_LOCATIONS:classpath:db/migration_v2}
+    table: ${SPRING_FLYWAY_TABLE:flyway_schema_history_v2}
   jpa:
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
 erp:
+  audit:
+    accounting:
+      legacy-summary-events:
+        enabled: true
   dispatch:
     debit-account-id: ${ERP_DISPATCH_DEBIT_ACCOUNT_ID:0}
     credit-account-id: ${ERP_DISPATCH_CREDIT_ACCOUNT_ID:0}
