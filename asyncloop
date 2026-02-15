@@ -9048,3 +9048,23 @@ Queue Rotation (Post-Closure Reseed)
 Loop Update
 - tracked_now_ts: `2026-02-16T02:31:10+05:30`
 - active_in_progress: `M19-S1 replay mismatch contract drift sentinel`
+
+[2026-02-16] M19-S1 replay mismatch contract drift sentinel (completed with residual structural risk)
+- Completed Slice (Committed): runtime replay-message sentinel
+  - Commit `ba283a3e`: added `partnerMismatchMessage` contract sentinel in `TS_RuntimeAccountingReplayConflictExecutableCoverageTest`.
+  - Review flagged literal brittleness.
+- Follow-up Fix (Committed)
+  - Commit `39b5c340`: relaxed sentinel to semantic assertions (`contains("another")` + canonical subject) to reduce copy-coupling.
+  - Verification:
+    - `cd erp-domain && mvn -B -ntp -Dtest=TS_RuntimeAccountingReplayConflictExecutableCoverageTest,AccountingControllerExceptionHandlerTest test` (PASS: 19/19).
+
+- Related contract hardening closure (controller error envelope)
+  - Commit `dde50bc5`: ensured bad-request contract test asserts `success=false` in addition to code/reason/path/traceId.
+  - Verification: `cd erp-domain && mvn -B -ntp -Dtest=AccountingControllerExceptionHandlerTest test` (PASS).
+
+- Review residual (carried forward as separate hardening slice):
+  - `TS_RuntimeAccountingReplayConflictExecutableCoverageTest` still relies on reflection/private-helper coupling and null-injected service fixture; treat as pre-existing test-architecture debt rather than regression from this slice.
+
+Queue Rotation
+- [ready] M19-S4 runtime replay truthsuite fixture hardening
+  - Reduce private-reflection coupling by introducing behavior-level/public-surface replay assertions and minimal dependency fixture wiring.
