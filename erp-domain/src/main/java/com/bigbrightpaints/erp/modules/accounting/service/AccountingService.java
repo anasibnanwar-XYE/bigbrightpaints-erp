@@ -547,6 +547,7 @@ public class AccountingService {
             }
             throw ex;
         }
+        boolean postedEventTrailRecorded = true;
         if (!accountDeltas.isEmpty()) {
             // Sort accounts by ID to prevent deadlocks - consistent lock ordering
             List<Map.Entry<Account, BigDecimal>> sortedDeltas = accountDeltas.entrySet().stream()
@@ -571,7 +572,7 @@ public class AccountingService {
                 entityManager.detach(account);
             }
             publishAccountCacheInvalidated(company.getId());
-            recordJournalEntryPostedEventSafe(saved, balancesBefore);
+            postedEventTrailRecorded = recordJournalEntryPostedEventSafe(saved, balancesBefore);
         }
         if (saved.getDealer() != null && dealerReceivableAccount != null) {
             for (JournalLine l : saved.getLines()) {
@@ -617,7 +618,9 @@ public class AccountingService {
             auditMetadata.put("journalEntryId", saved.getId().toString());
         }
         auditMetadata.put("status", saved.getStatus());
-        logAuditSuccessAfterCommit(AuditEvent.JOURNAL_ENTRY_POSTED, auditMetadata);
+        if (postedEventTrailRecorded) {
+            logAuditSuccessAfterCommit(AuditEvent.JOURNAL_ENTRY_POSTED, auditMetadata);
+        }
         return toDto(saved);
         } catch (Exception e) {
             if (e.getMessage() != null) {
@@ -3813,16 +3816,18 @@ public class AccountingService {
         eventPublisher.publishEvent(new AccountCacheInvalidatedEvent(companyId));
     }
 
-    private void recordJournalEntryPostedEventSafe(JournalEntry journalEntry, Map<Long, BigDecimal> balancesBefore) {
+    private boolean recordJournalEntryPostedEventSafe(JournalEntry journalEntry, Map<Long, BigDecimal> balancesBefore) {
         if (journalEntry == null) {
-            return;
+            return true;
         }
         validatePostedEventPayloadCompatibility(journalEntry);
         try {
             Map<Long, BigDecimal> snapshot = balancesBefore != null ? new HashMap<>(balancesBefore) : Map.of();
             accountingEventStore.recordJournalEntryPosted(journalEntry, snapshot);
+            return true;
         } catch (Exception ex) {
             handleAccountingEventTrailFailure("JOURNAL_ENTRY_POSTED", journalEntry.getReferenceNumber(), ex);
+            return false;
         }
     }
 

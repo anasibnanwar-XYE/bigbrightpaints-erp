@@ -161,6 +161,28 @@ class AccountingControllerExceptionHandlerTest {
         assertThat(body.data()).doesNotContainKey("details");
     }
 
+    @Test
+    void handleIllegalStateException_preservesFailClosedReasonWithConflictStatus() {
+        AccountingController controller = controller();
+        IllegalStateException ex = new IllegalStateException("Uninvoiced goods receipts exist in this period (2)");
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRequestURI("/api/v1/accounting/periods/17/close");
+
+        ResponseEntity<ApiResponse<Map<String, Object>>> response =
+                controller.handleIllegalStateException(ex, request);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        ApiResponse<Map<String, Object>> body = response.getBody();
+        assertThat(body).isNotNull();
+        assertThat(body.success()).isFalse();
+        assertThat(body.message()).isEqualTo("Uninvoiced goods receipts exist in this period (2)");
+        assertThat(body.data()).containsEntry("code", ErrorCode.BUSINESS_INVALID_STATE.getCode());
+        assertThat(body.data()).containsEntry("message", "Uninvoiced goods receipts exist in this period (2)");
+        assertThat(body.data()).containsEntry("reason", "Uninvoiced goods receipts exist in this period (2)");
+        assertThat(body.data()).containsEntry("path", "/api/v1/accounting/periods/17/close");
+        assertThat(body.data()).containsKey("traceId");
+    }
+
     private ApiResponse<Map<String, Object>> assertReplayErrorEnvelope(
             ResponseEntity<ApiResponse<Map<String, Object>>> response,
             HttpStatus status,
