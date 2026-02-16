@@ -2,8 +2,11 @@ package com.bigbrightpaints.erp.test;
 
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
+import com.bigbrightpaints.erp.modules.rbac.domain.Permission;
+import com.bigbrightpaints.erp.modules.rbac.domain.PermissionRepository;
 import com.bigbrightpaints.erp.modules.rbac.domain.Role;
 import com.bigbrightpaints.erp.modules.rbac.domain.RoleRepository;
+import com.bigbrightpaints.erp.modules.rbac.domain.SystemRole;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.core.service.CriticalFixtureService;
@@ -17,7 +20,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.ZoneId;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Component
 @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -25,6 +30,7 @@ public class TestDataSeeder {
 
     private final CompanyRepository companyRepository;
     private final RoleRepository roleRepository;
+    private final PermissionRepository permissionRepository;
     private final UserAccountRepository userRepository;
     private final SalesOrderRepository salesOrderRepository;
     private final PasswordEncoder passwordEncoder;
@@ -32,12 +38,14 @@ public class TestDataSeeder {
 
     public TestDataSeeder(CompanyRepository companyRepository,
                           RoleRepository roleRepository,
+                          PermissionRepository permissionRepository,
                           UserAccountRepository userRepository,
                           SalesOrderRepository salesOrderRepository,
                           PasswordEncoder passwordEncoder,
                           ObjectProvider<CriticalFixtureService> criticalFixtureService) {
         this.companyRepository = companyRepository;
         this.roleRepository = roleRepository;
+        this.permissionRepository = permissionRepository;
         this.userRepository = userRepository;
         this.salesOrderRepository = salesOrderRepository;
         this.passwordEncoder = passwordEncoder;
@@ -81,13 +89,35 @@ public class TestDataSeeder {
     }
 
     private Role ensureRole(String name) {
-        return roleRepository.findByName(name)
+        Role role = roleRepository.findByName(name)
                 .orElseGet(() -> {
-                    Role role = new Role();
-                    role.setName(name);
-                    role.setDescription(name + " role");
-                    return roleRepository.save(role);
+                    Role created = new Role();
+                    created.setName(name);
+                    created.setDescription(name + " role");
+                    return created;
                 });
+
+        SystemRole.fromName(role.getName()).ifPresent(systemRole -> {
+            Set<String> existingCodes = new HashSet<>(role.getPermissions().stream()
+                    .map(Permission::getCode)
+                    .toList());
+            systemRole.getDefaultPermissions().forEach(code -> {
+                if (!existingCodes.contains(code)) {
+                    role.getPermissions().add(ensurePermission(code));
+                }
+            });
+        });
+
+        return roleRepository.save(role);
+    }
+
+    private Permission ensurePermission(String code) {
+        return permissionRepository.findByCode(code).orElseGet(() -> {
+            Permission permission = new Permission();
+            permission.setCode(code);
+            permission.setDescription(code);
+            return permissionRepository.save(permission);
+        });
     }
 
     public SalesOrder ensureSalesOrder(String companyCode, String orderNumber, BigDecimal totalAmount) {
