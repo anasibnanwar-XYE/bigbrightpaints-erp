@@ -125,18 +125,49 @@ class ProductionCatalogServiceBulkVariantRaceTest {
                 .hasMessageContaining("Invalid GST rate");
     }
 
+    @Test
+    void createVariants_rejectsColorWithoutSkuSafeCharacters() {
+        assertThatThrownBy(() -> service.createVariants(variantRequest("Primer", List.of("###"), List.of("20L"), null)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("color")
+                .hasMessageContaining("SKU character");
+    }
+
+    @Test
+    void createVariants_rejectsBaseProductNameWithoutSkuSafeCharacters() {
+        assertThatThrownBy(() -> service.createVariants(variantRequest("%%%", List.of("Red"), List.of("20L"), null)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("baseProductName")
+                .hasMessageContaining("SKU character");
+    }
+
+    @Test
+    void createVariants_rejectsEmptySkuPrefixAfterNormalization() {
+        assertThatThrownBy(() -> service.createVariants(variantRequest("Primer", List.of("Red"), List.of("20L"), "***")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("skuPrefix/brandCode")
+                .hasMessageContaining("SKU character");
+    }
+
     private BulkVariantRequest variantRequest() {
+        return variantRequest("Primer", List.of("Red"), List.of("20L"), null);
+    }
+
+    private BulkVariantRequest variantRequest(String baseProductName,
+                                              List<String> colors,
+                                              List<String> sizes,
+                                              String skuPrefix) {
         return new BulkVariantRequest(
                 11L,
                 null,
                 null,
-                "Primer",
+                baseProductName,
                 "FINISHED_GOOD",
-                List.of("Red"),
-                List.of("20L"),
+                colors,
+                sizes,
                 null,
                 "L",
-                null,
+                skuPrefix,
                 new BigDecimal("1200.00"),
                 new BigDecimal("18"),
                 BigDecimal.ZERO,
