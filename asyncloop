@@ -9684,3 +9684,63 @@ Review Queue Update
 Loop Update
 - tracked_now_ts: `2026-02-16T10:06:27+05:30`
 - active_in_progress: `M19-S6 deep-module execution (M0/M1/M2/M3/M4/M5/M6/M8/M9/M10 in progress) + gate freshness continuity`
+
+[2026-02-16] M19-S32 accounting settlement replay path dedupe landed (code)
+- Commit: `cce9c3af`
+- Changes:
+  - deduped dealer/supplier settlement replay journal-line validation into shared partner-path helper.
+  - centralized reserved-allocation replay failure construction for settlement paths with consistent metadata (`idempotencyKey`, `partnerType`, `partnerId`).
+- Validation:
+  - `cd erp-domain && mvn -B -ntp -Dtest=AccountingServiceTest test` -> PASS (`98/98`).
+- Direct review fallback (agent-cap saturation):
+  - `codex review --commit cce9c3af` -> clean; no actionable regressions.
+
+[2026-02-16] M19-S33 orchestrator controller idempotency selection dedupe landed (code)
+- Commit: `6cc11a24`
+- Changes:
+  - extracted shared payload-selection helper for explicit-idempotency paths in orchestrator approve/fulfill/dispatch/payroll endpoints.
+  - removed duplicated endpoint-local ternary payload-selection branches without changing behavior.
+- Validation:
+  - `cd erp-domain && mvn -B -ntp -Dtest=CommandDispatcherTest test` -> PASS (`11/11`).
+- Direct review fallback (agent-cap saturation):
+  - `codex review --commit 6cc11a24` -> clean; no actionable regressions.
+
+[2026-02-16] M19-S34 outbox retry diagnostics hardening landed (code)
+- Commit: `04ed0093`
+- Changes:
+  - outbox retry scheduling now records deterministic failure messages when broker exceptions have blank/null messages.
+  - fallback message uses exception class name instead of empty payload; preserves retry observability and dedupe diagnostics.
+  - added focused test coverage for null-message exception case.
+- Validation:
+  - `cd erp-domain && mvn -B -ntp -Dtest=EventPublisherServiceTest,CommandDispatcherTest test` -> PASS (`17/17`).
+- Direct review fallback (agent-cap saturation):
+  - `codex review --commit 04ed0093` -> running in background.
+
+Loop Update
+- tracked_now_ts: `2026-02-16T10:16:23+05:30`
+- active_in_progress: `M8 orchestrator/outbox exactly-once hardening continuation + live review drain`
+
+[2026-02-16] M19-S35 outbox retry backoff arithmetic hardening + review closure
+- Review closure update:
+  - `codex review --commit 04ed0093` -> clean; no actionable regressions.
+
+- Commit: `8607f3d3`
+- Changes:
+  - replaced floating-point retry backoff math with integer left-shift arithmetic.
+  - enforced explicit lower/upper exponent bounds (`0..10`) for deterministic retry windows.
+  - added unit coverage for base and capped backoff values.
+- Validation:
+  - `cd erp-domain && mvn -B -ntp -Dtest=EventPublisherServiceTest,CommandDispatcherTest test` -> PASS (`18/18`).
+- Direct review fallback (agent-cap saturation):
+  - `codex review --commit 8607f3d3` -> running in background.
+
+Loop Update
+- tracked_now_ts: `2026-02-16T10:17:53+05:30`
+- active_in_progress: `M8 orchestrator/outbox hardening continuation + live commit-review drain`
+
+[2026-02-16] M19-S36 direct review closure for `8607f3d3`
+- `codex review --commit 8607f3d3` -> clean; no actionable regressions.
+
+Loop Update
+- tracked_now_ts: `2026-02-16T10:17:53+05:30`
+- active_in_progress: `M8 orchestrator/outbox hardening continuation + next async-loop gate slice`
