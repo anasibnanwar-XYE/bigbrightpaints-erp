@@ -13,7 +13,9 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
@@ -42,7 +44,7 @@ class JournalEntryPostedAuditListenerTest {
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, String>> metadataCaptor = ArgumentCaptor.forClass(Map.class);
-        verify(auditService).logSuccess(eq(AuditEvent.JOURNAL_ENTRY_POSTED), metadataCaptor.capture());
+        verify(auditService).logEvent(eq(AuditEvent.JOURNAL_ENTRY_POSTED), eq(AuditStatus.SUCCESS), metadataCaptor.capture());
         Map<String, String> metadata = metadataCaptor.getValue();
         assertThat(metadata).containsEntry("journalEntryId", "42");
         assertThat(metadata).containsEntry("journalReference", "JE-2026-00042");
@@ -61,6 +63,22 @@ class JournalEntryPostedAuditListenerTest {
 
         listener.onJournalEntryPosted(event);
 
-        verify(auditService, never()).logSuccess(eq(AuditEvent.JOURNAL_ENTRY_POSTED), org.mockito.ArgumentMatchers.anyMap());
+        verify(auditService, never()).logEvent(eq(AuditEvent.JOURNAL_ENTRY_POSTED), eq(AuditStatus.SUCCESS), org.mockito.ArgumentMatchers.anyMap());
+    }
+
+    @Test
+    void swallowsAuditServiceFailures() {
+        AccountingEventStore.JournalEntryPostedEvent event = new AccountingEventStore.JournalEntryPostedEvent(
+                77L,
+                UUID.randomUUID(),
+                "JE-2026-00077",
+                LocalDate.of(2026, 2, 16),
+                UUID.randomUUID()
+        );
+        doThrow(new IllegalStateException("audit-log-down"))
+                .when(auditService)
+                .logEvent(eq(AuditEvent.JOURNAL_ENTRY_POSTED), eq(AuditStatus.SUCCESS), org.mockito.ArgumentMatchers.anyMap());
+
+        assertThatCode(() -> listener.onJournalEntryPosted(event)).doesNotThrowAnyException();
     }
 }
