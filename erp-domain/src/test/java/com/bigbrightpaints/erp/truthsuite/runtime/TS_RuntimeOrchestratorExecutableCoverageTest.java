@@ -405,6 +405,58 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
     }
 
     @Test
+    void commandDispatcher_auto_approve_path_uses_shared_lease_bootstrap_and_canonical_key() {
+        WorkflowService workflowService = mock(WorkflowService.class);
+        IntegrationCoordinator integrationCoordinator = mock(IntegrationCoordinator.class);
+        EventPublisherService eventPublisherService = mock(EventPublisherService.class);
+        TraceService traceService = mock(TraceService.class);
+        PolicyEnforcer policyEnforcer = new PolicyEnforcer();
+        OrchestratorIdempotencyService idempotencyService = mock(OrchestratorIdempotencyService.class);
+        OrchestratorFeatureFlags featureFlags = mock(OrchestratorFeatureFlags.class);
+
+        CommandDispatcher dispatcher = new CommandDispatcher(
+                workflowService,
+                integrationCoordinator,
+                eventPublisherService,
+                traceService,
+                policyEnforcer,
+                idempotencyService,
+                featureFlags
+        );
+
+        OrchestratorCommand autoApproveCommand = new OrchestratorCommand(
+                92L,
+                "ORCH.ORDER.AUTO_APPROVE",
+                "persisted-auto-key",
+                "hash",
+                "trace-auto");
+        OrchestratorIdempotencyService.CommandLease lease =
+                new OrchestratorIdempotencyService.CommandLease("trace-auto", autoApproveCommand, true);
+        when(idempotencyService.start(eq("ORCH.ORDER.AUTO_APPROVE"), eq("idem-auto"), any(), any()))
+                .thenReturn(lease);
+        when(integrationCoordinator.autoApproveOrder("SO-901", new BigDecimal("250.00"), "C1"))
+                .thenReturn(new IntegrationCoordinator.AutoApprovalResult("READY_TO_SHIP", false));
+
+        String trace = dispatcher.autoApproveOrder(
+                "SO-901",
+                new BigDecimal("250.00"),
+                "C1",
+                "idem-auto",
+                "req-auto");
+
+        assertThat(trace).isEqualTo("trace-auto");
+        verify(eventPublisherService, atLeastOnce()).enqueue(any());
+        verify(traceService).record(
+                eq("trace-auto"),
+                eq("ORDER_AUTO_APPROVED"),
+                eq("C1"),
+                any(),
+                eq("req-auto"),
+                eq("persisted-auto-key"));
+        verify(idempotencyService).markSuccess(autoApproveCommand);
+    }
+
+    @Test
     void commandDispatcher_private_idempotency_and_requestid_helpers_cover_all_branches() {
         CommandDispatcher dispatcher = new CommandDispatcher(
                 mock(WorkflowService.class),

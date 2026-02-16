@@ -58,13 +58,15 @@ public class CommandDispatcher {
                                String companyId,
                                String userId) {
         policyEnforcer.checkOrderApprovalPermissions(userId, companyId);
-        String normalizedRequestId = normalizeRequestId(requestId, idempotencyKey);
-        OrchestratorIdempotencyService.CommandLease lease = idempotencyService.start(
+        LeaseEnvelope leaseEnvelope = startLease(
                 "ORCH.ORDER.APPROVE",
                 idempotencyKey,
                 request,
-                () -> workflowService.startWorkflow("order-approval"));
-        String canonicalIdempotencyKey = canonicalIdempotencyKey(lease, idempotencyKey);
+                "order-approval",
+                requestId);
+        OrchestratorIdempotencyService.CommandLease lease = leaseEnvelope.lease();
+        String normalizedRequestId = leaseEnvelope.normalizedRequestId();
+        String canonicalIdempotencyKey = leaseEnvelope.canonicalIdempotencyKey();
         return executeWithLease(lease, () -> {
             String traceId = lease.traceId();
             InventoryReservationResult reservation = integrationCoordinator.reserveInventory(request.orderId(), companyId);
@@ -94,13 +96,15 @@ public class CommandDispatcher {
                                    String companyId,
                                    String idempotencyKey,
                                    String requestId) {
-        String normalizedRequestId = normalizeRequestId(requestId, idempotencyKey);
-        OrchestratorIdempotencyService.CommandLease lease = idempotencyService.start(
+        LeaseEnvelope leaseEnvelope = startLease(
                 "ORCH.ORDER.AUTO_APPROVE",
                 idempotencyKey,
                 Map.of("orderId", orderId, "totalAmount", totalAmount),
-                () -> workflowService.startWorkflow("order-auto-approval"));
-        String canonicalIdempotencyKey = canonicalIdempotencyKey(lease, idempotencyKey);
+                "order-auto-approval",
+                requestId);
+        OrchestratorIdempotencyService.CommandLease lease = leaseEnvelope.lease();
+        String normalizedRequestId = leaseEnvelope.normalizedRequestId();
+        String canonicalIdempotencyKey = leaseEnvelope.canonicalIdempotencyKey();
         return executeWithLease(lease, () -> {
             String traceId = lease.traceId();
             IntegrationCoordinator.AutoApprovalResult result =
@@ -130,13 +134,15 @@ public class CommandDispatcher {
                                          String companyId,
                                          String userId) {
         policyEnforcer.checkOrderApprovalPermissions(userId, companyId);
-        String normalizedRequestId = normalizeRequestId(requestId, idempotencyKey);
-        OrchestratorIdempotencyService.CommandLease lease = idempotencyService.start(
+        LeaseEnvelope leaseEnvelope = startLease(
                 "ORCH.ORDER.FULFILLMENT.UPDATE",
                 idempotencyKey,
                 Map.of("orderId", orderId, "request", request),
-                () -> workflowService.startWorkflow("order-fulfillment"));
-        String canonicalIdempotencyKey = canonicalIdempotencyKey(lease, idempotencyKey);
+                "order-fulfillment",
+                requestId);
+        OrchestratorIdempotencyService.CommandLease lease = leaseEnvelope.lease();
+        String normalizedRequestId = leaseEnvelope.normalizedRequestId();
+        String canonicalIdempotencyKey = leaseEnvelope.canonicalIdempotencyKey();
         return executeWithLease(lease, () -> {
             String traceId = lease.traceId();
             IntegrationCoordinator.AutoApprovalResult result =
@@ -169,13 +175,15 @@ public class CommandDispatcher {
                                 String companyId,
                                 String userId) {
         policyEnforcer.checkDispatchPermissions(userId, companyId);
-        String normalizedRequestId = normalizeRequestId(requestId, idempotencyKey);
-        OrchestratorIdempotencyService.CommandLease lease = idempotencyService.start(
+        LeaseEnvelope leaseEnvelope = startLease(
                 "ORCH.FACTORY.BATCH.DISPATCH",
                 idempotencyKey,
                 request,
-                () -> workflowService.startWorkflow("dispatch"));
-        String canonicalIdempotencyKey = canonicalIdempotencyKey(lease, idempotencyKey);
+                "dispatch",
+                requestId);
+        OrchestratorIdempotencyService.CommandLease lease = leaseEnvelope.lease();
+        String normalizedRequestId = leaseEnvelope.normalizedRequestId();
+        String canonicalIdempotencyKey = leaseEnvelope.canonicalIdempotencyKey();
         if (!lease.shouldExecute()) {
             return lease.traceId();
         }
@@ -220,13 +228,15 @@ public class CommandDispatcher {
                              String companyId,
                              String userId) {
         policyEnforcer.checkPayrollPermissions(userId, companyId);
-        String normalizedRequestId = normalizeRequestId(requestId, idempotencyKey);
-        OrchestratorIdempotencyService.CommandLease lease = idempotencyService.start(
+        LeaseEnvelope leaseEnvelope = startLease(
                 "ORCH.PAYROLL.RUN",
                 idempotencyKey,
                 request,
-                () -> workflowService.startWorkflow("payroll"));
-        String canonicalIdempotencyKey = canonicalIdempotencyKey(lease, idempotencyKey);
+                "payroll",
+                requestId);
+        OrchestratorIdempotencyService.CommandLease lease = leaseEnvelope.lease();
+        String normalizedRequestId = leaseEnvelope.normalizedRequestId();
+        String canonicalIdempotencyKey = leaseEnvelope.canonicalIdempotencyKey();
         if (!lease.shouldExecute()) {
             return lease.traceId();
         }
@@ -321,6 +331,21 @@ public class CommandDispatcher {
         }
     }
 
+    private LeaseEnvelope startLease(String commandName,
+                                     String idempotencyKey,
+                                     Object payload,
+                                     String workflowName,
+                                     String requestId) {
+        String normalizedRequestId = normalizeRequestId(requestId, idempotencyKey);
+        OrchestratorIdempotencyService.CommandLease lease = idempotencyService.start(
+                commandName,
+                idempotencyKey,
+                payload,
+                () -> workflowService.startWorkflow(workflowName));
+        String canonicalIdempotencyKey = canonicalIdempotencyKey(lease, idempotencyKey);
+        return new LeaseEnvelope(lease, normalizedRequestId, canonicalIdempotencyKey);
+    }
+
     private String normalizeRequestId(String requestId, String idempotencyKey) {
         String normalized = StringUtils.hasText(requestId) ? requestId.trim() : null;
         if (!StringUtils.hasText(normalized)) {
@@ -376,5 +401,10 @@ public class CommandDispatcher {
     @FunctionalInterface
     private interface CommandExecution {
         String execute();
+    }
+
+    private record LeaseEnvelope(OrchestratorIdempotencyService.CommandLease lease,
+                                 String normalizedRequestId,
+                                 String canonicalIdempotencyKey) {
     }
 }
