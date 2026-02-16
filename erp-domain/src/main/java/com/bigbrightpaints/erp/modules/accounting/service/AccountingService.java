@@ -1904,40 +1904,20 @@ public class AccountingService {
             invoiceRepository.saveAll(touchedInvoices);
         }
 
-        List<PartnerSettlementResponse.Allocation> allocationSummaries = settlementRows.stream()
-                .map(row -> new PartnerSettlementResponse.Allocation(
-                        row.getInvoice() != null ? row.getInvoice().getId() : null,
-                        row.getPurchase() != null ? row.getPurchase().getId() : null,
-                        row.getAllocationAmount(),
-                        row.getDiscountAmount(),
-                        row.getWriteOffAmount(),
-                        row.getFxDifferenceAmount(),
-                        row.getMemo()
-                ))
-                .toList();
-
-        Map<String, String> auditMetadata = new HashMap<>();
-        auditMetadata.put(IntegrationFailureMetadataSchema.KEY_PARTNER_TYPE, PartnerType.DEALER.name());
-        if (dealer.getId() != null) {
-            auditMetadata.put(IntegrationFailureMetadataSchema.KEY_PARTNER_ID, dealer.getId().toString());
-        }
-        if (journalEntryDto != null && journalEntryDto.id() != null) {
-            auditMetadata.put(IntegrationFailureMetadataSchema.KEY_JOURNAL_ENTRY_ID, journalEntryDto.id().toString());
-        }
-        if (entryDate != null) {
-            auditMetadata.put(IntegrationFailureMetadataSchema.KEY_SETTLEMENT_DATE, entryDate.toString());
-        }
-        if (trimmedIdempotencyKey != null) {
-            auditMetadata.put(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, trimmedIdempotencyKey);
-        }
-        auditMetadata.put(IntegrationFailureMetadataSchema.KEY_ALLOCATION_COUNT, Integer.toString(settlementRows.size()));
-        auditMetadata.put("totalApplied", totalApplied.toPlainString());
-        auditMetadata.put("cashAmount", cashAmount.toPlainString());
-        auditMetadata.put("totalDiscount", totalDiscount.toPlainString());
-        auditMetadata.put("totalWriteOff", totalWriteOff.toPlainString());
-        auditMetadata.put("totalFxGain", totalFxGain.toPlainString());
-        auditMetadata.put("totalFxLoss", totalFxLoss.toPlainString());
-        logAuditSuccessAfterCommit(AuditEvent.SETTLEMENT_RECORDED, auditMetadata);
+        List<PartnerSettlementResponse.Allocation> allocationSummaries = toSettlementAllocationSummaries(settlementRows);
+        logSettlementAuditSuccess(
+                PartnerType.DEALER,
+                dealer.getId(),
+                journalEntryDto,
+                entryDate,
+                trimmedIdempotencyKey,
+                settlementRows.size(),
+                totalApplied,
+                cashAmount,
+                totalDiscount,
+                totalWriteOff,
+                totalFxGain,
+                totalFxLoss);
 
         return new PartnerSettlementResponse(
                 journalEntryDto,
@@ -2143,40 +2123,20 @@ public class AccountingService {
             rawMaterialPurchaseRepository.saveAll(touchedPurchases);
         }
 
-        List<PartnerSettlementResponse.Allocation> allocationSummaries = settlementRows.stream()
-                .map(row -> new PartnerSettlementResponse.Allocation(
-                        row.getInvoice() != null ? row.getInvoice().getId() : null,
-                        row.getPurchase() != null ? row.getPurchase().getId() : null,
-                        row.getAllocationAmount(),
-                        row.getDiscountAmount(),
-                        row.getWriteOffAmount(),
-                        row.getFxDifferenceAmount(),
-                        row.getMemo()
-                ))
-                .toList();
-
-        Map<String, String> auditMetadata = new HashMap<>();
-        auditMetadata.put(IntegrationFailureMetadataSchema.KEY_PARTNER_TYPE, PartnerType.SUPPLIER.name());
-        if (supplier.getId() != null) {
-            auditMetadata.put(IntegrationFailureMetadataSchema.KEY_PARTNER_ID, supplier.getId().toString());
-        }
-        if (journalEntryDto != null && journalEntryDto.id() != null) {
-            auditMetadata.put(IntegrationFailureMetadataSchema.KEY_JOURNAL_ENTRY_ID, journalEntryDto.id().toString());
-        }
-        if (entryDate != null) {
-            auditMetadata.put(IntegrationFailureMetadataSchema.KEY_SETTLEMENT_DATE, entryDate.toString());
-        }
-        if (trimmedIdempotencyKey != null) {
-            auditMetadata.put(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, trimmedIdempotencyKey);
-        }
-        auditMetadata.put(IntegrationFailureMetadataSchema.KEY_ALLOCATION_COUNT, Integer.toString(settlementRows.size()));
-        auditMetadata.put("totalApplied", totalApplied.toPlainString());
-        auditMetadata.put("cashAmount", lineDraft.cashAmount().toPlainString());
-        auditMetadata.put("totalDiscount", totalDiscount.toPlainString());
-        auditMetadata.put("totalWriteOff", totalWriteOff.toPlainString());
-        auditMetadata.put("totalFxGain", totalFxGain.toPlainString());
-        auditMetadata.put("totalFxLoss", totalFxLoss.toPlainString());
-        logAuditSuccessAfterCommit(AuditEvent.SETTLEMENT_RECORDED, auditMetadata);
+        List<PartnerSettlementResponse.Allocation> allocationSummaries = toSettlementAllocationSummaries(settlementRows);
+        logSettlementAuditSuccess(
+                PartnerType.SUPPLIER,
+                supplier.getId(),
+                journalEntryDto,
+                entryDate,
+                trimmedIdempotencyKey,
+                settlementRows.size(),
+                totalApplied,
+                lineDraft.cashAmount(),
+                totalDiscount,
+                totalWriteOff,
+                totalFxGain,
+                totalFxLoss);
 
         return new PartnerSettlementResponse(
                 journalEntryDto,
@@ -3472,17 +3432,7 @@ public class AccountingService {
                 writeOffSum,
                 fxGainSum,
                 fxLossSum,
-                existing.stream()
-                        .map(row -> new PartnerSettlementResponse.Allocation(
-                                row.getInvoice() != null ? row.getInvoice().getId() : null,
-                                row.getPurchase() != null ? row.getPurchase().getId() : null,
-                                row.getAllocationAmount(),
-                                row.getDiscountAmount(),
-                                row.getWriteOffAmount(),
-                                row.getFxDifferenceAmount(),
-                                row.getMemo()
-                        ))
-                        .toList()
+                toSettlementAllocationSummaries(existing)
         );
     }
 
@@ -3518,18 +3468,59 @@ public class AccountingService {
                 writeOffSum,
                 fxGainSum,
                 fxLossSum,
-                existing.stream()
-                        .map(row -> new PartnerSettlementResponse.Allocation(
-                                row.getInvoice() != null ? row.getInvoice().getId() : null,
-                                row.getPurchase() != null ? row.getPurchase().getId() : null,
-                                row.getAllocationAmount(),
-                                row.getDiscountAmount(),
-                                row.getWriteOffAmount(),
-                                row.getFxDifferenceAmount(),
-                                row.getMemo()
-                        ))
-                        .toList()
+                toSettlementAllocationSummaries(existing)
         );
+    }
+
+    private List<PartnerSettlementResponse.Allocation> toSettlementAllocationSummaries(
+            List<PartnerSettlementAllocation> allocations) {
+        return allocations.stream()
+                .map(row -> new PartnerSettlementResponse.Allocation(
+                        row.getInvoice() != null ? row.getInvoice().getId() : null,
+                        row.getPurchase() != null ? row.getPurchase().getId() : null,
+                        row.getAllocationAmount(),
+                        row.getDiscountAmount(),
+                        row.getWriteOffAmount(),
+                        row.getFxDifferenceAmount(),
+                        row.getMemo()
+                ))
+                .toList();
+    }
+
+    private void logSettlementAuditSuccess(PartnerType partnerType,
+                                           Long partnerId,
+                                           JournalEntryDto journalEntryDto,
+                                           LocalDate settlementDate,
+                                           String idempotencyKey,
+                                           int allocationCount,
+                                           BigDecimal totalApplied,
+                                           BigDecimal cashAmount,
+                                           BigDecimal totalDiscount,
+                                           BigDecimal totalWriteOff,
+                                           BigDecimal totalFxGain,
+                                           BigDecimal totalFxLoss) {
+        Map<String, String> auditMetadata = new HashMap<>();
+        auditMetadata.put(IntegrationFailureMetadataSchema.KEY_PARTNER_TYPE, partnerType.name());
+        if (partnerId != null) {
+            auditMetadata.put(IntegrationFailureMetadataSchema.KEY_PARTNER_ID, partnerId.toString());
+        }
+        if (journalEntryDto != null && journalEntryDto.id() != null) {
+            auditMetadata.put(IntegrationFailureMetadataSchema.KEY_JOURNAL_ENTRY_ID, journalEntryDto.id().toString());
+        }
+        if (settlementDate != null) {
+            auditMetadata.put(IntegrationFailureMetadataSchema.KEY_SETTLEMENT_DATE, settlementDate.toString());
+        }
+        if (idempotencyKey != null) {
+            auditMetadata.put(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, idempotencyKey);
+        }
+        auditMetadata.put(IntegrationFailureMetadataSchema.KEY_ALLOCATION_COUNT, Integer.toString(allocationCount));
+        auditMetadata.put("totalApplied", totalApplied.toPlainString());
+        auditMetadata.put("cashAmount", cashAmount.toPlainString());
+        auditMetadata.put("totalDiscount", totalDiscount.toPlainString());
+        auditMetadata.put("totalWriteOff", totalWriteOff.toPlainString());
+        auditMetadata.put("totalFxGain", totalFxGain.toPlainString());
+        auditMetadata.put("totalFxLoss", totalFxLoss.toPlainString());
+        logAuditSuccessAfterCommit(AuditEvent.SETTLEMENT_RECORDED, auditMetadata);
     }
 
     private Map<JournalLineSignature, Integer> lineSignatureCountsFromRequests(
