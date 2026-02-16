@@ -23,6 +23,30 @@ RISK_ORDER = {
 }
 
 
+# Lightweight domain-edge model used by the orchestrator for cross-workflow planning.
+# Edges are directional: upstream -> downstream.
+WORKFLOW_AGENT_EDGES: list[tuple[str, str, str]] = [
+    ("auth-rbac-company", "sales-domain", "tenant and role boundary contract"),
+    ("auth-rbac-company", "inventory-domain", "tenant context and role checks"),
+    ("auth-rbac-company", "purchasing-invoice-p2p", "tenant-scoped supplier/AP access rules"),
+    ("auth-rbac-company", "factory-production", "tenant-scoped manufacturing operations"),
+    ("auth-rbac-company", "reports-admin-portal", "admin/report access boundaries"),
+    ("auth-rbac-company", "hr-domain", "payroll/PII access boundaries"),
+    ("auth-rbac-company", "accounting-domain", "finance/admin authority boundaries"),
+    ("sales-domain", "inventory-domain", "dispatch and stock movement linkage"),
+    ("sales-domain", "accounting-domain", "o2c posting and receivable linkage"),
+    ("purchasing-invoice-p2p", "inventory-domain", "grn/stock intake coupling"),
+    ("purchasing-invoice-p2p", "accounting-domain", "ap/posting and settlement linkage"),
+    ("factory-production", "inventory-domain", "production/packing stock transitions"),
+    ("factory-production", "accounting-domain", "wip/variance/cogs posting linkage"),
+    ("hr-domain", "accounting-domain", "payroll liability/payment posting linkage"),
+    ("orchestrator-runtime", "sales-domain", "async orchestration command contract"),
+    ("orchestrator-runtime", "inventory-domain", "exactly-once side-effect orchestration"),
+    ("orchestrator-runtime", "accounting-domain", "outbox/idempotency posting orchestration"),
+    ("data-migration", "release-ops", "migration rehearsal and release gating"),
+]
+
+
 def utc_now() -> str:
     return dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat()
 
@@ -234,6 +258,191 @@ def reviewers_high_risk(orchestrator_layer: dict[str, Any]) -> list[str]:
     return []
 
 
+def annotate_ticket_workflow(ticket: dict[str, Any]) -> dict[str, Any]:
+    slices = [s for s in ticket.get("slices", []) if isinstance(s, dict)]
+    by_id: dict[str, dict[str, Any]] = {}
+    agent_to_slices: dict[str, list[str]] = {}
+
+    for s in slices:
+        sid = str(s.get("id", "")).strip()
+        agent = str(s.get("primary_agent", "")).strip()
+        if not sid or not agent:
+            continue
+        by_id[sid] = s
+        agent_to_slices.setdefault(agent, []).append(sid)
+
+    upstream_map: dict[str, set[str]] = {sid: set() for sid in by_id}
+    downstream_map: dict[str, set[str]] = {sid: set() for sid in by_id}
+    ext_upstream_agents: dict[str, set[str]] = {sid: set() for sid in by_id}
+    ext_downstream_agents: dict[str, set[str]] = {sid: set() for sid in by_id}
+    contract_map: dict[str, set[tuple[str, str, str, str]]] = {sid: set() for sid in by_id}
+    in_ticket_edges: set[tuple[str, str, str]] = set()
+
+    for src_agent, dst_agent, contract in WORKFLOW_AGENT_EDGES:
+        src_sids = agent_to_slices.get(src_agent, [])
+        dst_sids = agent_to_slices.get(dst_agent, [])
+
+        if src_sids and dst_sids:
+            for src_sid in src_sids:
+                for dst_sid in dst_sids:
+                    if src_sid == dst_sid:
+                        continue
+                    downstream_map[src_sid].add(dst_sid)
+                    upstream_map[dst_sid].add(src_sid)
+                    in_ticket_edges.add((src_sid, dst_sid, contract))
+                    contract_map[src_sid].add(("downstream", dst_agent, dst_sid, contract))
+                    contract_map[dst_sid].add(("upstream", src_agent, src_sid, contract))
+            continue
+
+        if src_sids and not dst_sids:
+            for src_sid in src_sids:
+                ext_downstream_agents[src_sid].add(dst_agent)
+                contract_map[src_sid].add(("downstream-external", dst_agent, "", contract))
+            continue
+
+        if dst_sids and not src_sids:
+            for dst_sid in dst_sids:
+                ext_upstream_agents[dst_sid].add(src_agent)
+                contract_map[dst_sid].add(("upstream-external", src_agent, "", contract))
+
+    for sid, slice_data in by_id.items():
+        slice_data["workflow_upstream_slices"] = sorted(upstream_map[sid])
+        slice_data["workflow_downstream_slices"] = sorted(downstream_map[sid])
+        slice_data["workflow_external_upstream_agents"] = sorted(ext_upstream_agents[sid])
+        slice_data["workflow_external_downstream_agents"] = sorted(ext_downstream_agents[sid])
+        slice_data["cross_workflow_contracts"] = [
+            {
+                "relation": relation,
+                "agent": agent,
+                "slice_id": link_sid,
+                "contract": contract,
+                "in_ticket": relation in {"upstream", "downstream"},
+            }
+            for relation, agent, link_sid, contract in sorted(contract_map[sid])
+        ]
+
+    ticket["cross_workflow"] = {
+        "model": "workflow_agent_edges_v1",
+        "generated_at": utc_now(),
+        "in_ticket_edges": [
+            {"upstream_slice": src_sid, "downstream_slice": dst_sid, "contract": contract}
+            for src_sid, dst_sid, contract in sorted(in_ticket_edges)
+        ],
+    }
+    return ticket["cross_workflow"]
+
+
+def slice_dependency_order(ticket: dict[str, Any]) -> list[str]:
+    slices = [s for s in ticket.get("slices", []) if isinstance(s, dict)]
+    ids = [str(s.get("id", "")).strip() for s in slices if str(s.get("id", "")).strip()]
+    id_set = set(ids)
+    indegree: dict[str, int] = {sid: 0 for sid in ids}
+    outgoing: dict[str, set[str]] = {sid: set() for sid in ids}
+
+    for s in slices:
+        sid = str(s.get("id", "")).strip()
+        if sid not in id_set:
+            continue
+        for upstream_sid in s.get("workflow_upstream_slices", []):
+            up = str(upstream_sid).strip()
+            if up in id_set and up != sid and sid not in outgoing[up]:
+                outgoing[up].add(sid)
+                indegree[sid] += 1
+
+    queue = sorted([sid for sid, deg in indegree.items() if deg == 0])
+    ordered: list[str] = []
+    while queue:
+        sid = queue.pop(0)
+        ordered.append(sid)
+        for nxt in sorted(outgoing[sid]):
+            indegree[nxt] -= 1
+            if indegree[nxt] == 0:
+                queue.append(nxt)
+        queue.sort()
+
+    if len(ordered) < len(ids):
+        leftovers = [sid for sid in ids if sid not in ordered]
+        ordered.extend(sorted(leftovers))
+    return ordered
+
+
+def write_cross_workflow_plan(repo_root: Path, ticket: dict[str, Any]) -> Path:
+    tid = str(ticket["ticket_id"])
+    path = ticket_dir(repo_root, tid) / "CROSS_WORKFLOW_PLAN.md"
+    by_id = {
+        str(s.get("id", "")).strip(): s
+        for s in ticket.get("slices", [])
+        if isinstance(s, dict) and str(s.get("id", "")).strip()
+    }
+    edges = ticket.get("cross_workflow", {}).get("in_ticket_edges", [])
+    merge_order = slice_dependency_order(ticket)
+
+    lines = [
+        "# Cross Workflow Plan",
+        "",
+        f"Ticket: `{tid}`",
+        f"Generated: `{utc_now()}`",
+        "",
+        "## In-Ticket Dependency Edges",
+        "",
+    ]
+
+    if not edges:
+        lines.append("- none")
+    else:
+        lines.extend(
+            [
+                "| Upstream Slice | Upstream Agent | Downstream Slice | Downstream Agent | Contract |",
+                "| --- | --- | --- | --- | --- |",
+            ]
+        )
+        for edge in edges:
+            src_sid = str(edge.get("upstream_slice", "")).strip()
+            dst_sid = str(edge.get("downstream_slice", "")).strip()
+            contract = str(edge.get("contract", "")).strip()
+            src_agent = str(by_id.get(src_sid, {}).get("primary_agent", "unknown"))
+            dst_agent = str(by_id.get(dst_sid, {}).get("primary_agent", "unknown"))
+            lines.append(f"| {src_sid} | {src_agent} | {dst_sid} | {dst_agent} | {contract} |")
+
+    lines.extend(
+        [
+            "",
+            "## Recommended Merge Order",
+            "",
+        ]
+    )
+    if not merge_order:
+        lines.append("- none")
+    else:
+        for idx, sid in enumerate(merge_order, start=1):
+            agent = str(by_id.get(sid, {}).get("primary_agent", "unknown"))
+            lines.append(f"{idx}. `{sid}` ({agent})")
+
+    lines.extend(
+        [
+            "",
+            "## Slice Coordination Notes",
+            "",
+        ]
+    )
+    for sid in merge_order:
+        s = by_id.get(sid, {})
+        upstream = [str(x) for x in s.get("workflow_upstream_slices", []) if str(x).strip()]
+        downstream = [str(x) for x in s.get("workflow_downstream_slices", []) if str(x).strip()]
+        ext_up = [str(x) for x in s.get("workflow_external_upstream_agents", []) if str(x).strip()]
+        ext_down = [str(x) for x in s.get("workflow_external_downstream_agents", []) if str(x).strip()]
+
+        lines.append(f"### {sid} ({s.get('primary_agent')})")
+        lines.append(f"- Upstream slices: {', '.join(upstream) if upstream else 'none'}")
+        lines.append(f"- Downstream slices: {', '.join(downstream) if downstream else 'none'}")
+        lines.append(f"- External upstream agents to watch: {', '.join(ext_up) if ext_up else 'none'}")
+        lines.append(f"- External downstream agents to watch: {', '.join(ext_down) if ext_down else 'none'}")
+        lines.append("")
+
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
 def write_packet_files(repo_root: Path, ticket: dict[str, Any], slice_data: dict[str, Any]) -> None:
     tid = str(ticket["ticket_id"])
     sid = str(slice_data["id"])
@@ -275,6 +484,38 @@ Worktree: `{slice_data['worktree_path']}`
     packet += "\n## Requested Focus Paths\n"
     for p in slice_data.get("scope_paths", []):
         packet += f"- `{p}`\n"
+
+    acceptance_criteria = [
+        str(x).strip()
+        for x in slice_data.get("acceptance_criteria", ticket.get("acceptance_criteria", []))
+        if str(x).strip()
+    ]
+    if acceptance_criteria:
+        packet += "\n## Acceptance Criteria\n"
+        for item in acceptance_criteria:
+            packet += f"- {item}\n"
+
+    upstream_slices = [str(x).strip() for x in slice_data.get("workflow_upstream_slices", []) if str(x).strip()]
+    downstream_slices = [str(x).strip() for x in slice_data.get("workflow_downstream_slices", []) if str(x).strip()]
+    ext_up_agents = [str(x).strip() for x in slice_data.get("workflow_external_upstream_agents", []) if str(x).strip()]
+    ext_down_agents = [str(x).strip() for x in slice_data.get("workflow_external_downstream_agents", []) if str(x).strip()]
+    contracts = [c for c in slice_data.get("cross_workflow_contracts", []) if isinstance(c, dict)]
+
+    if upstream_slices or downstream_slices or ext_up_agents or ext_down_agents or contracts:
+        packet += "\n## Cross-Workflow Dependencies\n"
+        packet += f"- Upstream slices: {', '.join(upstream_slices) if upstream_slices else 'none'}\n"
+        packet += f"- Downstream slices: {', '.join(downstream_slices) if downstream_slices else 'none'}\n"
+        packet += f"- External upstream agents to watch: {', '.join(ext_up_agents) if ext_up_agents else 'none'}\n"
+        packet += f"- External downstream agents to watch: {', '.join(ext_down_agents) if ext_down_agents else 'none'}\n"
+        if contracts:
+            packet += "- Contract edges:\n"
+            for c in contracts:
+                relation = str(c.get("relation", "edge"))
+                agent = str(c.get("agent", "unknown"))
+                contract = str(c.get("contract", ""))
+                linked_sid = str(c.get("slice_id", "")).strip()
+                suffix = f" (slice {linked_sid})" if linked_sid else ""
+                packet += f"  - {relation} -> {agent}{suffix}: {contract}\n"
 
     packet += "\n## Required Checks Before Done\n"
     checks = slice_data.get("required_checks", [])
@@ -354,6 +595,9 @@ def write_ticket_summary(repo_root: Path, ticket: dict[str, Any]) -> None:
         [
             "",
             "## Operator Commands",
+            "",
+            "Read cross-workflow dependency plan:",
+            f"`cat {ticket_dir(repo_root, tid) / 'CROSS_WORKFLOW_PLAN.md'}`",
             "",
             "Generate tmux launch block:",
             f"`python3 scripts/harness_orchestrator.py dispatch --ticket-id {tid}`",
@@ -524,6 +768,7 @@ def create_ticket(args: argparse.Namespace) -> int:
         "orchestrator_authority": {"r1": "orchestrator", "r2": "orchestrator", "r3": "human"},
         "slices": slices,
     }
+    annotate_ticket_workflow(ticket)
 
     if args.create_worktrees:
         for s in slices:
@@ -534,6 +779,7 @@ def create_ticket(args: argparse.Namespace) -> int:
         write_packet_files(repo_root, ticket, s)
 
     append_timeline(repo_root, ticket_id, "ticket created and slices planned")
+    write_cross_workflow_plan(repo_root, ticket)
     write_ticket_summary(repo_root, ticket)
     block = write_tmux_commands(repo_root, ticket)
 
@@ -549,6 +795,7 @@ def create_ticket(args: argparse.Namespace) -> int:
 def dispatch_ticket(args: argparse.Namespace) -> int:
     repo_root = project_root()
     ticket = read_ticket(repo_root, args.ticket_id)
+    annotate_ticket_workflow(ticket)
 
     if args.create_missing_worktrees:
         for s in ticket.get("slices", []):
@@ -558,9 +805,12 @@ def dispatch_ticket(args: argparse.Namespace) -> int:
                 str(s["branch"]),
                 str(ticket.get("base_branch")),
             )
-            write_packet_files(repo_root, ticket, s)
+        write_ticket(repo_root, ticket)
 
+    for s in ticket.get("slices", []):
+        write_packet_files(repo_root, ticket, s)
     block = write_tmux_commands(repo_root, ticket)
+    write_cross_workflow_plan(repo_root, ticket)
     append_timeline(repo_root, str(ticket["ticket_id"]), "dispatch command block regenerated")
     write_ticket_summary(repo_root, ticket)
 
@@ -684,6 +934,7 @@ def verify_ticket(args: argparse.Namespace) -> int:
     repo_root = project_root()
     orchestrator_layer, _, _ = load_contracts(repo_root)
     ticket = read_ticket(repo_root, args.ticket_id)
+    annotate_ticket_workflow(ticket)
     base_branch = str(ticket.get("base_branch"))
     cleanup_default = bool(orchestrator_layer.get("automation", {}).get("cleanup_worktrees_on_merge", False))
     cleanup_enabled = cleanup_default if args.cleanup_worktrees is None else bool(args.cleanup_worktrees)
@@ -698,7 +949,19 @@ def verify_ticket(args: argparse.Namespace) -> int:
     slice_ahead: dict[str, int] = {}
     slice_changed: dict[str, set[str]] = {}
     slice_agents: dict[str, str] = {}
+    by_id = {
+        str(s.get("id", "")).strip(): s
+        for s in ticket.get("slices", [])
+        if isinstance(s, dict) and str(s.get("id", "")).strip()
+    }
+    ordered_ids = slice_dependency_order(ticket)
+    ordered_slices = [by_id[sid] for sid in ordered_ids if sid in by_id]
     for s in ticket.get("slices", []):
+        sid = str(s.get("id", "")).strip()
+        if sid not in {str(x.get("id", "")).strip() for x in ordered_slices}:
+            ordered_slices.append(s)
+
+    for s in ordered_slices:
         sid = str(s.get("id"))
         branch = str(s.get("branch"))
         agent = str(s.get("primary_agent"))
@@ -998,6 +1261,7 @@ def verify_ticket(args: argparse.Namespace) -> int:
         ticket["status"] = "in_progress"
 
     write_ticket(repo_root, ticket)
+    write_cross_workflow_plan(repo_root, ticket)
     write_ticket_summary(repo_root, ticket)
 
     report_dir = ticket_dir(repo_root, args.ticket_id) / "reports"

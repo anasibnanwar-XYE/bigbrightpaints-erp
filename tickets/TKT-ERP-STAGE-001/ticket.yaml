@@ -1,0 +1,176 @@
+ticket_id: TKT-ERP-STAGE-001
+title: ERP Staging Batch 1
+goal: First shippable implementation from ERP_STAGING_MASTER_PLAN
+priority: high
+status: in_progress
+base_branch: async-loop-predeploy-audit
+worktree_root: /home/realnigga/Desktop/orchestrator_erp_worktrees
+planning_source: docs/system-map/Goal/ERP_STAGING_MASTER_PLAN.md
+context_goal_documents:
+- docs/system-map/Goal/ENTERPRISE_BACKEND_STABILIZATION_PLAN.md
+- docs/system-map/Goal/ERP_ENTERPRISE_DEPLOYMENT_DEEP_SPEC.md
+batch_label: Batch-1
+created_at: '2026-02-16T08:32:02+00:00'
+updated_at: '2026-02-16T08:44:26+00:00'
+r3_required: true
+orchestrator_authority:
+  r1: orchestrator
+  r2: orchestrator
+  r3: human
+slices:
+- id: SLICE-01
+  primary_agent: auth-rbac-company
+  master_plan_slice: M18-S2
+  execution_lane: strict_lane
+  reviewers:
+  - qa-reliability
+  - security-governance
+  scope_paths:
+  - erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/
+  - erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/
+  - erp-domain/src/main/java/com/bigbrightpaints/erp/modules/rbac/
+  allowed_scope_paths:
+  - erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/
+  - erp-domain/src/main/java/com/bigbrightpaints/erp/modules/rbac/
+  - erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/
+  - erp-domain/src/main/java/com/bigbrightpaints/erp/core/security/
+  - erp-domain/src/test/java/com/bigbrightpaints/erp/modules/auth/
+  matched_rules:
+  - erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/
+  - erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/
+  - erp-domain/src/main/java/com/bigbrightpaints/erp/modules/rbac/
+  lane: w1
+  branch: tickets/tkt-erp-stage-001/auth-rbac-company
+  worktree_path: /home/realnigga/Desktop/orchestrator_erp_worktrees/TKT-ERP-STAGE-001/auth-rbac-company
+  required_checks:
+  - cd erp-domain && mvn -B -ntp -Dtest='*Auth*' test
+  - cd erp-domain && mvn -B -ntp -Dtest='*Company*' test
+  - bash ci/check-architecture.sh
+  - bash ci/check-enterprise-policy.sh
+  - bash scripts/verify_local.sh
+  acceptance_criteria:
+  - SUPER_ADMIN-only tenant bootstrap and tenant-admin creation paths are enforced
+    in service-layer checks.
+  - ADMIN role cannot create or manage other tenants outside assigned company scope.
+  - Header/JWT/company mismatch fails closed with explicit 401/403 behavior.
+  - Cross-tenant IDOR attempts are blocked on critical tenant and auth endpoints.
+  - Audit trail captures actor, reason, and tenant scope for authority-sensitive actions.
+  status: waiting_for_push
+  objective: M18-S2 tenant authority and bootstrap hardening with fail-closed tenant
+    isolation enforcement.
+  workflow_upstream_slices: []
+  workflow_downstream_slices:
+  - SLICE-02
+  workflow_external_upstream_agents: []
+  workflow_external_downstream_agents:
+  - accounting-domain
+  - factory-production
+  - hr-domain
+  - inventory-domain
+  - purchasing-invoice-p2p
+  - reports-admin-portal
+  cross_workflow_contracts:
+  - relation: downstream
+    agent: sales-domain
+    slice_id: SLICE-02
+    contract: tenant and role boundary contract
+    in_ticket: true
+  - relation: downstream-external
+    agent: accounting-domain
+    slice_id: ''
+    contract: finance/admin authority boundaries
+    in_ticket: false
+  - relation: downstream-external
+    agent: factory-production
+    slice_id: ''
+    contract: tenant-scoped manufacturing operations
+    in_ticket: false
+  - relation: downstream-external
+    agent: hr-domain
+    slice_id: ''
+    contract: payroll/PII access boundaries
+    in_ticket: false
+  - relation: downstream-external
+    agent: inventory-domain
+    slice_id: ''
+    contract: tenant context and role checks
+    in_ticket: false
+  - relation: downstream-external
+    agent: purchasing-invoice-p2p
+    slice_id: ''
+    contract: tenant-scoped supplier/AP access rules
+    in_ticket: false
+  - relation: downstream-external
+    agent: reports-admin-portal
+    slice_id: ''
+    contract: admin/report access boundaries
+    in_ticket: false
+- id: SLICE-02
+  primary_agent: sales-domain
+  master_plan_slice: M18-S8
+  execution_lane: strict_lane
+  reviewers:
+  - qa-reliability
+  - security-governance
+  scope_paths:
+  - erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/
+  - erp-domain/src/test/java/com/bigbrightpaints/erp/modules/sales/
+  allowed_scope_paths:
+  - erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/
+  - erp-domain/src/test/java/com/bigbrightpaints/erp/modules/sales/
+  - erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/o2c/
+  matched_rules:
+  - erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/
+  - erp-domain/src/test/java/com/bigbrightpaints/erp/modules/sales/
+  lane: w2
+  branch: tickets/tkt-erp-stage-001/sales-domain
+  worktree_path: /home/realnigga/Desktop/orchestrator_erp_worktrees/TKT-ERP-STAGE-001/sales-domain
+  required_checks:
+  - cd erp-domain && mvn -B -ntp -Dtest='*Sales*Target*' test
+  - bash ci/check-architecture.sh
+  - bash ci/check-enterprise-policy.sh
+  acceptance_criteria:
+  - Salesperson cannot self-assign or self-approve their own targets.
+  - Sales target assignment and updates require ADMIN authority scoped to the same
+    tenant.
+  - Target create/update/delete actions are audit-linked with actor and reason metadata.
+  - Target reporting outputs reflect assigned ownership and fulfillment truthfully.
+  status: waiting_for_push
+  objective: M18-S8 sales-target governance hardening for admin-assigned, tenant-scoped
+    target control.
+  workflow_upstream_slices:
+  - SLICE-01
+  workflow_downstream_slices: []
+  workflow_external_upstream_agents:
+  - orchestrator-runtime
+  workflow_external_downstream_agents:
+  - accounting-domain
+  - inventory-domain
+  cross_workflow_contracts:
+  - relation: downstream-external
+    agent: accounting-domain
+    slice_id: ''
+    contract: o2c posting and receivable linkage
+    in_ticket: false
+  - relation: downstream-external
+    agent: inventory-domain
+    slice_id: ''
+    contract: dispatch and stock movement linkage
+    in_ticket: false
+  - relation: upstream
+    agent: auth-rbac-company
+    slice_id: SLICE-01
+    contract: tenant and role boundary contract
+    in_ticket: true
+  - relation: upstream-external
+    agent: orchestrator-runtime
+    slice_id: ''
+    contract: async orchestration command contract
+    in_ticket: false
+cross_workflow:
+  model: workflow_agent_edges_v1
+  generated_at: '2026-02-16T08:44:25+00:00'
+  in_ticket_edges:
+  - upstream_slice: SLICE-01
+    downstream_slice: SLICE-02
+    contract: tenant and role boundary contract
