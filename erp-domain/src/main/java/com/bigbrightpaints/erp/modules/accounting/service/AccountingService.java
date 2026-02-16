@@ -3993,12 +3993,12 @@ public class AccountingService {
         }
         if (!Objects.equals(existing.getDealer() != null ? existing.getDealer().getId() : null,
                 candidate.getDealer() != null ? candidate.getDealer().getId() : null)) {
-            mismatches.add("dealerId");
+            mismatches.add(partnerFieldLabel(PartnerType.DEALER));
             partnerMismatchTypes.add(PartnerType.DEALER.name());
         }
         if (!Objects.equals(existing.getSupplier() != null ? existing.getSupplier().getId() : null,
                 candidate.getSupplier() != null ? candidate.getSupplier().getId() : null)) {
-            mismatches.add("supplierId");
+            mismatches.add(partnerFieldLabel(PartnerType.SUPPLIER));
             partnerMismatchTypes.add(PartnerType.SUPPLIER.name());
         }
         if (!sameCurrency(existing.getCurrency(), candidate.getCurrency())) {
@@ -4223,8 +4223,8 @@ public class AccountingService {
             return referenceNumberService.nextJournalReference(company);
         }
         StringBuilder fingerprint = new StringBuilder();
-        fingerprint.append("dealerId=").append(dealer != null ? dealer.getId() : "null")
-                .append("|cashAccountId=").append(request.cashAccountId() != null ? request.cashAccountId() : "null")
+        appendPartnerFingerprint(fingerprint, PartnerType.DEALER, dealer != null ? dealer.getId() : null);
+        fingerprint.append("|cashAccountId=").append(request.cashAccountId() != null ? request.cashAccountId() : "null")
                 .append("|amount=").append(normalizeDecimal(request.amount()));
         List<SettlementAllocationRequest> allocations = request.allocations() != null
                 ? request.allocations().stream()
@@ -4245,7 +4245,7 @@ public class AccountingService {
             return referenceNumberService.nextJournalReference(company);
         }
         StringBuilder fingerprint = new StringBuilder();
-        fingerprint.append("dealerId=").append(dealer != null ? dealer.getId() : "null");
+        appendPartnerFingerprint(fingerprint, PartnerType.DEALER, dealer != null ? dealer.getId() : null);
         List<DealerReceiptSplitRequest.IncomingLine> lines = request.incomingLines() != null
                 ? request.incomingLines().stream()
                 .sorted(Comparator.comparing(DealerReceiptSplitRequest.IncomingLine::accountId, Comparator.nullsLast(Long::compareTo)))
@@ -4314,7 +4314,7 @@ public class AccountingService {
             return UUID.randomUUID().toString();
         }
         StringBuilder fingerprint = new StringBuilder();
-        fingerprint.append("dealerId=").append(request.dealerId() != null ? request.dealerId() : "null");
+        appendPartnerFingerprint(fingerprint, PartnerType.DEALER, request.dealerId());
         List<SettlementAllocationRequest> allocations = request.allocations() != null
                 ? request.allocations().stream()
                 .sorted(Comparator.comparing(SettlementAllocationRequest::invoiceId, Comparator.nullsLast(Long::compareTo)))
@@ -4340,8 +4340,8 @@ public class AccountingService {
             return UUID.randomUUID().toString();
         }
         StringBuilder fingerprint = new StringBuilder();
-        fingerprint.append("supplierId=").append(request.supplierId() != null ? request.supplierId() : "null")
-                .append("|cashAccountId=").append(request.cashAccountId() != null ? request.cashAccountId() : "null");
+        appendPartnerFingerprint(fingerprint, PartnerType.SUPPLIER, request.supplierId());
+        fingerprint.append("|cashAccountId=").append(request.cashAccountId() != null ? request.cashAccountId() : "null");
         List<SettlementAllocationRequest> allocations = request.allocations() != null
                 ? request.allocations().stream()
                 .sorted(Comparator.comparing(SettlementAllocationRequest::purchaseId, Comparator.nullsLast(Long::compareTo)))
@@ -4363,6 +4363,22 @@ public class AccountingService {
             return "0";
         }
         return value.stripTrailingZeros().toPlainString();
+    }
+
+    private void appendPartnerFingerprint(StringBuilder fingerprint, PartnerType partnerType, Long partnerId) {
+        fingerprint.append(partnerFieldLabel(partnerType))
+                .append("=")
+                .append(partnerId != null ? partnerId : "null");
+    }
+
+    private String partnerFieldLabel(PartnerType partnerType) {
+        if (partnerType == PartnerType.DEALER) {
+            return "dealerId";
+        }
+        if (partnerType == PartnerType.SUPPLIER) {
+            return "supplierId";
+        }
+        return "partnerId";
     }
 
     private String sanitizeToken(String value) {
