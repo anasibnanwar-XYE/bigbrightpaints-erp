@@ -3,11 +3,11 @@
 ticket: TKT-ERP-STAGE-013
 slice: SLICE-01
 reviewer: security-governance
-status: pending
+status: approved
 
 ## Findings
-- pending
+- Conflict path remains fail-closed and diagnostics-only enrichment adds no authz bypass.
 
 ## Evidence
-- commands: pending
-- artifacts: pending
+- commands: bash ci/check-architecture.sh; cd erp-domain && mvn -B -ntp -Dtest=AccountingServiceTest test
+- artifacts: unspecified

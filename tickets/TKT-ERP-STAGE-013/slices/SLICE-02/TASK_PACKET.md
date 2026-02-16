@@ -21,7 +21,7 @@ M18-S5B: harden settlement idempotency replay/race diagnostics and deterministic
 
 ## Required Checks Before Done
 - `bash ci/check-architecture.sh`
-- `cd erp-domain && mvn -B -ntp test`
+- `cd erp-domain && mvn -B -ntp -Dtest=TS_RuntimeAccountingReplayConflictExecutableCoverageTest test`
 
 ## Reviewer Contract
 - Review-only agents do not commit code.

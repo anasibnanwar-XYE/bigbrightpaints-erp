@@ -33,8 +33,8 @@ M18-S5B: harden settlement idempotency replay/race diagnostics and deterministic
   - upstream-external -> sales-domain: o2c posting and receivable linkage
 
 ## Required Checks Before Done
-- `cd erp-domain && mvn -B -ntp -Dtest='*Accounting*' test`
-- `bash scripts/verify_local.sh`
+- `bash ci/check-architecture.sh`
+- `cd erp-domain && mvn -B -ntp -Dtest=AccountingServiceTest test`
 
 ## Reviewer Contract
 - Review-only agents do not commit code.

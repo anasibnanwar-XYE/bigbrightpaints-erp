@@ -3,17 +3,17 @@
 - title: ERP Staging Batch 13 - Settlement Replay Race Matrix
 - goal: M18-S5B: harden settlement idempotency replay/race diagnostics and deterministic conflict handling
 - priority: high
-- status: planned
+- status: done
 - base_branch: harness-engineering-orchestrator
 - created_at: 2026-02-16T21:40:12+00:00
-- updated_at: 2026-02-16T21:40:12+00:00
+- updated_at: 2026-02-16T21:55:29+00:00
 
 ## Slice Board
 
 | Slice | Agent | Lane | Status | Branch |
 | --- | --- | --- | --- | --- |
-| SLICE-01 | accounting-domain | w1 | ready | `tickets/tkt-erp-stage-013/accounting-domain` |
-| SLICE-02 | refactor-techdebt-gc | w2 | ready | `tickets/tkt-erp-stage-013/refactor-techdebt-gc` |
+| SLICE-01 | accounting-domain | w1 | merged | `tickets/tkt-erp-stage-013/accounting-domain` |
+| SLICE-02 | refactor-techdebt-gc | w2 | merged | `tickets/tkt-erp-stage-013/refactor-techdebt-gc` |
 
 ## Operator Commands
 

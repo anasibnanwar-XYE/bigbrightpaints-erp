@@ -3,16 +3,16 @@
 - title: ERP Staging Batch 14 - Workflow Decision Log Refresh
 - goal: M18-S3B docs closure: refresh canonical workflow/duplicate-path decisions from latest merged slices
 - priority: high
-- status: planned
+- status: done
 - base_branch: harness-engineering-orchestrator
 - created_at: 2026-02-16T21:40:12+00:00
-- updated_at: 2026-02-16T21:40:12+00:00
+- updated_at: 2026-02-16T21:43:03+00:00
 
 ## Slice Board
 
 | Slice | Agent | Lane | Status | Branch |
 | --- | --- | --- | --- | --- |
-| SLICE-01 | repo-cartographer | w1 | ready | `tickets/tkt-erp-stage-014/repo-cartographer` |
+| SLICE-01 | repo-cartographer | w1 | merged | `tickets/tkt-erp-stage-014/repo-cartographer` |
 
 ## Operator Commands
 
