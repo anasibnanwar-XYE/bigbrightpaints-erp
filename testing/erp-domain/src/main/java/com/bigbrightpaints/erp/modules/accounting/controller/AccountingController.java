@@ -202,8 +202,11 @@ public class AccountingController {
 
     @PostMapping("/settlements/dealers")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-    public ResponseEntity<ApiResponse<PartnerSettlementResponse>> settleDealer(@Valid @RequestBody DealerSettlementRequest request) {
-        return ResponseEntity.ok(ApiResponse.success("Settlement recorded", accountingService.settleDealerInvoices(request)));
+    public ResponseEntity<ApiResponse<PartnerSettlementResponse>> settleDealer(
+            @Valid @RequestBody DealerSettlementRequest request,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
+        DealerSettlementRequest resolved = applyIdempotencyKey(request, idempotencyKey);
+        return ResponseEntity.ok(ApiResponse.success("Settlement recorded", accountingService.settleDealerInvoices(resolved)));
     }
 
     @PostMapping("/payroll/payments")
@@ -275,6 +278,28 @@ public class AccountingController {
                         resolvedRequest.referenceNumber(),
                         resolvedRequest.memo(),
                         resolvedKey
+                ));
+    }
+
+    private DealerSettlementRequest applyIdempotencyKey(DealerSettlementRequest request, String idempotencyKey) {
+        return applyHeaderOnlyIdempotencyKey(
+                request,
+                idempotencyKey,
+                DealerSettlementRequest::idempotencyKey,
+                (resolvedRequest, resolvedKey) -> new DealerSettlementRequest(
+                        resolvedRequest.dealerId(),
+                        resolvedRequest.cashAccountId(),
+                        resolvedRequest.discountAccountId(),
+                        resolvedRequest.writeOffAccountId(),
+                        resolvedRequest.fxGainAccountId(),
+                        resolvedRequest.fxLossAccountId(),
+                        resolvedRequest.settlementDate(),
+                        resolvedRequest.referenceNumber(),
+                        resolvedRequest.memo(),
+                        resolvedKey,
+                        resolvedRequest.adminOverride(),
+                        resolvedRequest.allocations(),
+                        resolvedRequest.payments()
                 ));
     }
 

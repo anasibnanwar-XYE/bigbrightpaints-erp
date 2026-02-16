@@ -1721,17 +1721,7 @@ public class AccountingService {
             invoiceRepository.saveAll(touchedInvoices);
         }
 
-        List<PartnerSettlementResponse.Allocation> allocationSummaries = settlementRows.stream()
-                .map(row -> new PartnerSettlementResponse.Allocation(
-                        row.getInvoice() != null ? row.getInvoice().getId() : null,
-                        row.getPurchase() != null ? row.getPurchase().getId() : null,
-                        row.getAllocationAmount(),
-                        row.getDiscountAmount(),
-                        row.getWriteOffAmount(),
-                        row.getFxDifferenceAmount(),
-                        row.getMemo()
-                ))
-                .toList();
+        List<PartnerSettlementResponse.Allocation> allocationSummaries = toSettlementAllocationSummaries(settlementRows);
 
         Map<String, String> auditMetadata = new HashMap<>();
         auditMetadata.put("partnerType", PartnerType.DEALER.name());
@@ -1903,17 +1893,7 @@ public class AccountingService {
             rawMaterialPurchaseRepository.saveAll(touchedPurchases);
         }
 
-        List<PartnerSettlementResponse.Allocation> allocationSummaries = settlementRows.stream()
-                .map(row -> new PartnerSettlementResponse.Allocation(
-                        row.getInvoice() != null ? row.getInvoice().getId() : null,
-                        row.getPurchase() != null ? row.getPurchase().getId() : null,
-                        row.getAllocationAmount(),
-                        row.getDiscountAmount(),
-                        row.getWriteOffAmount(),
-                        row.getFxDifferenceAmount(),
-                        row.getMemo()
-                ))
-                .toList();
+        List<PartnerSettlementResponse.Allocation> allocationSummaries = toSettlementAllocationSummaries(settlementRows);
 
         Map<String, String> auditMetadata = new HashMap<>();
         auditMetadata.put("partnerType", PartnerType.SUPPLIER.name());
@@ -2812,17 +2792,7 @@ public class AccountingService {
                 writeOffSum,
                 fxGainSum,
                 fxLossSum,
-                existing.stream()
-                        .map(row -> new PartnerSettlementResponse.Allocation(
-                                row.getInvoice() != null ? row.getInvoice().getId() : null,
-                                row.getPurchase() != null ? row.getPurchase().getId() : null,
-                                row.getAllocationAmount(),
-                                row.getDiscountAmount(),
-                                row.getWriteOffAmount(),
-                                row.getFxDifferenceAmount(),
-                                row.getMemo()
-                        ))
-                        .toList()
+                toSettlementAllocationSummaries(existing)
         );
     }
 
@@ -2858,18 +2828,23 @@ public class AccountingService {
                 writeOffSum,
                 fxGainSum,
                 fxLossSum,
-                existing.stream()
-                        .map(row -> new PartnerSettlementResponse.Allocation(
-                                row.getInvoice() != null ? row.getInvoice().getId() : null,
-                                row.getPurchase() != null ? row.getPurchase().getId() : null,
-                                row.getAllocationAmount(),
-                                row.getDiscountAmount(),
-                                row.getWriteOffAmount(),
-                                row.getFxDifferenceAmount(),
-                                row.getMemo()
-                        ))
-                        .toList()
+                toSettlementAllocationSummaries(existing)
         );
+    }
+
+    private List<PartnerSettlementResponse.Allocation> toSettlementAllocationSummaries(
+            List<PartnerSettlementAllocation> allocations) {
+        return allocations.stream()
+                .map(row -> new PartnerSettlementResponse.Allocation(
+                        row.getInvoice() != null ? row.getInvoice().getId() : null,
+                        row.getPurchase() != null ? row.getPurchase().getId() : null,
+                        row.getAllocationAmount(),
+                        row.getDiscountAmount(),
+                        row.getWriteOffAmount(),
+                        row.getFxDifferenceAmount(),
+                        row.getMemo()
+                ))
+                .toList();
     }
 
     private Map<JournalLineSignature, Integer> lineSignatureCountsFromRequests(
