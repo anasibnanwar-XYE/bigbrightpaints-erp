@@ -49,6 +49,9 @@ Completion Gates (Required For "Safe To Deploy" Claim)
   - edge-case failures are deterministic and fail-safe
 
 Deep Module-by-Module Execution Plan
+- Status refresh rule:
+  - module state here must mirror active/completed slice evidence below.
+  - modules with ongoing or queued execution slices remain `in_progress` until explicit closure evidence is logged.
 - [in_progress] M0 Security Foundation + Runtime Secret Hygiene
   - Auth/JWT/session state, disabled-user handling, role gates, tenant isolation filters.
   - Runtime config secret leakage + unsafe defaults in all runtime trees (`erp-domain` and `testing/erp-domain`).
@@ -57,23 +60,23 @@ Deep Module-by-Module Execution Plan
   - Dealer self-access invariants (ledger/invoices/aging/pdf).
   - Portal role boundary checks and path-parameter abuse.
   - Verify cross-company and cross-dealer isolation in controller + service layers.
-- [pending] M2 Accounting Core Trustworthiness (GL Engine)
+- [in_progress] M2 Accounting Core Trustworthiness (GL Engine)
   - Journal posting validation, locked period boundaries, reversal/cascade reversal invariants.
   - Manual journal idempotency and reference reservation races.
   - Account-type constraints and control-account misuse protection.
-- [pending] M3 AR/AP Settlements + Idempotency/Allocation Logic
+- [in_progress] M3 AR/AP Settlements + Idempotency/Allocation Logic
   - Dealer receipts, split receipts, dealer settlements.
   - Supplier payments, supplier settlements.
   - Allocation over-application checks, FX/discount/write-off treatment, replay-safety.
-- [pending] M4 Period Close, Reopen, Reconciliation, Reporting Consistency
+- [in_progress] M4 Period Close, Reopen, Reconciliation, Reporting Consistency
   - Close/lock/reopen invariants and backposting constraints.
   - Snapshot/report source consistency and reconciliation surfaces.
   - Ensure close controls prevent accounting drift.
-- [pending] M5 Inventory/Manufacturing/Dispatch Accounting Coupling
+- [in_progress] M5 Inventory/Manufacturing/Dispatch Accounting Coupling
   - Raw material intake/purchase/issue, batch handling, packing/dispatch.
   - Costing/COGS/WIP linkages and dispatch journal mappings.
   - Non-negative and quantity/value consistency under edge cases.
-- [pending] M6 Purchasing + Invoice + O2C/P2P Cross-Module Paths
+- [in_progress] M6 Purchasing + Invoice + O2C/P2P Cross-Module Paths
   - PO/GRN/invoice/payment transitions and ownership scoping.
   - Sales order -> packing slip -> dispatch -> invoice -> receipt -> settlement chain.
   - Validate invariant links and idempotent retries end-to-end.
@@ -81,14 +84,14 @@ Deep Module-by-Module Execution Plan
   - Payroll run calculation/post/pay flows.
   - Liability clearing and payroll journal linkage.
   - Notification/config safety and period/date constraints.
-- [pending] M8 Orchestrator/Outbox/Async Exactly-Once Semantics
+- [in_progress] M8 Orchestrator/Outbox/Async Exactly-Once Semantics
   - Outbox command dedupe, retry safety, and side-effect idempotency.
   - Scheduler/batch operations race and replay behavior.
-- [pending] M9 DB + Performance + Duplicate Logic Audit
+- [in_progress] M9 DB + Performance + Duplicate Logic Audit
   - Heavy queries/index coverage for hot endpoints.
   - Duplicate/redundant function/service/controller paths causing divergence risk.
   - Migration overlap/drift, startup config validation, predeploy scan scripts.
-- [pending] M10 Release Readiness Consolidation
+- [in_progress] M10 Release Readiness Consolidation
   - Final risk ledger, unresolved blockers, reproduction commands, rollback/safety notes.
   - Confirm staging handoff checklist with evidence.
 
@@ -120,7 +123,7 @@ Deep Service-Level Breakdown (Active Queue Source)
   - `hr/service/PayrollCalculationService.java`, `hr/service/PayrollService.java`
   - Focus: payroll posting correctness, liability clearing invariants, period/date enforcement.
 - M8 orchestrator/exactly-once surfaces:
-  - async command/outbox/retry paths + scheduler wiring
+  - async command/outbox/retry patwhhs + scheduler wiring
   - Focus: duplicate side effects, replay safety, audit trace completeness.
 - M9 DB/performance/duplicate code:
   - heavy repository queries + endpoint hotspots, duplicate business logic across services/controllers
@@ -9657,3 +9660,27 @@ Review Queue Update
 Loop Update
 - tracked_now_ts: `2026-02-16T03:30:10+05:30`
 - active_in_progress: `M19-S5 review queue drain (blocked) + async-loop continuation`
+
+[2026-02-16] M19-S31 review queue drained via direct codex-review fallback (agent-cap safe mode)
+- Review execution (subagent cap remained blocked, max 6):
+  - `codex review --commit b4511068` -> completed; no actionable regression findings.
+  - `codex review --commit 3d6a7599` -> completed; no actionable regression findings.
+  - background batch (`artifacts/commit-reviews/batch_20260216_095759.log`):
+    - `2962800b` rc=0
+    - `50d78915` rc=0
+    - `6c51730e` rc=0
+    - `2b2fb143` rc=0
+    - `7451e7cf` rc=0
+    - `a82746af` rc=0
+    - `3358cb2a` rc=0
+    - `18c3825d` rc=0
+    - `f271fb5e` rc=0
+    - `4d0d508f` rc=0
+
+Review Queue Update
+- prior pending review queue has been fully drained.
+- queue state now: empty.
+
+Loop Update
+- tracked_now_ts: `2026-02-16T10:06:27+05:30`
+- active_in_progress: `M19-S6 deep-module execution (M0/M1/M2/M3/M4/M5/M6/M8/M9/M10 in progress) + gate freshness continuity`
