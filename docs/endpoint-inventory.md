@@ -1,7 +1,7 @@
 # Endpoint Inventory (OpenAPI)
 
 Source: `openapi.json`
-Updated: 2026-01-25
+Updated: 2026-02-16
 
 Related behavior contract:
 - `docs/PORTAL_DISCOUNT_REFERENCE_BEHAVIOR_GUIDE.md`
@@ -43,11 +43,23 @@ Portal scope guardrail:
 | `suppliers` | 2 | /api/v1/suppliers, /api/v1/suppliers/{id} |
 
 ## High-risk duplicates / aliases (manual review)
-- `/api/v1/sales/dispatch/confirm` ↔ `/api/v1/dispatch/confirm` (dispatch confirm)
+M18-S3A decision guard source of truth:
+- `docs/system-map/CROSS_MODULE_WORKFLOWS.md`
 
-P2P boundary (not a duplicate route):
+| Workflow | Canonical write endpoint(s) | Duplicate or alternate endpoint(s) | Decision |
+|---|---|---|---|
+| O2C | `POST /api/v1/sales/dispatch/confirm` | `POST /api/v1/dispatch/confirm` | keep |
+| O2C | `POST /api/v1/sales/dispatch/confirm` | `POST /api/v1/orchestrator/dispatch`, `POST /api/v1/orchestrator/dispatch/{orderId}` | deprecate |
+| O2C | `POST /api/v1/sales/dispatch/confirm` | `POST /api/v1/orchestrator/orders/{orderId}/fulfillment` (dispatch-status mutation) | merge |
+| P2P | `POST /api/v1/purchasing/raw-material-purchases`, `POST /api/v1/accounting/suppliers/payments`, `POST /api/v1/accounting/settlements/suppliers` | `POST /api/v1/raw-materials/intake`, `POST /api/v1/inventory/opening-stock` | keep |
+| Production-to-Pack | `POST /api/v1/factory/production/logs` | `POST /api/v1/factory/production-batches` | deprecate |
+| Production-to-Pack | `POST /api/v1/factory/packing-records` | `POST /api/v1/factory/pack` | merge |
+| Payroll | `POST /api/v1/payroll/runs`, `POST /api/v1/payroll/runs/{id}/calculate`, `POST /api/v1/payroll/runs/{id}/approve`, `POST /api/v1/payroll/runs/{id}/post`, `POST /api/v1/payroll/runs/{id}/mark-paid` | `POST /api/v1/hr/payroll-runs` | merge |
+| Payroll | `POST /api/v1/payroll/runs*` | `POST /api/v1/orchestrator/payroll/run` | deprecate |
+
+P2P boundary clarification (not duplicate semantics within canonical chain):
 - `POST /api/v1/purchasing/raw-material-purchases` is purchase-invoice creation only.
-- Supplier payment/settlement are accounting routes only:
+- Supplier payment and settlement are accounting routes:
   - `POST /api/v1/accounting/suppliers/payments`
   - `POST /api/v1/accounting/settlements/suppliers`
 
