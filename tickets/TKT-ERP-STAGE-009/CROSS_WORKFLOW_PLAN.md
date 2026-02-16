@@ -1,7 +1,7 @@
 # Cross Workflow Plan
 
 Ticket: `TKT-ERP-STAGE-009`
-Generated: `2026-02-16T20:33:14+00:00`
+Generated: `2026-02-16T21:35:36+00:00`
 
 ## In-Ticket Dependency Edges
 
@@ -10,7 +10,6 @@ Generated: `2026-02-16T20:33:14+00:00`
 ## Recommended Merge Order
 
 1. `SLICE-01` (release-ops)
-2. `SLICE-02` (repo-cartographer)
 
 ## Slice Coordination Notes
 
@@ -18,11 +17,5 @@ Generated: `2026-02-16T20:33:14+00:00`
 - Upstream slices: none
 - Downstream slices: none
 - External upstream agents to watch: data-migration
-- External downstream agents to watch: none
-
-### SLICE-02 (repo-cartographer)
-- Upstream slices: none
-- Downstream slices: none
-- External upstream agents to watch: none
 - External downstream agents to watch: none
 

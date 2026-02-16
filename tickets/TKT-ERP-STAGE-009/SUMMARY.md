@@ -3,17 +3,16 @@
 - title: ERP Staging Batch 9 - M18-S10A Rollback Rehearsal Evidence
 - goal: M18-S10A smallest shippable closure: standardize staging rollback rehearsal evidence and release gate traceability
 - priority: high
-- status: planned
-- base_branch: async-loop-predeploy-audit
+- status: done
+- base_branch: harness-engineering-orchestrator
 - created_at: 2026-02-16T20:33:10+00:00
-- updated_at: 2026-02-16T20:33:10+00:00
+- updated_at: 2026-02-16T21:35:36+00:00
 
 ## Slice Board
 
 | Slice | Agent | Lane | Status | Branch |
 | --- | --- | --- | --- | --- |
-| SLICE-01 | release-ops | w1 | ready | `tickets/tkt-erp-stage-009/release-ops` |
-| SLICE-02 | repo-cartographer | w2 | ready | `tickets/tkt-erp-stage-009/repo-cartographer` |
+| SLICE-01 | release-ops | w1 | merged | `tickets/tkt-erp-stage-009/release-ops` |
 
 ## Operator Commands
 

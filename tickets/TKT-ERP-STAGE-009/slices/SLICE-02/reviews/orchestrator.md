@@ -3,11 +3,11 @@
 ticket: TKT-ERP-STAGE-009
 slice: SLICE-02
 reviewer: orchestrator
-status: pending
+status: approved
 
 ## Findings
-- pending
+- Runbook updates align M18-S10A evidence fields with merge SHA and rollback rehearsal requirements.
 
 ## Evidence
-- commands: pending
-- artifacts: pending
+- commands: bash ci/lint-knowledgebase.sh
+- artifacts: docs/runbooks/migrations.md; docs/runbooks/rollback.md

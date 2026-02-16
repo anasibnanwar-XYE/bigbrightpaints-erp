@@ -14,6 +14,7 @@ M18-S10A smallest shippable closure: standardize staging rollback rehearsal evid
 ## Agent Write Boundary (Enforced)
 - `.github/workflows/`
 - `scripts/`
+- `docs/CODE-RED/`
 - `docs/runbooks/`
 - `docker-compose.yml`
 - `erp-domain/Dockerfile`
@@ -21,6 +22,7 @@ M18-S10A smallest shippable closure: standardize staging rollback rehearsal evid
 ## Requested Focus Paths
 - `scripts/gate_release.sh`
 - `scripts/release_migration_matrix.sh`
+- `docs/CODE-RED/confidence-suite/TEST_CATALOG.json`
 
 ## Cross-Workflow Dependencies
 - Upstream slices: none
@@ -31,7 +33,7 @@ M18-S10A smallest shippable closure: standardize staging rollback rehearsal evid
   - upstream-external -> data-migration: migration rehearsal and release gating
 
 ## Required Checks Before Done
-- `bash scripts/gate_release.sh`
+- `PGHOST=127.0.0.1 PGPORT=55432 PGUSER=erp PGPASSWORD=erp PGDATABASE=postgres FLYWAY_GUARD_DB_NAME=postgres bash scripts/gate_release.sh`
 - `bash scripts/gate_reconciliation.sh`
 
 ## Reviewer Contract
