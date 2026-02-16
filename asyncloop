@@ -10062,3 +10062,49 @@ Loop Update
 Loop Update
 - tracked_now_ts: `2026-02-16T12:01:06+05:30`
 - active_in_progress: `M9 long-anchor changed-coverage closure + gate_release environment unblock path`
+
+[2026-02-16] M19-S65 truthsuite anchored coverage closure tranche recorded
+- Commit: `29033cf3`
+- Scope:
+  - added delegated JUnit Platform launcher execution in runtime truth-suite coverage harness for accounting replay/orchestrator surfaces.
+  - expanded runtime executable coverage for orchestrator controller paths, dealer portal scoped read paths, dispatcher helper branches, and event publisher helper branches.
+  - closed long-anchor changed-files coverage deficit across `AccountingService`, `CommandDispatcher`, dealer portal/controller, and orchestrator controller hotspots.
+- Validation:
+  - `cd erp-domain && mvn -B -ntp -Dtest=TS_RuntimeAccountingReplayConflictExecutableCoverageTest,TS_RuntimeOrchestratorExecutableCoverageTest,TS_RuntimeEventPublisherExecutableCoverageTest test` -> PASS.
+  - `DIFF_BASE=06d85e792d2a80cd9fc1f8e5dc15d6dfa15dd93e GATE_FAST_RELEASE_VALIDATION_MODE=true bash scripts/gate_fast.sh` -> PASS (`line=229/236=0.9703`, `branch=85/92=0.9239`).
+- Review:
+  - `codex review --commit 29033cf3` -> clean; no actionable regressions.
+
+[2026-02-16] M19-S66 anchored gate_fast freshness on moving head after M19-S65
+- Command:
+  - `DIFF_BASE=06d85e792d2a80cd9fc1f8e5dc15d6dfa15dd93e GATE_FAST_RELEASE_VALIDATION_MODE=true bash scripts/gate_fast.sh`
+- Outcome:
+  - PASS.
+  - changed-files coverage gate holds above thresholds on anchor (`line_ratio=0.9703`, `branch_ratio=0.9239`).
+
+[2026-02-16] M19-S67 gate_core evidence refreshed on head (post-coverage closure)
+- Command:
+  - `DIFF_BASE=06d85e792d2a80cd9fc1f8e5dc15d6dfa15dd93e GATE_FAST_RELEASE_VALIDATION_MODE=true bash scripts/gate_core.sh`
+- Outcome:
+  - PASS.
+  - module coverage gate PASS (`line_ratio=0.9847`, `branch_ratio=0.9167`).
+
+[2026-02-16] M19-S68 gate_reconciliation evidence refreshed on head (post-coverage closure)
+- Command:
+  - `bash scripts/gate_reconciliation.sh`
+- Outcome:
+  - PASS (`114/114`, no failures/errors/skips).
+
+[2026-02-16] M19-S69 gate_release unblocked with local v2 DB matrix env
+- Command:
+  - `PGHOST=127.0.0.1 PGPORT=55432 PGUSER=erp PGPASSWORD=erp PGDATABASE=postgres bash scripts/gate_release.sh`
+- Outcome:
+  - PASS.
+  - predeploy scans: zero findings.
+  - release migration matrix: fresh path and upgrade path both `OK` through v2 `V18`.
+- Classification:
+  - previous local auth failure at `127.0.0.1:5432` is resolved by canonical local gate env binding on `127.0.0.1:55432`.
+
+Loop Update
+- tracked_now_ts: `2026-02-16T12:22:30+05:30`
+- active_in_progress: `M10 release-readiness consolidation + completion-gate evidence pack refresh (post-ledger-green head)`

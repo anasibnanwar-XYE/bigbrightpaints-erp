@@ -9,8 +9,8 @@ Mode: Continuous
 ## Active constraints
 - Reviewer subagent dispatch currently blocked by external cap (`agent thread limit reached (max 6)`).
 - Direct `codex review --commit <sha>` fallback is active while the cap persists.
-- Current live review in flight: `none (queue clear as of 673f3f2f)`.
-- Release matrix local blocker: `gate_release` currently fails at migration-matrix step due local Postgres auth (`erp@127.0.0.1:5432` password failure).
+- Current live review in flight: `none (queue clear as of 29033cf3)`.
+- Release gate local prerequisite is now explicit: run `gate_release` against local v2 matrix DB env (`PGHOST=127.0.0.1 PGPORT=55432 PGUSER=erp PGPASSWORD=erp PGDATABASE=postgres`).
 
 ## Live plan lanes
 
@@ -24,7 +24,11 @@ Mode: Continuous
 1. Keep anchored `gate_fast` fresh on moving head.
 2. Re-run `gate_core`, `gate_reconciliation`, and `gate_release` on cadence for staging evidence.
 3. Record command outcomes in `asyncloop`.
-4. Current note: latest anchored `gate_fast` truth tests passed (`112/112`); changed-files coverage improved to (`line=0.6144`, `branch=0.7283`) but remains open on long-running diff-base and is still being handled as explicit coverage-uplift work.
+4. Current note: final ledger gate set is green on head (`29033cf3`) with anchored diff-base:
+   - `gate_fast` PASS (`line=0.9703`, `branch=0.9239`)
+   - `gate_core` PASS
+   - `gate_reconciliation` PASS (`114/114`)
+   - `gate_release` PASS on local v2 matrix env (`127.0.0.1:55432`)
 
 ### Lane C: Consistency hardening (throughput lane)
 1. Prefer small, evidence-backed slices with low blast radius.
@@ -36,3 +40,9 @@ Mode: Continuous
 - Pending code-review queue is empty (all code commits reviewed).
 - No unresolved high/critical findings remain.
 - Final ledger gates pass on same closure evidence set.
+
+## Latest closure evidence (2026-02-16)
+1. `DIFF_BASE=06d85e792d2a80cd9fc1f8e5dc15d6dfa15dd93e GATE_FAST_RELEASE_VALIDATION_MODE=true bash scripts/gate_fast.sh` -> PASS
+2. `DIFF_BASE=06d85e792d2a80cd9fc1f8e5dc15d6dfa15dd93e GATE_FAST_RELEASE_VALIDATION_MODE=true bash scripts/gate_core.sh` -> PASS
+3. `bash scripts/gate_reconciliation.sh` -> PASS
+4. `PGHOST=127.0.0.1 PGPORT=55432 PGUSER=erp PGPASSWORD=erp PGDATABASE=postgres bash scripts/gate_release.sh` -> PASS
