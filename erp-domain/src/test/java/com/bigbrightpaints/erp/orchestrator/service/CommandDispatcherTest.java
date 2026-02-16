@@ -159,6 +159,54 @@ class CommandDispatcherTest {
     }
 
     @Test
+    void dispatchBatchDisabledUsesCanonicalLeaseIdempotencyKeyInDeniedAudit() {
+        CommandDispatcher disabledDispatcher = new CommandDispatcher(
+                workflowService,
+                integrationCoordinator,
+                eventPublisherService,
+                traceService,
+                policyEnforcer,
+                idempotencyService,
+                new OrchestratorFeatureFlags(true, false));
+
+        OrchestratorCommand command = new OrchestratorCommand(
+                1L, "ORCH.FACTORY.BATCH.DISPATCH", "idem-denied", "hash", "trace-denied");
+        DispatchRequest request = new DispatchRequest("77", "orch@bbp.com", new BigDecimal("100"));
+        when(idempotencyService.start(
+                ArgumentMatchers.eq("ORCH.FACTORY.BATCH.DISPATCH"),
+                ArgumentMatchers.eq("  idem-denied  "),
+                ArgumentMatchers.eq(request),
+                ArgumentMatchers.any()))
+                .thenReturn(new OrchestratorIdempotencyService.CommandLease("trace-denied", command, true));
+
+        assertThatThrownBy(() -> disabledDispatcher.dispatchBatch(
+                request,
+                "  idem-denied  ",
+                "req-denied",
+                "COMP",
+                "user-1"))
+                .isInstanceOf(OrchestratorFeatureDisabledException.class);
+
+        ArgumentCaptor<DomainEvent> eventCaptor = ArgumentCaptor.forClass(DomainEvent.class);
+        verify(eventPublisherService).enqueue(eventCaptor.capture());
+        DomainEvent denied = eventCaptor.getValue();
+        assertThat(denied.idempotencyKey()).isEqualTo("idem-denied");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> payload = (Map<String, Object>) denied.payload();
+        assertThat(payload).containsEntry("idempotencyKey", "idem-denied");
+
+        verify(traceService).record(
+                ArgumentMatchers.eq("trace-denied"),
+                ArgumentMatchers.eq("ORCH_COMMAND_DENIED"),
+                ArgumentMatchers.eq("COMP"),
+                ArgumentMatchers.<Map<String, Object>>argThat(map ->
+                        "idem-denied".equals(map.get("idempotencyKey"))
+                                && "ORCH.FACTORY.BATCH.DISPATCH".equals(map.get("commandName"))),
+                ArgumentMatchers.eq("req-denied"),
+                ArgumentMatchers.eq("idem-denied"));
+    }
+
+    @Test
     void runPayrollFailsClosedWhenPayrollDisabled() {
         CommandDispatcher disabledDispatcher = new CommandDispatcher(
                 workflowService,
