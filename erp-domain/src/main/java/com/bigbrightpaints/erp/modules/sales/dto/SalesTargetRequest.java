@@ -11,5 +11,6 @@ public record SalesTargetRequest(
         @NotNull LocalDate periodEnd,
         @NotNull BigDecimal targetAmount,
         BigDecimal achievedAmount,
-        String assignee
+        @NotBlank String assignee,
+        @NotBlank String changeReason
 ) {}
