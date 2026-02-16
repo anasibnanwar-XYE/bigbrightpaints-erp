@@ -9760,3 +9760,43 @@ Loop Update
 Loop Update
 - tracked_now_ts: `2026-02-16T10:19:55+05:30`
 - active_in_progress: `M8 async-loop hardening + testing-lane compile blocker tracking`
+
+[2026-02-16] M19-S38 accounting replay-miss partner-context unification landed (code)
+- Commit: `374b11a3`
+- Scope:
+  - unified reserved-allocation replay-miss exception construction across:
+    - dealer receipt
+    - dealer split receipt
+    - supplier payment
+    - dealer settlement
+    - supplier settlement
+  - added partner-context metadata consistency (`idempotencyKey`, `partnerType`, `partnerId`) to non-leader replay-miss paths.
+  - added focused race-miss tests for receipt/split/payment replay detail contracts.
+- Validation:
+  - `cd erp-domain && mvn -B -ntp -Dtest=AccountingServiceTest test` -> PASS (`101/101`).
+- Review:
+  - `codex review --commit 374b11a3` -> running in background (no timeout mode).
+
+[2026-02-16] M19-S39 orchestrator command lease-flow centralization landed (code)
+- Commit: `889e1047`
+- Scope:
+  - centralized idempotent command success/failure handling into shared lease executor in `CommandDispatcher`.
+  - removed duplicated per-command try/catch + `markSuccess/markFailed` blocks for approve/auto-approve/fulfillment/dispatch/payroll success paths.
+- Validation:
+  - `cd erp-domain && mvn -B -ntp -Dtest=CommandDispatcherTest test` -> PASS (`11/11`).
+- Review:
+  - `codex review --commit 889e1047` -> running in background (no timeout mode).
+
+[2026-02-16] M19-S40 dispatch/payroll posting-amount guard dedupe landed (code)
+- Commit: `5328a398`
+- Scope:
+  - deduped dispatch/payroll posting-amount validation into shared `ensurePositivePostingAmount(...)`.
+  - preserved fail-closed behavior and idempotency failure marking semantics for invalid/null posting amount.
+- Validation:
+  - `cd erp-domain && mvn -B -ntp -Dtest=CommandDispatcherTest test` -> PASS (`11/11`).
+- Review:
+  - `codex review --commit 5328a398` -> running in background (no timeout mode).
+
+Loop Update
+- tracked_now_ts: `2026-02-16T10:32:47+05:30`
+- active_in_progress: `M8/M9 async-loop tranche execution + live commit-review drain (3 reviews running)`
