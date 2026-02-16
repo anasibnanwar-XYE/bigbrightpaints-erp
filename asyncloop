@@ -9919,3 +9919,23 @@ Loop Update
 Loop Update
 - tracked_now_ts: `2026-02-16T11:02:03+05:30`
 - active_in_progress: `M8 review drain + lane-B gate freshness evidence continuation`
+
+[2026-02-16] M19-S51 direct review closure for canonical-idempotency propagation tranche
+- Review closure update:
+  - `codex review --commit aa217359` -> clean; no actionable regressions.
+
+[2026-02-16] M19-S52 denied-path canonical idempotency regression guard landed
+- Commit: `e190d5d6`
+- Scope:
+  - added explicit regression test for feature-disabled dispatch denied path to ensure canonical lease idempotency key is emitted in:
+    - denied event envelope (`idempotencyKey`)
+    - denied event payload (`idempotencyKey`)
+    - trace/audit metadata (`ORCH_COMMAND_DENIED`)
+- Validation:
+  - `cd erp-domain && mvn -B -ntp -Dtest=CommandDispatcherTest,TS_RuntimeOrchestratorIdempotencyExecutableCoverageTest test` -> PASS (`23/23`).
+- Review:
+  - `codex review --commit e190d5d6` -> clean; no actionable regressions.
+
+Loop Update
+- tracked_now_ts: `2026-02-16T11:05:21+05:30`
+- active_in_progress: `M8 async-loop hardening continuation + queue-drained monitor + next tranche selection`
