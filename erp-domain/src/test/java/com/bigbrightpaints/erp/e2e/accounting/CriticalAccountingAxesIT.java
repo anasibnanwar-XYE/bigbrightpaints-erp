@@ -75,10 +75,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -662,7 +664,13 @@ class CriticalAccountingAxesIT extends AbstractIntegrationTest {
         assertThat(tb.totalDebit()).isEqualByComparingTo(tb.totalCredit());
 
         ProfitLossDto pl = reportService.profitLoss();
+        Set<Long> companyAccountIds = accounts.values().stream()
+                .map(Account::getId)
+                .collect(Collectors.toSet());
         BigDecimal cogsFromJournals = journalLineRepository.findAll().stream()
+                .filter(line -> line.getAccount() != null
+                        && line.getAccount().getId() != null
+                        && companyAccountIds.contains(line.getAccount().getId()))
                 .filter(line -> line.getAccount().getId().equals(accounts.get("COGS").getId()))
                 .map(line -> line.getDebit().subtract(line.getCredit()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -951,14 +959,26 @@ class CriticalAccountingAxesIT extends AbstractIntegrationTest {
     }
 
     private BigDecimal sumDebitForCompany() {
+        Set<Long> companyAccountIds = accounts.values().stream()
+                .map(Account::getId)
+                .collect(Collectors.toSet());
         return journalLineRepository.findAll().stream()
+                .filter(line -> line.getAccount() != null
+                        && line.getAccount().getId() != null
+                        && companyAccountIds.contains(line.getAccount().getId()))
                 .map(JournalLine::getDebit)
                 .filter(val -> val != null)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     private BigDecimal sumCreditForCompany() {
+        Set<Long> companyAccountIds = accounts.values().stream()
+                .map(Account::getId)
+                .collect(Collectors.toSet());
         return journalLineRepository.findAll().stream()
+                .filter(line -> line.getAccount() != null
+                        && line.getAccount().getId() != null
+                        && companyAccountIds.contains(line.getAccount().getId()))
                 .map(JournalLine::getCredit)
                 .filter(val -> val != null)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);

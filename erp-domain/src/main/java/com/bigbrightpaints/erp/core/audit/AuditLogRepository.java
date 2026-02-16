@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.core.audit;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -27,6 +28,7 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, Long> {
     /**
      * Find audit logs by event type.
      */
+    @EntityGraph(attributePaths = "metadata")
     List<AuditLog> findByEventTypeOrderByTimestampDesc(AuditEvent eventType);
 
     /**

@@ -464,7 +464,7 @@ public class SalesService {
         if (requiresCreditLimitCheck(paymentMode)) {
             try {
                 enforceCreditLimit(company, order.getDealer(), amounts.total());
-            } catch (IllegalStateException ex) {
+            } catch (CreditLimitExceededException | IllegalStateException ex) {
                 Optional<SalesOrderDto> replay = resolveCreateOrderReplayAfterCreditFailure(
                         company,
                         idempotencyKey,
@@ -1367,12 +1367,23 @@ public class SalesService {
         BigDecimal total = orderTotal == null ? BigDecimal.ZERO : orderTotal;
         BigDecimal projected = outstanding.add(total);
         if (projected.compareTo(limit) > 0) {
-            throw new IllegalStateException(String.format(
+            BigDecimal requiredHeadroom = projected.subtract(limit);
+            if (requiredHeadroom.compareTo(BigDecimal.ZERO) < 0) {
+                requiredHeadroom = BigDecimal.ZERO;
+            }
+            CreditLimitExceededException ex = new CreditLimitExceededException(String.format(
                     "Dealer %s credit limit exceeded. Limit %.2f, outstanding %.2f, attempted order %.2f",
                     lockedDealer.getName(),
                     limit,
                     outstanding,
                     total));
+            ex.withDetail("dealerId", lockedDealer.getId())
+                    .withDetail("companyId", company.getId())
+                    .withDetail("currentExposure", outstanding)
+                    .withDetail("creditLimit", limit)
+                    .withDetail("orderAmount", total)
+                    .withDetail("requiredHeadroom", requiredHeadroom);
+            throw ex;
         }
     }
 

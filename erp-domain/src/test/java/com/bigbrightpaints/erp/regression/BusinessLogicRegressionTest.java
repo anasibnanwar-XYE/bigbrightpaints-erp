@@ -131,7 +131,7 @@ public class BusinessLogicRegressionTest extends AbstractIntegrationTest {
         }
 
         // Verify all entries are balanced
-        List<JournalEntry> entries = journalEntryRepository.findAll();
+        List<JournalEntry> entries = journalEntryRepository.findByCompanyOrderByEntryDateDesc(company);
 
         for (JournalEntry entry : entries) {
             BigDecimal totalDebits = entry.getLines().stream()
@@ -327,6 +327,7 @@ public class BusinessLogicRegressionTest extends AbstractIntegrationTest {
 
         ResponseEntity<Map> response = rest.exchange("/api/v1/accounting/journal-entries",
                 HttpMethod.POST, new HttpEntity<>(jeRequest, headers), Map.class);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
 
         return ((Number) ((Map<?, ?>) response.getBody().get("data")).get("id")).longValue();
     }
