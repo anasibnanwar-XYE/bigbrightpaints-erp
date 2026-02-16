@@ -11,13 +11,9 @@ import com.bigbrightpaints.erp.modules.accounting.service.TemporalBalanceService
 import com.bigbrightpaints.erp.modules.accounting.service.AccountHierarchyService;
 import com.bigbrightpaints.erp.modules.accounting.service.AgingReportService;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
-import com.bigbrightpaints.erp.modules.accounting.service.AccountingAuditTrailService;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
-import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.modules.company.domain.Company;
-import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesReturnService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import io.micrometer.core.annotation.Timed;
@@ -25,24 +21,18 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
-import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.util.StringUtils;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.UUID;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.time.YearMonth;
-import java.time.LocalDate;
-import java.time.Instant;
-import java.time.format.DateTimeParseException;
 
 @RestController
 @RequestMapping("/api/v1/accounting")
@@ -59,9 +49,6 @@ public class AccountingController {
     private final AccountHierarchyService accountHierarchyService;
     private final AgingReportService agingReportService;
     private final CompanyDefaultAccountsService companyDefaultAccountsService;
-    private final AccountingAuditTrailService accountingAuditTrailService;
-    private final CompanyContextService companyContextService;
-    private final CompanyClock companyClock;
 
     public AccountingController(AccountingService accountingService,
                                 AccountingFacade accountingFacade,
@@ -73,10 +60,7 @@ public class AccountingController {
                                 TemporalBalanceService temporalBalanceService,
                                 AccountHierarchyService accountHierarchyService,
                                 AgingReportService agingReportService,
-                                CompanyDefaultAccountsService companyDefaultAccountsService,
-                                AccountingAuditTrailService accountingAuditTrailService,
-                                CompanyContextService companyContextService,
-                                CompanyClock companyClock) {
+                                CompanyDefaultAccountsService companyDefaultAccountsService) {
         this.accountingService = accountingService;
         this.accountingFacade = accountingFacade;
         this.salesReturnService = salesReturnService;
@@ -88,31 +72,15 @@ public class AccountingController {
         this.accountHierarchyService = accountHierarchyService;
         this.agingReportService = agingReportService;
         this.companyDefaultAccountsService = companyDefaultAccountsService;
-        this.accountingAuditTrailService = accountingAuditTrailService;
-        this.companyContextService = companyContextService;
-        this.companyClock = companyClock;
     }
 
     /**
-     * Keep accounting error payloads structured and explicit for UI diagnostics.
+     * Translate business exceptions to 400 for API clients (prevents 500 on validation/state errors).
      */
     @ExceptionHandler(ApplicationException.class)
-    public ResponseEntity<ApiResponse<Map<String, Object>>> handleApplicationException(
-            ApplicationException ex,
-            HttpServletRequest request) {
-        String traceId = UUID.randomUUID().toString();
-        Map<String, Object> errorData = new HashMap<>();
-        errorData.put("code", ex.getErrorCode().getCode());
-        errorData.put("message", ex.getUserMessage());
-        errorData.put("reason", ex.getUserMessage());
-        errorData.put("path", request != null ? request.getRequestURI() : null);
-        errorData.put("traceId", traceId);
-        Map<String, Object> details = ex.getDetails();
-        if (!details.isEmpty()) {
-            errorData.put("details", details);
-        }
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ApiResponse.failure(ex.getUserMessage(), errorData));
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ApiResponse<Void> handleApplicationException(ApplicationException ex) {
+        return ApiResponse.failure(ex.getUserMessage(), null);
     }
 
     @GetMapping("/accounts")
@@ -218,9 +186,8 @@ public class AccountingController {
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
     public ResponseEntity<ApiResponse<JournalEntryDto>> recordDealerReceipt(
             @Valid @RequestBody DealerReceiptRequest request,
-            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
-            @RequestHeader(value = "X-Idempotency-Key", required = false) String legacyIdempotencyKey) {
-        DealerReceiptRequest resolved = applyIdempotencyKey(request, idempotencyKey, legacyIdempotencyKey);
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
+        DealerReceiptRequest resolved = applyIdempotencyKey(request, idempotencyKey);
         return ResponseEntity.ok(ApiResponse.success("Receipt recorded", accountingService.recordDealerReceipt(resolved)));
     }
 
@@ -228,20 +195,15 @@ public class AccountingController {
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
     public ResponseEntity<ApiResponse<JournalEntryDto>> recordDealerHybridReceipt(
             @Valid @RequestBody DealerReceiptSplitRequest request,
-            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
-            @RequestHeader(value = "X-Idempotency-Key", required = false) String legacyIdempotencyKey) {
-        DealerReceiptSplitRequest resolved = applyIdempotencyKey(request, idempotencyKey, legacyIdempotencyKey);
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
+        DealerReceiptSplitRequest resolved = applyIdempotencyKey(request, idempotencyKey);
         return ResponseEntity.ok(ApiResponse.success("Receipt recorded", accountingService.recordDealerReceiptSplit(resolved)));
     }
 
     @PostMapping("/settlements/dealers")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-    public ResponseEntity<ApiResponse<PartnerSettlementResponse>> settleDealer(
-            @Valid @RequestBody DealerSettlementRequest request,
-            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
-            @RequestHeader(value = "X-Idempotency-Key", required = false) String legacyIdempotencyKey) {
-        DealerSettlementRequest resolved = applyIdempotencyKey(request, idempotencyKey, legacyIdempotencyKey);
-        return ResponseEntity.ok(ApiResponse.success("Settlement recorded", accountingService.settleDealerInvoices(resolved)));
+    public ResponseEntity<ApiResponse<PartnerSettlementResponse>> settleDealer(@Valid @RequestBody DealerSettlementRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Settlement recorded", accountingService.settleDealerInvoices(request)));
     }
 
     @PostMapping("/payroll/payments")
@@ -254,9 +216,8 @@ public class AccountingController {
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
     public ResponseEntity<ApiResponse<JournalEntryDto>> recordSupplierPayment(
             @Valid @RequestBody SupplierPaymentRequest request,
-            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
-            @RequestHeader(value = "X-Idempotency-Key", required = false) String legacyIdempotencyKey) {
-        SupplierPaymentRequest resolved = applyIdempotencyKey(request, idempotencyKey, legacyIdempotencyKey);
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
+        SupplierPaymentRequest resolved = applyIdempotencyKey(request, idempotencyKey);
         return ResponseEntity.ok(ApiResponse.success("Supplier payment recorded", accountingService.recordSupplierPayment(resolved)));
     }
 
@@ -264,9 +225,8 @@ public class AccountingController {
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
     public ResponseEntity<ApiResponse<PartnerSettlementResponse>> settleSupplier(
             @Valid @RequestBody SupplierSettlementRequest request,
-            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
-            @RequestHeader(value = "X-Idempotency-Key", required = false) String legacyIdempotencyKey) {
-        SupplierSettlementRequest resolved = applyIdempotencyKey(request, idempotencyKey, legacyIdempotencyKey);
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
+        SupplierSettlementRequest resolved = applyIdempotencyKey(request, idempotencyKey);
         return ResponseEntity.ok(ApiResponse.success("Settlement recorded", accountingService.settleSupplierInvoices(resolved)));
     }
 
@@ -288,13 +248,10 @@ public class AccountingController {
         return ResponseEntity.ok(ApiResponse.success("Accrual posted", accountingService.postAccrual(request)));
     }
 
-    private DealerReceiptRequest applyIdempotencyKey(DealerReceiptRequest request,
-                                                     String idempotencyKeyHeader,
-                                                     String legacyIdempotencyKeyHeader) {
+    private DealerReceiptRequest applyIdempotencyKey(DealerReceiptRequest request, String idempotencyKey) {
         return applyHeaderOnlyIdempotencyKey(
                 request,
-                idempotencyKeyHeader,
-                legacyIdempotencyKeyHeader,
+                idempotencyKey,
                 DealerReceiptRequest::idempotencyKey,
                 (resolvedRequest, resolvedKey) -> new DealerReceiptRequest(
                         resolvedRequest.dealerId(),
@@ -307,13 +264,10 @@ public class AccountingController {
                 ));
     }
 
-    private DealerReceiptSplitRequest applyIdempotencyKey(DealerReceiptSplitRequest request,
-                                                          String idempotencyKeyHeader,
-                                                          String legacyIdempotencyKeyHeader) {
+    private DealerReceiptSplitRequest applyIdempotencyKey(DealerReceiptSplitRequest request, String idempotencyKey) {
         return applyHeaderOnlyIdempotencyKey(
                 request,
-                idempotencyKeyHeader,
-                legacyIdempotencyKeyHeader,
+                idempotencyKey,
                 DealerReceiptSplitRequest::idempotencyKey,
                 (resolvedRequest, resolvedKey) -> new DealerReceiptSplitRequest(
                         resolvedRequest.dealerId(),
@@ -324,38 +278,10 @@ public class AccountingController {
                 ));
     }
 
-    private DealerSettlementRequest applyIdempotencyKey(DealerSettlementRequest request,
-                                                        String idempotencyKeyHeader,
-                                                        String legacyIdempotencyKeyHeader) {
+    private SupplierPaymentRequest applyIdempotencyKey(SupplierPaymentRequest request, String idempotencyKey) {
         return applyHeaderOnlyIdempotencyKey(
                 request,
-                idempotencyKeyHeader,
-                legacyIdempotencyKeyHeader,
-                DealerSettlementRequest::idempotencyKey,
-                (resolvedRequest, resolvedKey) -> new DealerSettlementRequest(
-                        resolvedRequest.dealerId(),
-                        resolvedRequest.cashAccountId(),
-                        resolvedRequest.discountAccountId(),
-                        resolvedRequest.writeOffAccountId(),
-                        resolvedRequest.fxGainAccountId(),
-                        resolvedRequest.fxLossAccountId(),
-                        resolvedRequest.settlementDate(),
-                        resolvedRequest.referenceNumber(),
-                        resolvedRequest.memo(),
-                        resolvedKey,
-                        resolvedRequest.adminOverride(),
-                        resolvedRequest.allocations(),
-                        resolvedRequest.payments()
-                ));
-    }
-
-    private SupplierPaymentRequest applyIdempotencyKey(SupplierPaymentRequest request,
-                                                       String idempotencyKeyHeader,
-                                                       String legacyIdempotencyKeyHeader) {
-        return applyHeaderOnlyIdempotencyKey(
-                request,
-                idempotencyKeyHeader,
-                legacyIdempotencyKeyHeader,
+                idempotencyKey,
                 SupplierPaymentRequest::idempotencyKey,
                 (resolvedRequest, resolvedKey) -> new SupplierPaymentRequest(
                         resolvedRequest.supplierId(),
@@ -368,13 +294,10 @@ public class AccountingController {
                 ));
     }
 
-    private SupplierSettlementRequest applyIdempotencyKey(SupplierSettlementRequest request,
-                                                          String idempotencyKeyHeader,
-                                                          String legacyIdempotencyKeyHeader) {
+    private SupplierSettlementRequest applyIdempotencyKey(SupplierSettlementRequest request, String idempotencyKey) {
         return applyHeaderOnlyIdempotencyKey(
                 request,
-                idempotencyKeyHeader,
-                legacyIdempotencyKeyHeader,
+                idempotencyKey,
                 SupplierSettlementRequest::idempotencyKey,
                 (resolvedRequest, resolvedKey) -> new SupplierSettlementRequest(
                         resolvedRequest.supplierId(),
@@ -393,34 +316,16 @@ public class AccountingController {
     }
 
     private <T> T applyHeaderOnlyIdempotencyKey(T request,
-                                                String idempotencyKeyHeader,
-                                                String legacyIdempotencyKeyHeader,
+                                                String idempotencyKey,
                                                 Function<T, String> requestIdempotencyKeyExtractor,
                                                 BiFunction<T, String, T> requestWithIdempotencyKey) {
         if (request == null) {
             return null;
         }
-        String resolvedKey = resolveHeaderOnlyIdempotencyKey(
-                requestIdempotencyKeyExtractor.apply(request),
-                idempotencyKeyHeader,
-                legacyIdempotencyKeyHeader);
-        if (!StringUtils.hasText(resolvedKey)) {
+        if (StringUtils.hasText(requestIdempotencyKeyExtractor.apply(request)) || !StringUtils.hasText(idempotencyKey)) {
             return request;
         }
-        return requestWithIdempotencyKey.apply(request, resolvedKey);
-    }
-
-    private String resolveHeaderOnlyIdempotencyKey(String bodyIdempotencyKey,
-                                                   String idempotencyKeyHeader,
-                                                   String legacyIdempotencyKeyHeader) {
-        String resolvedKey = com.bigbrightpaints.erp.core.util.IdempotencyHeaderUtils.resolveBodyOrHeaderKey(
-                bodyIdempotencyKey,
-                idempotencyKeyHeader,
-                legacyIdempotencyKeyHeader);
-        if (!StringUtils.hasText(resolvedKey) || StringUtils.hasText(bodyIdempotencyKey)) {
-            return null;
-        }
-        return resolvedKey;
+        return requestWithIdempotencyKey.apply(request, idempotencyKey);
     }
 
     @GetMapping("/gst/return")
@@ -644,7 +549,6 @@ public class AccountingController {
 
     /* Audit digest */
     @GetMapping("/audit/digest")
-    @Deprecated(forRemoval = false, since = "2026-02-11")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
     public ResponseEntity<ApiResponse<AuditDigestResponse>> auditDigest(@RequestParam(required = false) String from,
                                                                         @RequestParam(required = false) String to) {
@@ -655,7 +559,6 @@ public class AccountingController {
     }
 
     @GetMapping(value = "/audit/digest.csv", produces = "text/csv")
-    @Deprecated(forRemoval = false, since = "2026-02-11")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
     public ResponseEntity<String> auditDigestCsv(@RequestParam(required = false) String from,
                                                  @RequestParam(required = false) String to) {
@@ -663,29 +566,6 @@ public class AccountingController {
                 from != null ? java.time.LocalDate.parse(from) : null,
                 to != null ? java.time.LocalDate.parse(to) : null);
         return ResponseEntity.ok(csv);
-    }
-
-    @GetMapping("/audit/transactions")
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-    public ResponseEntity<ApiResponse<com.bigbrightpaints.erp.shared.dto.PageResponse<AccountingTransactionAuditListItemDto>>> transactionAudit(
-            @RequestParam(required = false) String from,
-            @RequestParam(required = false) String to,
-            @RequestParam(required = false) String module,
-            @RequestParam(required = false) String status,
-            @RequestParam(required = false) String reference,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "50") int size) {
-        LocalDate fromDate = from != null ? LocalDate.parse(from) : null;
-        LocalDate toDate = to != null ? LocalDate.parse(to) : null;
-        return ResponseEntity.ok(ApiResponse.success(
-                accountingAuditTrailService.listTransactions(fromDate, toDate, module, status, reference, page, size)));
-    }
-
-    @GetMapping("/audit/transactions/{journalEntryId}")
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-    public ResponseEntity<ApiResponse<AccountingTransactionAuditDetailDto>> transactionAuditDetail(@PathVariable Long journalEntryId) {
-        return ResponseEntity.ok(ApiResponse.success(
-                accountingAuditTrailService.transactionDetail(journalEntryId)));
     }
 
     // ==================== TEMPORAL QUERIES (Snapshots + Journal Lines) ====================
@@ -715,48 +595,14 @@ public class AccountingController {
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
     public ResponseEntity<ApiResponse<TemporalBalanceService.AccountActivityReport>> getAccountActivity(
             @PathVariable Long accountId,
-            @RequestParam(required = false) String startDate,
-            @RequestParam(required = false) String endDate,
-            @RequestParam(required = false) String from,
-            @RequestParam(required = false) String to) {
-        String resolvedStart = StringUtils.hasText(startDate) ? startDate : from;
-        String resolvedEnd = StringUtils.hasText(endDate) ? endDate : to;
-        if (!StringUtils.hasText(resolvedStart) || !StringUtils.hasText(resolvedEnd)) {
-            throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
-                    "Account activity requires startDate/endDate (or from/to) query parameters");
-        }
-        LocalDate start;
-        LocalDate end;
-        try {
-            start = LocalDate.parse(resolvedStart);
-            end = LocalDate.parse(resolvedEnd);
-        } catch (DateTimeParseException ex) {
-            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_DATE,
-                    "Invalid account activity date format; expected ISO date yyyy-MM-dd")
-                    .withDetail("startDate", resolvedStart)
-                    .withDetail("endDate", resolvedEnd);
-        }
+            @RequestParam String startDate,
+            @RequestParam String endDate) {
         return ResponseEntity.ok(ApiResponse.success(
                 "Account activity report",
                 temporalBalanceService.getAccountActivity(
                         accountId,
-                        start,
-                        end)));
-    }
-
-    @GetMapping("/date-context")
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> getAccountingDateContext() {
-        Company company = companyContextService.requireCurrentCompany();
-        LocalDate today = companyClock.today(company);
-        Instant now = companyClock.now(company);
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("companyId", company != null ? company.getId() : null);
-        payload.put("companyCode", company != null ? company.getCode() : null);
-        payload.put("timezone", company != null ? company.getTimezone() : null);
-        payload.put("today", today);
-        payload.put("now", now);
-        return ResponseEntity.ok(ApiResponse.success("Accounting date context", payload));
+                        java.time.LocalDate.parse(startDate),
+                        java.time.LocalDate.parse(endDate))));
     }
 
     @GetMapping("/accounts/{accountId}/balance/compare")
@@ -851,5 +697,4 @@ public class AccountingController {
                 "Days Sales Outstanding report",
                 agingReportService.getDealerDSO(dealerId)));
     }
-
 }
