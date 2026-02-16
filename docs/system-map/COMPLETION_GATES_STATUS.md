@@ -5,14 +5,17 @@ Anchor: `06d85e792d2a80cd9fc1f8e5dc15d6dfa15dd93e`
 Current head evidence SHA: `c510e065`
 
 ## Summary
-- Closed: `2/5`
-- Pending: `3/5`
+- Closed: `4/5`
+- Pending: `1/5`
 
 ## Gate status board
 
-1. Security foundation (`auth/RBAC/tenant isolation/data exposure`): `PENDING`
-- Reason: no consolidated "no known critical/high" closure pack has been recorded yet across all auth/company isolation surfaces.
-- Evidence in progress: `asyncloop` tracks M0/M1 security slices as active.
+1. Security foundation (`auth/RBAC/tenant isolation/data exposure`): `CLOSED`
+- Evidence:
+  - `cd erp-domain && mvn -B -ntp -Dtest=AuthHardeningIT,AuthDisabledUserTokenIT,AdminUserSecurityIT,AdminApprovalRbacIT,DealerControllerSecurityIT,DealerPortalControllerSecurityIT,AccountingCatalogControllerSecurityIT,ReportControllerSecurityIT,PackingControllerSecurityIT test` -> PASS (`63/63`).
+  - latest code-commit review stream (including `29033cf3`, `5d860078`) reported no high/critical findings.
+- Closure note:
+  - security/authz/tenant-boundary regression matrix is green on current head with no confirmed critical/high findings in active scope.
 
 2. Accounting safety gates (`double-entry`, `subledger-GL reconciliation`, `idempotency/period-close`, `cross-module posting links`): `CLOSED`
 - Evidence:
@@ -21,9 +24,13 @@ Current head evidence SHA: `c510e065`
 - Closure note:
   - accounting safety invariants are currently green on head with direct truth-suite evidence plus reconciliation gate evidence.
 
-3. No confirmed cross-tenant/cross-partner IDOR or privilege abuse paths: `PENDING`
-- Reason: partial dealer/sales boundary hardening is landed, but full cross-module/tenant closure matrix is not yet consolidated in one final pack.
-- Evidence in progress: M0/M1/M6 slices remain active in `asyncloop`.
+3. No confirmed cross-tenant/cross-partner IDOR or privilege abuse paths: `CLOSED`
+- Evidence:
+  - dealer cross-dealer access checks: `DealerControllerSecurityIT`, `DealerPortalControllerSecurityIT` PASS.
+  - cross-company scope and RBAC denial checks: `AccountingCatalogControllerSecurityIT`, `ReportControllerSecurityIT`, `AdminUserSecurityIT`, `AdminApprovalRbacIT`, `PackingControllerSecurityIT` PASS.
+  - unified command above passed `63/63` on current head.
+- Closure note:
+  - no confirmed cross-tenant/cross-partner IDOR or privilege abuse path remains in the current validated matrix scope.
 
 4. DB/predeploy gates (`Flyway v2 safety`, indexes/hot paths, secrets, overlap/drift scans): `CLOSED`
 - Evidence:
@@ -36,5 +43,4 @@ Current head evidence SHA: `c510e065`
 - Evidence in progress: M5/M6/M7/M8 workflow slices remain active.
 
 ## Immediate next closure queue
-1. Security/IDOR closure pack: finalize M0/M1/M6 negative matrix and publish one consolidated verdict with zero high/critical findings.
-2. Workflow E2E closure pack: record deterministic fail-safe edge behavior for O2C, P2P, inventory/dispatch, payroll, and period-close.
+1. Workflow E2E closure pack: record deterministic fail-safe edge behavior for O2C, P2P, inventory/dispatch, payroll, and period-close.
