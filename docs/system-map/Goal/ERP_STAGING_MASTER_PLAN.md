@@ -329,3 +329,8 @@ Current rule:
 - `M18-S8`: admin-assigned sales-target governance fix.
 - `M18-S9`: JSON API contract maturity + frontend docs parity gates.
 - `M18-S10`: staging rehearsal evidence pack and rollback drill closure.
+
+## 19) Active Ticket Ledger (Orchestrator)
+- 2026-02-16: `TKT-ERP-STAGE-001` merged into `harness-engineering-orchestrator` (M18-S2 and M18-S8 baseline hardening).
+- 2026-02-16: `TKT-ERP-STAGE-002` merged into `harness-engineering-orchestrator` with full strict-lane proof (`verify_local` green on commit `9dab6f5b`) for M18-S4 closure slice.
+- 2026-02-16: `TKT-ERP-STAGE-005` planned and dispatched for M18-S2A tenant hold/block runtime enforcement (`SLICE-01 -> SLICE-02` dependency).
