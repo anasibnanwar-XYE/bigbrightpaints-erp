@@ -16,14 +16,19 @@ import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptSplitRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
+import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementResponse;
 import com.bigbrightpaints.erp.modules.accounting.dto.SettlementAllocationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.SupplierPaymentRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.SupplierSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingAuditTrailService;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
+import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
+import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchase;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -410,6 +415,104 @@ class TS_RuntimeAccountingReplayConflictExecutableCoverageTest {
                 dealerAllocation,
                 null,
                 11L)).isTrue();
+    }
+
+    @Test
+    void settlementAllocationSummaryHelper_mapsInvoiceAndPurchaseRows() {
+        AccountingService service = accountingService();
+        Invoice invoice = new Invoice();
+        ReflectionTestUtils.setField(invoice, "id", 501L);
+        RawMaterialPurchase purchase = new RawMaterialPurchase();
+        ReflectionTestUtils.setField(purchase, "id", 601L);
+
+        PartnerSettlementAllocation invoiceRow = partnerAllocationForDealer(11L, "80.00", "invoice-row");
+        invoiceRow.setInvoice(invoice);
+        PartnerSettlementAllocation purchaseRow = partnerAllocationForSupplier(77L, "20.00", "purchase-row");
+        purchaseRow.setPurchase(purchase);
+
+        @SuppressWarnings("unchecked")
+        List<PartnerSettlementResponse.Allocation> summaries = (List<PartnerSettlementResponse.Allocation>)
+                ReflectionTestUtils.invokeMethod(
+                        service,
+                        "toSettlementAllocationSummaries",
+                        List.of(invoiceRow, purchaseRow));
+
+        assertThat(summaries).hasSize(2);
+        assertThat(summaries.get(0).invoiceId()).isEqualTo(501L);
+        assertThat(summaries.get(0).purchaseId()).isNull();
+        assertThat(summaries.get(0).appliedAmount()).isEqualByComparingTo("80.00");
+        assertThat(summaries.get(0).memo()).isEqualTo("invoice-row");
+
+        assertThat(summaries.get(1).invoiceId()).isNull();
+        assertThat(summaries.get(1).purchaseId()).isEqualTo(601L);
+        assertThat(summaries.get(1).appliedAmount()).isEqualByComparingTo("20.00");
+        assertThat(summaries.get(1).memo()).isEqualTo("purchase-row");
+    }
+
+    @Test
+    void logSettlementAuditSuccess_handlesPresentAndMissingOptionalMetadata() {
+        AccountingService service = accountingService();
+        JournalEntryDto entryDto = new JournalEntryDto(
+                9001L,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                List.of(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+
+        ReflectionTestUtils.invokeMethod(
+                service,
+                "logSettlementAuditSuccess",
+                PartnerType.DEALER,
+                11L,
+                entryDto,
+                LocalDate.of(2026, 2, 16),
+                "idem-settlement-1",
+                2,
+                new BigDecimal("100.00"),
+                new BigDecimal("95.00"),
+                new BigDecimal("3.00"),
+                new BigDecimal("1.00"),
+                new BigDecimal("2.00"),
+                BigDecimal.ZERO
+        );
+
+        ReflectionTestUtils.invokeMethod(
+                service,
+                "logSettlementAuditSuccess",
+                PartnerType.SUPPLIER,
+                null,
+                null,
+                null,
+                null,
+                0,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO
+        );
     }
 
     @Test

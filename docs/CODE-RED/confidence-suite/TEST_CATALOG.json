@@ -410,15 +410,17 @@
       "id": "ts-runtime-orchestrator-executable-coverage",
       "test_path": "erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimeOrchestratorExecutableCoverageTest.java",
       "owner": "erp-domain-team",
-      "class": "useful",
+      "class": "critical",
       "module": "RuntimeCoverage",
       "gate_membership": [
+        "gate-fast",
         "gate-core",
         "gate-release",
         "gate-reconciliation",
         "gate-quality"
       ],
       "tags": [
+        "critical",
         "concurrency",
         "reconciliation"
       ],
@@ -430,15 +432,17 @@
       "id": "ts-runtime-event-publisher-executable-coverage",
       "test_path": "erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimeEventPublisherExecutableCoverageTest.java",
       "owner": "erp-domain-team",
-      "class": "useful",
+      "class": "critical",
       "module": "RuntimeCoverage",
       "gate_membership": [
+        "gate-fast",
         "gate-core",
         "gate-release",
         "gate-reconciliation",
         "gate-quality"
       ],
       "tags": [
+        "critical",
         "concurrency",
         "reconciliation"
       ],
@@ -530,15 +534,17 @@
       "id": "ts-runtime-orchestrator-idempotency-executable-coverage",
       "test_path": "erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimeOrchestratorIdempotencyExecutableCoverageTest.java",
       "owner": "erp-domain-team",
-      "class": "useful",
+      "class": "critical",
       "module": "RuntimeCoverage",
       "gate_membership": [
+        "gate-fast",
         "gate-core",
         "gate-release",
         "gate-reconciliation",
         "gate-quality"
       ],
       "tags": [
+        "critical",
         "concurrency",
         "reconciliation"
       ],

@@ -35,6 +35,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 @Tag("concurrency")
 @Tag("reconciliation")
+@Tag("critical")
 class TS_RuntimeOrchestratorIdempotencyExecutableCoverageTest {
 
     @Test

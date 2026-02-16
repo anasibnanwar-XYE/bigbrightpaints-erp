@@ -32,6 +32,7 @@ import org.springframework.security.access.AccessDeniedException;
 
 @Tag("concurrency")
 @Tag("reconciliation")
+@Tag("critical")
 class TS_RuntimeOrchestratorExecutableCoverageTest {
 
     @Test

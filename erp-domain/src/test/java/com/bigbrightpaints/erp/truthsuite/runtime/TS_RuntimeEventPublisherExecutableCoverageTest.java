@@ -30,6 +30,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 @Tag("concurrency")
 @Tag("reconciliation")
+@Tag("critical")
 class TS_RuntimeEventPublisherExecutableCoverageTest {
 
     @Test
