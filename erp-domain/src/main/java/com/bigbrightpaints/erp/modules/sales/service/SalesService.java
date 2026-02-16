@@ -43,6 +43,10 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -1578,24 +1582,47 @@ public class SalesService {
 
     @Transactional
     public SalesTargetDto createTarget(SalesTargetRequest request) {
+        requireSalesTargetAdminAuthority();
+        String actor = currentActorIdentity();
+        String assignee = normalizeAssignee(request.assignee());
+        assertNoSelfTargetAction(actor, assignee);
+        String changeReason = requireChangeReason(request.changeReason(), "create");
+
         SalesTarget target = new SalesTarget();
         target.setCompany(companyContextService.requireCurrentCompany());
-        mapTarget(target, request);
-        return toDto(salesTargetRepository.save(target));
+        mapTarget(target, request, assignee);
+        SalesTarget saved = salesTargetRepository.save(target);
+        auditSalesTargetMutation(AuditEvent.DATA_CREATE, saved, actor, changeReason);
+        return toDto(saved);
     }
 
     @Transactional
     public SalesTargetDto updateTarget(Long id, SalesTargetRequest request) {
+        requireSalesTargetAdminAuthority();
+        String actor = currentActorIdentity();
+        String assignee = normalizeAssignee(request.assignee());
+        assertNoSelfTargetAction(actor, assignee);
+        String changeReason = requireChangeReason(request.changeReason(), "update");
+
         SalesTarget target = requireTarget(id);
-        mapTarget(target, request);
+        assertNoSelfTargetAction(actor, normalizeAssignee(target.getAssignee()));
+        mapTarget(target, request, assignee);
+        auditSalesTargetMutation(AuditEvent.DATA_UPDATE, target, actor, changeReason);
         return toDto(target);
     }
 
-    public void deleteTarget(Long id) {
-        salesTargetRepository.delete(requireTarget(id));
+    public void deleteTarget(Long id, String reason) {
+        requireSalesTargetAdminAuthority();
+        String actor = currentActorIdentity();
+        String changeReason = requireChangeReason(reason, "delete");
+
+        SalesTarget target = requireTarget(id);
+        assertNoSelfTargetAction(actor, normalizeAssignee(target.getAssignee()));
+        auditSalesTargetMutation(AuditEvent.DATA_DELETE, target, actor, changeReason);
+        salesTargetRepository.delete(target);
     }
 
-    private void mapTarget(SalesTarget target, SalesTargetRequest request) {
+    private void mapTarget(SalesTarget target, SalesTargetRequest request, String assignee) {
         target.setName(request.name());
         target.setPeriodStart(request.periodStart());
         target.setPeriodEnd(request.periodEnd());
@@ -1603,7 +1630,7 @@ public class SalesService {
         if (request.achievedAmount() != null) {
             target.setAchievedAmount(request.achievedAmount());
         }
-        target.setAssignee(request.assignee());
+        target.setAssignee(assignee);
     }
 
     private SalesTargetDto toDto(SalesTarget target) {
@@ -1614,6 +1641,76 @@ public class SalesService {
     private SalesTarget requireTarget(Long id) {
         Company company = companyContextService.requireCurrentCompany();
         return companyEntityLookup.requireSalesTarget(company, id);
+    }
+
+    private void requireSalesTargetAdminAuthority() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new AccessDeniedException("Sales target operations require authenticated admin authority");
+        }
+        boolean isAdmin = authentication.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .anyMatch("ROLE_ADMIN"::equals);
+        if (!isAdmin) {
+            throw new AccessDeniedException("Sales target operations require tenant admin authority");
+        }
+    }
+
+    private String currentActorIdentity() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !StringUtils.hasText(authentication.getName())) {
+            return "unknown";
+        }
+        return authentication.getName().trim();
+    }
+
+    private String requireChangeReason(String reason, String operation) {
+        if (!StringUtils.hasText(reason)) {
+            throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
+                    "Sales target " + operation + " requires changeReason")
+                    .withDetail("operation", operation)
+                    .withDetail("field", "changeReason");
+        }
+        return reason.trim();
+    }
+
+    private String normalizeAssignee(String assignee) {
+        if (!StringUtils.hasText(assignee)) {
+            throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
+                    "Sales target assignee is required")
+                    .withDetail("field", "assignee");
+        }
+        return assignee.trim();
+    }
+
+    private void assertNoSelfTargetAction(String actor, String assignee) {
+        if (!StringUtils.hasText(actor) || !StringUtils.hasText(assignee)) {
+            return;
+        }
+        if (actor.trim().equalsIgnoreCase(assignee.trim())) {
+            throw new AccessDeniedException("Self-assignment or self-approval of sales targets is not allowed");
+        }
+    }
+
+    private void auditSalesTargetMutation(AuditEvent event,
+                                          SalesTarget target,
+                                          String actor,
+                                          String reason) {
+        Map<String, String> metadata = new HashMap<>();
+        metadata.put("actor", actor);
+        metadata.put("reason", reason);
+        metadata.put("resourceType", "sales_target");
+        metadata.put("operation", event.name());
+        if (target.getId() != null) {
+            metadata.put("targetId", target.getId().toString());
+        }
+        if (target.getPublicId() != null) {
+            metadata.put("targetPublicId", target.getPublicId().toString());
+        }
+        if (StringUtils.hasText(target.getAssignee())) {
+            metadata.put("assignee", target.getAssignee().trim());
+        }
+        auditService.logSuccess(event, metadata);
     }
 
     /* Credit Requests */

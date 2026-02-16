@@ -161,22 +161,23 @@ public class SalesController {
     }
 
     @PostMapping("/sales/targets")
-    @PreAuthorize("hasAnyAuthority('ROLE_SALES','ROLE_ADMIN')")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<ApiResponse<SalesTargetDto>> createTarget(@Valid @RequestBody SalesTargetRequest request) {
         return ResponseEntity.ok(ApiResponse.success("Sales target created", salesService.createTarget(request)));
     }
 
     @PutMapping("/sales/targets/{id}")
-    @PreAuthorize("hasAnyAuthority('ROLE_SALES','ROLE_ADMIN')")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<ApiResponse<SalesTargetDto>> updateTarget(@PathVariable Long id,
                                                                     @Valid @RequestBody SalesTargetRequest request) {
         return ResponseEntity.ok(ApiResponse.success("Sales target updated", salesService.updateTarget(id, request)));
     }
 
     @DeleteMapping("/sales/targets/{id}")
-    @PreAuthorize("hasAnyAuthority('ROLE_SALES','ROLE_ADMIN')")
-    public ResponseEntity<Void> deleteTarget(@PathVariable Long id) {
-        salesService.deleteTarget(id);
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public ResponseEntity<Void> deleteTarget(@PathVariable Long id,
+                                             @RequestParam(required = false) String reason) {
+        salesService.deleteTarget(id, reason);
         return ResponseEntity.noContent().build();
     }
 
