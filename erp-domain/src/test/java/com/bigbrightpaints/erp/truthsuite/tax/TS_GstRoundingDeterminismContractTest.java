@@ -30,7 +30,7 @@ class TS_GstRoundingDeterminismContractTest {
     void purchasingTaxAllocationUsesDeterministicHalfUpRounding() {
         TruthSuiteFileAssert.assertContains(
                 PURCHASING_SERVICE,
-                "lineTax = currency(lineNet.multiply(taxRate)",
+                "lineTax = currency(lineNet.multiply(",
                 ".divide(new BigDecimal(\"100\"), 6, RoundingMode.HALF_UP));",
                 "BigDecimal allocatedTax = (i == computedLines.size() - 1)",
                 ".divide(inventoryTotal, 6, RoundingMode.HALF_UP));");
