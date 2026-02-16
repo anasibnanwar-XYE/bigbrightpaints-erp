@@ -327,6 +327,7 @@ public class BusinessLogicRegressionTest extends AbstractIntegrationTest {
 
         ResponseEntity<Map> response = rest.exchange("/api/v1/accounting/journal-entries",
                 HttpMethod.POST, new HttpEntity<>(jeRequest, headers), Map.class);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
 
         return ((Number) ((Map<?, ?>) response.getBody().get("data")).get("id")).longValue();
     }

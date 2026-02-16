@@ -34,6 +34,7 @@ public interface JournalEntryRepository extends JpaRepository<JournalEntry, Long
     Optional<JournalEntry> findById(Long id);
     @EntityGraph(attributePaths = {"lines", "lines.account"})
     Optional<JournalEntry> findByCompanyAndId(Company company, Long id);
+    @EntityGraph(attributePaths = {"lines", "lines.account"})
     Optional<JournalEntry> findByCompanyAndReferenceNumber(Company company, String referenceNumber);
     Optional<JournalEntry> findFirstByCompanyAndReferenceNumberStartingWith(Company company, String referencePrefix);
     @EntityGraph(attributePaths = {"lines"})

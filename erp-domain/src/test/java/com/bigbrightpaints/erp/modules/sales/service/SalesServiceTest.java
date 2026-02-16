@@ -2149,7 +2149,7 @@ class SalesServiceTest {
                 null,
                 null);
 
-        assertThrows(IllegalStateException.class, () -> salesService.createOrder(request));
+        assertThrows(CreditLimitExceededException.class, () -> salesService.createOrder(request));
     }
 
     @Test
@@ -2289,7 +2289,7 @@ class SalesServiceTest {
                 null,
                 " cash ");
 
-        assertThrows(IllegalStateException.class, () -> salesService.createOrder(request));
+        assertThrows(CreditLimitExceededException.class, () -> salesService.createOrder(request));
         verify(dealerLedgerService).currentBalance(420L);
     }
 
@@ -2333,7 +2333,7 @@ class SalesServiceTest {
                 null,
                 "CASH");
 
-        assertThrows(IllegalStateException.class, () -> salesService.updateOrder(4300L, request));
+        assertThrows(CreditLimitExceededException.class, () -> salesService.updateOrder(4300L, request));
         verify(dealerLedgerService).currentBalance(430L);
     }
 
@@ -2362,7 +2362,7 @@ class SalesServiceTest {
                 null,
                 "SPLIT");
 
-        assertThrows(IllegalStateException.class, () -> salesService.createOrder(request));
+        assertThrows(CreditLimitExceededException.class, () -> salesService.createOrder(request));
         verify(dealerLedgerService).currentBalance(421L);
     }
 
@@ -2770,7 +2770,7 @@ class SalesServiceTest {
                 null,
                 null);
 
-        assertThrows(IllegalStateException.class, () -> salesService.createOrder(request));
+        assertThrows(CreditLimitExceededException.class, () -> salesService.createOrder(request));
     }
 
     private void setupProduct(String sku, BigDecimal price, BigDecimal gstRate) {
