@@ -9939,3 +9939,31 @@ Loop Update
 Loop Update
 - tracked_now_ts: `2026-02-16T11:05:21+05:30`
 - active_in_progress: `M8 async-loop hardening continuation + queue-drained monitor + next tranche selection`
+
+[2026-02-16] M19-S53 M1 dealer-read boundary dedupe + fail-closed status normalization
+- Commit: `b671cb52`
+- Scope:
+  - centralized dealer read boundary checks in `DealerPortalService` for ledger/invoices/aging to avoid controller/service divergence.
+  - `DealerController` now routes dealer read endpoints through canonical service methods.
+  - normalized missing dealer semantics for scoped reads to deterministic `404 NOT_FOUND` (`ResponseStatusException`) instead of validation-style `400` from `IllegalArgumentException`.
+  - preserved cross-dealer isolation as `403` for dealer role.
+- Validation:
+  - `cd erp-domain && mvn -B -ntp -Dtest=DealerControllerSecurityIT,DealerPortalControllerSecurityIT,DealerPortalServiceTest test` -> PASS (`27/27`).
+  - New/extended security coverage now asserts:
+    - cross-dealer `invoices` and `aging` read attempts => `403`.
+    - own dealer `invoices`/`aging` => `200`.
+    - admin read endpoints for missing dealer (`ledger`/`invoices`/`aging`) => `404`.
+- Review:
+  - `codex review --commit b671cb52` -> running in background (no timeout mode).
+
+Loop Update
+- tracked_now_ts: `2026-02-16T11:36:30+05:30`
+- active_in_progress: `M1 boundary-hardening review drain + next pending gate slice`
+
+[2026-02-16] M19-S54 direct review closure for dealer-read boundary tranche
+- Review closure update:
+  - `codex review --commit b671cb52` -> clean; no actionable regressions.
+
+Loop Update
+- tracked_now_ts: `2026-02-16T11:41:05+05:30`
+- active_in_progress: `M2/M3 accounting settlement idempotency dedupe + canonical partner-internal vocabulary hardening`

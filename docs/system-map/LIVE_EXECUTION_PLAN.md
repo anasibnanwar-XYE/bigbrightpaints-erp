@@ -9,7 +9,7 @@ Mode: Continuous
 ## Active constraints
 - Reviewer subagent dispatch currently blocked by external cap (`agent thread limit reached (max 6)`).
 - Direct `codex review --commit <sha>` fallback is active while the cap persists.
-- Current live review in flight: none (queue currently drained).
+- Current live review in flight: `none (queue clear as of b671cb52)`.
 
 ## Live plan lanes
 
