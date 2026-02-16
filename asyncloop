@@ -9849,3 +9849,40 @@ Loop Update
 Loop Update
 - tracked_now_ts: `2026-02-16T10:38:52+05:30`
 - active_in_progress: `M8/M9 tranche execution + review-fix closure + live review drain`
+
+[2026-02-16] M19-S45 direct review closure for replay-fix parity commit
+- Review closure update:
+  - `codex review --commit e1020d1d` -> clean; no actionable regressions.
+
+[2026-02-16] M19-S46 orchestrator idempotency-key length boundary hardening (v2 lanes)
+- Commit: `4e0941f6`
+- Scope:
+  - enforced max idempotency-key length (`255`) in `OrchestratorIdempotencyService` for both runtime trees:
+    - `erp-domain`
+    - `testing/erp-domain`
+  - preserved missing/blank validation behavior; overlong keys now fail with `VALIDATION_INVALID_INPUT`.
+  - added structured detail metadata (`maxLength`, `actualLength`) for deterministic client/debug handling.
+  - added executable runtime coverage for overlength-key rejection in both lanes.
+- Validation:
+  - `cd erp-domain && mvn -B -ntp -Dtest=TS_RuntimeOrchestratorIdempotencyExecutableCoverageTest,CommandDispatcherTest test` -> PASS (`21/21`).
+  - `cd testing/erp-domain && mvn -B -ntp -Dtest=TS_RuntimeOrchestratorIdempotencyExecutableCoverageTest,CommandDispatcherTest test` -> PASS (`16/16`).
+- Review:
+  - `codex review --commit 4e0941f6` -> clean; no actionable regressions.
+
+[2026-02-16] M19-S47 accounting duplicate-journal mismatch metadata normalization (partner canonical detail)
+- Commit: `f0bb9019`
+- Scope:
+  - normalized duplicate-journal mismatch metadata across accounting service lanes by adding canonical partner-context detail:
+    - `partnerMismatchTypes` now emitted when duplicate conflict is due to dealer/supplier identity mismatch.
+  - preserved existing `mismatches` keys (`dealerId`, `supplierId`) for v2 external compatibility while introducing canonical partner metadata for cross-module dedupe.
+  - added executable test coverage:
+    - `AccountingServiceTest.ensureDuplicateMatchesExisting_partnerMismatchesExposeCanonicalPartnerTypes`.
+- Validation:
+  - `cd erp-domain && mvn -B -ntp -Dtest=AccountingServiceTest,TS_RuntimeAccountingReplayConflictExecutableCoverageTest test` -> PASS (`121/121`).
+  - `cd testing/erp-domain && mvn -B -ntp -Dtest=AccountingServiceTest test` -> PASS (`28/28`).
+- Review:
+  - `codex review --commit f0bb9019` -> running in background (no timeout mode).
+
+Loop Update
+- tracked_now_ts: `2026-02-16T10:54:58+05:30`
+- active_in_progress: `M8/M9 async-loop hardening + commit-review drain + system-map lane freshness`
