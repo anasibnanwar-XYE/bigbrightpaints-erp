@@ -9744,3 +9744,19 @@ Loop Update
 Loop Update
 - tracked_now_ts: `2026-02-16T10:17:53+05:30`
 - active_in_progress: `M8 orchestrator/outbox hardening continuation + next async-loop gate slice`
+
+[2026-02-16] M19-S37 testing-lane parity sync for orchestrator outbox retry semantics
+- Scope:
+  - mirrored production outbox retry-message + bounded integer backoff changes into `testing/erp-domain` to reduce branch divergence.
+  - mirrored corresponding `EventPublisherServiceTest` additions in testing-lane test tree.
+- Validation attempt (blocked by pre-existing testing-lane compile break):
+  - `cd testing/erp-domain && mvn -B -ntp -Dtest=EventPublisherServiceTest,CommandDispatcherTest test` -> FAIL at compile stage.
+  - blocking symbols already missing in testing lane include:
+    - `com.bigbrightpaints.erp.modules.accounting.domain.DealerLedgerRepository`
+    - `com.bigbrightpaints.erp.modules.accounting.service.AgingReportService`
+- Impact statement:
+  - blocker is outside this slice and prevents test execution evidence for testing-lane parity changes.
+
+Loop Update
+- tracked_now_ts: `2026-02-16T10:19:55+05:30`
+- active_in_progress: `M8 async-loop hardening + testing-lane compile blocker tracking`
