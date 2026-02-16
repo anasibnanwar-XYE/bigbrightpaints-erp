@@ -1,7 +1,7 @@
 # Cross Workflow Plan
 
 Ticket: `TKT-ERP-STAGE-007`
-Generated: `2026-02-16T19:15:38+00:00`
+Generated: `2026-02-16T20:16:31+00:00`
 
 ## In-Ticket Dependency Edges
 
@@ -13,7 +13,6 @@ Generated: `2026-02-16T19:15:38+00:00`
 
 1. `SLICE-02` (purchasing-invoice-p2p)
 2. `SLICE-01` (accounting-domain)
-3. `SLICE-03` (refactor-techdebt-gc)
 
 ## Slice Coordination Notes
 
@@ -27,11 +26,5 @@ Generated: `2026-02-16T19:15:38+00:00`
 - Upstream slices: SLICE-02
 - Downstream slices: none
 - External upstream agents to watch: auth-rbac-company, factory-production, hr-domain, orchestrator-runtime, sales-domain
-- External downstream agents to watch: none
-
-### SLICE-03 (refactor-techdebt-gc)
-- Upstream slices: none
-- Downstream slices: none
-- External upstream agents to watch: none
 - External downstream agents to watch: none
 

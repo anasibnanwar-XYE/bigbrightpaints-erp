@@ -3,18 +3,17 @@
 - title: ERP Staging Batch 7 - M18-S6A GST/Non-GST Drift Guards
 - goal: M18-S6A smallest shippable closure: enforce GST/non-GST settlement posting drift guards and reconciliation-safe contracts
 - priority: high
-- status: planned
+- status: merged
 - base_branch: harness-engineering-orchestrator
 - created_at: 2026-02-16T19:15:38+00:00
-- updated_at: 2026-02-16T19:15:38+00:00
+- updated_at: 2026-02-17T01:47:00+00:00
 
 ## Slice Board
 
 | Slice | Agent | Lane | Status | Branch |
 | --- | --- | --- | --- | --- |
-| SLICE-01 | accounting-domain | w1 | ready | `tickets/tkt-erp-stage-007/accounting-domain` |
-| SLICE-02 | purchasing-invoice-p2p | w2 | ready | `tickets/tkt-erp-stage-007/purchasing-invoice-p2p` |
-| SLICE-03 | refactor-techdebt-gc | w3 | ready | `tickets/tkt-erp-stage-007/refactor-techdebt-gc` |
+| SLICE-01 | accounting-domain | w1 | merged | `tickets/tkt-erp-stage-007/accounting-domain` |
+| SLICE-02 | purchasing-invoice-p2p | w2 | merged | `tickets/tkt-erp-stage-007/purchasing-invoice-p2p` |
 
 ## Operator Commands
 

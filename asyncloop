@@ -10311,3 +10311,31 @@ Queue Rotation (Auto-Replenish)
   - `SLICE-02` frontend-documentation
   - `SLICE-03` repo-cartographer
 - Worktrees intentionally deferred (`--no-create-worktrees`) for next dispatch window.
+
+[2026-02-17] M18-S6A GST/non-GST drift guards closure (TKT-ERP-STAGE-007)
+- Completed Slice (Committed): accounting-domain strict-lane drift guard lane
+  - Commit `07a27a04`: fail-closed supplier settlement posting parity checks for GST/non-GST consistency in accounting service.
+  - Verification:
+    - `cd erp-domain && mvn -B -ntp -Dtest='*Accounting*' test` -> PASS
+    - `bash scripts/verify_local.sh` -> PASS
+- Completed Slice (Committed): purchasing-invoice-p2p contract guard lane
+  - Commit `6c1a962b`: blocked mixed-tax/non-GST misuse on purchasing write path and reinforced truthsuite sentinel.
+  - Verification:
+    - `cd erp-domain && mvn -B -ntp -Dtest='TS_P2PPurchaseJournalLinkageTest,GstConfigurationRegressionIT' test` -> PASS
+    - `bash ci/check-enterprise-policy.sh` -> PASS
+    - `bash ci/check-architecture.sh` -> PASS
+- Merge evidence:
+  - `e2600104` merged `tickets/tkt-erp-stage-007/accounting-domain` into `harness-engineering-orchestrator`.
+  - `28ab4f55` merged `tickets/tkt-erp-stage-007/purchasing-invoice-p2p` into `harness-engineering-orchestrator`.
+- Review evidence:
+  - `qa-reliability` approved SLICE-01 and SLICE-02.
+  - `security-governance` approved SLICE-01 and SLICE-02.
+
+Loop Update
+- tracked_now_ts: `2026-02-17T01:47:00+00:00`
+- active_in_progress: `M18-S9A OpenAPI drift + portal parity hardening (TKT-ERP-STAGE-008 dispatch/execution)`
+
+Queue Rotation (Auto-Replenish)
+- [in_progress] M18-S9A OpenAPI contract drift guard + portal parity check hardening
+- [ready] M18-S10A staging rollback rehearsal evidence normalizer
+- [ready] M18-S7A variant lifecycle duplicate-path decision follow-through (template/variant canonical write ownership)

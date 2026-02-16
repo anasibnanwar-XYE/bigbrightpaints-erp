@@ -20,6 +20,7 @@ M18-S6A smallest shippable closure: enforce GST/non-GST settlement posting drift
 
 ## Requested Focus Paths
 - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/purchasing/`
+- `erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/p2p/`
 
 ## Cross-Workflow Dependencies
 - Upstream slices: none
@@ -32,6 +33,8 @@ M18-S6A smallest shippable closure: enforce GST/non-GST settlement posting drift
   - upstream-external -> auth-rbac-company: tenant-scoped supplier/AP access rules
 
 ## Required Checks Before Done
+- `cd erp-domain && mvn -B -ntp -Dtest='TS_P2PPurchaseJournalLinkageTest,GstConfigurationRegressionIT' test`
+- `bash ci/check-enterprise-policy.sh`
 - `bash ci/check-architecture.sh`
 
 ## Reviewer Contract
