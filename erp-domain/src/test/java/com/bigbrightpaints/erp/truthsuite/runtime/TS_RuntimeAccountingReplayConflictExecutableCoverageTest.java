@@ -259,11 +259,26 @@ class TS_RuntimeAccountingReplayConflictExecutableCoverageTest {
                 existing,
                 requested))
                 .isInstanceOf(ApplicationException.class)
-                .satisfies(throwable -> assertReplayConflict(
-                        (ApplicationException) throwable,
-                        "IDEM-SETTLEMENT-PAYLOAD-MISMATCH",
-                        "SUPPLIER",
-                        77L));
+                .satisfies(throwable -> {
+                    ApplicationException ex = (ApplicationException) throwable;
+                    assertReplayConflict(
+                            ex,
+                            "IDEM-SETTLEMENT-PAYLOAD-MISMATCH",
+                            "SUPPLIER",
+                            77L);
+                    if (ex.getDetails().containsKey("existingAllocationCount")
+                            || ex.getDetails().containsKey("requestAllocationCount")) {
+                        assertThat(ex.getDetails())
+                                .containsEntry("existingAllocationCount", 1)
+                                .containsEntry("requestAllocationCount", 1)
+                                .containsKey("existingAllocationSignatureDigest")
+                                .containsKey("requestAllocationSignatureDigest");
+                        assertThat(String.valueOf(ex.getDetails().get("existingAllocationSignatureDigest")))
+                                .contains("|applied=100");
+                        assertThat(String.valueOf(ex.getDetails().get("requestAllocationSignatureDigest")))
+                                .contains("|applied=120");
+                    }
+                });
     }
 
     @Test
