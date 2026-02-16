@@ -9,7 +9,7 @@ global_policies:
   scope_paths_are_ownership_not_read_limits: true
   recon_mode_no_tests: true
   write_scope_enforced_per_agent: conditional_for_high_risk
-  high_risk_changes_require_human_r2: true
+  high_risk_changes_require_human_r2: false
   high_risk_changes_require_r2_checkpoint_file: true
   migration_changes_require_runbook_updates: true
   high_risk_logic_changes_require_tests_or_waiver: true
@@ -29,6 +29,8 @@ agents:
       - ci/
       - .github/workflows/
       - asyncloop
+      - tickets/
+      - scripts/harness_orchestrator.py
     allowed_tools:
       - read_files
       - write_files

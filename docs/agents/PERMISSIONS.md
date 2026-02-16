@@ -28,6 +28,7 @@ Owner: Security & Governance Agent
 - Default timeout is unlimited.
 - Full-codebase exploration is allowed for diagnosis and planning.
 - High-risk writes are gated by mechanical checks, not manual policing.
+- Agent write boundaries are enforced from `agents/*.agent.yaml` `scope_paths` during orchestrator verify/merge.
 
 ## Escalation Policy (Orchestrator-First, Human for Irreversible Prod)
 - Orchestrator may approve and continue R2 decisions for code/tests/docs/staging when proof evidence is attached.
@@ -36,6 +37,8 @@ Owner: Security & Governance Agent
   - destructive production data operations
   - production permission expansions
   - production deploy go/no-go
+
+R1/R2 are orchestrator-owned when evidence is complete.
 
 ## Evidence Requirements (Proof-First)
 - High-risk changes must include `docs/approvals/R2-CHECKPOINT.md`.

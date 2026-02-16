@@ -12,9 +12,11 @@ This defines how the orchestrator controls all agents in long-running async loop
 
 ## Control Plane Inputs
 - `asyncloop` (active slice queue and evidence ledger)
+- `tickets/` (local ticket ledger, task packets, review evidence, verify reports)
 - `agents/catalog.yaml` (agent inventory, risk, scopes)
 - `agents/orchestrator-layer.yaml` (routing, reviews, completion rules)
 - `docs/agents/PERMISSIONS.md` and `docs/agents/WORKFLOW.md` (policy)
+- `scripts/harness_orchestrator.py` (worktree assignment, tmux dispatch commands, verify/merge controller)
 
 ## Dispatch Model
 1. Orchestrator reads next `in_progress` or top `ready` slice from `asyncloop`.
@@ -22,19 +24,25 @@ This defines how the orchestrator controls all agents in long-running async loop
 3. It assigns at least one reviewer agent.
 4. For high-risk slices, it adds `security-governance` and `qa-reliability` reviewers.
 5. It runs required guard checks before marking done.
+6. It blocks merge when branch edits violate the assigned agent's `scope_paths`.
 
 ## Review Model (Mandatory)
 - Every slice requires:
   - one reviewer agent minimum
+  - orchestrator pre-merge review
   - codex review guideline checks
   - architecture/doc/enterprise policy guard checks
 - Evidence must be appended to `asyncloop` for traceability.
+- Orchestrator verifies cross-slice overlap/conflict risk before merge and blocks merge when overlap is unresolved.
 
 ## Commit Ownership Model
 - Primary implementation agent commits slice code.
 - Review-only agents provide findings/evidence and do not commit code.
 - Orchestrator commits orchestration/policy/docs artifacts unless it explicitly takes slice ownership.
 - A commit is valid only after review evidence is attached.
+- Merge is valid only when scope-boundary checks pass for the primary implementation agent.
+- Merge is blocked if two different implementation slices overlap on the same files unless consolidated in a single coordinated slice.
+- Post-merge, orchestrator may remove merged slice worktrees according to `agents/orchestrator-layer.yaml` automation policy.
 
 ## Cross-Module Contract
 - The orchestrator enforces order: contracts -> producer -> consumers -> orchestrator.

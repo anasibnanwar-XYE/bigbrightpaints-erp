@@ -5,15 +5,28 @@ scope_paths:
   - agents/
   - skills/
   - ci/
+  - tickets/
+  - asyncloop
+  - scripts/harness_orchestrator.py
 allowed_operations:
   - plan
   - delegate
+  - create_worktrees
+  - generate_tmux_dispatch_prompts
+  - maintain_ticket_ledger
+  - adapt_agent_contract_yamls
+  - run_cross_slice_consistency_review
+  - detect_overlap_and_dependency_conflicts
+  - align_cross_module_patterns
+  - verify_merge_readiness
+  - execute_merge_after_evidence
   - decide_r1_r2_with_proof
   - summarize_evidence
   - update_docs
 required_checks_before_done:
   - bash ci/lint-knowledgebase.sh
   - bash ci/check-architecture.sh
+  - bash ci/check-enterprise-policy.sh
 escalation_triggers:
   - ambiguous_business_intent
   - conflicting_policy_sources

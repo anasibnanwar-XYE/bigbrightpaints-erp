@@ -25,6 +25,9 @@ required_layer_tokens=(
   "commit_policy:"
   "review-only agents do not commit code"
   "minimum_review_agents_per_slice: 1"
+  "require_orchestrator_premerge_review: true"
+  "block_on_cross_slice_overlaps: true"
+  "block_on_scope_violations: true"
   "require_codex_review_guidelines_check: true"
   "completion_contract:"
 )

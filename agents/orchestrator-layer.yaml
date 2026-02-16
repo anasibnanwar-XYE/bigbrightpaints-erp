@@ -17,6 +17,20 @@ runtime:
     - harness_results
     - residual_risks
     - blockers_or_next_step
+automation:
+  harness_cli: scripts/harness_orchestrator.py
+  ticket_root: tickets/
+  ticket_template: docs/agents/templates/TICKET_TEMPLATE.md
+  task_packet_template: docs/agents/templates/TASK_PACKET.md
+  review_template: docs/agents/templates/REVIEW_EVIDENCE.md
+  orchestrator_review_template: docs/agents/templates/ORCHESTRATOR_REVIEW.md
+  default_worktree_root: ../orchestrator_erp_worktrees
+  cleanup_worktrees_on_merge: true
+  tmux_lanes:
+    - w1
+    - w2
+    - w3
+    - w4
 cross_module_protocol:
   sequence:
     - contracts_events_interfaces
@@ -123,6 +137,17 @@ routing_rules:
 
   - match:
       paths:
+        - agents/
+        - docs/agents/
+        - tickets/
+        - scripts/harness_orchestrator.py
+    primary_agent: orchestrator
+    reviewers:
+      - repo-cartographer
+      - qa-reliability
+
+  - match:
+      paths:
         - docs/
         - ARCHITECTURE.md
         - AGENTS.md
@@ -143,6 +168,9 @@ always_available_agents:
 
 review_pipeline:
   minimum_review_agents_per_slice: 1
+  require_orchestrator_premerge_review: true
+  block_on_cross_slice_overlaps: true
+  block_on_scope_violations: true
   require_codex_review_guidelines_check: true
   required_checks:
     - bash ci/lint-knowledgebase.sh
@@ -173,3 +201,4 @@ completion_contract:
     - required_checks_pass
     - review_pipeline_complete
     - evidence_recorded_in_asyncloop
+    - no_scope_violations

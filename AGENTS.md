@@ -29,12 +29,14 @@ Human-friendly alias: `AGENTMAP.md`.
 10. `docs/agents/ORCHESTRATION_LAYER.md` (real orchestrator control plane)
 11. Domain contracts: `erp-domain/docs/INDEX.md`
 12. Async loop runbook: `docs/ASYNC_LOOP_OPERATIONS.md` + `asyncloop`
+13. Ticket harness: `tickets/README.md` + `scripts/harness_orchestrator.py`
 
 ## Autonomous Throughput Policy
 - This repository is not single-agent-only. Multi-agent execution is the default for large slices.
 - Primary orchestrator agent owns intent, safety, and final merge quality.
 - Worker agents may own bounded implementation slices in parallel when paths are independent.
 - Review agents must run on every commit with severity-tagged findings and file anchors.
+- Orchestrator performs mandatory pre-merge consistency review across slices (scope compliance + overlap/conflict detection).
 - Docs-only exception: for docs-only commits, skip commit-review/subagent and run `bash ci/lint-knowledgebase.sh` only.
 - Progressive-disclosure rule: agents must load only the docs needed for the current slice instead of bulk-reading all docs.
 - Use lane selection to avoid rule overload:
@@ -110,6 +112,7 @@ Human-friendly alias: `AGENTMAP.md`.
 - Agents may read the full repository for discovery (`erp-domain`, `scripts`, `docs`, `.github/workflows`, `testing`).
 - Write scope remains agent-specific (see `agents/*.agent.yaml`).
 - Recon-only passes can skip tests; code-change passes must run appropriate harness checks.
+- Merge eligibility is blocked if implementation branches violate agent write-scope boundaries.
 
 ## Output Contract (Every Task)
 Return:
