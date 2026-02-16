@@ -542,10 +542,14 @@ public class PurchasingService {
             lockedMaterials.put(rawMaterial.getId(), rawMaterial);
         }
 
+        // Enforce single tax mode contract for downstream AP settlement/posting linkage.
+        PurchaseTaxMode purchaseTaxMode = resolvePurchaseTaxMode(sortedLines, lockedMaterials);
+
         BigDecimal inventoryTotal = BigDecimal.ZERO;
         BigDecimal taxTotal = BigDecimal.ZERO;
         Map<Long, BigDecimal> inventoryDebits = new HashMap<>();
         List<PurchaseLineCalc> computedLines = new ArrayList<>();
+        boolean hasTaxableLines = false;
 
         for (RawMaterialPurchaseLineRequest lineRequest : request.lines()) {
             RawMaterial rawMaterial = lockedMaterials.get(lineRequest.rawMaterialId());
@@ -601,15 +605,18 @@ public class PurchasingService {
             BigDecimal lineTax = currency(BigDecimal.ZERO);
             BigDecimal lineTaxRate = null;
             BigDecimal netUnitCost = costPerUnit;
+            BigDecimal effectiveTaxRate = resolveLineTaxRateForMode(lineRequest, rawMaterial, company, purchaseTaxMode);
+            if (effectiveTaxRate.compareTo(BigDecimal.ZERO) > 0) {
+                hasTaxableLines = true;
+            }
 
             if (!taxProvided) {
-                BigDecimal taxRate = resolveLineTaxRate(lineRequest, rawMaterial, company);
-                lineTaxRate = taxRate;
+                lineTaxRate = effectiveTaxRate;
                 boolean taxInclusive = Boolean.TRUE.equals(lineRequest.taxInclusive());
-                if (taxRate.compareTo(BigDecimal.ZERO) > 0) {
+                if (effectiveTaxRate.compareTo(BigDecimal.ZERO) > 0) {
                     if (taxInclusive) {
                         BigDecimal divisor = BigDecimal.ONE.add(
-                                taxRate.divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP));
+                                effectiveTaxRate.divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP));
                         if (divisor.signum() > 0) {
                             BigDecimal net = lineGross.divide(divisor, 6, RoundingMode.HALF_UP);
                             lineNet = currency(net);
@@ -618,7 +625,7 @@ public class PurchasingService {
                         }
                     } else {
                         lineNet = lineGross;
-                        lineTax = currency(lineNet.multiply(taxRate)
+                        lineTax = currency(lineNet.multiply(effectiveTaxRate)
                                 .divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP));
                     }
                 }
@@ -645,9 +652,11 @@ public class PurchasingService {
                     .withDetail("missingRawMaterialIds", missingMaterialIds);
         }
 
-        BigDecimal taxAmount = taxProvided
+        BigDecimal providedTaxAmount = taxProvided
                 ? currency(nonNegative(request.taxAmount(), "taxAmount"))
-                : currency(taxTotal);
+                : null;
+        enforcePurchaseTaxContract(purchaseTaxMode, providedTaxAmount, hasTaxableLines);
+        BigDecimal taxAmount = taxProvided ? providedTaxAmount : currency(taxTotal);
         BigDecimal totalAmount = inventoryTotal.add(taxAmount);
 
         if (taxProvided && taxAmount.compareTo(BigDecimal.ZERO) > 0 && inventoryTotal.compareTo(BigDecimal.ZERO) > 0
@@ -1329,6 +1338,93 @@ public class PurchasingService {
         return value;
     }
 
+    private PurchaseTaxMode resolvePurchaseTaxMode(List<RawMaterialPurchaseLineRequest> lineRequests,
+                                                   Map<Long, RawMaterial> lockedMaterials) {
+        PurchaseTaxMode resolved = null;
+        for (RawMaterialPurchaseLineRequest lineRequest : lineRequests) {
+            RawMaterial rawMaterial = lockedMaterials.get(lineRequest.rawMaterialId());
+            if (rawMaterial == null) {
+                continue;
+            }
+            PurchaseTaxMode lineMode = rawMaterial.isGstApplicable()
+                    ? PurchaseTaxMode.GST
+                    : PurchaseTaxMode.NON_GST;
+            if (resolved == null) {
+                resolved = lineMode;
+                continue;
+            }
+            if (resolved != lineMode) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Purchase invoice cannot mix GST and non-GST materials")
+                        .withDetail("rawMaterialId", rawMaterial.getId())
+                        .withDetail("expectedTaxMode", taxModeLabel(resolved))
+                        .withDetail("lineTaxMode", taxModeLabel(lineMode));
+            }
+        }
+        return resolved != null ? resolved : PurchaseTaxMode.GST;
+    }
+
+    private BigDecimal resolveLineTaxRateForMode(RawMaterialPurchaseLineRequest lineRequest,
+                                                 RawMaterial rawMaterial,
+                                                 Company company,
+                                                 PurchaseTaxMode purchaseTaxMode) {
+        if (purchaseTaxMode == PurchaseTaxMode.NON_GST) {
+            enforceNonGstLineContract(lineRequest, rawMaterial);
+            return BigDecimal.ZERO;
+        }
+        return resolveLineTaxRate(lineRequest, rawMaterial, company);
+    }
+
+    private void enforcePurchaseTaxContract(PurchaseTaxMode purchaseTaxMode,
+                                            BigDecimal providedTaxAmount,
+                                            boolean hasTaxableLines) {
+        if (providedTaxAmount == null) {
+            return;
+        }
+        if (purchaseTaxMode == PurchaseTaxMode.NON_GST
+                && providedTaxAmount.compareTo(BigDecimal.ZERO) > 0) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Non-GST purchase invoice cannot carry GST tax amount")
+                    .withDetail("taxMode", taxModeLabel(purchaseTaxMode))
+                    .withDetail("taxAmount", providedTaxAmount);
+        }
+        if (purchaseTaxMode == PurchaseTaxMode.GST
+                && providedTaxAmount.compareTo(BigDecimal.ZERO) == 0
+                && hasTaxableLines) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "GST purchase invoice with taxable lines requires non-zero taxAmount or tax auto-computation")
+                    .withDetail("taxMode", taxModeLabel(purchaseTaxMode))
+                    .withDetail("taxAmount", providedTaxAmount);
+        }
+    }
+
+    private void enforceNonGstLineContract(RawMaterialPurchaseLineRequest lineRequest,
+                                           RawMaterial rawMaterial) {
+        BigDecimal requestedTaxRate = lineRequest != null ? lineRequest.taxRate() : null;
+        if (requestedTaxRate != null && normalizePercent(requestedTaxRate).compareTo(BigDecimal.ZERO) > 0) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Non-GST purchase line cannot declare a positive GST rate")
+                    .withDetail("rawMaterialId", rawMaterial != null ? rawMaterial.getId() : null)
+                    .withDetail("taxRate", requestedTaxRate);
+        }
+        if (lineRequest != null && Boolean.TRUE.equals(lineRequest.taxInclusive())) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Non-GST purchase line cannot be tax-inclusive")
+                    .withDetail("rawMaterialId", rawMaterial != null ? rawMaterial.getId() : null);
+        }
+        BigDecimal materialTaxRate = rawMaterial != null ? normalizePercent(rawMaterial.getGstRate()) : BigDecimal.ZERO;
+        if (materialTaxRate.compareTo(BigDecimal.ZERO) > 0) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Non-GST raw material cannot carry a positive GST rate")
+                    .withDetail("rawMaterialId", rawMaterial.getId())
+                    .withDetail("materialGstRate", materialTaxRate);
+        }
+    }
+
+    private String taxModeLabel(PurchaseTaxMode purchaseTaxMode) {
+        return purchaseTaxMode == PurchaseTaxMode.NON_GST ? "NON_GST" : "GST";
+    }
+
     private BigDecimal resolveLineTaxRate(RawMaterialPurchaseLineRequest lineRequest,
                                           RawMaterial rawMaterial,
                                           Company company) {
@@ -1530,5 +1626,10 @@ public class PurchasingService {
             BigDecimal taxRate,
             String notes
     ) {
+    }
+
+    private enum PurchaseTaxMode {
+        GST,
+        NON_GST
     }
 }
