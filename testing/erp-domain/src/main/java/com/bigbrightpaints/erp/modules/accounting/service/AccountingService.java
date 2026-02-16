@@ -3,7 +3,6 @@ package com.bigbrightpaints.erp.modules.accounting.service;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
-import com.bigbrightpaints.erp.core.audit.IntegrationFailureMetadataSchema;
 import com.bigbrightpaints.erp.core.config.SystemSettingsService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
@@ -13,7 +12,6 @@ import com.bigbrightpaints.erp.core.util.MoneyUtils;
 import com.bigbrightpaints.erp.modules.accounting.domain.*;
 import com.bigbrightpaints.erp.modules.accounting.dto.*;
 import com.bigbrightpaints.erp.modules.accounting.event.AccountCacheInvalidatedEvent;
-import com.bigbrightpaints.erp.modules.accounting.event.AccountingEventStore;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRun;
@@ -47,8 +45,6 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
@@ -60,15 +56,12 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashSet;
 import java.util.HashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -85,19 +78,12 @@ public class AccountingService {
     private static final BigDecimal ALLOCATION_TOLERANCE = new BigDecimal("0.01");
     private static final Duration IDEMPOTENCY_WAIT_TIMEOUT = Duration.ofSeconds(8);
     private static final long IDEMPOTENCY_WAIT_SLEEP_MS = 50L;
-    private static final ThreadLocal<Boolean> SYSTEM_ENTRY_DATE_OVERRIDE = ThreadLocal.withInitial(() -> Boolean.FALSE);
-    private static final int ACCOUNTING_EVENT_JOURNAL_REFERENCE_MAX_LENGTH = 100;
-    private static final int ACCOUNTING_EVENT_ACCOUNT_CODE_MAX_LENGTH = 50;
-    private static final int ACCOUNTING_EVENT_DESCRIPTION_MAX_LENGTH = 500;
     private static final String ENTITY_TYPE_DEALER_RECEIPT = "DEALER_RECEIPT";
     private static final String ENTITY_TYPE_DEALER_RECEIPT_SPLIT = "DEALER_RECEIPT_SPLIT";
     private static final String ENTITY_TYPE_DEALER_SETTLEMENT = "DEALER_SETTLEMENT";
     private static final String ENTITY_TYPE_SUPPLIER_PAYMENT = "SUPPLIER_PAYMENT";
     private static final String ENTITY_TYPE_SUPPLIER_SETTLEMENT = "SUPPLIER_SETTLEMENT";
     private static final String ENTITY_TYPE_CREDIT_NOTE = "CREDIT_NOTE";
-    private static final String SETTLEMENT_DISCOUNT_LINE_DESCRIPTION = "settlement discount";
-    private static final String SETTLEMENT_WRITE_OFF_LINE_DESCRIPTION = "settlement write-off";
-    private static final String SETTLEMENT_FX_LOSS_LINE_DESCRIPTION = "fx loss on settlement";
 
     private final CompanyContextService companyContextService;
     private final AccountRepository accountRepository;
@@ -125,7 +111,6 @@ public class AccountingService {
     private final EntityManager entityManager;
     private final SystemSettingsService systemSettingsService;
     private final AuditService auditService;
-    private final AccountingEventStore accountingEventStore;
 
     /**
      * When true, disables date validation for benchmark mode.
@@ -133,13 +118,6 @@ public class AccountingService {
      */
     @Value("${erp.benchmark.skip-date-validation:false}")
     private boolean skipDateValidation;
-
-    /**
-     * When true, journal posting/reversal fails if event-trail persistence fails.
-     * This is the staging/predeploy default to prevent silent audit-trail drops.
-     */
-    @Value("${erp.accounting.event-trail.strict:true}")
-    private boolean strictAccountingEventTrail = true;
 
     public AccountingService(CompanyContextService companyContextService,
                              AccountRepository accountRepository,
@@ -166,8 +144,7 @@ public class AccountingService {
                              JournalReferenceMappingRepository journalReferenceMappingRepository,
                              EntityManager entityManager,
                              SystemSettingsService systemSettingsService,
-                             AuditService auditService,
-                             AccountingEventStore accountingEventStore) {
+                             AuditService auditService) {
         this.companyContextService = companyContextService;
         this.accountRepository = accountRepository;
         this.journalEntryRepository = journalEntryRepository;
@@ -194,7 +171,6 @@ public class AccountingService {
         this.entityManager = entityManager;
         this.systemSettingsService = systemSettingsService;
         this.auditService = auditService;
-        this.accountingEventStore = accountingEventStore;
     }
 
     /* Accounts */
@@ -321,12 +297,12 @@ public class AccountingService {
         Account supplierPayableAccount = null;
         if (request.dealerId() != null) {
             dealer = requireDealer(company, request.dealerId());
-            dealerReceivableAccount = dealer.getReceivableAccount();
+            dealerReceivableAccount = requireDealerReceivable(dealer);
             entry.setDealer(dealer);
         }
         if (request.supplierId() != null) {
             supplier = requireSupplier(company, request.supplierId());
-            supplierPayableAccount = supplier.getPayableAccount();
+            supplierPayableAccount = requireSupplierPayable(supplier);
             entry.setSupplier(supplier);
         }
         Map<Account, BigDecimal> accountDeltas = new HashMap<>();
@@ -373,18 +349,10 @@ public class AccountingService {
             List<Supplier> supplierOwners = supplierRepository.findAllByCompanyAndPayableAccount(company, account);
             if (!supplierOwners.isEmpty()) {
                 if (supplierContext == null) {
-                    if (supplierOwners.size() == 1) {
-                        supplierContext = supplierOwners.get(0);
-                        supplier = supplierContext;
-                        supplierPayableAccount = supplierContext.getPayableAccount();
-                        entry.setSupplier(supplierContext);
-                    } else {
-                        throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
-                                "Supplier payable account " + account.getCode() + " requires a supplier context");
-                    }
+                    throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                            "Supplier payable account " + account.getCode() + " requires a supplier context");
                 }
-                Long supplierContextId = supplierContext.getId();
-                if (supplierOwners.stream().noneMatch(owner -> owner.getId().equals(supplierContextId))) {
+                if (supplierOwners.stream().noneMatch(owner -> owner.getId().equals(supplierContext.getId()))) {
                     throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
                             "Supplier payable account " + account.getCode() + " requires matching supplier context");
                 }
@@ -401,12 +369,6 @@ public class AccountingService {
         if (hasPayableAccount && supplierContext == null) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
                     "Posting to AP requires a supplier context");
-        }
-        if (dealerContext != null && hasReceivableAccount && dealerReceivableAccount == null) {
-            dealerReceivableAccount = requireDealerReceivable(dealerContext);
-        }
-        if (supplierContext != null && hasPayableAccount && supplierPayableAccount == null) {
-            supplierPayableAccount = requireSupplierPayable(supplierContext);
         }
         BigDecimal totalBaseDebit = BigDecimal.ZERO;
         BigDecimal totalBaseCredit = BigDecimal.ZERO;
@@ -507,7 +469,6 @@ public class AccountingService {
             log.info("Idempotent return: journal entry '{}' already exists, returning existing entry",
                     entry.getReferenceNumber());
             auditMetadata.put("idempotent", "true");
-            logAuditSuccessAfterCommit(AuditEvent.JOURNAL_ENTRY_POSTED, auditMetadata);
             return toDto(existingEntry);
         }
 
@@ -542,7 +503,6 @@ public class AccountingService {
                 log.info("Idempotent return: journal entry '{}' already exists, returning existing entry",
                         entry.getReferenceNumber());
                 auditMetadata.put("idempotent", "true");
-                logAuditSuccessAfterCommit(AuditEvent.JOURNAL_ENTRY_POSTED, auditMetadata);
                 return toDto(existingEntry);
             }
             throw ex;
@@ -552,13 +512,9 @@ public class AccountingService {
             List<Map.Entry<Account, BigDecimal>> sortedDeltas = accountDeltas.entrySet().stream()
                     .sorted(java.util.Comparator.comparing(e -> e.getKey().getId()))
                     .toList();
-            Map<Long, BigDecimal> balancesBefore = new HashMap<>();
             for (Map.Entry<Account, BigDecimal> delta : sortedDeltas) {
                 Account account = delta.getKey();
                 BigDecimal current = account.getBalance() == null ? BigDecimal.ZERO : account.getBalance();
-                if (account.getId() != null) {
-                    balancesBefore.putIfAbsent(account.getId(), current);
-                }
                 BigDecimal updated = current.add(delta.getValue());
                 account.validateBalanceUpdate(updated);
                 int rows = accountRepository.updateBalanceAtomic(company, account.getId(), delta.getValue());
@@ -571,7 +527,6 @@ public class AccountingService {
                 entityManager.detach(account);
             }
             publishAccountCacheInvalidated(company.getId());
-            recordJournalEntryPostedEventSafe(saved, balancesBefore);
         }
         if (saved.getDealer() != null && dealerReceivableAccount != null) {
             for (JournalLine l : saved.getLines()) {
@@ -617,7 +572,6 @@ public class AccountingService {
             auditMetadata.put("journalEntryId", saved.getId().toString());
         }
         auditMetadata.put("status", saved.getStatus());
-        logAuditSuccessAfterCommit(AuditEvent.JOURNAL_ENTRY_POSTED, auditMetadata);
         return toDto(saved);
         } catch (Exception e) {
             if (e.getMessage() != null) {
@@ -729,7 +683,7 @@ public class AccountingService {
         );
         if (request != null && request.voidOnly()) {
             Instant now = CompanyTime.now(company);
-            JournalEntryDto reversalDto = createJournalEntryForReversal(payload, allowClosedPeriodOverride);
+            JournalEntryDto reversalDto = createJournalEntry(payload);
             JournalEntry reversalEntry = companyEntityLookup.requireJournalEntry(company, reversalDto.id());
             reversalEntry.setReversalOf(entry);
             reversalEntry.setAccountingPeriod(postingPeriod);
@@ -761,11 +715,9 @@ public class AccountingService {
             if (sanitizedReason != null) {
                 auditMetadata.put("reason", sanitizedReason);
             }
-            recordJournalEntryReversedEventSafe(entry, reversalEntry, sanitizedReason);
-            logAuditSuccessAfterCommit(AuditEvent.JOURNAL_ENTRY_REVERSED, auditMetadata);
             return toDto(reversalEntry);
         }
-        JournalEntryDto reversalDto = createJournalEntryForReversal(payload, allowClosedPeriodOverride);
+        JournalEntryDto reversalDto = createJournalEntry(payload);
         JournalEntry reversalEntry = companyEntityLookup.requireJournalEntry(company, reversalDto.id());
         reversalEntry.setReversalOf(entry);
         reversalEntry.setAccountingPeriod(postingPeriod);
@@ -796,8 +748,6 @@ public class AccountingService {
         if (sanitizedReason != null) {
             auditMetadata.put("reason", sanitizedReason);
         }
-        recordJournalEntryReversedEventSafe(entry, reversalEntry, sanitizedReason);
-        logAuditSuccessAfterCommit(AuditEvent.JOURNAL_ENTRY_REVERSED, auditMetadata);
         return reversalDto;
     }
 
@@ -807,7 +757,7 @@ public class AccountingService {
         Dealer dealer = dealerRepository.lockByCompanyAndId(company, request.dealerId())
                 .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Dealer not found"));
         Account receivableAccount = requireDealerReceivable(dealer);
-        Account cashAccount = requireCashAccountForSettlement(company, request.cashAccountId(), "dealer receipt", false);
+        Account cashAccount = requireAccount(company, request.cashAccountId());
         BigDecimal amount = requirePositive(request.amount(), "amount");
         List<SettlementAllocationRequest> allocations = request.allocations();
         validatePaymentAllocations(allocations, amount, "dealer receipt", true);
@@ -822,35 +772,26 @@ public class AccountingService {
 
         if (!reservation.leader()) {
             JournalEntry existingEntry = awaitJournalEntry(company, reference, idempotencyKey);
-            List<PartnerSettlementAllocation> existingAllocations =
-                    resolveAllocationsForIdempotentReceiptReplay(company, idempotencyKey, existingEntry);
+            List<PartnerSettlementAllocation> existingAllocations = awaitAllocations(company, idempotencyKey);
             if (!existingAllocations.isEmpty()) {
-                JournalEntry entry = resolveReplayJournalEntry(idempotencyKey, existingEntry, existingAllocations);
-                linkReferenceMapping(company, idempotencyKey, entry, ENTITY_TYPE_DEALER_RECEIPT);
+                JournalEntry entry = existingEntry != null ? existingEntry : existingAllocations.getFirst().getJournalEntry();
                 validateDealerReceiptIdempotency(idempotencyKey, dealer, cashAccount, receivableAccount, amount, memo, entry,
                         existingAllocations, allocations);
                 return toDto(entry);
             }
-            throw missingReservedPartnerAllocation(
-                    "Dealer receipt",
-                    idempotencyKey,
-                    PartnerType.DEALER,
-                    dealer.getId());
+            throw new ApplicationException(ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
+                    "Dealer receipt idempotency key is reserved but allocation not found")
+                    .withDetail("idempotencyKey", idempotencyKey);
         }
 
-        List<PartnerSettlementAllocation> existingAllocations = findAllocationsByIdempotencyKey(company, idempotencyKey);
+        List<PartnerSettlementAllocation> existingAllocations = settlementAllocationRepository
+                .findByCompanyAndIdempotencyKey(company, idempotencyKey);
         if (!existingAllocations.isEmpty()) {
-            JournalEntry entry = resolveReplayJournalEntryFromExistingAllocations(
-                    company,
-                    reference,
-                    idempotencyKey,
-                    existingAllocations);
-            linkReferenceMapping(company, idempotencyKey, entry, ENTITY_TYPE_DEALER_RECEIPT);
+            JournalEntry entry = existingAllocations.getFirst().getJournalEntry();
             validateDealerReceiptIdempotency(idempotencyKey, dealer, cashAccount, receivableAccount, amount, memo, entry,
                     existingAllocations, allocations);
             return toDto(entry);
         }
-        cashAccount = requireCashAccountForSettlement(company, request.cashAccountId(), "dealer receipt", true);
         JournalEntryRequest payload = new JournalEntryRequest(
                 reference,
                 currentDate(company),
@@ -866,23 +807,16 @@ public class AccountingService {
         JournalEntryDto entryDto = createJournalEntry(payload);
         JournalEntry entry = companyEntityLookup.requireJournalEntry(company, entryDto.id());
         linkReferenceMapping(company, idempotencyKey, entry, ENTITY_TYPE_DEALER_RECEIPT);
-        existingAllocations = findAllocationsByIdempotencyKey(company, idempotencyKey);
+        existingAllocations = settlementAllocationRepository
+                .findByCompanyAndIdempotencyKey(company, idempotencyKey);
         if (!existingAllocations.isEmpty()) {
             validateDealerReceiptIdempotency(idempotencyKey, dealer, cashAccount, receivableAccount, amount, memo, entry,
                     existingAllocations, allocations);
             return entryDto;
         }
-        List<PartnerSettlementAllocation> existingEntryAllocations = settlementAllocationRepository
-                .findByCompanyAndJournalEntryOrderByCreatedAtAsc(company, entry);
-        if (!existingEntryAllocations.isEmpty()) {
-            validateDealerReceiptIdempotency(idempotencyKey, dealer, cashAccount, receivableAccount, amount, memo, entry,
-                    existingEntryAllocations, allocations);
-            return entryDto;
-        }
         LocalDate entryDate = entry.getEntryDate();
         List<PartnerSettlementAllocation> settlementRows = new ArrayList<>();
         List<Invoice> touchedInvoices = new ArrayList<>();
-        Map<Long, BigDecimal> remainingByInvoice = new HashMap<>();
 
         for (SettlementAllocationRequest allocation : allocations) {
             if (allocation.invoiceId() == null) {
@@ -900,9 +834,7 @@ public class AccountingService {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Invoice does not belong to the dealer");
             }
             enforceSettlementCurrency(company, invoice);
-            BigDecimal currentOutstanding = remainingByInvoice.getOrDefault(
-                    invoice.getId(),
-                    MoneyUtils.zeroIfNull(invoice.getOutstandingAmount()));
+            BigDecimal currentOutstanding = MoneyUtils.zeroIfNull(invoice.getOutstandingAmount());
             if (applied.compareTo(currentOutstanding) > 0) {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
                         "Allocation exceeds invoice outstanding amount")
@@ -910,7 +842,10 @@ public class AccountingService {
                         .withDetail("outstanding", currentOutstanding)
                         .withDetail("applied", applied);
             }
-            remainingByInvoice.put(invoice.getId(), currentOutstanding.subtract(applied).max(BigDecimal.ZERO));
+            String settlementRef = reference + "-INV-" + invoice.getId();
+            invoiceSettlementPolicy.applySettlement(invoice, applied, settlementRef);
+            dealerLedgerService.syncInvoiceLedger(invoice, entryDate);
+            touchedInvoices.add(invoice);
 
             PartnerSettlementAllocation row = new PartnerSettlementAllocation();
             row.setCompany(company);
@@ -930,35 +865,21 @@ public class AccountingService {
             row.setMemo(allocation.memo());
             settlementRows.add(row);
         }
+        if (!touchedInvoices.isEmpty()) {
+            invoiceRepository.saveAll(touchedInvoices);
+        }
         try {
             settlementAllocationRepository.saveAll(settlementRows);
         } catch (DataIntegrityViolationException ex) {
-            List<PartnerSettlementAllocation> concurrent = findAllocationsByIdempotencyKey(company, idempotencyKey);
+            List<PartnerSettlementAllocation> concurrent = settlementAllocationRepository
+                    .findByCompanyAndIdempotencyKey(company, idempotencyKey);
             if (!concurrent.isEmpty()) {
-                JournalEntry existingEntry = resolveReplayJournalEntryFromExistingAllocations(
-                        company,
-                        reference,
-                        idempotencyKey,
-                        concurrent);
-                linkReferenceMapping(company, idempotencyKey, existingEntry, ENTITY_TYPE_DEALER_RECEIPT);
+                JournalEntry existingEntry = concurrent.getFirst().getJournalEntry();
                 validateDealerReceiptIdempotency(idempotencyKey, dealer, cashAccount, receivableAccount, amount, memo, existingEntry,
                         concurrent, allocations);
                 return toDto(existingEntry);
             }
             throw ex;
-        }
-        for (PartnerSettlementAllocation row : settlementRows) {
-            Invoice invoice = row.getInvoice();
-            if (invoice == null) {
-                continue;
-            }
-            String settlementRef = reference + "-INV-" + invoice.getId();
-            invoiceSettlementPolicy.applySettlement(invoice, row.getAllocationAmount(), settlementRef);
-            dealerLedgerService.syncInvoiceLedger(invoice, entryDate);
-            touchedInvoices.add(invoice);
-        }
-        if (!touchedInvoices.isEmpty()) {
-            invoiceRepository.saveAll(touchedInvoices);
         }
         return entryDto;
     }
@@ -975,7 +896,7 @@ public class AccountingService {
         BigDecimal total = BigDecimal.ZERO;
         List<JournalEntryRequest.JournalLineRequest> lines = new java.util.ArrayList<>();
         for (DealerReceiptSplitRequest.IncomingLine line : request.incomingLines()) {
-            Account incoming = requireCashAccountForSettlement(company, line.accountId(), "dealer split receipt", false);
+            Account incoming = requireAccount(company, line.accountId());
             BigDecimal amt = requirePositive(line.amount(), "amount");
             total = total.add(amt);
             lines.add(new JournalEntryRequest.JournalLineRequest(incoming.getId(), "Dealer receipt", amt, BigDecimal.ZERO));
@@ -993,35 +914,24 @@ public class AccountingService {
         IdempotencyReservation reservation = reserveReferenceMapping(company, idempotencyKey, reference, ENTITY_TYPE_DEALER_RECEIPT_SPLIT);
         if (!reservation.leader()) {
             JournalEntry existingEntry = awaitJournalEntry(company, reference, idempotencyKey);
-            List<PartnerSettlementAllocation> existingAllocations =
-                    resolveAllocationsForIdempotentReceiptReplay(company, idempotencyKey, existingEntry);
+            List<PartnerSettlementAllocation> existingAllocations = awaitAllocations(company, idempotencyKey);
             if (!existingAllocations.isEmpty()) {
-                JournalEntry entry = resolveReplayJournalEntry(idempotencyKey, existingEntry, existingAllocations);
-                linkReferenceMapping(company, idempotencyKey, entry, ENTITY_TYPE_DEALER_RECEIPT_SPLIT);
+                JournalEntry entry = existingEntry != null ? existingEntry : existingAllocations.getFirst().getJournalEntry();
                 validateSplitReceiptIdempotency(idempotencyKey, dealer, memo, entry, lines);
                 return toDto(entry);
             }
-            throw missingReservedPartnerAllocation(
-                    "Dealer receipt",
-                    idempotencyKey,
-                    PartnerType.DEALER,
-                    dealer.getId());
+            throw new ApplicationException(ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
+                    "Dealer receipt idempotency key is reserved but allocation not found")
+                    .withDetail("idempotencyKey", idempotencyKey);
         }
-        List<PartnerSettlementAllocation> existingAllocations = findAllocationsByIdempotencyKey(company, idempotencyKey);
+        List<PartnerSettlementAllocation> existingAllocations = settlementAllocationRepository
+                .findByCompanyAndIdempotencyKey(company, idempotencyKey);
         if (!existingAllocations.isEmpty()) {
-            JournalEntry entry = resolveReplayJournalEntryFromExistingAllocations(
-                    company,
-                    reference,
-                    idempotencyKey,
-                    existingAllocations);
-            linkReferenceMapping(company, idempotencyKey, entry, ENTITY_TYPE_DEALER_RECEIPT_SPLIT);
+            JournalEntry entry = existingAllocations.getFirst().getJournalEntry();
             validateSplitReceiptIdempotency(idempotencyKey, dealer, memo, entry, lines);
             return toDto(entry);
         }
 
-        for (DealerReceiptSplitRequest.IncomingLine line : request.incomingLines()) {
-            requireCashAccountForSettlement(company, line.accountId(), "dealer split receipt", true);
-        }
         JournalEntryRequest payload = new JournalEntryRequest(
                 reference,
                 currentDate(company),
@@ -1034,14 +944,9 @@ public class AccountingService {
         JournalEntryDto entryDto = createJournalEntry(payload);
         JournalEntry entry = companyEntityLookup.requireJournalEntry(company, entryDto.id());
         linkReferenceMapping(company, idempotencyKey, entry, ENTITY_TYPE_DEALER_RECEIPT_SPLIT);
-        existingAllocations = findAllocationsByIdempotencyKey(company, idempotencyKey);
+        existingAllocations = settlementAllocationRepository
+                .findByCompanyAndIdempotencyKey(company, idempotencyKey);
         if (!existingAllocations.isEmpty()) {
-            validateSplitReceiptIdempotency(idempotencyKey, dealer, memo, entry, lines);
-            return entryDto;
-        }
-        List<PartnerSettlementAllocation> existingEntryAllocations = settlementAllocationRepository
-                .findByCompanyAndJournalEntryOrderByCreatedAtAsc(company, entry);
-        if (!existingEntryAllocations.isEmpty()) {
             validateSplitReceiptIdempotency(idempotencyKey, dealer, memo, entry, lines);
             return entryDto;
         }
@@ -1080,6 +985,10 @@ public class AccountingService {
                 continue;
             }
             enforceSettlementCurrency(company, invoice);
+            String settlementRef = reference + "-INV-" + invoice.getId();
+            invoiceSettlementPolicy.applySettlement(invoice, applied, settlementRef);
+            dealerLedgerService.syncInvoiceLedger(invoice, entryDate);
+            touchedInvoices.add(invoice);
 
             PartnerSettlementAllocation row = new PartnerSettlementAllocation();
             row.setCompany(company);
@@ -1105,34 +1014,20 @@ public class AccountingService {
                     "Receipt amount could not be fully allocated")
                     .withDetail("remaining", remaining);
         }
+        if (!touchedInvoices.isEmpty()) {
+            invoiceRepository.saveAll(touchedInvoices);
+        }
         try {
             settlementAllocationRepository.saveAll(settlementRows);
         } catch (DataIntegrityViolationException ex) {
-            List<PartnerSettlementAllocation> concurrent = findAllocationsByIdempotencyKey(company, idempotencyKey);
+            List<PartnerSettlementAllocation> concurrent = settlementAllocationRepository
+                    .findByCompanyAndIdempotencyKey(company, idempotencyKey);
             if (!concurrent.isEmpty()) {
-                JournalEntry existingEntry = resolveReplayJournalEntryFromExistingAllocations(
-                        company,
-                        reference,
-                        idempotencyKey,
-                        concurrent);
-                linkReferenceMapping(company, idempotencyKey, existingEntry, ENTITY_TYPE_DEALER_RECEIPT_SPLIT);
+                JournalEntry existingEntry = concurrent.getFirst().getJournalEntry();
                 validateSplitReceiptIdempotency(idempotencyKey, dealer, memo, existingEntry, lines);
                 return toDto(existingEntry);
             }
             throw ex;
-        }
-        for (PartnerSettlementAllocation row : settlementRows) {
-            Invoice invoice = row.getInvoice();
-            if (invoice == null) {
-                continue;
-            }
-            String settlementRef = reference + "-INV-" + invoice.getId();
-            invoiceSettlementPolicy.applySettlement(invoice, row.getAllocationAmount(), settlementRef);
-            dealerLedgerService.syncInvoiceLedger(invoice, entryDate);
-            touchedInvoices.add(invoice);
-        }
-        if (!touchedInvoices.isEmpty()) {
-            invoiceRepository.saveAll(touchedInvoices);
         }
         return entryDto;
     }
@@ -1159,7 +1054,7 @@ public class AccountingService {
                     .withDetail("requiredStatus", PayrollRun.PayrollStatus.POSTED.name());
         }
 
-        Account cashAccount = requireCashAccountForSettlement(company, request.cashAccountId(), "payroll payment");
+        Account cashAccount = requireAccount(company, request.cashAccountId());
         BigDecimal amount = requirePositive(request.amount(), "amount");
 
         Account salaryPayableAccount = accountRepository.findByCompanyAndCodeIgnoreCase(company, "SALARY-PAYABLE")
@@ -1302,7 +1197,7 @@ public class AccountingService {
         }
         
         // Required accounts
-        Account cash = requireCashAccountForSettlement(company, request.cashAccountId(), "payroll batch payment");
+        Account cash = requireAccount(company, request.cashAccountId());
         Account expense = requireAccount(company, request.expenseAccountId());
         
         // Optional liability accounts
@@ -1556,7 +1451,7 @@ public class AccountingService {
         Supplier supplier = supplierRepository.lockByCompanyAndId(company, request.supplierId())
                 .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Supplier not found"));
         Account payableAccount = requireSupplierPayable(supplier);
-        Account cashAccount = requireCashAccountForSettlement(company, request.cashAccountId(), "supplier payment", false);
+        Account cashAccount = requireAccount(company, request.cashAccountId());
         BigDecimal amount = requirePositive(request.amount(), "amount");
         List<SettlementAllocationRequest> allocations = request.allocations();
         validatePaymentAllocations(allocations, amount, "supplier payment", false);
@@ -1571,33 +1466,25 @@ public class AccountingService {
             JournalEntry existingEntry = awaitJournalEntry(company, reference, idempotencyKey);
             List<PartnerSettlementAllocation> existingAllocations = awaitAllocations(company, idempotencyKey);
             if (!existingAllocations.isEmpty()) {
-                JournalEntry entry = resolveReplayJournalEntry(idempotencyKey, existingEntry, existingAllocations);
-                linkReferenceMapping(company, idempotencyKey, entry, ENTITY_TYPE_SUPPLIER_PAYMENT);
+                JournalEntry entry = existingEntry != null ? existingEntry : existingAllocations.getFirst().getJournalEntry();
                 validateSupplierPaymentIdempotency(idempotencyKey, supplier, cashAccount, payableAccount, amount, memo,
                         entry, existingAllocations, allocations);
                 return toDto(entry);
             }
-            throw missingReservedPartnerAllocation(
-                    "Supplier payment",
-                    idempotencyKey,
-                    PartnerType.SUPPLIER,
-                    supplier.getId());
+            throw new ApplicationException(ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
+                    "Supplier payment idempotency key is reserved but allocation not found")
+                    .withDetail("idempotencyKey", idempotencyKey);
         }
 
-        List<PartnerSettlementAllocation> existingAllocations = findAllocationsByIdempotencyKey(company, idempotencyKey);
+        List<PartnerSettlementAllocation> existingAllocations = settlementAllocationRepository
+                .findByCompanyAndIdempotencyKey(company, idempotencyKey);
         if (!existingAllocations.isEmpty()) {
-            JournalEntry entry = resolveReplayJournalEntryFromExistingAllocations(
-                    company,
-                    reference,
-                    idempotencyKey,
-                    existingAllocations);
-            linkReferenceMapping(company, idempotencyKey, entry, ENTITY_TYPE_SUPPLIER_PAYMENT);
+            JournalEntry entry = existingAllocations.getFirst().getJournalEntry();
             validateSupplierPaymentIdempotency(idempotencyKey, supplier, cashAccount, payableAccount, amount, memo,
                     entry, existingAllocations, allocations);
             return toDto(entry);
         }
 
-        cashAccount = requireCashAccountForSettlement(company, request.cashAccountId(), "supplier payment", true);
         JournalEntryRequest payload = new JournalEntryRequest(
                 reference,
                 currentDate(company),
@@ -1613,7 +1500,8 @@ public class AccountingService {
         JournalEntryDto entryDto = createJournalEntry(payload);
         JournalEntry entry = companyEntityLookup.requireJournalEntry(company, entryDto.id());
         linkReferenceMapping(company, idempotencyKey, entry, ENTITY_TYPE_SUPPLIER_PAYMENT);
-        existingAllocations = findAllocationsByIdempotencyKey(company, idempotencyKey);
+        existingAllocations = settlementAllocationRepository
+                .findByCompanyAndIdempotencyKey(company, idempotencyKey);
         if (!existingAllocations.isEmpty()) {
             validateSupplierPaymentIdempotency(idempotencyKey, supplier, cashAccount, payableAccount, amount, memo,
                     entry, existingAllocations, allocations);
@@ -1623,35 +1511,34 @@ public class AccountingService {
         LocalDate entryDate = entry.getEntryDate();
         List<PartnerSettlementAllocation> settlementRows = new ArrayList<>();
         List<RawMaterialPurchase> touchedPurchases = new ArrayList<>();
-        Map<Long, BigDecimal> remainingByPurchase = new HashMap<>();
-        Map<Long, RawMaterialPurchase> purchaseById = new HashMap<>();
 
         for (SettlementAllocationRequest allocation : allocations) {
+            if (allocation.purchaseId() == null) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Purchase allocation is required for supplier settlements");
+            }
             if (allocation.invoiceId() != null) {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
-                        "Supplier payments cannot allocate to invoices");
+                        "Supplier settlements cannot allocate to invoices");
             }
             BigDecimal applied = requirePositive(allocation.appliedAmount(), "appliedAmount");
-            RawMaterialPurchase purchase = null;
-            if (allocation.purchaseId() != null) {
-                purchase = rawMaterialPurchaseRepository.lockByCompanyAndId(company, allocation.purchaseId())
-                        .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Raw material purchase not found"));
-                if (purchase.getSupplier() == null || !purchase.getSupplier().getId().equals(supplier.getId())) {
-                    throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Purchase does not belong to the supplier");
-                }
-                BigDecimal currentOutstanding = remainingByPurchase.getOrDefault(
-                        purchase.getId(),
-                        MoneyUtils.zeroIfNull(purchase.getOutstandingAmount()));
-                if (applied.compareTo(currentOutstanding) > 0) {
-                    throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
-                            "Allocation exceeds purchase outstanding amount")
-                            .withDetail("purchaseId", purchase.getId())
-                            .withDetail("outstanding", currentOutstanding)
-                            .withDetail("applied", applied);
-                }
-                remainingByPurchase.put(purchase.getId(), currentOutstanding.subtract(applied).max(BigDecimal.ZERO));
-                purchaseById.put(purchase.getId(), purchase);
+            RawMaterialPurchase purchase = rawMaterialPurchaseRepository.lockByCompanyAndId(company, allocation.purchaseId())
+                    .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Raw material purchase not found"));
+            if (purchase.getSupplier() == null || !purchase.getSupplier().getId().equals(supplier.getId())) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Purchase does not belong to the supplier");
             }
+            BigDecimal currentOutstanding = MoneyUtils.zeroIfNull(purchase.getOutstandingAmount());
+            if (applied.compareTo(currentOutstanding) > 0) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Allocation exceeds purchase outstanding amount")
+                        .withDetail("purchaseId", purchase.getId())
+                        .withDetail("outstanding", currentOutstanding)
+                        .withDetail("applied", applied);
+            }
+            BigDecimal newOutstanding = currentOutstanding.subtract(applied).max(BigDecimal.ZERO);
+            purchase.setOutstandingAmount(newOutstanding);
+            updatePurchaseStatus(purchase);
+            touchedPurchases.add(purchase);
 
             PartnerSettlementAllocation row = new PartnerSettlementAllocation();
             row.setCompany(company);
@@ -1671,28 +1558,15 @@ public class AccountingService {
         try {
             settlementAllocationRepository.saveAll(settlementRows);
         } catch (DataIntegrityViolationException ex) {
-            List<PartnerSettlementAllocation> concurrent = findAllocationsByIdempotencyKey(company, idempotencyKey);
+            List<PartnerSettlementAllocation> concurrent = settlementAllocationRepository
+                    .findByCompanyAndIdempotencyKey(company, idempotencyKey);
             if (!concurrent.isEmpty()) {
-                JournalEntry existingEntry = resolveReplayJournalEntryFromExistingAllocations(
-                        company,
-                        reference,
-                        idempotencyKey,
-                        concurrent);
-                linkReferenceMapping(company, idempotencyKey, existingEntry, ENTITY_TYPE_SUPPLIER_PAYMENT);
+                JournalEntry existingEntry = concurrent.getFirst().getJournalEntry();
                 validateSupplierPaymentIdempotency(idempotencyKey, supplier, cashAccount, payableAccount, amount, memo,
                         existingEntry, concurrent, allocations);
                 return toDto(existingEntry);
             }
             throw ex;
-        }
-        for (Map.Entry<Long, BigDecimal> entryState : remainingByPurchase.entrySet()) {
-            RawMaterialPurchase purchase = purchaseById.get(entryState.getKey());
-            if (purchase == null) {
-                continue;
-            }
-            purchase.setOutstandingAmount(entryState.getValue().max(BigDecimal.ZERO));
-            updatePurchaseStatus(purchase);
-            touchedPurchases.add(purchase);
         }
         if (!touchedPurchases.isEmpty()) {
             rawMaterialPurchaseRepository.saveAll(touchedPurchases);
@@ -1703,7 +1577,9 @@ public class AccountingService {
     @Transactional
     public PartnerSettlementResponse settleDealerInvoices(DealerSettlementRequest request) {
         Company company = companyContextService.requireCurrentCompany();
-        String trimmedIdempotencyKey = resolveDealerSettlementIdempotencyKey(company, request);
+        String trimmedIdempotencyKey = StringUtils.hasText(request.idempotencyKey())
+                ? request.idempotencyKey().trim()
+                : (StringUtils.hasText(request.referenceNumber()) ? request.referenceNumber().trim() : buildDealerSettlementIdempotencyKey(request));
         if (!StringUtils.hasText(trimmedIdempotencyKey)) {
             throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
                     "Idempotency key is required for dealer settlements");
@@ -1715,78 +1591,38 @@ public class AccountingService {
         if (allocations == null || allocations.isEmpty()) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "At least one allocation is required");
         }
-        boolean replayCandidate = hasExistingSettlementAllocations(company, trimmedIdempotencyKey);
-        if (!replayCandidate) {
-            validateDealerSettlementAllocations(allocations);
-        }
+        validateDealerSettlementAllocations(allocations);
         SettlementTotals totals = computeSettlementTotals(allocations);
         String memo = StringUtils.hasText(request.memo())
                 ? request.memo().trim()
                 : "Settlement for dealer " + dealer.getName();
         String reference = resolveDealerSettlementReference(company, dealer, request, trimmedIdempotencyKey);
         IdempotencyReservation reservation = reserveReferenceMapping(company, trimmedIdempotencyKey, reference, ENTITY_TYPE_DEALER_SETTLEMENT);
-        if (reservation.leader()
-                && !StringUtils.hasText(request.referenceNumber())
-                && isReservedReference(reference)) {
-            reference = referenceNumberService.dealerReceiptReference(company, dealer);
-        }
-        SettlementLineDraft lineDraft = buildDealerSettlementLines(
-                company,
-                request,
-                receivableAccount,
-                totals,
-                memo,
-                false);
+        SettlementLineDraft lineDraft = buildDealerSettlementLines(company, request, receivableAccount, totals, memo);
 
         if (!reservation.leader()) {
             JournalEntry existingEntry = awaitJournalEntry(company, reference, trimmedIdempotencyKey);
             List<PartnerSettlementAllocation> existingAllocations = awaitAllocations(company, trimmedIdempotencyKey);
             if (!existingAllocations.isEmpty()) {
-                JournalEntry entry = resolveReplayJournalEntry(trimmedIdempotencyKey, existingEntry, existingAllocations);
-                linkReferenceMapping(company, trimmedIdempotencyKey, entry, ENTITY_TYPE_DEALER_SETTLEMENT);
+                JournalEntry entry = existingEntry != null ? existingEntry : existingAllocations.getFirst().getJournalEntry();
                 validateSettlementIdempotencyKey(trimmedIdempotencyKey, PartnerType.DEALER, dealer.getId(), existingAllocations, allocations);
-                validatePartnerSettlementJournalLines(
-                        trimmedIdempotencyKey,
-                        PartnerType.DEALER,
-                        dealer.getId(),
-                        memo,
-                        entry,
-                        lineDraft.lines());
+                validateSettlementJournalLines(trimmedIdempotencyKey, dealer, memo, entry, lineDraft.lines());
                 return buildDealerSettlementResponse(existingAllocations);
             }
-            throw missingReservedPartnerAllocation(
-                    "Dealer settlement",
-                    trimmedIdempotencyKey,
-                    PartnerType.DEALER,
-                    dealer.getId());
+            throw new ApplicationException(ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
+                    "Dealer settlement idempotency key is reserved but allocation not found")
+                    .withDetail("idempotencyKey", trimmedIdempotencyKey);
         }
 
-        List<PartnerSettlementAllocation> existingAllocations = findAllocationsByIdempotencyKey(company, trimmedIdempotencyKey);
+        List<PartnerSettlementAllocation> existingAllocations = settlementAllocationRepository
+                .findByCompanyAndIdempotencyKey(company, trimmedIdempotencyKey);
         if (!existingAllocations.isEmpty()) {
-            JournalEntry entry = resolveReplayJournalEntryFromExistingAllocations(
-                    company,
-                    reference,
-                    trimmedIdempotencyKey,
-                    existingAllocations);
-            linkReferenceMapping(company, trimmedIdempotencyKey, entry, ENTITY_TYPE_DEALER_SETTLEMENT);
+            JournalEntry entry = existingAllocations.getFirst().getJournalEntry();
             validateSettlementIdempotencyKey(trimmedIdempotencyKey, PartnerType.DEALER, dealer.getId(), existingAllocations, allocations);
-            validatePartnerSettlementJournalLines(
-                    trimmedIdempotencyKey,
-                    PartnerType.DEALER,
-                    dealer.getId(),
-                    memo,
-                    entry,
-                    lineDraft.lines());
+            validateSettlementJournalLines(trimmedIdempotencyKey, dealer, memo, entry, lineDraft.lines());
             return buildDealerSettlementResponse(existingAllocations);
         }
 
-        lineDraft = buildDealerSettlementLines(
-                company,
-                request,
-                receivableAccount,
-                totals,
-                memo,
-                true);
         LocalDate entryDate = request.settlementDate() != null ? request.settlementDate() : currentDate(company);
 
         BigDecimal totalApplied = totals.totalApplied();
@@ -1797,7 +1633,6 @@ public class AccountingService {
         BigDecimal cashAmount = lineDraft.cashAmount();
         List<PartnerSettlementAllocation> settlementRows = new ArrayList<>();
         List<Invoice> touchedInvoices = new ArrayList<>();
-        Map<Long, BigDecimal> remainingByInvoice = new HashMap<>();
 
         for (SettlementAllocationRequest allocation : allocations) {
             if (allocation.invoiceId() == null) {
@@ -1822,9 +1657,7 @@ public class AccountingService {
 
             // Open-item tracking: applied amount represents gross invoice reduction.
             BigDecimal cleared = applied;
-            BigDecimal currentOutstanding = remainingByInvoice.getOrDefault(
-                    invoice.getId(),
-                    MoneyUtils.zeroIfNull(invoice.getOutstandingAmount()));
+            BigDecimal currentOutstanding = MoneyUtils.zeroIfNull(invoice.getOutstandingAmount());
             if (cleared.subtract(currentOutstanding).compareTo(ALLOCATION_TOLERANCE) > 0) {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
                         "Settlement allocation exceeds invoice outstanding amount")
@@ -1832,7 +1665,11 @@ public class AccountingService {
                         .withDetail("outstandingAmount", currentOutstanding)
                         .withDetail("appliedAmount", cleared);
             }
-            remainingByInvoice.put(invoice.getId(), currentOutstanding.subtract(cleared).max(BigDecimal.ZERO));
+            // Use centralized policy for settlement - handles status transitions
+            String settlementRef = reference + "-INV-" + invoice.getId();
+            invoiceSettlementPolicy.applySettlement(invoice, cleared, settlementRef);
+            dealerLedgerService.syncInvoiceLedger(invoice, entryDate);
+            touchedInvoices.add(invoice);
 
             PartnerSettlementAllocation row = new PartnerSettlementAllocation();
             row.setCompany(company);
@@ -1870,35 +1707,15 @@ public class AccountingService {
         try {
             settlementAllocationRepository.saveAll(settlementRows);
         } catch (DataIntegrityViolationException ex) {
-            List<PartnerSettlementAllocation> concurrent = findAllocationsByIdempotencyKey(company, trimmedIdempotencyKey);
+            List<PartnerSettlementAllocation> concurrent = settlementAllocationRepository
+                    .findByCompanyAndIdempotencyKey(company, trimmedIdempotencyKey);
             if (!concurrent.isEmpty()) {
-                JournalEntry existingEntry = resolveReplayJournalEntryFromExistingAllocations(
-                        company,
-                        reference,
-                        trimmedIdempotencyKey,
-                        concurrent);
-                linkReferenceMapping(company, trimmedIdempotencyKey, existingEntry, ENTITY_TYPE_DEALER_SETTLEMENT);
+                JournalEntry existingEntry = concurrent.getFirst().getJournalEntry();
                 validateSettlementIdempotencyKey(trimmedIdempotencyKey, PartnerType.DEALER, dealer.getId(), concurrent, allocations);
-                validatePartnerSettlementJournalLines(
-                        trimmedIdempotencyKey,
-                        PartnerType.DEALER,
-                        dealer.getId(),
-                        memo,
-                        existingEntry,
-                        lineDraft.lines());
+                validateSettlementJournalLines(trimmedIdempotencyKey, dealer, memo, existingEntry, lineDraft.lines());
                 return buildDealerSettlementResponse(concurrent);
             }
             throw ex;
-        }
-        for (PartnerSettlementAllocation row : settlementRows) {
-            Invoice invoice = row.getInvoice();
-            if (invoice == null) {
-                continue;
-            }
-            String settlementRef = reference + "-INV-" + invoice.getId();
-            invoiceSettlementPolicy.applySettlement(invoice, row.getAllocationAmount(), settlementRef);
-            dealerLedgerService.syncInvoiceLedger(invoice, entryDate);
-            touchedInvoices.add(invoice);
         }
         if (!touchedInvoices.isEmpty()) {
             invoiceRepository.saveAll(touchedInvoices);
@@ -1917,27 +1734,26 @@ public class AccountingService {
                 .toList();
 
         Map<String, String> auditMetadata = new HashMap<>();
-        auditMetadata.put(IntegrationFailureMetadataSchema.KEY_PARTNER_TYPE, PartnerType.DEALER.name());
+        auditMetadata.put("partnerType", PartnerType.DEALER.name());
         if (dealer.getId() != null) {
-            auditMetadata.put(IntegrationFailureMetadataSchema.KEY_PARTNER_ID, dealer.getId().toString());
+            auditMetadata.put("partnerId", dealer.getId().toString());
         }
         if (journalEntryDto != null && journalEntryDto.id() != null) {
-            auditMetadata.put(IntegrationFailureMetadataSchema.KEY_JOURNAL_ENTRY_ID, journalEntryDto.id().toString());
+            auditMetadata.put("journalEntryId", journalEntryDto.id().toString());
         }
         if (entryDate != null) {
-            auditMetadata.put(IntegrationFailureMetadataSchema.KEY_SETTLEMENT_DATE, entryDate.toString());
+            auditMetadata.put("settlementDate", entryDate.toString());
         }
         if (trimmedIdempotencyKey != null) {
-            auditMetadata.put(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, trimmedIdempotencyKey);
+            auditMetadata.put("idempotencyKey", trimmedIdempotencyKey);
         }
-        auditMetadata.put(IntegrationFailureMetadataSchema.KEY_ALLOCATION_COUNT, Integer.toString(settlementRows.size()));
+        auditMetadata.put("allocationCount", Integer.toString(settlementRows.size()));
         auditMetadata.put("totalApplied", totalApplied.toPlainString());
         auditMetadata.put("cashAmount", cashAmount.toPlainString());
         auditMetadata.put("totalDiscount", totalDiscount.toPlainString());
         auditMetadata.put("totalWriteOff", totalWriteOff.toPlainString());
         auditMetadata.put("totalFxGain", totalFxGain.toPlainString());
         auditMetadata.put("totalFxLoss", totalFxLoss.toPlainString());
-        logAuditSuccessAfterCommit(AuditEvent.SETTLEMENT_RECORDED, auditMetadata);
 
         return new PartnerSettlementResponse(
                 journalEntryDto,
@@ -1958,15 +1774,10 @@ public class AccountingService {
         Supplier supplier = supplierRepository.lockByCompanyAndId(company, request.supplierId())
                 .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Supplier not found"));
         Account payableAccount = requireSupplierPayable(supplier);
-        Account cashAccount = requireCashAccountForSettlement(company, request.cashAccountId(), "supplier settlement", false);
+        Account cashAccount = requireAccount(company, request.cashAccountId());
         List<SettlementAllocationRequest> allocations = request.allocations();
         if (allocations == null || allocations.isEmpty()) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "At least one allocation is required");
-        }
-        boolean replayCandidate = hasExistingIdempotencyMapping(company, trimmedIdempotencyKey)
-                || hasExistingSettlementAllocations(company, trimmedIdempotencyKey);
-        if (!replayCandidate) {
-            validateSupplierSettlementAllocations(allocations);
         }
         SettlementTotals totals = computeSettlementTotals(allocations);
         String memo = StringUtils.hasText(request.memo())
@@ -1974,55 +1785,30 @@ public class AccountingService {
                 : "Settlement to supplier " + supplier.getName();
         String reference = resolveSupplierSettlementReference(company, supplier, request, trimmedIdempotencyKey);
         IdempotencyReservation reservation = reserveReferenceMapping(company, trimmedIdempotencyKey, reference, ENTITY_TYPE_SUPPLIER_SETTLEMENT);
+        SettlementLineDraft lineDraft = buildSupplierSettlementLines(company, request, payableAccount, cashAccount, totals, memo);
 
         if (!reservation.leader()) {
             JournalEntry existingEntry = awaitJournalEntry(company, reference, trimmedIdempotencyKey);
             List<PartnerSettlementAllocation> existingAllocations = awaitAllocations(company, trimmedIdempotencyKey);
             if (!existingAllocations.isEmpty()) {
-                SettlementLineDraft replayLineDraft =
-                        buildSupplierSettlementLines(company, request, payableAccount, cashAccount, totals, memo);
-                JournalEntry entry = resolveReplayJournalEntry(trimmedIdempotencyKey, existingEntry, existingAllocations);
-                linkReferenceMapping(company, trimmedIdempotencyKey, entry, ENTITY_TYPE_SUPPLIER_SETTLEMENT);
+                JournalEntry entry = existingEntry != null ? existingEntry : existingAllocations.getFirst().getJournalEntry();
                 validateSettlementIdempotencyKey(trimmedIdempotencyKey, PartnerType.SUPPLIER, supplier.getId(), existingAllocations, allocations);
-                validatePartnerSettlementJournalLines(
-                        trimmedIdempotencyKey,
-                        PartnerType.SUPPLIER,
-                        supplier.getId(),
-                        memo,
-                        entry,
-                        replayLineDraft.lines());
+                validateSupplierSettlementJournalLines(trimmedIdempotencyKey, supplier, memo, entry, lineDraft.lines());
                 return buildSupplierSettlementResponse(existingAllocations);
             }
-            throw missingReservedPartnerAllocation(
-                    "Supplier settlement",
-                    trimmedIdempotencyKey,
-                    PartnerType.SUPPLIER,
-                    supplier.getId());
+            throw new ApplicationException(ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
+                    "Supplier settlement idempotency key is reserved but allocation not found")
+                    .withDetail("idempotencyKey", trimmedIdempotencyKey);
         }
 
-        List<PartnerSettlementAllocation> existingAllocations = findAllocationsByIdempotencyKey(company, trimmedIdempotencyKey);
+        List<PartnerSettlementAllocation> existingAllocations = settlementAllocationRepository
+                .findByCompanyAndIdempotencyKey(company, trimmedIdempotencyKey);
         if (!existingAllocations.isEmpty()) {
-            JournalEntry entry = resolveReplayJournalEntryFromExistingAllocations(
-                    company,
-                    reference,
-                    trimmedIdempotencyKey,
-                    existingAllocations);
-            SettlementLineDraft replayLineDraft =
-                    buildSupplierSettlementLines(company, request, payableAccount, cashAccount, totals, memo);
-            linkReferenceMapping(company, trimmedIdempotencyKey, entry, ENTITY_TYPE_SUPPLIER_SETTLEMENT);
+            JournalEntry entry = existingAllocations.getFirst().getJournalEntry();
             validateSettlementIdempotencyKey(trimmedIdempotencyKey, PartnerType.SUPPLIER, supplier.getId(), existingAllocations, allocations);
-            validatePartnerSettlementJournalLines(
-                    trimmedIdempotencyKey,
-                    PartnerType.SUPPLIER,
-                    supplier.getId(),
-                    memo,
-                    entry,
-                    replayLineDraft.lines());
+            validateSupplierSettlementJournalLines(trimmedIdempotencyKey, supplier, memo, entry, lineDraft.lines());
             return buildSupplierSettlementResponse(existingAllocations);
         }
-
-        cashAccount = requireCashAccountForSettlement(company, request.cashAccountId(), "supplier settlement", true);
-        SettlementLineDraft lineDraft = buildSupplierSettlementLines(company, request, payableAccount, cashAccount, totals, memo);
 
         LocalDate entryDate = request.settlementDate() != null ? request.settlementDate() : currentDate(company);
 
@@ -2033,10 +1819,12 @@ public class AccountingService {
         BigDecimal totalFxLoss = totals.totalFxLoss();
         List<PartnerSettlementAllocation> settlementRows = new ArrayList<>();
         List<RawMaterialPurchase> touchedPurchases = new ArrayList<>();
-        Map<Long, BigDecimal> remainingByPurchase = new HashMap<>();
-        Map<Long, RawMaterialPurchase> purchaseById = new HashMap<>();
 
         for (SettlementAllocationRequest allocation : allocations) {
+            if (allocation.purchaseId() == null) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Purchase allocation is required for supplier settlements");
+            }
             if (allocation.invoiceId() != null) {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
                         "Supplier settlements cannot allocate to invoices");
@@ -2045,14 +1833,6 @@ public class AccountingService {
             BigDecimal discount = normalizeNonNegative(allocation.discountAmount(), "discountAmount");
             BigDecimal writeOff = normalizeNonNegative(allocation.writeOffAmount(), "writeOffAmount");
             BigDecimal fxAdjustment = MoneyUtils.zeroIfNull(allocation.fxAdjustment());
-
-            if (allocation.purchaseId() == null
-                    && (discount.compareTo(BigDecimal.ZERO) > 0
-                    || writeOff.compareTo(BigDecimal.ZERO) > 0
-                    || fxAdjustment.compareTo(BigDecimal.ZERO) != 0)) {
-                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
-                        "On-account supplier settlement allocations cannot include discount/write-off/FX adjustments");
-            }
 
             RawMaterialPurchase purchase = null;
             if (allocation.purchaseId() != null) {
@@ -2063,9 +1843,7 @@ public class AccountingService {
                 }
                 // Open-item: applied amount represents gross purchase reduction.
                 BigDecimal cleared = applied;
-                BigDecimal currentOutstanding = remainingByPurchase.getOrDefault(
-                        purchase.getId(),
-                        MoneyUtils.zeroIfNull(purchase.getOutstandingAmount()));
+                BigDecimal currentOutstanding = MoneyUtils.zeroIfNull(purchase.getOutstandingAmount());
                 if (cleared.subtract(currentOutstanding).compareTo(ALLOCATION_TOLERANCE) > 0) {
                     throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
                             "Settlement allocation exceeds purchase outstanding amount")
@@ -2073,8 +1851,9 @@ public class AccountingService {
                             .withDetail("outstandingAmount", currentOutstanding)
                             .withDetail("appliedAmount", cleared);
                 }
-                remainingByPurchase.put(purchase.getId(), currentOutstanding.subtract(cleared).max(BigDecimal.ZERO));
-                purchaseById.put(purchase.getId(), purchase);
+                purchase.setOutstandingAmount(currentOutstanding.subtract(cleared).max(BigDecimal.ZERO));
+                updatePurchaseStatus(purchase);
+                touchedPurchases.add(purchase);
             }
 
             PartnerSettlementAllocation row = new PartnerSettlementAllocation();
@@ -2110,34 +1889,15 @@ public class AccountingService {
         try {
             settlementAllocationRepository.saveAll(settlementRows);
         } catch (DataIntegrityViolationException ex) {
-            List<PartnerSettlementAllocation> concurrent = findAllocationsByIdempotencyKey(company, trimmedIdempotencyKey);
+            List<PartnerSettlementAllocation> concurrent = settlementAllocationRepository
+                    .findByCompanyAndIdempotencyKey(company, trimmedIdempotencyKey);
             if (!concurrent.isEmpty()) {
-                JournalEntry existingEntry = resolveReplayJournalEntryFromExistingAllocations(
-                        company,
-                        reference,
-                        trimmedIdempotencyKey,
-                        concurrent);
-                linkReferenceMapping(company, trimmedIdempotencyKey, existingEntry, ENTITY_TYPE_SUPPLIER_SETTLEMENT);
+                JournalEntry existingEntry = concurrent.getFirst().getJournalEntry();
                 validateSettlementIdempotencyKey(trimmedIdempotencyKey, PartnerType.SUPPLIER, supplier.getId(), concurrent, allocations);
-                validatePartnerSettlementJournalLines(
-                        trimmedIdempotencyKey,
-                        PartnerType.SUPPLIER,
-                        supplier.getId(),
-                        memo,
-                        existingEntry,
-                        lineDraft.lines());
+                validateSupplierSettlementJournalLines(trimmedIdempotencyKey, supplier, memo, existingEntry, lineDraft.lines());
                 return buildSupplierSettlementResponse(concurrent);
             }
             throw ex;
-        }
-        for (Map.Entry<Long, BigDecimal> entryState : remainingByPurchase.entrySet()) {
-            RawMaterialPurchase purchase = purchaseById.get(entryState.getKey());
-            if (purchase == null) {
-                continue;
-            }
-            purchase.setOutstandingAmount(entryState.getValue().max(BigDecimal.ZERO));
-            updatePurchaseStatus(purchase);
-            touchedPurchases.add(purchase);
         }
         if (!touchedPurchases.isEmpty()) {
             rawMaterialPurchaseRepository.saveAll(touchedPurchases);
@@ -2156,27 +1916,26 @@ public class AccountingService {
                 .toList();
 
         Map<String, String> auditMetadata = new HashMap<>();
-        auditMetadata.put(IntegrationFailureMetadataSchema.KEY_PARTNER_TYPE, PartnerType.SUPPLIER.name());
+        auditMetadata.put("partnerType", PartnerType.SUPPLIER.name());
         if (supplier.getId() != null) {
-            auditMetadata.put(IntegrationFailureMetadataSchema.KEY_PARTNER_ID, supplier.getId().toString());
+            auditMetadata.put("partnerId", supplier.getId().toString());
         }
         if (journalEntryDto != null && journalEntryDto.id() != null) {
-            auditMetadata.put(IntegrationFailureMetadataSchema.KEY_JOURNAL_ENTRY_ID, journalEntryDto.id().toString());
+            auditMetadata.put("journalEntryId", journalEntryDto.id().toString());
         }
         if (entryDate != null) {
-            auditMetadata.put(IntegrationFailureMetadataSchema.KEY_SETTLEMENT_DATE, entryDate.toString());
+            auditMetadata.put("settlementDate", entryDate.toString());
         }
         if (trimmedIdempotencyKey != null) {
-            auditMetadata.put(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, trimmedIdempotencyKey);
+            auditMetadata.put("idempotencyKey", trimmedIdempotencyKey);
         }
-        auditMetadata.put(IntegrationFailureMetadataSchema.KEY_ALLOCATION_COUNT, Integer.toString(settlementRows.size()));
+        auditMetadata.put("allocationCount", Integer.toString(settlementRows.size()));
         auditMetadata.put("totalApplied", totalApplied.toPlainString());
         auditMetadata.put("cashAmount", lineDraft.cashAmount().toPlainString());
         auditMetadata.put("totalDiscount", totalDiscount.toPlainString());
         auditMetadata.put("totalWriteOff", totalWriteOff.toPlainString());
         auditMetadata.put("totalFxGain", totalFxGain.toPlainString());
         auditMetadata.put("totalFxLoss", totalFxLoss.toPlainString());
-        logAuditSuccessAfterCommit(AuditEvent.SETTLEMENT_RECORDED, auditMetadata);
 
         return new PartnerSettlementResponse(
                 journalEntryDto,
@@ -2269,39 +2028,6 @@ public class AccountingService {
         return companyEntityLookup.requireAccount(company, accountId);
     }
 
-    private Account requireCashAccountForSettlement(Company company, Long accountId, String operation) {
-        return requireCashAccountForSettlement(company, accountId, operation, true);
-    }
-
-    private Account requireCashAccountForSettlement(Company company, Long accountId, String operation, boolean requireActive) {
-        Account account = requireAccount(company, accountId);
-        if (requireActive && !account.isActive()) {
-            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
-                    "Cash/bank account for " + operation + " must be active")
-                    .withDetail("operation", operation)
-                    .withDetail("accountId", account.getId())
-                    .withDetail("accountCode", account.getCode())
-                    .withDetail("active", false);
-        }
-        if (account.getType() != null && account.getType() != AccountType.ASSET) {
-            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
-                    "Cash/bank account for " + operation + " must be an ASSET account")
-                    .withDetail("operation", operation)
-                    .withDetail("accountId", account.getId())
-                    .withDetail("accountCode", account.getCode())
-                    .withDetail("accountType", account.getType().name());
-        }
-        if (isReceivableAccount(account) || isPayableAccount(account)) {
-            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
-                    "Cash/bank account for " + operation + " cannot be AR/AP control account")
-                    .withDetail("operation", operation)
-                    .withDetail("accountId", account.getId())
-                    .withDetail("accountCode", account.getCode())
-                    .withDetail("accountName", account.getName());
-        }
-        return account;
-    }
-
     private BigDecimal requirePositive(BigDecimal value, String field) {
         if (value == null || value.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Value for " + field + " must be greater than zero");
@@ -2337,13 +2063,13 @@ public class AccountingService {
                             "Dealer receipts cannot allocate to purchases");
                 }
             } else {
+                if (allocation.purchaseId() == null) {
+                    throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                            "Purchase allocation is required for supplier payments");
+                }
                 if (allocation.invoiceId() != null) {
                     throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
                             "Supplier payments cannot allocate to invoices");
-                }
-                if (allocation.purchaseId() == null) {
-                    throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
-                            "Purchase allocation is required for supplier payments; use /api/v1/accounting/settlements/suppliers for on-account credits");
                 }
             }
             BigDecimal applied = requirePositive(allocation.appliedAmount(), "appliedAmount");
@@ -2373,15 +2099,14 @@ public class AccountingService {
                     "Journal entry request is required");
         }
         Company company = companyContextService.requireCurrentCompany();
-        String rawKey = StringUtils.hasText(idempotencyKey) ? idempotencyKey.trim() : null;
-        String key = StringUtils.hasText(rawKey) ? normalizeIdempotencyMappingKey(rawKey) : null;
-        if (StringUtils.hasText(rawKey)) {
-            if (journalEntryRepository.findByCompanyAndReferenceNumber(company, rawKey).isPresent()) {
+        String key = StringUtils.hasText(idempotencyKey) ? idempotencyKey.trim() : null;
+        if (StringUtils.hasText(key)) {
+            if (journalEntryRepository.findByCompanyAndReferenceNumber(company, key).isPresent()) {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
                         "Idempotency key conflicts with an existing system reference")
-                        .withDetail("referenceNumber", rawKey);
+                        .withDetail("referenceNumber", key);
             }
-            Optional<JournalEntry> existing = journalReferenceResolver.findExistingEntry(company, rawKey);
+            Optional<JournalEntry> existing = journalReferenceResolver.findExistingEntry(company, key);
             if (existing.isPresent()) {
                 return toDto(existing.get());
             }
@@ -2396,13 +2121,13 @@ public class AccountingService {
                     CompanyTime.now(company)
             );
             if (reserved == 0) {
-                JournalEntry already = awaitJournalEntry(company, rawKey, key);
-                if (already != null) {
-                    return toDto(already);
+                Optional<JournalEntry> already = journalReferenceResolver.findExistingEntry(company, key);
+                if (already.isPresent()) {
+                    return toDto(already.get());
                 }
                 throw new ApplicationException(ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
                         "Manual journal idempotency key already reserved but entry not found")
-                        .withDetail("referenceNumber", rawKey);
+                        .withDetail("referenceNumber", key);
             }
         }
         JournalEntryDto created = createJournalEntry(new JournalEntryRequest(
@@ -2417,10 +2142,11 @@ public class AccountingService {
                 request.fxRate()
         ));
         if (StringUtils.hasText(key) && created != null && StringUtils.hasText(created.referenceNumber())) {
-            JournalReferenceMapping mapping = findLatestLegacyReferenceMapping(company, key)
+            JournalReferenceMapping mapping = journalReferenceMappingRepository
+                    .findByCompanyAndLegacyReferenceIgnoreCase(company, key)
                     .orElseThrow(() -> new ApplicationException(ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
                             "Manual journal idempotency reservation missing")
-                            .withDetail("referenceNumber", rawKey));
+                            .withDetail("referenceNumber", key));
             mapping.setCanonicalReference(created.referenceNumber());
             mapping.setEntityId(created.id());
             journalReferenceMappingRepository.save(mapping);
@@ -2437,13 +2163,6 @@ public class AccountingService {
         return "RESERVED-" + hash;
     }
 
-    private boolean isReservedReference(String reference) {
-        if (!StringUtils.hasText(reference)) {
-            return false;
-        }
-        return reference.trim().toUpperCase(Locale.ROOT).startsWith("RESERVED-");
-    }
-
     private String resolveReceiptIdempotencyKey(String provided, String reference, String label) {
         if (StringUtils.hasText(provided)) {
             return provided.trim();
@@ -2455,167 +2174,6 @@ public class AccountingService {
                 "Idempotency key or reference number is required for " + label);
     }
 
-    private String resolveDealerSettlementIdempotencyKey(Company company, DealerSettlementRequest request) {
-        if (request == null) {
-            return "";
-        }
-        if (StringUtils.hasText(request.idempotencyKey())) {
-            return request.idempotencyKey().trim();
-        }
-        if (StringUtils.hasText(request.referenceNumber())) {
-            return request.referenceNumber().trim();
-        }
-
-        String canonicalKey = buildDealerSettlementIdempotencyKey(request);
-        Optional<String> replayKeyCandidate = findMatchingDealerSettlementReplayKey(company, request);
-        if (replayKeyCandidate.isPresent() && !replayKeyCandidate.get().equalsIgnoreCase(canonicalKey)) {
-            return replayKeyCandidate.get();
-        }
-
-        String legacyKey = buildLegacyDealerSettlementIdempotencyKey(request);
-        if (StringUtils.hasText(legacyKey) && !legacyKey.equalsIgnoreCase(canonicalKey)) {
-            boolean hasLegacyAllocations = hasExistingSettlementAllocations(company, legacyKey);
-            if (hasLegacyAllocations && dealerSettlementReplayKeyMatchesRequest(company, request, legacyKey)) {
-                return legacyKey;
-            }
-            if (!hasLegacyAllocations && hasExistingIdempotencyMapping(company, legacyKey)) {
-                return legacyKey;
-            }
-        }
-        return canonicalKey;
-    }
-
-    private Optional<String> findMatchingDealerSettlementReplayKey(Company company, DealerSettlementRequest request) {
-        if (company == null || request == null || request.allocations() == null || request.allocations().isEmpty()) {
-            return Optional.empty();
-        }
-
-        Map<String, Integer> requestSignatures = allocationSignatureCountsFromRequests(request.allocations());
-        if (requestSignatures.isEmpty()) {
-            return Optional.empty();
-        }
-        Map<DealerPaymentSignature, Integer> requestPaymentSignatures = dealerPaymentSignatureCountsFromRequest(request);
-        Set<Long> requestPaymentAccountIds = requestPaymentSignatures.keySet().stream()
-                .map(DealerPaymentSignature::accountId)
-                .filter(Objects::nonNull)
-                .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
-        Map<String, Long> requestedAdjustmentAccountIds = requestedAdjustmentAccountIds(request);
-
-        Long dealerId = request.dealerId();
-        Set<Long> invoiceIds = request.allocations().stream()
-                .map(SettlementAllocationRequest::invoiceId)
-                .filter(Objects::nonNull)
-                .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
-        if (invoiceIds.isEmpty()) {
-            return Optional.empty();
-        }
-
-        LinkedHashSet<String> candidateKeys = new LinkedHashSet<>();
-        for (Long invoiceId : invoiceIds) {
-            Optional<Invoice> invoiceCandidate = invoiceRepository.findByCompanyAndId(company, invoiceId);
-            if (invoiceCandidate == null || invoiceCandidate.isEmpty()) {
-                continue;
-            }
-            List<PartnerSettlementAllocation> rows = settlementAllocationRepository
-                    .findByCompanyAndInvoiceOrderByCreatedAtDesc(company, invoiceCandidate.get());
-            for (PartnerSettlementAllocation row : rows) {
-                if (StringUtils.hasText(row.getIdempotencyKey())) {
-                    candidateKeys.add(row.getIdempotencyKey().trim());
-                }
-            }
-        }
-
-        for (String candidateKey : candidateKeys) {
-            List<PartnerSettlementAllocation> existing = findAllocationsByIdempotencyKey(company, candidateKey);
-            if (existing.isEmpty()) {
-                continue;
-            }
-            boolean dealerMismatch = existing.stream().anyMatch(row ->
-                    row.getDealer() == null || !Objects.equals(row.getDealer().getId(), dealerId));
-            if (dealerMismatch) {
-                continue;
-            }
-            if (!allocationSignatureCountsFromRows(existing).equals(requestSignatures)) {
-                continue;
-            }
-            if (!dealerPaymentSignatureCountsFromExistingRows(
-                    existing,
-                    requestPaymentAccountIds,
-                    requestPaymentSignatures,
-                    requestedAdjustmentAccountIds)
-                    .equals(requestPaymentSignatures)) {
-                continue;
-            }
-            return Optional.of(candidateKey);
-        }
-        return Optional.empty();
-    }
-
-    private boolean dealerSettlementReplayKeyMatchesRequest(Company company,
-                                                            DealerSettlementRequest request,
-                                                            String candidateKey) {
-        if (company == null || request == null || !StringUtils.hasText(candidateKey)) {
-            return false;
-        }
-        List<PartnerSettlementAllocation> existing = findAllocationsByIdempotencyKey(company, candidateKey);
-        if (existing.isEmpty()) {
-            return false;
-        }
-        Map<String, Integer> requestSignatures = allocationSignatureCountsFromRequests(
-                request.allocations() != null ? request.allocations() : List.of());
-        if (requestSignatures.isEmpty()) {
-            return false;
-        }
-        Long dealerId = request.dealerId();
-        boolean dealerMismatch = existing.stream().anyMatch(row ->
-                row.getDealer() == null || !Objects.equals(row.getDealer().getId(), dealerId));
-        if (dealerMismatch) {
-            return false;
-        }
-        if (!allocationSignatureCountsFromRows(existing).equals(requestSignatures)) {
-            return false;
-        }
-        Map<DealerPaymentSignature, Integer> requestPaymentSignatures = dealerPaymentSignatureCountsFromRequest(request);
-        Set<Long> requestPaymentAccountIds = requestPaymentSignatures.keySet().stream()
-                .map(DealerPaymentSignature::accountId)
-                .filter(Objects::nonNull)
-                .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
-        Map<String, Long> requestedAdjustmentAccountIds = requestedAdjustmentAccountIds(request);
-        return dealerPaymentSignatureCountsFromExistingRows(
-                existing,
-                requestPaymentAccountIds,
-                requestPaymentSignatures,
-                requestedAdjustmentAccountIds)
-                .equals(requestPaymentSignatures);
-    }
-
-    private String normalizeIdempotencyMappingKey(String idempotencyKey) {
-        if (!StringUtils.hasText(idempotencyKey)) {
-            return "";
-        }
-        return idempotencyKey.trim().toLowerCase(Locale.ROOT);
-    }
-
-    private Optional<JournalReferenceMapping> findLatestLegacyReferenceMapping(Company company, String idempotencyKey) {
-        if (company == null || !StringUtils.hasText(idempotencyKey)) {
-            return Optional.empty();
-        }
-        List<JournalReferenceMapping> mappings = journalReferenceMappingRepository
-                .findAllByCompanyAndLegacyReferenceIgnoreCase(company, idempotencyKey);
-        if (mappings == null || mappings.isEmpty()) {
-            return Optional.empty();
-        }
-        if (mappings.size() > 1) {
-            log.warn("Multiple journal_reference_mappings rows for company={} idempotencyKey='{}'; selecting deterministic mapping",
-                    company.getId(), idempotencyKey);
-        }
-        Comparator<JournalReferenceMapping> ranking = Comparator
-                .comparing((JournalReferenceMapping mapping) -> mapping.getEntityId() != null)
-                .thenComparing(JournalReferenceMapping::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder()))
-                .thenComparing(JournalReferenceMapping::getId, Comparator.nullsLast(Comparator.naturalOrder()));
-        return mappings.stream().max(ranking);
-    }
-
     private String resolveDealerSettlementReference(Company company,
                                                     Dealer dealer,
                                                     DealerSettlementRequest request,
@@ -2624,12 +2182,12 @@ public class AccountingService {
             return request.referenceNumber().trim();
         }
         if (company != null && StringUtils.hasText(idempotencyKey)) {
-            String key = normalizeIdempotencyMappingKey(idempotencyKey);
-            Optional<JournalReferenceMapping> mapping = findLatestLegacyReferenceMapping(company, key);
+            String key = idempotencyKey.trim();
+            Optional<JournalReferenceMapping> mapping = journalReferenceMappingRepository
+                    .findByCompanyAndLegacyReferenceIgnoreCase(company, key);
             if (mapping.isPresent() && StringUtils.hasText(mapping.get().getCanonicalReference())) {
                 return mapping.get().getCanonicalReference().trim();
             }
-            return reservedManualReference(key);
         }
         return referenceNumberService.dealerReceiptReference(company, dealer);
     }
@@ -2642,8 +2200,9 @@ public class AccountingService {
             return providedReference.trim();
         }
         if (company != null && StringUtils.hasText(idempotencyKey)) {
-            String key = normalizeIdempotencyMappingKey(idempotencyKey);
-            Optional<JournalReferenceMapping> mapping = findLatestLegacyReferenceMapping(company, key);
+            String key = idempotencyKey.trim();
+            Optional<JournalReferenceMapping> mapping = journalReferenceMappingRepository
+                    .findByCompanyAndLegacyReferenceIgnoreCase(company, key);
             if (mapping.isPresent() && StringUtils.hasText(mapping.get().getCanonicalReference())) {
                 return mapping.get().getCanonicalReference().trim();
             }
@@ -2659,28 +2218,14 @@ public class AccountingService {
             return request.referenceNumber().trim();
         }
         if (company != null && StringUtils.hasText(idempotencyKey)) {
-            String key = normalizeIdempotencyMappingKey(idempotencyKey);
-            Optional<JournalReferenceMapping> mapping = findLatestLegacyReferenceMapping(company, key);
+            String key = idempotencyKey.trim();
+            Optional<JournalReferenceMapping> mapping = journalReferenceMappingRepository
+                    .findByCompanyAndLegacyReferenceIgnoreCase(company, key);
             if (mapping.isPresent() && StringUtils.hasText(mapping.get().getCanonicalReference())) {
                 return mapping.get().getCanonicalReference().trim();
             }
         }
         return referenceNumberService.supplierPaymentReference(company, supplier);
-    }
-
-    private boolean hasExistingIdempotencyMapping(Company company, String idempotencyKey) {
-        if (company == null || !StringUtils.hasText(idempotencyKey)) {
-            return false;
-        }
-        String key = normalizeIdempotencyMappingKey(idempotencyKey);
-        return findLatestLegacyReferenceMapping(company, key).isPresent();
-    }
-
-    private boolean hasExistingSettlementAllocations(Company company, String idempotencyKey) {
-        if (company == null || !StringUtils.hasText(idempotencyKey)) {
-            return false;
-        }
-        return !findAllocationsByIdempotencyKey(company, idempotencyKey).isEmpty();
     }
 
     private IdempotencyReservation reserveReferenceMapping(Company company,
@@ -2691,20 +2236,8 @@ public class AccountingService {
             throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
                     "Idempotency key and reference number are required to reserve journal mapping");
         }
-        String key = normalizeIdempotencyMappingKey(idempotencyKey);
+        String key = idempotencyKey.trim();
         String canonical = canonicalReference.trim();
-        Optional<JournalReferenceMapping> existing = findLatestLegacyReferenceMapping(company, key);
-        if (existing.isPresent()) {
-            JournalReferenceMapping mapping = existing.get();
-            if (StringUtils.hasText(mapping.getCanonicalReference())
-                    && !mapping.getCanonicalReference().equalsIgnoreCase(canonical)) {
-                throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
-                        "Idempotency key already used for another reference")
-                        .withDetail(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, key)
-                        .withDetail("referenceNumber", mapping.getCanonicalReference());
-            }
-            return new IdempotencyReservation(false, canonical);
-        }
         int reserved = journalReferenceMappingRepository.reserveReferenceMapping(
                 company.getId(),
                 key,
@@ -2715,15 +2248,16 @@ public class AccountingService {
         if (reserved == 1) {
             return new IdempotencyReservation(true, canonical);
         }
-        JournalReferenceMapping mapping = findLatestLegacyReferenceMapping(company, key)
+        JournalReferenceMapping mapping = journalReferenceMappingRepository
+                .findByCompanyAndLegacyReferenceIgnoreCase(company, key)
                 .orElseThrow(() -> new ApplicationException(ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
                         "Idempotency key already reserved but mapping not found")
-                        .withDetail(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, key));
+                        .withDetail("idempotencyKey", key));
         if (StringUtils.hasText(mapping.getCanonicalReference())
                 && !mapping.getCanonicalReference().equalsIgnoreCase(canonical)) {
             throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
                     "Idempotency key already used for another reference")
-                    .withDetail(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, key)
+                    .withDetail("idempotencyKey", key)
                     .withDetail("referenceNumber", mapping.getCanonicalReference());
         }
         return new IdempotencyReservation(false, canonical);
@@ -2733,31 +2267,17 @@ public class AccountingService {
         if (company == null || !StringUtils.hasText(idempotencyKey) || entry == null) {
             return;
         }
-        String key = normalizeIdempotencyMappingKey(idempotencyKey);
-        Optional<JournalReferenceMapping> mappingCandidate = findLatestLegacyReferenceMapping(company, key);
-        if (mappingCandidate.isEmpty()) {
-            JournalReferenceMapping created = new JournalReferenceMapping();
-            created.setCompany(company);
-            created.setLegacyReference(key);
-            created.setCanonicalReference(entry.getReferenceNumber());
-            created.setEntityId(entry.getId());
-            if (StringUtils.hasText(entityType)) {
-                created.setEntityType(entityType);
-            }
-            journalReferenceMappingRepository.save(created);
-            return;
-        }
-        JournalReferenceMapping mapping = mappingCandidate.get();
-        boolean canonicalMismatch = StringUtils.hasText(mapping.getCanonicalReference())
-                && !mapping.getCanonicalReference().equalsIgnoreCase(entry.getReferenceNumber());
-        boolean canRepairUnlinkedMapping = mapping.getEntityId() == null;
+        String key = idempotencyKey.trim();
+        JournalReferenceMapping mapping = journalReferenceMappingRepository
+                .findByCompanyAndLegacyReferenceIgnoreCase(company, key)
+                .orElseThrow(() -> new ApplicationException(ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
+                        "Journal reference mapping missing for idempotency key")
+                        .withDetail("idempotencyKey", key));
         if (StringUtils.hasText(mapping.getCanonicalReference())
-                && canonicalMismatch
-                && !isReservedReference(mapping.getCanonicalReference())
-                && !canRepairUnlinkedMapping) {
+                && !mapping.getCanonicalReference().equalsIgnoreCase(entry.getReferenceNumber())) {
             throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
                     "Idempotency key maps to a different journal reference")
-                    .withDetail(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, key)
+                    .withDetail("idempotencyKey", key)
                     .withDetail("referenceNumber", mapping.getCanonicalReference());
         }
         mapping.setCanonicalReference(entry.getReferenceNumber());
@@ -2805,79 +2325,20 @@ public class AccountingService {
         if (company == null || !StringUtils.hasText(idempotencyKey)) {
             return List.of();
         }
-        List<PartnerSettlementAllocation> existing = findAllocationsByIdempotencyKey(company, idempotencyKey);
+        List<PartnerSettlementAllocation> existing = settlementAllocationRepository
+                .findByCompanyAndIdempotencyKey(company, idempotencyKey);
         if (!existing.isEmpty()) {
             return existing;
         }
         long deadline = System.nanoTime() + IDEMPOTENCY_WAIT_TIMEOUT.toNanos();
         while (System.nanoTime() < deadline) {
             sleepBriefly();
-            existing = findAllocationsByIdempotencyKey(company, idempotencyKey);
+            existing = settlementAllocationRepository.findByCompanyAndIdempotencyKey(company, idempotencyKey);
             if (!existing.isEmpty()) {
                 return existing;
             }
         }
         return existing;
-    }
-
-    private List<PartnerSettlementAllocation> findAllocationsByIdempotencyKey(Company company, String idempotencyKey) {
-        if (company == null || !StringUtils.hasText(idempotencyKey)) {
-            return List.of();
-        }
-        String key = idempotencyKey.trim();
-        List<PartnerSettlementAllocation> matches = settlementAllocationRepository
-                .findByCompanyAndIdempotencyKeyIgnoreCaseOrderByCreatedAtAscIdAsc(company, key);
-        if (matches != null && !matches.isEmpty()) {
-            return matches;
-        }
-        List<PartnerSettlementAllocation> exact = settlementAllocationRepository.findByCompanyAndIdempotencyKey(company, key);
-        return exact != null ? exact : List.of();
-    }
-
-    private List<PartnerSettlementAllocation> resolveAllocationsForIdempotentReceiptReplay(Company company,
-                                                                                            String idempotencyKey,
-                                                                                            JournalEntry existingEntry) {
-        if (existingEntry != null) {
-            List<PartnerSettlementAllocation> existingEntryAllocations = settlementAllocationRepository
-                    .findByCompanyAndJournalEntryOrderByCreatedAtAsc(company, existingEntry);
-            if (!existingEntryAllocations.isEmpty()) {
-                return existingEntryAllocations;
-            }
-        }
-        List<PartnerSettlementAllocation> existingAllocations = awaitAllocations(company, idempotencyKey);
-        if (!existingAllocations.isEmpty() || existingEntry == null) {
-            return existingAllocations;
-        }
-        return settlementAllocationRepository.findByCompanyAndJournalEntryOrderByCreatedAtAsc(company, existingEntry);
-    }
-
-    private JournalEntry resolveReplayJournalEntry(String idempotencyKey,
-                                                   JournalEntry mappingEntry,
-                                                   List<PartnerSettlementAllocation> allocations) {
-        JournalEntry allocationEntry = null;
-        if (allocations != null && !allocations.isEmpty()) {
-            allocationEntry = allocations.getFirst().getJournalEntry();
-        }
-        if (mappingEntry != null
-                && allocationEntry != null
-                && mappingEntry.getId() != null
-                && allocationEntry.getId() != null
-                && !Objects.equals(mappingEntry.getId(), allocationEntry.getId())) {
-            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
-                    "Idempotency mapping points to a different journal than settled allocations")
-                    .withDetail(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, idempotencyKey)
-                    .withDetail("mappingJournalEntryId", mappingEntry.getId())
-                    .withDetail("allocationJournalEntryId", allocationEntry.getId());
-        }
-        return allocationEntry != null ? allocationEntry : mappingEntry;
-    }
-
-    private JournalEntry resolveReplayJournalEntryFromExistingAllocations(Company company,
-                                                                          String reference,
-                                                                          String idempotencyKey,
-                                                                          List<PartnerSettlementAllocation> allocations) {
-        JournalEntry mappingEntry = findExistingEntry(company, reference, idempotencyKey);
-        return resolveReplayJournalEntry(idempotencyKey, mappingEntry, allocations);
     }
 
     private void sleepBriefly() {
@@ -2918,14 +2379,28 @@ public class AccountingService {
                                              String memo,
                                              JournalEntry entry,
                                              List<JournalEntryRequest.JournalLineRequest> expectedLines) {
-        validatePartnerJournalReplay(
-                idempotencyKey,
-                PartnerType.DEALER,
-                dealer != null ? dealer.getId() : null,
-                memo,
-                entry,
-                expectedLines,
-                "Idempotency key already used for a different receipt payload");
+        if (entry == null) {
+            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
+                    "Idempotency key already used but journal entry is missing")
+                    .withDetail("idempotencyKey", idempotencyKey);
+        }
+        if (entry.getDealer() == null || !Objects.equals(entry.getDealer().getId(), dealer.getId())) {
+            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
+                    "Idempotency key already used for another dealer")
+                    .withDetail("idempotencyKey", idempotencyKey);
+        }
+        if (StringUtils.hasText(memo) && !Objects.equals(entry.getMemo(), memo)) {
+            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
+                    "Idempotency key already used with a different memo")
+                    .withDetail("idempotencyKey", idempotencyKey);
+        }
+        Map<JournalLineSignature, Integer> existingLines = lineSignatureCounts(entry.getLines());
+        Map<JournalLineSignature, Integer> expected = lineSignatureCountsFromRequests(expectedLines);
+        if (!existingLines.equals(expected)) {
+            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
+                    "Idempotency key already used for a different receipt payload")
+                    .withDetail("idempotencyKey", idempotencyKey);
+        }
     }
 
     private void validateSupplierPaymentIdempotency(String idempotencyKey,
@@ -2938,131 +2413,90 @@ public class AccountingService {
                                                     List<PartnerSettlementAllocation> existingAllocations,
                                                     List<SettlementAllocationRequest> allocations) {
         validateSettlementIdempotencyKey(idempotencyKey, PartnerType.SUPPLIER, supplier.getId(), existingAllocations, allocations);
+        if (entry == null) {
+            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
+                    "Idempotency key already used but journal entry is missing")
+                    .withDetail("idempotencyKey", idempotencyKey);
+        }
+        if (entry.getSupplier() == null || !Objects.equals(entry.getSupplier().getId(), supplier.getId())) {
+            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
+                    "Idempotency key already used for another supplier")
+                    .withDetail("idempotencyKey", idempotencyKey);
+        }
+        if (StringUtils.hasText(memo) && !Objects.equals(entry.getMemo(), memo)) {
+            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
+                    "Idempotency key already used with a different memo")
+                    .withDetail("idempotencyKey", idempotencyKey);
+        }
         List<JournalEntryRequest.JournalLineRequest> expectedLines = List.of(
                 new JournalEntryRequest.JournalLineRequest(payableAccount.getId(), memo, amount, BigDecimal.ZERO),
                 new JournalEntryRequest.JournalLineRequest(cashAccount.getId(), memo, BigDecimal.ZERO, amount)
         );
-        validatePartnerJournalReplay(
-                idempotencyKey,
-                PartnerType.SUPPLIER,
-                supplier != null ? supplier.getId() : null,
-                memo,
-                entry,
-                expectedLines,
-                "Idempotency key already used for a different supplier payment payload");
-    }
-
-    private void validatePartnerSettlementJournalLines(String idempotencyKey,
-                                                       PartnerType partnerType,
-                                                       Long partnerId,
-                                                       String memo,
-                                                       JournalEntry entry,
-                                                       List<JournalEntryRequest.JournalLineRequest> expectedLines) {
-        validatePartnerJournalReplay(
-                idempotencyKey,
-                partnerType,
-                partnerId,
-                memo,
-                entry,
-                expectedLines,
-                "Idempotency key already used for a different settlement payload");
-    }
-
-    private ApplicationException missingReservedPartnerAllocation(String subject,
-                                                                  String idempotencyKey,
-                                                                  PartnerType partnerType,
-                                                                  Long partnerId) {
-        ApplicationException exception = new ApplicationException(
-                ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
-                subject + " idempotency key is reserved but allocation not found")
-                .withDetail(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, idempotencyKey);
-        if (partnerType != null) {
-            exception.withDetail(IntegrationFailureMetadataSchema.KEY_PARTNER_TYPE, partnerType.name());
+        Map<JournalLineSignature, Integer> existingLines = lineSignatureCounts(entry.getLines());
+        Map<JournalLineSignature, Integer> expected = lineSignatureCountsFromRequests(expectedLines);
+        if (!existingLines.equals(expected)) {
+            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
+                    "Idempotency key already used for a different supplier payment payload")
+                    .withDetail("idempotencyKey", idempotencyKey);
         }
-        if (partnerId != null) {
-            exception.withDetail(IntegrationFailureMetadataSchema.KEY_PARTNER_ID, partnerId);
-        }
-        return exception;
     }
 
-    private void validatePartnerJournalReplay(String idempotencyKey,
-                                              PartnerType partnerType,
-                                              Long partnerId,
-                                              String memo,
-                                              JournalEntry entry,
-                                              List<JournalEntryRequest.JournalLineRequest> expectedLines,
-                                              String payloadMismatchMessage) {
+    private void validateSettlementJournalLines(String idempotencyKey,
+                                                Dealer dealer,
+                                                String memo,
+                                                JournalEntry entry,
+                                                List<JournalEntryRequest.JournalLineRequest> expectedLines) {
         if (entry == null) {
-            throw replayConflictWithPartnerContext(
-                    "Idempotency key already used but journal entry is missing",
-                    idempotencyKey,
-                    partnerType,
-                    partnerId);
+            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
+                    "Idempotency key already used but journal entry is missing")
+                    .withDetail("idempotencyKey", idempotencyKey);
         }
-        if (isJournalEntryPartnerMismatch(entry, partnerType, partnerId)) {
-            throw replayConflictWithPartnerContext(
-                    partnerMismatchMessage(partnerType),
-                    idempotencyKey,
-                    partnerType,
-                    partnerId);
+        if (entry.getDealer() == null || !Objects.equals(entry.getDealer().getId(), dealer.getId())) {
+            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
+                    "Idempotency key already used for another dealer")
+                    .withDetail("idempotencyKey", idempotencyKey);
         }
         if (StringUtils.hasText(memo) && !Objects.equals(entry.getMemo(), memo)) {
-            throw replayConflictWithPartnerContext(
-                    "Idempotency key already used with a different memo",
-                    idempotencyKey,
-                    partnerType,
-                    partnerId);
+            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
+                    "Idempotency key already used with a different memo")
+                    .withDetail("idempotencyKey", idempotencyKey);
         }
         Map<JournalLineSignature, Integer> existingLines = lineSignatureCounts(entry.getLines());
         Map<JournalLineSignature, Integer> expected = lineSignatureCountsFromRequests(expectedLines);
         if (!existingLines.equals(expected)) {
-            throw replayConflictWithPartnerContext(
-                    payloadMismatchMessage,
-                    idempotencyKey,
-                    partnerType,
-                    partnerId);
+            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
+                    "Idempotency key already used for a different settlement payload")
+                    .withDetail("idempotencyKey", idempotencyKey);
         }
     }
 
-    private ApplicationException replayConflictWithPartnerContext(String message,
-                                                                  String idempotencyKey,
-                                                                  PartnerType partnerType,
-                                                                  Long partnerId) {
-        String normalizedIdempotencyKey = StringUtils.hasText(idempotencyKey) ? idempotencyKey.trim() : idempotencyKey;
-        String partnerTypeDetail = partnerType != null ? partnerType.name() : "null";
-        ApplicationException exception = new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT, message)
-                .withDetail(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, normalizedIdempotencyKey)
-                .withDetail(IntegrationFailureMetadataSchema.KEY_PARTNER_TYPE, partnerTypeDetail);
-        if (partnerId != null) {
-            exception.withDetail(IntegrationFailureMetadataSchema.KEY_PARTNER_ID, partnerId);
+    private void validateSupplierSettlementJournalLines(String idempotencyKey,
+                                                        Supplier supplier,
+                                                        String memo,
+                                                        JournalEntry entry,
+                                                        List<JournalEntryRequest.JournalLineRequest> expectedLines) {
+        if (entry == null) {
+            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
+                    "Idempotency key already used but journal entry is missing")
+                    .withDetail("idempotencyKey", idempotencyKey);
         }
-        return exception;
-    }
-
-    private boolean isJournalEntryPartnerMismatch(JournalEntry entry,
-                                                  PartnerType partnerType,
-                                                  Long partnerId) {
-        if (partnerType == PartnerType.DEALER) {
-            return entry.getDealer() == null || !Objects.equals(entry.getDealer().getId(), partnerId);
+        if (entry.getSupplier() == null || !Objects.equals(entry.getSupplier().getId(), supplier.getId())) {
+            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
+                    "Idempotency key already used for another supplier")
+                    .withDetail("idempotencyKey", idempotencyKey);
         }
-        if (partnerType == PartnerType.SUPPLIER) {
-            return entry.getSupplier() == null || !Objects.equals(entry.getSupplier().getId(), partnerId);
+        if (StringUtils.hasText(memo) && !Objects.equals(entry.getMemo(), memo)) {
+            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
+                    "Idempotency key already used with a different memo")
+                    .withDetail("idempotencyKey", idempotencyKey);
         }
-        return true;
-    }
-
-    private String partnerMismatchMessage(PartnerType partnerType) {
-        return "Idempotency key already used for another " + partnerMismatchSubject(partnerType);
-    }
-
-    private String partnerMismatchSubject(PartnerType partnerType) {
-        if (partnerType == PartnerType.DEALER) {
-            return "dealer";
+        Map<JournalLineSignature, Integer> existingLines = lineSignatureCounts(entry.getLines());
+        Map<JournalLineSignature, Integer> expected = lineSignatureCountsFromRequests(expectedLines);
+        if (!existingLines.equals(expected)) {
+            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
+                    "Idempotency key already used for a different settlement payload")
+                    .withDetail("idempotencyKey", idempotencyKey);
         }
-        if (partnerType == PartnerType.SUPPLIER) {
-            return "supplier";
-        }
-        return "partner type";
     }
 
     private void validateCreditNoteIdempotency(String idempotencyKey,
@@ -3074,32 +2508,32 @@ public class AccountingService {
         if (entry == null) {
             throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
                     "Idempotency key already used but credit note journal is missing")
-                    .withDetail(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, idempotencyKey);
+                    .withDetail("idempotencyKey", idempotencyKey);
         }
         if (invoice != null && invoice.getDealer() != null && entry.getDealer() != null
                 && !Objects.equals(entry.getDealer().getId(), invoice.getDealer().getId())) {
             throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
                     "Idempotency key already used for another dealer")
-                    .withDetail(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, idempotencyKey);
+                    .withDetail("idempotencyKey", idempotencyKey);
         }
         if (source != null && entry.getReversalOf() != null
                 && !Objects.equals(entry.getReversalOf().getId(), source.getId())) {
             throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
                     "Idempotency key already used for another invoice reversal")
-                    .withDetail(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, idempotencyKey);
+                    .withDetail("idempotencyKey", idempotencyKey);
         }
         if (source != null && entry.getReversalOf() == null && invoice != null
                 && !invoice.getPaymentReferences().contains(entry.getReferenceNumber())) {
             throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
                     "Idempotency key already used for another invoice")
-                    .withDetail(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, idempotencyKey);
+                    .withDetail("idempotencyKey", idempotencyKey);
         }
-        BigDecimal existingAmount = calculateCreditNoteAmount(entry, invoice, source);
+        BigDecimal existingAmount = calculateEntryTotal(entry);
         BigDecimal expectedAmount = requestedAmount != null ? roundCurrency(requestedAmount) : existingAmount;
         if (existingAmount.compareTo(expectedAmount) != 0) {
             throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
                     "Idempotency key already used with a different credit amount")
-                    .withDetail(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, idempotencyKey)
+                    .withDetail("idempotencyKey", idempotencyKey)
                     .withDetail("existingAmount", existingAmount)
                     .withDetail("requestedAmount", expectedAmount);
         }
@@ -3112,7 +2546,7 @@ public class AccountingService {
             if (!existingLines.equals(expected)) {
                 throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
                         "Idempotency key already used for a different credit note payload")
-                        .withDetail(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, idempotencyKey);
+                        .withDetail("idempotencyKey", idempotencyKey);
             }
         }
     }
@@ -3130,35 +2564,6 @@ public class AccountingService {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
                         "Dealer settlements cannot allocate to purchases");
             }
-            BigDecimal applied = requirePositive(allocation.appliedAmount(), "appliedAmount");
-            BigDecimal discount = normalizeNonNegative(allocation.discountAmount(), "discountAmount");
-            BigDecimal writeOff = normalizeNonNegative(allocation.writeOffAmount(), "writeOffAmount");
-            BigDecimal fxAdjustment = MoneyUtils.zeroIfNull(allocation.fxAdjustment());
-            validateDealerAllocationCashContribution(allocation.invoiceId(), applied, discount, writeOff, fxAdjustment);
-        }
-    }
-
-    private void validateSupplierSettlementAllocations(List<SettlementAllocationRequest> allocations) {
-        if (allocations == null) {
-            return;
-        }
-        for (SettlementAllocationRequest allocation : allocations) {
-            if (allocation.invoiceId() != null) {
-                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
-                        "Supplier settlements cannot allocate to invoices");
-            }
-            BigDecimal applied = requirePositive(allocation.appliedAmount(), "appliedAmount");
-            BigDecimal discount = normalizeNonNegative(allocation.discountAmount(), "discountAmount");
-            BigDecimal writeOff = normalizeNonNegative(allocation.writeOffAmount(), "writeOffAmount");
-            BigDecimal fxAdjustment = MoneyUtils.zeroIfNull(allocation.fxAdjustment());
-            if (allocation.purchaseId() == null
-                    && (discount.compareTo(BigDecimal.ZERO) > 0
-                    || writeOff.compareTo(BigDecimal.ZERO) > 0
-                    || fxAdjustment.compareTo(BigDecimal.ZERO) != 0)) {
-                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
-                        "On-account supplier settlement allocations cannot include discount/write-off/FX adjustments");
-            }
-            validateSupplierAllocationCashContribution(allocation.purchaseId(), applied, discount, writeOff, fxAdjustment);
         }
     }
 
@@ -3189,63 +2594,11 @@ public class AccountingService {
         return new SettlementTotals(totalApplied, totalDiscount, totalWriteOff, totalFxGain, totalFxLoss);
     }
 
-    private void validateDealerAllocationCashContribution(Long invoiceId,
-                                                          BigDecimal applied,
-                                                          BigDecimal discount,
-                                                          BigDecimal writeOff,
-                                                          BigDecimal fxAdjustment) {
-        BigDecimal fxGain = fxAdjustment.compareTo(BigDecimal.ZERO) > 0 ? fxAdjustment : BigDecimal.ZERO;
-        BigDecimal fxLoss = fxAdjustment.compareTo(BigDecimal.ZERO) < 0 ? fxAdjustment.abs() : BigDecimal.ZERO;
-        BigDecimal netCashContribution = applied
-                .add(fxGain)
-                .subtract(fxLoss)
-                .subtract(discount)
-                .subtract(writeOff);
-        validateAllocationCashContribution("dealer", "invoiceId", invoiceId, netCashContribution, applied, discount, writeOff, fxAdjustment);
-    }
-
-    private void validateSupplierAllocationCashContribution(Long purchaseId,
-                                                            BigDecimal applied,
-                                                            BigDecimal discount,
-                                                            BigDecimal writeOff,
-                                                            BigDecimal fxAdjustment) {
-        BigDecimal fxGain = fxAdjustment.compareTo(BigDecimal.ZERO) > 0 ? fxAdjustment : BigDecimal.ZERO;
-        BigDecimal fxLoss = fxAdjustment.compareTo(BigDecimal.ZERO) < 0 ? fxAdjustment.abs() : BigDecimal.ZERO;
-        BigDecimal netCashContribution = applied
-                .add(fxLoss)
-                .subtract(fxGain)
-                .subtract(discount)
-                .subtract(writeOff);
-        validateAllocationCashContribution("supplier", "purchaseId", purchaseId, netCashContribution, applied, discount, writeOff, fxAdjustment);
-    }
-
-    private void validateAllocationCashContribution(String partnerLabel,
-                                                    String referenceField,
-                                                    Long referenceId,
-                                                    BigDecimal contribution,
-                                                    BigDecimal applied,
-                                                    BigDecimal discount,
-                                                    BigDecimal writeOff,
-                                                    BigDecimal fxAdjustment) {
-        if (contribution.compareTo(BigDecimal.ZERO) < 0
-                && contribution.abs().compareTo(ALLOCATION_TOLERANCE) > 0) {
-            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
-                    "Settlement allocation has negative net cash contribution for " + partnerLabel + " settlement")
-                    .withDetail(referenceField, referenceId)
-                    .withDetail("appliedAmount", applied)
-                    .withDetail("discountAmount", discount)
-                    .withDetail("writeOffAmount", writeOff)
-                    .withDetail("fxAdjustment", fxAdjustment)
-                    .withDetail("netCashContribution", contribution);
-        }
-    }
-
     private SettlementLineDraft buildDealerSettlementLines(Company company,
                                                            DealerSettlementRequest request,
                                                            Account receivableAccount,
                                                            SettlementTotals totals,
-                                                           String memo,
-                                                           boolean requireActiveCashAccounts) {
+                                                           String memo) {
         if (totals == null) {
             totals = new SettlementTotals(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
         }
@@ -3294,22 +2647,14 @@ public class AccountingService {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "cashAccountId is required when cash is moving");
             }
             if (cashAmount.compareTo(BigDecimal.ZERO) > 0) {
-                Account cashAccount = requireCashAccountForSettlement(
-                        company,
-                        request.cashAccountId(),
-                        "dealer settlement",
-                        requireActiveCashAccounts);
+                Account cashAccount = requireAccount(company, request.cashAccountId());
                 paymentLines.add(new JournalEntryRequest.JournalLineRequest(cashAccount.getId(), memo, cashAmount, BigDecimal.ZERO));
             }
         } else {
             BigDecimal paymentTotal = BigDecimal.ZERO;
             for (SettlementPaymentRequest payment : paymentRequests) {
                 BigDecimal amount = requirePositive(payment.amount(), "payment amount");
-                Account account = requireCashAccountForSettlement(
-                        company,
-                        payment.accountId(),
-                        "dealer settlement payment line",
-                        requireActiveCashAccounts);
+                Account account = requireAccount(company, payment.accountId());
                 paymentLines.add(new JournalEntryRequest.JournalLineRequest(account.getId(), memo, amount, BigDecimal.ZERO));
                 paymentTotal = paymentTotal.add(amount);
             }
@@ -3454,11 +2799,6 @@ public class AccountingService {
                 .filter(v -> v.compareTo(BigDecimal.ZERO) < 0)
                 .map(BigDecimal::abs)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal cashAmount = applied
-                .add(fxGainSum)
-                .subtract(fxLossSum)
-                .subtract(discountSum)
-                .subtract(writeOffSum);
         for (PartnerSettlementAllocation row : existing) {
             if (row.getInvoice() != null) {
                 dealerLedgerService.syncInvoiceLedger(row.getInvoice(), row.getSettlementDate());
@@ -3467,7 +2807,7 @@ public class AccountingService {
         return new PartnerSettlementResponse(
                 toDto(entry),
                 applied,
-                cashAmount,
+                null,
                 discountSum,
                 writeOffSum,
                 fxGainSum,
@@ -3605,27 +2945,7 @@ public class AccountingService {
         }
     }
 
-    private JournalEntryDto createJournalEntryForReversal(JournalEntryRequest payload, boolean allowClosedPeriodOverride) {
-        if (!allowClosedPeriodOverride) {
-            return createJournalEntry(payload);
-        }
-        Boolean previous = SYSTEM_ENTRY_DATE_OVERRIDE.get();
-        SYSTEM_ENTRY_DATE_OVERRIDE.set(Boolean.TRUE);
-        try {
-            return createJournalEntry(payload);
-        } finally {
-            if (Boolean.TRUE.equals(previous)) {
-                SYSTEM_ENTRY_DATE_OVERRIDE.set(Boolean.TRUE);
-            } else {
-                SYSTEM_ENTRY_DATE_OVERRIDE.remove();
-            }
-        }
-    }
-
     private boolean hasEntryDateOverrideAuthority() {
-        if (Boolean.TRUE.equals(SYSTEM_ENTRY_DATE_OVERRIDE.get())) {
-            return true;
-        }
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null || authentication.getAuthorities() == null) {
             return false;
@@ -3640,30 +2960,6 @@ public class AccountingService {
 
     private LocalDate currentDate(Company company) {
         return companyClock.today(company);
-    }
-
-    private void logAuditSuccessAfterCommit(AuditEvent event, Map<String, String> metadata) {
-        if (event == null || !shouldEmitAuditServiceSuccessEvent(event)) {
-            return;
-        }
-        Map<String, String> capturedMetadata = metadata != null ? new HashMap<>(metadata) : null;
-        if (TransactionSynchronizationManager.isSynchronizationActive()
-                && TransactionSynchronizationManager.isActualTransactionActive()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    auditService.logSuccess(event, capturedMetadata);
-                }
-            });
-            return;
-        }
-        auditService.logSuccess(event, capturedMetadata);
-    }
-
-    private boolean shouldEmitAuditServiceSuccessEvent(AuditEvent event) {
-        return event != AuditEvent.JOURNAL_ENTRY_POSTED
-                && event != AuditEvent.JOURNAL_ENTRY_REVERSED
-                && event != AuditEvent.SETTLEMENT_RECORDED;
     }
 
     /**
@@ -3714,10 +3010,6 @@ public class AccountingService {
      */
     @Transactional
     public List<JournalEntryDto> cascadeReverseRelatedEntries(Long primaryEntryId, JournalEntryReversalRequest request) {
-        if (request == null) {
-            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
-                    "Reversal request is required for cascade reversal");
-        }
         Company company = companyContextService.requireCurrentCompany();
         JournalEntry primaryEntry = companyEntityLookup.requireJournalEntry(company, primaryEntryId);
         List<JournalEntryDto> reversedEntries = new java.util.ArrayList<>();
@@ -3768,10 +3060,7 @@ public class AccountingService {
                     reversedEntries.add(relatedReversal);
                     processedIds.add(related.getId());
                 } catch (ApplicationException e) {
-                    throw e.withDetail("cascadePrimaryEntryId", primaryEntryId)
-                            .withDetail("cascadePrimaryReference", baseRef)
-                            .withDetail("cascadeRelatedEntryId", related.getId())
-                            .withDetail("cascadeRelatedReference", related.getReferenceNumber());
+                    log.warn("Could not cascade reverse entry {}: {}", related.getReferenceNumber(), e.getMessage());
                 }
             }
         }
@@ -3788,16 +3077,13 @@ public class AccountingService {
                     if ("REVERSED".equalsIgnoreCase(relatedEntry.getStatus()) ||
                         "VOIDED".equalsIgnoreCase(relatedEntry.getStatus())) {
                         log.info("Skipping already reversed/voided entry {}", relatedId);
-                        processedIds.add(relatedId);
                         continue;
                     }
                     JournalEntryDto relatedReversal = reverseJournalEntry(relatedId, request);
                     reversedEntries.add(relatedReversal);
                     processedIds.add(relatedId);
                 } catch (ApplicationException e) {
-                    throw e.withDetail("cascadePrimaryEntryId", primaryEntryId)
-                            .withDetail("cascadePrimaryReference", baseRef)
-                            .withDetail("cascadeRelatedEntryId", relatedId);
+                    log.warn("Could not reverse related entry {}: {}", relatedId, e.getMessage());
                 }
             }
         }
@@ -3820,176 +3106,6 @@ public class AccountingService {
             return;
         }
         eventPublisher.publishEvent(new AccountCacheInvalidatedEvent(companyId));
-    }
-
-    private void recordJournalEntryPostedEventSafe(JournalEntry journalEntry, Map<Long, BigDecimal> balancesBefore) {
-        if (journalEntry == null) {
-            return;
-        }
-        validatePostedEventPayloadCompatibility(journalEntry);
-        try {
-            Map<Long, BigDecimal> snapshot = balancesBefore != null ? new HashMap<>(balancesBefore) : Map.of();
-            accountingEventStore.recordJournalEntryPosted(journalEntry, snapshot);
-        } catch (Exception ex) {
-            handleAccountingEventTrailFailure("JOURNAL_ENTRY_POSTED", journalEntry.getReferenceNumber(), ex);
-        }
-    }
-
-    private void recordJournalEntryReversedEventSafe(JournalEntry original, JournalEntry reversal, String reason) {
-        if (original == null || reversal == null) {
-            return;
-        }
-        validateReversalEventPayloadCompatibility(original, reason);
-        try {
-            accountingEventStore.recordJournalEntryReversed(original, reversal, reason);
-        } catch (Exception ex) {
-            handleAccountingEventTrailFailure("JOURNAL_ENTRY_REVERSED", original.getReferenceNumber(), ex);
-        }
-    }
-
-    private void handleAccountingEventTrailFailure(String operation, String journalReference, Exception ex) {
-        Map<String, String> metadata = new HashMap<>();
-        metadata.put("eventTrailOperation", operation);
-        String policy = strictAccountingEventTrail ? "STRICT" : "BEST_EFFORT";
-        metadata.put("policy", policy);
-        if (StringUtils.hasText(journalReference)) {
-            metadata.put("journalReference", journalReference);
-        }
-        String failureCode = AccountingEventTrailAlertRoutingPolicy.ACCOUNTING_EVENT_TRAIL_FAILURE_CODE;
-        String errorCategory = classifyEventTrailFailure(ex);
-        IntegrationFailureMetadataSchema.applyRequiredFields(
-                metadata,
-                failureCode,
-                errorCategory,
-                AccountingEventTrailAlertRoutingPolicy.ROUTING_VERSION,
-                AccountingEventTrailAlertRoutingPolicy.resolveRoute(failureCode, errorCategory, policy));
-        metadata.put("errorType", ex.getClass().getSimpleName());
-        try {
-            auditService.logFailure(AuditEvent.INTEGRATION_FAILURE, metadata);
-        } catch (Exception auditEx) {
-            log.warn("Failed to write integration-failure audit marker for operation {} and journal {}",
-                    operation,
-                    journalReference,
-                    auditEx);
-        }
-
-        if (strictAccountingEventTrail) {
-            throw new ApplicationException(
-                    ErrorCode.SYSTEM_DATABASE_ERROR,
-                    "Accounting event trail persistence failed",
-                    ex)
-                    .withDetail("eventTrailOperation", operation)
-                    .withDetail("journalReference", journalReference);
-        }
-
-        log.warn("Accounting event trail persistence failed for operation {} and journal {} (best-effort policy)",
-                operation,
-                journalReference,
-                ex);
-    }
-
-    private void validatePostedEventPayloadCompatibility(JournalEntry journalEntry) {
-        ensureEventFieldWithinLimit(
-                "journalReference",
-                journalEntry.getReferenceNumber(),
-                ACCOUNTING_EVENT_JOURNAL_REFERENCE_MAX_LENGTH,
-                "JOURNAL_ENTRY_POSTED");
-        ensureEventFieldWithinLimit(
-                "journalMemo",
-                journalEntry.getMemo(),
-                ACCOUNTING_EVENT_DESCRIPTION_MAX_LENGTH,
-                "JOURNAL_ENTRY_POSTED");
-        if (journalEntry.getLines() == null || journalEntry.getLines().isEmpty()) {
-            return;
-        }
-        for (JournalLine line : journalEntry.getLines()) {
-            if (line == null) {
-                continue;
-            }
-            Account account = line.getAccount();
-            if (account != null) {
-                ensureEventFieldWithinLimit(
-                        "accountCode",
-                        account.getCode(),
-                        ACCOUNTING_EVENT_ACCOUNT_CODE_MAX_LENGTH,
-                        "JOURNAL_ENTRY_POSTED");
-            }
-            ensureEventFieldWithinLimit(
-                    "journalLineDescription",
-                    line.getDescription(),
-                    ACCOUNTING_EVENT_DESCRIPTION_MAX_LENGTH,
-                    "JOURNAL_ENTRY_POSTED");
-        }
-    }
-
-    private void validateReversalEventPayloadCompatibility(JournalEntry original, String reason) {
-        ensureEventFieldWithinLimit(
-                "journalReference",
-                original.getReferenceNumber(),
-                ACCOUNTING_EVENT_JOURNAL_REFERENCE_MAX_LENGTH,
-                "JOURNAL_ENTRY_REVERSED");
-        ensureEventFieldWithinLimit(
-                "reversalReason",
-                reason,
-                ACCOUNTING_EVENT_DESCRIPTION_MAX_LENGTH,
-                "JOURNAL_ENTRY_REVERSED");
-    }
-
-    private void ensureEventFieldWithinLimit(String field,
-                                             String value,
-                                             int maxLength,
-                                             String operation) {
-        if (!StringUtils.hasText(value)) {
-            return;
-        }
-        String normalized = value.trim();
-        if (normalized.length() <= maxLength) {
-            return;
-        }
-        throw new ApplicationException(
-                ErrorCode.VALIDATION_INVALID_INPUT,
-                "Accounting event-trail field exceeds allowed length")
-                .withDetail("eventTrailOperation", operation)
-                .withDetail("field", field)
-                .withDetail("maxLength", maxLength)
-                .withDetail("actualLength", normalized.length());
-    }
-
-    private String classifyEventTrailFailure(Exception ex) {
-        if (ex instanceof ApplicationException appEx) {
-            return classifyApplicationEventTrailFailure(appEx.getErrorCode());
-        }
-        if (ex instanceof IllegalArgumentException) {
-            return "VALIDATION";
-        }
-        if (ex instanceof DataIntegrityViolationException) {
-            return "DATA_INTEGRITY";
-        }
-        return "PERSISTENCE";
-    }
-
-    private String classifyApplicationEventTrailFailure(ErrorCode errorCode) {
-        if (errorCode == null) {
-            return "PERSISTENCE";
-        }
-        if (isValidationError(errorCode)) {
-            return "VALIDATION";
-        }
-        if (isDataIntegrityError(errorCode)) {
-            return "DATA_INTEGRITY";
-        }
-        return "PERSISTENCE";
-    }
-
-    private boolean isValidationError(ErrorCode errorCode) {
-        return errorCode.name().startsWith("VALIDATION_");
-    }
-
-    private boolean isDataIntegrityError(ErrorCode errorCode) {
-        return switch (errorCode) {
-            case CONCURRENCY_CONFLICT, CONCURRENCY_LOCK_TIMEOUT, INTERNAL_CONCURRENCY_FAILURE, DUPLICATE_ENTITY -> true;
-            default -> false;
-        };
     }
 
     private void ensureDuplicateMatchesExisting(JournalEntry existing,
@@ -4076,15 +3192,6 @@ public class AccountingService {
     }
 
     private record JournalLineSignature(Long accountId, BigDecimal debit, BigDecimal credit) {
-    }
-
-    private record DealerPaymentSignature(Long accountId, BigDecimal amount) {
-    }
-
-    private record ExistingDealerPaymentLine(DealerPaymentSignature signature, String normalizedDescription) {
-    }
-
-    private record SettlementAdjustmentSignature(String normalizedDescription, BigDecimal amount) {
     }
 
     private Account requireDealerReceivable(Dealer dealer) {
@@ -4269,56 +3376,6 @@ public class AccountingService {
     }
 
     private String buildDealerSettlementIdempotencyKey(DealerSettlementRequest request) {
-        Comparator<SettlementPaymentRequest> paymentComparator = Comparator
-                .comparing(SettlementPaymentRequest::accountId, Comparator.nullsLast(Long::compareTo))
-                .thenComparing(SettlementPaymentRequest::amount, Comparator.nullsLast(BigDecimal::compareTo));
-        return buildDealerSettlementIdempotencyKey(request, paymentComparator, true);
-    }
-
-    private String buildLegacyDealerSettlementIdempotencyKey(DealerSettlementRequest request) {
-        Comparator<SettlementPaymentRequest> paymentComparator = Comparator
-                .comparing(SettlementPaymentRequest::accountId, Comparator.nullsLast(Long::compareTo));
-        return buildDealerSettlementIdempotencyKey(request, paymentComparator, false);
-    }
-
-    private String buildDealerSettlementIdempotencyKey(DealerSettlementRequest request,
-                                                       Comparator<SettlementPaymentRequest> paymentComparator,
-                                                       boolean includeImplicitCashFallback) {
-        List<SettlementPaymentRequest> orderedPayments =
-                orderedDealerSettlementPaymentsForFingerprint(request, paymentComparator, includeImplicitCashFallback);
-        return buildDealerSettlementIdempotencyKey(request, orderedPayments);
-    }
-
-    private List<SettlementPaymentRequest> orderedDealerSettlementPaymentsForFingerprint(
-            DealerSettlementRequest request,
-            Comparator<SettlementPaymentRequest> paymentComparator,
-            boolean includeImplicitCashFallback) {
-        if (request == null) {
-            return List.of();
-        }
-        if (request.payments() != null && !request.payments().isEmpty()) {
-            return request.payments().stream()
-                    .sorted(paymentComparator)
-                    .toList();
-        }
-        if (!includeImplicitCashFallback || request.cashAccountId() == null) {
-            return List.of();
-        }
-        SettlementTotals totals = computeSettlementTotals(request.allocations());
-        BigDecimal cashAmount = totals.totalApplied()
-                .add(totals.totalFxGain())
-                .subtract(totals.totalFxLoss())
-                .subtract(totals.totalDiscount())
-                .subtract(totals.totalWriteOff());
-        if (cashAmount.compareTo(BigDecimal.ZERO) <= 0) {
-            return List.of();
-        }
-        // Include implicit single-tender cash mode in canonical fingerprint to bind account mapping.
-        return List.of(new SettlementPaymentRequest(request.cashAccountId(), cashAmount, "AUTO"));
-    }
-
-    private String buildDealerSettlementIdempotencyKey(DealerSettlementRequest request,
-                                                       List<SettlementPaymentRequest> orderedPayments) {
         if (request == null) {
             return UUID.randomUUID().toString();
         }
@@ -4336,7 +3393,12 @@ public class AccountingService {
                     .append(":woff=").append(normalizeDecimal(allocation.writeOffAmount()))
                     .append(":fx=").append(normalizeDecimal(allocation.fxAdjustment()));
         }
-        for (SettlementPaymentRequest payment : orderedPayments) {
+        List<SettlementPaymentRequest> payments = request.payments() != null
+                ? request.payments().stream()
+                .sorted(Comparator.comparing(SettlementPaymentRequest::accountId, Comparator.nullsLast(Long::compareTo)))
+                .toList()
+                : List.of();
+        for (SettlementPaymentRequest payment : payments) {
             fingerprint.append("|pay=").append(payment.accountId() != null ? payment.accountId() : "null")
                     .append(":").append(normalizeDecimal(payment.amount()));
         }
@@ -4460,52 +3522,6 @@ public class AccountingService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    private BigDecimal calculateCreditNoteAmount(JournalEntry entry, Invoice invoice, JournalEntry source) {
-        if (entry == null || entry.getLines() == null || entry.getLines().isEmpty()) {
-            return BigDecimal.ZERO;
-        }
-        Long receivableAccountId = resolveReceivableAccountId(invoice, source);
-        if (receivableAccountId == null) {
-            return calculateEntryTotal(entry);
-        }
-        BigDecimal receivableCredit = entry.getLines().stream()
-                .filter(line -> line.getAccount() != null
-                        && Objects.equals(line.getAccount().getId(), receivableAccountId))
-                .map(line -> MoneyUtils.zeroIfNull(line.getCredit()))
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        if (receivableCredit.compareTo(BigDecimal.ZERO) > 0) {
-            return receivableCredit;
-        }
-        return calculateEntryTotal(entry);
-    }
-
-    private BigDecimal totalCreditNoteAmount(Company company, JournalEntry source, Invoice invoice) {
-        if (company == null || source == null) {
-            return BigDecimal.ZERO;
-        }
-        List<JournalEntry> notes = journalEntryRepository
-                .findByCompanyAndReversalOfAndCorrectionReasonIgnoreCase(company, source, "CREDIT_NOTE");
-        return notes.stream()
-                .map(note -> calculateCreditNoteAmount(note, invoice, source))
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-    }
-
-    private Long resolveReceivableAccountId(Invoice invoice, JournalEntry source) {
-        if (invoice != null
-                && invoice.getDealer() != null
-                && invoice.getDealer().getReceivableAccount() != null
-                && invoice.getDealer().getReceivableAccount().getId() != null) {
-            return invoice.getDealer().getReceivableAccount().getId();
-        }
-        if (source != null
-                && source.getDealer() != null
-                && source.getDealer().getReceivableAccount() != null
-                && source.getDealer().getReceivableAccount().getId() != null) {
-            return source.getDealer().getReceivableAccount().getId();
-        }
-        return null;
-    }
-
     private BigDecimal totalNoteAmount(Company company, JournalEntry source, String reason) {
         if (company == null || source == null || !StringUtils.hasText(reason)) {
             return BigDecimal.ZERO;
@@ -4553,8 +3569,8 @@ public class AccountingService {
         LocalDate entryDate = request.entryDate() != null ? request.entryDate() : currentDate(company);
         JournalEntry existingEntry = findExistingEntry(company, reference, idempotencyKey);
         if (existingEntry != null) {
-            BigDecimal existingAmount = calculateCreditNoteAmount(existingEntry, invoice, source);
-            BigDecimal totalCredited = totalCreditNoteAmount(company, source, invoice);
+            BigDecimal existingAmount = calculateEntryTotal(existingEntry);
+            BigDecimal totalCredited = totalNoteAmount(company, source, "CREDIT_NOTE");
             validateCreditNoteIdempotency(idempotencyKey, invoice, source, existingEntry, request.amount(), invoice.getTotalAmount());
             applyCreditNoteToInvoice(invoice, existingAmount, totalCredited, existingEntry.getReferenceNumber(), entryDate);
             return toDto(existingEntry);
@@ -4563,7 +3579,7 @@ public class AccountingService {
         if (totalAmount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Credit note amount must be positive");
         }
-        BigDecimal creditedSoFar = totalCreditNoteAmount(company, source, invoice);
+        BigDecimal creditedSoFar = totalNoteAmount(company, source, "CREDIT_NOTE");
         BigDecimal remaining = totalAmount.subtract(creditedSoFar);
         if (remaining.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE,
@@ -4584,15 +3600,15 @@ public class AccountingService {
         if (!reservation.leader()) {
             JournalEntry awaited = awaitJournalEntry(company, reference, idempotencyKey);
             if (awaited != null) {
-                BigDecimal existingAmount = calculateCreditNoteAmount(awaited, invoice, source);
-                BigDecimal totalCredited = totalCreditNoteAmount(company, source, invoice);
+                BigDecimal existingAmount = calculateEntryTotal(awaited);
+                BigDecimal totalCredited = totalNoteAmount(company, source, "CREDIT_NOTE");
                 validateCreditNoteIdempotency(idempotencyKey, invoice, source, awaited, request.amount(), invoice.getTotalAmount());
                 applyCreditNoteToInvoice(invoice, existingAmount, totalCredited, awaited.getReferenceNumber(), entryDate);
                 return toDto(awaited);
             }
             throw new ApplicationException(ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
                     "Credit note idempotency key is reserved but journal entry not found")
-                    .withDetail(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, idempotencyKey);
+                    .withDetail("idempotencyKey", idempotencyKey);
         }
         String memo = StringUtils.hasText(request.memo())
                 ? request.memo().trim()
@@ -4616,7 +3632,7 @@ public class AccountingService {
         saved.setCorrectionReason("CREDIT_NOTE");
         journalEntryRepository.save(saved);
         linkReferenceMapping(company, idempotencyKey, saved, ENTITY_TYPE_CREDIT_NOTE);
-        BigDecimal postedAmount = calculateCreditNoteAmount(saved, invoice, source);
+        BigDecimal postedAmount = calculateEntryTotal(saved);
         BigDecimal totalCredited = creditedSoFar.add(postedAmount);
         applyCreditNoteToInvoice(invoice, postedAmount, totalCredited, saved.getReferenceNumber(), entryDate);
         return toDto(saved);
@@ -4979,37 +3995,26 @@ public class AccountingService {
                                                   Long partnerId,
                                                   List<PartnerSettlementAllocation> existing,
                                                   List<SettlementAllocationRequest> allocations) {
-        boolean partnerMismatch = existing.stream()
-                .anyMatch(row -> isSettlementAllocationPartnerMismatch(row, partnerType, partnerId));
+        boolean partnerMismatch = existing.stream().anyMatch(row -> {
+            if (partnerType == PartnerType.DEALER) {
+                return row.getDealer() == null || !Objects.equals(row.getDealer().getId(), partnerId);
+            }
+            if (partnerType == PartnerType.SUPPLIER) {
+                return row.getSupplier() == null || !Objects.equals(row.getSupplier().getId(), partnerId);
+            }
+            return true;
+        });
         if (partnerMismatch) {
-            throw replayConflictWithPartnerContext(
-                    partnerMismatchMessage(partnerType),
-                    idempotencyKey,
-                    partnerType,
-                    partnerId);
+            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT, "Idempotency key already used for another partner")
+                    .withDetail("idempotencyKey", idempotencyKey);
         }
 
         Map<String, Integer> existingSignatures = allocationSignatureCountsFromRows(existing);
         Map<String, Integer> requestSignatures = allocationSignatureCountsFromRequests(allocations);
         if (!existingSignatures.equals(requestSignatures)) {
-            throw replayConflictWithPartnerContext(
-                    "Idempotency key already used for a different settlement payload",
-                    idempotencyKey,
-                    partnerType,
-                    partnerId);
+            throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT, "Idempotency key already used for a different settlement payload")
+                    .withDetail("idempotencyKey", idempotencyKey);
         }
-    }
-
-    private boolean isSettlementAllocationPartnerMismatch(PartnerSettlementAllocation row,
-                                                          PartnerType partnerType,
-                                                          Long partnerId) {
-        if (partnerType == PartnerType.DEALER) {
-            return row.getDealer() == null || !Objects.equals(row.getDealer().getId(), partnerId);
-        }
-        if (partnerType == PartnerType.SUPPLIER) {
-            return row.getSupplier() == null || !Objects.equals(row.getSupplier().getId(), partnerId);
-        }
-        return true;
     }
 
     private Map<String, Integer> allocationSignatureCountsFromRows(List<PartnerSettlementAllocation> allocations) {
@@ -5044,349 +4049,6 @@ public class AccountingService {
             counts.merge(signature, 1, Integer::sum);
         }
         return counts;
-    }
-
-    private Map<DealerPaymentSignature, Integer> dealerPaymentSignatureCountsFromRequest(DealerSettlementRequest request) {
-        Map<DealerPaymentSignature, Integer> counts = new HashMap<>();
-        if (request == null) {
-            return counts;
-        }
-        if (request.payments() != null && !request.payments().isEmpty()) {
-            for (SettlementPaymentRequest payment : request.payments()) {
-                if (payment == null || payment.accountId() == null) {
-                    continue;
-                }
-                BigDecimal amount = normalizeAmount(payment.amount());
-                if (amount.compareTo(BigDecimal.ZERO) <= 0) {
-                    continue;
-                }
-                counts.merge(new DealerPaymentSignature(payment.accountId(), amount), 1, Integer::sum);
-            }
-            return counts;
-        }
-
-        SettlementTotals totals = computeSettlementTotals(request.allocations());
-        BigDecimal cashAmount = totals.totalApplied()
-                .add(totals.totalFxGain())
-                .subtract(totals.totalFxLoss())
-                .subtract(totals.totalDiscount())
-                .subtract(totals.totalWriteOff());
-        if (cashAmount.compareTo(BigDecimal.ZERO) <= 0 || request.cashAccountId() == null) {
-            return counts;
-        }
-        counts.merge(
-                new DealerPaymentSignature(request.cashAccountId(), normalizeAmount(cashAmount)),
-                1,
-                Integer::sum
-        );
-        return counts;
-    }
-
-    private Map<DealerPaymentSignature, Integer> dealerPaymentSignatureCountsFromExistingRows(
-            List<PartnerSettlementAllocation> allocations,
-            Set<Long> paymentAccountIds,
-            Map<DealerPaymentSignature, Integer> requestPaymentSignatures,
-            Map<String, Long> requestedAdjustmentAccountIds) {
-        Map<DealerPaymentSignature, Integer> counts = new HashMap<>();
-        List<ExistingDealerPaymentLine> candidateLines = new ArrayList<>();
-        if (allocations == null || allocations.isEmpty() || paymentAccountIds == null || paymentAccountIds.isEmpty()) {
-            return counts;
-        }
-        JournalEntry entry = allocations.stream()
-                .map(PartnerSettlementAllocation::getJournalEntry)
-                .filter(Objects::nonNull)
-                .findFirst()
-                .orElse(null);
-        if (entry == null || entry.getLines() == null) {
-            return counts;
-        }
-        for (JournalLine line : entry.getLines()) {
-            if (line == null || line.getAccount() == null || line.getAccount().getId() == null) {
-                continue;
-            }
-            Long accountId = line.getAccount().getId();
-            if (!paymentAccountIds.contains(accountId)) {
-                continue;
-            }
-            BigDecimal debit = normalizeAmount(line.getDebit());
-            if (debit.compareTo(BigDecimal.ZERO) <= 0) {
-                continue;
-            }
-            Account account = line.getAccount();
-            if (account.getType() != AccountType.ASSET) {
-                continue;
-            }
-            if (isReceivableAccount(account) || isPayableAccount(account)) {
-                continue;
-            }
-            DealerPaymentSignature signature = new DealerPaymentSignature(accountId, debit);
-            counts.merge(signature, 1, Integer::sum);
-            candidateLines.add(new ExistingDealerPaymentLine(signature, normalizeLineDescription(line.getDescription())));
-        }
-        if (requestPaymentSignatures == null || requestPaymentSignatures.isEmpty()) {
-            return counts;
-        }
-        List<SettlementAdjustmentSignature> adjustmentSignatures = buildSettlementAdjustmentSignaturesFromRows(allocations);
-        if (adjustmentSignatures.isEmpty()) {
-            return counts;
-        }
-        List<BigDecimal> adjustmentRemovalTargets = new ArrayList<>();
-        List<List<Integer>> candidateIndexesByAdjustment = new ArrayList<>();
-        for (SettlementAdjustmentSignature adjustmentSignature : adjustmentSignatures) {
-            Long expectedAdjustmentAccountId = requestedAdjustmentAccountIds != null
-                    ? requestedAdjustmentAccountIds.get(adjustmentSignature.normalizedDescription())
-                    : null;
-            BigDecimal nonPaymentAmount = adjustmentDebitAmountOnNonPaymentAccounts(
-                    entry,
-                    paymentAccountIds,
-                    adjustmentSignature.normalizedDescription(),
-                    expectedAdjustmentAccountId);
-            BigDecimal remaining = adjustmentSignature.amount().subtract(nonPaymentAmount);
-            adjustmentRemovalTargets.add(normalizeAmount(remaining.compareTo(BigDecimal.ZERO) > 0 ? remaining : BigDecimal.ZERO));
-            List<Integer> candidateIndexes = new ArrayList<>();
-            for (int i = 0; i < candidateLines.size(); i++) {
-                ExistingDealerPaymentLine line = candidateLines.get(i);
-                if (!line.normalizedDescription().equals(adjustmentSignature.normalizedDescription())) {
-                    continue;
-                }
-                if (expectedAdjustmentAccountId != null
-                        && !Objects.equals(line.signature().accountId(), expectedAdjustmentAccountId)) {
-                    continue;
-                }
-                candidateIndexes.add(i);
-            }
-            candidateIndexesByAdjustment.add(candidateIndexes);
-        }
-        Map<DealerPaymentSignature, Integer> workingCounts = new HashMap<>(counts);
-        if (canMatchRequestSignaturesWithOptionalAdjustmentExclusions(
-                0,
-                adjustmentSignatures,
-                adjustmentRemovalTargets,
-                candidateIndexesByAdjustment,
-                candidateLines,
-                new HashSet<>(),
-                workingCounts,
-                requestPaymentSignatures)) {
-            return new HashMap<>(requestPaymentSignatures);
-        }
-        boolean hasPositiveRemovalTarget = adjustmentRemovalTargets.stream()
-                .anyMatch(amount -> amount.compareTo(BigDecimal.ZERO) > 0);
-        if (hasPositiveRemovalTarget && counts.equals(requestPaymentSignatures)) {
-            return new HashMap<>();
-        }
-        return counts;
-    }
-
-    private BigDecimal adjustmentDebitAmountOnNonPaymentAccounts(JournalEntry entry,
-                                                                 Set<Long> paymentAccountIds,
-                                                                 String normalizedDescription,
-                                                                 Long expectedAdjustmentAccountId) {
-        if (entry == null || entry.getLines() == null || !StringUtils.hasText(normalizedDescription)) {
-            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
-        }
-        BigDecimal total = BigDecimal.ZERO;
-        for (JournalLine line : entry.getLines()) {
-            if (line == null || line.getAccount() == null || line.getAccount().getId() == null) {
-                continue;
-            }
-            if (paymentAccountIds != null && paymentAccountIds.contains(line.getAccount().getId())) {
-                continue;
-            }
-            Account account = line.getAccount();
-            if (expectedAdjustmentAccountId != null) {
-                if (!Objects.equals(account.getId(), expectedAdjustmentAccountId)) {
-                    continue;
-                }
-            } else if (account.getType() == AccountType.ASSET
-                    && !isReceivableAccount(account)
-                    && !isPayableAccount(account)) {
-                // Treat non-request cash/bank-like debits as payment noise, not adjustment coverage.
-                continue;
-            }
-            if (!normalizeLineDescription(line.getDescription()).equals(normalizedDescription)) {
-                continue;
-            }
-            BigDecimal debit = normalizeAmount(line.getDebit());
-            if (debit.compareTo(BigDecimal.ZERO) <= 0) {
-                continue;
-            }
-            total = total.add(debit);
-        }
-        return normalizeAmount(total);
-    }
-
-    private List<SettlementAdjustmentSignature> buildSettlementAdjustmentSignaturesFromRows(
-            List<PartnerSettlementAllocation> allocations) {
-        if (allocations == null || allocations.isEmpty()) {
-            return List.of();
-        }
-        BigDecimal totalDiscount = BigDecimal.ZERO;
-        BigDecimal totalWriteOff = BigDecimal.ZERO;
-        BigDecimal totalFxLoss = BigDecimal.ZERO;
-        for (PartnerSettlementAllocation allocation : allocations) {
-            if (allocation == null) {
-                continue;
-            }
-            totalDiscount = totalDiscount.add(normalizeAmount(allocation.getDiscountAmount()));
-            totalWriteOff = totalWriteOff.add(normalizeAmount(allocation.getWriteOffAmount()));
-            BigDecimal fxDifference = normalizeAmount(allocation.getFxDifferenceAmount());
-            if (fxDifference.compareTo(BigDecimal.ZERO) < 0) {
-                totalFxLoss = totalFxLoss.add(fxDifference.abs());
-            }
-        }
-        List<SettlementAdjustmentSignature> signatures = new ArrayList<>();
-        if (totalDiscount.compareTo(BigDecimal.ZERO) > 0) {
-            signatures.add(new SettlementAdjustmentSignature(
-                    SETTLEMENT_DISCOUNT_LINE_DESCRIPTION,
-                    normalizeAmount(totalDiscount)));
-        }
-        if (totalWriteOff.compareTo(BigDecimal.ZERO) > 0) {
-            signatures.add(new SettlementAdjustmentSignature(
-                    SETTLEMENT_WRITE_OFF_LINE_DESCRIPTION,
-                    normalizeAmount(totalWriteOff)));
-        }
-        if (totalFxLoss.compareTo(BigDecimal.ZERO) > 0) {
-            signatures.add(new SettlementAdjustmentSignature(
-                    SETTLEMENT_FX_LOSS_LINE_DESCRIPTION,
-                    normalizeAmount(totalFxLoss)));
-        }
-        return signatures;
-    }
-
-    private Map<String, Long> requestedAdjustmentAccountIds(DealerSettlementRequest request) {
-        if (request == null) {
-            return Map.of();
-        }
-        Map<String, Long> ids = new HashMap<>();
-        if (request.discountAccountId() != null) {
-            ids.put(SETTLEMENT_DISCOUNT_LINE_DESCRIPTION, request.discountAccountId());
-        }
-        if (request.writeOffAccountId() != null) {
-            ids.put(SETTLEMENT_WRITE_OFF_LINE_DESCRIPTION, request.writeOffAccountId());
-        }
-        if (request.fxLossAccountId() != null) {
-            ids.put(SETTLEMENT_FX_LOSS_LINE_DESCRIPTION, request.fxLossAccountId());
-        }
-        return ids;
-    }
-
-    private boolean canMatchRequestSignaturesWithOptionalAdjustmentExclusions(
-            int adjustmentIndex,
-            List<SettlementAdjustmentSignature> adjustmentSignatures,
-            List<BigDecimal> adjustmentRemovalTargets,
-            List<List<Integer>> candidateIndexesByAdjustment,
-            List<ExistingDealerPaymentLine> candidateLines,
-            Set<Integer> removedIndexes,
-            Map<DealerPaymentSignature, Integer> workingCounts,
-            Map<DealerPaymentSignature, Integer> requestPaymentSignatures) {
-        if (adjustmentIndex >= adjustmentSignatures.size()) {
-            return workingCounts.equals(requestPaymentSignatures);
-        }
-        BigDecimal requiredRemoval = adjustmentRemovalTargets.get(adjustmentIndex);
-        if (requiredRemoval.compareTo(BigDecimal.ZERO) == 0) {
-            return canMatchRequestSignaturesWithOptionalAdjustmentExclusions(
-                    adjustmentIndex + 1,
-                    adjustmentSignatures,
-                    adjustmentRemovalTargets,
-                    candidateIndexesByAdjustment,
-                    candidateLines,
-                    removedIndexes,
-                    workingCounts,
-                    requestPaymentSignatures);
-        }
-        return tryMatchAdjustmentRemovalCombination(
-                adjustmentIndex,
-                candidateIndexesByAdjustment.get(adjustmentIndex),
-                0,
-                requiredRemoval,
-                adjustmentSignatures,
-                adjustmentRemovalTargets,
-                candidateIndexesByAdjustment,
-                candidateLines,
-                removedIndexes,
-                workingCounts,
-                requestPaymentSignatures);
-    }
-
-    private boolean tryMatchAdjustmentRemovalCombination(
-            int adjustmentIndex,
-            List<Integer> candidateIndexes,
-            int candidateOffset,
-            BigDecimal remainingAmount,
-            List<SettlementAdjustmentSignature> adjustmentSignatures,
-            List<BigDecimal> adjustmentRemovalTargets,
-            List<List<Integer>> candidateIndexesByAdjustment,
-            List<ExistingDealerPaymentLine> candidateLines,
-            Set<Integer> removedIndexes,
-            Map<DealerPaymentSignature, Integer> workingCounts,
-            Map<DealerPaymentSignature, Integer> requestPaymentSignatures) {
-        if (remainingAmount.compareTo(BigDecimal.ZERO) == 0) {
-            return canMatchRequestSignaturesWithOptionalAdjustmentExclusions(
-                    adjustmentIndex + 1,
-                    adjustmentSignatures,
-                    adjustmentRemovalTargets,
-                    candidateIndexesByAdjustment,
-                    candidateLines,
-                    removedIndexes,
-                    workingCounts,
-                    requestPaymentSignatures);
-        }
-        if (remainingAmount.compareTo(BigDecimal.ZERO) < 0 || candidateOffset >= candidateIndexes.size()) {
-            return false;
-        }
-        for (int i = candidateOffset; i < candidateIndexes.size(); i++) {
-            Integer lineIndex = candidateIndexes.get(i);
-            if (lineIndex == null || removedIndexes.contains(lineIndex)) {
-                continue;
-            }
-            ExistingDealerPaymentLine line = candidateLines.get(lineIndex);
-            BigDecimal lineAmount = line.signature().amount();
-            if (lineAmount.compareTo(remainingAmount) > 0) {
-                continue;
-            }
-            if (!decrementSignatureCount(workingCounts, line.signature())) {
-                continue;
-            }
-            removedIndexes.add(lineIndex);
-            if (tryMatchAdjustmentRemovalCombination(
-                    adjustmentIndex,
-                    candidateIndexes,
-                    i + 1,
-                    remainingAmount.subtract(lineAmount),
-                    adjustmentSignatures,
-                    adjustmentRemovalTargets,
-                    candidateIndexesByAdjustment,
-                    candidateLines,
-                    removedIndexes,
-                    workingCounts,
-                    requestPaymentSignatures)) {
-                return true;
-            }
-            removedIndexes.remove(lineIndex);
-            workingCounts.merge(line.signature(), 1, Integer::sum);
-        }
-        return false;
-    }
-
-    private boolean decrementSignatureCount(Map<DealerPaymentSignature, Integer> counts,
-                                            DealerPaymentSignature signature) {
-        Integer current = counts.get(signature);
-        if (current == null || current <= 0) {
-            return false;
-        }
-        if (current == 1) {
-            counts.remove(signature);
-            return true;
-        }
-        counts.put(signature, current - 1);
-        return true;
-    }
-
-    private String normalizeLineDescription(String description) {
-        if (!StringUtils.hasText(description)) {
-            return "";
-        }
-        return description.trim().toLowerCase(Locale.ROOT);
     }
 
     private String allocationSignature(Long invoiceId,

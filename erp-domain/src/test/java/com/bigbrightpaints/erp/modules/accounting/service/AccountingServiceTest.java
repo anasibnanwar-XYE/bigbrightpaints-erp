@@ -7293,6 +7293,50 @@ class AccountingServiceTest {
         assertThat(message).isEqualTo("Idempotency key already used for another partner type");
     }
 
+    @Test
+    void ensureDuplicateMatchesExisting_partnerMismatchesExposeCanonicalPartnerTypes() {
+        JournalEntry existing = new JournalEntry();
+        existing.setReferenceNumber("REF-DUP-1");
+        existing.setEntryDate(LocalDate.of(2024, 4, 1));
+        existing.setCurrency("INR");
+        existing.setFxRate(BigDecimal.ONE);
+        existing.setMemo("Duplicate guard");
+
+        Dealer existingDealer = new Dealer();
+        ReflectionTestUtils.setField(existingDealer, "id", 10L);
+        existing.setDealer(existingDealer);
+        Supplier existingSupplier = new Supplier();
+        ReflectionTestUtils.setField(existingSupplier, "id", 20L);
+        existing.setSupplier(existingSupplier);
+
+        JournalEntry candidate = new JournalEntry();
+        candidate.setEntryDate(LocalDate.of(2024, 4, 1));
+        candidate.setCurrency("INR");
+        candidate.setFxRate(BigDecimal.ONE);
+        candidate.setMemo("Duplicate guard");
+
+        Dealer candidateDealer = new Dealer();
+        ReflectionTestUtils.setField(candidateDealer, "id", 11L);
+        candidate.setDealer(candidateDealer);
+        Supplier candidateSupplier = new Supplier();
+        ReflectionTestUtils.setField(candidateSupplier, "id", 21L);
+        candidate.setSupplier(candidateSupplier);
+
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "ensureDuplicateMatchesExisting",
+                existing,
+                candidate,
+                List.of()))
+                .isInstanceOf(ApplicationException.class)
+                .satisfies(ex -> {
+                    ApplicationException appEx = (ApplicationException) ex;
+                    assertThat(appEx.getErrorCode()).isEqualTo(ErrorCode.BUSINESS_DUPLICATE_ENTRY);
+                    assertThat(appEx.getDetails())
+                            .containsEntry("partnerMismatchTypes", List.of("DEALER", "SUPPLIER"));
+                });
+    }
+
     private void assertPartnerReplayDetails(ApplicationException ex,
                                             String idempotencyKey,
                                             String partnerType,
