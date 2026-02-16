@@ -4320,6 +4320,7 @@ class AccountingServiceTest {
         assertThatThrownBy(() -> accountingService.settleDealerInvoices(request))
                 .isInstanceOfSatisfying(ApplicationException.class, ex -> {
                     assertPartnerReplayDetails(ex, "IDEMP-DR-SETTLE-REPLAY-NETCASH", "DEALER", 1L);
+                    assertAllocationReplayDiagnostics(ex, 2, 2, "|applied=100", "|discount=120");
                 })
                 .hasMessageContaining("different settlement payload")
                 .satisfies(ex -> assertThat(ex).hasMessageNotContaining("negative net cash contribution"));
@@ -4498,6 +4499,7 @@ class AccountingServiceTest {
         assertThatThrownBy(() -> accountingService.settleSupplierInvoices(request))
                 .isInstanceOfSatisfying(ApplicationException.class, ex -> {
                     assertPartnerReplayDetails(ex, "IDEMP-AP-SETTLE-REPLAY-NETCASH", "SUPPLIER", 1L);
+                    assertAllocationReplayDiagnostics(ex, 2, 2, "|applied=100", "|discount=120");
                 })
                 .hasMessageContaining("different settlement payload")
                 .satisfies(ex -> assertThat(ex).hasMessageNotContaining("negative net cash contribution"));
@@ -7653,6 +7655,22 @@ class AccountingServiceTest {
                 .containsEntry(IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY, idempotencyKey)
                 .containsEntry(IntegrationFailureMetadataSchema.KEY_PARTNER_TYPE, partnerType)
                 .containsEntry(IntegrationFailureMetadataSchema.KEY_PARTNER_ID, partnerId);
+    }
+
+    private void assertAllocationReplayDiagnostics(ApplicationException ex,
+                                                   int existingCount,
+                                                   int requestCount,
+                                                   String existingAppliedMarker,
+                                                   String requestAppliedMarker) {
+        assertThat(ex.getDetails())
+                .containsEntry("existingAllocationCount", existingCount)
+                .containsEntry("requestAllocationCount", requestCount)
+                .containsKey("existingAllocationSignatureDigest")
+                .containsKey("requestAllocationSignatureDigest");
+        assertThat(String.valueOf(ex.getDetails().get("existingAllocationSignatureDigest")))
+                .contains(existingAppliedMarker);
+        assertThat(String.valueOf(ex.getDetails().get("requestAllocationSignatureDigest")))
+                .contains(requestAppliedMarker);
     }
 
     private JournalLine journalLine(JournalEntry entry,
