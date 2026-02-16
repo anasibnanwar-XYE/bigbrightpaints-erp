@@ -10227,3 +10227,24 @@ Loop Update
 Loop Update
 - tracked_now_ts: `2026-02-16T13:04:10+05:30`
 - active_in_progress: `M10 closure evidence maintained on moving head; preparing next hardening tranche (duplicate logic audit lane)`
+
+[2026-02-16] M19-S77 async-loop dedupe in orchestrator command bootstrap
+- Commit: `c676bee9`
+- Scope:
+  - deduped repeated lease/bootstrap logic in `CommandDispatcher` via shared `startLease(...)` + `LeaseEnvelope` for:
+    - order approval
+    - order auto-approval
+    - fulfillment update
+    - factory dispatch
+    - payroll run
+  - preserved existing permission gates, feature-flag denies, idempotency success/failure marking, and trace/event payload semantics.
+  - extended runtime coverage with `commandDispatcher_auto_approve_path_uses_shared_lease_bootstrap_and_canonical_key()` to lock shared path behavior.
+- Validation:
+  - `cd erp-domain && mvn -B -ntp -Dtest=TS_RuntimeOrchestratorExecutableCoverageTest,TS_RuntimeAccountingReplayConflictExecutableCoverageTest test` -> PASS
+  - `DIFF_BASE=06d85e792d2a80cd9fc1f8e5dc15d6dfa15dd93e GATE_FAST_RELEASE_VALIDATION_MODE=true bash scripts/gate_fast.sh` -> PASS (`gate-fast OK`)
+- Review:
+  - `codex review --commit c676bee9` -> no actionable findings (behavior-preserving refactor confirmed).
+
+Loop Update
+- tracked_now_ts: `2026-02-16T13:08:50+05:30`
+- active_in_progress: `M8/M9 async exactly-once + duplicate-logic hardening continuation after orchestrator lease dedupe`
