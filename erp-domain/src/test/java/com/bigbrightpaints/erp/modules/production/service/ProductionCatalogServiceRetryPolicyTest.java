@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -76,6 +77,23 @@ class ProductionCatalogServiceRetryPolicyTest {
         boolean retryable = invokeIsRetryableImportFailure(wrapped);
 
         assertThat(retryable).isTrue();
+    }
+
+    @Test
+    void isRetryableImportFailure_treatsNestedDataIntegrityViolationAsRetryable() {
+        RuntimeException wrapped = new RuntimeException("outer",
+                new DataIntegrityViolationException("duplicate key"));
+
+        boolean retryable = invokeIsRetryableImportFailure(wrapped);
+
+        assertThat(retryable).isTrue();
+    }
+
+    @Test
+    void isRetryableImportFailure_doesNotRetryPlainValidationErrors() {
+        boolean retryable = invokeIsRetryableImportFailure(new IllegalArgumentException("invalid csv row"));
+
+        assertThat(retryable).isFalse();
     }
 
     @Test
