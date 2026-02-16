@@ -40,6 +40,15 @@ Owner: Security & Governance Agent
 
 R1/R2 are orchestrator-owned when evidence is complete.
 
+## Task-Bound Special Permissions
+- Orchestrator may grant temporary task-bound permission expansions to a worker when a slice is blocked and the unblock path is explicit.
+- Expansions must be:
+  - scoped to named paths/modules
+  - justified in ticket timeline/reports with evidence
+  - actively monitored during execution
+  - revoked after the unblock objective is complete
+- Minor temporary drift for context gathering is acceptable, but implementation and commits must return to packet-defined scope unless orchestrator records an explicit scope exception.
+
 ## Evidence Requirements (Proof-First)
 - High-risk changes must include `docs/approvals/R2-CHECKPOINT.md`.
 - Every non-trivial decision must cite proof artifacts: failing/passing tests, guard outputs, or trace/log evidence.
