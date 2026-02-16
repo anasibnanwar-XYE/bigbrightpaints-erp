@@ -10124,3 +10124,21 @@ Loop Update
 Loop Update
 - tracked_now_ts: `2026-02-16T12:30:10+05:30`
 - active_in_progress: `M10 completion-gate closure push (security/IDOR/accounting-cross-module/workflow packs) while keeping ledger gates fresh`
+
+[2026-02-16] M19-S71 accounting partner-field label dedupe (internal vocabulary alignment, no contract drift)
+- Commit: `5d860078`
+- Scope:
+  - centralized partner field-label generation in `AccountingService` via `partnerFieldLabel(...)` and `appendPartnerFingerprint(...)`.
+  - removed duplicated inline `"dealerId"` / `"supplierId"` field construction across:
+    - duplicate journal mismatch diagnostics
+    - dealer receipt/dealer split receipt reference fingerprint builders
+    - dealer/supplier settlement idempotency fingerprint builders
+  - preserved existing output formats for dealer/supplier flows (no external API payload rename).
+- Validation:
+  - `cd erp-domain && mvn -B -ntp -Dtest=AccountingServiceTest,TS_RuntimeAccountingReplayConflictExecutableCoverageTest test` -> PASS (`124/124`).
+- Review:
+  - `codex review --commit 5d860078` -> clean; no actionable regressions.
+
+Loop Update
+- tracked_now_ts: `2026-02-16T12:34:30+05:30`
+- active_in_progress: `M10 completion-gate closure push + M2/M3 internal vocabulary dedupe continuation (partner-internal, role-specific external contracts preserved)`

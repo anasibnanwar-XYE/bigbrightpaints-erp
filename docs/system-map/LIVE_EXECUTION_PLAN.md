@@ -10,7 +10,7 @@ Mode: Continuous
 ## Active constraints
 - Reviewer subagent dispatch currently blocked by external cap (`agent thread limit reached (max 6)`).
 - Direct `codex review --commit <sha>` fallback is active while the cap persists.
-- Current live review in flight: `none (queue clear as of 29033cf3)`.
+- Current live review in flight: `none (queue clear as of 5d860078)`.
 - Release gate local prerequisite is now explicit: run `gate_release` against local v2 matrix DB env (`PGHOST=127.0.0.1 PGPORT=55432 PGUSER=erp PGPASSWORD=erp PGDATABASE=postgres`).
 
 ## Live plan lanes
@@ -36,6 +36,7 @@ Mode: Continuous
 2. Prioritize dedupe and role-parity consistency (dealer/supplier behavior symmetry).
 3. Keep v2 contract stability: no public API naming drift.
 4. Canonicalize internal mismatch metadata toward `partner*` while preserving external role-specific payload compatibility.
+5. Latest landed slice: `5d860078` centralizes partner field-label/fingerprint helpers in `AccountingService` to reduce dealer/supplier duplication without changing role-specific external semantics.
 
 ### Lane D: Completion-gate consolidation (closure lane)
 1. Convert module-level evidence into explicit completion-gate closure packs.
