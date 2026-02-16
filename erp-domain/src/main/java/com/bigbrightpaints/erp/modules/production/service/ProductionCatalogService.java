@@ -439,9 +439,8 @@ public class ProductionCatalogService {
         ProductionBrand brand = resolution.brand();
         String baseName = request.baseProductName().trim();
         String unit = StringUtils.hasText(request.unitOfMeasure()) ? request.unitOfMeasure().trim() : "UNIT";
-        String prefix = StringUtils.hasText(request.skuPrefix())
-                ? sanitizeSkuFragment(request.skuPrefix())
-                : sanitizeSkuFragment(brand.getCode());
+        String prefix = resolveVariantPrefix(request.skuPrefix(), brand.getCode());
+        String baseSkuFragment = requireVariantSkuFragment("baseProductName", baseName, Integer.MAX_VALUE);
         List<ProductionProductDto> variants = new ArrayList<>();
         int created = 0;
         int skipped = 0;
@@ -454,11 +453,11 @@ public class ProductionCatalogService {
             if (sizes.isEmpty()) {
                 throw new IllegalArgumentException("At least one size is required for color '" + color + "'");
             }
-            String colorCode = truncate(sanitizeSkuFragment(color), 8);
+            String colorCode = requireVariantSkuFragment("color", color, 8);
             for (String size : sizes) {
-                String sizeCode = truncate(sanitizeSkuFragment(size), 8);
+                String sizeCode = requireVariantSkuFragment("size", size, 8);
                 String sku = String.join("-",
-                        List.of(prefix, sanitizeSkuFragment(baseName), colorCode, sizeCode))
+                        List.of(prefix, baseSkuFragment, colorCode, sizeCode))
                         .replaceAll("-+", "-");
                 if (productRepository.findByCompanyAndSkuCode(company, sku).isPresent()) {
                     skipped++;
@@ -486,6 +485,26 @@ public class ProductionCatalogService {
             }
         }
         return new BulkVariantResponse(created, skipped, variants);
+    }
+
+    private String resolveVariantPrefix(String requestedPrefix, String brandCode) {
+        String source = StringUtils.hasText(requestedPrefix) ? requestedPrefix : brandCode;
+        String prefix = sanitizeSkuFragment(source);
+        if (!StringUtils.hasText(prefix)) {
+            throw new IllegalArgumentException(
+                    "Bulk variant skuPrefix/brandCode must contain at least one alphanumeric SKU character");
+        }
+        return prefix;
+    }
+
+    private String requireVariantSkuFragment(String fieldName, String rawValue, int maxLength) {
+        String sanitized = sanitizeSkuFragment(rawValue);
+        sanitized = maxLength > 0 ? truncate(sanitized, maxLength) : sanitized;
+        if (!StringUtils.hasText(sanitized)) {
+            throw new IllegalArgumentException(
+                    "Bulk variant " + fieldName + " must contain at least one alphanumeric SKU character");
+        }
+        return sanitized;
     }
 
     private List<String> expandTokens(List<String> items) {
