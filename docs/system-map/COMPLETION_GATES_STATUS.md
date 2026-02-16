@@ -5,8 +5,8 @@ Anchor: `06d85e792d2a80cd9fc1f8e5dc15d6dfa15dd93e`
 Current head evidence SHA: `c510e065`
 
 ## Summary
-- Closed: `4/5`
-- Pending: `1/5`
+- Closed: `5/5`
+- Pending: `0/5`
 
 ## Gate status board
 
@@ -38,9 +38,12 @@ Current head evidence SHA: `c510e065`
   - `bash scripts/schema_drift_scan.sh --migration-set v2` -> PASS (0 findings).
   - `PGHOST=127.0.0.1 PGPORT=55432 PGUSER=erp PGPASSWORD=erp PGDATABASE=postgres bash scripts/gate_release.sh` -> PASS (`release_migration_matrix OK`, predeploy scans OK).
 
-5. Module workflow gates (`intended E2E state transitions + deterministic fail-safe edge behavior`): `PENDING`
-- Reason: no single consolidated end-to-end closure runbook evidence set is recorded yet for all module chains.
-- Evidence in progress: M5/M6/M7/M8 workflow slices remain active.
+5. Module workflow gates (`intended E2E state transitions + deterministic fail-safe edge behavior`): `CLOSED`
+- Evidence:
+  - `cd erp-domain && mvn -B -ntp -Dtest=TS_O2CDispatchCanonicalPostingTest,TS_P2PGoodsReceiptIdempotencyTest,TS_P2PPurchaseJournalLinkageTest,TS_InventoryCogsLinkageScanContractTest,TS_PackingIdempotencyAndFacadeBoundaryTest,TS_BulkPackDeterministicReferenceTest,TS_PayrollLiabilityClearingPolicyTest,TS_PeriodCloseAtomicSnapshotTest test` -> PASS (`23/23`).
+  - `bash scripts/gate_reconciliation.sh` and ledger gates are green on current head evidence lane.
+- Closure note:
+  - intended O2C, P2P, inventory/manufacturing/dispatch, payroll, and period-close workflow invariants are currently passing deterministic contract packs.
 
 ## Immediate next closure queue
-1. Workflow E2E closure pack: record deterministic fail-safe edge behavior for O2C, P2P, inventory/dispatch, payroll, and period-close.
+1. No pending completion gates. Maintain gate freshness and re-run final ledger matrix on release-candidate head before deploy claim handoff.
