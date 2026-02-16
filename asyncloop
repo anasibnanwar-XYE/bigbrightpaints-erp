@@ -10010,3 +10010,55 @@ Loop Update
 Loop Update
 - tracked_now_ts: `2026-02-16T11:50:37+05:30`
 - active_in_progress: `M9 coverage-uplift tranche for anchored gate_fast closure + next M8/M9 dedupe slice`
+
+[2026-02-16] M19-S60 truthsuite critical-lane coverage uplift for orchestrator/runtime accounting replay
+- Commit: `673f3f2f`
+- Scope:
+  - elevated runtime orchestrator executable/idempotency/event-publisher tests into `gate-fast` critical membership in `TEST_CATALOG`.
+  - added `@Tag("critical")` to promoted runtime tests so gate tag contracts remain valid.
+  - extended `TS_RuntimeAccountingReplayConflictExecutableCoverageTest` with direct executable coverage for:
+    - settlement allocation summary mapper helper
+    - settlement audit metadata helper optional-branch permutations
+- Validation:
+  - `cd erp-domain && mvn -B -ntp -Dtest=TS_RuntimeAccountingReplayConflictExecutableCoverageTest,TS_RuntimeOrchestratorExecutableCoverageTest,TS_RuntimeEventPublisherExecutableCoverageTest,TS_RuntimeOrchestratorIdempotencyExecutableCoverageTest test` -> PASS (`37/37`).
+- Review:
+  - `codex review --commit 673f3f2f` -> clean; no actionable regressions.
+
+[2026-02-16] M19-S61 anchored gate_fast rerun after coverage uplift
+- Command:
+  - `DIFF_BASE=06d85e792d2a80cd9fc1f8e5dc15d6dfa15dd93e GATE_FAST_RELEASE_VALIDATION_MODE=true bash scripts/gate_fast.sh`
+- Outcome:
+  - truth execution now expanded and passed (`112/112`) under critical lane.
+  - changed-files coverage improved but remains below threshold on long-running anchor:
+    - line ratio improved from `0.3856` -> `0.6144`
+    - branch ratio improved from `0.4783` -> `0.7283`
+  - remaining primary uncovered slices are legacy-anchor deltas in `AccountingService`, `CommandDispatcher`, and dealer portal/controller surfaces.
+- Classification:
+  - significant uplift landed; long-anchor changed coverage closure remains open.
+
+[2026-02-16] M19-S62 gate_core evidence refreshed on current head
+- Command:
+  - `DIFF_BASE=06d85e792d2a80cd9fc1f8e5dc15d6dfa15dd93e GATE_FAST_RELEASE_VALIDATION_MODE=true bash scripts/gate_core.sh`
+- Outcome:
+  - PASS.
+  - module coverage gate PASS (`line_ratio=0.9847`, `branch_ratio=0.9310`).
+
+[2026-02-16] M19-S63 gate_reconciliation evidence refreshed on current head
+- Command:
+  - `bash scripts/gate_reconciliation.sh`
+- Outcome:
+  - PASS (`109/109`, no failures/errors/skips).
+
+[2026-02-16] M19-S64 gate_release pass-blocker recorded (environment)
+- Command:
+  - `bash scripts/gate_release.sh`
+- Outcome:
+  - failed at fresh/upgrade migration matrix stage due local Postgres auth:
+    - `password authentication failed for user "erp"` on `127.0.0.1:5432`.
+- Classification:
+  - environment credential blocker (not code/test regression).
+  - release gate remains pending until DB credentials/environment is corrected.
+
+Loop Update
+- tracked_now_ts: `2026-02-16T12:01:06+05:30`
+- active_in_progress: `M9 long-anchor changed-coverage closure + gate_release environment unblock path`
