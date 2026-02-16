@@ -10301,3 +10301,13 @@ Queue Rotation (Auto-Replenish)
 - [ready] M18-S9A OpenAPI contract drift guard + portal parity check hardening
 - [ready] M18-S10A staging rollback rehearsal evidence normalizer
 - [ready] M18-S7A variant lifecycle duplicate-path decision follow-through (template/variant canonical write ownership)
+
+[2026-02-16] Backlog throughput preplan
+- Preplanned ticket `TKT-ERP-STAGE-007` (M18-S6A GST/non-GST drift guard tranche) with ready slices:
+  - `SLICE-01` accounting-domain
+  - `SLICE-02` purchasing-invoice-p2p
+- Preplanned ticket `TKT-ERP-STAGE-008` (M18-S9A OpenAPI drift + portal parity tranche) with ready slices:
+  - `SLICE-01` release-ops
+  - `SLICE-02` frontend-documentation
+  - `SLICE-03` repo-cartographer
+- Worktrees intentionally deferred (`--no-create-worktrees`) for next dispatch window.
