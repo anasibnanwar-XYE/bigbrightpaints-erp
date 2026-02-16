@@ -4999,11 +4999,16 @@ public class AccountingService {
         Map<String, Integer> existingSignatures = allocationSignatureCountsFromRows(existing);
         Map<String, Integer> requestSignatures = allocationSignatureCountsFromRequests(allocations);
         if (!existingSignatures.equals(requestSignatures)) {
-            throw replayConflictWithPartnerContext(
+            ApplicationException exception = replayConflictWithPartnerContext(
                     "Idempotency key already used for a different settlement payload",
                     idempotencyKey,
                     partnerType,
                     partnerId);
+            exception.withDetail("existingAllocationCount", existing != null ? existing.size() : 0);
+            exception.withDetail("requestAllocationCount", allocations != null ? allocations.size() : 0);
+            exception.withDetail("existingAllocationSignatureDigest", allocationSignatureDigest(existingSignatures));
+            exception.withDetail("requestAllocationSignatureDigest", allocationSignatureDigest(requestSignatures));
+            throw exception;
         }
     }
 
@@ -5199,6 +5204,16 @@ public class AccountingService {
             counts.merge(signature, 1, Integer::sum);
         }
         return counts;
+    }
+
+    private String allocationSignatureDigest(Map<String, Integer> signatures) {
+        if (signatures == null || signatures.isEmpty()) {
+            return "";
+        }
+        return signatures.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .map(entry -> entry.getKey() + "#" + entry.getValue())
+                .collect(java.util.stream.Collectors.joining(" || "));
     }
 
     private Map<DealerPaymentSignature, Integer> dealerPaymentSignatureCountsFromRequest(DealerSettlementRequest request) {
