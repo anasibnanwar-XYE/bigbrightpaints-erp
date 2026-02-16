@@ -11,6 +11,7 @@ import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.inventory.domain.InventoryType;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchRepository;
@@ -667,6 +668,140 @@ class PurchasingServiceTest {
         assertThat(totalAmountCaptor.getValue()).isEqualByComparingTo(new BigDecimal("7.04"));
     }
 
+    @Test
+    @DisplayName("createPurchase rejects positive taxAmount for non-GST purchase mode")
+    void createPurchase_rejectsNonGstTaxAmount() {
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(companyEntityLookup.requireSupplier(company, 10L)).thenReturn(supplier);
+        when(purchaseRepository.lockByCompanyAndInvoiceNumberIgnoreCase(company, "INV-007"))
+                .thenReturn(Optional.empty());
+
+        RawMaterial privateMaterial = buildRawMaterial(21L, "Private Material", InventoryType.PRIVATE, BigDecimal.ZERO, 201L);
+        when(rawMaterialRepository.lockByCompanyAndId(company, 21L)).thenReturn(Optional.of(privateMaterial));
+        GoodsReceipt goodsReceipt = stubGoodsReceiptForMaterial(privateMaterial, 305L, 205L, BigDecimal.TEN, BigDecimal.valueOf(5));
+
+        RawMaterialPurchaseRequest request = new RawMaterialPurchaseRequest(
+                10L,
+                "INV-007",
+                LocalDate.now(),
+                "Non-GST purchase",
+                205L,
+                305L,
+                new BigDecimal("9.00"),
+                List.of(new RawMaterialPurchaseLineRequest(
+                        21L, null, BigDecimal.TEN, "KG", BigDecimal.valueOf(5), null, null, null))
+        );
+
+        assertThatThrownBy(() -> purchasingService.createPurchase(request))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Non-GST purchase invoice cannot carry GST tax amount");
+
+        verify(accountingFacade, never()).postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any());
+        verify(purchaseRepository, never()).save(any());
+        assertThat(goodsReceipt.getStatus()).isEqualTo("RECEIVED");
+    }
+
+    @Test
+    @DisplayName("createPurchase rejects taxable GST lines when explicit taxAmount is zero")
+    void createPurchase_rejectsZeroTaxAmountForTaxableGstLines() {
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(companyEntityLookup.requireSupplier(company, 10L)).thenReturn(supplier);
+        when(purchaseRepository.lockByCompanyAndInvoiceNumberIgnoreCase(company, "INV-008"))
+                .thenReturn(Optional.empty());
+        when(rawMaterialRepository.lockByCompanyAndId(company, 20L)).thenReturn(Optional.of(rawMaterial));
+        GoodsReceipt goodsReceipt = stubGoodsReceipt(306L, 206L, BigDecimal.TEN, BigDecimal.valueOf(5));
+        rawMaterial.setGstRate(new BigDecimal("18.00"));
+
+        RawMaterialPurchaseRequest request = new RawMaterialPurchaseRequest(
+                10L,
+                "INV-008",
+                LocalDate.now(),
+                "GST zero tax override",
+                206L,
+                306L,
+                BigDecimal.ZERO,
+                List.of(new RawMaterialPurchaseLineRequest(
+                        20L, null, BigDecimal.TEN, "KG", BigDecimal.valueOf(5), null, null, null))
+        );
+
+        assertThatThrownBy(() -> purchasingService.createPurchase(request))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("requires non-zero taxAmount or tax auto-computation");
+
+        verify(accountingFacade, never()).postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any());
+        verify(purchaseRepository, never()).save(any());
+        assertThat(goodsReceipt.getStatus()).isEqualTo("RECEIVED");
+    }
+
+    @Test
+    @DisplayName("createPurchase rejects invoices that mix GST and non-GST materials")
+    void createPurchase_rejectsMixedTaxModes() {
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(companyEntityLookup.requireSupplier(company, 10L)).thenReturn(supplier);
+        when(purchaseRepository.lockByCompanyAndInvoiceNumberIgnoreCase(company, "INV-009"))
+                .thenReturn(Optional.empty());
+        when(rawMaterialRepository.lockByCompanyAndId(company, 20L)).thenReturn(Optional.of(rawMaterial));
+
+        RawMaterial privateMaterial = buildRawMaterial(21L, "Private Material", InventoryType.PRIVATE, BigDecimal.ZERO, 201L);
+        when(rawMaterialRepository.lockByCompanyAndId(company, 21L)).thenReturn(Optional.of(privateMaterial));
+
+        PurchaseOrder order = buildPurchaseOrder(207L, supplier, rawMaterial, BigDecimal.TEN, BigDecimal.valueOf(5));
+        PurchaseOrderLine privateOrderLine = new PurchaseOrderLine();
+        privateOrderLine.setPurchaseOrder(order);
+        privateOrderLine.setRawMaterial(privateMaterial);
+        privateOrderLine.setQuantity(new BigDecimal("4"));
+        privateOrderLine.setUnit("KG");
+        privateOrderLine.setCostPerUnit(new BigDecimal("3.00"));
+        privateOrderLine.setLineTotal(new BigDecimal("12.00"));
+        order.getLines().add(privateOrderLine);
+
+        GoodsReceipt receipt = buildGoodsReceipt(307L, order, rawMaterial, BigDecimal.TEN, BigDecimal.valueOf(5));
+        GoodsReceiptLine privateReceiptLine = new GoodsReceiptLine();
+        privateReceiptLine.setGoodsReceipt(receipt);
+        privateReceiptLine.setRawMaterial(privateMaterial);
+        privateReceiptLine.setBatchCode("BATCH-307-P");
+        privateReceiptLine.setQuantity(new BigDecimal("4"));
+        privateReceiptLine.setUnit("KG");
+        privateReceiptLine.setCostPerUnit(new BigDecimal("3.00"));
+        privateReceiptLine.setLineTotal(new BigDecimal("12.00"));
+        RawMaterialBatch privateBatch = new RawMaterialBatch();
+        ReflectionTestUtils.setField(privateBatch, "id", 1307L);
+        privateBatch.setRawMaterial(privateMaterial);
+        privateBatch.setBatchCode(privateReceiptLine.getBatchCode());
+        privateBatch.setQuantity(new BigDecimal("4"));
+        privateBatch.setUnit("KG");
+        privateBatch.setCostPerUnit(new BigDecimal("3.00"));
+        privateReceiptLine.setRawMaterialBatch(privateBatch);
+        receipt.getLines().add(privateReceiptLine);
+
+        when(goodsReceiptRepository.lockByCompanyAndId(company, 307L)).thenReturn(Optional.of(receipt));
+        when(purchaseRepository.findByCompanyAndGoodsReceipt(company, receipt)).thenReturn(Optional.empty());
+
+        RawMaterialPurchaseRequest request = new RawMaterialPurchaseRequest(
+                10L,
+                "INV-009",
+                LocalDate.now(),
+                "Mixed tax mode purchase",
+                207L,
+                307L,
+                null,
+                List.of(
+                        new RawMaterialPurchaseLineRequest(
+                                20L, null, BigDecimal.TEN, "KG", BigDecimal.valueOf(5), new BigDecimal("18.00"), Boolean.FALSE, null),
+                        new RawMaterialPurchaseLineRequest(
+                                21L, null, new BigDecimal("4"), "KG", new BigDecimal("3.00"), null, null, null)
+                )
+        );
+
+        assertThatThrownBy(() -> purchasingService.createPurchase(request))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("cannot mix GST and non-GST materials");
+
+        verify(accountingFacade, never()).postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any());
+        verify(purchaseRepository, never()).save(any());
+        assertThat(receipt.getStatus()).isEqualTo("RECEIVED");
+    }
+
     private JournalEntryDto dummyJournal(String reference) {
         return dummyJournal(reference, 1L);
     }
@@ -680,6 +815,35 @@ class PurchasingServiceTest {
         when(goodsReceiptRepository.lockByCompanyAndId(company, receiptId)).thenReturn(Optional.of(receipt));
         when(purchaseRepository.findByCompanyAndGoodsReceipt(company, receipt)).thenReturn(Optional.empty());
         return receipt;
+    }
+
+    private GoodsReceipt stubGoodsReceiptForMaterial(RawMaterial material,
+                                                     Long receiptId,
+                                                     Long orderId,
+                                                     BigDecimal quantity,
+                                                     BigDecimal costPerUnit) {
+        PurchaseOrder order = buildPurchaseOrder(orderId, supplier, material, quantity, costPerUnit);
+        GoodsReceipt receipt = buildGoodsReceipt(receiptId, order, material, quantity, costPerUnit);
+        when(goodsReceiptRepository.lockByCompanyAndId(company, receiptId)).thenReturn(Optional.of(receipt));
+        when(purchaseRepository.findByCompanyAndGoodsReceipt(company, receipt)).thenReturn(Optional.empty());
+        return receipt;
+    }
+
+    private RawMaterial buildRawMaterial(Long materialId,
+                                         String name,
+                                         InventoryType inventoryType,
+                                         BigDecimal gstRate,
+                                         Long inventoryAccountId) {
+        RawMaterial material = new RawMaterial();
+        ReflectionTestUtils.setField(material, "id", materialId);
+        material.setCompany(company);
+        material.setName(name);
+        material.setUnitType("KG");
+        material.setInventoryType(inventoryType);
+        material.setGstRate(gstRate);
+        material.setInventoryAccountId(inventoryAccountId);
+        material.setCurrentStock(BigDecimal.valueOf(100));
+        return material;
     }
 
     private PurchaseOrder buildPurchaseOrder(Long orderId,

@@ -35,9 +35,19 @@ class TS_P2PPurchaseJournalLinkageTest {
     void purchaseTaxComputationUsesDeterministicHalfUpRounding() {
         TruthSuiteFileAssert.assertContains(
                 PURCHASING_SERVICE,
-                "lineTax = currency(lineNet.multiply(taxRate)",
+                "lineTax = currency(lineNet.multiply(effectiveTaxRate)",
                 ".divide(new BigDecimal(\"100\"), 6, RoundingMode.HALF_UP));",
                 "BigDecimal allocatedTax = (i == computedLines.size() - 1)",
                 ".divide(inventoryTotal, 6, RoundingMode.HALF_UP));");
+    }
+
+    @Test
+    void purchaseFlowEnforcesSingleTaxModeContractForDownstreamSettlement() {
+        TruthSuiteFileAssert.assertContains(
+                PURCHASING_SERVICE,
+                "PurchaseTaxMode purchaseTaxMode = resolvePurchaseTaxMode(sortedLines, lockedMaterials);",
+                "BigDecimal effectiveTaxRate = resolveLineTaxRateForMode(lineRequest, rawMaterial, company, purchaseTaxMode);",
+                "enforcePurchaseTaxContract(purchaseTaxMode, providedTaxAmount, hasTaxableLines);",
+                "\"Purchase invoice cannot mix GST and non-GST materials\"");
     }
 }
