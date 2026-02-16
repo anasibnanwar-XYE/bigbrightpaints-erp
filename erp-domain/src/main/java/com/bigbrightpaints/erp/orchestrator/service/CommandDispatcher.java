@@ -8,6 +8,7 @@ import com.bigbrightpaints.erp.orchestrator.dto.PayrollRunRequest;
 import com.bigbrightpaints.erp.orchestrator.event.DomainEvent;
 import com.bigbrightpaints.erp.orchestrator.exception.OrchestratorFeatureDisabledException;
 import com.bigbrightpaints.erp.orchestrator.policy.PolicyEnforcer;
+import com.bigbrightpaints.erp.orchestrator.repository.OrchestratorCommand;
 import com.bigbrightpaints.erp.orchestrator.workflow.WorkflowService;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.InventoryReservationResult;
 import java.math.BigDecimal;
@@ -183,13 +184,7 @@ public class CommandDispatcher {
                     "Orchestrator factory dispatch is disabled (CODE-RED).",
                     "/api/v1/factory");
         }
-        if (request == null || request.postingAmount() == null
-                || request.postingAmount().compareTo(BigDecimal.ZERO) <= 0) {
-            IllegalArgumentException ex =
-                    new IllegalArgumentException("Posting amount must be greater than zero for dispatch");
-            idempotencyService.markFailed(lease.command(), ex);
-            throw ex;
-        }
+        ensurePositivePostingAmount(lease.command(), request != null ? request.postingAmount() : null, "dispatch");
         return executeWithLease(lease, () -> {
             String traceId = lease.traceId();
             integrationCoordinator.updateProductionStatus(request.batchId(), companyId);
@@ -239,13 +234,7 @@ public class CommandDispatcher {
                     "Orchestrator payroll run is disabled (CODE-RED).",
                     "/api/v1/payroll/runs");
         }
-        if (request == null || request.postingAmount() == null
-                || request.postingAmount().compareTo(BigDecimal.ZERO) <= 0) {
-            IllegalArgumentException ex =
-                    new IllegalArgumentException("Posting amount must be greater than zero for payroll");
-            idempotencyService.markFailed(lease.command(), ex);
-            throw ex;
-        }
+        ensurePositivePostingAmount(lease.command(), request != null ? request.postingAmount() : null, "payroll");
         return executeWithLease(lease, () -> {
             String traceId = lease.traceId();
             integrationCoordinator.syncEmployees(companyId);
@@ -354,6 +343,18 @@ public class CommandDispatcher {
             idempotencyService.markFailed(lease.command(), ex);
             throw ex;
         }
+    }
+
+    private void ensurePositivePostingAmount(OrchestratorCommand command,
+                                             BigDecimal postingAmount,
+                                             String operation) {
+        if (postingAmount != null && postingAmount.compareTo(BigDecimal.ZERO) > 0) {
+            return;
+        }
+        IllegalArgumentException ex =
+                new IllegalArgumentException("Posting amount must be greater than zero for " + operation);
+        idempotencyService.markFailed(command, ex);
+        throw ex;
     }
 
     @FunctionalInterface
