@@ -2,11 +2,12 @@ ticket_id: TKT-ERP-STAGE-029
 title: ERP Staging Batch 29
 goal: Sync Stage-028 evidence into slice branches for merge eligibility
 priority: high
-status: blocked
+status: canceled
 base_branch: async-loop-predeploy-audit
 worktree_root: /home/realnigga/Desktop/orchestrator_erp_worktrees/_tmp_orch_cleanrepo_worktrees
 created_at: '2026-02-17T06:00:50+00:00'
-updated_at: '2026-02-17T06:37:53+00:00'
+updated_at: '2026-02-17T23:18:00+00:00'
+cancellation_reason: superseded by TKT-ERP-STAGE-030 merge on harness-engineering-orchestrator; original Stage-029 base branch remained stale and non-mergeable
 r3_required: true
 orchestrator_authority:
   r1: orchestrator
@@ -37,7 +38,7 @@ slices:
   required_checks:
   - bash ci/check-architecture.sh
   - bash ci/check-enterprise-policy.sh
-  status: pending_review
+  status: canceled
   objective: Sync Stage-028 evidence into slice branches for merge eligibility
   workflow_upstream_slices: []
   workflow_downstream_slices: []
@@ -62,7 +63,7 @@ slices:
   required_checks:
   - bash ci/check-architecture.sh
   - cd erp-domain && mvn -B -ntp test
-  status: checks_failed
+  status: canceled
   objective: Sync Stage-028 evidence into slice branches for merge eligibility
   workflow_upstream_slices: []
   workflow_downstream_slices: []
@@ -86,7 +87,7 @@ slices:
   worktree_path: /home/realnigga/Desktop/orchestrator_erp_worktrees/_tmp_orch_cleanrepo_worktrees/TKT-ERP-STAGE-029/repo-cartographer-v2
   required_checks:
   - bash ci/lint-knowledgebase.sh
-  status: pending_review
+  status: canceled
   objective: Sync Stage-028 evidence into slice branches for merge eligibility
   workflow_upstream_slices: []
   workflow_downstream_slices: []

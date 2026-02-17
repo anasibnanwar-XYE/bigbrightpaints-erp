@@ -49,8 +49,8 @@ execution_workflow:
   codex_exec:
     require_explicit_model_and_reasoning: true
     default_model: gpt-5.3-codex
-    command_template: codex exec -m gpt-5.3-codex -c model_reasoning_effort="<high|medium|low|minimal>" --dangerously-bypass-approvals-and-sandbox
-    canonical_full_access_command: codex exec -m gpt-5.3-codex -c model_reasoning_effort="<high|medium|low|minimal>" --dangerously-bypass-approvals-and-sandbox
+    command_template: codex exec -m gpt-5.3-codex -c model_reasoning_effort="<xhigh|high|medium|low|minimal>" --dangerously-bypass-approvals-and-sandbox
+    canonical_full_access_command: codex exec -m gpt-5.3-codex -c model_reasoning_effort="<xhigh|high|medium|low|minimal>" --dangerously-bypass-approvals-and-sandbox
     full_access_flag: --dangerously-bypass-approvals-and-sandbox
     cli_help_note: codex exec --help lists canonical full-access flag; --yolo is compatibility alias only
     compatibility_aliases:

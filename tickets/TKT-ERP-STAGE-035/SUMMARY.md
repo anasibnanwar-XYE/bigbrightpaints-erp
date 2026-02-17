@@ -3,17 +3,17 @@
 - title: Section 14.3 Full Anchor Gate Closure
 - goal: Run full ledger gate set on one SHA with fixed release anchor and record immutable evidence
 - priority: high
-- status: blocked
+- status: canceled
 - base_branch: async-loop-predeploy-audit
 - created_at: 2026-02-17T09:29:46+00:00
-- updated_at: 2026-02-17T09:31:30Z
+- updated_at: 2026-02-17T23:18:00+00:00
 
 ## Slice Board
 
 | Slice | Agent | Lane | Status | Branch | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| SLICE-01 | release-ops | w1 | blocked | `tickets/tkt-erp-stage-035/release-ops` | `gate_fast` fail-closed: missing `TS_P2PPurchaseAuditTrailRepositoryCompatibilityTest` in test catalog on stale base branch. |
-| SLICE-02 | repo-cartographer | w2 | blocked | `tickets/tkt-erp-stage-035/repo-cartographer` | docs lint failed on pre-existing missing links in stale base branch snapshot. |
+| SLICE-01 | release-ops | w1 | canceled | `tickets/tkt-erp-stage-035/release-ops` | `gate_fast` fail-closed: missing `TS_P2PPurchaseAuditTrailRepositoryCompatibilityTest` in test catalog on stale base branch. |
+| SLICE-02 | repo-cartographer | w2 | canceled | `tickets/tkt-erp-stage-035/repo-cartographer` | docs lint failed on pre-existing missing links in stale base branch snapshot. |
 
 ## Blocker Root Cause
 
@@ -24,6 +24,12 @@
 
 - Ticket superseded by follow-up ticket on correct base branch (`harness-engineering-orchestrator`).
 - No code from stage-035 slices is eligible for merge.
+
+## Closure Evidence
+
+- `tickets/TKT-ERP-STAGE-035/reports/blocker-20260217-base-branch-mismatch.md`
+- `tickets/TKT-ERP-STAGE-035/reports/closure-20260217-superseded-by-stage-036.md`
+- `tickets/TKT-ERP-STAGE-036/reports/verify-20260217-123457.md`
 
 ## Operator Commands
 

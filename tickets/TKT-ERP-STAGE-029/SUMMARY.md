@@ -3,18 +3,29 @@
 - title: ERP Staging Batch 29
 - goal: Sync Stage-028 evidence into slice branches for merge eligibility
 - priority: high
-- status: blocked
+- status: canceled
 - base_branch: async-loop-predeploy-audit
 - created_at: 2026-02-17T06:00:50+00:00
-- updated_at: 2026-02-17T06:37:53+00:00
+- updated_at: 2026-02-17T23:18:00+00:00
 
 ## Slice Board
 
 | Slice | Agent | Lane | Status | Branch |
 | --- | --- | --- | --- | --- |
-| SLICE-01 | orchestrator | w1 | pending_review | `tickets/tkt-erp-stage-029/orchestrator-v2` |
-| SLICE-02 | refactor-techdebt-gc | w2 | checks_failed | `tickets/tkt-erp-stage-029/refactor-techdebt-gc-v2` |
-| SLICE-03 | repo-cartographer | w3 | pending_review | `tickets/tkt-erp-stage-029/repo-cartographer-v2` |
+| SLICE-01 | orchestrator | w1 | canceled | `tickets/tkt-erp-stage-029/orchestrator-v2` |
+| SLICE-02 | refactor-techdebt-gc | w2 | canceled | `tickets/tkt-erp-stage-029/refactor-techdebt-gc-v2` |
+| SLICE-03 | repo-cartographer | w3 | canceled | `tickets/tkt-erp-stage-029/repo-cartographer-v2` |
+
+## Closure Decision
+
+- Stage-029 is administratively canceled as superseded work.
+- Root cause: worktrees were bootstrapped from stale base `async-loop-predeploy-audit`; slice evidence was not merge-eligible for the active integration train.
+- Replacement closure was completed in `TKT-ERP-STAGE-030` on `harness-engineering-orchestrator` with strict-lane green proof.
+
+## Closure Evidence
+
+- `tickets/TKT-ERP-STAGE-029/reports/closure-20260217-superseded-by-stage-030.md`
+- `tickets/TKT-ERP-STAGE-030/reports/verify-20260217-152522.md`
 
 ## Operator Commands
 

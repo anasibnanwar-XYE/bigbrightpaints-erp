@@ -5,3 +5,4 @@
 - `2026-02-17T06:16:40+00:00` verify run completed (merge_mode=off)
 - `2026-02-17T06:18:33+00:00` dispatch command block regenerated
 - `2026-02-17T06:37:53+00:00` verify run completed (merge_mode=off)
+- `2026-02-17T23:18:00+00:00` ticket canceled as superseded by `TKT-ERP-STAGE-030`; stale-base branch evidence archived and non-mergeable slices retired
