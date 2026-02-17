@@ -7,9 +7,13 @@ TRUTH_TEST_ROOT="$ROOT_DIR/erp-domain/src/test/java/com/bigbrightpaints/erp/trut
 rm -rf "$ARTIFACT_DIR"
 mkdir -p "$ARTIFACT_DIR"
 GATE_START_UTC="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-RELEASE_SHA="unknown"
-if resolved_sha="$(git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null)"; then
+RELEASE_SHA="${RELEASE_SHA:-}"
+if [[ -z "$RELEASE_SHA" ]] && resolved_sha="$(git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null)"; then
   RELEASE_SHA="$resolved_sha"
+fi
+if [[ -z "$RELEASE_SHA" || "$RELEASE_SHA" == "unknown" ]]; then
+  echo "[gate-reconciliation] ERROR: unable to resolve release SHA; set RELEASE_SHA explicitly or run within a git checkout with HEAD available" >&2
+  exit 1
 fi
 TRACEABILITY_FILE="$ARTIFACT_DIR/reconciliation-gate-traceability.json"
 
