@@ -1,5 +1,8 @@
 package com.bigbrightpaints.erp.truthsuite.periodclose;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import com.bigbrightpaints.erp.truthsuite.support.TruthSuiteFileAssert;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -20,6 +23,21 @@ class TS_PeriodCloseAtomicSnapshotTest {
                 "periodCloseHook.onPeriodCloseLocked(company, period);",
                 "snapshotService.captureSnapshot(company, period, user);",
                 "period.setStatus(AccountingPeriodStatus.CLOSED);");
+    }
+
+    @Test
+    void repeatCloseOnClosedPeriodReturnsWithoutSnapshotRecapture() {
+        String content = TruthSuiteFileAssert.read(PERIOD_SERVICE);
+        String guard = "if (period.getStatus() == AccountingPeriodStatus.CLOSED) {";
+        int start = content.indexOf(guard);
+        assertTrue(start >= 0, "Closed-period idempotency guard must exist in closePeriod");
+        int end = content.indexOf('}', start);
+        assertTrue(end > start, "Closed-period guard block must be syntactically complete");
+        String closedBranch = content.substring(start, end + 1);
+        assertTrue(closedBranch.contains("return toDto(period);"),
+                "Closed-period guard must short-circuit to DTO return");
+        assertFalse(closedBranch.contains("snapshotService.captureSnapshot"),
+                "Closed-period guard must not recapture snapshot on repeated close");
     }
 
     @Test

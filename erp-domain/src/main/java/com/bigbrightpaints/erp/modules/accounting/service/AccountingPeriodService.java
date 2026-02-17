@@ -121,7 +121,6 @@ public class AccountingPeriodService {
                 .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
                         "Accounting period not found"));
         if (period.getStatus() == AccountingPeriodStatus.CLOSED) {
-            snapshotService.captureSnapshot(company, period, resolveCurrentUsername());
             return toDto(period);
         }
         String note = request != null && StringUtils.hasText(request.note()) ? request.note().trim() : null;

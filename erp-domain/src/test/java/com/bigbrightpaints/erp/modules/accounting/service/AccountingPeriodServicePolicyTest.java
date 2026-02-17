@@ -35,6 +35,9 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -191,6 +194,19 @@ class AccountingPeriodServicePolicyTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Checklist controls unresolved for this period")
                 .hasMessageContaining("inventoryReconciled");
+    }
+
+    @Test
+    void closePeriod_whenAlreadyClosed_isIdempotentWithoutSnapshotRecapture() {
+        Company company = company(1L, "POLICY");
+        AccountingPeriod period = openPeriod(company, 2026, 2);
+        period.setStatus(AccountingPeriodStatus.CLOSED);
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(accountingPeriodRepository.lockByCompanyAndId(company, 14L)).thenReturn(Optional.of(period));
+
+        assertThat(service.closePeriod(14L, new AccountingPeriodCloseRequest(true, "repeat close")).status())
+                .isEqualTo("CLOSED");
+        verify(snapshotService, never()).captureSnapshot(any(), any(), anyString());
     }
 
     @Test
