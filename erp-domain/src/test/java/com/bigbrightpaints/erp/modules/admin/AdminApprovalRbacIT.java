@@ -95,14 +95,14 @@ class AdminApprovalRbacIT extends AbstractIntegrationTest {
         ResponseEntity<Map> salesApprove = rest.exchange(
                 "/api/v1/sales/credit-requests/" + approveId + "/approve",
                 HttpMethod.POST,
-                new HttpEntity<>(null, salesHeaders),
+                new HttpEntity<>(Map.of("reason", "RBAC guard validation"), salesHeaders),
                 Map.class);
         assertThat(salesApprove.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
 
         ResponseEntity<Map> accountingApprove = rest.exchange(
                 "/api/v1/sales/credit-requests/" + approveId + "/approve",
                 HttpMethod.POST,
-                new HttpEntity<>(null, accountingHeaders),
+                new HttpEntity<>(Map.of("reason", "Accounting approval"), accountingHeaders),
                 Map.class);
         assertThat(accountingApprove.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(extractStatus(accountingApprove)).isEqualTo("APPROVED");
@@ -110,14 +110,14 @@ class AdminApprovalRbacIT extends AbstractIntegrationTest {
         ResponseEntity<Map> salesReject = rest.exchange(
                 "/api/v1/sales/credit-requests/" + rejectId + "/reject",
                 HttpMethod.POST,
-                new HttpEntity<>(null, salesHeaders),
+                new HttpEntity<>(Map.of("reason", "RBAC guard validation"), salesHeaders),
                 Map.class);
         assertThat(salesReject.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
 
         ResponseEntity<Map> adminReject = rest.exchange(
                 "/api/v1/sales/credit-requests/" + rejectId + "/reject",
                 HttpMethod.POST,
-                new HttpEntity<>(null, adminHeaders),
+                new HttpEntity<>(Map.of("reason", "Admin rejection"), adminHeaders),
                 Map.class);
         assertThat(adminReject.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(extractStatus(adminReject)).isEqualTo("REJECTED");
