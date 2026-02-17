@@ -1002,7 +1002,7 @@ class AccountingServiceTest {
                 .containsEntry(IntegrationFailureMetadataSchema.KEY_ALERT_ROUTING_VERSION, "ACCOUNTING_EVENT_TRAIL_V1")
                 .containsEntry(IntegrationFailureMetadataSchema.KEY_ALERT_ROUTE, "SEV3_TICKET")
                 .doesNotContainKey("error");
-        verify(auditService, never()).logSuccess(eq(AuditEvent.JOURNAL_ENTRY_POSTED), any());
+        verify(auditService).logSuccess(eq(AuditEvent.JOURNAL_ENTRY_POSTED), any());
     }
 
     @Test
