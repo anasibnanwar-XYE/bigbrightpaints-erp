@@ -35,7 +35,8 @@ class TS_PeriodCloseAtomicSnapshotTest {
     void reopenUsesCanonicalReverseBoundaryAndDropsSnapshot() {
         TruthSuiteFileAssert.assertContains(
                 PERIOD_SERVICE,
-                ".ifPresent(closing -> reverseClosingJournalIfNeeded(closing, period, request.reason()));",
+                "String reason = request.reason().trim();",
+                ".ifPresent(closing -> reverseClosingJournalIfNeeded(closing, period, reason));",
                 "snapshotService.deleteSnapshotForPeriod(company, period);",
                 "accountingFacade.reverseClosingEntryForPeriodReopen(closing, period, reason);");
     }

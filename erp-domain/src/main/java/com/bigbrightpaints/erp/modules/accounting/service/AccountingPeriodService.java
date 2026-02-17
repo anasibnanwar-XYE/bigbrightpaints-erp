@@ -215,15 +215,16 @@ public class AccountingPeriodService {
         if (request == null || !StringUtils.hasText(request.reason())) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Reopen reason is required");
         }
+        String reason = request.reason().trim();
         Instant now = CompanyTime.now(company);
         period.setStatus(AccountingPeriodStatus.OPEN);
         period.setReopenedAt(now);
         period.setReopenedBy(resolveCurrentUsername());
-        period.setReopenReason(request != null ? request.reason() : null);
+        period.setReopenReason(reason);
         // Auto-reverse closing journal if present
         if (period.getClosingJournalEntryId() != null) {
             journalEntryRepository.findByCompanyAndId(company, period.getClosingJournalEntryId())
-                    .ifPresent(closing -> reverseClosingJournalIfNeeded(closing, period, request.reason()));
+                    .ifPresent(closing -> reverseClosingJournalIfNeeded(closing, period, reason));
             period.setClosingJournalEntryId(null);
         }
         snapshotService.deleteSnapshotForPeriod(company, period);

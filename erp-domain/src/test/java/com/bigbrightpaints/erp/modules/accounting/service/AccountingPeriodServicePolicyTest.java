@@ -7,10 +7,12 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriod;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodStatus;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodCloseRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodLockRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodReopenRequest;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRun;
@@ -33,7 +35,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -52,6 +54,8 @@ class AccountingPeriodServicePolicyTest {
     @Mock private GoodsReceiptRepository goodsReceiptRepository;
     @Mock private RawMaterialPurchaseRepository rawMaterialPurchaseRepository;
     @Mock private PayrollRunRepository payrollRunRepository;
+    @Mock private ObjectProvider<AccountingFacade> accountingFacadeProvider;
+    @Mock private AccountingFacade accountingFacade;
     @Mock private PeriodCloseHook periodCloseHook;
     @Mock private AccountingPeriodSnapshotService snapshotService;
 
@@ -59,8 +63,6 @@ class AccountingPeriodServicePolicyTest {
 
     @BeforeEach
     void setUp() {
-        @SuppressWarnings("unchecked")
-        ObjectProvider<AccountingFacade> accountingFacadeProvider = mock(ObjectProvider.class);
         service = new AccountingPeriodService(
                 accountingPeriodRepository,
                 companyContextService,
@@ -232,6 +234,40 @@ class AccountingPeriodServicePolicyTest {
         assertThatThrownBy(() -> service.closePeriod(11L, new AccountingPeriodCloseRequest(false, "period close")))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("Checklist controls unresolved for this period: inventoryReconciled, arReconciled, apReconciled");
+    }
+
+    @Test
+    void reopenPeriod_requiresReasonForClosedPeriod() {
+        Company company = company(1L, "POLICY");
+        AccountingPeriod period = openPeriod(company, 2026, 2);
+        period.setStatus(AccountingPeriodStatus.CLOSED);
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(accountingPeriodRepository.lockByCompanyAndId(company, 12L)).thenReturn(Optional.of(period));
+
+        assertThatThrownBy(() -> service.reopenPeriod(12L, new AccountingPeriodReopenRequest("   ")))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Reopen reason is required");
+    }
+
+    @Test
+    void reopenPeriod_trimsReasonAndUsesCanonicalReasonForReversal() {
+        Company company = company(1L, "POLICY");
+        AccountingPeriod period = openPeriod(company, 2026, 2);
+        period.setStatus(AccountingPeriodStatus.CLOSED);
+        period.setClosingJournalEntryId(900L);
+        JournalEntry closing = new JournalEntry();
+        closing.setStatus("POSTED");
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(accountingPeriodRepository.lockByCompanyAndId(company, 13L)).thenReturn(Optional.of(period));
+        when(journalEntryRepository.findByCompanyAndId(company, 900L)).thenReturn(Optional.of(closing));
+        when(accountingPeriodRepository.save(period)).thenReturn(period);
+        when(accountingFacadeProvider.getObject()).thenReturn(accountingFacade);
+
+        assertThat(service.reopenPeriod(13L, new AccountingPeriodReopenRequest("  reopen adjustment  ")).status())
+                .isEqualTo("OPEN");
+        assertThat(period.getReopenReason()).isEqualTo("reopen adjustment");
+        assertThat(period.getClosingJournalEntryId()).isNull();
+        verify(accountingFacade).reverseClosingEntryForPeriodReopen(closing, period, "reopen adjustment");
     }
 
     private Company company(Long id, String code) {

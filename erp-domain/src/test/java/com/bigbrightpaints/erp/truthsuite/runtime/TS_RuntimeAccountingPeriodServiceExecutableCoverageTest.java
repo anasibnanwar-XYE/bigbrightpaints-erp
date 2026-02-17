@@ -12,9 +12,11 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriod;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodStatus;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
+import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodReopenRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodService;
@@ -212,6 +214,65 @@ class TS_RuntimeAccountingPeriodServiceExecutableCoverageTest {
 
         verify(accountingFacadeProvider).getObject();
         verify(accountingFacade).reverseClosingEntryForPeriodReopen(closing, period, "reopen adjustment");
+    }
+
+    @Test
+    void reopenPeriod_trimsReasonBeforePersistAndReverse() {
+        AccountingPeriodRepository periodRepository = mock(AccountingPeriodRepository.class);
+        CompanyContextService companyContextService = mock(CompanyContextService.class);
+        JournalEntryRepository journalEntryRepository = mock(JournalEntryRepository.class);
+        CompanyEntityLookup companyEntityLookup = mock(CompanyEntityLookup.class);
+        JournalLineRepository journalLineRepository = mock(JournalLineRepository.class);
+        AccountRepository accountRepository = mock(AccountRepository.class);
+        CompanyClock companyClock = mock(CompanyClock.class);
+        ReportService reportService = mock(ReportService.class);
+        ReconciliationService reconciliationService = mock(ReconciliationService.class);
+        InvoiceRepository invoiceRepository = mock(InvoiceRepository.class);
+        GoodsReceiptRepository goodsReceiptRepository = mock(GoodsReceiptRepository.class);
+        RawMaterialPurchaseRepository rawMaterialPurchaseRepository = mock(RawMaterialPurchaseRepository.class);
+        PayrollRunRepository payrollRunRepository = mock(PayrollRunRepository.class);
+        AccountingFacade accountingFacade = mock(AccountingFacade.class);
+        @SuppressWarnings("unchecked")
+        ObjectProvider<AccountingFacade> accountingFacadeProvider = mock(ObjectProvider.class);
+        when(accountingFacadeProvider.getObject()).thenReturn(accountingFacade);
+        PeriodCloseHook periodCloseHook = mock(PeriodCloseHook.class);
+        AccountingPeriodSnapshotService snapshotService = mock(AccountingPeriodSnapshotService.class);
+
+        AccountingPeriodService service = new AccountingPeriodService(
+                periodRepository,
+                companyContextService,
+                journalEntryRepository,
+                companyEntityLookup,
+                journalLineRepository,
+                accountRepository,
+                companyClock,
+                reportService,
+                reconciliationService,
+                invoiceRepository,
+                goodsReceiptRepository,
+                rawMaterialPurchaseRepository,
+                payrollRunRepository,
+                accountingFacadeProvider,
+                periodCloseHook,
+                snapshotService
+        );
+
+        Company company = company(99L, "TRUTH");
+        AccountingPeriod period = period(company, 2026, 2);
+        period.setStatus(AccountingPeriodStatus.CLOSED);
+        period.setClosingJournalEntryId(7001L);
+        JournalEntry closing = new JournalEntry();
+        closing.setStatus("POSTED");
+
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(periodRepository.lockByCompanyAndId(company, 7001L)).thenReturn(Optional.of(period));
+        when(journalEntryRepository.findByCompanyAndId(company, 7001L)).thenReturn(Optional.of(closing));
+        when(periodRepository.save(period)).thenReturn(period);
+
+        service.reopenPeriod(7001L, new AccountingPeriodReopenRequest("  runtime reopen reason  "));
+
+        assertThat(period.getReopenReason()).isEqualTo("runtime reopen reason");
+        verify(accountingFacade).reverseClosingEntryForPeriodReopen(closing, period, "runtime reopen reason");
     }
 
     private Company company(Long id, String code) {
