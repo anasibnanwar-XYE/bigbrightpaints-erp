@@ -262,6 +262,7 @@ Acceptance criteria:
    - `bash scripts/gate_release.sh`
 4. Store command outputs and artifact paths in `asyncloop`.
 5. Rotate `RELEASE_ANCHOR_SHA` only after all required ledger gates pass and evidence is recorded.
+6. Operators must mirror the detailed checklist in `docs/ASYNC_LOOP_OPERATIONS.md#section-14.3-final-gate-protocol` so the runbook and plan stay lockstep.
 
 ### 14.4 Reviewer queue saturation checkpoint
 When reviewer-agent capacity is externally saturated:

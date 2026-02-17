@@ -34,7 +34,20 @@ to move the ERP toward staging/predeployment readiness.
 - After a completed slice, immediately add a new concrete slice.
 - Orchestrator routing/review must follow `agents/orchestrator-layer.yaml`.
 - Decisions must be proof-backed (tests/guards/traces), not assumption-backed.
-- Scope priority source is `docs/ERP_STAGING_MASTER_PLAN.md`.
+- Scope priority source is `docs/system-map/Goal/ERP_STAGING_MASTER_PLAN.md`.
+
+## Section 14.3 Final Gate Protocol
+When closing the async-loop final ledger gate (ERP Staging Plan Section 14.3):
+1. Pin an immutable `RELEASE_ANCHOR_SHA` before the active hardening run.
+2. Run strict fast-lane validation with the anchor:
+   - `DIFF_BASE=<RELEASE_ANCHOR_SHA> GATE_FAST_RELEASE_VALIDATION_MODE=true bash scripts/gate_fast.sh`
+3. Execute the remaining ledger gates on the same `HEAD`:
+   - `bash scripts/gate_core.sh`
+   - `bash scripts/gate_reconciliation.sh`
+   - `bash scripts/gate_release.sh`
+4. Store every gate command output + artifact path inside `asyncloop` for traceability.
+5. Rotate `RELEASE_ANCHOR_SHA` only after all ledger gates pass and evidence is recorded.
+
 
 ## Execution Loop (One Iteration)
 1. Pick highest-risk `in_progress` or top `ready` slice from `asyncloop`.
