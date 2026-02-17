@@ -16,6 +16,14 @@ if resolved_sha="$(git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null)"; then
 fi
 TRACEABILITY_FILE="$ARTIFACT_DIR/release-gate-traceability.json"
 
+# Keep local release matrix runs deterministic on integration worktrees while
+# still honoring explicit PG* overrides used by CI/jobs.
+RELEASE_MATRIX_PGHOST="${RELEASE_MATRIX_PGHOST:-${PGHOST:-127.0.0.1}}"
+RELEASE_MATRIX_PGPORT="${RELEASE_MATRIX_PGPORT:-${PGPORT:-55432}}"
+RELEASE_MATRIX_PGUSER="${RELEASE_MATRIX_PGUSER:-${PGUSER:-${SPRING_DATASOURCE_USERNAME:-erp}}}"
+RELEASE_MATRIX_PGPASSWORD="${RELEASE_MATRIX_PGPASSWORD:-${PGPASSWORD:-${SPRING_DATASOURCE_PASSWORD:-erp}}}"
+RELEASE_MATRIX_PGDATABASE="${RELEASE_MATRIX_PGDATABASE:-${PGDATABASE:-postgres}}"
+
 echo "[gate-release] validate catalog"
 python3 "$ROOT_DIR/scripts/validate_test_catalog.py" \
   --catalog "$ROOT_DIR/docs/CODE-RED/confidence-suite/TEST_CATALOG.json" \
@@ -183,7 +191,14 @@ echo "[gate-release] truth suite strict mode"
 )
 
 echo "[gate-release] fresh + upgrade migration matrix"
-MIGRATION_SET="$MIGRATION_SET" bash "$ROOT_DIR/scripts/release_migration_matrix.sh" --migration-set v2 --artifact-dir "$ARTIFACT_DIR"
+echo "[gate-release] release matrix db target: ${RELEASE_MATRIX_PGHOST}:${RELEASE_MATRIX_PGPORT}/${RELEASE_MATRIX_PGDATABASE} (user=${RELEASE_MATRIX_PGUSER})"
+MIGRATION_SET="$MIGRATION_SET" \
+PGHOST="$RELEASE_MATRIX_PGHOST" \
+PGPORT="$RELEASE_MATRIX_PGPORT" \
+PGUSER="$RELEASE_MATRIX_PGUSER" \
+PGPASSWORD="$RELEASE_MATRIX_PGPASSWORD" \
+PGDATABASE="$RELEASE_MATRIX_PGDATABASE" \
+bash "$ROOT_DIR/scripts/release_migration_matrix.sh" --migration-set v2 --artifact-dir "$ARTIFACT_DIR"
 
 if [[ "$TRACEABILITY_STRICT_MODE" == "true" ]]; then
   echo "[gate-release] verify release evidence artifacts"
