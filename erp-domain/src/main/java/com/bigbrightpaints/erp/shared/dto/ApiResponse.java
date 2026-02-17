@@ -12,7 +12,7 @@ public record ApiResponse<T>(
         Instant timestamp
 ) {
     public static <T> ApiResponse<T> success(String message, T data) {
-        return new ApiResponse<>(true, message, data, CompanyTime.now());
+        return of(true, message, data);
     }
 
     public static <T> ApiResponse<T> success(T data) {
@@ -20,10 +20,14 @@ public record ApiResponse<T>(
     }
 
     public static <T> ApiResponse<T> failure(String message) {
-        return new ApiResponse<>(false, message, null, CompanyTime.now());
+        return failure(message, null);
     }
 
     public static <T> ApiResponse<T> failure(String message, T data) {
-        return new ApiResponse<>(false, message, data, CompanyTime.now());
+        return of(false, message, data);
+    }
+
+    private static <T> ApiResponse<T> of(boolean success, String message, T data) {
+        return new ApiResponse<>(success, message, data, CompanyTime.now());
     }
 }
