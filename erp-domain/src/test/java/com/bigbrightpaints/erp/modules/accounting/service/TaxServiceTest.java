@@ -94,6 +94,75 @@ class TaxServiceTest {
     }
 
     @Test
+    void generateGstReturn_routesLiabilitySignalWithoutDoubleRoundingAcrossAccounts() {
+        YearMonth period = YearMonth.of(2024, 6);
+        LocalDate start = period.atDay(1);
+        LocalDate end = period.atEndOfMonth();
+
+        when(companyAccountingSettingsService.requireTaxAccounts())
+                .thenReturn(new CompanyAccountingSettingsService.TaxAccountConfiguration(1L, 2L, 3L));
+
+        // Output net: +0.005 liability signal (credit-heavy).
+        when(journalLineRepository.findLinesForAccountBetween(company, 2L, start, end))
+                .thenReturn(List.of(line(BigDecimal.ZERO, new BigDecimal("0.005"))));
+        // Input net: -0.005 contra signal to liability (credit-heavy for input account).
+        when(journalLineRepository.findLinesForAccountBetween(company, 1L, start, end))
+                .thenReturn(List.of(line(BigDecimal.ZERO, new BigDecimal("0.005"))));
+
+        GstReturnDto dto = taxService.generateGstReturn(period);
+
+        assertThat(dto.getOutputTax()).isEqualByComparingTo("0.01");
+        assertThat(dto.getInputTax()).isEqualByComparingTo("0.00");
+        assertThat(dto.getNetPayable()).isEqualByComparingTo("0.01");
+    }
+
+    @Test
+    void generateGstReturn_routesClaimabilitySignalWithoutDoubleRoundingAcrossAccounts() {
+        YearMonth period = YearMonth.of(2024, 7);
+        LocalDate start = period.atDay(1);
+        LocalDate end = period.atEndOfMonth();
+
+        when(companyAccountingSettingsService.requireTaxAccounts())
+                .thenReturn(new CompanyAccountingSettingsService.TaxAccountConfiguration(1L, 2L, 3L));
+
+        // Output net: -0.005 contra signal to claimability (debit-heavy for output account).
+        when(journalLineRepository.findLinesForAccountBetween(company, 2L, start, end))
+                .thenReturn(List.of(line(new BigDecimal("0.005"), BigDecimal.ZERO)));
+        // Input net: +0.005 claimability signal (debit-heavy).
+        when(journalLineRepository.findLinesForAccountBetween(company, 1L, start, end))
+                .thenReturn(List.of(line(new BigDecimal("0.005"), BigDecimal.ZERO)));
+
+        GstReturnDto dto = taxService.generateGstReturn(period);
+
+        assertThat(dto.getOutputTax()).isEqualByComparingTo("0.00");
+        assertThat(dto.getInputTax()).isEqualByComparingTo("0.01");
+        assertThat(dto.getNetPayable()).isEqualByComparingTo("-0.01");
+    }
+
+    @Test
+    void generateGstReturn_routesContraBalancesToLiabilityAndClaimabilitySignals() {
+        YearMonth period = YearMonth.of(2024, 5);
+        LocalDate start = period.atDay(1);
+        LocalDate end = period.atEndOfMonth();
+
+        when(companyAccountingSettingsService.requireTaxAccounts())
+                .thenReturn(new CompanyAccountingSettingsService.TaxAccountConfiguration(1L, 2L, 3L));
+
+        // Output account net is debit-heavy (-20.00), which should be reflected as claimability.
+        when(journalLineRepository.findLinesForAccountBetween(company, 2L, start, end))
+                .thenReturn(List.of(line(new BigDecimal("120.00"), new BigDecimal("100.00"))));
+        // Input account net is credit-heavy (-15.00), which should be reflected as liability.
+        when(journalLineRepository.findLinesForAccountBetween(company, 1L, start, end))
+                .thenReturn(List.of(line(new BigDecimal("30.00"), new BigDecimal("45.00"))));
+
+        GstReturnDto dto = taxService.generateGstReturn(period);
+
+        assertThat(dto.getOutputTax()).isEqualByComparingTo("15.00");
+        assertThat(dto.getInputTax()).isEqualByComparingTo("20.00");
+        assertThat(dto.getNetPayable()).isEqualByComparingTo("-5.00");
+    }
+
+    @Test
     void generateGstReturn_nonGstModeWithNoGstAccounts_returnsZeroes() {
         YearMonth period = YearMonth.of(2024, 3);
         company.setDefaultGstRate(BigDecimal.ZERO);
