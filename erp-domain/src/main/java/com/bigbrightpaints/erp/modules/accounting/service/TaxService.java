@@ -60,8 +60,13 @@ public class TaxService {
 
         var taxConfig = companyAccountingSettingsService.requireTaxAccounts();
 
-        BigDecimal outputTax = MoneyUtils.roundCurrency(sumTax(company, taxConfig.outputTaxAccountId(), start, end, true));
-        BigDecimal inputTax = MoneyUtils.roundCurrency(sumTax(company, taxConfig.inputTaxAccountId(), start, end, false));
+        BigDecimal outputTaxBalance = sumTax(company, taxConfig.outputTaxAccountId(), start, end, true);
+        BigDecimal inputTaxBalance = sumTax(company, taxConfig.inputTaxAccountId(), start, end, false);
+
+        BigDecimal outputTax = MoneyUtils.roundCurrency(
+                positivePortion(outputTaxBalance).add(positivePortion(inputTaxBalance.negate())));
+        BigDecimal inputTax = MoneyUtils.roundCurrency(
+                positivePortion(inputTaxBalance).add(positivePortion(outputTaxBalance.negate())));
 
         return buildGstReturn(target, start, end, outputTax, inputTax);
     }
@@ -83,6 +88,10 @@ public class TaxService {
 
     private BigDecimal safe(BigDecimal value) {
         return value == null ? BigDecimal.ZERO : value;
+    }
+
+    private BigDecimal positivePortion(BigDecimal value) {
+        return value.compareTo(BigDecimal.ZERO) > 0 ? value : BigDecimal.ZERO;
     }
 
     private boolean isNonGstMode(Company company) {
