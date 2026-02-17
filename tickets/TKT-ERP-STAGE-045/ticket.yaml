@@ -2,11 +2,11 @@ ticket_id: TKT-ERP-STAGE-045
 title: Month-End Checklist Closed-Period Guard
 goal: Fail closed on checklist update API when accounting period is closed
 priority: high
-status: planned
+status: done
 base_branch: harness-engineering-orchestrator
 worktree_root: /home/realnigga/Desktop/orchestrator_erp_worktrees/_tmp_harness_integrate_worktrees
 created_at: '2026-02-17T11:56:26+00:00'
-updated_at: '2026-02-17T11:56:26+00:00'
+updated_at: '2026-02-17T12:45:04+00:00'
 r3_required: true
 orchestrator_authority:
   r1: orchestrator
@@ -34,7 +34,7 @@ slices:
   required_checks:
   - cd erp-domain && mvn -B -ntp -Dtest='*Accounting*' test
   - bash scripts/verify_local.sh
-  status: ready
+  status: merged
   objective: Fail closed on checklist update API when accounting period is closed
   workflow_upstream_slices: []
   workflow_downstream_slices: []
@@ -79,5 +79,5 @@ slices:
     in_ticket: false
 cross_workflow:
   model: workflow_agent_edges_v1
-  generated_at: '2026-02-17T11:56:26+00:00'
+  generated_at: '2026-02-17T12:34:03+00:00'
   in_ticket_edges: []
