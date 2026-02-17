@@ -8,11 +8,13 @@ TRUTH_TEST_ROOT="$ROOT_DIR/erp-domain/src/test/java/com/bigbrightpaints/erp/trut
 rm -rf "$ARTIFACT_DIR"
 mkdir -p "$ARTIFACT_DIR"
 GATE_START_UTC="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-RELEASE_SHA="unknown"
-TRACEABILITY_STRICT_MODE="false"
-if resolved_sha="$(git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null)"; then
+RELEASE_SHA="${RELEASE_SHA:-}"
+if [[ -z "$RELEASE_SHA" ]] && resolved_sha="$(git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null)"; then
   RELEASE_SHA="$resolved_sha"
-  TRACEABILITY_STRICT_MODE="true"
+fi
+if [[ -z "$RELEASE_SHA" || "$RELEASE_SHA" == "unknown" ]]; then
+  echo "[gate-release] ERROR: unable to resolve release SHA; set RELEASE_SHA explicitly or run within a git checkout with HEAD available" >&2
+  exit 1
 fi
 TRACEABILITY_FILE="$ARTIFACT_DIR/release-gate-traceability.json"
 
@@ -193,6 +195,7 @@ echo "[gate-release] truth suite strict mode"
 echo "[gate-release] fresh + upgrade migration matrix"
 echo "[gate-release] release matrix db target: ${RELEASE_MATRIX_PGHOST}:${RELEASE_MATRIX_PGPORT}/${RELEASE_MATRIX_PGDATABASE} (user=${RELEASE_MATRIX_PGUSER})"
 MIGRATION_SET="$MIGRATION_SET" \
+RELEASE_SHA="$RELEASE_SHA" \
 PGHOST="$RELEASE_MATRIX_PGHOST" \
 PGPORT="$RELEASE_MATRIX_PGPORT" \
 PGUSER="$RELEASE_MATRIX_PGUSER" \
@@ -200,24 +203,44 @@ PGPASSWORD="$RELEASE_MATRIX_PGPASSWORD" \
 PGDATABASE="$RELEASE_MATRIX_PGDATABASE" \
 bash "$ROOT_DIR/scripts/release_migration_matrix.sh" --migration-set v2 --artifact-dir "$ARTIFACT_DIR"
 
-if [[ "$TRACEABILITY_STRICT_MODE" == "true" ]]; then
-  echo "[gate-release] verify release evidence artifacts"
-  required_release_artifacts=(
-    "$ARTIFACT_DIR/migration-matrix.json"
-    "$ARTIFACT_DIR/predeploy-scans-fresh.txt"
-    "$ARTIFACT_DIR/predeploy-scans-upgrade-seed.txt"
-    "$ARTIFACT_DIR/predeploy-scans-upgrade.txt"
-    "$ARTIFACT_DIR/rollback-rehearsal-evidence.json"
-  )
-  for required_artifact in "${required_release_artifacts[@]}"; do
-    if [[ ! -f "$required_artifact" ]]; then
-      echo "[gate-release] missing required artifact: $required_artifact" >&2
-      exit 1
-    fi
-  done
-else
-  echo "[gate-release] traceability strict mode disabled (no git SHA context); skipping release artifact completeness enforcement"
-fi
+echo "[gate-release] verify release evidence artifacts"
+required_release_artifacts=(
+  "$ARTIFACT_DIR/migration-matrix.json"
+  "$ARTIFACT_DIR/predeploy-scans-fresh.txt"
+  "$ARTIFACT_DIR/predeploy-scans-upgrade-seed.txt"
+  "$ARTIFACT_DIR/predeploy-scans-upgrade.txt"
+  "$ARTIFACT_DIR/rollback-rehearsal-evidence.json"
+)
+for required_artifact in "${required_release_artifacts[@]}"; do
+  if [[ ! -f "$required_artifact" ]]; then
+    echo "[gate-release] missing required artifact: $required_artifact" >&2
+    exit 1
+  fi
+done
+
+echo "[gate-release] verify rollback rehearsal SHA parity"
+python3 - "$ARTIFACT_DIR/migration-matrix.json" "$ARTIFACT_DIR/rollback-rehearsal-evidence.json" "$RELEASE_SHA" <<'PY'
+import json
+import sys
+
+matrix_path, rollback_path, release_sha = sys.argv[1:4]
+
+with open(matrix_path, "r", encoding="utf-8") as handle:
+    matrix_payload = json.load(handle)
+with open(rollback_path, "r", encoding="utf-8") as handle:
+    rollback_payload = json.load(handle)
+
+matrix_sha = matrix_payload.get("release_sha")
+rollback_sha = rollback_payload.get("release_sha")
+if matrix_sha != release_sha:
+    raise SystemExit(
+        f"[gate-release] migration-matrix release_sha mismatch: expected {release_sha}, got {matrix_sha}"
+    )
+if rollback_sha != release_sha:
+    raise SystemExit(
+        f"[gate-release] rollback-rehearsal-evidence release_sha mismatch: expected {release_sha}, got {rollback_sha}"
+    )
+PY
 
 echo "[gate-release] build traceability manifest"
 python3 - "$ARTIFACT_DIR" "$MIGRATION_SET" "$GATE_START_UTC" "$RELEASE_SHA" <<'PY'

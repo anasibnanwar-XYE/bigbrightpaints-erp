@@ -15,6 +15,7 @@ Usage: bash scripts/release_migration_matrix.sh [--migration-set <v1|v2>] [--art
 
 Environment:
   MIGRATION_SET (default: v2)
+  RELEASE_SHA (defaults to git HEAD when available; required for strict parity)
   PGHOST, PGPORT, PGUSER, PGPASSWORD, PGDATABASE
   SPRING_DATASOURCE_USERNAME, SPRING_DATASOURCE_PASSWORD (used as fallback when PGUSER/PGPASSWORD are unset)
   RELEASE_DB_PREFIX (default: codered_release)
@@ -79,6 +80,14 @@ PGUSER="${PGUSER:-${SPRING_DATASOURCE_USERNAME:-erp}}"
 PGPASSWORD="${PGPASSWORD:-${SPRING_DATASOURCE_PASSWORD:-erp}}"
 PGDATABASE="${PGDATABASE:-postgres}"
 export PGHOST PGPORT PGUSER PGPASSWORD PGDATABASE
+RELEASE_SHA="${RELEASE_SHA:-}"
+if [[ -z "$RELEASE_SHA" ]] && resolved_sha="$(git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null)"; then
+  RELEASE_SHA="$resolved_sha"
+fi
+if [[ -z "$RELEASE_SHA" || "$RELEASE_SHA" == "unknown" ]]; then
+  echo "[release_migration_matrix] ERROR: unable to resolve release SHA; set RELEASE_SHA explicitly or run within a git checkout with HEAD available" >&2
+  exit 1
+fi
 
 mkdir -p "$ARTIFACT_DIR"
 
@@ -223,6 +232,7 @@ fi
 cat > "$ARTIFACT_DIR/migration-matrix.json" <<JSON
 {
   "migration_set": "${MIGRATION_SET}",
+  "release_sha": "${RELEASE_SHA}",
   "flyway_history_table": "${FLYWAY_HISTORY_TABLE}",
   "expected_count": ${expected_count},
   "expected_max_version": ${expected_max},
@@ -250,6 +260,7 @@ JSON
 cat > "$ARTIFACT_DIR/rollback-rehearsal-evidence.json" <<JSON
 {
   "migration_set": "${MIGRATION_SET}",
+  "release_sha": "${RELEASE_SHA}",
   "rehearsal": "upgrade-seed-rollback-window",
   "rollback_target_version": ${expected_prev},
   "rollback_target_expected_history_count": ${expected_prev_count},
