@@ -186,8 +186,6 @@ for module in hr purchasing inventory reports; do
     || fail "endpoint inventory summary missing required module row with non-zero path count: $module"
 done
 
-assert_portal_parity_contract
-
 for required in \
   "hr:/api/v1/hr/employees" \
   "purchasing:/api/v1/purchasing/purchase-orders" \
@@ -220,5 +218,7 @@ rg -q "Updated portal endpoint map and frontend handoff docs" "$GUARDRAIL_DOC" \
   || fail "scope guardrail doc must require portal-map + handoff updates for scope changes"
 rg -q 'Updated `?docs/endpoint-inventory\.md`? module mapping and examples' "$GUARDRAIL_DOC" \
   || fail "scope guardrail doc must require endpoint inventory updates for scope changes"
+
+assert_portal_parity_contract
 
 echo "[guard_accounting_portal_scope_contract] OK"

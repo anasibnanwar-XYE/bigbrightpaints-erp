@@ -9,6 +9,7 @@ HR, PURCHASING, INVENTORY, and REPORTS come under the Accounting portal in front
 Reference guardrail: `docs/ACCOUNTING_PORTAL_SCOPE_GUARDRAIL.md`
 
 Total scoped endpoints: **143**
+Count lock for parity checks: **143**
 
 ## M18-S9A Parity Closure (Endpoint Map vs Handoff)
 

@@ -231,6 +231,8 @@ class AccountingPortalScopeGuardScriptTest {
                 # Accounting Portal Endpoint Map
                 HR, PURCHASING, INVENTORY, and REPORTS come under the Accounting portal in frontend scope.
                 docs/ACCOUNTING_PORTAL_SCOPE_GUARDRAIL.md
+                Total scoped endpoints: **4**
+                Count lock for parity checks: **4**
                 ## Purchasing & Payables
                 ### purchasing-workflow-controller
                 ## Inventory & Costing
@@ -250,6 +252,8 @@ class AccountingPortalScopeGuardScriptTest {
         Files.writeString(handoffDoc, """
                 # Accounting Portal Frontend Handoff
                 HR, PURCHASING, INVENTORY, and REPORTS come under the Accounting portal in frontend scope.
+                Scoped endpoint count: **4**
+                Current handoff inventory total is **13**
                 ## Purchasing & Payables
                 ## Inventory & Costing
                 ## HR & Payroll
@@ -258,6 +262,15 @@ class AccountingPortalScopeGuardScriptTest {
                 | `finishedGoodGetStockSummary` | GET | `/api/v1/finished-goods/stock-summary` |
                 | `reportInventoryValuation` | GET | `/api/v1/reports/inventory-valuation` |
                 | `hrEmployees` | GET | `/api/v1/hr/employees` |
+                | `authGetMe` | GET | `/api/v1/auth/me` |
+                | `authProfileGet` | GET | `/api/v1/auth/profile` |
+                | `authProfileUpdate` | PUT | `/api/v1/auth/profile` |
+                | `authChangePassword` | POST | `/api/v1/auth/password/change` |
+                | `companiesList` | GET | `/api/v1/companies` |
+                | `companiesSwitch` | POST | `/api/v1/multi-company/companies/switch` |
+                | `authLogout` | POST | `/api/v1/auth/logout` |
+                | `salesListDealers` | GET | `/api/v1/sales/dealers` |
+                | `salesSearchDealers` | GET | `/api/v1/sales/dealers/search` |
                 """);
 
         Files.writeString(endpointInventoryDoc, """
