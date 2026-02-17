@@ -4,6 +4,7 @@ import com.bigbrightpaints.erp.modules.company.dto.CompanyDto;
 import com.bigbrightpaints.erp.modules.company.dto.CompanyLifecycleStateDto;
 import com.bigbrightpaints.erp.modules.company.dto.CompanyLifecycleStateRequest;
 import com.bigbrightpaints.erp.modules.company.dto.CompanyRequest;
+import com.bigbrightpaints.erp.modules.company.dto.CompanyTenantMetricsDto;
 import com.bigbrightpaints.erp.modules.company.service.CompanyService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import jakarta.validation.Valid;
@@ -46,6 +47,14 @@ public class CompanyController {
         return ResponseEntity.ok(ApiResponse.success(
                 "Company lifecycle state updated",
                 companyService.updateLifecycleState(id, request)));
+    }
+
+    @GetMapping("/{id}/tenant-metrics")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<CompanyTenantMetricsDto>> getTenantMetrics(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success(
+                "Company tenant metrics fetched",
+                companyService.getTenantMetrics(id)));
     }
 
     @PutMapping("/{id}")

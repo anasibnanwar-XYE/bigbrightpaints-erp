@@ -7,20 +7,27 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.bigbrightpaints.erp.core.audit.AuditService;
+import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.company.domain.CompanyLifecycleState;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.company.dto.CompanyDto;
 import com.bigbrightpaints.erp.modules.company.dto.CompanyRequest;
+import com.bigbrightpaints.erp.modules.company.dto.CompanyTenantMetricsDto;
 import java.math.BigDecimal;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
@@ -29,11 +36,22 @@ class CompanyServiceTest {
     @Mock
     private CompanyRepository repository;
 
+    @Mock
+    private AuditService auditService;
+
+    @Mock
+    private UserAccountRepository userAccountRepository;
+
     private CompanyService companyService;
 
     @BeforeEach
     void setUp() {
-        companyService = new CompanyService(repository);
+        companyService = new CompanyService(repository, auditService, userAccountRepository);
+    }
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
     }
 
     @Test
@@ -94,6 +112,37 @@ class CompanyServiceTest {
         verify(repository, never()).deleteById(anyLong());
     }
 
+    @Test
+    void getTenantMetrics_returnsMetricsForSuperAdmin() {
+        authenticateAs("ROLE_SUPER_ADMIN");
+        Company company = company(1L, "ACME");
+        company.setLifecycleState(CompanyLifecycleState.HOLD);
+        company.setLifecycleReason("compliance-review");
+        when(repository.findById(1L)).thenReturn(Optional.of(company));
+        when(userAccountRepository.countDistinctByCompanies_IdAndEnabledTrue(1L)).thenReturn(3L);
+
+        CompanyTenantMetricsDto metrics = companyService.getTenantMetrics(1L);
+
+        assertThat(metrics.companyId()).isEqualTo(1L);
+        assertThat(metrics.companyCode()).isEqualTo("ACME");
+        assertThat(metrics.lifecycleState()).isEqualTo("HOLD");
+        assertThat(metrics.lifecycleReason()).isEqualTo("compliance-review");
+        assertThat(metrics.activeUserCount()).isEqualTo(3L);
+    }
+
+    @Test
+    void getTenantMetrics_deniesTenantAdmin() {
+        authenticateAs("ROLE_ADMIN");
+        Company company = company(1L, "ACME");
+        when(repository.findById(1L)).thenReturn(Optional.of(company));
+
+        assertThatThrownBy(() -> companyService.getTenantMetrics(1L))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("SUPER_ADMIN authority required for tenant metrics");
+
+        verify(userAccountRepository, never()).countDistinctByCompanies_IdAndEnabledTrue(1L);
+    }
+
     private Company company(Long id, String code) {
         Company company = new Company();
         ReflectionTestUtils.setField(company, "id", id);
@@ -103,5 +152,10 @@ class CompanyServiceTest {
         company.setTimezone("UTC");
         company.setDefaultGstRate(BigDecimal.TEN);
         return company;
+    }
+
+    private void authenticateAs(String authority) {
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken("tester@bbp.com", "n/a", java.util.List.of(() -> authority)));
     }
 }
