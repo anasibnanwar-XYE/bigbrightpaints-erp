@@ -26,7 +26,7 @@ This file is the active R2 approval record for the current high-risk closure set
 - Timestamp (UTC): 2026-02-17T20:16:00Z
 
 ## Escalation Decision
-- Human escalation required: yes (for production go/no-go only)
+- Human escalation required: yes
 - Reason: `R3` remains human-only for irreversible production actions
 
 ## Rollback Owner
