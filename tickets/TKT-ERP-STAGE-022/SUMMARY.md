@@ -3,16 +3,16 @@
 - title: ERP Staging Batch 22 - GST Reconciliation Signal
 - goal: M18-S6D strengthen GST reconciliation signal integrity for liability-vs-claimability visibility
 - priority: high
-- status: planned
+- status: done
 - base_branch: harness-engineering-orchestrator
 - created_at: 2026-02-16T22:32:08+00:00
-- updated_at: 2026-02-16T22:32:08+00:00
+- updated_at: 2026-02-17T01:49:32+00:00
 
 ## Slice Board
 
 | Slice | Agent | Lane | Status | Branch |
 | --- | --- | --- | --- | --- |
-| SLICE-01 | accounting-domain | w1 | ready | `tickets/tkt-erp-stage-022/accounting-domain` |
+| SLICE-01 | accounting-domain | w1 | merged | `tickets/tkt-erp-stage-022/accounting-domain` |
 
 ## Operator Commands
 

@@ -3,16 +3,16 @@
 - title: ERP Staging Batch 21 - Period Close Checklist Gate
 - goal: M18-S3D harden period-close checklist gating with deterministic fail-closed policy for unresolved controls
 - priority: high
-- status: planned
+- status: done
 - base_branch: harness-engineering-orchestrator
 - created_at: 2026-02-16T22:32:03+00:00
-- updated_at: 2026-02-16T22:32:03+00:00
+- updated_at: 2026-02-17T01:49:17+00:00
 
 ## Slice Board
 
 | Slice | Agent | Lane | Status | Branch |
 | --- | --- | --- | --- | --- |
-| SLICE-01 | accounting-domain | w1 | ready | `tickets/tkt-erp-stage-021/accounting-domain` |
+| SLICE-01 | accounting-domain | w1 | merged | `tickets/tkt-erp-stage-021/accounting-domain` |
 
 ## Operator Commands
 
