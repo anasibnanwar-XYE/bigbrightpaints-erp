@@ -261,9 +261,13 @@ Acceptance criteria:
    - `bash scripts/gate_core.sh`
    - `bash scripts/gate_reconciliation.sh`
    - `bash scripts/gate_release.sh`
-4. Store command outputs and artifact paths in `asyncloop`.
-5. Rotate `RELEASE_ANCHOR_SHA` only after all required ledger gates pass and evidence is recorded.
-6. Operators must mirror the detailed checklist in `docs/ASYNC_LOOP_OPERATIONS.md#section-14.3-final-gate-protocol` so the runbook and plan stay lockstep.
+4. Enforce runtime quarantine contract checks before accepting `gate_reconciliation`/`gate_release` closure evidence:
+   - `scripts/test_quarantine.txt` entries use: `<test_path> | owner=<owner> | repro=<repro> | start=YYYY-MM-DD | expiry=YYYY-MM-DD`.
+   - Required keys are `owner`, `repro`, `start`, and `expiry`.
+   - `expiry` must be `>= start` and `<= start + 14 calendar days`; missing/invalid/expired metadata fails closed and blocks Section 14.3 closure.
+5. Store command outputs and artifact paths in `asyncloop`.
+6. Rotate `RELEASE_ANCHOR_SHA` only after all required ledger gates pass and evidence is recorded.
+7. Operators must mirror the detailed checklist in `docs/ASYNC_LOOP_OPERATIONS.md#section-14.3-final-gate-protocol` so the runbook and plan stay lockstep.
 
 ### 14.4 Reviewer queue saturation checkpoint
 When reviewer-agent capacity is externally saturated:

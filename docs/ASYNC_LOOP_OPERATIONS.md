@@ -46,8 +46,12 @@ When closing the async-loop final ledger gate (ERP Staging Plan Section 14.3):
    - `bash scripts/gate_core.sh`
    - `bash scripts/gate_reconciliation.sh`
    - `bash scripts/gate_release.sh`
-4. Store every gate command output + artifact path inside `asyncloop` for traceability.
-5. Rotate `RELEASE_ANCHOR_SHA` only after all ledger gates pass and evidence is recorded.
+4. Enforce the runtime quarantine contract before accepting `gate_reconciliation`/`gate_release` outcomes:
+   - `scripts/test_quarantine.txt` entries use: `<test_path> | owner=<owner> | repro=<repro> | start=YYYY-MM-DD | expiry=YYYY-MM-DD`.
+   - Required keys are `owner`, `repro`, `start`, and `expiry`.
+   - `expiry` must be `>= start` and `<= start + 14 calendar days`; missing/invalid/expired metadata fails closed and blocks Section 14.3 closure.
+5. Store every gate command output + artifact path inside `asyncloop` for traceability.
+6. Rotate `RELEASE_ANCHOR_SHA` only after all ledger gates pass and evidence is recorded.
 
 
 ## Execution Loop (One Iteration)
