@@ -3,11 +3,11 @@ title: Flake Quarantine Contract Tightening
 goal: Enforce expiring quarantine policy and keep release decisions based on invariant
   signal quality
 priority: high
-status: planned
+status: completed
 base_branch: harness-engineering-orchestrator
 worktree_root: /home/realnigga/Desktop/orchestrator_erp_worktrees/_tmp_harness_integrate_worktrees
 created_at: '2026-02-17T09:55:06+00:00'
-updated_at: '2026-02-17T09:55:06+00:00'
+updated_at: '2026-02-17T10:33:00Z'
 r3_required: true
 orchestrator_authority:
   r1: orchestrator
@@ -36,7 +36,7 @@ slices:
   required_checks:
   - bash scripts/gate_release.sh
   - bash scripts/gate_reconciliation.sh
-  status: ready
+  status: merged
   objective: Enforce expiring quarantine policy and keep release decisions based on
     invariant signal quality
   workflow_upstream_slices: []
@@ -68,7 +68,7 @@ slices:
   worktree_path: /home/realnigga/Desktop/orchestrator_erp_worktrees/_tmp_harness_integrate_worktrees/TKT-ERP-STAGE-038/repo-cartographer
   required_checks:
   - bash ci/lint-knowledgebase.sh
-  status: ready
+  status: merged
   objective: Enforce expiring quarantine policy and keep release decisions based on
     invariant signal quality
   workflow_upstream_slices: []
