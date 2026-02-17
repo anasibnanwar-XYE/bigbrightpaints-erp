@@ -2,6 +2,7 @@ package com.bigbrightpaints.erp.modules.company.service;
 
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
+import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyLifecycleState;
@@ -10,6 +11,7 @@ import com.bigbrightpaints.erp.modules.company.dto.CompanyDto;
 import com.bigbrightpaints.erp.modules.company.dto.CompanyLifecycleStateDto;
 import com.bigbrightpaints.erp.modules.company.dto.CompanyLifecycleStateRequest;
 import com.bigbrightpaints.erp.modules.company.dto.CompanyRequest;
+import com.bigbrightpaints.erp.modules.company.dto.CompanyTenantMetricsDto;
 import jakarta.transaction.Transactional;
 import java.util.HashMap;
 import java.util.List;
@@ -34,19 +36,24 @@ public class CompanyService {
     private static final String LIFECYCLE_EVIDENCE_VALUE = "immutable-audit-log";
     private static final String LIFECYCLE_UPDATED_REASON = "tenant-lifecycle-state-updated";
     private static final String LIFECYCLE_SUPER_ADMIN_REQUIRED_REASON = "super-admin-required-for-tenant-lifecycle-control";
+    private static final String METRICS_SUPER_ADMIN_REQUIRED_REASON = "super-admin-required-for-tenant-metrics-read";
+    private static final String METRICS_READ_REASON = "tenant-metrics-read";
 
     private final CompanyRepository repository;
     private final AuditService auditService;
+    private final UserAccountRepository userAccountRepository;
 
     public CompanyService(CompanyRepository repository) {
-        this(repository, null);
+        this(repository, null, null);
     }
 
     @Autowired
     public CompanyService(CompanyRepository repository,
-                          AuditService auditService) {
+                          AuditService auditService,
+                          UserAccountRepository userAccountRepository) {
         this.repository = repository;
         this.auditService = auditService;
+        this.userAccountRepository = userAccountRepository;
     }
 
     public List<CompanyDto> findAll() {
@@ -143,6 +150,21 @@ public class CompanyService {
                 .orElse(CompanyLifecycleState.BLOCKED);
     }
 
+    public CompanyTenantMetricsDto getTenantMetrics(Long companyId) {
+        Authentication authentication = requireSuperAdminForTenantMetrics(companyId);
+        Company company = repository.findById(companyId)
+                .orElseThrow(() -> new IllegalArgumentException("Company not found"));
+        CompanyLifecycleState state = company.getLifecycleState() == null ? CompanyLifecycleState.ACTIVE : company.getLifecycleState();
+        long activeUserCount = countActiveUsers(companyId);
+        auditAuthorityDecision(true, METRICS_READ_REASON, company.getCode(), authentication);
+        return new CompanyTenantMetricsDto(
+                company.getId(),
+                company.getCode(),
+                state.name(),
+                company.getLifecycleReason(),
+                activeUserCount);
+    }
+
     private void requireMembershipById(Long companyId, Set<Company> allowedCompanies) {
         if (companyId == null || allowedCompanies == null || allowedCompanies.isEmpty()) {
             throw new AccessDeniedException("Not allowed to access company");
@@ -199,6 +221,17 @@ public class CompanyService {
         if (!hasAuthority(authentication, "ROLE_SUPER_ADMIN")) {
             auditAuthorityDecision(false, "super-admin-required-for-tenant-bootstrap", requestedCompanyCode, authentication);
             throw new AccessDeniedException("SUPER_ADMIN authority required for tenant bootstrap");
+        }
+        return authentication;
+    }
+
+    private Authentication requireSuperAdminForTenantMetrics(Long companyId) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (!hasAuthority(authentication, "ROLE_SUPER_ADMIN")) {
+            Company target = companyId == null ? null : repository.findById(companyId).orElse(null);
+            String targetCompanyCode = target == null ? null : target.getCode();
+            auditAuthorityDecision(false, METRICS_SUPER_ADMIN_REQUIRED_REASON, targetCompanyCode, authentication);
+            throw new AccessDeniedException("SUPER_ADMIN authority required for tenant metrics");
         }
         return authentication;
     }
@@ -312,5 +345,12 @@ public class CompanyService {
             }
         }
         return "none";
+    }
+
+    private long countActiveUsers(Long companyId) {
+        if (userAccountRepository == null) {
+            return 0L;
+        }
+        return userAccountRepository.countDistinctByCompanies_IdAndEnabledTrue(companyId);
     }
 }

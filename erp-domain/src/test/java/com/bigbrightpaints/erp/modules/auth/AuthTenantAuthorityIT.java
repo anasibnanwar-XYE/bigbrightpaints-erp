@@ -248,6 +248,35 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
     }
 
     @Test
+    void tenant_metrics_endpoint_is_super_admin_only() {
+        Long tenantAId = companyRepository.findByCodeIgnoreCase(TENANT_A).map(Company::getId).orElseThrow();
+
+        String adminToken = login(ADMIN_EMAIL, TENANT_A);
+        ResponseEntity<Map> adminResponse = rest.exchange(
+                "/api/v1/companies/" + tenantAId + "/tenant-metrics",
+                HttpMethod.GET,
+                new HttpEntity<>(jsonHeaders(adminToken, TENANT_A)),
+                Map.class);
+        assertThat(adminResponse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+        String superAdminToken = login(SUPER_ADMIN_EMAIL, TENANT_A);
+        ResponseEntity<Map> superAdminResponse = rest.exchange(
+                "/api/v1/companies/" + tenantAId + "/tenant-metrics",
+                HttpMethod.GET,
+                new HttpEntity<>(jsonHeaders(superAdminToken, TENANT_A)),
+                Map.class);
+        assertThat(superAdminResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        Map<String, Object> body = superAdminResponse.getBody();
+        assertThat(body).isNotNull();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) body.get("data");
+        assertThat(data).isNotNull();
+        assertThat(data.get("companyCode")).isEqualTo(TENANT_A);
+        assertThat(data).containsKeys("lifecycleState", "activeUserCount");
+    }
+
+    @Test
     void tenant_mismatch_and_cross_tenant_idor_fail_closed() {
         String token = login(ADMIN_EMAIL, TENANT_A);
         Long tenantBId = companyRepository.findByCodeIgnoreCase(TENANT_B).map(Company::getId).orElseThrow();
