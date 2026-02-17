@@ -237,6 +237,34 @@ class AccountingPeriodServicePolicyTest {
     }
 
     @Test
+    void confirmBankReconciliation_rejectsChecklistMutationOnClosedPeriod() {
+        Company company = company(1L, "POLICY");
+        AccountingPeriod period = openPeriod(company, 2026, 2);
+        period.setStatus(AccountingPeriodStatus.CLOSED);
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(companyEntityLookup.requireAccountingPeriod(company, 20L)).thenReturn(period);
+
+        assertThatThrownBy(() -> service.confirmBankReconciliation(20L, null, "post-close mutation"))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Checklist cannot be updated for a closed period");
+        assertThat(period.isBankReconciled()).isFalse();
+    }
+
+    @Test
+    void confirmInventoryCount_rejectsChecklistMutationOnClosedPeriod() {
+        Company company = company(1L, "POLICY");
+        AccountingPeriod period = openPeriod(company, 2026, 2);
+        period.setStatus(AccountingPeriodStatus.CLOSED);
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(companyEntityLookup.requireAccountingPeriod(company, 21L)).thenReturn(period);
+
+        assertThatThrownBy(() -> service.confirmInventoryCount(21L, null, "post-close mutation"))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Checklist cannot be updated for a closed period");
+        assertThat(period.isInventoryCounted()).isFalse();
+    }
+
+    @Test
     void reopenPeriod_requiresReasonForClosedPeriod() {
         Company company = company(1L, "POLICY");
         AccountingPeriod period = openPeriod(company, 2026, 2);

@@ -162,6 +162,7 @@ public class AccountingPeriodService {
     public AccountingPeriodDto confirmBankReconciliation(Long periodId, LocalDate referenceDate, String note) {
         Company company = companyContextService.requireCurrentCompany();
         AccountingPeriod period = resolvePeriod(company, periodId, referenceDate);
+        assertChecklistMutable(period);
         period.setBankReconciled(true);
         period.setBankReconciledAt(CompanyTime.now(company));
         period.setBankReconciledBy(resolveCurrentUsername());
@@ -175,6 +176,7 @@ public class AccountingPeriodService {
     public AccountingPeriodDto confirmInventoryCount(Long periodId, LocalDate referenceDate, String note) {
         Company company = companyContextService.requireCurrentCompany();
         AccountingPeriod period = resolvePeriod(company, periodId, referenceDate);
+        assertChecklistMutable(period);
         period.setInventoryCounted(true);
         period.setInventoryCountedAt(CompanyTime.now(company));
         period.setInventoryCountedBy(resolveCurrentUsername());
@@ -264,6 +266,14 @@ public class AccountingPeriodService {
                     "Accounting period " + period.getLabel() + " is locked/closed");
         }
         return period;
+    }
+
+    private void assertChecklistMutable(AccountingPeriod period) {
+        if (period.getStatus() == AccountingPeriodStatus.CLOSED) {
+            throw new ApplicationException(
+                    ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Checklist cannot be updated for a closed period");
+        }
     }
 
     private AccountingPeriod lockOrCreatePeriod(Company company, LocalDate referenceDate) {
