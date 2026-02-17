@@ -589,15 +589,11 @@ class AccountingServiceTest {
     }
 
     @Test
-    void createJournalEntry_requiresSupplierContextForOwnedPayableAccount() {
+    void createJournalEntry_requiresExplicitSupplierContextForOwnedPayableAccount() {
         LocalDate today = LocalDate.of(2024, 4, 7);
         when(companyClock.today(company)).thenReturn(today);
         when(journalEntryRepository.findByCompanyAndReferenceNumber(eq(company), eq("AP-INFER-SUPPLIER")))
                 .thenReturn(Optional.empty());
-        AccountingPeriod period = new AccountingPeriod();
-        period.setYear(today.getYear());
-        period.setMonth(today.getMonthValue());
-        when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(period);
 
         Account payable = new Account();
         ReflectionTestUtils.setField(payable, "id", 31L);

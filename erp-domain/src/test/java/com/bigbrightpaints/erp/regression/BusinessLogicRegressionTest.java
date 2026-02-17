@@ -54,7 +54,7 @@ public class BusinessLogicRegressionTest extends AbstractIntegrationTest {
     @BeforeEach
     void setup() {
         dataSeeder.ensureUser(ADMIN_EMAIL, ADMIN_PASSWORD, "Regression Admin", COMPANY_CODE,
-                List.of("ROLE_ADMIN", "ROLE_ACCOUNTING", "ROLE_FACTORY"));
+                List.of("ROLE_ADMIN", "ROLE_ACCOUNTING", "ROLE_FACTORY", "dispatch.confirm"));
         authToken = login();
         headers = createHeaders(authToken);
         ensureTestAccounts();
