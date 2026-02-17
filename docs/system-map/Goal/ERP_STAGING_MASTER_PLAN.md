@@ -421,10 +421,12 @@ Current rule:
 - 2026-02-17: `TKT-ERP-STAGE-056` merged into `tmp/orch-exec-20260217` (`be4a9df5`, `8b2344d3`, merges `bd87245d`, `4d6fc63d`) for release-gate determinism and merge-ready discipline closure: `gate_release` now sets deterministic local release-matrix DB target defaults while honoring explicit `PG*` overrides, and orchestration docs/master-plan sequencing were aligned for merge-first deployment safety; proof is green (`gate_release`, `gate_reconciliation`, `lint-knowledgebase`, ticket verify PASS).
 - 2026-02-17: `TKT-ERP-STAGE-057` merged into `tmp/orch-exec-20260217` (`ee5ffc69`, merge `579f728c`) for M18-S2A superadmin tenant metrics expansion: tenant metrics now include deterministic audit-derived session count and audit storage footprint fields (`distinctSessionCount`, `auditStorageBytes`) with strict proof green (`check-architecture`, targeted auth/company tests, full `mvn test` PASS with `Tests run: 1321, Failures: 0, Errors: 0, Skipped: 4`); superseded overlap slice (`SLICE-01`) was explicitly consolidated out before closure.
 - 2026-02-17: `TKT-ERP-STAGE-058` moved to `in_progress` on `tmp/orch-exec-20260217`; codex-exec slice runs launched with explicit model/reasoning (`gpt-5.3-codex`, `xhigh/xhigh/high`) and per-slice log capture under `tickets/TKT-ERP-STAGE-058/dispatch/`.
+- 2026-02-17: `TKT-ERP-STAGE-058` completed on `tmp/orch-exec-20260217` (`merge: stage-058 slice-02 data-migration`, `merge: stage-058 slice-01 auth-rbac-company`, closure `ba6421ad`) with canonical tenant quota foundation now landed across both migration chains (`db/migration/V137__company_quota_controls.sql` + `db/migration_v2/V20__company_quota_controls.sql`), runtime contract aligned to `quotaMax*` + fail-closed quota enforcement, and merged-SHA proof green (`AuthTenantAuthorityIT`, `CompanyQuotaContractTest`, `check-architecture`, `check-enterprise-policy` PASS).
 - 2026-02-17: data-migration command contract normalized from stale `release_migration_matrix_v2.sh` alias to canonical `scripts/release_migration_matrix.sh --migration-set v2` across agent contracts/runbooks/active packet evidence to prevent recurring false blockers.
 - 2026-02-17: `TKT-ERP-STAGE-059` bootstrapped + dispatched as next M18-S2A successor (`Tenant Quota Runtime Enforcement`) with isolated auth-rbac-company + refactor-techdebt-gc slices on `tmp/orch-exec-20260217`.
 - 2026-02-17: `TKT-ERP-STAGE-060` bootstrapped + dispatched for quota contract/docs parity (`openapi + portal docs + drift guard + planning sync`) with five isolated slices (`auth-rbac-company`, `release-ops`, `frontend-documentation`, `refactor-techdebt-gc`, `repo-cartographer`).
 - 2026-02-17: `TKT-ERP-STAGE-061` bootstrapped + dispatched for pre-deploy accounting/data safety finalization (accounting invariants + reconciliation gate evidence).
+- 2026-02-17: `TKT-ERP-STAGE-061` moved to `in_progress`; codex-exec runs launched on deployment-priority lanes (`SLICE-01` accounting-domain `xhigh`, `SLICE-02` release-ops `high`) while `SLICE-03` remains queued.
 - 2026-02-17: `TKT-ERP-STAGE-062` bootstrapped + dispatched for backend workflow UX simplification hardening (reason-coded fail-closed behavior across accounting/p2p/sales).
 - 2026-02-17: `TKT-ERP-STAGE-063` bootstrapped + dispatched for portal contracts and onboarding handoff completion (`frontend-documentation` + `repo-cartographer` lanes).
 
@@ -491,3 +493,48 @@ Portal handoff is complete only when each portal has:
 
 Post-v1 note:
 - after stable deploy, run dedicated test-suite cleanup program to reduce noisy/flaky coverage and preserve high-signal confidence lanes.
+
+## 24) V1 Deployment Critical Path (Ticketized, Must Follow Order)
+Current deployment sequence is now explicitly ticketized to avoid drift:
+
+1. `TKT-ERP-STAGE-061` (P0): accounting/data safety finalization
+  - close remaining accounting invariant risks
+  - close reconciliation + period-lifecycle safety blockers
+  - green proof required on merged base SHA
+2. `TKT-ERP-STAGE-062` (P1): backend workflow UX simplification
+  - normalize reason-coded failures for high-risk writes
+  - simplify close/reopen, settlement, approval, lifecycle error handling
+3. `TKT-ERP-STAGE-063` (P1): frontend contract + onboarding handoff completion
+  - complete portal endpoint maps and JSON contract handoff
+  - complete user onboarding runbooks and role-by-role first-use flows
+4. `TKT-ERP-STAGE-064` (P0): migration + rollback rehearsal parity on release candidate SHA
+  - active migration chain and rollback evidence must be deterministic
+5. `TKT-ERP-STAGE-065` (P0): one-SHA release gate closure
+  - `gate_fast`, `gate_core`, `gate_reconciliation`, `gate_release` all green on same SHA
+6. `TKT-ERP-STAGE-066` (P0): final staging go/no-go evidence pack
+  - reviewer outcomes complete for all merge-bound slices
+  - unresolved P0 accounting/security/tenant blockers must be zero
+
+Do not reorder the above without explicit R2 evidence and updated dependency rationale.
+
+## 25) Backend UX Simplification Targets (Pre-Deploy)
+This is required to ship safely for non-expert operators and reduce workflow error rate:
+
+1. Accounting UX contracts (highest priority)
+  - period close/reopen: explicit prerequisite diagnostics, mandatory reasons, deterministic denial messages
+  - posting/settlement: idempotency conflict diagnostics with clear operator next actions
+  - reconciliation: actionable mismatch categories (linking, amount, period boundary)
+2. Tenant/platform UX contracts
+  - superadmin lifecycle/quota actions return explicit fail-closed reasons with remediation hints
+  - tenant admins receive consistent “superadmin-required” boundary messaging
+3. Sales/P2P workflow UX contracts
+  - approval and override responses must include reason-code context and state transition guidance
+  - out-of-order lifecycle actions must fail closed with corrective path hints
+4. Factory workflow UX contracts
+  - production and packing transitions must expose next valid actions only
+  - duplicate or replay submissions must converge to deterministic outcomes
+
+Required evidence for Section 25 completion:
+- targeted policy/truth tests pass for touched workflows
+- no accounting invariant regression
+- portal handoff docs reflect all changed error and state-transition contracts

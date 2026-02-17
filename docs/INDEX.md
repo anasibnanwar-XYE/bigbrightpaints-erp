@@ -62,6 +62,13 @@ This is the canonical knowledge base entrypoint for agentic work in this reposit
 - Factory Portal owns backend domains: `factory`, `production`, `manufacturing`.
 - TODO: if portal taxonomy changes, update this map and all `*-portal-*` docs in the same patch.
 - Frontend v1 handoff manifest: `docs/frontend-v1-portal-handoff.yaml`
+- Frontend portal endpoint maps:
+  - `docs/admin-portal-contract-v1.md`
+  - `docs/accounting-portal-endpoint-map.md`
+  - `docs/factory-portal-endpoint-map.md`
+  - `docs/sales-portal-contract-v1.md`
+  - `docs/dealer-portal-contract-v1.md`
+- Super-admin JSON UI contract: `docs/super-admin-json-ui-contract.md`
 
 ## Start Here
 - Human alias map: `AGENTMAP.md`
@@ -89,6 +96,7 @@ This is the canonical knowledge base entrypoint for agentic work in this reposit
   - `docs/onboarding/v1-tenant-bootstrap.md`
   - `docs/onboarding/v1-accounting-first-posting.md`
   - `docs/onboarding/v1-period-close-rehearsal.md`
+  - `docs/onboarding/v1-portal-user-journeys.md`
 
 ## CI and Mechanical Enforcement
 - Existing gate workflow: `.github/workflows/ci.yml`

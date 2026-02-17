@@ -43,6 +43,21 @@ deployment_priority:
   phase_2_after_v1_deploy:
     - test suite cleanup and signal-to-noise reduction
 
+implementation_protocol:
+  sequencing_rule:
+    - do not start frontend build for a portal until that portal packet is marked ready
+    - accounting and super-admin packets are P0 and must be implemented first
+    - apply backend-first state/error contracts before visual polish
+  packet_completion_definition:
+    - endpoint map finalized
+    - role matrix finalized
+    - happy + failure examples finalized
+    - state transition diagram/checklist finalized
+    - onboarding journey checkpoints documented
+  openapi_gap_policy:
+    - if runtime endpoints exist but OpenAPI is missing them, treat as release blocker for that portal
+    - runtime-first references must include code anchor path and pending OpenAPI sync ticket
+
 portals:
   - id: SUPER_ADMIN_CONSOLE
     surface_type: platform_control_plane
@@ -66,9 +81,16 @@ portals:
       - tenant metrics and quota controls (read/update)
       - platform-level audit trail review
     required_contract_artifacts:
-      - docs/admin-portal-endpoint-map.md
+      - docs/admin-portal-contract-v1.md
       - docs/super-admin-json-ui-contract.md
       - openapi quota/lifecycle/metrics schemas and examples
+    primary_endpoint_packet:
+      - POST /api/v1/auth/login
+      - GET /api/v1/companies
+      - POST /api/v1/companies
+      - PUT /api/v1/companies/{id}
+      - POST /api/v1/companies/{id}/lifecycle-state
+      - GET /api/v1/companies/{id}/tenant-metrics
     ux_requirements:
       - guardrail-first forms with explicit reason capture
       - fail-closed error messaging with corrective next action
@@ -86,8 +108,18 @@ portals:
       - approval/override queue handling
       - tenant-safe configuration updates
     required_contract_artifacts:
-      - docs/admin-portal-endpoint-map.md
+      - docs/admin-portal-contract-v1.md
       - role matrix and permission denial examples
+    primary_endpoint_packet:
+      - GET /api/v1/auth/me
+      - GET /api/v1/admin/users
+      - POST /api/v1/admin/users
+      - PUT /api/v1/admin/users/{id}
+      - GET /api/v1/admin/roles
+      - POST /api/v1/admin/roles
+      - GET /api/v1/admin/approvals
+      - GET /api/v1/admin/settings
+      - PUT /api/v1/admin/settings
     ux_requirements:
       - clear boundary messaging for superadmin-only actions
       - workflow-oriented action grouping (users, approvals, settings)
@@ -110,6 +142,9 @@ portals:
       - docs/accounting-portal-endpoint-map.md
       - docs/accounting-portal-frontend-engineer-handoff.md
       - accounting policy and reason-code contract examples
+    primary_endpoint_packet:
+      - docs/accounting-portal-endpoint-map.md (143 baseline + 9 dependencies)
+      - docs/accounting-portal-frontend-engineer-handoff.md
     ux_requirements:
       - guided posting with pre-post preview and invariant warnings
       - explicit lock-state indicators for period-sensitive actions
@@ -126,8 +161,16 @@ portals:
       - packing and finished-goods transitions
       - cost-allocation linkage visibility
     required_contract_artifacts:
-      - docs/manufacturing-portal-endpoint-map.md
+      - docs/factory-portal-endpoint-map.md
       - state-transition matrix with allowed actions by status
+    primary_endpoint_packet:
+      - GET /api/v1/factory/production-plans
+      - POST /api/v1/factory/production-plans
+      - PATCH /api/v1/factory/production-plans/{id}/status
+      - GET /api/v1/factory/production/logs
+      - POST /api/v1/factory/production/logs
+      - POST /api/v1/factory/pack
+      - POST /api/v1/factory/cost-allocation
     ux_requirements:
       - state-machine-aware screens (show next allowed action only)
       - idempotent retry-safe action UX for operation terminals
@@ -141,8 +184,18 @@ portals:
       - credit approvals and exception reasons
       - sales target governance and reporting
     required_contract_artifacts:
-      - docs/sales-portal-endpoint-map.md
+      - docs/sales-portal-contract-v1.md
       - approval reason-code contract examples
+    primary_endpoint_packet:
+      - GET /api/v1/sales/orders
+      - POST /api/v1/sales/orders
+      - POST /api/v1/sales/orders/{id}/confirm
+      - POST /api/v1/sales/orders/{id}/cancel
+      - GET /api/v1/sales/credit-requests
+      - POST /api/v1/sales/credit-requests/{id}/approve
+      - POST /api/v1/sales/dispatch/confirm
+      - GET /api/v1/sales/targets
+      - POST /api/v1/sales/targets
     ux_requirements:
       - transparent state progression timeline
       - explicit credit-policy denial/approval feedback
@@ -158,8 +211,16 @@ portals:
       - invoice/payment visibility
       - dealer claim/return submissions
     required_contract_artifacts:
-      - docs/dealer-portal-endpoint-map.md
+      - docs/dealer-portal-contract-v1.md
       - portal auth/session timeout and tenant-safety matrix
+    primary_endpoint_packet:
+      - GET /api/v1/dealer-portal/dashboard
+      - GET /api/v1/dealer-portal/orders
+      - GET /api/v1/dealer-portal/invoices
+      - GET /api/v1/dealer-portal/invoices/{invoiceId}/pdf
+      - GET /api/v1/dealer-portal/aging
+      - GET /api/v1/dealer-portal/ledger
+      - POST /api/v1/dealer-portal/credit-requests
     ux_requirements:
       - simplified action-first navigation
       - strict read/write scope messaging on denied actions
@@ -176,6 +237,7 @@ onboarding_program:
     - docs/onboarding/v1-tenant-bootstrap.md
     - docs/onboarding/v1-accounting-first-posting.md
     - docs/onboarding/v1-period-close-rehearsal.md
+    - docs/onboarding/v1-portal-user-journeys.md
 
 handoff_acceptance:
   backend:
@@ -186,3 +248,4 @@ handoff_acceptance:
     - portal contract packet delivered for each portal
     - endpoint examples include success + failure cases
     - RBAC/tenant matrix validated against backend enforcement
+    - onboarding user journeys validated against role boundaries
