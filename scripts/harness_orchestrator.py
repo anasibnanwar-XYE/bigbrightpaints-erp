@@ -22,6 +22,8 @@ RISK_ORDER = {
     "low": 3,
 }
 
+BASE_BRANCH_FALLBACK = "async-loop-predeploy-audit"
+
 
 # Lightweight domain-edge model used by the orchestrator for cross-workflow planning.
 # Edges are directional: upstream -> downstream.
@@ -90,6 +92,19 @@ def slugify(value: str) -> str:
 
 def project_root() -> Path:
     return Path(__file__).resolve().parents[1]
+
+
+def detect_default_base_branch() -> str:
+    repo_root = project_root()
+    try:
+        result = run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=repo_root)
+    except subprocess.CalledProcessError:
+        return BASE_BRANCH_FALLBACK
+
+    branch = result.stdout.strip()
+    if branch and branch != "HEAD":
+        return branch
+    return BASE_BRANCH_FALLBACK
 
 
 def default_worktree_root(repo_root: Path) -> Path:
@@ -1301,11 +1316,17 @@ def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Harness orchestration helper for worktree/ticket automation")
     sub = p.add_subparsers(dest="cmd", required=True)
 
+    inferred_base_branch = detect_default_base_branch()
+
     create = sub.add_parser("bootstrap", help="Create ticket, plan slices, create worktrees, generate tmux commands")
     create.add_argument("--title", required=True)
     create.add_argument("--goal", required=True)
     create.add_argument("--priority", default="high")
-    create.add_argument("--base-branch", default="async-loop-predeploy-audit")
+    create.add_argument(
+        "--base-branch",
+        default=inferred_base_branch,
+        help=f"Target branch for slicing; defaults to current branch ({inferred_base_branch}) unless overridden",
+    )
     create.add_argument("--paths", default="", help="Comma-separated target paths")
     create.add_argument("--path", action="append", default=[], help="Repeatable target path")
     create.add_argument("--ticket-id", default="")

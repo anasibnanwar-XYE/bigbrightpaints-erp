@@ -6,7 +6,7 @@
 - goal: `<goal>`
 - priority: `<high|medium|low>`
 - status: `planned`
-- base_branch: `async-loop-predeploy-audit`
+- base_branch: `<base branch; defaults to current git branch when bootstrapped>`
 
 ## Slices
 For each slice capture:
