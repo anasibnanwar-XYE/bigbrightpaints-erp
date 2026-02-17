@@ -37,6 +37,9 @@ FAIL_ON_FINDINGS=true bash "$ROOT_DIR/scripts/flyway_overlap_scan.sh" --migratio
 echo "[verify_local] orchestrator correlation contract guard"
 bash "$ROOT_DIR/scripts/guard_orchestrator_correlation_contract.sh"
 
+echo "[verify_local] openapi contract drift guard"
+bash "$ROOT_DIR/scripts/guard_openapi_contract_drift.sh"
+
 echo "[verify_local] accounting portal scope contract guard"
 bash "$ROOT_DIR/scripts/guard_accounting_portal_scope_contract.sh"
 
