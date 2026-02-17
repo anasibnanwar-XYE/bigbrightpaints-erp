@@ -74,8 +74,7 @@ for stub in \
   guard_flyway_v2_migration_ownership_fixture_matrix.sh \
   guard_flyway_v2_referential_contract.sh \
   guard_flyway_v2_referential_contract_fixture_matrix.sh \
-  time_api_scan.sh \
-  release_migration_matrix.sh; do
+  time_api_scan.sh; do
   cat > "$TMP_ROOT/scripts/$stub" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -83,6 +82,42 @@ exit 0
 STUB
   chmod +x "$TMP_ROOT/scripts/$stub"
 done
+
+cat > "$TMP_ROOT/scripts/release_migration_matrix.sh" <<'STUB_RELEASE_MATRIX'
+#!/usr/bin/env bash
+set -euo pipefail
+
+artifact_dir=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --artifact-dir)
+      artifact_dir="${2:-}"
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "$artifact_dir" ]]; then
+  artifact_dir="artifacts/gate-release"
+fi
+
+mkdir -p "$artifact_dir"
+: > "$artifact_dir/predeploy-scans-fresh.txt"
+: > "$artifact_dir/predeploy-scans-upgrade-seed.txt"
+: > "$artifact_dir/predeploy-scans-upgrade.txt"
+
+cat > "$artifact_dir/migration-matrix.json" <<JSON
+{"release_sha":"${RELEASE_SHA:-contract_sha}"}
+JSON
+cat > "$artifact_dir/rollback-rehearsal-evidence.json" <<JSON
+{"release_sha":"${RELEASE_SHA:-contract_sha}"}
+JSON
+exit 0
+STUB_RELEASE_MATRIX
+chmod +x "$TMP_ROOT/scripts/release_migration_matrix.sh"
 
 # Guard checksum stub: mark invocations so required/delegation behavior can be asserted.
 cat > "$TMP_ROOT/scripts/guard_flyway_v2_transient_checksum.sh" <<'STUB_CHECKSUM'
@@ -179,7 +214,7 @@ run_case "verify_skip_with_marker" 0 \
 
 # Case 6: gate_release fails closed on mismatch by default.
 run_case "release_mismatch_fail_closed" 4 \
-  'FLYWAY_GUARD_DB_NAME=guard_db PGDATABASE=other_db ./scripts/gate_release.sh'
+  'RELEASE_SHA=contract_sha FLYWAY_GUARD_DB_NAME=guard_db PGDATABASE=other_db ./scripts/gate_release.sh'
 require_output "release_mismatch_fail_closed" "FLYWAY_GUARD_DB_NAME and PGDATABASE differ."
 
 # Case 7: gate_release propagates allow/delegation flags to verify_local call.
@@ -196,6 +231,6 @@ STUB_VERIFY_WRAPPER
 chmod +x "$TMP_ROOT/scripts/verify_local.sh"
 
 run_case "release_allow_propagation" 0 \
-  'ALLOW_FLYWAY_GUARD_DB_MISMATCH=true FLYWAY_GUARD_DB_NAME=guard_db PGDATABASE=other_db ./scripts/gate_release.sh'
+  'RELEASE_SHA=contract_sha ALLOW_FLYWAY_GUARD_DB_MISMATCH=true FLYWAY_GUARD_DB_NAME=guard_db PGDATABASE=other_db ./scripts/gate_release.sh'
 
 echo "[guard_flyway_guard_contract] OK"
