@@ -26,6 +26,19 @@ This is the canonical architecture specification referenced by root `ARCHITECTUR
   - alternatives rejected
   - boundary preserved
 
+## DB Touchpoints
+- JPA repositories: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/**/domain/*Repository.java`
+- Migration roots:
+  - legacy: `erp-domain/src/main/resources/db/migration`
+  - active: `erp-domain/src/main/resources/db/migration_v2`
+- Migration policy references:
+  - `erp-domain/docs/FLYWAY_AUDIT_AND_STRATEGY.md`
+  - `docs/runbooks/migrations.md`
+- Predeploy data guards:
+  - `scripts/flyway_overlap_scan.sh`
+  - `scripts/schema_drift_scan.sh`
+  - `scripts/run_db_predeploy_scans.sh`
+
 ## Canonical References
 
 - Agent routing and ownership: `agents/orchestrator-layer.yaml`, `agents/catalog.yaml`

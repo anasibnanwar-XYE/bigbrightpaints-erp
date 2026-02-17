@@ -68,7 +68,7 @@
       "quality_flake_monitor": true
     },
     {
-      "id": "ts-p2p-audittrail-repository-compatibility",
+      "id": "ts-p2p-purchase-audit-trail-repository-compatibility",
       "test_path": "erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/p2p/TS_P2PPurchaseAuditTrailRepositoryCompatibilityTest.java",
       "owner": "erp-domain-team",
       "class": "critical",
