@@ -3,16 +3,16 @@
 - title: Tenant Metrics Observability Envelope Stage-1
 - goal: M18-S2A: extend tenant metrics payload with deterministic API activity and error-rate counters for superadmin control-plane observability
 - priority: high
-- status: planned
+- status: done
 - base_branch: tmp/orch-exec-20260217
 - created_at: 2026-02-17T13:31:25+00:00
-- updated_at: 2026-02-17T13:31:25+00:00
+- updated_at: 2026-02-17T14:39:17+00:00
 
 ## Slice Board
 
 | Slice | Agent | Lane | Status | Branch |
 | --- | --- | --- | --- | --- |
-| SLICE-01 | auth-rbac-company | w1 | ready | `tickets/tkt-erp-stage-050/auth-rbac-company` |
+| SLICE-01 | auth-rbac-company | w1 | merged | `tickets/tkt-erp-stage-050/auth-rbac-company` |
 
 ## Operator Commands
 
