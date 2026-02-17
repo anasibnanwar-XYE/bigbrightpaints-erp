@@ -12,6 +12,8 @@ Total scoped endpoints: **143**
 
 ## M18-S9A Parity Closure (Endpoint Map vs Handoff)
 
+- M17-S1 canonical API contract source-of-truth is `openapi.json`; this map tracks accounting-portal-owned operations from that snapshot.
+- M17-S1 guard behavior is non-mutating: parity checks validate and fail on drift, but do not rewrite docs.
 - This document is the OpenAPI snapshot for accounting-portal-owned endpoints only.
 - Count lock for parity checks: **143** unique `METHOD /api/v1/...` rows.
 - The handoff inventory may only add **9** non-owned dependencies on top of these 143 rows:

@@ -66,6 +66,8 @@ These are cross-portal APIs reused in Accounting Portal for auth/session/profile
 
 ### M18-S9A Parity Closure (Do Not Drift)
 
+- M17-S1 canonical API contract source-of-truth is `openapi.json`; parity checks are non-mutating and fail on drift instead of rewriting docs.
+- M17-S1 handoff parity expectation: include all **143** accounting-portal-owned rows from `docs/accounting-portal-endpoint-map.md`, with only the documented `+9` dependency rows allowed beyond that set.
 - Endpoint-map parity lock: this handoff must continue to include all **143** accounting-portal-owned rows from `docs/accounting-portal-endpoint-map.md`.
 - Current handoff inventory total is **152** unique `METHOD /api/v1/...` rows = `143` portal-owned + `9` intentional dependencies.
 - Intentional dependency-only rows (`+9` vs endpoint map):
