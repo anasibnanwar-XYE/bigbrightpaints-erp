@@ -3,11 +3,11 @@
 ticket: TKT-ERP-STAGE-058
 slice: SLICE-01
 reviewer: qa-reliability
-status: pending
+status: approved
 
 ## Findings
-- pending
+- Targeted tests pass on merged SHA: AuthTenantAuthorityIT + CompanyQuotaContractTest
 
 ## Evidence
-- commands: pending
-- artifacts: pending
+- commands: cd erp-domain && mvn -B -ntp -Dtest=AuthTenantAuthorityIT,CompanyQuotaContractTest test
+- artifacts: erp-domain/target/surefire-reports

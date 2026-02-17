@@ -3,11 +3,11 @@
 ticket: TKT-ERP-STAGE-058
 slice: SLICE-03
 reviewer: qa-reliability
-status: pending
+status: blocked
 
 ## Findings
-- pending
+- Slice drifted to legacy quota naming and overlapped AuthTenantAuthorityIT with canonical SLICE-01 contract; superseded to avoid conflict.
 
 ## Evidence
-- commands: pending
-- artifacts: pending
+- commands: cd erp-domain && mvn -B -ntp test
+- artifacts: tickets/TKT-ERP-STAGE-058/TIMELINE.md
