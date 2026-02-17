@@ -3,17 +3,17 @@
 - title: High-Signal Verify Lane Optimization
 - goal: Section 14 reliability: reduce flaky/low-signal verify load by codifying deterministic high-confidence test subset while preserving fail-closed invariants
 - priority: high
-- status: planned
+- status: done
 - base_branch: tmp/orch-exec-20260217
 - created_at: 2026-02-17T13:31:30+00:00
-- updated_at: 2026-02-17T13:31:30+00:00
+- updated_at: 2026-02-17T14:53:28+00:00
 
 ## Slice Board
 
 | Slice | Agent | Lane | Status | Branch |
 | --- | --- | --- | --- | --- |
-| SLICE-01 | release-ops | w1 | ready | `tickets/tkt-erp-stage-051/release-ops` |
-| SLICE-02 | repo-cartographer | w2 | ready | `tickets/tkt-erp-stage-051/repo-cartographer` |
+| SLICE-01 | release-ops | w1 | merged | `tickets/tkt-erp-stage-051/release-ops` |
+| SLICE-02 | repo-cartographer | w2 | merged | `tickets/tkt-erp-stage-051/repo-cartographer` |
 
 ## Operator Commands
 
