@@ -35,13 +35,13 @@ public class CompanyController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_SUPER_ADMIN')")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
     public ResponseEntity<ApiResponse<CompanyDto>> create(@Valid @RequestBody CompanyRequest request) {
         return ResponseEntity.ok(ApiResponse.success("Company created", companyService.create(request)));
     }
 
     @PostMapping("/{id}/lifecycle-state")
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_SUPER_ADMIN')")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
     public ResponseEntity<ApiResponse<CompanyLifecycleStateDto>> updateLifecycleState(@PathVariable Long id,
                                                                                        @Valid @RequestBody CompanyLifecycleStateRequest request) {
         return ResponseEntity.ok(ApiResponse.success(
@@ -50,7 +50,7 @@ public class CompanyController {
     }
 
     @GetMapping("/{id}/tenant-metrics")
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_SUPER_ADMIN')")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
     public ResponseEntity<ApiResponse<CompanyTenantMetricsDto>> getTenantMetrics(@PathVariable Long id) {
         return ResponseEntity.ok(ApiResponse.success(
                 "Company tenant metrics fetched",

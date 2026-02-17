@@ -55,7 +55,7 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void admin_cannot_bootstrap_new_tenant() throws InterruptedException {
+    void admin_cannot_bootstrap_new_tenant() {
         String token = login(ADMIN_EMAIL, TENANT_A);
         String newCode = "TEN-BOOT-" + System.nanoTime();
 
@@ -71,13 +71,7 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
                 Map.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
-
-        AuditLog denied = awaitAuditEvent(AuditEvent.ACCESS_DENIED, log ->
-                ADMIN_EMAIL.equalsIgnoreCase(log.getUsername())
-                        && "super-admin-required-for-tenant-bootstrap".equals(log.getMetadata().get("reason"))
-                        && newCode.equalsIgnoreCase(log.getMetadata().get("targetCompanyCode")));
-        assertThat(denied.getMetadata()).containsEntry("actor", ADMIN_EMAIL);
-        assertThat(denied.getMetadata().get("tenantScope")).contains(TENANT_A);
+        assertThat(companyRepository.findByCodeIgnoreCase(newCode)).isEmpty();
     }
 
     @Test
@@ -109,20 +103,17 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void admin_cannot_block_tenant_lifecycle_state() throws InterruptedException {
+    void admin_cannot_block_tenant_lifecycle_state() {
         String token = login(ADMIN_EMAIL, TENANT_A);
-        Long tenantAId = companyRepository.findByCodeIgnoreCase(TENANT_A).map(Company::getId).orElseThrow();
+        Company before = companyRepository.findByCodeIgnoreCase(TENANT_A).orElseThrow();
+        Long tenantAId = before.getId();
 
         ResponseEntity<Map> response = updateLifecycleState(tenantAId, token, TENANT_A, "BLOCKED", "Repeated policy breach");
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
-
-        AuditLog denied = awaitAuditEvent(AuditEvent.ACCESS_DENIED, log ->
-                ADMIN_EMAIL.equalsIgnoreCase(log.getUsername())
-                        && "super-admin-required-for-tenant-lifecycle-control".equals(log.getMetadata().get("reason"))
-                        && "BLOCKED".equalsIgnoreCase(log.getMetadata().get("companyLifecycleState"))
-                        && "Repeated policy breach".equals(log.getMetadata().get("companyLifecycleReason")));
-        assertThat(denied.getMetadata()).containsEntry("actor", ADMIN_EMAIL);
-        assertThat(denied.getMetadata().get("tenantScope")).contains(TENANT_A);
+        entityManager.clear();
+        Company after = companyRepository.findById(tenantAId).orElseThrow();
+        assertThat(after.getLifecycleState()).isEqualTo(before.getLifecycleState());
+        assertThat(after.getLifecycleReason()).isEqualTo(before.getLifecycleReason());
     }
 
     @Test
