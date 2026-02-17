@@ -31,6 +31,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -102,6 +103,38 @@ class AccountingPeriodServicePolicyTest {
         assertThatThrownBy(() -> service.closePeriod(10L, new AccountingPeriodCloseRequest(true, "   ")))
                 .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Close reason is required");
+    }
+
+    @Test
+    void closePeriod_requiresReasonForLockedPeriod() {
+        Company company = company(1L, "POLICY");
+        AccountingPeriod period = openPeriod(company, 2026, 2);
+        period.setStatus(AccountingPeriodStatus.LOCKED);
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(accountingPeriodRepository.lockByCompanyAndId(company, 10L)).thenReturn(Optional.of(period));
+
+        assertThatThrownBy(() -> service.closePeriod(10L, new AccountingPeriodCloseRequest(true, "   ")))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Close reason is required");
+    }
+
+    @Test
+    void closePeriod_allowsLockedToClosedWhenReasonProvided() {
+        Company company = company(1L, "POLICY");
+        AccountingPeriod period = openPeriod(company, 2026, 2);
+        period.setStatus(AccountingPeriodStatus.LOCKED);
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(accountingPeriodRepository.lockByCompanyAndId(company, 10L)).thenReturn(Optional.of(period));
+        when(goodsReceiptRepository.countByCompanyAndReceiptDateBetweenAndStatusNot(
+                company, period.getStartDate(), period.getEndDate(), "INVOICED")).thenReturn(0L);
+        when(journalLineRepository.summarizeByAccountType(
+                company, period.getStartDate(), period.getEndDate())).thenReturn(List.of());
+        when(accountingPeriodRepository.save(period)).thenReturn(period);
+        when(accountingPeriodRepository.findByCompanyAndYearAndMonth(company, 2026, 3))
+                .thenReturn(Optional.of(openPeriod(company, 2026, 3)));
+
+        assertThat(service.closePeriod(10L, new AccountingPeriodCloseRequest(true, "close from lock")).status())
+                .isEqualTo("CLOSED");
     }
 
     @Test

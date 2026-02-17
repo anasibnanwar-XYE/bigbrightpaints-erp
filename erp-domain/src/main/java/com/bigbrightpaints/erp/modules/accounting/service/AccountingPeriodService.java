@@ -124,9 +124,6 @@ public class AccountingPeriodService {
             snapshotService.captureSnapshot(company, period, resolveCurrentUsername());
             return toDto(period);
         }
-        if (period.getStatus() == AccountingPeriodStatus.LOCKED) {
-            return toDto(period);
-        }
         String note = request != null && StringUtils.hasText(request.note()) ? request.note().trim() : null;
         if (!StringUtils.hasText(note)) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Close reason is required");
