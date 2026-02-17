@@ -28,10 +28,11 @@ class TS_PayrollLiabilityClearingPolicyTest {
     void payrollPostingGuardTracksStatusAndJournalLinkageForReplaySafety() {
         TruthSuiteFileAssert.assertContains(
                 PAYROLL_SERVICE,
-                "boolean hasJournal = run.getJournalEntryId() != null;",
+                "boolean hasPostingJournalLink = hasPostingJournalLink(run);",
                 "boolean statusPosted = run.getStatus() == PayrollRun.PayrollStatus.POSTED;",
-                "if (!statusPosted && !hasJournal && run.getStatus() != PayrollRun.PayrollStatus.APPROVED) {",
-                "if (hasJournal && run.getJournalEntryId() != null && !run.getJournalEntryId().equals(journal.id())) {",
+                "if (statusPosted && !hasPostingJournalLink) {",
+                "if (!statusPosted && !hasPostingJournalLink && run.getStatus() != PayrollRun.PayrollStatus.APPROVED) {",
+                "if (hasPostingJournalLink && run.getJournalEntryId() != null && !run.getJournalEntryId().equals(journal.id())) {",
                 "\"Payroll run already linked to a different posting journal\"");
     }
 
