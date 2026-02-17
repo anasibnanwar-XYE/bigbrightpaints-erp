@@ -13,20 +13,20 @@ Deliver deploy-ready portal-by-portal frontend handoff contracts and onboarding 
 
 ## Agent Write Boundary (Enforced)
 - `docs/accounting-portal-endpoint-map.md`
-- `docs/admin-portal-endpoint-map.md`
-- `docs/dealer-portal-endpoint-map.md`
-- `docs/manufacturing-portal-endpoint-map.md`
-- `docs/sales-portal-endpoint-map.md`
+- `docs/admin-portal-contract-v1.md`
+- `docs/dealer-portal-contract-v1.md`
+- `docs/factory-portal-endpoint-map.md`
+- `docs/sales-portal-contract-v1.md`
 - `docs/*portal*handoff*.md`
 
 ## Requested Focus Paths
 - `docs/accounting-portal-endpoint-map.md`
 - `docs/accounting-portal-frontend-engineer-handoff.md`
-- `docs/admin-portal-endpoint-map.md`
-- `docs/dealer-portal-endpoint-map.md`
+- `docs/admin-portal-contract-v1.md`
+- `docs/dealer-portal-contract-v1.md`
 - `docs/frontend-v1-portal-handoff.yaml`
-- `docs/manufacturing-portal-endpoint-map.md`
-- `docs/sales-portal-endpoint-map.md`
+- `docs/factory-portal-endpoint-map.md`
+- `docs/sales-portal-contract-v1.md`
 
 ## Required Checks Before Done
 - `bash ci/lint-knowledgebase.sh`

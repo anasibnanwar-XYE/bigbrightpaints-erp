@@ -426,9 +426,10 @@ Current rule:
 - 2026-02-17: `TKT-ERP-STAGE-059` bootstrapped + dispatched as next M18-S2A successor (`Tenant Quota Runtime Enforcement`) with isolated auth-rbac-company + refactor-techdebt-gc slices on `tmp/orch-exec-20260217`.
 - 2026-02-17: `TKT-ERP-STAGE-060` bootstrapped + dispatched for quota contract/docs parity (`openapi + portal docs + drift guard + planning sync`) with five isolated slices (`auth-rbac-company`, `release-ops`, `frontend-documentation`, `refactor-techdebt-gc`, `repo-cartographer`).
 - 2026-02-17: `TKT-ERP-STAGE-061` bootstrapped + dispatched for pre-deploy accounting/data safety finalization (accounting invariants + reconciliation gate evidence).
-- 2026-02-17: `TKT-ERP-STAGE-061` moved to `in_progress`; codex-exec runs launched on deployment-priority lanes (`SLICE-01` accounting-domain `xhigh`, `SLICE-02` release-ops `high`) while `SLICE-03` remains queued.
+- 2026-02-18: `TKT-ERP-STAGE-061` completed on `tmp/orch-exec-20260217` (`a7f7357a`, `9e25df63`) with ordered slice merges (`release-ops` then `accounting-domain`) and merged-SHA required checks green (`gate_release`, `gate_reconciliation`, `*Accounting*`, `verify_local`).
 - 2026-02-17: `TKT-ERP-STAGE-062` bootstrapped + dispatched for backend workflow UX simplification hardening (reason-coded fail-closed behavior across accounting/p2p/sales).
 - 2026-02-17: `TKT-ERP-STAGE-063` bootstrapped + dispatched for portal contracts and onboarding handoff completion (`frontend-documentation` + `repo-cartographer` lanes).
+- 2026-02-18: `TKT-ERP-STAGE-064` bootstrapped for migration/rollback rehearsal parity on release-candidate SHA (`release-ops` + `repo-cartographer` lanes) and added to active preplanned queue.
 
 ## 20) V1 Deployment Priority Stack (Senior Orchestrator Order)
 Deployment is blocked until priorities below are satisfied in order:

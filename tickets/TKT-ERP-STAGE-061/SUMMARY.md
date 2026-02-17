@@ -3,18 +3,18 @@
 - title: Accounting Deploy Safety Finalization
 - goal: Close remaining accounting/data safety risks for v1 staging go-no-go
 - priority: high
-- status: planned
+- status: done
 - base_branch: tmp/orch-exec-20260217
 - created_at: 2026-02-17T17:52:14+00:00
-- updated_at: 2026-02-17T17:52:14+00:00
+- updated_at: 2026-02-17T19:02:17+00:00
 
 ## Slice Board
 
 | Slice | Agent | Lane | Status | Branch |
 | --- | --- | --- | --- | --- |
-| SLICE-01 | accounting-domain | w1 | ready | `tickets/tkt-erp-stage-061/accounting-domain` |
-| SLICE-02 | release-ops | w2 | ready | `tickets/tkt-erp-stage-061/release-ops` |
-| SLICE-03 | refactor-techdebt-gc | w3 | ready | `tickets/tkt-erp-stage-061/refactor-techdebt-gc` |
+| SLICE-01 | accounting-domain | w1 | merged | `tickets/tkt-erp-stage-061/accounting-domain` |
+| SLICE-02 | release-ops | w2 | merged | `tickets/tkt-erp-stage-061/release-ops` |
+| SLICE-03 | refactor-techdebt-gc | w3 | merged | `tickets/tkt-erp-stage-061/refactor-techdebt-gc` |
 
 ## Operator Commands
 
