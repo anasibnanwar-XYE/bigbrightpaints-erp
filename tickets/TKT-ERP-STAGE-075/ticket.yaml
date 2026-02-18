@@ -1,0 +1,190 @@
+ticket_id: TKT-ERP-STAGE-075
+title: Accounting Report Export Governance
+goal: Enforce admin-only accounting export policy with mandatory audit logging and
+  dealer invoice/ledger boundary checks
+priority: high
+status: planned
+base_branch: async-loop-predeploy-audit
+worktree_root: /home/realnigga/Desktop/orchestrator_erp_worktrees
+created_at: '2026-02-18T10:30:17+00:00'
+updated_at: '2026-02-18T10:30:17+00:00'
+r3_required: true
+orchestrator_authority:
+  r1: orchestrator
+  r2: orchestrator
+  r3: human
+slices:
+- id: SLICE-01
+  primary_agent: accounting-domain
+  reviewers:
+  - qa-reliability
+  - security-governance
+  scope_paths:
+  - erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/controller/AccountingController.java
+  - erp-domain/src/test/java/com/bigbrightpaints/erp/modules/accounting/controller/AccountingExportGovernanceIT.java
+  allowed_scope_paths:
+  - erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/
+  - erp-domain/src/test/java/com/bigbrightpaints/erp/modules/accounting/
+  - erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/accounting/
+  matched_rules:
+  - erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/
+  - erp-domain/src/test/java/com/bigbrightpaints/erp/modules/accounting/
+  lane: w1
+  branch: tickets/tkt-erp-stage-075/accounting-domain
+  worktree_path: /home/realnigga/Desktop/orchestrator_erp_worktrees/TKT-ERP-STAGE-075/accounting-domain
+  required_checks:
+  - cd erp-domain && mvn -B -ntp -Dtest='*Accounting*' test
+  - bash scripts/verify_local.sh
+  status: ready
+  objective: Enforce admin-only accounting export policy with mandatory audit logging
+    and dealer invoice/ledger boundary checks
+  workflow_upstream_slices:
+  - SLICE-02
+  - SLICE-03
+  workflow_downstream_slices: []
+  workflow_external_upstream_agents:
+  - auth-rbac-company
+  - factory-production
+  - hr-domain
+  - orchestrator-runtime
+  workflow_external_downstream_agents: []
+  cross_workflow_contracts:
+  - relation: upstream
+    agent: purchasing-invoice-p2p
+    slice_id: SLICE-02
+    contract: ap/posting and settlement linkage
+    in_ticket: true
+  - relation: upstream
+    agent: sales-domain
+    slice_id: SLICE-03
+    contract: o2c posting and receivable linkage
+    in_ticket: true
+  - relation: upstream-external
+    agent: auth-rbac-company
+    slice_id: ''
+    contract: finance/admin authority boundaries
+    in_ticket: false
+  - relation: upstream-external
+    agent: factory-production
+    slice_id: ''
+    contract: wip/variance/cogs posting linkage
+    in_ticket: false
+  - relation: upstream-external
+    agent: hr-domain
+    slice_id: ''
+    contract: payroll liability/payment posting linkage
+    in_ticket: false
+  - relation: upstream-external
+    agent: orchestrator-runtime
+    slice_id: ''
+    contract: outbox/idempotency posting orchestration
+    in_ticket: false
+- id: SLICE-02
+  primary_agent: purchasing-invoice-p2p
+  reviewers:
+  - qa-reliability
+  - security-governance
+  scope_paths:
+  - erp-domain/src/main/java/com/bigbrightpaints/erp/modules/invoice/controller/InvoiceController.java
+  allowed_scope_paths:
+  - erp-domain/src/main/java/com/bigbrightpaints/erp/modules/purchasing/
+  - erp-domain/src/main/java/com/bigbrightpaints/erp/modules/invoice/
+  - erp-domain/src/test/java/com/bigbrightpaints/erp/modules/purchasing/
+  - erp-domain/src/test/java/com/bigbrightpaints/erp/modules/invoice/
+  - erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/p2p/
+  matched_rules:
+  - erp-domain/src/main/java/com/bigbrightpaints/erp/modules/invoice/
+  lane: w2
+  branch: tickets/tkt-erp-stage-075/purchasing-invoice-p2p
+  worktree_path: /home/realnigga/Desktop/orchestrator_erp_worktrees/TKT-ERP-STAGE-075/purchasing-invoice-p2p
+  required_checks:
+  - bash ci/check-architecture.sh
+  status: ready
+  objective: Enforce admin-only accounting export policy with mandatory audit logging
+    and dealer invoice/ledger boundary checks
+  workflow_upstream_slices: []
+  workflow_downstream_slices:
+  - SLICE-01
+  workflow_external_upstream_agents:
+  - auth-rbac-company
+  workflow_external_downstream_agents:
+  - inventory-domain
+  cross_workflow_contracts:
+  - relation: downstream
+    agent: accounting-domain
+    slice_id: SLICE-01
+    contract: ap/posting and settlement linkage
+    in_ticket: true
+  - relation: downstream-external
+    agent: inventory-domain
+    slice_id: ''
+    contract: grn/stock intake coupling
+    in_ticket: false
+  - relation: upstream-external
+    agent: auth-rbac-company
+    slice_id: ''
+    contract: tenant-scoped supplier/AP access rules
+    in_ticket: false
+- id: SLICE-03
+  primary_agent: sales-domain
+  reviewers:
+  - qa-reliability
+  - security-governance
+  scope_paths:
+  - erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/controller/DealerController.java
+  - erp-domain/src/test/java/com/bigbrightpaints/erp/modules/sales/DealerControllerSecurityIT.java
+  allowed_scope_paths:
+  - erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/
+  - erp-domain/src/test/java/com/bigbrightpaints/erp/modules/sales/
+  - erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/o2c/
+  matched_rules:
+  - erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/
+  - erp-domain/src/test/java/com/bigbrightpaints/erp/modules/sales/
+  lane: w3
+  branch: tickets/tkt-erp-stage-075/sales-domain
+  worktree_path: /home/realnigga/Desktop/orchestrator_erp_worktrees/TKT-ERP-STAGE-075/sales-domain
+  required_checks:
+  - cd erp-domain && mvn -B -ntp -Dtest='*Sales*' test
+  - bash ci/check-architecture.sh
+  status: ready
+  objective: Enforce admin-only accounting export policy with mandatory audit logging
+    and dealer invoice/ledger boundary checks
+  workflow_upstream_slices: []
+  workflow_downstream_slices:
+  - SLICE-01
+  workflow_external_upstream_agents:
+  - auth-rbac-company
+  - orchestrator-runtime
+  workflow_external_downstream_agents:
+  - inventory-domain
+  cross_workflow_contracts:
+  - relation: downstream
+    agent: accounting-domain
+    slice_id: SLICE-01
+    contract: o2c posting and receivable linkage
+    in_ticket: true
+  - relation: downstream-external
+    agent: inventory-domain
+    slice_id: ''
+    contract: dispatch and stock movement linkage
+    in_ticket: false
+  - relation: upstream-external
+    agent: auth-rbac-company
+    slice_id: ''
+    contract: tenant and role boundary contract
+    in_ticket: false
+  - relation: upstream-external
+    agent: orchestrator-runtime
+    slice_id: ''
+    contract: async orchestration command contract
+    in_ticket: false
+cross_workflow:
+  model: workflow_agent_edges_v1
+  generated_at: '2026-02-18T10:30:17+00:00'
+  in_ticket_edges:
+  - upstream_slice: SLICE-02
+    downstream_slice: SLICE-01
+    contract: ap/posting and settlement linkage
+  - upstream_slice: SLICE-03
+    downstream_slice: SLICE-01
+    contract: o2c posting and receivable linkage
