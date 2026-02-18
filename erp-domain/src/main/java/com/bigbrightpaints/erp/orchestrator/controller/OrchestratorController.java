@@ -32,6 +32,8 @@ import org.springframework.util.StringUtils;
 @RequestMapping("/api/v1/orchestrator")
 public class OrchestratorController {
     private static final int MAX_IDEMPOTENCY_KEY_LENGTH = 255;
+    private static final String SALES_DISPATCH_CANONICAL_PATH = "/api/v1/sales/dispatch/confirm";
+    private static final String PAYROLL_RUNS_CANONICAL_PATH = "/api/v1/payroll/runs";
 
     private final CommandDispatcher commandDispatcher;
     private final TraceService traceService;
@@ -134,53 +136,29 @@ public class OrchestratorController {
      */
     @PostMapping("/dispatch")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_SALES')")
-    public ResponseEntity<Map<String, Object>> dispatchOrder(@RequestBody Map<String, Object> request,
-                                                              Principal principal) {
-        Object orderId = request.get("orderId");
-        return handleDispatchOrder(orderId != null ? orderId.toString() : null, principal);
+    public ResponseEntity<Map<String, Object>> dispatchOrder() {
+        return goneToCanonical(
+                "Orchestrator dispatch is deprecated; use " + SALES_DISPATCH_CANONICAL_PATH,
+                SALES_DISPATCH_CANONICAL_PATH);
     }
 
     @PostMapping("/dispatch/{orderId}")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_SALES')")
-    public ResponseEntity<Map<String, Object>> dispatchOrderAlias(@PathVariable String orderId,
-                                                                  Principal principal) {
-        return handleDispatchOrder(orderId, principal);
+    public ResponseEntity<Map<String, Object>> dispatchOrderAlias(@PathVariable String orderId) {
+        return goneToCanonical(
+                "Orchestrator dispatch is deprecated; use " + SALES_DISPATCH_CANONICAL_PATH,
+                SALES_DISPATCH_CANONICAL_PATH);
     }
 
     @PostMapping("/payroll/run")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING') and hasAuthority('payroll.run')")
-    public ResponseEntity<Map<String, Object>> runPayroll(@Valid @RequestBody PayrollRunRequest request,
-                                                           @org.springframework.web.bind.annotation.RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
-                                                           @org.springframework.web.bind.annotation.RequestHeader(value = "X-Request-Id", required = false) String requestId,
-                                                           Principal principal) {
-        String companyCode = requireCompanyCode();
-        PayrollRunRequest raw = new PayrollRunRequest(
-                request.payrollDate(),
-                request.initiatedBy(),
-                request.debitAccountId(),
-                request.creditAccountId(),
-                request.postingAmount());
-        PayrollRunRequest normalized = new PayrollRunRequest(
-                request.payrollDate(),
-                canonicalText(request.initiatedBy()),
-                request.debitAccountId(),
-                request.creditAccountId(),
-                normalizeAmount(request.postingAmount()));
-        String traceId = commandDispatcher.runPayroll(
-                selectPayloadForIdempotency(idempotencyKey, raw, normalized),
-                resolveIdempotencyKey(
-                        idempotencyKey,
-                        requestId,
-                        "ORCH.PAYROLL.RUN",
-                        companyCode,
-                        normalized.payrollDate() + "|" + canonicalText(normalized.initiatedBy()) + "|"
-                                + normalized.debitAccountId() + "|" + normalized.creditAccountId() + "|"
-                                + canonicalAmount(normalized.postingAmount())
-                ),
-                requestId,
-                companyCode,
-                principal.getName());
-        return ResponseEntity.accepted().body(Map.of("traceId", traceId));
+    public ResponseEntity<Map<String, Object>> runPayroll(@RequestBody(required = false) PayrollRunRequest request,
+                                                          @org.springframework.web.bind.annotation.RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+                                                          @org.springframework.web.bind.annotation.RequestHeader(value = "X-Request-Id", required = false) String requestId,
+                                                          Principal principal) {
+        return goneToCanonical(
+                "Orchestrator payroll run is deprecated; use " + PAYROLL_RUNS_CANONICAL_PATH,
+                PAYROLL_RUNS_CANONICAL_PATH);
     }
 
     @GetMapping("/traces/{traceId}")
@@ -201,12 +179,12 @@ public class OrchestratorController {
         return ResponseEntity.ok(commandDispatcher.eventHealth());
     }
 
-    private ResponseEntity<Map<String, Object>> handleDispatchOrder(String orderId,
-                                                                     Principal principal) {
+    private ResponseEntity<Map<String, Object>> goneToCanonical(String message,
+                                                                String canonicalPath) {
         return ResponseEntity.status(HttpStatus.GONE)
                 .body(Map.of(
-                        "message", "Orchestrator dispatch is deprecated; use /api/v1/sales/dispatch/confirm",
-                        "canonicalPath", "/api/v1/sales/dispatch/confirm"));
+                        "message", message,
+                        "canonicalPath", canonicalPath));
     }
 
     private String requireCompanyCode() {
