@@ -48,6 +48,13 @@ public class AccountingPeriodService {
             "inventoryReconciled",
             "arReconciled",
             "apReconciled");
+    private static final Map<String, String> UNRESOLVED_CONTROL_GUIDANCE = Map.of(
+            "inventoryReconciled",
+            "inventory reconciliation result unavailable; run inventory reconciliation before close",
+            "arReconciled",
+            "AR subledger reconciliation result unavailable; reconcile dealer ledger before close",
+            "apReconciled",
+            "AP subledger reconciliation result unavailable; reconcile supplier ledger before close");
 
     private final AccountingPeriodRepository accountingPeriodRepository;
     private final CompanyContextService companyContextService;
@@ -551,7 +558,7 @@ public class AccountingPeriodService {
         ChecklistDiagnostics diagnostics = evaluateChecklistDiagnostics(company, period);
         List<String> unresolvedControls = diagnostics.unresolvedControlsInPolicyOrder();
         if (!unresolvedControls.isEmpty()) {
-            throw new IllegalStateException(UNRESOLVED_CONTROLS_PREFIX + String.join(", ", unresolvedControls));
+            throw new IllegalStateException(UNRESOLVED_CONTROLS_PREFIX + formatUnresolvedControls(unresolvedControls));
         }
         if (!diagnostics.inventoryReconciled()) {
             throw new IllegalStateException("Inventory reconciliation variance exceeds tolerance (" +
@@ -807,6 +814,19 @@ public class AccountingPeriodService {
 
     private String formatVariance(BigDecimal variance) {
         return safe(variance).setScale(2, RoundingMode.HALF_UP).toPlainString();
+    }
+
+    private String formatUnresolvedControls(List<String> unresolvedControls) {
+        return unresolvedControls.stream()
+                .map(control -> {
+                    String guidance = UNRESOLVED_CONTROL_GUIDANCE.get(control);
+                    if (!StringUtils.hasText(guidance)) {
+                        return control;
+                    }
+                    return control + " [" + guidance + "]";
+                })
+                .reduce((left, right) -> left + ", " + right)
+                .orElse("");
     }
 
     private BigDecimal safe(BigDecimal value) {
