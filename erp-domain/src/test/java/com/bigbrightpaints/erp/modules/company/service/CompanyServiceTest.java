@@ -178,7 +178,7 @@ class CompanyServiceTest {
     @Test
     void isRuntimeAccessAllowed_deniesWhenHardLimitQuotaExceeded() {
         Company company = company(1L, "ACME");
-        company.setQuotaHardLimitEnabled(true);
+        configureHardLimitEnvelope(company);
         company.setQuotaMaxActiveUsers(1L);
         when(repository.findById(1L)).thenReturn(Optional.of(company));
         when(userAccountRepository.countDistinctByCompanies_IdAndEnabledTrue(1L)).thenReturn(2L);
@@ -189,7 +189,7 @@ class CompanyServiceTest {
     @Test
     void isRuntimeAccessAllowed_deniesWhenApiActivityQuotaExceeded() {
         Company company = company(1L, "ACME");
-        company.setQuotaHardLimitEnabled(true);
+        configureHardLimitEnvelope(company);
         company.setQuotaMaxApiRequests(1L);
         when(repository.findById(1L)).thenReturn(Optional.of(company));
         when(auditLogRepository.countApiActivityByCompanyId(1L)).thenReturn(2L);
@@ -200,7 +200,7 @@ class CompanyServiceTest {
     @Test
     void isRuntimeAccessAllowed_deniesWhenAuditStorageQuotaExceeded() {
         Company company = company(1L, "ACME");
-        company.setQuotaHardLimitEnabled(true);
+        configureHardLimitEnvelope(company);
         company.setQuotaMaxStorageBytes(1_024L);
         when(repository.findById(1L)).thenReturn(Optional.of(company));
         when(auditLogRepository.estimateAuditStorageBytesByCompanyId(1L)).thenReturn(2_048L);
@@ -211,7 +211,7 @@ class CompanyServiceTest {
     @Test
     void isRuntimeAccessAllowed_deniesWhenConcurrentSessionQuotaExceeded() {
         Company company = company(1L, "ACME");
-        company.setQuotaHardLimitEnabled(true);
+        configureHardLimitEnvelope(company);
         company.setQuotaMaxConcurrentSessions(1L);
         when(repository.findById(1L)).thenReturn(Optional.of(company));
         when(auditLogRepository.countDistinctSessionActivityByCompanyId(1L)).thenReturn(2L);
@@ -237,6 +237,15 @@ class CompanyServiceTest {
 
         assertThat(companyService.isRuntimeAccessAllowed(1L)).isTrue();
         verify(userAccountRepository, never()).countDistinctByCompanies_IdAndEnabledTrue(1L);
+    }
+
+    private void configureHardLimitEnvelope(Company company) {
+        company.setQuotaHardLimitEnabled(true);
+        company.setQuotaSoftLimitEnabled(false);
+        company.setQuotaMaxActiveUsers(100L);
+        company.setQuotaMaxApiRequests(100L);
+        company.setQuotaMaxStorageBytes(100_000L);
+        company.setQuotaMaxConcurrentSessions(100L);
     }
 
     private Company company(Long id, String code) {

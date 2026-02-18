@@ -17,6 +17,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Predicate;
@@ -440,15 +441,62 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
                                               String code,
                                               String timezone,
                                               double defaultGstRate) {
+        return updateCompany(
+                companyId,
+                token,
+                companyCode,
+                name,
+                code,
+                timezone,
+                defaultGstRate,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
+
+    private ResponseEntity<Map> updateCompany(Long companyId,
+                                              String token,
+                                              String companyCode,
+                                              String name,
+                                              String code,
+                                              String timezone,
+                                              double defaultGstRate,
+                                              Long quotaMaxActiveUsers,
+                                              Long quotaMaxApiRequests,
+                                              Long quotaMaxStorageBytes,
+                                              Long quotaMaxConcurrentSessions,
+                                              Boolean quotaSoftLimitEnabled,
+                                              Boolean quotaHardLimitEnabled) {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("name", name);
+        payload.put("code", code);
+        payload.put("timezone", timezone);
+        payload.put("defaultGstRate", defaultGstRate);
+        if (quotaMaxActiveUsers != null) {
+            payload.put("quotaMaxActiveUsers", quotaMaxActiveUsers);
+        }
+        if (quotaMaxApiRequests != null) {
+            payload.put("quotaMaxApiRequests", quotaMaxApiRequests);
+        }
+        if (quotaMaxStorageBytes != null) {
+            payload.put("quotaMaxStorageBytes", quotaMaxStorageBytes);
+        }
+        if (quotaMaxConcurrentSessions != null) {
+            payload.put("quotaMaxConcurrentSessions", quotaMaxConcurrentSessions);
+        }
+        if (quotaSoftLimitEnabled != null) {
+            payload.put("quotaSoftLimitEnabled", quotaSoftLimitEnabled);
+        }
+        if (quotaHardLimitEnabled != null) {
+            payload.put("quotaHardLimitEnabled", quotaHardLimitEnabled);
+        }
         return rest.exchange(
                 "/api/v1/companies/" + companyId,
                 HttpMethod.PUT,
-                new HttpEntity<>(Map.of(
-                        "name", name,
-                        "code", code,
-                        "timezone", timezone,
-                        "defaultGstRate", defaultGstRate
-                ), jsonHeaders(token, companyCode)),
+                new HttpEntity<>(payload, jsonHeaders(token, companyCode)),
                 Map.class);
     }
 
