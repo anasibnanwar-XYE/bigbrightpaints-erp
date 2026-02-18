@@ -3,7 +3,6 @@ package com.bigbrightpaints.erp.core.security;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
-import com.bigbrightpaints.erp.modules.company.domain.CompanyLifecycleState;
 import com.bigbrightpaints.erp.modules.company.service.CompanyService;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
@@ -142,10 +141,9 @@ public class CompanyContextFilter extends OncePerRequestFilter {
             if (matchedCompany == null) {
                 return AccessValidationResult.FORBIDDEN;
             }
-            CompanyLifecycleState lifecycleState = companyService.resolveLifecycleStateById(matchedCompany.getId());
-            if (lifecycleState != CompanyLifecycleState.ACTIVE) {
-                log.warn("Rejecting request for tenant lifecycle state {}. companyCode={}, user={}",
-                        lifecycleState, companyCode, user.getEmail());
+            if (!companyService.isRuntimeAccessAllowed(matchedCompany.getId())) {
+                log.warn("Rejecting request for tenant runtime policy violation (lifecycle/quota). companyCode={}, user={}",
+                        companyCode, user.getEmail());
                 return AccessValidationResult.FORBIDDEN;
             }
             return AccessValidationResult.ALLOWED;

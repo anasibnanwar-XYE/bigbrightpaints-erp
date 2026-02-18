@@ -175,6 +175,28 @@ class CompanyServiceTest {
         verify(auditLogRepository, never()).estimateAuditStorageBytesByCompanyId(1L);
     }
 
+    @Test
+    void isRuntimeAccessAllowed_deniesWhenHardLimitQuotaExceeded() {
+        Company company = company(1L, "ACME");
+        company.setQuotaHardLimitEnabled(true);
+        company.setQuotaMaxActiveUsers(1L);
+        when(repository.findById(1L)).thenReturn(Optional.of(company));
+        when(userAccountRepository.countDistinctByCompanies_IdAndEnabledTrue(1L)).thenReturn(2L);
+
+        assertThat(companyService.isRuntimeAccessAllowed(1L)).isFalse();
+    }
+
+    @Test
+    void isRuntimeAccessAllowed_allowsWhenHardLimitEnforcementDisabled() {
+        Company company = company(1L, "ACME");
+        company.setQuotaHardLimitEnabled(false);
+        company.setQuotaMaxActiveUsers(1L);
+        when(repository.findById(1L)).thenReturn(Optional.of(company));
+
+        assertThat(companyService.isRuntimeAccessAllowed(1L)).isTrue();
+        verify(userAccountRepository, never()).countDistinctByCompanies_IdAndEnabledTrue(1L);
+    }
+
     private Company company(Long id, String code) {
         Company company = new Company();
         ReflectionTestUtils.setField(company, "id", id);

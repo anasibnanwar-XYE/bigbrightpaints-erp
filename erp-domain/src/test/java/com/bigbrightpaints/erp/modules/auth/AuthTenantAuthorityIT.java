@@ -371,6 +371,52 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
     }
 
     @Test
+    void quota_hard_limit_exceeded_denies_runtime_requests() {
+        Long tenantAId = companyRepository.findByCodeIgnoreCase(TENANT_A).map(Company::getId).orElseThrow();
+        String adminToken = login(ADMIN_EMAIL, TENANT_A);
+        String superAdminToken = login(SUPER_ADMIN_EMAIL, TENANT_A);
+
+        ResponseEntity<Map> enforceResponse = updateCompany(
+                tenantAId,
+                superAdminToken,
+                TENANT_A,
+                "Quota Runtime Enforcement",
+                TENANT_A,
+                "UTC",
+                18.0,
+                1L,
+                1_000_000L,
+                1_000_000_000L,
+                1_000L,
+                false,
+                true);
+        assertThat(enforceResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        ResponseEntity<Map> runtimeBlocked = rest.exchange(
+                "/api/v1/auth/me",
+                HttpMethod.GET,
+                new HttpEntity<>(jsonHeaders(adminToken, TENANT_A)),
+                Map.class);
+        assertThat(runtimeBlocked.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+        ResponseEntity<Map> resetResponse = updateCompany(
+                tenantAId,
+                superAdminToken,
+                TENANT_A,
+                "Quota Runtime Enforcement Reset",
+                TENANT_A,
+                "UTC",
+                18.0,
+                120L,
+                3_000L,
+                2_097_152L,
+                7L,
+                false,
+                true);
+        assertThat(resetResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    @Test
     void tenant_mismatch_and_cross_tenant_idor_fail_closed() {
         String token = login(ADMIN_EMAIL, TENANT_A);
         Long tenantBId = companyRepository.findByCodeIgnoreCase(TENANT_B).map(Company::getId).orElseThrow();
