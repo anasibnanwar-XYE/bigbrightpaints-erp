@@ -11,7 +11,6 @@ import jakarta.validation.constraints.PositiveOrZero;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Objects;
 
 public record RawMaterialPurchaseRequest(
         @NotNull Long supplierId,
@@ -23,6 +22,9 @@ public record RawMaterialPurchaseRequest(
         @PositiveOrZero BigDecimal taxAmount,
         @NotEmpty List<@Valid RawMaterialPurchaseLineRequest> lines
 ) {
+
+    private static final String INVOICE_NUMBER_FIELD = "invoiceNumber";
+    private static final String GOODS_RECEIPT_ID_FIELD = "goodsReceiptId";
 
     @JsonCreator(mode = JsonCreator.Mode.PROPERTIES)
     public static RawMaterialPurchaseRequest fromJson(
@@ -41,79 +43,41 @@ public record RawMaterialPurchaseRequest(
             @JsonProperty("taxAmount") BigDecimal taxAmount,
             @JsonProperty("lines") List<@Valid RawMaterialPurchaseLineRequest> lines
     ) {
-        String resolvedInvoiceNumber = resolveCanonicalWithAliases(
-                "invoiceNumber",
-                invoiceNumber,
-                "invoiceNo",
-                invoiceNo,
-                "invoice_no",
-                invoiceNoSnakeCase);
-        Long resolvedGoodsReceiptId = resolveCanonicalWithAliases(
-                "goodsReceiptId",
-                goodsReceiptId,
-                "goodsReceiptID",
-                goodsReceiptIdUpperCase,
-                "goods_receipt_id",
-                goodsReceiptIdSnakeCase,
-                "goodsReceipt",
-                goodsReceiptLegacy,
-                "grnId",
-                grnId);
+        rejectLegacyAliasValue("invoiceNo", invoiceNo, INVOICE_NUMBER_FIELD);
+        rejectLegacyAliasValue("invoice_no", invoiceNoSnakeCase, INVOICE_NUMBER_FIELD);
+        rejectLegacyAliasValue("goodsReceiptID", goodsReceiptIdUpperCase, GOODS_RECEIPT_ID_FIELD);
+        rejectLegacyAliasValue("goods_receipt_id", goodsReceiptIdSnakeCase, GOODS_RECEIPT_ID_FIELD);
+        rejectLegacyAliasValue("goodsReceipt", goodsReceiptLegacy, GOODS_RECEIPT_ID_FIELD);
+        rejectLegacyAliasValue("grnId", grnId, GOODS_RECEIPT_ID_FIELD);
 
         return new RawMaterialPurchaseRequest(
                 supplierId,
-                resolvedInvoiceNumber,
+                invoiceNumber,
                 invoiceDate,
                 memo,
                 purchaseOrderId,
-                resolvedGoodsReceiptId,
+                goodsReceiptId,
                 taxAmount,
                 lines
         );
     }
 
-    private static String resolveCanonicalWithAliases(String canonicalName,
-                                                      String canonicalValue,
-                                                      String aliasAName,
-                                                      String aliasAValue,
-                                                      String aliasBName,
-                                                      String aliasBValue) {
-        String resolved = canonicalValue;
-        resolved = mergeValue(canonicalName, resolved, aliasAName, aliasAValue);
-        return mergeValue(canonicalName, resolved, aliasBName, aliasBValue);
+    private static void rejectLegacyAliasValue(String aliasField,
+                                               String aliasValue,
+                                               String canonicalField) {
+        if (aliasValue == null || aliasValue.isBlank()) {
+            return;
+        }
+        throw new IllegalArgumentException(
+                "Legacy field " + aliasField + " is not supported; use " + canonicalField);
     }
 
-    private static Long resolveCanonicalWithAliases(String canonicalName,
-                                                    Long canonicalValue,
-                                                    String aliasAName,
-                                                    Long aliasAValue,
-                                                    String aliasBName,
-                                                    Long aliasBValue,
-                                                    String aliasCName,
-                                                    Long aliasCValue,
-                                                    String aliasDName,
-                                                    Long aliasDValue) {
-        Long resolved = canonicalValue;
-        resolved = mergeValue(canonicalName, resolved, aliasAName, aliasAValue);
-        resolved = mergeValue(canonicalName, resolved, aliasBName, aliasBValue);
-        resolved = mergeValue(canonicalName, resolved, aliasCName, aliasCValue);
-        return mergeValue(canonicalName, resolved, aliasDName, aliasDValue);
-    }
-
-    private static <T> T mergeValue(String canonicalName,
-                                    T currentValue,
-                                    String incomingField,
-                                    T incomingValue) {
-        if (incomingValue == null) {
-            return currentValue;
-        }
-        if (currentValue == null) {
-            return incomingValue;
-        }
-        if (!Objects.equals(currentValue, incomingValue)) {
+    private static void rejectLegacyAliasValue(String aliasField,
+                                               Long aliasValue,
+                                               String canonicalField) {
+        if (aliasValue != null) {
             throw new IllegalArgumentException(
-                    "Conflicting values provided for " + canonicalName + " and " + incomingField);
+                    "Legacy field " + aliasField + " is not supported; use " + canonicalField);
         }
-        return currentValue;
     }
 }

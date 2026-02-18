@@ -21,6 +21,7 @@ import java.util.List;
 @RequestMapping("/api/v1/purchasing")
 public class PurchasingWorkflowController {
 
+    private static final String CANONICAL_GOODS_RECEIPT_PATH = "/api/v1/purchasing/goods-receipts";
     private final PurchasingService purchasingService;
 
     public PurchasingWorkflowController(PurchasingService purchasingService) {
@@ -75,10 +76,17 @@ public class PurchasingWorkflowController {
             throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
                     "Goods receipt request is required");
         }
+        if (StringUtils.hasText(legacyIdempotencyKeyHeader)) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "X-Idempotency-Key is not supported for goods receipts; use Idempotency-Key")
+                    .withDetail("legacyHeader", "X-Idempotency-Key")
+                    .withDetail("canonicalHeader", "Idempotency-Key")
+                    .withDetail("canonicalPath", CANONICAL_GOODS_RECEIPT_PATH);
+        }
         String resolvedKey = IdempotencyHeaderUtils.resolveBodyOrHeaderKey(
                 request.idempotencyKey(),
                 idempotencyKeyHeader,
-                legacyIdempotencyKeyHeader
+                null
         );
         if (StringUtils.hasText(request.idempotencyKey())) {
             return request;
