@@ -11,13 +11,13 @@ class RawMaterialPurchaseRequestJsonAliasTest {
     private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
 
     @Test
-    void deserialization_acceptsInvoiceAndGoodsReceiptAliases() throws Exception {
+    void deserialization_acceptsCanonicalFields() throws Exception {
         String json = """
                 {
                   "supplierId": 42,
-                  "invoiceNo": "SUP-INV-2026-001",
+                  "invoiceNumber": "SUP-INV-2026-001",
                   "invoiceDate": "2026-02-13",
-                  "goodsReceiptID": 77,
+                  "goodsReceiptId": 77,
                   "lines": [
                     {
                       "rawMaterialId": 11,
@@ -38,12 +38,12 @@ class RawMaterialPurchaseRequestJsonAliasTest {
     }
 
     @Test
-    void deserialization_rejectsConflictingInvoiceAliases() {
+    void deserialization_rejectsLegacyInvoiceAliases() {
         String json = """
                 {
                   "supplierId": 42,
                   "invoiceNumber": "SUP-INV-2026-001",
-                  "invoiceNo": "SUP-INV-2026-XYZ",
+                  "invoiceNo": "SUP-INV-2026-001",
                   "invoiceDate": "2026-02-13",
                   "goodsReceiptId": 77,
                   "lines": [
@@ -57,11 +57,11 @@ class RawMaterialPurchaseRequestJsonAliasTest {
                 """;
 
         assertThatThrownBy(() -> objectMapper.readValue(json, RawMaterialPurchaseRequest.class))
-                .hasMessageContaining("Conflicting values provided for invoiceNumber and invoiceNo");
+                .hasMessageContaining("Legacy field invoiceNo is not supported; use invoiceNumber");
     }
 
     @Test
-    void deserialization_rejectsConflictingGoodsReceiptAliases() {
+    void deserialization_rejectsLegacyGoodsReceiptAliases() {
         String json = """
                 {
                   "supplierId": 42,
@@ -80,6 +80,6 @@ class RawMaterialPurchaseRequestJsonAliasTest {
                 """;
 
         assertThatThrownBy(() -> objectMapper.readValue(json, RawMaterialPurchaseRequest.class))
-                .hasMessageContaining("Conflicting values provided for goodsReceiptId and grnId");
+                .hasMessageContaining("Legacy field grnId is not supported; use goodsReceiptId");
     }
 }
