@@ -717,6 +717,26 @@
       "accounting_math_critical": false,
       "cross_module_critical": true,
       "quality_flake_monitor": true
+    },
+    {
+      "id": "ts-runtime-dealer-portal-export-coverage",
+      "test_path": "erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimeDealerPortalControllerExportCoverageTest.java",
+      "owner": "erp-domain-team",
+      "class": "critical",
+      "module": "Sales",
+      "gate_membership": [
+        "gate-fast",
+        "gate-core",
+        "gate-release",
+        "gate-reconciliation",
+        "gate-quality"
+      ],
+      "tags": [
+        "critical"
+      ],
+      "accounting_math_critical": false,
+      "cross_module_critical": true,
+      "quality_flake_monitor": true
     }
   ]
 }
