@@ -468,6 +468,7 @@ Current rule:
 - 2026-02-18: `TKT-ERP-STAGE-071` completed on `tmp/orch-exec-20260217` (`570764a3`, `df3e48d5`; verify report `20260218-131803`) with period-close denial diagnostics upgraded from raw keys to deterministic actionable guidance, and strict local harness proof green (`*Accounting*` + `verify_local` PASS).
 - 2026-02-18: `TKT-ERP-STAGE-072` completed on `tmp/orch-exec-20260218-active` (`c0a84b00`, merge `8faa0f53`; verify report `20260218-134004`) with fail-closed duplicate-target guards for dealer/supplier settlements (duplicate `invoiceId`/`purchaseId` in one request now rejected) plus accounting regression coverage in `AccountingServiceTest`.
 - 2026-02-18: `TKT-ERP-STAGE-059` and `TKT-ERP-STAGE-060` canceled as superseded backlog placeholders (all slice branches ahead=`0` against `tmp/orch-exec-20260218-active`); their quota runtime and contract/docs outcomes are covered by merged stages (`058`, `061-067`, `071`, `072`).
+- 2026-02-18: `TKT-ERP-STAGE-073` completed on `tmp/orch-exec-20260218-active` (`2b731188`, merge `ec49f784`; verify report `20260218-135618`) with deterministic corrective-hint contract hardening for duplicate settlement targets (dealer `invoiceId` / supplier `purchaseId`) and updated accounting regression assertions.
 
 ## 20) V1 Deployment Priority Stack (Senior Orchestrator Order)
 Deployment is blocked until priorities below are satisfied in order:
