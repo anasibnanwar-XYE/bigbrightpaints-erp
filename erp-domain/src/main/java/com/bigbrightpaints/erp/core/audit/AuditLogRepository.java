@@ -32,6 +32,12 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, Long> {
     List<AuditLog> findByEventTypeOrderByTimestampDesc(AuditEvent eventType);
 
     /**
+     * Find audit logs by event type and eagerly load metadata for assertions/reporting.
+     */
+    @Query("SELECT DISTINCT al FROM AuditLog al LEFT JOIN FETCH al.metadata WHERE al.eventType = :eventType ORDER BY al.timestamp DESC")
+    List<AuditLog> findByEventTypeWithMetadataOrderByTimestampDesc(@Param("eventType") AuditEvent eventType);
+
+    /**
      * Find audit logs within a time range.
      */
     @Query("SELECT al FROM AuditLog al WHERE al.timestamp BETWEEN :startTime AND :endTime ORDER BY al.timestamp DESC")
