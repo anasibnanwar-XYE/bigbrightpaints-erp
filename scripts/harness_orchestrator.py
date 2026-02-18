@@ -73,6 +73,10 @@ def run_shell(command: str, cwd: Path, check: bool = True) -> subprocess.Complet
     )
 
 
+def progress(message: str) -> None:
+    print(f"[harness][verify] {message}", flush=True)
+
+
 def load_yaml(path: Path) -> dict[str, Any]:
     with path.open("r", encoding="utf-8") as fh:
         data = yaml.safe_load(fh)
@@ -981,10 +985,71 @@ def ensure_base_checked_out(repo_root: Path, base_branch: str, allow_dirty: bool
         raise RuntimeError(f"cannot checkout base branch {base_branch}: {checkout.stderr.strip()}")
 
 
+def pid_is_running(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def acquire_verify_lock(repo_root: Path, ticket_id: str) -> Path:
+    lock_dir = ticket_dir(repo_root, ticket_id) / ".locks"
+    lock_dir.mkdir(parents=True, exist_ok=True)
+    lock_path = lock_dir / "verify.lock"
+    payload = {
+        "ticket_id": ticket_id,
+        "pid": os.getpid(),
+        "started_at": utc_now(),
+    }
+
+    while True:
+        try:
+            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            existing = load_yaml(lock_path) if lock_path.exists() else {}
+            existing_pid = int(existing.get("pid", 0)) if isinstance(existing, dict) else 0
+            if existing_pid > 0 and pid_is_running(existing_pid):
+                started_at = existing.get("started_at") if isinstance(existing, dict) else None
+                started_suffix = f", started_at={started_at}" if started_at else ""
+                raise RuntimeError(
+                    f"verify already running for {ticket_id}: pid={existing_pid}{started_suffix}. "
+                    f"Lock file: {lock_path}"
+                )
+            # Stale lock from dead process.
+            try:
+                lock_path.unlink()
+            except FileNotFoundError:
+                pass
+            continue
+
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            yaml.safe_dump(payload, fh, sort_keys=False)
+        return lock_path
+
+
+def release_verify_lock(lock_path: Path) -> None:
+    try:
+        lock_path.unlink()
+    except FileNotFoundError:
+        pass
+
+
 def verify_ticket(args: argparse.Namespace) -> int:
     repo_root = project_root()
     orchestrator_layer, _, _ = load_contracts(repo_root)
     ticket = read_ticket(repo_root, args.ticket_id)
+    lock_path = acquire_verify_lock(repo_root, args.ticket_id)
+    progress(
+        f"verify start ticket={args.ticket_id} merge_mode={'on' if args.merge else 'off'} "
+        f"push_base={'on' if args.push_base else 'off'}"
+    )
     annotate_ticket_workflow(ticket)
     base_branch = str(ticket.get("base_branch"))
     cleanup_default = bool(orchestrator_layer.get("automation", {}).get("cleanup_worktrees_on_merge", False))
@@ -993,6 +1058,7 @@ def verify_ticket(args: argparse.Namespace) -> int:
     run(["git", "fetch", "origin", "--prune"], cwd=repo_root, check=False)
 
     if args.merge:
+        progress(f"checking out base branch {base_branch}")
         ensure_base_checked_out(repo_root, base_branch, args.allow_dirty)
 
     # Senior-orchestrator pre-merge reconnaissance:
@@ -1051,6 +1117,9 @@ def verify_ticket(args: argparse.Namespace) -> int:
         changed_now = sorted(slice_changed.get(sid, set()))
         overlaps_now = overlap_map.get(sid, [])
         orchestrator_review = slice_dir / "orchestrator-review.md"
+        progress(
+            f"slice {sid} agent={s.get('primary_agent')} ahead={ahead} changed_files={len(changed_now)}"
+        )
         if ahead <= 0:
             if branch_merged_into_base(repo_root, base_branch, branch):
                 s["status"] = "merged"
@@ -1179,6 +1248,7 @@ def verify_ticket(args: argparse.Namespace) -> int:
         check_fail = False
         check_log = []
         for idx, cmd in enumerate(checks, start=1):
+            progress(f"slice {sid} running check {idx}/{len(checks)}: {cmd}")
             proc = run_shell(cmd, cwd=wt, check=False)
             cmd_log = harness_dir / f"check-{idx:02d}.log"
             cmd_log.write_text(
@@ -1187,6 +1257,7 @@ def verify_ticket(args: argparse.Namespace) -> int:
             )
             ok = proc.returncode == 0
             check_log.append((cmd, ok, cmd_log))
+            progress(f"slice {sid} check {idx} {'PASS' if ok else 'FAIL'} log={cmd_log}")
             if not ok:
                 check_fail = True
                 break
@@ -1238,6 +1309,7 @@ def verify_ticket(args: argparse.Namespace) -> int:
         ready_count += 1
 
         if args.merge:
+            progress(f"slice {sid} merging branch {branch} into {base_branch}")
             merge_proc = run(["git", "merge", "--no-ff", "--no-edit", branch], cwd=repo_root, check=False)
             merge_log = harness_dir / "merge.log"
             merge_log.write_text(
@@ -1265,6 +1337,7 @@ def verify_ticket(args: argparse.Namespace) -> int:
             s["status"] = "merged"
             merged_count += 1
             if args.push_base:
+                progress(f"slice {sid} pushing base branch {base_branch} to origin")
                 push_proc = run(["git", "push", "origin", base_branch], cwd=repo_root, check=False)
                 push_log = harness_dir / "push.log"
                 push_log.write_text(
@@ -1292,6 +1365,7 @@ def verify_ticket(args: argparse.Namespace) -> int:
             if cleanup_enabled:
                 cleanup_log = harness_dir / "cleanup-worktree.log"
                 if wt.exists():
+                    progress(f"slice {sid} cleaning up worktree {wt}")
                     cleanup_proc = run(["git", "worktree", "remove", str(wt)], cwd=repo_root, check=False)
                     cleanup_log.write_text(
                         f"$ git worktree remove {wt}\n\nSTDOUT:\n{cleanup_proc.stdout}\n\nSTDERR:\n{cleanup_proc.stderr}\n",
@@ -1360,6 +1434,7 @@ def verify_ticket(args: argparse.Namespace) -> int:
 
     report_path.write_text("\n".join(report_lines) + "\n", encoding="utf-8")
     append_timeline(repo_root, args.ticket_id, f"verify run completed (merge_mode={'on' if args.merge else 'off'})")
+    release_verify_lock(lock_path)
 
     print(f"[harness] verify report: {report_path}")
     print(f"[harness] ticket status: {ticket.get('status')}")
