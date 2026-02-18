@@ -3,7 +3,6 @@ package com.bigbrightpaints.erp.core.security;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
-import com.bigbrightpaints.erp.modules.company.domain.CompanyLifecycleState;
 import com.bigbrightpaints.erp.modules.company.service.CompanyService;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
@@ -15,6 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -142,10 +142,14 @@ public class CompanyContextFilter extends OncePerRequestFilter {
             if (matchedCompany == null) {
                 return AccessValidationResult.FORBIDDEN;
             }
-            CompanyLifecycleState lifecycleState = companyService.resolveLifecycleStateById(matchedCompany.getId());
-            if (lifecycleState != CompanyLifecycleState.ACTIVE) {
-                log.warn("Rejecting request for tenant lifecycle state {}. companyCode={}, user={}",
-                        lifecycleState, companyCode, user.getEmail());
+            if (auth.getAuthorities().stream()
+                    .map(GrantedAuthority::getAuthority)
+                    .anyMatch(granted -> "ROLE_SUPER_ADMIN".equalsIgnoreCase(granted))) {
+                return AccessValidationResult.ALLOWED;
+            }
+            if (!companyService.isRuntimeAccessAllowed(matchedCompany.getId())) {
+                log.warn("Rejecting request for tenant runtime policy violation (lifecycle/quota). companyCode={}, user={}",
+                        companyCode, user.getEmail());
                 return AccessValidationResult.FORBIDDEN;
             }
             return AccessValidationResult.ALLOWED;
