@@ -1,0 +1,79 @@
+ticket_id: TKT-ERP-STAGE-069
+title: Harness Verify Progress And Locking
+goal: Prevent duplicate verify runs and provide deterministic live progress during
+  long checks
+priority: high
+status: done
+base_branch: tmp/orch-exec-20260217
+worktree_root: /home/realnigga/Desktop/orchestrator_erp_worktrees/_tmp_orch_exec_worktrees
+created_at: '2026-02-18T07:21:25+00:00'
+updated_at: '2026-02-18T07:26:00+00:00'
+r3_required: true
+orchestrator_authority:
+  r1: orchestrator
+  r2: orchestrator
+  r3: human
+slices:
+- id: SLICE-01
+  primary_agent: orchestrator
+  reviewers:
+  - qa-reliability
+  - repo-cartographer
+  - security-governance
+  scope_paths:
+  - scripts/harness_orchestrator.py
+  allowed_scope_paths:
+  - agents/
+  - asyncloop
+  - ci/
+  - docs/
+  - scripts/harness_orchestrator.py
+  - skills/
+  - tickets/
+  matched_rules:
+  - scripts/harness_orchestrator.py
+  lane: w1
+  branch: tickets/tkt-erp-stage-069/orchestrator
+  worktree_path: /home/realnigga/Desktop/orchestrator_erp_worktrees/_tmp_orch_exec_worktrees/TKT-ERP-STAGE-069/orchestrator
+  required_checks:
+  - bash ci/lint-knowledgebase.sh
+  - bash ci/check-architecture.sh
+  - bash ci/check-enterprise-policy.sh
+  status: merged
+  objective: Prevent duplicate verify runs and provide deterministic live progress
+    during long checks
+  workflow_upstream_slices: []
+  workflow_downstream_slices: []
+  workflow_external_upstream_agents: []
+  workflow_external_downstream_agents: []
+  cross_workflow_contracts: []
+- id: SLICE-02
+  primary_agent: repo-cartographer
+  reviewers:
+  - orchestrator
+  scope_paths:
+  - docs/ASYNC_LOOP_OPERATIONS.md
+  allowed_scope_paths:
+  - AGENTS.md
+  - ARCHITECTURE.md
+  - docs/
+  - docs/ASYNC_LOOP_OPERATIONS.md
+  matched_rules:
+  - docs/
+  lane: w2
+  branch: tickets/tkt-erp-stage-069/repo-cartographer
+  worktree_path: /home/realnigga/Desktop/orchestrator_erp_worktrees/_tmp_orch_exec_worktrees/TKT-ERP-STAGE-069/repo-cartographer
+  required_checks:
+  - bash ci/lint-knowledgebase.sh
+  status: merged
+  objective: Prevent duplicate verify runs and provide deterministic live progress
+    during long checks
+  workflow_upstream_slices: []
+  workflow_downstream_slices: []
+  workflow_external_upstream_agents: []
+  workflow_external_downstream_agents: []
+  cross_workflow_contracts: []
+cross_workflow:
+  model: workflow_agent_edges_v1
+  generated_at: '2026-02-18T07:25:47+00:00'
+  in_ticket_edges: []

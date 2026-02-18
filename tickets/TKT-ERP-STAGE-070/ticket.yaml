@@ -1,0 +1,45 @@
+ticket_id: TKT-ERP-STAGE-070
+title: Master Plan Ledger Sync Stage-069
+goal: Record stage-069 closure evidence in ERP_STAGING_MASTER_PLAN for planning parity
+priority: high
+status: done
+base_branch: tmp/orch-exec-20260217
+worktree_root: /home/realnigga/Desktop/orchestrator_erp_worktrees/_tmp_orch_exec_worktrees
+created_at: '2026-02-18T07:27:24+00:00'
+updated_at: '2026-02-18T07:28:11+00:00'
+r3_required: true
+orchestrator_authority:
+  r1: orchestrator
+  r2: orchestrator
+  r3: human
+slices:
+- id: SLICE-01
+  primary_agent: repo-cartographer
+  reviewers:
+  - orchestrator
+  scope_paths:
+  - docs/system-map/Goal/ERP_STAGING_MASTER_PLAN.md
+  allowed_scope_paths:
+  - AGENTS.md
+  - ARCHITECTURE.md
+  - docs/
+  - docs/system-map/Goal/ERP_STAGING_MASTER_PLAN.md
+  matched_rules:
+  - docs/
+  lane: w1
+  branch: tickets/tkt-erp-stage-070/repo-cartographer
+  worktree_path: /home/realnigga/Desktop/orchestrator_erp_worktrees/_tmp_orch_exec_worktrees/TKT-ERP-STAGE-070/repo-cartographer
+  required_checks:
+  - bash ci/lint-knowledgebase.sh
+  status: merged
+  objective: Record stage-069 closure evidence in ERP_STAGING_MASTER_PLAN for planning
+    parity
+  workflow_upstream_slices: []
+  workflow_downstream_slices: []
+  workflow_external_upstream_agents: []
+  workflow_external_downstream_agents: []
+  cross_workflow_contracts: []
+cross_workflow:
+  model: workflow_agent_edges_v1
+  generated_at: '2026-02-18T07:28:07+00:00'
+  in_ticket_edges: []
