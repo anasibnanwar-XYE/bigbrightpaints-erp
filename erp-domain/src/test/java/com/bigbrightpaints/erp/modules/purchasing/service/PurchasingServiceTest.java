@@ -572,6 +572,115 @@ class PurchasingServiceTest {
     }
 
     @Test
+    @DisplayName("createPurchase fails closed to non-GST when no tax rates are provided")
+    void createPurchase_noTaxRatesProvided_postsNoTaxLines() {
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(companyEntityLookup.requireSupplier(company, 10L)).thenReturn(supplier);
+        when(purchaseRepository.lockByCompanyAndInvoiceNumberIgnoreCase(company, "INV-004A"))
+                .thenReturn(Optional.empty());
+        when(rawMaterialRepository.lockByCompanyAndId(company, 20L)).thenReturn(Optional.of(rawMaterial));
+        stubGoodsReceipt(305L, 205L, new BigDecimal("10"), new BigDecimal("5.00"));
+
+        JournalEntryDto journalDto = dummyJournal("RMP-SUP001-INV004A", 1004L);
+        when(accountingFacade.postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(journalDto);
+        when(purchaseRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        RawMaterialPurchaseRequest request = new RawMaterialPurchaseRequest(
+                10L,
+                "INV-004A",
+                LocalDate.now(),
+                "No GST rates",
+                205L,
+                305L,
+                null,
+                List.of(new RawMaterialPurchaseLineRequest(
+                        20L, null, new BigDecimal("10"), "KG", new BigDecimal("5.00"),
+                        null, Boolean.FALSE, null))
+        );
+
+        purchasingService.createPurchase(request);
+
+        ArgumentCaptor<Map<Long, BigDecimal>> taxLinesCaptor = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<Map<Long, BigDecimal>> inventoryCaptor = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<BigDecimal> totalAmountCaptor = ArgumentCaptor.forClass(BigDecimal.class);
+        verify(accountingFacade).postPurchaseJournal(
+                eq(10L),
+                eq("INV-004A"),
+                any(),
+                any(),
+                inventoryCaptor.capture(),
+                taxLinesCaptor.capture(),
+                totalAmountCaptor.capture(),
+                any());
+
+        Map<Long, BigDecimal> inventoryLines = inventoryCaptor.getValue();
+        assertThat(inventoryLines.get(200L)).isEqualByComparingTo(new BigDecimal("50.00"));
+        assertThat(taxLinesCaptor.getValue()).isNull();
+        assertThat(totalAmountCaptor.getValue()).isEqualByComparingTo(new BigDecimal("50.00"));
+    }
+
+    @Test
+    @DisplayName("createPurchase rejects negative GST rate when tax is auto-computed")
+    void createPurchase_negativeTaxRate_throws() {
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(companyEntityLookup.requireSupplier(company, 10L)).thenReturn(supplier);
+        when(purchaseRepository.lockByCompanyAndInvoiceNumberIgnoreCase(company, "INV-004B"))
+                .thenReturn(Optional.empty());
+        when(rawMaterialRepository.lockByCompanyAndId(company, 20L)).thenReturn(Optional.of(rawMaterial));
+        stubGoodsReceipt(306L, 206L, new BigDecimal("10"), new BigDecimal("5.00"));
+
+        RawMaterialPurchaseRequest request = new RawMaterialPurchaseRequest(
+                10L,
+                "INV-004B",
+                LocalDate.now(),
+                "Negative GST rate",
+                206L,
+                306L,
+                null,
+                List.of(new RawMaterialPurchaseLineRequest(
+                        20L, null, new BigDecimal("10"), "KG", new BigDecimal("5.00"),
+                        new BigDecimal("-1.00"), Boolean.FALSE, null))
+        );
+
+        assertThatThrownBy(() -> purchasingService.createPurchase(request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("GST rate must be zero or positive");
+        verify(accountingFacade, never()).postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any());
+        verify(purchaseRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("createPurchase rejects GST rate above supported maximum")
+    void createPurchase_taxRateAboveMax_throws() {
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(companyEntityLookup.requireSupplier(company, 10L)).thenReturn(supplier);
+        when(purchaseRepository.lockByCompanyAndInvoiceNumberIgnoreCase(company, "INV-004C"))
+                .thenReturn(Optional.empty());
+        when(rawMaterialRepository.lockByCompanyAndId(company, 20L)).thenReturn(Optional.of(rawMaterial));
+        stubGoodsReceipt(307L, 207L, new BigDecimal("10"), new BigDecimal("5.00"));
+
+        RawMaterialPurchaseRequest request = new RawMaterialPurchaseRequest(
+                10L,
+                "INV-004C",
+                LocalDate.now(),
+                "Unsupported GST rate",
+                207L,
+                307L,
+                null,
+                List.of(new RawMaterialPurchaseLineRequest(
+                        20L, null, new BigDecimal("10"), "KG", new BigDecimal("5.00"),
+                        new BigDecimal("30.00"), Boolean.FALSE, null))
+        );
+
+        assertThatThrownBy(() -> purchasingService.createPurchase(request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Unsupported GST rate 30.00%. Max allowed is 28.00");
+        verify(accountingFacade, never()).postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any());
+        verify(purchaseRepository, never()).save(any());
+    }
+
+    @Test
     @DisplayName("createPurchase auto-computes tax when prices are tax-inclusive")
     void createPurchase_autoComputesTaxInclusive() {
         when(companyContextService.requireCurrentCompany()).thenReturn(company);

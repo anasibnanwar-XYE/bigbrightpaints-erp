@@ -12,6 +12,8 @@ class TS_GstRoundingDeterminismContractTest {
             "src/main/java/com/bigbrightpaints/erp/modules/sales/service/SalesService.java";
     private static final String PURCHASING_SERVICE =
             "src/main/java/com/bigbrightpaints/erp/modules/purchasing/service/PurchasingService.java";
+    private static final String TAX_SERVICE =
+            "src/main/java/com/bigbrightpaints/erp/modules/accounting/service/TaxService.java";
 
     @Test
     void salesTaxAndDiscountMathUsesDeterministicHalfUpRounding() {
@@ -34,5 +36,29 @@ class TS_GstRoundingDeterminismContractTest {
                 ".divide(new BigDecimal(\"100\"), 6, RoundingMode.HALF_UP));",
                 "BigDecimal allocatedTax = (i == computedLines.size() - 1)",
                 ".divide(inventoryTotal, 6, RoundingMode.HALF_UP));");
+    }
+
+    @Test
+    void gstDecisioningAndTaxReturnFallbackAreFailClosed() {
+        TruthSuiteFileAssert.assertContains(
+                SALES_SERVICE,
+                "if (!StringUtils.hasText(value)) {",
+                "return GstTreatment.NONE;",
+                "throw new IllegalArgumentException(\"Unknown GST treatment \" + value);");
+
+        TruthSuiteFileAssert.assertContains(
+                PURCHASING_SERVICE,
+                "if (lineRequest != null && lineRequest.taxRate() != null) {",
+                "if (rawMaterial != null && rawMaterial.getGstRate() != null) {",
+                "if (company != null && company.getDefaultGstRate() != null) {",
+                "throw new IllegalArgumentException(\"GST rate must be zero or positive\");",
+                "return BigDecimal.ZERO;");
+
+        TruthSuiteFileAssert.assertContains(
+                TAX_SERVICE,
+                "if (accountId == null) {",
+                "return BigDecimal.ZERO;",
+                "BigDecimal outputTax = MoneyUtils.roundCurrency(sumTax(company, taxConfig.outputTaxAccountId(), start, end, true));",
+                "BigDecimal inputTax = MoneyUtils.roundCurrency(sumTax(company, taxConfig.inputTaxAccountId(), start, end, false));");
     }
 }
