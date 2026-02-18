@@ -466,6 +466,7 @@ Current rule:
 - 2026-02-18: `TKT-ERP-STAGE-069` completed on `tmp/orch-exec-20260217` (`749c04fc`, `1b340b88`) for orchestration reliability hardening: verify now emits deterministic live progress markers and enforces per-ticket single-run locking (`tickets/<ticket-id>/.locks/verify.lock`) with stale-lock self-heal semantics; runbook contract updated in `docs/ASYNC_LOOP_OPERATIONS.md`.
 - 2026-02-18: `TKT-ERP-STAGE-070` completed on `tmp/orch-exec-20260217` (`ddb387ec`) as staging-ledger parity sync to capture Stage-069 closure in the master plan and keep ticketized progress accounting deterministic.
 - 2026-02-18: `TKT-ERP-STAGE-071` completed on `tmp/orch-exec-20260217` (`570764a3`, `df3e48d5`; verify report `20260218-131803`) with period-close denial diagnostics upgraded from raw keys to deterministic actionable guidance, and strict local harness proof green (`*Accounting*` + `verify_local` PASS).
+- 2026-02-18: `TKT-ERP-STAGE-072` completed on `tmp/orch-exec-20260218-active` (`c0a84b00`, merge `8faa0f53`; verify report `20260218-134004`) with fail-closed duplicate-target guards for dealer/supplier settlements (duplicate `invoiceId`/`purchaseId` in one request now rejected) plus accounting regression coverage in `AccountingServiceTest`.
 
 ## 20) V1 Deployment Priority Stack (Senior Orchestrator Order)
 Deployment is blocked until priorities below are satisfied in order:
