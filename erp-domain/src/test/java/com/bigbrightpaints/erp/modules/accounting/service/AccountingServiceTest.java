@@ -672,7 +672,7 @@ class AccountingServiceTest {
     }
 
     @Test
-    void createJournalEntry_requiresExplicitSupplierContextForOwnedPayableAccount() {
+    void createJournalEntry_requiresSupplierContextForOwnedPayableAccount() {
         LocalDate today = LocalDate.of(2024, 4, 7);
         when(companyClock.today(company)).thenReturn(today);
         when(journalEntryRepository.findByCompanyAndReferenceNumber(eq(company), eq("AP-INFER-SUPPLIER")))
@@ -692,14 +692,8 @@ class AccountingServiceTest {
         cash.setName("Cash");
         cash.setType(AccountType.ASSET);
 
-        Supplier supplier = new Supplier();
-        ReflectionTestUtils.setField(supplier, "id", 91L);
-        supplier.setName("SKEINA");
-        supplier.setPayableAccount(payable);
-
         when(accountRepository.lockByCompanyAndId(eq(company), eq(31L))).thenReturn(Optional.of(payable));
         when(accountRepository.lockByCompanyAndId(eq(company), eq(32L))).thenReturn(Optional.of(cash));
-        when(supplierRepository.findAllByCompanyAndPayableAccount(eq(company), eq(payable))).thenReturn(List.of(supplier));
 
         JournalEntryRequest request = new JournalEntryRequest(
                 "AP-INFER-SUPPLIER",

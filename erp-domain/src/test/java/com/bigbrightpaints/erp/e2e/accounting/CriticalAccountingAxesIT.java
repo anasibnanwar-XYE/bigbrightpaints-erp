@@ -74,6 +74,7 @@ import java.time.YearMonth;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -953,18 +954,16 @@ class CriticalAccountingAxesIT extends AbstractIntegrationTest {
     }
 
     private BigDecimal sumDebitForCompany() {
-        return journalEntryRepository.findByCompanyOrderByEntryDateDesc(company).stream()
-                .flatMap(entry -> entry.getLines().stream())
-                .map(JournalLine::getDebit)
-                .filter(val -> val != null)
+        return journalLineRepository.summarizeByAccountUpTo(company, LocalDate.now().plusDays(1)).stream()
+                .map(row -> (BigDecimal) row[1])
+                .filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     private BigDecimal sumCreditForCompany() {
-        return journalEntryRepository.findByCompanyOrderByEntryDateDesc(company).stream()
-                .flatMap(entry -> entry.getLines().stream())
-                .map(JournalLine::getCredit)
-                .filter(val -> val != null)
+        return journalLineRepository.summarizeByAccountUpTo(company, LocalDate.now().plusDays(1)).stream()
+                .map(row -> (BigDecimal) row[2])
+                .filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
