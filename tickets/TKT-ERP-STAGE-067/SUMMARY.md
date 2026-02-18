@@ -3,17 +3,17 @@
 - title: Gate-Fast Release Anchor Normalization
 - goal: Make Stage 14.3 release-mode gate_fast non-vacuous and deterministic on integration head
 - priority: high
-- status: planned
+- status: done
 - base_branch: tmp/orch-exec-20260217
 - created_at: 2026-02-17T20:24:29+00:00
-- updated_at: 2026-02-17T20:24:29+00:00
+- updated_at: 2026-02-18T05:28:12+00:00
 
 ## Slice Board
 
 | Slice | Agent | Lane | Status | Branch |
 | --- | --- | --- | --- | --- |
-| SLICE-01 | release-ops | w1 | ready | `tickets/tkt-erp-stage-067/release-ops` |
-| SLICE-02 | repo-cartographer | w2 | ready | `tickets/tkt-erp-stage-067/repo-cartographer` |
+| SLICE-01 | release-ops | w1 | merged | `tickets/tkt-erp-stage-067/release-ops` |
+| SLICE-02 | repo-cartographer | w2 | merged | `tickets/tkt-erp-stage-067/repo-cartographer` |
 
 ## Operator Commands
 
