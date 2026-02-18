@@ -373,6 +373,38 @@ public class OrchestratorControllerIT extends AbstractIntegrationTest {
     }
 
     @Test
+    void dispatch_alias_without_body_is_gone_with_canonical_path() {
+        String token = loginToken();
+        HttpHeaders headers = authHeaders(token);
+
+        ResponseEntity<Map> response = rest.exchange(
+                "/api/v1/orchestrator/dispatch",
+                HttpMethod.POST,
+                new HttpEntity<>(null, headers),
+                Map.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.GONE);
+        assertThat(response.getBody()).containsKey("message");
+        assertThat(response.getBody()).containsEntry("canonicalPath", "/api/v1/sales/dispatch/confirm");
+    }
+
+    @Test
+    void dispatch_alias_path_variant_is_gone_with_canonical_path() {
+        String token = loginToken();
+        HttpHeaders headers = authHeaders(token);
+
+        ResponseEntity<Map> response = rest.exchange(
+                "/api/v1/orchestrator/dispatch/" + seededOrderId,
+                HttpMethod.POST,
+                new HttpEntity<>(headers),
+                Map.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.GONE);
+        assertThat(response.getBody()).containsKey("message");
+        assertThat(response.getBody()).containsEntry("canonicalPath", "/api/v1/sales/dispatch/confirm");
+    }
+
+    @Test
     void payroll_run_is_disabled_by_default_in_code_red() {
         String token = loginToken();
         HttpHeaders headers = authHeaders(token);
