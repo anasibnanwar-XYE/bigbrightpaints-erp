@@ -26,6 +26,7 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.Valid;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -679,7 +680,7 @@ public class AccountingController {
     /* Audit digest */
     @GetMapping("/audit/digest")
     @Deprecated(forRemoval = false, since = "2026-02-11")
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<ApiResponse<AuditDigestResponse>> auditDigest(@RequestParam(required = false) String from,
                                                                         @RequestParam(required = false) String to) {
         return ResponseEntity.ok(ApiResponse.success(
@@ -690,13 +691,15 @@ public class AccountingController {
 
     @GetMapping(value = "/audit/digest.csv", produces = "text/csv")
     @Deprecated(forRemoval = false, since = "2026-02-11")
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<String> auditDigestCsv(@RequestParam(required = false) String from,
                                                  @RequestParam(required = false) String to) {
         String csv = accountingService.auditDigestCsv(
                 from != null ? java.time.LocalDate.parse(from) : null,
                 to != null ? java.time.LocalDate.parse(to) : null);
-        return ResponseEntity.ok(csv);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=audit-digest.csv")
+                .body(csv);
     }
 
     @GetMapping("/audit/transactions")

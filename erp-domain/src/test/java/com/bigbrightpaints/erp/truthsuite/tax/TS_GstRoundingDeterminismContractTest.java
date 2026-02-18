@@ -58,7 +58,10 @@ class TS_GstRoundingDeterminismContractTest {
                 TAX_SERVICE,
                 "if (accountId == null) {",
                 "return BigDecimal.ZERO;",
-                "BigDecimal outputTax = MoneyUtils.roundCurrency(sumTax(company, taxConfig.outputTaxAccountId(), start, end, true));",
-                "BigDecimal inputTax = MoneyUtils.roundCurrency(sumTax(company, taxConfig.inputTaxAccountId(), start, end, false));");
+                "if (lines == null || lines.isEmpty()) {",
+                "BigDecimal outputTaxBalance = sumTax(company, taxConfig.outputTaxAccountId(), start, end, true);",
+                "BigDecimal inputTaxBalance = sumTax(company, taxConfig.inputTaxAccountId(), start, end, false);",
+                "positivePortion(outputTaxBalance).add(positivePortion(inputTaxBalance.negate()))",
+                "positivePortion(inputTaxBalance).add(positivePortion(outputTaxBalance.negate()))");
     }
 }
