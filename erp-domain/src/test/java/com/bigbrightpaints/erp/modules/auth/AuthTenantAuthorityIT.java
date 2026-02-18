@@ -316,6 +316,52 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
     }
 
     @Test
+    void quota_soft_limit_only_does_not_block_runtime_requests() {
+        Long tenantAId = companyRepository.findByCodeIgnoreCase(TENANT_A).map(Company::getId).orElseThrow();
+        String adminToken = login(ADMIN_EMAIL, TENANT_A);
+        String superAdminToken = login(SUPER_ADMIN_EMAIL, TENANT_A);
+
+        ResponseEntity<Map> configureSoftOnly = updateCompany(
+                tenantAId,
+                superAdminToken,
+                TENANT_A,
+                "Quota Soft Limit Only",
+                TENANT_A,
+                "UTC",
+                18.0,
+                1L,
+                1_000_000L,
+                1_000_000_000L,
+                1_000L,
+                true,
+                false);
+        assertThat(configureSoftOnly.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        ResponseEntity<Map> runtimeAllowed = rest.exchange(
+                "/api/v1/auth/me",
+                HttpMethod.GET,
+                new HttpEntity<>(jsonHeaders(adminToken, TENANT_A)),
+                Map.class);
+        assertThat(runtimeAllowed.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        ResponseEntity<Map> resetResponse = updateCompany(
+                tenantAId,
+                superAdminToken,
+                TENANT_A,
+                "Quota Soft Limit Only Reset",
+                TENANT_A,
+                "UTC",
+                18.0,
+                120L,
+                3_000L,
+                2_097_152L,
+                7L,
+                false,
+                true);
+        assertThat(resetResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    @Test
     void tenant_mismatch_and_cross_tenant_idor_fail_closed() {
         String token = login(ADMIN_EMAIL, TENANT_A);
         Long tenantBId = companyRepository.findByCodeIgnoreCase(TENANT_B).map(Company::getId).orElseThrow();
