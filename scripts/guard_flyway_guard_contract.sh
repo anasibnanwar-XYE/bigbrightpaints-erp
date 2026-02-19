@@ -129,9 +129,9 @@ run_case() {
   set +e
   (
     cd "$TMP_ROOT"
-    env -u PGHOST -u PGPORT -u PGUSER -u PGPASSWORD -u PGDATABASE \
+    env -u PGHOST -u PGPORT -u PGUSER -u PGPASSWORD -u PGDATABASE -u BASH_ENV \
       PATH="$TMP_ROOT/bin:$PATH" \
-      bash -lc "$cmd"
+      bash -c "$cmd"
   ) >"$out_file" 2>&1
   status=$?
   set -e

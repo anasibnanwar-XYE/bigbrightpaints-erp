@@ -263,15 +263,26 @@ Acceptance criteria:
 - Rollback drill executed and documented.
 
 ### 14.3 Async-loop final ledger gate closure protocol
-1. Select an immutable `RELEASE_ANCHOR_SHA` immediately before the active hardening train.
-2. Run strict `gate_fast` with anchor:
-   - `DIFF_BASE=<RELEASE_ANCHOR_SHA> GATE_FAST_RELEASE_VALIDATION_MODE=true bash scripts/gate_fast.sh`
-3. Run remaining ledger gates on the same `HEAD` SHA:
-   - `bash scripts/gate_core.sh`
-   - `bash scripts/gate_reconciliation.sh`
-   - `bash scripts/gate_release.sh`
-4. Store command outputs and artifact paths in `asyncloop`.
-5. Rotate `RELEASE_ANCHOR_SHA` only after all required ledger gates pass and evidence is recorded.
+1. Freeze canonical base before running any closure gate:
+   - `CANONICAL_BASE_BRANCH=harness-engineering-orchestrator`
+   - `git fetch origin && git checkout "$CANONICAL_BASE_BRANCH" && git pull --ff-only origin "$CANONICAL_BASE_BRANCH"`
+   - `CANONICAL_HEAD_SHA="$(git rev-parse HEAD)"`
+2. Select immutable `RELEASE_ANCHOR_SHA` on the same canonical lineage (immediately before active hardening train).
+3. Validate lineage deterministically:
+   - `git merge-base --is-ancestor "$RELEASE_ANCHOR_SHA" "$CANONICAL_HEAD_SHA"`
+4. Run every ledger gate on one fixed canonical commit only:
+   - `git checkout --detach "$CANONICAL_HEAD_SHA"`
+   - `mkdir -p "artifacts/gate-ledger/$CANONICAL_HEAD_SHA"`
+   - `DIFF_BASE="$RELEASE_ANCHOR_SHA" GATE_FAST_RELEASE_VALIDATION_MODE=true bash scripts/gate_fast.sh 2>&1 | tee "artifacts/gate-ledger/$CANONICAL_HEAD_SHA/gate_fast.log"`
+   - `bash scripts/gate_core.sh 2>&1 | tee "artifacts/gate-ledger/$CANONICAL_HEAD_SHA/gate_core.log"`
+   - `bash scripts/gate_reconciliation.sh 2>&1 | tee "artifacts/gate-ledger/$CANONICAL_HEAD_SHA/gate_reconciliation.log"`
+   - `bash scripts/gate_release.sh 2>&1 | tee "artifacts/gate-ledger/$CANONICAL_HEAD_SHA/gate_release.log"`
+5. Capture immutable evidence pack before closure decision:
+   - `shasum -a 256 "artifacts/gate-ledger/$CANONICAL_HEAD_SHA/"*.log > "artifacts/gate-ledger/$CANONICAL_HEAD_SHA/SHA256SUMS"`
+   - Record in `asyncloop`: canonical branch, `CANONICAL_HEAD_SHA`, `RELEASE_ANCHOR_SHA`, command list, pass/fail status, artifact paths.
+6. Fail closed:
+   - if any gate fails, stop and remediate; do not rotate anchor.
+7. Rotate `RELEASE_ANCHOR_SHA` only after all required ledger gates pass on that same `CANONICAL_HEAD_SHA` and immutable evidence is recorded.
 
 ### 14.4 Reviewer queue saturation checkpoint
 When reviewer-agent capacity is externally saturated:

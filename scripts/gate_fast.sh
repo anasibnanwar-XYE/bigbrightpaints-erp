@@ -4,11 +4,33 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ARTIFACT_DIR="$ROOT_DIR/artifacts/gate-fast"
 TRUTH_TEST_ROOT="$ROOT_DIR/erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite"
+if [[ -z "${BASH_ENV:-}" ]]; then
+  export BASH_ENV="$ROOT_DIR/scripts/bash_compat.sh"
+fi
 REQUIRE_DIFF_BASE="${GATE_FAST_REQUIRE_DIFF_BASE:-false}"
 RELEASE_VALIDATION_MODE="${GATE_FAST_RELEASE_VALIDATION_MODE:-false}"
 SYNC_PR_MODE="${GATE_FAST_SYNC_PR_MODE:-false}"
 rm -rf "$ARTIFACT_DIR"
 mkdir -p "$ARTIFACT_DIR"
+GATE_START_UTC="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+EXPECTED_RELEASE_HEAD_SHA="${RELEASE_HEAD_SHA:-}"
+RESOLVED_RELEASE_HEAD_SHA="unknown"
+GIT_CONTEXT_AVAILABLE="false"
+if resolved_sha="$(git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null)"; then
+  RESOLVED_RELEASE_HEAD_SHA="$resolved_sha"
+  GIT_CONTEXT_AVAILABLE="true"
+elif [[ -n "$EXPECTED_RELEASE_HEAD_SHA" ]]; then
+  RESOLVED_RELEASE_HEAD_SHA="$EXPECTED_RELEASE_HEAD_SHA"
+fi
+if [[ -n "$EXPECTED_RELEASE_HEAD_SHA" && "$GIT_CONTEXT_AVAILABLE" == "true" && "$EXPECTED_RELEASE_HEAD_SHA" != "$RESOLVED_RELEASE_HEAD_SHA" ]]; then
+  echo "[gate-fast] FAIL: RELEASE_HEAD_SHA=$EXPECTED_RELEASE_HEAD_SHA does not match current HEAD=$RESOLVED_RELEASE_HEAD_SHA"
+  exit 2
+fi
+CANONICAL_BASE_REF="${GATE_CANONICAL_BASE_REF:-harness-engineering-orchestrator}"
+CANONICAL_BASE_REQUIRED="${GATE_REQUIRE_CANONICAL_BASE:-false}"
+CANONICAL_BASE_SHA=""
+CANONICAL_BASE_VERIFIED="false"
+TRACEABILITY_FILE="$ARTIFACT_DIR/gate-fast-traceability.json"
 
 resolve_diff_base() {
   if [[ -n "${DIFF_BASE:-}" ]]; then
@@ -39,8 +61,109 @@ resolve_diff_base() {
   echo "HEAD~1"
 }
 
+resolve_canonical_base() {
+  if [[ "$GIT_CONTEXT_AVAILABLE" != "true" ]]; then
+    if [[ "$CANONICAL_BASE_REQUIRED" == "true" ]]; then
+      echo "[gate-fast] WARN: canonical base verification skipped (git context unavailable)"
+    fi
+    return 0
+  fi
+
+  if ! resolved_base_sha="$(git -C "$ROOT_DIR" rev-parse --verify --quiet "$CANONICAL_BASE_REF" 2>/dev/null)"; then
+    if [[ "$CANONICAL_BASE_REQUIRED" == "true" ]]; then
+      echo "[gate-fast] FAIL: canonical base ref '$CANONICAL_BASE_REF' was not found"
+      exit 2
+    fi
+    return 0
+  fi
+  CANONICAL_BASE_SHA="$resolved_base_sha"
+
+  if [[ "$CANONICAL_BASE_REQUIRED" == "true" ]]; then
+    if ! git -C "$ROOT_DIR" merge-base --is-ancestor "$CANONICAL_BASE_SHA" "$RESOLVED_RELEASE_HEAD_SHA"; then
+      echo "[gate-fast] FAIL: HEAD=$RESOLVED_RELEASE_HEAD_SHA is not based on canonical base '$CANONICAL_BASE_REF' ($CANONICAL_BASE_SHA)"
+      exit 2
+    fi
+    CANONICAL_BASE_VERIFIED="true"
+  fi
+}
+
+emit_traceability_manifest() {
+  local release_anchor_sha="$1"
+  local diff_base="$2"
+  python3 - "$ARTIFACT_DIR" "$TRACEABILITY_FILE" "$GATE_START_UTC" "$RESOLVED_RELEASE_HEAD_SHA" "$GIT_CONTEXT_AVAILABLE" "$CANONICAL_BASE_REF" "$CANONICAL_BASE_SHA" "$CANONICAL_BASE_REQUIRED" "$CANONICAL_BASE_VERIFIED" "$RELEASE_VALIDATION_MODE" "$release_anchor_sha" "$diff_base" "$SYNC_PR_MODE" <<'PY'
+import hashlib
+import json
+import os
+import sys
+import time
+
+(
+    artifact_dir,
+    manifest_path,
+    started_at_utc,
+    release_head_sha,
+    git_context_available,
+    canonical_base_ref,
+    canonical_base_sha,
+    canonical_base_required,
+    canonical_base_verified,
+    release_validation_mode,
+    release_anchor_sha,
+    diff_base,
+    sync_pr_mode,
+) = sys.argv[1:14]
+
+tmp_path = manifest_path + ".tmp"
+artifacts = []
+
+for name in sorted(os.listdir(artifact_dir)):
+    path = os.path.join(artifact_dir, name)
+    if not os.path.isfile(path):
+        continue
+    if path == manifest_path:
+        continue
+    digest = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(65536), b""):
+            digest.update(chunk)
+    stat_result = os.stat(path)
+    artifacts.append(
+        {
+            "path": f"artifacts/gate-fast/{name}",
+            "sha256": digest.hexdigest(),
+            "bytes": stat_result.st_size,
+        }
+    )
+
+payload = {
+    "gate": "gate-fast",
+    "release_head_sha": release_head_sha,
+    "git_context_available": git_context_available.lower() == "true",
+    "canonical_base_ref": canonical_base_ref,
+    "canonical_base_sha": canonical_base_sha or None,
+    "canonical_base_required": canonical_base_required.lower() == "true",
+    "canonical_base_verified": canonical_base_verified.lower() == "true",
+    "release_validation_mode": release_validation_mode.lower() == "true",
+    "sync_pr_mode": sync_pr_mode.lower() == "true",
+    "diff_base": diff_base,
+    "started_at_utc": started_at_utc,
+    "finished_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    "artifact_count": len(artifacts),
+    "artifacts": artifacts,
+}
+if release_anchor_sha:
+    payload["release_anchor_sha"] = release_anchor_sha
+
+with open(tmp_path, "w", encoding="utf-8") as fh:
+    json.dump(payload, fh, indent=2, sort_keys=True)
+    fh.write("\n")
+os.replace(tmp_path, manifest_path)
+PY
+}
+
 if [[ "$RELEASE_VALIDATION_MODE" == "true" ]]; then
   REQUIRE_DIFF_BASE="true"
+  CANONICAL_BASE_REQUIRED="true"
 fi
 
 if [[ "$REQUIRE_DIFF_BASE" == "true" ]]; then
@@ -50,6 +173,23 @@ if [[ "$REQUIRE_DIFF_BASE" == "true" ]]; then
   fi
   if [[ "$DIFF_BASE" =~ ^HEAD~ ]]; then
     echo "[gate-fast] FAIL: HEAD~N is not allowed in release validation mode; use a fixed RELEASE_ANCHOR_SHA"
+    exit 2
+  fi
+fi
+
+resolve_canonical_base
+
+if [[ "$RELEASE_VALIDATION_MODE" == "true" ]]; then
+  if [[ "$GIT_CONTEXT_AVAILABLE" != "true" ]]; then
+    echo "[gate-fast] FAIL: release validation mode requires git context for immutable anchor validation"
+    exit 2
+  fi
+  if ! git -C "$ROOT_DIR" rev-parse --verify --quiet "${DIFF_BASE}^{commit}" >/dev/null; then
+    echo "[gate-fast] FAIL: DIFF_BASE must resolve to a commit SHA in release validation mode"
+    exit 2
+  fi
+  if ! git -C "$ROOT_DIR" merge-base --is-ancestor "$DIFF_BASE" "$RESOLVED_RELEASE_HEAD_SHA"; then
+    echo "[gate-fast] FAIL: DIFF_BASE=$DIFF_BASE is not an ancestor of HEAD=$RESOLVED_RELEASE_HEAD_SHA"
     exit 2
   fi
 fi
@@ -142,6 +282,8 @@ with open(out_path, "w", encoding="utf-8") as fh:
 print("[gate-fast] changed-files coverage summary:")
 print(json.dumps(summary, indent=2))
 PY
+  emit_traceability_manifest "" "$DIFF_BASE"
+  cat "$TRACEABILITY_FILE"
   echo "[gate-fast] OK"
   exit 0
 fi
@@ -185,6 +327,8 @@ with open(out_path, "w", encoding="utf-8") as fh:
 print("[gate-fast] changed-files coverage summary:")
 print(json.dumps(summary, indent=2))
 PY
+  emit_traceability_manifest "" "$DIFF_BASE"
+  cat "$TRACEABILITY_FILE"
   echo "[gate-fast] OK"
   exit 0
 fi
@@ -243,5 +387,12 @@ if release_mode and blocking_findings:
   print("[gate-fast] FAIL: release validation mode requires coverage for all changed files/lines.", file=sys.stderr)
   sys.exit(1)
 PY
+
+RELEASE_ANCHOR_SHA=""
+if [[ "$RELEASE_VALIDATION_MODE" == "true" ]]; then
+  RELEASE_ANCHOR_SHA="$DIFF_BASE"
+fi
+emit_traceability_manifest "$RELEASE_ANCHOR_SHA" "$DIFF_BASE"
+cat "$TRACEABILITY_FILE"
 
 echo "[gate-fast] OK"

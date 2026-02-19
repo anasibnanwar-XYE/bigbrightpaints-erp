@@ -91,6 +91,32 @@ For each commit, append:
   - current `active_in_progress`.
 - `Queue Rotation (Auto-Replenish)` with at least 3 `ready` items.
 
+## Section 14.3 Anchor Gate Closure Procedure (Canonical Base)
+Use this exact runbook for final ledger closure. Do not execute Section 14.3 from a slice branch.
+
+1. Sync canonical base and freeze the closure target SHA:
+  - `CANONICAL_BASE_BRANCH=harness-engineering-orchestrator`
+  - `git fetch origin`
+  - `git checkout "$CANONICAL_BASE_BRANCH"`
+  - `git pull --ff-only origin "$CANONICAL_BASE_BRANCH"`
+  - `CANONICAL_HEAD_SHA="$(git rev-parse HEAD)"`
+2. Set immutable anchor on the same lineage:
+  - choose `RELEASE_ANCHOR_SHA` from the active hardening train start (or prior closure anchor retained in `asyncloop`).
+  - `git merge-base --is-ancestor "$RELEASE_ANCHOR_SHA" "$CANONICAL_HEAD_SHA"`
+3. Run all ledger gates on the same frozen canonical SHA:
+  - `git checkout --detach "$CANONICAL_HEAD_SHA"`
+  - `mkdir -p "artifacts/gate-ledger/$CANONICAL_HEAD_SHA"`
+  - `DIFF_BASE="$RELEASE_ANCHOR_SHA" GATE_FAST_RELEASE_VALIDATION_MODE=true bash scripts/gate_fast.sh 2>&1 | tee "artifacts/gate-ledger/$CANONICAL_HEAD_SHA/gate_fast.log"`
+  - `bash scripts/gate_core.sh 2>&1 | tee "artifacts/gate-ledger/$CANONICAL_HEAD_SHA/gate_core.log"`
+  - `bash scripts/gate_reconciliation.sh 2>&1 | tee "artifacts/gate-ledger/$CANONICAL_HEAD_SHA/gate_reconciliation.log"`
+  - `bash scripts/gate_release.sh 2>&1 | tee "artifacts/gate-ledger/$CANONICAL_HEAD_SHA/gate_release.log"`
+4. Capture immutable evidence before any anchor movement:
+  - `shasum -a 256 "artifacts/gate-ledger/$CANONICAL_HEAD_SHA/"*.log > "artifacts/gate-ledger/$CANONICAL_HEAD_SHA/SHA256SUMS"`
+  - append `CANONICAL_BASE_BRANCH`, `CANONICAL_HEAD_SHA`, `RELEASE_ANCHOR_SHA`, exact commands, and artifact paths in `asyncloop`.
+5. Fail closed + anchor rotation rule:
+  - if any gate fails, stop closure and keep the same anchor.
+  - rotate `RELEASE_ANCHOR_SHA` only after all four gates pass on one `CANONICAL_HEAD_SHA` and evidence is recorded.
+
 ## Recovery If Session Interrupts
 1. Open `asyncloop` first.
 2. Resume latest `active_in_progress`.
