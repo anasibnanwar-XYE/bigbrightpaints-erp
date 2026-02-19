@@ -20,9 +20,9 @@ public interface UserAccountRepository extends JpaRepository<UserAccount, Long> 
 
     List<UserAccount> findDistinctByCompanies_Id(Long companyId);
 
-    Optional<UserAccount> findByIdAndCompanies_Id(Long id, Long companyId);
-
     long countDistinctByCompanies_IdAndEnabledTrue(Long companyId);
+
+    Optional<UserAccount> findByIdAndCompanies_Id(Long id, Long companyId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select u from UserAccount u join u.companies c where u.id = :id and c.id = :companyId")
