@@ -267,12 +267,19 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
         assertThat(data.get("companyCode")).isEqualTo(TENANT_A);
         assertThat(data).containsKeys(
                 "lifecycleState",
+                "quotaMaxActiveUsers",
+                "quotaMaxApiRequests",
+                "quotaMaxStorageBytes",
+                "quotaMaxConcurrentSessions",
+                "quotaSoftLimitEnabled",
+                "quotaHardLimitEnabled",
                 "activeUserCount",
                 "apiActivityCount",
                 "apiErrorCount",
                 "apiErrorRateInBasisPoints",
                 "distinctSessionCount",
                 "auditStorageBytes");
+        assertThat(data).doesNotContainKeys("activeUserQuota", "apiRateLimitPerMinute", "auditStorageQuotaBytes");
         Number apiActivityCount = (Number) data.get("apiActivityCount");
         Number apiErrorCount = (Number) data.get("apiErrorCount");
         Number apiErrorRateInBasisPoints = (Number) data.get("apiErrorRateInBasisPoints");
@@ -312,8 +319,26 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
                 "Allowed Super Admin Update",
                 TENANT_A,
                 "UTC",
-                18.0);
+                18.0,
+                120L,
+                3_000L,
+                2_097_152L,
+                7L,
+                false,
+                true);
         assertThat(superAdminResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> responseBody = superAdminResponse.getBody();
+        assertThat(responseBody).isNotNull();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) responseBody.get("data");
+        assertThat(data).isNotNull();
+        assertThat(data).containsEntry("quotaMaxActiveUsers", 120);
+        assertThat(data).containsEntry("quotaMaxApiRequests", 3000);
+        assertThat(data).containsEntry("quotaMaxStorageBytes", 2_097_152);
+        assertThat(data).containsEntry("quotaMaxConcurrentSessions", 7);
+        assertThat(data).containsEntry("quotaSoftLimitEnabled", false);
+        assertThat(data).containsEntry("quotaHardLimitEnabled", true);
+        assertThat(data).doesNotContainKeys("activeUserQuota", "apiRateLimitPerMinute", "auditStorageQuotaBytes");
     }
 
     @Test

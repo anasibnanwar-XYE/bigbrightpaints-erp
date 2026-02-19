@@ -9,6 +9,7 @@ import com.bigbrightpaints.erp.core.audit.AuditLogRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
+import com.bigbrightpaints.erp.modules.company.dto.CompanyDto;
 import com.bigbrightpaints.erp.modules.company.dto.CompanyRequest;
 import com.bigbrightpaints.erp.modules.company.dto.CompanyTenantMetricsDto;
 import com.bigbrightpaints.erp.modules.company.service.CompanyService;
@@ -73,6 +74,44 @@ class CompanyQuotaContractTest {
     }
 
     @Test
+    void tenant_quota_update_fails_closed_when_authentication_context_is_missing() {
+        CompanyRepository repository = mock(CompanyRepository.class);
+        Company company = company(1L, "TENANT_A");
+        when(repository.findById(1L)).thenReturn(Optional.of(company));
+        CompanyService service = new CompanyService(repository);
+        SecurityContextHolder.clearContext();
+
+        CompanyRequest request = new CompanyRequest(
+                "Tenant A",
+                "TENANT_A",
+                "UTC",
+                BigDecimal.valueOf(18),
+                120L,
+                3_000L,
+                2_097_152L,
+                7L,
+                false,
+                false);
+
+        assertThatThrownBy(() -> service.update(1L, request, Set.of(company)))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("SUPER_ADMIN authority required for tenant configuration updates");
+    }
+
+    @Test
+    void tenant_metrics_read_fails_closed_when_authentication_context_is_missing() {
+        CompanyRepository repository = mock(CompanyRepository.class);
+        Company company = company(1L, "TENANT_A");
+        when(repository.findById(1L)).thenReturn(Optional.of(company));
+        CompanyService service = new CompanyService(repository);
+        SecurityContextHolder.clearContext();
+
+        assertThatThrownBy(() -> service.getTenantMetrics(1L))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("SUPER_ADMIN authority required for tenant metrics");
+    }
+
+    @Test
     void super_admin_update_applies_canonical_quota_fields_and_fail_closed_policy() {
         CompanyRepository repository = mock(CompanyRepository.class);
         Company company = company(1L, "TENANT_A");
@@ -93,7 +132,7 @@ class CompanyQuotaContractTest {
                 false,
                 false);
 
-        service.update(1L, request, Set.of(company));
+        CompanyDto updated = service.update(1L, request, Set.of(company));
 
         assertThat(company.getQuotaMaxActiveUsers()).isEqualTo(120L);
         assertThat(company.getQuotaMaxApiRequests()).isEqualTo(3_000L);
@@ -101,6 +140,12 @@ class CompanyQuotaContractTest {
         assertThat(company.getQuotaMaxConcurrentSessions()).isEqualTo(7L);
         assertThat(company.isQuotaSoftLimitEnabled()).isFalse();
         assertThat(company.isQuotaHardLimitEnabled()).isTrue();
+        assertThat(updated.quotaMaxActiveUsers()).isEqualTo(120L);
+        assertThat(updated.quotaMaxApiRequests()).isEqualTo(3_000L);
+        assertThat(updated.quotaMaxStorageBytes()).isEqualTo(2_097_152L);
+        assertThat(updated.quotaMaxConcurrentSessions()).isEqualTo(7L);
+        assertThat(updated.quotaSoftLimitEnabled()).isFalse();
+        assertThat(updated.quotaHardLimitEnabled()).isTrue();
     }
 
     @Test
@@ -165,6 +210,39 @@ class CompanyQuotaContractTest {
         assertThat(metrics.quotaHardLimitEnabled()).isFalse();
 
         String json = new ObjectMapper().writeValueAsString(metrics);
+        assertThat(json).contains("quotaMaxActiveUsers");
+        assertThat(json).contains("quotaMaxApiRequests");
+        assertThat(json).contains("quotaMaxStorageBytes");
+        assertThat(json).contains("quotaMaxConcurrentSessions");
+        assertThat(json).contains("quotaSoftLimitEnabled");
+        assertThat(json).contains("quotaHardLimitEnabled");
+        assertThat(json).doesNotContain("activeUserQuota");
+        assertThat(json).doesNotContain("apiRateLimitPerMinute");
+        assertThat(json).doesNotContain("auditStorageQuotaBytes");
+    }
+
+    @Test
+    void company_update_read_contract_uses_canonical_quota_names() throws Exception {
+        CompanyRepository repository = mock(CompanyRepository.class);
+        Company company = company(1L, "TENANT_A");
+        when(repository.findById(1L)).thenReturn(Optional.of(company));
+        CompanyService service = new CompanyService(repository);
+        authenticateAs("ROLE_SUPER_ADMIN");
+
+        CompanyRequest request = new CompanyRequest(
+                "Tenant A Updated",
+                "TENANT_A",
+                "UTC",
+                BigDecimal.valueOf(18),
+                120L,
+                3_000L,
+                2_097_152L,
+                7L,
+                true,
+                false);
+        CompanyDto updated = service.update(1L, request, Set.of(company));
+
+        String json = new ObjectMapper().writeValueAsString(updated);
         assertThat(json).contains("quotaMaxActiveUsers");
         assertThat(json).contains("quotaMaxApiRequests");
         assertThat(json).contains("quotaMaxStorageBytes");

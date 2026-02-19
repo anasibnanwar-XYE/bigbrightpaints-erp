@@ -8,4 +8,10 @@ public record CompanyDto(Long id,
                          String name,
                          String code,
                          String timezone,
-                         BigDecimal defaultGstRate) {}
+                         BigDecimal defaultGstRate,
+                         long quotaMaxActiveUsers,
+                         long quotaMaxApiRequests,
+                         long quotaMaxStorageBytes,
+                         long quotaMaxConcurrentSessions,
+                         boolean quotaSoftLimitEnabled,
+                         boolean quotaHardLimitEnabled) {}

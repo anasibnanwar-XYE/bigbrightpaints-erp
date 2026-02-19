@@ -272,7 +272,13 @@ public class CompanyService {
                 company.getName(),
                 company.getCode(),
                 company.getTimezone(),
-                company.getDefaultGstRate());
+                company.getDefaultGstRate(),
+                company.getQuotaMaxActiveUsers(),
+                company.getQuotaMaxApiRequests(),
+                company.getQuotaMaxStorageBytes(),
+                company.getQuotaMaxConcurrentSessions(),
+                company.isQuotaSoftLimitEnabled(),
+                company.isQuotaHardLimitEnabled());
     }
 
     private Authentication requireSuperAdminForLifecycleControl(Long companyId,
