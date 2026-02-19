@@ -12,6 +12,8 @@ allowed_operations:
   - plan
   - delegate
   - create_worktrees
+  - dispatch_subagents
+  - monitor_subagent_runs
   - generate_tmux_dispatch_prompts
   - dispatch_codex_exec_agents
   - monitor_agent_exec_logs
@@ -42,10 +44,51 @@ permissions_profile: enterprise_autonomous
 timeout_policy: none
 cross_module_workflow_required: true
 execution_workflow:
-  default_mode: codex_exec
+  default_mode: subagents
   supported_modes:
+    - subagents
     - codex_exec
     - tmux
+  subagents:
+    require_explicit_model_and_reasoning: true
+    role_model_policy:
+      orchestrator_planning:
+        preferred_model: gpt-5.3-codex
+        preferred_reasoning: xhigh
+        fallback:
+          - model: gpt-5.3-codex
+            reasoning: high
+      reviewer:
+        preferred_model: gpt-5.3-codex
+        preferred_reasoning: xhigh
+        fallback:
+          - model: gpt-5.3-codex
+            reasoning: high
+      implementation_high_risk:
+        preferred_model: gpt-5.3-codex
+        preferred_reasoning: xhigh
+        fallback:
+          - model: gpt-5.3-codex
+            reasoning: high
+      implementation_standard:
+        preferred_model: gpt-5.3-codex
+        preferred_reasoning: high
+        fallback:
+          - model: gpt-5.3-codex
+            reasoning: medium
+      exploration:
+        preferred_model: gpt-5.3-codex-spark
+        preferred_reasoning: xhigh
+        fallback:
+          - model: codex-mini-latest
+            reasoning: high
+          - model: gpt-5.3-codex
+            reasoning: medium
+    execution_rules:
+      - each subagent must be bound to one ticket slice and one YAML role
+      - each subagent must read only its own task packet before coding
+      - each subagent must identify itself in first line of every result
+      - orchestrator must monitor drift and interrupt on cross-scope edits
   codex_exec:
     require_explicit_model_and_reasoning: true
     default_model: gpt-5.3-codex
@@ -69,6 +112,7 @@ execution_workflow:
     dispatch_template: tmux new-session -d -s <ticket> 'cd <worktree> && codex --yolo'
     lanes_must_match_orchestrator_layer: true
 interaction_contract:
+  main_cli_session_must_remain_active: true
   when_idle_or_new_ticket:
     - continue autonomously on highest-priority open ticket/slice
     - if no active slice is available, prepare next ticket from ERP_STAGING_MASTER_PLAN
@@ -82,6 +126,17 @@ interaction_contract:
     - maintain at least 2-3 preplanned ready tickets at all times
     - if ready backlog drops below 2, create next ticket/slices immediately
   require_agent_identity_on_every_submission: true
+  require_ticket_claim_before_edits: true
+  claim_record_locations:
+    - tickets/<TKT-ID>/ticket.yaml
+    - tickets/<TKT-ID>/TIMELINE.md
+  claim_fields_required:
+    - slice_id
+    - agent_id
+    - branch
+    - worktree
+    - started_at_utc
+  do_not_touch_claimed_slices_of_other_agents: true
   codex_open_command: codex --yolo
   autonomous_default: true
   halt_conditions:
@@ -89,6 +144,7 @@ interaction_contract:
     - irreversible_r3_decision_required
 governance_rules:
   - orchestrator decides next steps; workers do not self-assign
+  - every worker must claim ticket slice before edits and release claim on done/blocked
   - each worktree gets isolated task packet
   - reviewers are review-only and never implement code
   - enforce scope_paths before dispatch and before merge
@@ -114,8 +170,14 @@ branch_hygiene:
     - update ticket status and closure artifacts before starting next ticket
   worktree_base_policy:
     - new ticket worktrees must be created from latest pushed base branch HEAD
+    - canonical base branch is harness-engineering-orchestrator unless ticket overrides
     - never branch new ticket worktrees from prior ticket slice branches
     - if base is behind remote, fetch and fast-forward base before bootstrap
+  worktree_clone_policy:
+    - clone/fetch once, then create isolated worktrees under ../orchestrator_erp_worktrees/<TKT-ID>/
+    - one agent per worktree; one slice per branch
+    - worktree names should include ticket id and agent id
+    - do not reuse stale worktrees after base branch advances
   pr_tracking_policy:
     - if using direct merges (no PR), record explicit reason in ticket timeline
     - if PR is created, record URL in ticket summary and close/delete slice branch only after merge

@@ -1,6 +1,6 @@
 # Orchestrator Layer Contract
 
-Last reviewed: 2026-02-18
+Last reviewed: 2026-02-19
 Owner: Orchestrator Agent
 
 This defines how the orchestrator controls all agents in long-running async loops.
@@ -19,9 +19,31 @@ This defines how the orchestrator controls all agents in long-running async loop
 ## Dispatch Model
 1. Orchestrator reads next `in_progress` or top `ready` slice from `asyncloop`.
 2. It maps changed paths and risk to a primary agent via `agents/orchestrator-layer.yaml`.
-3. It assigns at least one reviewer agent.
-4. For high-risk slices, it adds `security-governance` and `qa-reliability` reviewers.
-5. It runs required guard checks before marking done.
+3. It enforces ticket claim: `ready -> taken -> in_progress` with agent identity + worktree + branch recorded.
+4. It assigns at least one reviewer agent.
+5. For high-risk slices, it adds `security-governance` and `qa-reliability` reviewers.
+6. It runs required guard checks before marking done.
+
+## Agent Claim and Isolation Contract
+- Agents must not start edits before claim is recorded in ticket artifacts.
+- One slice can have only one active implementation claim at a time.
+- Worker reads only its own `docs/agents/templates/TASK_PACKET.md`-derived packet; cross-slice packet reads are blocked.
+- Reviewer agents are review-only and cannot claim implementation ownership.
+- Unclaimed submissions are rejected in orchestrator pre-merge review.
+
+## Subagent Model Routing
+Orchestrator selects model/reasoning by role and risk:
+- Orchestrator planning: `gpt-5.3-codex` with `xhigh`
+- Review agent passes: `gpt-5.3-codex` with `xhigh`
+- Implementation (high risk): `gpt-5.3-codex` with `xhigh`
+- Implementation (standard): `gpt-5.3-codex` with `high`
+- Exploration: `gpt-5.3-codex-spark` with `xhigh`
+
+Fallback order for exploration when preferred model is unavailable:
+1. `codex-mini-latest` with `high`
+2. `gpt-5.3-codex` with `medium`
+
+Fallback decision must be logged in ticket timeline.
 
 ## Review Model (Mandatory)
 - Every slice requires:
@@ -62,6 +84,7 @@ This defines how the orchestrator controls all agents in long-running async loop
 ## Human Escalation Boundary
 - Human escalation is required only for irreversible production actions (R3).
 - R1/R2 decisions are owned by orchestrator when proof pack is complete.
+- Main orchestrator CLI session remains active until human sends exact `STOP`.
 
 ## Unknowns and TODOs
 - Auto-trigger mechanism for subagent spawning from CI events is unspecified.
