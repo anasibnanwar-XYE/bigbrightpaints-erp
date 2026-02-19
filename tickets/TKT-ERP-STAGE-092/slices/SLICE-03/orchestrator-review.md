@@ -2,7 +2,7 @@
 
 ticket: TKT-ERP-STAGE-092
 slice: SLICE-03
-status: in_review
+status: merged
 
 ## Notes
 - Slice patch covers runtime fail-closed enforcement and integration-test environment hardening:
@@ -21,4 +21,5 @@ status: in_review
   - `qa-reliability` -> approved
 
 ## Merge Readiness
-- Ready to merge with documented residual baseline failures outside slice scope.
+- Merged to `harness-engineering-orchestrator` as commit `06143895`.
+- Residual baseline failures in `AccountingControllerIdempotencyHeaderParityTest` remain unchanged versus untouched base.

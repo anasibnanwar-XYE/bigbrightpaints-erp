@@ -3,10 +3,10 @@
 - title: Tenant Quota Controls Foundation
 - goal: Implement superadmin-governed tenant quota fields and fail-closed update/read contract baseline on canonical branch
 - priority: high
-- status: in_progress
+- status: done
 - base_branch: harness-engineering-orchestrator
 - created_at: 2026-02-19T13:10:22+00:00
-- updated_at: 2026-02-19T18:15:46Z
+- updated_at: 2026-02-19T18:18:09Z
 
 ## Slice Board
 
@@ -14,7 +14,7 @@
 | --- | --- | --- | --- | --- |
 | SLICE-01 | auth-rbac-company | w1 | merged | `tickets/tkt-erp-stage-092/auth-rbac-company` |
 | SLICE-02 | data-migration | w2 | merged | `tickets/tkt-erp-stage-092/data-migration` |
-| SLICE-03 | refactor-techdebt-gc | w3 | in_review | `tickets/tkt-erp-stage-092/refactor-techdebt-gc` |
+| SLICE-03 | refactor-techdebt-gc | w3 | merged | `tickets/tkt-erp-stage-092/refactor-techdebt-gc` |
 
 ## Operator Commands
 
