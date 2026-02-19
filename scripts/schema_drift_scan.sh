@@ -193,7 +193,8 @@ fi
 # Duplicate version intent: same description used across multiple versions.
 echo
 echo "[schema_drift_scan] duplicate description intents"
-declare -A seen
+seen_keys=()
+seen_values=()
 dups=0
 shopt -s nullglob
 for f in "$MIGRATIONS_DIR"/V*__*.sql; do
@@ -201,11 +202,19 @@ for f in "$MIGRATIONS_DIR"/V*__*.sql; do
   desc="${base#*__}"
   desc="${desc%.sql}"
   key="$(printf '%s' "$desc" | tr '[:upper:]' '[:lower:]')"
-  if [[ -n "${seen[$key]:-}" ]]; then
-    echo "  DUP: $desc -> $base and ${seen[$key]}"
+  seen_base=""
+  for i in "${!seen_keys[@]}"; do
+    if [[ "${seen_keys[$i]}" == "$key" ]]; then
+      seen_base="${seen_values[$i]}"
+      break
+    fi
+  done
+  if [[ -n "$seen_base" ]]; then
+    echo "  DUP: $desc -> $base and $seen_base"
     dups=1
   else
-    seen[$key]="$base"
+    seen_keys+=("$key")
+    seen_values+=("$base")
   fi
 done
 shopt -u nullglob

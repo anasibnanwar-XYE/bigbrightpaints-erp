@@ -91,15 +91,20 @@ export PGHOST PGPORT PGUSER PGPASSWORD PGDATABASE
 
 mkdir -p "$ARTIFACT_DIR"
 
-mapfile -t versions < <(ls -1 "$MIGRATIONS_DIR" | sed -n 's/^V\([0-9]\+\)__.*$/\1/p' | sort -n)
+versions=()
+while IFS= read -r version; do
+  versions+=("$version")
+done < <(ls -1 "$MIGRATIONS_DIR" | sed -En 's/^V([0-9]+)__.*$/\1/p' | sort -n)
 if [[ ${#versions[@]} -lt 2 ]]; then
   echo "[release_migration_matrix] need at least 2 versioned migrations" >&2
   exit 2
 fi
 
 expected_count="${#versions[@]}"
-expected_max="${versions[-1]}"
-expected_prev="${versions[-2]}"
+expected_max_index="$((expected_count - 1))"
+expected_prev_index="$((expected_count - 2))"
+expected_max="${versions[$expected_max_index]}"
+expected_prev="${versions[$expected_prev_index]}"
 expected_prev_count="$((expected_count - 1))"
 
 suffix_raw="${GITHUB_RUN_ID:-local_$(date +%s)}"

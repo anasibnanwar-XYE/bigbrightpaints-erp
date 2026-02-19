@@ -7,7 +7,7 @@ status: in_progress
 base_branch: harness-engineering-orchestrator
 worktree_root: /home/realnigga/Desktop/orchestrator_erp_worktrees
 created_at: '2026-02-19T13:10:22+00:00'
-updated_at: '2026-02-19T17:35:31Z'
+updated_at: '2026-02-19T17:50:53Z'
 r3_required: true
 orchestrator_authority:
   r1: orchestrator
@@ -109,12 +109,18 @@ slices:
   - erp-domain/src/main/resources/db/migration_v2/
   lane: w2
   branch: tickets/tkt-erp-stage-092/data-migration
-  worktree_path: /home/realnigga/Desktop/orchestrator_erp_worktrees/TKT-ERP-STAGE-092/data-migration
+  worktree_path: /Users/anas/Documents/orchestrator_erp/orchestrator_erp_worktrees/TKT-ERP-STAGE-092/data-migration
   required_checks:
   - bash scripts/flyway_overlap_scan.sh --migration-set v2
   - bash scripts/schema_drift_scan.sh --migration-set v2
   - bash scripts/release_migration_matrix_v2.sh
-  status: ready
+  status: in_review
+  claim:
+    agent_id: data-migration
+    slice_id: SLICE-02
+    branch: tickets/tkt-erp-stage-092/data-migration
+    worktree_path: /Users/anas/Documents/orchestrator_erp/orchestrator_erp_worktrees/TKT-ERP-STAGE-092/data-migration
+    claimed_at_utc: '2026-02-19T17:37:02Z'
   objective: Implement superadmin-governed tenant quota fields and fail-closed update/read
     contract baseline on canonical branch
   workflow_upstream_slices: []
