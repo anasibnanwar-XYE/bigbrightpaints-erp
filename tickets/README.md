@@ -38,6 +38,45 @@ Verify and merge ready slices:
 Verify + merge + remove merged slice worktrees:
 - `python3 scripts/harness_orchestrator.py verify --ticket-id <TKT-ID> --merge --cleanup-worktrees`
 
+## Agent Ticket Claim Guide
+Before writing code, each implementation agent must claim a slice.
+
+Required claim sequence:
+1. Identify yourself in first line: `I am <agent-id> and I own <slice-id>.`
+2. Mark `ticket.yaml` slice status `ready -> taken`.
+3. Append claim event in `TIMELINE.md` with agent id, slice id, branch, worktree, UTC timestamp.
+4. Move status `taken -> in_progress` only after claim is logged.
+5. On completion/block, move to `in_review` or `blocked` and include evidence.
+
+Rules:
+- No dual claims on same slice.
+- No cross-slice implementation unless orchestrator records explicit scope exception.
+- Reviewer agents are review-only; they do not implement.
+- Unclaimed submissions are rejected.
+
+## What To Clone and Where To Work
+Canonical integration branch is `harness-engineering-orchestrator` unless ticket overrides.
+
+Standard setup:
+1. `git clone git@github.com:anasibnanwar-XYE/bigbrightpaints-erp.git`
+2. `cd bigbrightpaints-erp`
+3. `git fetch origin`
+4. `git checkout harness-engineering-orchestrator`
+5. `git pull --ff-only origin harness-engineering-orchestrator`
+6. `git worktree add ../orchestrator_erp_worktrees/<TKT-ID>/<agent-id> -b tickets/<tkt-id>/<agent-id> harness-engineering-orchestrator`
+
+Isolation rules:
+- One worktree per agent.
+- One slice per branch.
+- Do not reuse stale worktrees after base branch moves forward.
+
+## PR Hygiene and Cleanup
+- Use PR title format: `<TKT-ID> <SLICE-ID>: <short description>`.
+- Include ticket id + slice id in PR body with scope paths and checks run.
+- Merge only when required checks are green on latest head commit.
+- After merge confirmation, delete only orchestrator-created slice branches.
+- If branch is stale/diverged, rebase or rebuild from canonical base before rerun.
+
 ## Guardrails
 - Primary module agents are blocked from merging if branch changes exceed their `scope_paths` permission boundaries.
 - Reviewer evidence is mandatory before merge.

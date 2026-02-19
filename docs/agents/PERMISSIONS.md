@@ -1,6 +1,6 @@
 # Agent Permissions Model
 
-Last reviewed: 2026-02-16
+Last reviewed: 2026-02-19
 Owner: Security & Governance Agent
 
 ## Permission Tiers
@@ -50,6 +50,7 @@ R1/R2 are orchestrator-owned when evidence is complete.
   - time/goal bounded and removed immediately after unblock objective
   - revoked after the unblock objective is complete
 - Minor temporary drift for context gathering is acceptable, but implementation and commits must return to packet-defined scope unless orchestrator records an explicit scope exception.
+- Permission grants must be written to ticket timeline with grant reason, scope, start/end timestamps, and supervising orchestrator identity.
 
 ## Evidence Requirements (Proof-First)
 - High-risk changes must include `docs/approvals/R2-CHECKPOINT.md`.

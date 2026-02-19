@@ -1,5 +1,5 @@
 version: 1
-last_reviewed: 2026-02-16
+last_reviewed: 2026-02-19
 orchestrator_id: orchestrator
 decision_model:
   mode: proof_first
@@ -11,10 +11,50 @@ runtime:
   loop_source: asyncloop
   no_timeout: true
   max_parallel_slices: 4
-  execution_mode_default: codex_exec
+  execution_mode_default: subagents
   execution_mode_supported:
+    - subagents
     - codex_exec
     - tmux
+  subagents:
+    require_explicit_model_and_reasoning: true
+    role_model_policy:
+      orchestrator_planning:
+        preferred_model: gpt-5.3-codex
+        preferred_reasoning: xhigh
+        fallback:
+          - model: gpt-5.3-codex
+            reasoning: high
+      reviewer:
+        preferred_model: gpt-5.3-codex
+        preferred_reasoning: xhigh
+        fallback:
+          - model: gpt-5.3-codex
+            reasoning: high
+      implementation_high_risk:
+        preferred_model: gpt-5.3-codex
+        preferred_reasoning: xhigh
+        fallback:
+          - model: gpt-5.3-codex
+            reasoning: high
+      implementation_standard:
+        preferred_model: gpt-5.3-codex
+        preferred_reasoning: high
+        fallback:
+          - model: gpt-5.3-codex
+            reasoning: medium
+      explorer:
+        preferred_model: gpt-5.3-codex-spark
+        preferred_reasoning: xhigh
+        fallback:
+          - model: codex-mini-latest
+            reasoning: high
+          - model: gpt-5.3-codex
+            reasoning: medium
+    drift_policy:
+      allow_minor_context_drift: true
+      implementation_commits_must_return_to_slice_scope: true
+      orchestrator_interrupt_on_scope_violation: true
   codex_exec:
     require_explicit_model_and_reasoning: true
     default_model: gpt-5.3-codex
@@ -47,6 +87,12 @@ automation:
   cleanup_worktrees_on_merge: true
   cleanup_owned_branches_on_merge: true
   cleanup_branch_scope: orchestrator_created_only
+  canonical_base_branch: harness-engineering-orchestrator
+  clone_and_worktree_policy:
+    clone_remote: git@github.com:anasibnanwar-XYE/bigbrightpaints-erp.git
+    create_worktree_from_base: git fetch origin && git checkout harness-engineering-orchestrator && git pull --ff-only origin harness-engineering-orchestrator && git worktree add ../orchestrator_erp_worktrees/<TKT-ID>/<agent-id> -b tickets/<tkt-id>/<agent-id> harness-engineering-orchestrator
+    one_slice_per_branch: true
+    one_agent_per_worktree: true
   codex_open_command: codex --yolo
   throughput_backlog_policy:
     minimum_preplanned_ready_tickets: 2
@@ -60,6 +106,7 @@ automation:
     - w3
     - w4
 dispatch_protocol:
+  main_cli_session_must_remain_active: true
   ask_human_next_focus_when_idle: false
   autonomous_continuous_execution: true
   stop_condition_exact_prompt: STOP
@@ -73,9 +120,31 @@ dispatch_protocol:
     - keep planning/bootstrapping upcoming goal tickets in parallel
     - replenish backlog immediately if ready tickets drop below two
   flow_command_templates:
+    subagents: configure per-role model/reasoning from runtime.subagents.role_model_policy and dispatch one slice per worktree
     codex_exec: codex exec -m gpt-5.3-codex -c model_reasoning_effort="<high|medium|low|minimal>" --dangerously-bypass-approvals-and-sandbox
     tmux: tmux new-session -d -s <ticket> 'cd <worktree> && codex --yolo'
   require_agent_identity_on_every_submission: true
+  require_ticket_claim_before_work: true
+  ticket_claim_enforcement:
+    claim_status: taken
+    allowed_transitions:
+      - ready -> taken
+      - taken -> in_progress
+      - in_progress -> in_review
+      - in_review -> done
+      - in_progress -> blocked
+      - blocked -> ready
+    required_fields:
+      - agent_id
+      - slice_id
+      - worktree_path
+      - branch
+      - claimed_at_utc
+    claim_artifacts:
+      - tickets/<TKT-ID>/ticket.yaml
+      - tickets/<TKT-ID>/TIMELINE.md
+    reject_unclaimed_agent_results: true
+    prevent_dual_claims_for_same_slice: true
   task_packet_isolation_required: true
   prevent_cross_slice_packet_reads: true
   agent_yaml_binding_required: true
@@ -257,6 +326,7 @@ completion_contract:
     - review_pipeline_complete
     - evidence_recorded_in_asyncloop
     - no_scope_violations
+    - ticket_claim_released_or_closed
 branch_execution_policy:
   merge_sequence:
     - merge one ticket slice branch at a time into base
@@ -265,9 +335,12 @@ branch_execution_policy:
     - only then proceed to next ticket merge
   worktree_base:
     - bootstrap new ticket worktrees from latest pushed base HEAD
+    - base branch must be refreshed (fetch + fast-forward) before each new worktree
     - never bootstrap from old slice branches
     - if local base is behind, fetch + fast-forward before ticket bootstrap
   pr_and_branch_hygiene:
     - if PR workflow is used, record PR URL in ticket summary/timeline
+    - PR title and description must include ticket id and slice id
     - if direct merge workflow is used, record direct-merge rationale in timeline
+    - merge only after all required checks are green on latest head commit
     - delete only orchestrator-created branches after merge confirmation

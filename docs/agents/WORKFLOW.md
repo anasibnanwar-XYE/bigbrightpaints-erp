@@ -1,6 +1,6 @@
 # Agent Workflow and Lifecycle
 
-Last reviewed: 2026-02-18
+Last reviewed: 2026-02-19
 Owner: Orchestrator Agent
 
 ## Lifecycle
@@ -39,6 +39,40 @@ Owner: Orchestrator Agent
 - Write operations are risk-aware and mechanically guarded.
 - Async continuity is maintained in `asyncloop` and async runbooks.
 - Orchestrator dispatch and review sequencing are defined in `agents/orchestrator-layer.yaml`.
+- Main orchestrator loop continues until human sends exact `STOP`.
+
+## Ticket Claim Protocol (Mandatory)
+Before any implementation edits, worker agents must claim the slice:
+1. Set slice status to `taken` in `tickets/<TKT-ID>/ticket.yaml`.
+2. Append claim line in `tickets/<TKT-ID>/TIMELINE.md` with:
+- agent id
+- slice id
+- branch
+- worktree
+- UTC timestamp
+3. Move to `in_progress` only after claim is recorded.
+4. Release claim by moving to `in_review`, `done`, or `blocked` with evidence note.
+
+Claim collisions are merge-blocking. Unclaimed implementation submissions are rejected.
+
+## Clone and Worktree Baseline
+- Canonical base branch: `harness-engineering-orchestrator` (unless ticket overrides).
+- Always refresh base before new worktree:
+  - `git fetch origin`
+  - `git checkout harness-engineering-orchestrator`
+  - `git pull --ff-only origin harness-engineering-orchestrator`
+- Create one worktree per agent per slice under `../orchestrator_erp_worktrees/<TKT-ID>/`.
+- Never branch new slice worktrees from older slice branches.
+
+## Subagent Model Policy
+Use Codex multi-agent role configuration for model/reasoning selection:
+- Orchestrator planning: `gpt-5.3-codex` + `xhigh`
+- Review agents: `gpt-5.3-codex` + `xhigh`
+- High-risk implementation: `gpt-5.3-codex` + `xhigh`
+- Standard implementation: `gpt-5.3-codex` + `high`
+- Exploration/recon: `gpt-5.3-codex-spark` + `xhigh`; fallback to `codex-mini-latest` (high), then `gpt-5.3-codex` (medium)
+
+If preferred model is unavailable, orchestrator must document fallback choice in ticket timeline.
 
 ## Cross-Module Contract-First Protocol
 When touching multiple domains, use this order:
