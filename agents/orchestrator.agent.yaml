@@ -52,8 +52,80 @@ execution_workflow:
   subagents:
     require_explicit_model_and_reasoning: true
     role_model_policy:
-      orchestrator_planning:
+      orchestrator:
         preferred_model: gpt-5.3-codex
+        preferred_reasoning: xhigh
+        fallback:
+          - model: gpt-5.3-codex
+            reasoning: high
+      planning:
+        preferred_model: gpt-5.2-codex
+        preferred_reasoning: xhigh
+        fallback:
+          - model: gpt-5.3-codex
+            reasoning: high
+      planning_architecture:
+        preferred_model: gpt-5.2-codex
+        preferred_reasoning: xhigh
+        fallback:
+          - model: gpt-5.3-codex
+            reasoning: high
+      backend_arch:
+        preferred_model: gpt-5.2-codex
+        preferred_reasoning: xhigh
+        fallback:
+          - model: gpt-5.3-codex
+            reasoning: high
+      product_analyst:
+        preferred_model: gpt-5.2-codex
+        preferred_reasoning: xhigh
+        fallback:
+          - model: gpt-5.3-codex
+            reasoning: high
+      cross_module:
+        preferred_model: gpt-5.3-codex
+        preferred_reasoning: xhigh
+        fallback:
+          - model: gpt-5.3-codex
+            reasoning: high
+      cross_module_high:
+        preferred_model: gpt-5.3-codex
+        preferred_reasoning: high
+        fallback:
+          - model: gpt-5.3-codex
+            reasoning: medium
+      security_auditor:
+        preferred_model: gpt-5.3-codex
+        preferred_reasoning: xhigh
+        fallback:
+          - model: gpt-5.3-codex
+            reasoning: high
+      code_reviewer:
+        preferred_model: gpt-5.3-codex
+        preferred_reasoning: xhigh
+        fallback:
+          - model: gpt-5.3-codex
+            reasoning: high
+      performance:
+        preferred_model: gpt-5.3-codex
+        preferred_reasoning: high
+        fallback:
+          - model: gpt-5.3-codex
+            reasoning: medium
+      frontend_arch:
+        preferred_model: gpt-5.3-codex
+        preferred_reasoning: high
+        fallback:
+          - model: gpt-5.3-codex
+            reasoning: medium
+      frontend_documentation:
+        preferred_model: gpt-5.3-codex
+        preferred_reasoning: high
+        fallback:
+          - model: gpt-5.3-codex
+            reasoning: medium
+      orchestrator_planning:
+        preferred_model: gpt-5.2-codex
         preferred_reasoning: xhigh
         fallback:
           - model: gpt-5.3-codex
@@ -84,11 +156,70 @@ execution_workflow:
             reasoning: high
           - model: gpt-5.3-codex
             reasoning: medium
+    agent_role_mapping:
+      orchestrator:
+        role: orchestrator
+        config_file: .codex/agents/orchestrator.toml
+      orchestrator-runtime:
+        role: cross_module
+        config_file: .codex/agents/cross_module.toml
+      accounting-domain:
+        role: cross_module
+        config_file: .codex/agents/cross_module.toml
+      auth-rbac-company:
+        role: cross_module
+        config_file: .codex/agents/cross_module.toml
+      data-migration:
+        role: cross_module
+        config_file: .codex/agents/cross_module.toml
+      hr-domain:
+        role: cross_module
+        config_file: .codex/agents/cross_module.toml
+      release-ops:
+        role: cross_module
+        config_file: .codex/agents/cross_module.toml
+      security-governance:
+        role: security_auditor
+        config_file: .codex/agents/security_auditor.toml
+      inventory-domain:
+        role: cross_module_high
+        config_file: .codex/agents/cross_module_high.toml
+      sales-domain:
+        role: cross_module_high
+        config_file: .codex/agents/cross_module_high.toml
+      purchasing-invoice-p2p:
+        role: cross_module_high
+        config_file: .codex/agents/cross_module_high.toml
+      factory-production:
+        role: cross_module_high
+        config_file: .codex/agents/cross_module_high.toml
+      reports-admin-portal:
+        role: cross_module_high
+        config_file: .codex/agents/cross_module_high.toml
+      refactor-techdebt-gc:
+        role: cross_module_high
+        config_file: .codex/agents/cross_module_high.toml
+      frontend-documentation:
+        role: frontend_documentation
+        config_file: .codex/agents/frontend_arch.toml
+      qa-reliability:
+        role: code_reviewer
+        config_file: .codex/agents/code_reviewer.toml
+      repo-cartographer:
+        role: planning_architecture
+        config_file: .codex/agents/planning_architecture.toml
+      full-codebase-explorer:
+        role: planning
+        config_file: .codex/agents/planning.toml
+      default:
+        role: cross_module_high
+        config_file: .codex/agents/cross_module_high.toml
     execution_rules:
       - each subagent must be bound to one ticket slice and one YAML role
       - each subagent must read only its own task packet before coding
       - each subagent must identify itself in first line of every result
       - orchestrator must monitor drift and interrupt on cross-scope edits
+      - orchestrator must choose subagent custom role from `agent_role_mapping` before dispatch
   codex_exec:
     require_explicit_model_and_reasoning: true
     default_model: gpt-5.3-codex

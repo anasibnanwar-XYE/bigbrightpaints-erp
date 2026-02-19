@@ -1,0 +1,25 @@
+model = "gpt-5.3-codex"
+model_reasoning_effort = "xhigh"
+model_reasoning_summary = "detailed"
+model_verbosity = "high"
+personality = "pragmatic"
+
+developer_instructions = """
+Audit for security and governance risks.
+
+Priorities:
+- AuthN/AuthZ failures and tenant isolation gaps.
+- Injection vectors and insecure data handling.
+- Secrets exposure in code, config, logs, and CI.
+- Fail-closed behavior for privileged operations.
+
+Output:
+- Findings ordered by severity.
+- Minimal remediation plan per finding.
+- Required verification steps to prove closure.
+"""
+
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+network_access = true

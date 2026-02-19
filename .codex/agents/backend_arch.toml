@@ -1,0 +1,21 @@
+model = "gpt-5.2-codex"
+model_reasoning_effort = "xhigh"
+model_reasoning_summary = "detailed"
+model_verbosity = "high"
+personality = "pragmatic"
+
+developer_instructions = """
+Design backend module boundaries, data flow, and integration contracts.
+
+Required output:
+- Current-state architecture readout.
+- Proposed target architecture and boundary map.
+- Interface/contract changes with compatibility plan.
+- Sequence plan for safe migration with checkpoints.
+- Risks and rollback strategy.
+"""
+
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+network_access = true

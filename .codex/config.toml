@@ -1,0 +1,121 @@
+[features]
+multi_agent = true
+
+[agents]
+max_threads = 12
+
+[agents.orchestrator]
+description = "Primary orchestration lead for this repository: routes slices, chooses specialist roles, enforces roadmap alignment, and closes review with evidence."
+config_file = "agents/orchestrator.toml"
+
+[agents.cross_module]
+description = "Executes cross-module contract-first implementation slices across producer/consumer/orchestrator boundaries with strict integration discipline."
+config_file = "agents/cross_module.toml"
+
+[agents.cross_module_high]
+description = "Executes standard cross-module implementation slices with high reasoning and strict boundary discipline."
+config_file = "agents/cross_module_high.toml"
+
+[agents.planning]
+description = "Builds thorough execution plans, slice breakdowns, acceptance criteria, and dependency-aware sequencing before implementation."
+config_file = "agents/planning.toml"
+
+[agents.planning_architecture]
+description = "Plans architectural improvements with explicit boundaries, tradeoffs, migration path, and reversibility."
+config_file = "agents/planning_architecture.toml"
+
+[agents.frontend_arch]
+description = "Designs scalable frontend architecture and UX consistency."
+config_file = "agents/frontend_arch.toml"
+
+[agents.frontend_documentation]
+description = "Maintains frontend endpoint maps, portal ownership docs, and frontend handoff consistency."
+config_file = "agents/frontend_arch.toml"
+
+[agents.security_auditor]
+description = "Finds auth, injection, and secrets risks."
+config_file = "agents/security_auditor.toml"
+
+[agents.code_reviewer]
+description = "Performs strict code review for correctness, regressions, risks, tests, and merge readiness."
+config_file = "agents/code_reviewer.toml"
+
+[agents.performance]
+description = "Optimizes latency, throughput, and resource usage."
+config_file = "agents/performance.toml"
+
+[agents.backend_arch]
+description = "Designs backend modules, boundaries, and data flow."
+config_file = "agents/backend_arch.toml"
+
+[agents.product_analyst]
+description = "Turns product goals into clear technical requirements."
+config_file = "agents/product_analyst.toml"
+
+[agents."accounting-domain"]
+description = "Accounting domain implementation mapped to critical cross-module execution profile."
+config_file = "agents/cross_module.toml"
+
+[agents."auth-rbac-company"]
+description = "Auth/RBAC/company implementation mapped to critical cross-module execution profile."
+config_file = "agents/cross_module.toml"
+
+[agents."data-migration"]
+description = "Data migration implementation mapped to critical cross-module execution profile."
+config_file = "agents/cross_module.toml"
+
+[agents."hr-domain"]
+description = "HR/payroll implementation mapped to critical cross-module execution profile."
+config_file = "agents/cross_module.toml"
+
+[agents."orchestrator-runtime"]
+description = "Orchestrator runtime implementation mapped to critical cross-module execution profile."
+config_file = "agents/cross_module.toml"
+
+[agents."release-ops"]
+description = "Release and ops execution mapped to critical cross-module execution profile."
+config_file = "agents/cross_module.toml"
+
+[agents."security-governance"]
+description = "Security/governance reviews mapped to the security auditor profile."
+config_file = "agents/security_auditor.toml"
+
+[agents."inventory-domain"]
+description = "Inventory implementation mapped to standard cross-module execution profile."
+config_file = "agents/cross_module_high.toml"
+
+[agents."sales-domain"]
+description = "Sales implementation mapped to standard cross-module execution profile."
+config_file = "agents/cross_module_high.toml"
+
+[agents."purchasing-invoice-p2p"]
+description = "P2P implementation mapped to standard cross-module execution profile."
+config_file = "agents/cross_module_high.toml"
+
+[agents."factory-production"]
+description = "Factory/production implementation mapped to standard cross-module execution profile."
+config_file = "agents/cross_module_high.toml"
+
+[agents."reports-admin-portal"]
+description = "Reports/admin/portal implementation mapped to standard cross-module execution profile."
+config_file = "agents/cross_module_high.toml"
+
+[agents."refactor-techdebt-gc"]
+description = "Tech-debt/refactor execution mapped to standard cross-module execution profile."
+config_file = "agents/cross_module_high.toml"
+
+[agents."frontend-documentation"]
+description = "Frontend documentation work mapped to frontend architecture/doc profile."
+config_file = "agents/frontend_arch.toml"
+
+[agents."qa-reliability"]
+description = "QA and reliability work mapped to dedicated code-review and verification profile."
+config_file = "agents/code_reviewer.toml"
+
+[agents."repo-cartographer"]
+description = "Repository architecture mapping work mapped to planning_architecture profile."
+config_file = "agents/planning_architecture.toml"
+
+[agents."full-codebase-explorer"]
+description = "Full codebase exploration work mapped to the planning profile."
+config_file = "agents/planning.toml"

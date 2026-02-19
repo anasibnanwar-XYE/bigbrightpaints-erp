@@ -66,13 +66,25 @@ Claim collisions are merge-blocking. Unclaimed implementation submissions are re
 
 ## Subagent Model Policy
 Use Codex multi-agent role configuration for model/reasoning selection:
-- Orchestrator planning: `gpt-5.3-codex` + `xhigh`
-- Review agents: `gpt-5.3-codex` + `xhigh`
-- High-risk implementation: `gpt-5.3-codex` + `xhigh`
-- Standard implementation: `gpt-5.3-codex` + `high`
-- Exploration/recon: `gpt-5.3-codex-spark` + `xhigh`; fallback to `codex-mini-latest` (high), then `gpt-5.3-codex` (medium)
+- `orchestrator`: `gpt-5.3-codex` + `xhigh`
+- `planning`: `gpt-5.2-codex` + `xhigh`
+- `planning_architecture`: `gpt-5.2-codex` + `xhigh`
+- `backend_arch`: `gpt-5.2-codex` + `xhigh`
+- `product_analyst`: `gpt-5.2-codex` + `xhigh`
+- `cross_module`: `gpt-5.3-codex` + `xhigh`
+- `cross_module_high`: `gpt-5.3-codex` + `high`
+- `security_auditor`: `gpt-5.3-codex` + `xhigh`
+- `code_reviewer`: `gpt-5.3-codex` + `xhigh`
+- `performance`: `gpt-5.3-codex` + `high`
+- `frontend_arch` / `frontend_documentation`: `gpt-5.3-codex` + `high`
 
 If preferred model is unavailable, orchestrator must document fallback choice in ticket timeline.
+
+## Agent-ID to Role Mapping
+- Existing YAML agent IDs are mapped to custom multi-agent roles in:
+  - `agents/orchestrator-layer.yaml` -> `runtime.subagents.agent_role_mapping`
+  - `.codex/config.toml` -> `[agents.<role-or-id>]` tables
+- `scripts/harness_orchestrator.py` injects role, model, and reasoning metadata into each generated `TASK_PACKET.md`.
 
 ## Cross-Module Contract-First Protocol
 When touching multiple domains, use this order:

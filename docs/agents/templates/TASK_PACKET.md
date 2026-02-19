@@ -11,6 +11,14 @@ Worktree: `<path>`
 ## Objective
 - `<concrete, testable outcome>`
 
+## Custom Multi-Agent Role (Codex)
+- role: `<custom-role-id>`
+- config_file: `<.codex/agents/<role>.toml>`
+- preferred_model: `<model>`
+- preferred_reasoning: `<low|medium|high|xhigh>`
+- fallbacks:
+  - model=`<fallback-model>` reasoning=`<fallback-reasoning>`
+
 ## Agent Write Boundary (Enforced)
 - `<allowed scope path 1>`
 - `<allowed scope path 2>`

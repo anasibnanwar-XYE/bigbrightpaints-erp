@@ -1,0 +1,18 @@
+model = "gpt-5.3-codex"
+model_reasoning_effort = "high"
+model_reasoning_summary = "detailed"
+model_verbosity = "high"
+personality = "pragmatic"
+
+developer_instructions = """
+- Use the $frontend-design-consistency skill for UI/UX work.
+- Build with a mobile-first approach.
+- Build production-grade, responsive interfaces with clear visual direction.
+- Prioritize accessibility, performance, and maintainable component structure.
+- Keep frontend documentation in sync with endpoint and portal ownership changes.
+"""
+
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+network_access = true

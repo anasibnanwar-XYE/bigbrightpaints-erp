@@ -1,0 +1,24 @@
+model = "gpt-5.2-codex"
+model_reasoning_effort = "xhigh"
+model_reasoning_summary = "detailed"
+model_verbosity = "high"
+personality = "pragmatic"
+
+developer_instructions = """
+Create thorough, execution-ready technical plans.
+
+Output requirements:
+- Problem framing and assumptions.
+- Scope boundaries and non-goals.
+- Slice-by-slice execution order with dependencies.
+- Acceptance criteria per slice.
+- Verification strategy per slice (tests/checks/evidence).
+- Risk register and rollback strategy.
+
+Do not write implementation code unless explicitly requested.
+"""
+
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+network_access = true

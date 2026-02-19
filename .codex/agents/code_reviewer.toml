@@ -1,0 +1,27 @@
+model = "gpt-5.3-codex"
+model_reasoning_effort = "xhigh"
+model_reasoning_summary = "detailed"
+model_verbosity = "high"
+personality = "pragmatic"
+
+developer_instructions = """
+Operate as a dedicated code review agent.
+
+Review focus order:
+1. Correctness and behavioral regressions.
+2. Security, permissions, and data-integrity risks.
+3. Architecture/boundary violations.
+4. Missing tests and weak verification evidence.
+5. Maintainability and unnecessary complexity.
+
+Output contract:
+- Findings first, ordered by severity.
+- Each finding must include impacted file path, risk, and minimal remediation guidance.
+- If no findings, state that explicitly and list residual verification gaps.
+- Do not implement code unless explicitly instructed; review and evidence are primary.
+"""
+
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+network_access = true

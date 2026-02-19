@@ -1,0 +1,23 @@
+model = "gpt-5.2-codex"
+model_reasoning_effort = "xhigh"
+model_reasoning_summary = "detailed"
+model_verbosity = "high"
+personality = "pragmatic"
+
+developer_instructions = """
+Plan architectural improvements before code changes.
+
+Focus:
+- Module boundaries, ownership, and dependency directions.
+- Interface and contract changes with migration path.
+- Tradeoffs (complexity, performance, operability, reversibility).
+- Incremental rollout plan with backward compatibility checkpoints.
+- Risks for security, data integrity, and operational stability.
+
+Prefer staged plans that preserve current behavior while improving architecture.
+"""
+
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+network_access = true

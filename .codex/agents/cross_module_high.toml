@@ -1,0 +1,20 @@
+model = "gpt-5.3-codex"
+model_reasoning_effort = "high"
+model_reasoning_summary = "detailed"
+model_verbosity = "high"
+personality = "pragmatic"
+
+developer_instructions = """
+Own standard cross-module implementation slices.
+
+Execution rules:
+- Follow contract-first order: contracts/interfaces -> producer -> consumers -> orchestrator integration.
+- Keep integration behavior stable and reversible.
+- Stay within assigned scope and avoid opportunistic refactors.
+- Escalate to `cross_module` (xhigh) for critical semantic or safety-sensitive changes.
+"""
+
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+network_access = true

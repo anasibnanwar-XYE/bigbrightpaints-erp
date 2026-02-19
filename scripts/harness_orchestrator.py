@@ -192,6 +192,45 @@ def risk_for_agent(catalog: dict[str, Any], agent_id: str) -> str:
     return "medium"
 
 
+def resolve_multi_agent_role_profile(orchestrator_layer: dict[str, Any], agent_id: str) -> dict[str, Any]:
+    runtime = orchestrator_layer.get("runtime", {})
+    subagents = runtime.get("subagents", {})
+    role_policy = subagents.get("role_model_policy", {})
+    role_map = subagents.get("agent_role_mapping", {})
+
+    role_entry: Any = None
+    if isinstance(role_map, dict):
+        role_entry = role_map.get(agent_id)
+        if role_entry is None:
+            role_entry = role_map.get("default")
+
+    role = ""
+    config_file = ""
+    if isinstance(role_entry, str):
+        role = role_entry.strip()
+    elif isinstance(role_entry, dict):
+        role = str(role_entry.get("role", "")).strip()
+        config_file = str(role_entry.get("config_file", "")).strip()
+
+    policy: dict[str, Any] = {}
+    if role and isinstance(role_policy, dict):
+        candidate = role_policy.get(role, {})
+        if isinstance(candidate, dict):
+            policy = candidate
+
+    fallback = policy.get("fallback", [])
+    if not isinstance(fallback, list):
+        fallback = []
+
+    return {
+        "role": role,
+        "config_file": config_file,
+        "model": str(policy.get("preferred_model", "")).strip(),
+        "reasoning": str(policy.get("preferred_reasoning", "")).strip(),
+        "fallback": fallback,
+    }
+
+
 def branch_exists(repo_root: Path, branch: str) -> bool:
     proc = run(["git", "show-ref", "--verify", f"refs/heads/{branch}"], cwd=repo_root, check=False)
     return proc.returncode == 0
@@ -481,6 +520,14 @@ def write_packet_files(repo_root: Path, ticket: dict[str, Any], slice_data: dict
     slice_dir.mkdir(parents=True, exist_ok=True)
     reviews_dir.mkdir(parents=True, exist_ok=True)
 
+    preferred_role = str(slice_data.get("multi_agent_role", "")).strip()
+    preferred_model = str(slice_data.get("multi_agent_model", "")).strip()
+    preferred_reasoning = str(slice_data.get("multi_agent_reasoning", "")).strip()
+    preferred_config_file = str(slice_data.get("multi_agent_config_file", "")).strip()
+    fallback_profiles = slice_data.get("multi_agent_fallback", [])
+    if not isinstance(fallback_profiles, list):
+        fallback_profiles = []
+
     prompt_lines = [
         f"You are `{slice_data['primary_agent']}`.",
         f"Start your first line with: `I am {slice_data['primary_agent']} and I own {sid}.`",
@@ -494,6 +541,14 @@ def write_packet_files(repo_root: Path, ticket: dict[str, Any], slice_data: dict
         "- residual_risks",
         "- blockers_or_next_step",
     ]
+    if preferred_role:
+        prompt_lines.insert(
+            2,
+            (
+                f"Use Codex custom multi-agent role `{preferred_role}`"
+                + (f" from `{preferred_config_file}`." if preferred_config_file else ".")
+            ),
+        )
 
     packet = f"""# Task Packet
 
@@ -508,7 +563,26 @@ Worktree: `{slice_data['worktree_path']}`
 ## Objective
 {slice_data.get('objective', ticket.get('goal', 'Unspecified objective'))}
 
-## Agent Write Boundary (Enforced)
+"""
+    if preferred_role:
+        packet += "## Custom Multi-Agent Role (Codex)\n"
+        packet += f"- role: `{preferred_role}`\n"
+        if preferred_config_file:
+            packet += f"- config_file: `{preferred_config_file}`\n"
+        if preferred_model:
+            packet += f"- preferred_model: `{preferred_model}`\n"
+        if preferred_reasoning:
+            packet += f"- preferred_reasoning: `{preferred_reasoning}`\n"
+        if fallback_profiles:
+            packet += "- fallbacks:\n"
+            for fb in fallback_profiles:
+                if isinstance(fb, dict):
+                    model = str(fb.get("model", "")).strip()
+                    reasoning = str(fb.get("reasoning", "")).strip()
+                    packet += f"  - model=`{model}` reasoning=`{reasoning}`\n"
+        packet += "\n"
+
+    packet += """## Agent Write Boundary (Enforced)
 """
     for p in slice_data.get("allowed_scope_paths", []):
         packet += f"- `{p}`\n"
@@ -672,11 +746,12 @@ def write_tmux_commands(repo_root: Path, ticket: dict[str, Any]) -> str:
         wt = str(s.get("worktree_path"))
         sid = str(s.get("id"))
         agent = str(s.get("primary_agent"))
+        hint_cmd = 'printf "\\n# Paste TASK_PACKET prompt into the assigned agent CLI in this lane.\\n"'
 
         cmds = [
             f"tmux send-keys -t {shlex.quote(lane)} {shlex.quote(f'cd {wt}')} Enter",
             f"tmux send-keys -t {shlex.quote(lane)} {shlex.quote('cat .harness/TASK_PACKET.md')} Enter",
-            f"tmux send-keys -t {shlex.quote(lane)} {shlex.quote('printf "\\n# Paste TASK_PACKET prompt into the assigned agent CLI in this lane.\\n"')} Enter",
+            f"tmux send-keys -t {shlex.quote(lane)} {shlex.quote(hint_cmd)} Enter",
         ]
         lines.extend(cmds)
         lines.append("")
@@ -769,6 +844,7 @@ def create_ticket(args: argparse.Namespace) -> int:
         required_checks = []
         agent_def = agent_defs.get(agent_id, {})
         allowed_scope_paths = [str(x) for x in agent_def.get("scope_paths", []) if str(x).strip()]
+        role_profile = resolve_multi_agent_role_profile(orchestrator_layer, agent_id)
         for check in agent_def.get("required_checks_before_done", []):
             required_checks.append(str(check))
 
@@ -784,6 +860,11 @@ def create_ticket(args: argparse.Namespace) -> int:
                 "branch": branch,
                 "worktree_path": str(wt),
                 "required_checks": required_checks,
+                "multi_agent_role": role_profile.get("role", ""),
+                "multi_agent_config_file": role_profile.get("config_file", ""),
+                "multi_agent_model": role_profile.get("model", ""),
+                "multi_agent_reasoning": role_profile.get("reasoning", ""),
+                "multi_agent_fallback": role_profile.get("fallback", []),
                 "status": "ready",
                 "objective": args.goal,
             }

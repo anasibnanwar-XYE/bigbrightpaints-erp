@@ -33,15 +33,20 @@ This defines how the orchestrator controls all agents in long-running async loop
 
 ## Subagent Model Routing
 Orchestrator selects model/reasoning by role and risk:
-- Orchestrator planning: `gpt-5.3-codex` with `xhigh`
-- Review agent passes: `gpt-5.3-codex` with `xhigh`
-- Implementation (high risk): `gpt-5.3-codex` with `xhigh`
-- Implementation (standard): `gpt-5.3-codex` with `high`
-- Exploration: `gpt-5.3-codex-spark` with `xhigh`
+- `orchestrator`: `gpt-5.3-codex` with `xhigh`
+- `planning`: `gpt-5.2-codex` with `xhigh`
+- `planning_architecture`: `gpt-5.2-codex` with `xhigh`
+- `backend_arch`: `gpt-5.2-codex` with `xhigh`
+- `product_analyst`: `gpt-5.2-codex` with `xhigh`
+- `cross_module`: `gpt-5.3-codex` with `xhigh`
+- `cross_module_high`: `gpt-5.3-codex` with `high`
+- `security_auditor`: `gpt-5.3-codex` with `xhigh`
+- `code_reviewer`: `gpt-5.3-codex` with `xhigh`
+- `performance`: `gpt-5.3-codex` with `high`
+- `frontend_arch` / `frontend_documentation`: `gpt-5.3-codex` with `high`
+- legacy fallback buckets remain defined (`reviewer`, `implementation_high_risk`, `implementation_standard`, `exploration`)
 
-Fallback order for exploration when preferred model is unavailable:
-1. `codex-mini-latest` with `high`
-2. `gpt-5.3-codex` with `medium`
+Existing YAML agent IDs map into these custom roles through `runtime.subagents.agent_role_mapping` in `agents/orchestrator-layer.yaml` and project-level role config in `.codex/config.toml`.
 
 Fallback decision must be logged in ticket timeline.
 

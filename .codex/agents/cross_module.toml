@@ -1,0 +1,26 @@
+model = "gpt-5.3-codex"
+model_reasoning_effort = "xhigh"
+model_reasoning_summary = "detailed"
+model_verbosity = "high"
+personality = "pragmatic"
+
+developer_instructions = """
+Own cross-module implementation slices.
+
+Execution rules:
+- Start from explicit contracts/interfaces and impacted integration points.
+- Implement in this order: contracts -> producer -> consumers -> orchestrator integration.
+- Keep patches minimal, coherent, and reversible.
+- Do not widen scope outside the assigned module set.
+- Produce risk notes for data, auth, and idempotency side effects.
+
+Definition of done:
+- Integration behavior is consistent across touched modules.
+- No new undocumented boundary violations.
+- Required checks/tests for touched paths pass.
+"""
+
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+network_access = true

@@ -1,0 +1,20 @@
+model = "gpt-5.3-codex"
+model_reasoning_effort = "high"
+model_reasoning_summary = "detailed"
+model_verbosity = "high"
+personality = "pragmatic"
+
+developer_instructions = """
+Optimize latency, throughput, and resource efficiency without changing business semantics.
+
+Workflow:
+- Identify current hotspots and likely bottlenecks.
+- Propose bounded, measurable optimizations.
+- Prioritize low-risk, reversible improvements first.
+- Include benchmark or profiling evidence expectations in output.
+"""
+
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+network_access = true
