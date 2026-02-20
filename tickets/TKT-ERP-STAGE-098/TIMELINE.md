@@ -20,3 +20,8 @@
   - Validation command: `JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home mvn -s /tmp/mvn-settings.xml -Dmaven.repo.local=/tmp/m2repo -f erp-domain/pom.xml -Dtest=PurchasingServiceGoodsReceiptTest test` -> `FAIL` at `testCompile` due pre-existing generic-stubbing compile error in `src/test/java/com/bigbrightpaints/erp/core/audittrail/EnterpriseAuditTrailServiceTest.java:229,260`.
   - Validation command: `JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home mvn -s /tmp/mvn-settings.xml -Dmaven.repo.local=/tmp/m2repo -f erp-domain/pom.xml -Dtest=PurchasingServiceTest test` -> `FAIL` with same pre-existing `EnterpriseAuditTrailServiceTest` compile error.
   - Validation command: `JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home MAVEN_ARGS='-s /tmp/mvn-settings.xml -Dmaven.repo.local=/tmp/m2repo' bash ci/check-architecture.sh` -> `PASS`.
+- `2026-02-20T19:31:26Z` `SLICE-03` review-fix patch applied.
+  - Added `createGoodsReceipt_dataIntegrityRace_reloadsExistingReceipt` to cover idempotency-key race fallback after `DataIntegrityViolationException` by reloading and validating existing receipt.
+  - Added `createGoodsReceipt_legacyReplayBackfillsHash` to cover legacy replay where `idempotencyHash` is null and must be backfilled via `goodsReceiptRepository.save(existing)`.
+  - Validation command: `mvn -f erp-domain/pom.xml -Dtest=PurchasingServiceGoodsReceiptTest test` -> `FAIL` at `testCompile` due pre-existing generic-stubbing compile error in `src/test/java/com/bigbrightpaints/erp/core/audittrail/EnterpriseAuditTrailServiceTest.java:229,260`.
+  - Validation command: `bash ci/check-architecture.sh` -> `PASS`.

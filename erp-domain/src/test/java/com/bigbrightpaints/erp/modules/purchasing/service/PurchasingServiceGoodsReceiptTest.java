@@ -37,6 +37,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.batch.support.transaction.ResourcelessTransactionManager;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
@@ -51,6 +52,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -240,6 +242,78 @@ class PurchasingServiceGoodsReceiptTest {
                 });
 
         verify(goodsReceiptRepository).findWithLinesByCompanyAndIdempotencyKey(company, "idem-replay-mismatch");
+        verifyNoInteractions(accountingPeriodService, purchaseOrderRepository, rawMaterialRepository, rawMaterialService);
+    }
+
+    @Test
+    @DisplayName("createGoodsReceipt handles data-integrity race by reloading idempotent receipt")
+    void createGoodsReceipt_dataIntegrityRace_reloadsExistingReceipt() {
+        GoodsReceiptRequest request = request(
+                "idem-race-reload",
+                LocalDate.of(2026, 2, 20),
+                List.of(new GoodsReceiptLineRequest(20L, "REQ-BATCH", new BigDecimal("4.0000"), "KG", new BigDecimal("5.00"), "line note"))
+        );
+        GoodsReceipt existing = existingReceipt(request);
+        existing.setIdempotencyHash(signatureFor(request));
+
+        when(goodsReceiptRepository.findWithLinesByCompanyAndIdempotencyKey(company, "idem-race-reload"))
+                .thenReturn(Optional.empty(), Optional.of(existing));
+        when(purchaseOrderRepository.lockByCompanyAndId(company, 30L))
+                .thenReturn(Optional.of(purchaseOrder));
+        when(goodsReceiptRepository.lockByCompanyAndReceiptNumberIgnoreCase(company, "GRN-30-01"))
+                .thenReturn(Optional.empty());
+        when(goodsReceiptRepository.findByPurchaseOrder(purchaseOrder))
+                .thenReturn(List.of());
+        when(rawMaterialRepository.lockByCompanyAndId(company, 20L))
+                .thenReturn(Optional.of(rawMaterial));
+
+        RawMaterialBatch recordedBatch = new RawMaterialBatch();
+        ReflectionTestUtils.setField(recordedBatch, "id", 702L);
+        recordedBatch.setBatchCode("RM-20-LOT-RACE");
+        recordedBatch.setRawMaterial(rawMaterial);
+        recordedBatch.setQuantity(new BigDecimal("4.0000"));
+        recordedBatch.setUnit("KG");
+        recordedBatch.setCostPerUnit(new BigDecimal("5.00"));
+
+        when(rawMaterialService.recordReceipt(eq(20L), any(RawMaterialBatchRequest.class), any(RawMaterialService.ReceiptContext.class)))
+                .thenReturn(new RawMaterialService.ReceiptResult(recordedBatch, null, null));
+        when(goodsReceiptRepository.saveAndFlush(any(GoodsReceipt.class)))
+                .thenThrow(new DataIntegrityViolationException("duplicate idempotency key"));
+
+        GoodsReceiptResponse response = purchasingService.createGoodsReceipt(request);
+
+        assertThat(response.id()).isEqualTo(901L);
+        assertThat(response.receiptNumber()).isEqualTo("GRN-30-01");
+        assertThat(response.status()).isEqualTo("RECEIVED");
+        assertThat(response.totalAmount()).isEqualByComparingTo("20.00");
+
+        verify(goodsReceiptRepository, times(2)).findWithLinesByCompanyAndIdempotencyKey(company, "idem-race-reload");
+        verify(goodsReceiptRepository).saveAndFlush(any(GoodsReceipt.class));
+        verify(accountingPeriodService).requireOpenPeriod(company, LocalDate.of(2026, 2, 20));
+    }
+
+    @Test
+    @DisplayName("createGoodsReceipt legacy replay backfills missing idempotency hash")
+    void createGoodsReceipt_legacyReplayBackfillsHash() {
+        GoodsReceiptRequest request = request(
+                "idem-legacy-backfill",
+                LocalDate.of(2026, 2, 20),
+                List.of(new GoodsReceiptLineRequest(20L, "REQ-BATCH", new BigDecimal("4.0000"), "KG", new BigDecimal("5.00"), "line note"))
+        );
+        GoodsReceipt existing = existingReceipt(request);
+        existing.setIdempotencyHash(null);
+
+        when(goodsReceiptRepository.findWithLinesByCompanyAndIdempotencyKey(company, "idem-legacy-backfill"))
+                .thenReturn(Optional.of(existing));
+        when(goodsReceiptRepository.save(existing)).thenReturn(existing);
+
+        GoodsReceiptResponse response = purchasingService.createGoodsReceipt(request);
+
+        assertThat(existing.getIdempotencyHash()).isEqualTo(signatureFor(request));
+        assertThat(response.id()).isEqualTo(901L);
+        assertThat(response.receiptNumber()).isEqualTo("GRN-30-01");
+        assertThat(response.status()).isEqualTo("RECEIVED");
+        verify(goodsReceiptRepository).save(existing);
         verifyNoInteractions(accountingPeriodService, purchaseOrderRepository, rawMaterialRepository, rawMaterialService);
     }
 
