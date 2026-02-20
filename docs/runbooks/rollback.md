@@ -56,7 +56,11 @@ Record one immutable evidence entry per rollback event or drill with these requi
 - `evidence_links` (`asyncloop` entry + `docs/approvals/R2-CHECKPOINT.md` update)
 
 ## Strict-Lane Alignment (M18-S1)
-- Docs-only slices may skip commit-review/subagent review and must still pass `bash ci/lint-knowledgebase.sh`.
+- Docs-only slices may skip commit-review/subagent review only when no runtime/config/schema/test files changed in the same slice.
+- Control-plane docs-only strict-lane slices must still run:
+  1. `bash ci/lint-knowledgebase.sh`
+  2. `bash ci/check-architecture.sh`
+  3. `bash ci/check-enterprise-policy.sh`
 - Runtime/config/schema/test slices stay strict-lane and must include release-lane evidence from:
   1. `bash scripts/gate_release.sh`
   2. `bash scripts/gate_reconciliation.sh`

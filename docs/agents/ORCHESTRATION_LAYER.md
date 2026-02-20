@@ -56,11 +56,12 @@ Fallback role/profile decision must be logged in ticket timeline.
   - codex review guideline checks
   - architecture/doc/enterprise policy guard checks
 - Lane-qualified docs-only exception:
-  - docs-only slices may skip reviewer-agent and commit-review steps.
-  - strict-lane control-plane docs changes still require:
+  - `fast_lane` docs-only slices may skip reviewer-agent and commit-review steps.
+  - `strict_lane` control-plane docs changes (`docs/agents/`, `docs/ASYNC_LOOP_OPERATIONS.md`, `docs/system-map/REVIEW_QUEUE_POLICY.md`, `agents/orchestrator-layer.yaml`, `asyncloop`, `scripts/harness_orchestrator.py`, `ci/`) may skip reviewer-agent and commit-review only when no runtime/config/schema/test files changed, and still require:
     - `bash ci/lint-knowledgebase.sh`
     - `bash ci/check-architecture.sh`
     - `bash ci/check-enterprise-policy.sh`
+  - runtime/config/schema/test changes never qualify for docs-only review skip.
   - resolve lane/check mapping with `scripts/harness_orchestrator.py`.
 - Evidence must be appended to `asyncloop` for traceability.
 

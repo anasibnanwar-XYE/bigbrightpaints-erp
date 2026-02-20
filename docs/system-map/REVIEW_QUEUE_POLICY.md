@@ -9,8 +9,8 @@ This policy defines behavior when code-review subagent dispatch is available vs 
 ## 1) Scope
 - Applies to code commits in async-loop execution.
 - Lane-qualified docs-only review skip policy:
-  - `fast_lane` docs-only commits run `bash ci/lint-knowledgebase.sh` and do not require review subagent dispatch.
-  - `strict_lane` control-plane docs commits (`docs/agents/`, `docs/ASYNC_LOOP_OPERATIONS.md`, `docs/system-map/REVIEW_QUEUE_POLICY.md`, `agents/orchestrator-layer.yaml`, `asyncloop`, `scripts/harness_orchestrator.py`, `ci/`) may skip review subagent dispatch only when no runtime/config/schema/test files changed, and must run:
+  - `fast_lane` docs-only commits run `bash ci/lint-knowledgebase.sh` and do not require reviewer-subagent dispatch or commit-review.
+  - `strict_lane` control-plane docs commits (`docs/agents/`, `docs/ASYNC_LOOP_OPERATIONS.md`, `docs/system-map/REVIEW_QUEUE_POLICY.md`, `agents/orchestrator-layer.yaml`, `asyncloop`, `scripts/harness_orchestrator.py`, `ci/`) may skip reviewer-subagent dispatch and commit-review only when no runtime/config/schema/test files changed, and must run:
     - `bash ci/lint-knowledgebase.sh`
     - `bash ci/check-architecture.sh`
     - `bash ci/check-enterprise-policy.sh`

@@ -26,12 +26,16 @@ to move the ERP toward staging/predeployment readiness.
   - run commit review (`codex review --commit <sha>` when available),
   - spawn one review-only subagent for deep regression/abuse review.
 - Docs-only commit exception:
-  - skip commit review/subagent,
+  - skip commit review/subagent only when no runtime/config/schema/test files changed in the same slice,
   - run `bash ci/lint-knowledgebase.sh` and log pass status.
 - Lane alignment rule:
   - `fast_lane` is docs-only work and follows the docs-only commit exception.
+  - `strict_lane` control-plane docs work (`docs/agents/`, `docs/ASYNC_LOOP_OPERATIONS.md`, `docs/system-map/REVIEW_QUEUE_POLICY.md`, `agents/orchestrator-layer.yaml`, `asyncloop`, `scripts/harness_orchestrator.py`, `ci/`) may skip reviewer-agent/commit-review only when no runtime/config/schema/test files changed and the strict trio passes:
+    - `bash ci/lint-knowledgebase.sh`
+    - `bash ci/check-architecture.sh`
+    - `bash ci/check-enterprise-policy.sh`
   - `strict_lane` is required for accounting, auth/RBAC, migrations, orchestrator semantics, and any runtime/config/schema/test logic change.
-  - `strict_lane` minimum harness evidence:
+  - `strict_lane` runtime/config/schema/test minimum harness evidence:
     - `bash ci/lint-knowledgebase.sh`
     - `bash ci/check-architecture.sh`
     - `bash ci/check-enterprise-policy.sh`
@@ -54,7 +58,7 @@ to move the ERP toward staging/predeployment readiness.
 6. Commit with:
   - concise subject,
   - bullet comments describing exactly what changed and why.
-7. For `strict_lane` commits, run commit review + review subagent.
+7. For `strict_lane` runtime/config/schema/test commits, run commit review + review subagent.
 8. If review finds issues:
   - fix immediately,
   - re-test,
