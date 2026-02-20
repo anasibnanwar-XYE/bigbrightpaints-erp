@@ -701,6 +701,240 @@ class SalesServiceTest {
     }
 
     @Test
+    void confirmDispatchFailsWhenExceptionPresentWithoutOverrideRequestId() {
+        Dealer dealer = dealerWithCreditLimit(42L, BigDecimal.valueOf(1000));
+        Account receivable = new Account();
+        receivable.setName("AR");
+        setField(receivable, "id", 900L);
+        dealer.setReceivableAccount(receivable);
+
+        SalesOrder order = new SalesOrder();
+        setField(order, "id", 10L);
+        order.setCompany(company);
+        order.setDealer(dealer);
+        order.setOrderNumber("SO-10");
+        order.setStatus("READY_TO_SHIP");
+
+        SalesOrderItem item = new SalesOrderItem();
+        setField(item, "id", 1L);
+        item.setSalesOrder(order);
+        item.setProductCode("SKU-D");
+        item.setDescription("Desc");
+        item.setQuantity(BigDecimal.ONE);
+        item.setUnitPrice(BigDecimal.valueOf(100));
+        item.setGstRate(BigDecimal.ZERO);
+        order.getItems().add(item);
+
+        FinishedGood finishedGood = buildFinishedGood("SKU-D");
+        finishedGood.setCurrentStock(BigDecimal.ONE);
+        finishedGood.setRevenueAccountId(3L);
+        finishedGood.setDiscountAccountId(4L);
+        finishedGood.setValuationAccountId(11L);
+        finishedGood.setCogsAccountId(12L);
+
+        FinishedGoodBatch batch = new FinishedGoodBatch();
+        batch.setFinishedGood(finishedGood);
+        batch.setBatchCode("B-1");
+        batch.setQuantityTotal(BigDecimal.ONE);
+        batch.setQuantityAvailable(BigDecimal.ONE);
+        batch.setUnitCost(BigDecimal.ZERO);
+
+        PackagingSlip slip = new PackagingSlip();
+        setField(slip, "id", 55L);
+        slip.setCompany(company);
+        slip.setSalesOrder(order);
+        slip.setSlipNumber("PS-55");
+        slip.setStatus("PENDING");
+
+        PackagingSlipLine slipLine = new PackagingSlipLine();
+        setField(slipLine, "id", 99L);
+        slipLine.setPackagingSlip(slip);
+        slipLine.setFinishedGoodBatch(batch);
+        slipLine.setOrderedQuantity(BigDecimal.ONE);
+        slipLine.setQuantity(BigDecimal.ONE);
+        slipLine.setUnitCost(BigDecimal.ZERO);
+        slip.getLines().add(slipLine);
+
+        when(packagingSlipRepository.findAndLockByIdAndCompany(55L, company)).thenReturn(Optional.of(slip));
+        when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, 10L)).thenReturn(List.of(slip));
+        when(companyEntityLookup.requireSalesOrder(company, 10L)).thenReturn(order);
+        when(dealerRepository.lockByCompanyAndId(company, dealer.getId())).thenReturn(Optional.of(dealer));
+
+        ApplicationException ex = assertThrows(
+                ApplicationException.class,
+                () -> salesService.confirmDispatch(new DispatchConfirmRequest(
+                        55L,
+                        null,
+                        List.of(new DispatchConfirmRequest.DispatchLine(99L, null, BigDecimal.ONE, null, new BigDecimal("10"), null, null, null)),
+                        null,
+                        "admin",
+                        Boolean.FALSE,
+                        "Discount exception requires approval",
+                        null)));
+
+        assertEquals(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD, ex.getErrorCode());
+        assertTrue(ex.getMessage().contains("overrideRequestId"));
+    }
+
+    @Test
+    void confirmDispatchFailsWhenOverrideRequestIsNotApproved() {
+        Dealer dealer = dealerWithCreditLimit(42L, BigDecimal.valueOf(1000));
+        Account receivable = new Account();
+        receivable.setName("AR");
+        setField(receivable, "id", 900L);
+        dealer.setReceivableAccount(receivable);
+
+        SalesOrder order = new SalesOrder();
+        setField(order, "id", 10L);
+        order.setCompany(company);
+        order.setDealer(dealer);
+        order.setOrderNumber("SO-10");
+        order.setStatus("READY_TO_SHIP");
+
+        SalesOrderItem item = new SalesOrderItem();
+        setField(item, "id", 1L);
+        item.setSalesOrder(order);
+        item.setProductCode("SKU-D");
+        item.setDescription("Desc");
+        item.setQuantity(BigDecimal.ONE);
+        item.setUnitPrice(BigDecimal.valueOf(100));
+        item.setGstRate(BigDecimal.ZERO);
+        order.getItems().add(item);
+
+        FinishedGood finishedGood = buildFinishedGood("SKU-D");
+        finishedGood.setCurrentStock(BigDecimal.ONE);
+        finishedGood.setRevenueAccountId(3L);
+        finishedGood.setDiscountAccountId(4L);
+        finishedGood.setValuationAccountId(11L);
+        finishedGood.setCogsAccountId(12L);
+
+        FinishedGoodBatch batch = new FinishedGoodBatch();
+        batch.setFinishedGood(finishedGood);
+        batch.setBatchCode("B-1");
+        batch.setQuantityTotal(BigDecimal.ONE);
+        batch.setQuantityAvailable(BigDecimal.ONE);
+        batch.setUnitCost(BigDecimal.ZERO);
+
+        PackagingSlip slip = new PackagingSlip();
+        setField(slip, "id", 55L);
+        slip.setCompany(company);
+        slip.setSalesOrder(order);
+        slip.setSlipNumber("PS-55");
+        slip.setStatus("PENDING");
+
+        PackagingSlipLine slipLine = new PackagingSlipLine();
+        setField(slipLine, "id", 99L);
+        slipLine.setPackagingSlip(slip);
+        slipLine.setFinishedGoodBatch(batch);
+        slipLine.setOrderedQuantity(BigDecimal.ONE);
+        slipLine.setQuantity(BigDecimal.ONE);
+        slipLine.setUnitCost(BigDecimal.ZERO);
+        slip.getLines().add(slipLine);
+
+        when(packagingSlipRepository.findAndLockByIdAndCompany(55L, company)).thenReturn(Optional.of(slip));
+        when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, 10L)).thenReturn(List.of(slip));
+        when(companyEntityLookup.requireSalesOrder(company, 10L)).thenReturn(order);
+        when(dealerRepository.lockByCompanyAndId(company, dealer.getId())).thenReturn(Optional.of(dealer));
+        when(creditLimitOverrideService.isOverrideApproved(
+                eq(900L),
+                eq(company),
+                eq(dealer),
+                eq(slip),
+                eq(order),
+                any()
+        )).thenReturn(false);
+
+        ApplicationException ex = assertThrows(
+                ApplicationException.class,
+                () -> salesService.confirmDispatch(new DispatchConfirmRequest(
+                        55L,
+                        null,
+                        List.of(new DispatchConfirmRequest.DispatchLine(99L, null, BigDecimal.ONE, null, new BigDecimal("10"), null, null, null)),
+                        null,
+                        "admin",
+                        Boolean.FALSE,
+                        "Discount exception requires approval",
+                        900L)));
+
+        assertEquals(ErrorCode.BUSINESS_INVALID_STATE, ex.getErrorCode());
+        assertTrue(ex.getMessage().contains("approved maker-checker override request"));
+    }
+
+    @Test
+    void confirmDispatchFailsWhenAdminCreditOverrideMissingReason() {
+        Dealer dealer = dealerWithCreditLimit(42L, BigDecimal.valueOf(100));
+        Account receivable = new Account();
+        receivable.setName("AR");
+        setField(receivable, "id", 900L);
+        dealer.setReceivableAccount(receivable);
+
+        SalesOrder order = new SalesOrder();
+        setField(order, "id", 10L);
+        order.setCompany(company);
+        order.setDealer(dealer);
+        order.setOrderNumber("SO-10");
+        order.setStatus("READY_TO_SHIP");
+        order.setTotalAmount(BigDecimal.valueOf(200));
+
+        SalesOrderItem item = new SalesOrderItem();
+        setField(item, "id", 1L);
+        item.setSalesOrder(order);
+        item.setProductCode("SKU-D");
+        item.setDescription("Desc");
+        item.setQuantity(BigDecimal.ONE);
+        item.setUnitPrice(BigDecimal.valueOf(200));
+        item.setGstRate(BigDecimal.ZERO);
+        order.getItems().add(item);
+
+        FinishedGood finishedGood = buildFinishedGood("SKU-D");
+        finishedGood.setCurrentStock(BigDecimal.ONE);
+        finishedGood.setRevenueAccountId(3L);
+
+        FinishedGoodBatch batch = new FinishedGoodBatch();
+        batch.setFinishedGood(finishedGood);
+        batch.setBatchCode("B-1");
+        batch.setQuantityTotal(BigDecimal.ONE);
+        batch.setQuantityAvailable(BigDecimal.ONE);
+        batch.setUnitCost(BigDecimal.ZERO);
+
+        PackagingSlip slip = new PackagingSlip();
+        setField(slip, "id", 55L);
+        slip.setCompany(company);
+        slip.setSalesOrder(order);
+        slip.setSlipNumber("PS-55");
+        slip.setStatus("PENDING");
+
+        PackagingSlipLine slipLine = new PackagingSlipLine();
+        setField(slipLine, "id", 99L);
+        slipLine.setPackagingSlip(slip);
+        slipLine.setFinishedGoodBatch(batch);
+        slipLine.setOrderedQuantity(BigDecimal.ONE);
+        slipLine.setQuantity(BigDecimal.ONE);
+        slipLine.setUnitCost(BigDecimal.ZERO);
+        slip.getLines().add(slipLine);
+
+        when(packagingSlipRepository.findAndLockByIdAndCompany(55L, company)).thenReturn(Optional.of(slip));
+        when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, 10L)).thenReturn(List.of(slip));
+        when(companyEntityLookup.requireSalesOrder(company, 10L)).thenReturn(order);
+        when(dealerRepository.lockByCompanyAndId(company, dealer.getId())).thenReturn(Optional.of(dealer));
+
+        ApplicationException ex = assertThrows(
+                ApplicationException.class,
+                () -> salesService.confirmDispatch(new DispatchConfirmRequest(
+                        55L,
+                        null,
+                        List.of(),
+                        null,
+                        "admin",
+                        Boolean.TRUE,
+                        null,
+                        901L)));
+
+        assertEquals(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD, ex.getErrorCode());
+        assertTrue(ex.getMessage().contains("adminOverrideCreditLimit"));
+    }
+
+    @Test
     void confirmDispatchPostsDiscountLines() {
         Dealer dealer = dealerWithCreditLimit(42L, BigDecimal.valueOf(1000));
         Account receivable = new Account();

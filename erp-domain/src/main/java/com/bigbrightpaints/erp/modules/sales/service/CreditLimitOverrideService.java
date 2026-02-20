@@ -141,7 +141,7 @@ public class CreditLimitOverrideService {
         CreditLimitOverrideRequest overrideRequest = requireRequest(id);
         String normalizedReviewer = normalizeActor(reviewedBy, "reviewedBy");
         assertMakerCheckerBoundary(overrideRequest, normalizedReviewer);
-        String normalizedReason = requireReason(request != null ? request.reason() : null, "approve");
+        String normalizedReason = resolveDecisionReason(overrideRequest, request, "approve");
         if (!STATUS_PENDING.equals(normalizeStatus(overrideRequest.getStatus()))) {
             throw new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE,
                     "Only pending override requests can be approved");
@@ -168,7 +168,7 @@ public class CreditLimitOverrideService {
         CreditLimitOverrideRequest overrideRequest = requireRequest(id);
         String normalizedReviewer = normalizeActor(reviewedBy, "reviewedBy");
         assertMakerCheckerBoundary(overrideRequest, normalizedReviewer);
-        String normalizedReason = requireReason(request != null ? request.reason() : null, "reject");
+        String normalizedReason = resolveDecisionReason(overrideRequest, request, "reject");
         if (!STATUS_PENDING.equals(normalizeStatus(overrideRequest.getStatus()))) {
             throw new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE,
                     "Only pending override requests can be rejected");
@@ -358,7 +358,11 @@ public class CreditLimitOverrideService {
         if (overrideRequest.getRequestedBy().trim().equalsIgnoreCase(overrideRequest.getReviewedBy().trim())) {
             return false;
         }
-        return REASON_CODE_APPROVED.equals(extractReasonCode(overrideRequest.getReason()));
+        String reasonCode = extractReasonCode(overrideRequest.getReason());
+        if (!StringUtils.hasText(reasonCode)) {
+            return true;
+        }
+        return REASON_CODE_APPROVED.equals(reasonCode);
     }
 
     private String reasonWithCode(String reasonCode, String reason) {
@@ -385,6 +389,38 @@ public class CreditLimitOverrideService {
             return "";
         }
         return value.substring(1, markerEnd).trim().toUpperCase(Locale.ROOT);
+    }
+
+    private String resolveDecisionReason(CreditLimitOverrideRequest overrideRequest,
+                                         CreditLimitOverrideDecisionRequest request,
+                                         String operation) {
+        String incomingReason = request != null ? request.reason() : null;
+        if (StringUtils.hasText(incomingReason)) {
+            return incomingReason.trim();
+        }
+        String existingReason = stripReasonCodePrefix(overrideRequest.getReason());
+        if (StringUtils.hasText(existingReason)) {
+            return existingReason;
+        }
+        if ("reject".equalsIgnoreCase(operation)) {
+            return "Rejected via legacy decision payload";
+        }
+        return "Approved via legacy decision payload";
+    }
+
+    private String stripReasonCodePrefix(String reason) {
+        if (!StringUtils.hasText(reason)) {
+            return "";
+        }
+        String value = reason.trim();
+        if (!value.startsWith("[") || !value.contains("]")) {
+            return value;
+        }
+        int markerEnd = value.indexOf(']');
+        if (markerEnd < 0 || markerEnd >= value.length() - 1) {
+            return "";
+        }
+        return value.substring(markerEnd + 1).trim();
     }
 
     private void auditOverrideLifecycle(AuditEvent event,

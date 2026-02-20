@@ -101,6 +101,47 @@ class CreditLimitOverrideServiceTest {
     }
 
     @Test
+    void approveRequest_allowsMissingDecisionReasonWithLegacyFallback() {
+        CreditLimitOverrideRequest request = new CreditLimitOverrideRequest();
+        request.setCompany(company);
+        request.setStatus("PENDING");
+        request.setRequestedBy("maker@bbp.com");
+        request.setReason("Need urgent dispatch headroom");
+
+        when(creditLimitOverrideRequestRepository.findByCompanyAndId(company, 12L))
+                .thenReturn(Optional.of(request));
+
+        CreditLimitOverrideRequestDto response = service.approveRequest(
+                12L,
+                new CreditLimitOverrideDecisionRequest(null, null),
+                "checker@bbp.com");
+
+        assertThat(response.status()).isEqualTo("APPROVED");
+        assertThat(request.getReason()).contains("[CREDIT_LIMIT_EXCEPTION_APPROVED]");
+        assertThat(request.getReason()).contains("Need urgent dispatch headroom");
+    }
+
+    @Test
+    void rejectRequest_allowsMissingDecisionReasonWithDefaultFallback() {
+        CreditLimitOverrideRequest request = new CreditLimitOverrideRequest();
+        request.setCompany(company);
+        request.setStatus("PENDING");
+        request.setRequestedBy("maker@bbp.com");
+
+        when(creditLimitOverrideRequestRepository.findByCompanyAndId(company, 13L))
+                .thenReturn(Optional.of(request));
+
+        CreditLimitOverrideRequestDto response = service.rejectRequest(
+                13L,
+                new CreditLimitOverrideDecisionRequest(null, null),
+                "checker@bbp.com");
+
+        assertThat(response.status()).isEqualTo("REJECTED");
+        assertThat(request.getReason()).contains("[CREDIT_LIMIT_EXCEPTION_REJECTED]");
+        assertThat(request.getReason()).contains("Rejected via legacy decision payload");
+    }
+
+    @Test
     void isOverrideApproved_allowsMinorDispatchDriftWithinToleranceWhenHeadroomIsValid() {
         CreditLimitOverrideRequest request = new CreditLimitOverrideRequest();
         request.setCompany(company);
@@ -190,6 +231,37 @@ class CreditLimitOverrideServiceTest {
                 new BigDecimal("150.00"));
 
         assertThat(approved).isFalse();
+    }
+
+    @Test
+    void isOverrideApproved_allowsLegacyApprovedRecordWithoutReasonCodePrefix() {
+        CreditLimitOverrideRequest request = new CreditLimitOverrideRequest();
+        request.setCompany(company);
+        request.setStatus("APPROVED");
+        request.setDispatchAmount(new BigDecimal("120.00"));
+        request.setRequiredHeadroom(new BigDecimal("80.00"));
+        request.setRequestedBy("maker@bbp.com");
+        request.setReviewedBy("checker@bbp.com");
+        request.setReviewedAt(Instant.parse("2026-02-20T00:00:00Z"));
+        request.setReason("Approved by finance lead");
+
+        Dealer dealer = new Dealer();
+        dealer.setCreditLimit(new BigDecimal("200.00"));
+        org.springframework.test.util.ReflectionTestUtils.setField(dealer, "id", 42L);
+
+        when(creditLimitOverrideRequestRepository.findByCompanyAndId(company, 25L))
+                .thenReturn(Optional.of(request));
+        when(dealerLedgerService.currentBalance(42L)).thenReturn(new BigDecimal("100.00"));
+
+        boolean approved = service.isOverrideApproved(
+                25L,
+                company,
+                dealer,
+                null,
+                null,
+                new BigDecimal("120.00"));
+
+        assertThat(approved).isTrue();
     }
 
     @Test
