@@ -9,3 +9,11 @@
   - targeted deterministic suite (85 tests) PASS
   - anchored `gate_fast` rerun FAIL (`line_ratio=0.3134212567882079`, `branch_ratio=0.33048211508553654`)
 - `2026-02-20T11:12:36Z` ticket remains `in_progress`; next execution focuses on lane-aligned coverage for `SLICE-03` and `SLICE-05`.
+- `2026-02-20T19:51:48Z` claim event: `slice_id=SLICE-05`, `agent_id=sales-domain`, `branch=tickets/tkt-erp-stage-098/sales-domain`, `worktree=/Users/anas/Documents/orchestrator_erp/bigbrightpaints-erp_worktrees/TKT-ERP-STAGE-098/sales-domain`, `started_at_utc=2026-02-20T19:51:48Z`.
+- `2026-02-20T19:56:39Z` `SLICE-05` implementation completed: added deterministic `SalesServiceTest` coverage for `updateStatus` / orchestrator status validation, dispatch confirmation truth branches, paged/non-paged `listOrders` filtering, and dealer CRUD + receivable account sync.
+- `2026-02-20T19:56:39Z` validation outcomes:
+  - `cd erp-domain && mvn -B -ntp -Dtest='*Sales*' test` FAIL at compile phase with `Fatal error compiling: java.lang.ExceptionInInitializerError: com.sun.tools.javac.code.TypeTag :: UNKNOWN` (environment/compiler blocker before test execution).
+  - `bash ci/check-architecture.sh` PASS.
+- `2026-02-20T19:57:27Z` post-edit revalidation rerun:
+  - `cd erp-domain && mvn -B -ntp -Dtest='*Sales*' test` FAIL with same compiler blocker (`TypeTag :: UNKNOWN`) before test execution.
+  - `bash ci/check-architecture.sh` PASS.
