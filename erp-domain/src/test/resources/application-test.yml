@@ -26,6 +26,8 @@ erp:
   auto-approval:
     enabled: false
   security:
+    audit:
+      private-key: "test-audit-private-key"
     encryption:
       key: "test-encryption-key-must-be-at-least-32-chars-long"
     mfa:

@@ -92,13 +92,17 @@ public class EnterpriseAuditTrailService {
             MlInteractionEventRepository mlInteractionEventRepository,
             CompanyContextService companyContextService,
             ObjectMapper objectMapper,
-            @Value("${erp.security.audit.private-key:dev-audit-private-key}") String auditPrivateKey) {
+            @Value("${erp.security.audit.private-key}") String auditPrivateKey) {
         this.auditActionEventRepository = auditActionEventRepository;
         this.auditActionEventRetryRepository = auditActionEventRetryRepository;
         this.mlInteractionEventRepository = mlInteractionEventRepository;
         this.companyContextService = companyContextService;
         this.objectMapper = objectMapper;
-        this.auditPrivateKey = auditPrivateKey;
+        String normalizedAuditPrivateKey = StringUtils.trimWhitespace(auditPrivateKey);
+        if (!StringUtils.hasText(normalizedAuditPrivateKey)) {
+            throw new IllegalStateException("erp.security.audit.private-key must be configured");
+        }
+        this.auditPrivateKey = normalizedAuditPrivateKey;
     }
 
     public void recordBusinessEvent(AuditActionEventCommand command) {

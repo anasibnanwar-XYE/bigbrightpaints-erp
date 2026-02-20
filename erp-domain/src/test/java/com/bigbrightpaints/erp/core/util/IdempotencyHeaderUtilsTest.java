@@ -21,9 +21,10 @@ class IdempotencyHeaderUtilsTest {
     }
 
     @Test
-    void resolveHeaderKey_prefersPrimaryWhenPrimaryLegacyMismatch() {
-        String resolved = IdempotencyHeaderUtils.resolveHeaderKey("hdr-001", "legacy-001");
-        assertThat(resolved).isEqualTo("hdr-001");
+    void resolveHeaderKey_rejectsPrimaryLegacyMismatch() {
+        assertThatThrownBy(() -> IdempotencyHeaderUtils.resolveHeaderKey("hdr-001", "legacy-001"))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Idempotency key mismatch between Idempotency-Key and X-Idempotency-Key headers");
     }
 
     @Test

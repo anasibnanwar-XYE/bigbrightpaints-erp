@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.core.audittrail;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.doNothing;
@@ -45,6 +46,19 @@ class EnterpriseAuditTrailServiceTest {
     @AfterEach
     void clearSecurityContext() {
         SecurityContextHolder.clearContext();
+    }
+
+    @Test
+    void constructor_rejectsBlankAuditPrivateKey() {
+        assertThatThrownBy(() -> new EnterpriseAuditTrailService(
+                auditActionEventRepository,
+                auditActionEventRetryRepository,
+                mlInteractionEventRepository,
+                companyContextService,
+                new ObjectMapper(),
+                "   "))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("erp.security.audit.private-key must be configured");
     }
 
     @Test

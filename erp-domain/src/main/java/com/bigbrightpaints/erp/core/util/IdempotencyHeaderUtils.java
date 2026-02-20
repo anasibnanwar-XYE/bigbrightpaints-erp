@@ -17,7 +17,11 @@ public final class IdempotencyHeaderUtils {
         String primary = trimToNull(idempotencyKeyHeader);
         String legacy = trimToNull(legacyIdempotencyKeyHeader);
         if (primary != null && legacy != null && !primary.equals(legacy)) {
-            log.warn("Idempotency header mismatch detected; using Idempotency-Key and ignoring X-Idempotency-Key");
+            log.warn("Idempotency header mismatch detected between Idempotency-Key and X-Idempotency-Key");
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Idempotency key mismatch between Idempotency-Key and X-Idempotency-Key headers")
+                    .withDetail("idempotencyKeyHeader", primary)
+                    .withDetail("legacyIdempotencyKeyHeader", legacy);
         }
         return primary != null ? primary : legacy;
     }
