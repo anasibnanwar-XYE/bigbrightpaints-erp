@@ -21,3 +21,10 @@
   - `bash ci/check-architecture.sh` -> `PASS`
   - `cd erp-domain && mvn -B -ntp test` -> `FAIL` (same pre-existing compile blocker: `Fatal error compiling: java.lang.ExceptionInInitializerError: com.sun.tools.javac.code.TypeTag :: UNKNOWN`)
   - slice status moved to `in_review`
+- `2026-02-21T01:59:50+05:30` `SLICE-06` clean validation rerun on release-ops merge branch:
+  - `cd erp-domain && JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home PATH="$JAVA_HOME/bin:$PATH" mvn -B -ntp -Dtest=EnterpriseAuditTrailServiceTest clean test` -> `PASS`
+  - `bash ci/check-architecture.sh` -> `PASS`
+  - slice status moved to `merged`
+- `2026-02-21T02:03:00+05:30` SSH parity check on `asus-tuf-tail-ip` (`harness-engineering-orchestrator`) confirms pre-fix failure:
+  - `cd erp-domain && mvn -B -ntp -Dtest=EnterpriseAuditTrailServiceTest clean test` -> `FAIL`
+  - compiler error matches pre-fix mismatch at `EnterpriseAuditTrailServiceTest.java:229` and `EnterpriseAuditTrailServiceTest.java:260` (`Path<Instant>` not assignable to `Path<Object>`)
