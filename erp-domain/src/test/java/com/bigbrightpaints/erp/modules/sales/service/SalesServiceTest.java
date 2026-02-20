@@ -608,7 +608,7 @@ class SalesServiceTest {
     }
 
     @Test
-    void confirmDispatchAllowsAdminOverrideCreditLimit() {
+    void confirmDispatchAllowsAdminOverrideCreditLimitWithApprovedRequest() {
         Dealer dealer = dealerWithCreditLimit(42L, BigDecimal.valueOf(100));
         Account receivable = new Account();
         receivable.setName("AR");
@@ -673,15 +673,31 @@ class SalesServiceTest {
         when(salesOrderRepository.save(ArgumentMatchers.any(SalesOrder.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(packagingSlipRepository.save(ArgumentMatchers.any(PackagingSlip.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(accountRepository.findById(ArgumentMatchers.anyLong())).thenReturn(Optional.empty());
+        when(creditLimitOverrideService.isOverrideApproved(
+                eq(801L),
+                eq(company),
+                eq(dealer),
+                eq(slip),
+                eq(order),
+                any()
+        )).thenReturn(true);
 
-        DispatchConfirmRequest request = new DispatchConfirmRequest(55L, null, List.of(), null, "admin", Boolean.TRUE, null, null);
+        DispatchConfirmRequest request = new DispatchConfirmRequest(
+                55L,
+                null,
+                List.of(),
+                null,
+                "admin",
+                Boolean.TRUE,
+                "Approved credit exception",
+                801L);
         DispatchConfirmResponse response = salesService.confirmDispatch(request);
 
         assertEquals(55L, response.packingSlipId());
         assertEquals(10L, response.salesOrderId());
         assertEquals(777L, response.finalInvoiceId());
         verify(companyAccountingSettingsService, never()).requireTaxAccounts();
-        verifyNoInteractions(creditLimitOverrideService);
+        verify(creditLimitOverrideService).isOverrideApproved(eq(801L), eq(company), eq(dealer), eq(slip), eq(order), any());
     }
 
     @Test
@@ -793,6 +809,14 @@ class SalesServiceTest {
                 any(),
                 anyString()
         )).thenReturn(journalEntryDto);
+        when(creditLimitOverrideService.isOverrideApproved(
+                eq(802L),
+                eq(company),
+                eq(dealer),
+                eq(slip),
+                eq(order),
+                any()
+        )).thenReturn(true);
 
         DispatchConfirmRequest request = new DispatchConfirmRequest(
                 55L,
@@ -800,9 +824,9 @@ class SalesServiceTest {
                 List.of(new DispatchConfirmRequest.DispatchLine(99L, null, BigDecimal.ONE, null, new BigDecimal("10"), null, null, null)),
                 null,
                 "admin",
-                Boolean.TRUE,
+                Boolean.FALSE,
                 "Discount override for test",
-                null);
+                802L);
         salesService.confirmDispatch(request);
 
         ArgumentCaptor<Map<Long, BigDecimal>> revenueCaptor = ArgumentCaptor.forClass(Map.class);
@@ -886,7 +910,7 @@ class SalesServiceTest {
         ApplicationException ex = assertThrows(
                 ApplicationException.class,
                 () -> salesService.confirmDispatch(new DispatchConfirmRequest(
-                        55L, null, List.of(), null, "admin", Boolean.TRUE, null, null)));
+                        55L, null, List.of(), null, "admin", Boolean.FALSE, null, null)));
 
         assertEquals(ErrorCode.VALIDATION_INVALID_REFERENCE, ex.getErrorCode());
         verify(companyAccountingSettingsService, never()).requireTaxAccounts();
@@ -1044,7 +1068,7 @@ class SalesServiceTest {
         )).thenReturn(cogsEntry);
 
         DispatchConfirmResponse response = salesService.confirmDispatch(
-                new DispatchConfirmRequest(55L, null, List.of(), null, "admin", Boolean.TRUE, null, null));
+                new DispatchConfirmRequest(55L, null, List.of(), null, "admin", Boolean.FALSE, null, null));
 
         assertEquals(501L, response.arJournalEntryId());
         assertEquals(777L, response.finalInvoiceId());
@@ -1337,6 +1361,14 @@ class SalesServiceTest {
         when(salesOrderRepository.save(ArgumentMatchers.any(SalesOrder.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(packagingSlipRepository.save(ArgumentMatchers.any(PackagingSlip.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(accountRepository.findById(ArgumentMatchers.anyLong())).thenReturn(Optional.empty());
+        when(creditLimitOverrideService.isOverrideApproved(
+                eq(803L),
+                eq(company),
+                eq(dealer),
+                eq(slip),
+                eq(order),
+                any()
+        )).thenReturn(true);
 
         DispatchConfirmRequest request = new DispatchConfirmRequest(
                 55L,
@@ -1346,7 +1378,7 @@ class SalesServiceTest {
                 "admin",
                 Boolean.TRUE,
                 "Replay with approved prior override",
-                null);
+                803L);
 
         DispatchConfirmResponse response = salesService.confirmDispatch(request);
 
@@ -1443,6 +1475,14 @@ class SalesServiceTest {
         when(companyEntityLookup.requireSalesOrder(company, 10L)).thenReturn(order);
         when(companyEntityLookup.requireJournalEntry(company, 222L)).thenReturn(existingEntry);
         when(dealerRepository.lockByCompanyAndId(company, dealer.getId())).thenReturn(Optional.of(dealer));
+        when(creditLimitOverrideService.isOverrideApproved(
+                eq(804L),
+                eq(company),
+                eq(dealer),
+                eq(slip),
+                eq(order),
+                any()
+        )).thenReturn(true);
 
         DispatchConfirmRequest request = new DispatchConfirmRequest(
                 55L,
@@ -1452,7 +1492,7 @@ class SalesServiceTest {
                 "admin",
                 Boolean.TRUE,
                 "Replay with approved prior override",
-                null);
+                804L);
 
         ApplicationException ex = assertThrows(ApplicationException.class, () -> salesService.confirmDispatch(request));
         assertTrue(ex.getMessage().contains("Existing AR journal total does not match dispatch total"));
@@ -1500,6 +1540,14 @@ class SalesServiceTest {
         when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, 10L)).thenReturn(List.of(slip));
         when(companyEntityLookup.requireSalesOrder(company, 10L)).thenReturn(order);
         when(invoiceRepository.findByCompanyAndId(company, 777L)).thenReturn(Optional.of(existingInvoice));
+        when(creditLimitOverrideService.isOverrideApproved(
+                eq(805L),
+                eq(company),
+                isNull(),
+                eq(slip),
+                eq(order),
+                isNull()
+        )).thenReturn(true);
 
         DispatchConfirmRequest request = new DispatchConfirmRequest(
                 55L,
@@ -1509,7 +1557,7 @@ class SalesServiceTest {
                 "admin",
                 Boolean.TRUE,
                 "Replay override in fast path",
-                null);
+                805L);
 
         DispatchConfirmResponse response = salesService.confirmDispatch(request);
 
@@ -1540,6 +1588,8 @@ class SalesServiceTest {
         assertEquals("true", metadata.get("alreadyDispatched"));
         assertEquals("true", metadata.get("dispatchOverridesApplied"));
         assertEquals("Replay override in fast path", metadata.get("dispatchOverrideReason"));
+        assertEquals("DISCOUNT_OVERRIDE", metadata.get("dispatchOverrideReasonCode"));
+        assertEquals("805", metadata.get("overrideRequestId"));
     }
 
     @Test
@@ -1568,6 +1618,14 @@ class SalesServiceTest {
         when(companyEntityLookup.requireSalesOrder(company, 10L)).thenReturn(order);
         when(invoiceRepository.findByCompanyAndId(company, 777L)).thenReturn(Optional.of(existingInvoice));
         when(accountingFacade.hasCogsJournalFor("PS-55")).thenReturn(true);
+        when(creditLimitOverrideService.isOverrideApproved(
+                eq(806L),
+                eq(company),
+                isNull(),
+                eq(slip),
+                eq(order),
+                isNull()
+        )).thenReturn(true);
 
         DispatchConfirmRequest request = new DispatchConfirmRequest(
                 55L,
@@ -1577,7 +1635,7 @@ class SalesServiceTest {
                 "admin",
                 Boolean.TRUE,
                 "Replay override with pre-existing COGS reference",
-                null);
+                806L);
 
         DispatchConfirmResponse response = salesService.confirmDispatch(request);
 
@@ -1641,6 +1699,14 @@ class SalesServiceTest {
         when(companyEntityLookup.requireSalesOrder(company, 10L)).thenReturn(order);
         when(invoiceRepository.findByCompanyAndId(company, 777L)).thenReturn(Optional.of(existingInvoice));
         when(salesOrderRepository.save(ArgumentMatchers.any(SalesOrder.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(creditLimitOverrideService.isOverrideApproved(
+                eq(807L),
+                eq(company),
+                isNull(),
+                eq(slip),
+                eq(order),
+                isNull()
+        )).thenReturn(true);
 
         DispatchConfirmRequest request = new DispatchConfirmRequest(
                 55L,
@@ -1650,7 +1716,7 @@ class SalesServiceTest {
                 "admin",
                 Boolean.TRUE,
                 "Replay override with multi-slip order",
-                null);
+                807L);
 
         DispatchConfirmResponse response = salesService.confirmDispatch(request);
 
@@ -1706,6 +1772,14 @@ class SalesServiceTest {
         when(companyEntityLookup.requireSalesOrder(company, 10L)).thenReturn(order);
         when(invoiceRepository.findByCompanyAndId(company, 777L)).thenReturn(Optional.of(existingInvoice));
         when(salesOrderRepository.save(ArgumentMatchers.any(SalesOrder.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(creditLimitOverrideService.isOverrideApproved(
+                eq(808L),
+                eq(company),
+                isNull(),
+                eq(slip),
+                eq(order),
+                isNull()
+        )).thenReturn(true);
 
         DispatchConfirmRequest request = new DispatchConfirmRequest(
                 55L,
@@ -1715,7 +1789,7 @@ class SalesServiceTest {
                 "admin",
                 Boolean.TRUE,
                 "Replay override with cancelled secondary slip",
-                null);
+                808L);
 
         DispatchConfirmResponse response = salesService.confirmDispatch(request);
 
@@ -2062,7 +2136,7 @@ class SalesServiceTest {
         when(packagingSlipRepository.save(ArgumentMatchers.any(PackagingSlip.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         DispatchConfirmResponse response = salesService.confirmDispatch(
-                new DispatchConfirmRequest(55L, null, List.of(), null, "admin", Boolean.TRUE, null, null));
+                new DispatchConfirmRequest(55L, null, List.of(), null, "admin", Boolean.FALSE, null, null));
 
         assertEquals(222L, response.arJournalEntryId());
         verify(accountingFacade, never()).postSalesJournal(
@@ -2153,7 +2227,7 @@ class SalesServiceTest {
         when(packagingSlipRepository.save(ArgumentMatchers.any(PackagingSlip.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(accountRepository.findById(ArgumentMatchers.anyLong())).thenReturn(Optional.empty());
 
-        DispatchConfirmRequest request = new DispatchConfirmRequest(55L, null, List.of(), null, "admin", Boolean.TRUE, null, null);
+        DispatchConfirmRequest request = new DispatchConfirmRequest(55L, null, List.of(), null, "admin", Boolean.FALSE, null, null);
         salesService.confirmDispatch(request);
 
         verify(accountingFacade, times(1)).postSalesJournal(
@@ -2242,7 +2316,7 @@ class SalesServiceTest {
         when(salesOrderRepository.save(ArgumentMatchers.any(SalesOrder.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(packagingSlipRepository.save(ArgumentMatchers.any(PackagingSlip.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        DispatchConfirmRequest request = new DispatchConfirmRequest(55L, null, List.of(), null, "admin", Boolean.TRUE, null, null);
+        DispatchConfirmRequest request = new DispatchConfirmRequest(55L, null, List.of(), null, "admin", Boolean.FALSE, null, null);
         salesService.confirmDispatch(request);
 
         verify(accountingFacade, times(1)).postSalesJournal(
