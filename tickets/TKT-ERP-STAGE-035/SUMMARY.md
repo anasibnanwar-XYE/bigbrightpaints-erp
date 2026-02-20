@@ -6,7 +6,7 @@
 - status: blocked
 - base_branch: async-loop-predeploy-audit
 - created_at: 2026-02-17T09:29:46+00:00
-- updated_at: 2026-02-17T09:31:30Z
+- updated_at: 2026-02-20T07:36:26+00:00
 
 ## Slice Board
 
@@ -17,13 +17,13 @@
 
 ## Blocker Root Cause
 
-- Harness bootstrap defaulted `--base-branch` to `async-loop-predeploy-audit`, which is behind active integration branch `harness-engineering-orchestrator`.
-- Result: stage-035 worktrees did not contain the already-integrated stage-034 catalog fix (`403ac857`) and therefore could not provide valid Section 14.3 closure evidence for current release train.
+- Harness bootstrap defaulted `--base-branch` to stale `async-loop-predeploy-audit`, which lacks the canonical-base migration required for the current release train.
+- Result: stage-035 worktrees did not contain the already-integrated catalog fix (`403ac857`) and cannot provide valid Section 14.3 closure evidence on the canonical base.
 
 ## Closure Decision
 
-- Ticket superseded by follow-up ticket on correct base branch (`harness-engineering-orchestrator`).
-- No code from stage-035 slices is eligible for merge.
+- Deferred to canonical-base work in TKT-ERP-STAGE-093; keep status blocked for timeline marker compatibility.
+- No code from stage-035 slices is eligible for merge on the stale base branch.
 
 ## Operator Commands
 
