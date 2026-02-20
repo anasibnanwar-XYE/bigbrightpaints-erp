@@ -302,10 +302,7 @@
                     <skip>${jacoco.skip}</skip>
                     <append>false</append>
                     <excludes>
-                        <exclude>**/dto/**</exclude>
-                        <exclude>**/config/**</exclude>
                         <exclude>**/*Application*</exclude>
-                        <exclude>**/*Config*</exclude>
                         <exclude>**/*MapperImpl*</exclude>
                         <!-- Optional: exclude only if exceptions are truly trivial in this repo. -->
                         <!-- <exclude>**/*Exception*</exclude> -->
