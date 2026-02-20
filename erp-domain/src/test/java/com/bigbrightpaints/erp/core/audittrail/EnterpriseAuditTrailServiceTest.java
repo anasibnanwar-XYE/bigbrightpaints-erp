@@ -17,8 +17,15 @@ import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.Path;
+import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -26,6 +33,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 
@@ -199,6 +207,68 @@ class EnterpriseAuditTrailServiceTest {
         verify(auditActionEventRepository, times(2)).save(any(AuditActionEvent.class));
         verify(auditActionEventRetryRepository, times(2)).save(any(AuditActionEventRetry.class));
         assertThat(service.pendingBusinessEventRetryQueueSize()).isEqualTo(1);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void byOccurredRange_usesExclusiveUpperBoundWhenFromAndToProvided() throws Exception {
+        EnterpriseAuditTrailService service = newService();
+        Method method = EnterpriseAuditTrailService.class
+                .getDeclaredMethod("byOccurredRange", LocalDate.class, LocalDate.class);
+        method.setAccessible(true);
+        Specification<AuditActionEvent> spec =
+                (Specification<AuditActionEvent>) method.invoke(service, LocalDate.of(2026, 2, 1), LocalDate.of(2026, 2, 2));
+
+        Root<AuditActionEvent> root = mock(Root.class);
+        CriteriaQuery<?> query = mock(CriteriaQuery.class);
+        CriteriaBuilder cb = mock(CriteriaBuilder.class);
+        Path<Instant> occurredPath = mock(Path.class);
+        Predicate ge = mock(Predicate.class);
+        Predicate lt = mock(Predicate.class);
+        Predicate combined = mock(Predicate.class);
+        when(root.get("occurredAt")).thenReturn(occurredPath);
+        when(cb.greaterThanOrEqualTo(any(Path.class), any(Instant.class))).thenReturn(ge);
+        when(cb.lessThan(any(Path.class), any(Instant.class))).thenReturn(lt);
+        when(cb.and(ge, lt)).thenReturn(combined);
+
+        Predicate result = spec.toPredicate(root, query, cb);
+
+        verify(cb).greaterThanOrEqualTo(any(Path.class), any(Instant.class));
+        verify(cb).lessThan(any(Path.class), any(Instant.class));
+        verify(cb).and(ge, lt);
+        verify(cb, times(0)).between(any(Path.class), any(Instant.class), any(Instant.class));
+        assertThat(result).isSameAs(combined);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void byOccurredRangeMl_usesExclusiveUpperBoundWhenFromAndToProvided() throws Exception {
+        EnterpriseAuditTrailService service = newService();
+        Method method = EnterpriseAuditTrailService.class
+                .getDeclaredMethod("byOccurredRangeMl", LocalDate.class, LocalDate.class);
+        method.setAccessible(true);
+        Specification<MlInteractionEvent> spec =
+                (Specification<MlInteractionEvent>) method.invoke(service, LocalDate.of(2026, 2, 1), LocalDate.of(2026, 2, 2));
+
+        Root<MlInteractionEvent> root = mock(Root.class);
+        CriteriaQuery<?> query = mock(CriteriaQuery.class);
+        CriteriaBuilder cb = mock(CriteriaBuilder.class);
+        Path<Instant> occurredPath = mock(Path.class);
+        Predicate ge = mock(Predicate.class);
+        Predicate lt = mock(Predicate.class);
+        Predicate combined = mock(Predicate.class);
+        when(root.get("occurredAt")).thenReturn(occurredPath);
+        when(cb.greaterThanOrEqualTo(any(Path.class), any(Instant.class))).thenReturn(ge);
+        when(cb.lessThan(any(Path.class), any(Instant.class))).thenReturn(lt);
+        when(cb.and(ge, lt)).thenReturn(combined);
+
+        Predicate result = spec.toPredicate(root, query, cb);
+
+        verify(cb).greaterThanOrEqualTo(any(Path.class), any(Instant.class));
+        verify(cb).lessThan(any(Path.class), any(Instant.class));
+        verify(cb).and(ge, lt);
+        verify(cb, times(0)).between(any(Path.class), any(Instant.class), any(Instant.class));
+        assertThat(result).isSameAs(combined);
     }
 
     private EnterpriseAuditTrailService newService() {

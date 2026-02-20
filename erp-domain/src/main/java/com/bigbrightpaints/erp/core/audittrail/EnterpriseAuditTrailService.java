@@ -707,7 +707,9 @@ public class EnterpriseAuditTrailService {
             Instant start = from != null ? from.atStartOfDay().toInstant(ZoneOffset.UTC) : null;
             Instant end = to != null ? to.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC) : null;
             if (start != null && end != null) {
-                return cb.between(root.get("occurredAt"), start, end);
+                return cb.and(
+                        cb.greaterThanOrEqualTo(root.get("occurredAt"), start),
+                        cb.lessThan(root.get("occurredAt"), end));
             }
             if (start != null) {
                 return cb.greaterThanOrEqualTo(root.get("occurredAt"), start);
@@ -746,7 +748,9 @@ public class EnterpriseAuditTrailService {
             Instant start = from != null ? from.atStartOfDay().toInstant(ZoneOffset.UTC) : null;
             Instant end = to != null ? to.plusDays(1).atStartOfDay().toInstant(ZoneOffset.UTC) : null;
             if (start != null && end != null) {
-                return cb.between(root.get("occurredAt"), start, end);
+                return cb.and(
+                        cb.greaterThanOrEqualTo(root.get("occurredAt"), start),
+                        cb.lessThan(root.get("occurredAt"), end));
             }
             if (start != null) {
                 return cb.greaterThanOrEqualTo(root.get("occurredAt"), start);
