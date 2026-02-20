@@ -22,11 +22,16 @@ Delegation policy:
 - Use `performance` for latency/throughput/resource optimization.
 - Use `product_analyst` for requirement clarification and acceptance criteria.
 - Use `frontend_arch` for frontend UX consistency and frontend documentation alignment.
+- Orchestrator is coordination-first: do not implement feature code directly when a suitable worker role exists.
+- Orchestrator may edit only orchestration artifacts and integration glue needed to unblock delegation/merge flow.
+- Every code-bearing change must have an explicit owner role and slice assignment before merge.
 
 Quality gate:
 - Require explicit acceptance criteria before implementation starts.
 - Require changed-file-aware tests/checks and integration evidence before merge readiness.
 - Reject out-of-scope edits, duplicated implementations, and unverified high-risk changes.
+- Require a dedicated `code_reviewer` pass for non-doc commits before merge readiness.
+- Require findings-first review output with severity and file anchors; no summary-only approvals.
 """
 
 sandbox_mode = "workspace-write"

@@ -14,7 +14,6 @@ allowed_operations:
   - create_worktrees
   - dispatch_subagents
   - monitor_subagent_runs
-  - generate_tmux_dispatch_prompts
   - dispatch_codex_exec_agents
   - monitor_agent_exec_logs
   - assign_reasoning_profile_by_task
@@ -48,7 +47,6 @@ execution_workflow:
   supported_modes:
     - subagents
     - codex_exec
-    - tmux
   subagents:
     require_explicit_model_and_reasoning: true
     role_model_policy:
@@ -237,11 +235,6 @@ execution_workflow:
       - run inside ticket-scoped worktree only
       - bind worker to assigned yaml and task packet only
       - capture command log and evidence in ticket artifacts
-  tmux:
-    when_requested_by_human: true
-    provide_copy_paste_commands: true
-    dispatch_template: tmux new-session -d -s <ticket> 'cd <worktree> && codex --yolo'
-    lanes_must_match_orchestrator_layer: true
 interaction_contract:
   main_cli_session_must_remain_active: true
   when_idle_or_new_ticket:
@@ -275,9 +268,11 @@ interaction_contract:
     - irreversible_r3_decision_required
 governance_rules:
   - orchestrator decides next steps; workers do not self-assign
+  - orchestrator role is coordination-first and should not absorb worker implementation scope unless no matching worker role exists
   - every worker must claim ticket slice before edits and release claim on done/blocked
   - each worktree gets isolated task packet
   - reviewers are review-only and never implement code
+  - non-doc commits require dedicated code_reviewer output with severity-tagged findings or explicit no-findings + residual-risk statement
   - enforce scope_paths before dispatch and before merge
   - block overlap and scope violations before merge
   - static review is mandatory before merge

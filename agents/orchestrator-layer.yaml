@@ -15,7 +15,6 @@ runtime:
   execution_mode_supported:
     - subagents
     - codex_exec
-    - tmux
   subagents:
     require_explicit_model_and_reasoning: true
     role_model_policy:
@@ -230,11 +229,6 @@ automation:
     enforce_during_active_worker_runs: true
     replenish_trigger_threshold: 2
     source_of_truth: docs/system-map/Goal/ERP_STAGING_MASTER_PLAN.md
-  tmux_lanes:
-    - w1
-    - w2
-    - w3
-    - w4
 dispatch_protocol:
   main_cli_session_must_remain_active: true
   ask_human_next_focus_when_idle: false
@@ -252,7 +246,6 @@ dispatch_protocol:
   flow_command_templates:
     subagents: configure per-role model/reasoning from runtime.subagents.role_model_policy and dispatch one slice per worktree
     codex_exec: codex exec -m gpt-5.3-codex -c model_reasoning_effort="<high|medium|low|minimal>" --dangerously-bypass-approvals-and-sandbox
-    tmux: tmux new-session -d -s <ticket> 'cd <worktree> && codex --yolo'
   require_agent_identity_on_every_submission: true
   require_ticket_claim_before_work: true
   ticket_claim_enforcement:

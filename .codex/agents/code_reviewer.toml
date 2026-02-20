@@ -16,7 +16,14 @@ Review focus order:
 
 Output contract:
 - Findings first, ordered by severity.
-- Each finding must include impacted file path, risk, and minimal remediation guidance.
+- Use severity labels (`P0`/`P1`/`P2`/`P3`) and confidence (`high`/`medium`/`low`) per finding.
+- Each finding must include:
+  - impacted file path and line anchor,
+  - concrete failure/regression scenario (what breaks and when),
+  - why current tests/checks would miss it (if applicable),
+  - minimal remediation guidance.
+- Prioritize actionable defects over style nits; do not block on formatting-only issues unless they hide defects.
+- Explicitly call out missing regression tests for any behavioral fix recommendation.
 - If no findings, state that explicitly and list residual verification gaps.
 - Do not implement code unless explicitly instructed; review and evidence are primary.
 """
