@@ -41,3 +41,10 @@
 - `2026-02-21T02:03:00+05:30` SSH parity check on `asus-tuf-tail-ip` (`harness-engineering-orchestrator`) confirms pre-fix failure:
   - `cd erp-domain && mvn -B -ntp -Dtest=EnterpriseAuditTrailServiceTest clean test` -> `FAIL`
   - compiler error matches pre-fix mismatch at `EnterpriseAuditTrailServiceTest.java:229` and `EnterpriseAuditTrailServiceTest.java:260` (`Path<Instant>` not assignable to `Path<Object>`)
+- `2026-02-21T02:19:42+05:30` `SLICE-05` validation rerun on release-ops merge branch:
+  - `cd erp-domain && JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home PATH="$JAVA_HOME/bin:$PATH" mvn -B -ntp -Dtest='*Sales*' test` -> `FAIL`
+  - failure scope is Docker/Testcontainers initialization in integration tests (`AbstractIntegrationTest`) while unit/service sales tests pass.
+  - `bash ci/check-architecture.sh` -> `PASS`
+- `2026-02-21T02:31:05+05:30` escalated host-access rerun for `SLICE-05`:
+  - `cd erp-domain && JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home PATH="$JAVA_HOME/bin:$PATH" mvn -B -ntp -Dtest='*Sales*' test` -> `FAIL`
+  - `Testcontainers` still reports no valid Docker environment in this workstation context; gate remains environment-blocked for integration tests.
