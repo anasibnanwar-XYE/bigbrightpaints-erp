@@ -73,3 +73,17 @@
   - `colima start` succeeded and Docker socket is available at `/Users/anas/.colima/default/docker.sock`.
   - `mvn -B -ntp -Dtest='*Sales*' test` still fails in `AbstractIntegrationTest` with Testcontainers error: `client version 1.32 is too old. Minimum supported API version is 1.44`.
   - Result: required Docker-backed gates remain blocked until Testcontainers/docker-java API version mismatch is resolved.
+- `2026-02-21T15:20:40+05:30` `SLICE-05` gate rerun succeeded after local Docker/Testcontainers API alignment:
+  - `cd erp-domain && JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock TESTCONTAINERS_HOST_OVERRIDE=localhost mvn -B -ntp -Dapi.version=1.44 -Dtest='*Sales*' test` -> `PASS` (`141` tests; `0` failures, `0` errors).
+  - `bash ci/check-architecture.sh` -> `PASS`.
+- `2026-02-21T15:21:47+05:30` `SLICE-05` contract-hardening follow-up:
+  - updated `CR_SalesReturnCreditNoteIdempotencyTest` to create approved dispatch overrides via `CreditLimitOverrideService` and pass non-null `overrideRequestId` for dispatch exception scenarios.
+  - replaced fixed override amount with `order.getTotalAmount()` to avoid brittle test-data coupling.
+  - reran `cd erp-domain && mvn -B -ntp -Dapi.version=1.44 -Dtest='*Sales*' test` -> `PASS`.
+  - slice status moved to `merged`.
+- `2026-02-21T15:27:26+05:30` full-suite probe for `SLICE-06` readiness:
+  - `cd erp-domain && JAVA_HOME=/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home DOCKER_HOST=unix:///Users/anas/.colima/default/docker.sock TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock TESTCONTAINERS_HOST_OVERRIDE=localhost mvn -B -ntp -Dapi.version=1.44 test` -> `FAIL` (observed broader unrelated suite failures; run ended with exit `143` during long suite execution).
+  - notable failures observed before termination include:
+    - `com.bigbrightpaints.erp.codered.CR_DispatchBusinessMathFuzzTest` (`overrideRequestId` required when dispatch exceptions are applied).
+    - `com.bigbrightpaints.erp.modules.accounting.controller.AccountingCatalogControllerIdempotencyHeaderTest` (header mismatch expectation drift).
+  - `SLICE-06` remains `in_review` pending a clean full-suite pass.
