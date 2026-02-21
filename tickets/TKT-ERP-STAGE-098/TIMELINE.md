@@ -69,3 +69,7 @@
   - slice remains `in_review` pending QA/security review sign-off.
 - `2026-02-21T14:51:14+05:30` `SLICE-03` QA/security review sign-off recorded; slice status moved to `merged`.
 - `2026-02-21T14:52:07+05:30` `SLICE-06` status corrected back to `in_review` pending full `mvn -B -ntp test` in a Docker-capable environment.
+- `2026-02-21T14:56:33+05:30` local Docker/Colima troubleshooting for `SLICE-05` gate:
+  - `colima start` succeeded and Docker socket is available at `/Users/anas/.colima/default/docker.sock`.
+  - `mvn -B -ntp -Dtest='*Sales*' test` still fails in `AbstractIntegrationTest` with Testcontainers error: `client version 1.32 is too old. Minimum supported API version is 1.44`.
+  - Result: required Docker-backed gates remain blocked until Testcontainers/docker-java API version mismatch is resolved.

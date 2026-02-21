@@ -6,7 +6,7 @@
 - status: in_progress
 - base_branch: harness-engineering-orchestrator
 - created_at: 2026-02-20T10:48:51+00:00
-- updated_at: 2026-02-21T14:52:07+05:30
+- updated_at: 2026-02-21T14:57:12+05:30
 
 ## Slice Board
 
@@ -45,6 +45,7 @@
 
 ## Remaining Queue
 
-1. Run Docker-capable `cd erp-domain && mvn -B -ntp test` for `SLICE-06` and update status to `merged` once green.
-2. Run Docker-capable `cd erp-domain && mvn -B -ntp -Dtest='*Sales*' test` for `SLICE-05` and update status to `merged` once green.
-3. Merge `tickets/tkt-erp-stage-098/release-ops` into `harness-engineering-orchestrator` after required gates and review are complete.
+1. Resolve local Testcontainers/Docker API mismatch (`client 1.32` vs server `>=1.44`) so integration tests can start.
+2. Run `cd erp-domain && mvn -B -ntp test` for `SLICE-06` and update status to `merged` once green.
+3. Run `cd erp-domain && mvn -B -ntp -Dtest='*Sales*' test` for `SLICE-05` and update status to `merged` once green.
+4. Merge `tickets/tkt-erp-stage-098/release-ops` into `harness-engineering-orchestrator` after required gates and review are complete.
