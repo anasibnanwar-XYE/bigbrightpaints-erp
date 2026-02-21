@@ -68,3 +68,4 @@
   - `bash ci/check-architecture.sh` -> `PASS`
   - slice remains `in_review` pending QA/security review sign-off.
 - `2026-02-21T14:51:14+05:30` `SLICE-03` QA/security review sign-off recorded; slice status moved to `merged`.
+- `2026-02-21T14:52:07+05:30` `SLICE-06` status corrected back to `in_review` pending full `mvn -B -ntp test` in a Docker-capable environment.

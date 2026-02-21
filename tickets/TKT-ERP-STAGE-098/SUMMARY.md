@@ -6,7 +6,7 @@
 - status: in_progress
 - base_branch: harness-engineering-orchestrator
 - created_at: 2026-02-20T10:48:51+00:00
-- updated_at: 2026-02-20T11:12:36Z
+- updated_at: 2026-02-21T14:52:07+05:30
 
 ## Slice Board
 
@@ -14,10 +14,10 @@
 | --- | --- | --- | --- | --- |
 | SLICE-01 | accounting-domain | w1 | merged | `tickets/tkt-erp-stage-098/accounting-domain` |
 | SLICE-02 | auth-rbac-company | w2 | merged | `tickets/tkt-erp-stage-098/auth-rbac-company` |
-| SLICE-03 | purchasing-invoice-p2p | w3 | ready | `tickets/tkt-erp-stage-098/purchasing-invoice-p2p` |
+| SLICE-03 | purchasing-invoice-p2p | w3 | merged | `tickets/tkt-erp-stage-098/purchasing-invoice-p2p` |
 | SLICE-04 | reports-admin-portal | w4 | merged | `tickets/tkt-erp-stage-098/reports-admin-portal` |
-| SLICE-05 | sales-domain | w1 | ready | `tickets/tkt-erp-stage-098/sales-domain` |
-| SLICE-06 | refactor-techdebt-gc | w2 | ready | `tickets/tkt-erp-stage-098/refactor-techdebt-gc` |
+| SLICE-05 | sales-domain | w1 | in_review | `tickets/tkt-erp-stage-098/sales-domain` |
+| SLICE-06 | refactor-techdebt-gc | w2 | in_review | `tickets/tkt-erp-stage-098/refactor-techdebt-gc` |
 
 ## Implemented In This Tranche
 
@@ -45,6 +45,6 @@
 
 ## Remaining Queue
 
-1. Execute `SLICE-03` (`purchasing-invoice-p2p`) and `SLICE-05` (`sales-domain`) with coverage tied to lane-executed tests.
-2. Add/adjust critical truth-lane tests for tenant-runtime/company/admin service paths so `gate_fast` consumes new coverage directly.
-3. Re-run anchored `gate_fast` on the same anchor after lane-aligned additions.
+1. Run Docker-capable `cd erp-domain && mvn -B -ntp test` for `SLICE-06` and update status to `merged` once green.
+2. Run Docker-capable `cd erp-domain && mvn -B -ntp -Dtest='*Sales*' test` for `SLICE-05` and update status to `merged` once green.
+3. Merge `tickets/tkt-erp-stage-098/release-ops` into `harness-engineering-orchestrator` after required gates and review are complete.
