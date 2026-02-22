@@ -215,7 +215,7 @@ Update this file in every high-risk change set.
     - `erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/payroll/TS_PayrollLiabilityClearingPolicyTest.java`
 
 ## STAGE-015 Addendum (2026-02-23, harness-fixes)
-- Branch / PR: `tickets/tkt-erp-stage-015/harness-fixes` / PR #45 (https://github.com/anasibnanwar-XYE/bigbrightpaints-erp/pull/45)
+- Branch / PR: `tickets-tkt-erp-stage-015-harness-fixes` / PR #45 (https://github.com/anasibnanwar-XYE/bigbrightpaints-erp/pull/45)
 - High-risk paths:
   - `erp-domain/src/main/java/com/bigbrightpaints/erp/core/security/CompanyContextFilter.java`
   - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/service/TenantRuntimeEnforcementService.java`
