@@ -92,7 +92,10 @@ class TenantRuntimePolicyServiceTest {
     }
 
     @Test
-    void updatePolicy_rejectsUnsupportedHoldState_failClosed() {
+    void updatePolicy_normalizesUnsupportedHoldStateToBlocked_failClosed() {
+        when(userAccountRepository.findDistinctByCompanies_Id(42L))
+                .thenReturn(List.of(user(true)));
+
         TenantRuntimePolicyUpdateRequest request = new TenantRuntimePolicyUpdateRequest(
                 null,
                 null,
@@ -102,11 +105,13 @@ class TenantRuntimePolicyServiceTest {
                 "invalid state test"
         );
 
-        assertThatThrownBy(() -> service.updatePolicy(request))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("Unsupported holdState: PAUSED");
-        verify(systemSettingsRepository, never()).save(any(SystemSetting.class));
-        verifyNoInteractions(auditService);
+        TenantRuntimeMetricsDto metrics = service.updatePolicy(request);
+
+        assertThat(metrics.holdState()).isEqualTo("BLOCKED");
+        assertThat(metrics.holdReason()).isEqualTo("Manual override");
+        assertThat(settings.get(keyHoldState(42L))).isEqualTo("BLOCKED");
+        assertThat(settings.get(keyHoldReason(42L))).isEqualTo("Manual override");
+        verify(auditService).logSuccess(eq(AuditEvent.CONFIGURATION_CHANGED), org.mockito.ArgumentMatchers.<Map<String, String>>any());
     }
 
     @Test
@@ -315,12 +320,29 @@ class TenantRuntimePolicyServiceTest {
     }
 
     @Test
-    void metrics_failsClosedWhenPersistedHoldStateUnsupported() {
+    void metrics_normalizesPersistedUnsupportedHoldStateToBlocked_failClosed() {
         settings.put(keyHoldState(42L), "PAUSED");
+        settings.put(keyHoldReason(42L), "Unexpected runtime hold state");
+        when(userAccountRepository.findDistinctByCompanies_Id(42L))
+                .thenReturn(List.of(user(true)));
 
-        assertThatThrownBy(() -> service.metrics())
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("Unsupported holdState: PAUSED");
+        TenantRuntimeMetricsDto metrics = service.metrics();
+
+        assertThat(metrics.holdState()).isEqualTo("BLOCKED");
+        assertThat(metrics.holdReason()).isEqualTo("Unexpected runtime hold state");
+    }
+
+    @Test
+    void metrics_normalizesPersistedBlankHoldStateToBlocked_failClosed() {
+        settings.put(keyHoldState(42L), "   ");
+        settings.put(keyHoldReason(42L), "Malformed runtime hold state");
+        when(userAccountRepository.findDistinctByCompanies_Id(42L))
+                .thenReturn(List.of(user(true)));
+
+        TenantRuntimeMetricsDto metrics = service.metrics();
+
+        assertThat(metrics.holdState()).isEqualTo("BLOCKED");
+        assertThat(metrics.holdReason()).isEqualTo("Malformed runtime hold state");
     }
 
     @Test
