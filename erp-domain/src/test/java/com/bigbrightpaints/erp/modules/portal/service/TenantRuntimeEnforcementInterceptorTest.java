@@ -103,8 +103,7 @@ class TenantRuntimeEnforcementInterceptorTest {
     }
 
     @Test
-    void preHandle_enforcesAccountingReportsPath_withBlankHoldStateAndMalformedQuotas() throws Exception {
-        settings.put(keyHoldState(55L), "   ");
+    void preHandle_enforcesAccountingReportsPath_withMissingHoldStateAndMalformedQuotas() throws Exception {
         settings.put(keyMaxRequestsPerMinute(55L), "bad-rpm");
         settings.put(keyMaxConcurrentRequests(55L), "bad-concurrency");
         settings.put(keyPolicyReference(55L), "policy-accounting");
@@ -120,19 +119,63 @@ class TenantRuntimeEnforcementInterceptorTest {
     }
 
     @Test
-    void preHandle_treatsUnsupportedHoldStateAsActiveFallback() throws Exception {
+    void preHandle_deniesWhenHoldStateIsUnsupported_failClosed() {
         settings.put(keyHoldState(55L), "PAUSED");
-        settings.put(keyMaxRequestsPerMinute(55L), "20");
-        settings.put(keyMaxConcurrentRequests(55L), "4");
+        settings.put(keyHoldReason(55L), "Unexpected runtime hold state");
+        settings.put(keyPolicyReference(55L), "policy-paused");
+
+        MockHttpServletRequest request = request("GET", "/api/v1/portal/dashboard");
+        request.setRemoteAddr("198.51.100.31");
+        request.addHeader("X-Request-Id", "req-paused-1");
+        request.addHeader("X-Trace-Id", "trace-paused-1");
+        request.addHeader("User-Agent", "runtime-paused-test");
+
+        assertThatThrownBy(() -> interceptor.preHandle(request, new MockHttpServletResponse(), new Object()))
+                .isInstanceOf(ApplicationException.class)
+                .satisfies(error -> {
+                    ApplicationException exception = (ApplicationException) error;
+                    assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.BUSINESS_INVALID_STATE);
+                    assertThat(exception.getDetails())
+                            .containsEntry("companyCode", "ACME")
+                            .containsEntry("holdState", "BLOCKED")
+                            .containsEntry("holdReason", "Unexpected runtime hold state")
+                            .containsEntry("policyReference", "policy-paused")
+                            .containsEntry("path", "/api/v1/portal/dashboard");
+                });
+
+        ArgumentCaptor<Map<String, String>> metadataCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(auditService).logFailure(eq(AuditEvent.ACCESS_DENIED), metadataCaptor.capture());
+        assertThat(metadataCaptor.getValue())
+                .containsEntry("action", "TENANT_RUNTIME_STATE_DENIED")
+                .containsEntry("holdState", "BLOCKED")
+                .containsEntry("holdReason", "Unexpected runtime hold state")
+                .containsEntry("reason", "Tenant runtime state is BLOCKED")
+                .containsEntry("requestId", "req-paused-1")
+                .containsEntry("traceId", "trace-paused-1")
+                .containsEntry("userAgent", "runtime-paused-test")
+                .containsEntry("remoteAddr", "198.51.100.31");
+    }
+
+    @Test
+    void preHandle_deniesWhenHoldStateIsBlank_failClosed() {
+        settings.put(keyHoldState(55L), "   ");
+        settings.put(keyHoldReason(55L), "Malformed runtime hold state");
+        settings.put(keyPolicyReference(55L), "policy-blank");
 
         MockHttpServletRequest request = request("GET", "/api/v1/portal/dashboard");
 
-        boolean allowed = interceptor.preHandle(request, new MockHttpServletResponse(), new Object());
-
-        assertThat(allowed).isTrue();
-        assertThat(request.getAttribute(attrEnforced())).isEqualTo(Boolean.TRUE);
-        assertThat(request.getAttribute(attrCompanyId())).isEqualTo(55L);
-        verifyNoInteractions(auditService);
+        assertThatThrownBy(() -> interceptor.preHandle(request, new MockHttpServletResponse(), new Object()))
+                .isInstanceOf(ApplicationException.class)
+                .satisfies(error -> {
+                    ApplicationException exception = (ApplicationException) error;
+                    assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.BUSINESS_INVALID_STATE);
+                    assertThat(exception.getDetails())
+                            .containsEntry("companyCode", "ACME")
+                            .containsEntry("holdState", "BLOCKED")
+                            .containsEntry("holdReason", "Malformed runtime hold state")
+                            .containsEntry("policyReference", "policy-blank")
+                            .containsEntry("path", "/api/v1/portal/dashboard");
+                });
     }
 
     @Test
