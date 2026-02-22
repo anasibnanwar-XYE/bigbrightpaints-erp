@@ -16,6 +16,7 @@ import java.time.ZoneOffset;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -78,6 +79,11 @@ class TenantRuntimeEnforcementInterceptorTest {
         });
     }
 
+    @AfterEach
+    void tearDown() {
+        ReflectionTestUtils.setField(CompanyTime.class, "companyClock", null);
+    }
+
     @Test
     void preHandle_bypassesWhenPathIsNotEnforced() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/admin/settings");
@@ -100,6 +106,24 @@ class TenantRuntimeEnforcementInterceptorTest {
         assertThat(allowed).isTrue();
         verify(companyContextService, never()).requireCurrentCompany();
         verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void isMutatingMethod_treatsBlankMethodAsMutating() {
+        Boolean result = ReflectionTestUtils.invokeMethod(interceptor, "isMutatingMethod", (String) null);
+
+        assertThat(result).isTrue();
+    }
+
+    @Test
+    void isMutatingMethod_treatsHeadAndOptionsAsNonMutating() {
+        Boolean head = ReflectionTestUtils.invokeMethod(interceptor, "isMutatingMethod", " HEAD ");
+        Boolean options = ReflectionTestUtils.invokeMethod(interceptor, "isMutatingMethod", "options");
+        Boolean patch = ReflectionTestUtils.invokeMethod(interceptor, "isMutatingMethod", "PATCH");
+
+        assertThat(head).isFalse();
+        assertThat(options).isFalse();
+        assertThat(patch).isTrue();
     }
 
     @Test
