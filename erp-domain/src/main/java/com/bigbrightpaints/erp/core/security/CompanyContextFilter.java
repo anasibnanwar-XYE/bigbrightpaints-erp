@@ -104,9 +104,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
                             "Tenant lifecycle state does not allow access");
                     return;
                 }
-                String runtimePath = StringUtils.hasText(request.getServletPath())
-                        ? request.getServletPath()
-                        : request.getRequestURI();
+                String runtimePath = resolveApplicationPath(request);
                 admission = tenantRuntimeEnforcementService.beginRequest(
                         companyCode,
                         runtimePath,
@@ -173,10 +171,10 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     }
 
     private boolean isLifecycleControlRequest(HttpServletRequest request) {
-        if (request == null || !StringUtils.hasText(request.getRequestURI())) {
+        String path = resolveApplicationPath(request);
+        if (!StringUtils.hasText(path)) {
             return false;
         }
-        String path = request.getRequestURI().trim();
         if (!path.startsWith("/api/v1/companies/")) {
             return false;
         }
@@ -185,6 +183,32 @@ public class CompanyContextFilter extends OncePerRequestFilter {
         boolean tenantMetricsRead = "GET".equalsIgnoreCase(request.getMethod())
                 && path.endsWith("/tenant-metrics");
         return lifecycleMutation || tenantMetricsRead;
+    }
+
+    private String resolveApplicationPath(HttpServletRequest request) {
+        if (request == null) {
+            return null;
+        }
+        String servletPath = request.getServletPath();
+        if (StringUtils.hasText(servletPath)) {
+            return servletPath.trim();
+        }
+        String requestUri = request.getRequestURI();
+        if (!StringUtils.hasText(requestUri)) {
+            return null;
+        }
+        String normalizedUri = requestUri.trim();
+        String contextPath = request.getContextPath();
+        if (StringUtils.hasText(contextPath)) {
+            String normalizedContextPath = contextPath.trim();
+            if (normalizedUri.equals(normalizedContextPath)) {
+                return "/";
+            }
+            if (normalizedUri.startsWith(normalizedContextPath + "/")) {
+                normalizedUri = normalizedUri.substring(normalizedContextPath.length());
+            }
+        }
+        return normalizedUri;
     }
 
     @Override
