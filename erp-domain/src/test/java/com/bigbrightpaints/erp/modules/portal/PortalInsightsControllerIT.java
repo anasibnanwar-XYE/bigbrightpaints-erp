@@ -44,6 +44,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -52,6 +53,7 @@ public class PortalInsightsControllerIT extends AbstractIntegrationTest {
     private static final String COMPANY_CODE = "ACME";
     private static final String ADMIN_EMAIL = "admin@bbp.com";
     private static final String ADMIN_PASSWORD = "admin123";
+    private static final AtomicInteger PAYROLL_PERIOD_SEQUENCE = new AtomicInteger(0);
 
     @Autowired
     private TestRestTemplate rest;
@@ -172,8 +174,8 @@ public class PortalInsightsControllerIT extends AbstractIntegrationTest {
 
         PayrollRun payrollRun = new PayrollRun();
         payrollRun.setCompany(company);
-        long payrollOffset = Math.floorMod(seed, 1000L);
-        LocalDate payrollEnd = LocalDate.now().minusDays(1 + payrollOffset);
+        int payrollOffset = PAYROLL_PERIOD_SEQUENCE.getAndIncrement();
+        LocalDate payrollEnd = LocalDate.of(2035, 12, 31).minusDays(payrollOffset);
         LocalDate payrollStart = payrollEnd.minusDays(29);
         payrollRun.setRunType(PayrollRun.RunType.MONTHLY);
         payrollRun.setPeriodStart(payrollStart);

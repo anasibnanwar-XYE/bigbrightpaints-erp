@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.factory.controller;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.modules.factory.dto.PackingLineRequest;
 import com.bigbrightpaints.erp.modules.factory.dto.PackingRequest;
 import com.bigbrightpaints.erp.modules.factory.service.BulkPackingService;
@@ -18,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -150,9 +152,8 @@ class PackingControllerTest {
     }
 
     @Test
-    void recordPacking_prefersPrimaryHeaderWhenPrimaryLegacyMismatch() {
+    void recordPacking_rejectsWhenPrimaryLegacyHeadersMismatch() {
         PackingController controller = new PackingController(packingService, bulkPackingService);
-        when(packingService.recordPacking(any())).thenReturn(null);
 
         PackingRequest request = new PackingRequest(
                 1L,
@@ -162,10 +163,16 @@ class PackingControllerTest {
                 List.of(new PackingLineRequest("10L", new BigDecimal("1"), 1, 1, 1))
         );
 
-        controller.recordPacking("header-key", "legacy-key", null, request);
+        assertThatThrownBy(() -> controller.recordPacking("header-key", "legacy-key", null, request))
+                .isInstanceOfSatisfying(ApplicationException.class, ex -> {
+                    assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT);
+                    assertThat(ex.getMessage()).isEqualTo(
+                            "Idempotency key mismatch between Idempotency-Key and X-Idempotency-Key headers");
+                    assertThat(ex.getDetails())
+                            .containsEntry("idempotencyKeyHeader", "header-key")
+                            .containsEntry("legacyIdempotencyKeyHeader", "legacy-key");
+                });
 
-        ArgumentCaptor<PackingRequest> captor = ArgumentCaptor.forClass(PackingRequest.class);
-        verify(packingService).recordPacking(captor.capture());
-        assertThat(captor.getValue().idempotencyKey()).isEqualTo("header-key");
+        verifyNoInteractions(packingService);
     }
 }

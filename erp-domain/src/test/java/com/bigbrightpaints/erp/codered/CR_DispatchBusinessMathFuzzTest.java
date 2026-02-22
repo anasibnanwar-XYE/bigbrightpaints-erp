@@ -27,9 +27,12 @@ import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderRepository;
+import com.bigbrightpaints.erp.modules.sales.dto.CreditLimitOverrideDecisionRequest;
+import com.bigbrightpaints.erp.modules.sales.dto.CreditLimitOverrideRequestCreateRequest;
 import com.bigbrightpaints.erp.modules.sales.dto.DispatchConfirmRequest;
 import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderItemRequest;
 import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderRequest;
+import com.bigbrightpaints.erp.modules.sales.service.CreditLimitOverrideService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesService;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 import org.junit.jupiter.api.AfterEach;
@@ -40,6 +43,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
@@ -61,6 +65,7 @@ class CR_DispatchBusinessMathFuzzTest extends AbstractIntegrationTest {
     @Autowired private FinishedGoodsService finishedGoodsService;
     @Autowired private FinishedGoodRepository finishedGoodRepository;
     @Autowired private SalesService salesService;
+    @Autowired private CreditLimitOverrideService creditLimitOverrideService;
     @Autowired private SalesOrderRepository salesOrderRepository;
     @Autowired private PackagingSlipRepository packagingSlipRepository;
     @Autowired private InvoiceRepository invoiceRepository;
@@ -137,6 +142,13 @@ class CR_DispatchBusinessMathFuzzTest extends AbstractIntegrationTest {
             BigDecimal discount = random.nextBoolean()
                     ? MoneyUtils.roundCurrency(BigDecimal.valueOf(random.nextInt(0, gross.movePointRight(2).intValue() + 1)).movePointLeft(2))
                     : null;
+            Long overrideRequestId = discount != null
+                    ? createApprovedDispatchOverride(
+                    dealer.getId(),
+                    slip.getId(),
+                    order.getId(),
+                    order.getTotalAmount())
+                    : null;
 
             var response = salesService.confirmDispatch(new DispatchConfirmRequest(
                     slip.getId(),
@@ -157,7 +169,7 @@ class CR_DispatchBusinessMathFuzzTest extends AbstractIntegrationTest {
                     "codered",
                     false,
                     discount != null ? "fuzz-discount" : null,
-                    null
+                    overrideRequestId
             ));
             CompanyContextHolder.clear();
 
@@ -263,6 +275,30 @@ class CR_DispatchBusinessMathFuzzTest extends AbstractIntegrationTest {
                     dealer.setReceivableAccount(arAccount);
                     return dealerRepository.save(dealer);
                 });
+    }
+
+    private Long createApprovedDispatchOverride(Long dealerId,
+                                                Long slipId,
+                                                Long orderId,
+                                                BigDecimal dispatchAmount) {
+        var created = creditLimitOverrideService.createRequest(
+                new CreditLimitOverrideRequestCreateRequest(
+                        dealerId,
+                        slipId,
+                        orderId,
+                        dispatchAmount,
+                        "CODE-RED dispatch exception approval",
+                        Instant.now().plus(Duration.ofHours(2))
+                ),
+                "codered-maker");
+        var approved = creditLimitOverrideService.approveRequest(
+                created.id(),
+                new CreditLimitOverrideDecisionRequest(
+                        "CODE-RED dispatch exception approved",
+                        Instant.now().plus(Duration.ofHours(4))
+                ),
+                "codered-checker");
+        return approved.id();
     }
 
     private FinishedGood ensureFinishedGoodWithCatalog(Company company, Map<String, Account> accounts, String sku) {
