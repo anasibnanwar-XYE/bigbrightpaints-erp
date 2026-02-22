@@ -178,6 +178,38 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
     }
 
     @Test
+    void allowsSuperAdminLifecycleControlWithoutTenantMembershipWhenTenantIsNotActive() throws Exception {
+        authenticateSuperAdminWithoutCompany("super-admin@bbp.com");
+        when(companyService.resolveLifecycleStateByCode("ACME")).thenReturn(CompanyLifecycleState.HOLD);
+        TenantRuntimeEnforcementService.TenantRequestAdmission admittedAdmission =
+                admission(true, "ACME", 200, null);
+        when(tenantRuntimeEnforcementService.beginRequest(
+                "ACME",
+                "/api/v1/companies/1/lifecycle-state",
+                "POST",
+                "super-admin@bbp.com",
+                true))
+                .thenReturn(admittedAdmission);
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/companies/1/lifecycle-state");
+        request.setAttribute("jwtClaims", claims("ACME", null));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+
+        filter.doFilter(request, response, chain);
+
+        assertThat(chain.getRequest()).isNotNull();
+        verify(companyService).resolveLifecycleStateByCode("ACME");
+        verify(tenantRuntimeEnforcementService).beginRequest(
+                "ACME",
+                "/api/v1/companies/1/lifecycle-state",
+                "POST",
+                "super-admin@bbp.com",
+                true);
+        verify(tenantRuntimeEnforcementService).completeRequest(eq(admittedAdmission), eq(200));
+    }
+
+    @Test
     void allowsSuperAdminLifecycleControlWhenTenantIsNotActive_withContextPath() throws Exception {
         authenticateSuperAdminForCompany("super-admin@bbp.com", "ACME");
         when(companyService.resolveLifecycleStateByCode("ACME")).thenReturn(CompanyLifecycleState.HOLD);
@@ -435,6 +467,16 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
         UserAccount user = new UserAccount(email, "hash", "Super Admin");
         user.addCompany(company);
 
+        UserPrincipal principal = new UserPrincipal(user);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(
+                        principal,
+                        "n/a",
+                        java.util.List.of(new SimpleGrantedAuthority("ROLE_SUPER_ADMIN"))));
+    }
+
+    private void authenticateSuperAdminWithoutCompany(String email) {
+        UserAccount user = new UserAccount(email, "hash", "Super Admin");
         UserPrincipal principal = new UserPrincipal(user);
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(

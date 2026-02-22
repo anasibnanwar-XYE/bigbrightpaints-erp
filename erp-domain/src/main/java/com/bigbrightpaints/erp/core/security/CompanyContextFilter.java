@@ -89,16 +89,17 @@ public class CompanyContextFilter extends OncePerRequestFilter {
             }
             String companyCode = StringUtils.hasText(requestedCompany) ? requestedCompany.trim() : null;
             if (companyCode != null) {
-                // Validate user has access to this company
-                if (!validateCompanyAccess(companyCode)) {
-                    log.warn("User attempted to access unauthorized company: {}", companyCode);
-                    response.sendError(HttpServletResponse.SC_FORBIDDEN, "Access denied to company: " + companyCode);
-                    return;
-                }
                 CompanyLifecycleState lifecycleState = companyService.resolveLifecycleStateByCode(companyCode);
                 boolean lifecycleControlBypass = lifecycleState != CompanyLifecycleState.ACTIVE
                         && isLifecycleControlRequest(request)
                         && hasSuperAdminAuthority();
+                // Recovery endpoints for non-active tenants are intended for super-admin operators
+                // even when they are not explicitly attached to the tenant membership list.
+                if (!lifecycleControlBypass && !validateCompanyAccess(companyCode)) {
+                    log.warn("User attempted to access unauthorized company: {}", companyCode);
+                    response.sendError(HttpServletResponse.SC_FORBIDDEN, "Access denied to company: " + companyCode);
+                    return;
+                }
                 if (lifecycleState != CompanyLifecycleState.ACTIVE && !lifecycleControlBypass) {
                     response.sendError(HttpServletResponse.SC_FORBIDDEN,
                             "Tenant lifecycle state does not allow access");
