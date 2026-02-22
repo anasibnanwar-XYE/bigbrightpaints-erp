@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.inventory.controller;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.modules.inventory.dto.OpeningStockImportResponse;
 import com.bigbrightpaints.erp.modules.inventory.service.OpeningStockImportService;
 import org.junit.jupiter.api.Test;
@@ -12,6 +13,7 @@ import org.springframework.mock.web.MockMultipartFile;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -36,14 +38,20 @@ class OpeningStockImportControllerTest {
     }
 
     @Test
-    void importOpeningStock_prefersPrimaryHeaderWhenPrimaryLegacyMismatch() {
+    void importOpeningStock_rejectsWhenPrimaryLegacyHeadersMismatch() {
         OpeningStockImportController controller = new OpeningStockImportController(openingStockImportService);
         MockMultipartFile file = csvFile();
-        OpeningStockImportResponse response = new OpeningStockImportResponse(1, 1, 1, 0, 0, List.of());
-        when(openingStockImportService.importOpeningStock(file, "primary-key")).thenReturn(response);
 
-        controller.importOpeningStock("primary-key", "legacy-key", file);
-        verify(openingStockImportService).importOpeningStock(file, "primary-key");
+        assertThatThrownBy(() -> controller.importOpeningStock("primary-key", "legacy-key", file))
+                .isInstanceOfSatisfying(ApplicationException.class, ex -> {
+                    assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT);
+                    assertThat(ex.getMessage()).isEqualTo(
+                            "Idempotency key mismatch between Idempotency-Key and X-Idempotency-Key headers");
+                    assertThat(ex.getDetails())
+                            .containsEntry("idempotencyKeyHeader", "primary-key")
+                            .containsEntry("legacyIdempotencyKeyHeader", "legacy-key");
+                });
+        verifyNoInteractions(openingStockImportService);
     }
 
     private MockMultipartFile csvFile() {

@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.accounting.controller;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.modules.production.service.ProductionCatalogService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -13,6 +14,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class AccountingCatalogControllerIdempotencyHeaderTest {
@@ -32,14 +34,21 @@ class AccountingCatalogControllerIdempotencyHeaderTest {
     }
 
     @Test
-    void importCatalog_prefersPrimaryHeaderWhenPrimaryLegacyMismatch() {
+    void importCatalog_rejectsWhenPrimaryLegacyHeadersMismatch() {
         ProductionCatalogService productionCatalogService = mock(ProductionCatalogService.class);
-        when(productionCatalogService.importCatalog(any(), any())).thenReturn(null);
         AccountingCatalogController controller = new AccountingCatalogController(productionCatalogService);
 
-        controller.importCatalog(csvFile(), "hdr-001", "legacy-001");
+        assertThatThrownBy(() -> controller.importCatalog(csvFile(), "hdr-001", "legacy-001"))
+                .isInstanceOfSatisfying(ApplicationException.class, ex -> {
+                    assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT);
+                    assertThat(ex.getMessage()).isEqualTo(
+                            "Idempotency key mismatch between Idempotency-Key and X-Idempotency-Key headers");
+                    assertThat(ex.getDetails())
+                            .containsEntry("idempotencyKeyHeader", "hdr-001")
+                            .containsEntry("legacyIdempotencyKeyHeader", "legacy-001");
+                });
 
-        verify(productionCatalogService).importCatalog(any(), eq("hdr-001"));
+        verifyNoInteractions(productionCatalogService);
     }
 
     private MultipartFile csvFile() {

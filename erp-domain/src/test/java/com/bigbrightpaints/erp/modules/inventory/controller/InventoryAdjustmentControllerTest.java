@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.inventory.controller;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryAdjustmentType;
 import com.bigbrightpaints.erp.modules.inventory.dto.InventoryAdjustmentRequest;
 import com.bigbrightpaints.erp.modules.inventory.service.InventoryAdjustmentService;
@@ -21,6 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -76,16 +78,21 @@ class InventoryAdjustmentControllerTest {
     }
 
     @Test
-    void createAdjustment_prefersPrimaryHeaderWhenPrimaryLegacyMismatch() {
+    void createAdjustment_rejectsWhenPrimaryLegacyHeadersMismatch() {
         InventoryAdjustmentController controller = controller();
-        when(inventoryAdjustmentService.createAdjustment(any())).thenReturn(null);
 
         InventoryAdjustmentRequest request = validRequest(null);
-        controller.createAdjustment("header-key", "legacy-key", request);
+        assertThatThrownBy(() -> controller.createAdjustment("header-key", "legacy-key", request))
+                .isInstanceOfSatisfying(ApplicationException.class, ex -> {
+                    assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT);
+                    assertThat(ex.getMessage()).isEqualTo(
+                            "Idempotency key mismatch between Idempotency-Key and X-Idempotency-Key headers");
+                    assertThat(ex.getDetails())
+                            .containsEntry("idempotencyKeyHeader", "header-key")
+                            .containsEntry("legacyIdempotencyKeyHeader", "legacy-key");
+                });
 
-        ArgumentCaptor<InventoryAdjustmentRequest> captor = ArgumentCaptor.forClass(InventoryAdjustmentRequest.class);
-        verify(inventoryAdjustmentService).createAdjustment(captor.capture());
-        assertThat(captor.getValue().idempotencyKey()).isEqualTo("header-key");
+        verifyNoInteractions(inventoryAdjustmentService);
     }
 
     @Test
