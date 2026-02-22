@@ -258,7 +258,7 @@ class AccountingFacadeTest {
     }
 
     @Test
-    void postSalesJournal_idempotentHitReturnsExistingEntryWithoutReposting() {
+    void postSalesJournal_idempotentHitDelegatesToAccountingServiceForDuplicateValidation() {
         Long dealerId = 77L;
         Dealer dealer = new Dealer();
         Account receivable = new Account();
@@ -279,6 +279,37 @@ class AccountingFacadeTest {
         when(journalReferenceResolver.findExistingEntry(eq(company), eq(canonicalReference)))
                 .thenReturn(Optional.of(existing));
 
+        JournalEntryDto replay = new JournalEntryDto(
+                777L,
+                null,
+                canonicalReference,
+                LocalDate.of(2026, 1, 5),
+                null,
+                "POSTED",
+                dealerId,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                List.<JournalLineDto>of(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+        ArgumentCaptor<JournalEntryRequest> requestCaptor = ArgumentCaptor.forClass(JournalEntryRequest.class);
+        when(accountingService.createJournalEntry(requestCaptor.capture())).thenReturn(replay);
+        when(companyEntityLookup.requireJournalEntry(eq(company), eq(777L))).thenReturn(existing);
+
         JournalEntryDto dto = accountingFacade.postSalesJournal(
                 dealerId,
                 orderNumber,
@@ -292,7 +323,8 @@ class AccountingFacadeTest {
 
         assertThat(dto.id()).isEqualTo(777L);
         assertThat(dto.referenceNumber()).isEqualTo(canonicalReference);
-        verify(accountingService, never()).createJournalEntry(any());
+        assertThat(requestCaptor.getValue().referenceNumber()).isEqualTo(canonicalReference);
+        verify(accountingService).createJournalEntry(any());
     }
 
     @Test

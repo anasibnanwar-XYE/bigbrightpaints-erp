@@ -109,7 +109,8 @@ public class CompanyContextFilter extends OncePerRequestFilter {
                         companyCode,
                         runtimePath,
                         request.getMethod(),
-                        resolveCurrentActor());
+                        resolveCurrentActor(),
+                        hasTenantRuntimePolicyControlAuthority());
                 if (!admission.isAdmitted()) {
                     response.setStatus(admission.statusCode());
                     response.setContentType("application/json");
@@ -168,6 +169,17 @@ public class CompanyContextFilter extends OncePerRequestFilter {
         }
         return auth.getAuthorities().stream()
                 .anyMatch(granted -> "ROLE_SUPER_ADMIN".equalsIgnoreCase(granted.getAuthority()));
+    }
+
+    private boolean hasTenantRuntimePolicyControlAuthority() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()) {
+            return false;
+        }
+        return auth.getAuthorities().stream()
+                .map(granted -> granted.getAuthority())
+                .anyMatch(authority -> "ROLE_ADMIN".equalsIgnoreCase(authority)
+                        || "ROLE_SUPER_ADMIN".equalsIgnoreCase(authority));
     }
 
     private boolean isLifecycleControlRequest(HttpServletRequest request) {

@@ -66,13 +66,24 @@ public class TenantRuntimeEnforcementService {
                                                String requestPath,
                                                String requestMethod,
                                                String actor) {
+        return beginRequest(companyCode, requestPath, requestMethod, actor, false);
+    }
+
+    public TenantRequestAdmission beginRequest(String companyCode,
+                                               String requestPath,
+                                               String requestMethod,
+                                               String actor,
+                                               boolean policyControlPrivilegedActor) {
         String normalizedCompany = normalizeCompanyCode(companyCode);
         if (normalizedCompany == null) {
             return TenantRequestAdmission.notTracked();
         }
         TenantRuntimePolicy policy = policyFor(normalizedCompany);
         TenantRuntimeCounters usageCounters = countersFor(normalizedCompany);
-        boolean policyControlRequest = isTenantRuntimePolicyControlRequest(requestPath, requestMethod);
+        boolean policyControlRequest = isTenantRuntimePolicyControlRequest(
+                requestPath,
+                requestMethod,
+                policyControlPrivilegedActor);
 
         TenantRuntimeRejection stateRejection = stateRejection(
                 policy,
@@ -373,7 +384,12 @@ public class TenantRuntimeEnforcementService {
         };
     }
 
-    private boolean isTenantRuntimePolicyControlRequest(String requestPath, String requestMethod) {
+    private boolean isTenantRuntimePolicyControlRequest(String requestPath,
+                                                        String requestMethod,
+                                                        boolean policyControlPrivilegedActor) {
+        if (!policyControlPrivilegedActor) {
+            return false;
+        }
         if (!StringUtils.hasText(requestMethod) || !"PUT".equalsIgnoreCase(requestMethod.trim())) {
             return false;
         }

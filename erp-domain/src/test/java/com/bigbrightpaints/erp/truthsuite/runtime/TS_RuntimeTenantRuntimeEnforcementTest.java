@@ -155,7 +155,8 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
                 "ACME",
                 "/api/v1/companies/1/lifecycle-state",
                 "POST",
-                "super-admin@bbp.com"))
+                "super-admin@bbp.com",
+                true))
                 .thenReturn(admittedAdmission);
 
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/companies/1/lifecycle-state");
@@ -171,7 +172,8 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
                 "ACME",
                 "/api/v1/companies/1/lifecycle-state",
                 "POST",
-                "super-admin@bbp.com");
+                "super-admin@bbp.com",
+                true);
         verify(tenantRuntimeEnforcementService).completeRequest(eq(admittedAdmission), eq(200));
     }
 
@@ -185,7 +187,8 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
                 "ACME",
                 "/api/v1/companies/1/lifecycle-state",
                 "POST",
-                "super-admin@bbp.com"))
+                "super-admin@bbp.com",
+                true))
                 .thenReturn(admittedAdmission);
 
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/erp/api/v1/companies/1/lifecycle-state");
@@ -203,7 +206,8 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
                 "ACME",
                 "/api/v1/companies/1/lifecycle-state",
                 "POST",
-                "super-admin@bbp.com");
+                "super-admin@bbp.com",
+                true);
         verify(tenantRuntimeEnforcementService).completeRequest(eq(admittedAdmission), eq(200));
     }
 
@@ -217,7 +221,8 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
                 "ACME",
                 "/api/v1/companies/1/lifecycle-state",
                 "POST",
-                "super-admin@bbp.com"))
+                "super-admin@bbp.com",
+                true))
                 .thenReturn(admittedAdmission);
 
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/erp/api/v1/companies/1/lifecycle-state");
@@ -235,7 +240,8 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
                 "ACME",
                 "/api/v1/companies/1/lifecycle-state",
                 "POST",
-                "super-admin@bbp.com");
+                "super-admin@bbp.com",
+                true);
         verify(tenantRuntimeEnforcementService).completeRequest(eq(admittedAdmission), eq(200));
     }
 
@@ -249,7 +255,8 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
                 "ACME",
                 "/api/v1/companies/1/tenant-metrics",
                 "GET",
-                "super-admin@bbp.com"))
+                "super-admin@bbp.com",
+                true))
                 .thenReturn(admittedAdmission);
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/erp/api/v1/companies/1/tenant-metrics");
@@ -267,7 +274,8 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
                 "ACME",
                 "/api/v1/companies/1/tenant-metrics",
                 "GET",
-                "super-admin@bbp.com");
+                "super-admin@bbp.com",
+                true);
         verify(tenantRuntimeEnforcementService).completeRequest(eq(admittedAdmission), eq(200));
     }
 
@@ -281,7 +289,8 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
                 "ACME",
                 "/api/v1/admin/tenant-runtime/policy",
                 "PUT",
-                "actor@bbp.com"))
+                "actor@bbp.com",
+                false))
                 .thenReturn(admittedAdmission);
 
         MockHttpServletRequest request = new MockHttpServletRequest("PUT", "/erp/api/v1/admin/tenant-runtime/policy");
@@ -298,7 +307,8 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
                 "ACME",
                 "/api/v1/admin/tenant-runtime/policy",
                 "PUT",
-                "actor@bbp.com");
+                "actor@bbp.com",
+                false);
         verify(tenantRuntimeEnforcementService).completeRequest(eq(admittedAdmission), eq(200));
     }
 
@@ -312,7 +322,8 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
                 "ACME",
                 "/api/v1/admin/tenant-runtime/policy",
                 "PUT",
-                "actor@bbp.com"))
+                "actor@bbp.com",
+                false))
                 .thenReturn(admittedAdmission);
 
         MockHttpServletRequest request = new MockHttpServletRequest("PUT", "/erp/api/v1/admin/tenant-runtime/policy");
@@ -329,7 +340,8 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
                 "ACME",
                 "/api/v1/admin/tenant-runtime/policy",
                 "PUT",
-                "actor@bbp.com");
+                "actor@bbp.com",
+                false);
         verify(tenantRuntimeEnforcementService).completeRequest(eq(admittedAdmission), eq(200));
     }
 
@@ -340,7 +352,7 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
 
         TenantRuntimeEnforcementService.TenantRequestAdmission deniedAdmission =
                 admission(false, "ACME", 429, "quota \"hit\" \\\\ retry");
-        when(tenantRuntimeEnforcementService.beginRequest("ACME", "/api/v1/private", "POST", "actor@bbp.com"))
+        when(tenantRuntimeEnforcementService.beginRequest("ACME", "/api/v1/private", "POST", "actor@bbp.com", false))
                 .thenReturn(deniedAdmission);
 
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/private");
@@ -364,7 +376,7 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
 
         TenantRuntimeEnforcementService.TenantRequestAdmission admittedAdmission =
                 admission(true, "ACME", 200, null);
-        when(tenantRuntimeEnforcementService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com"))
+        when(tenantRuntimeEnforcementService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com", false))
                 .thenReturn(admittedAdmission);
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/private");

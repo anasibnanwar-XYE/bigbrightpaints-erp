@@ -169,7 +169,8 @@ class TenantRuntimeEnforcementServiceTest {
                 "ACME",
                 "/api/v1/admin/tenant-runtime/policy",
                 "PUT",
-                "ops@bbp.com");
+                "ops@bbp.com",
+                true);
         service.completeRequest(heldAdmission, 200);
 
         service.blockTenant("ACME", "incident_block", "ops@bbp.com");
@@ -177,22 +178,32 @@ class TenantRuntimeEnforcementServiceTest {
                 "ACME",
                 "/api/v1/admin/tenant-runtime/policy",
                 "PUT",
-                "ops@bbp.com");
+                "ops@bbp.com",
+                true);
         TenantRuntimeEnforcementService.TenantRequestAdmission blockedAdmissionWithContextPath = service.beginRequest(
                 "ACME",
                 "/erp/api/v1/admin/tenant-runtime/policy",
                 "PUT",
-                "ops@bbp.com");
+                "ops@bbp.com",
+                true);
         TenantRuntimeEnforcementService.TenantRequestAdmission blockedMalformedPrefixAdmission = service.beginRequest(
                 "ACME",
                 "/erpapi/v1/admin/tenant-runtime/policy",
                 "PUT",
-                "ops@bbp.com");
+                "ops@bbp.com",
+                true);
+        TenantRuntimeEnforcementService.TenantRequestAdmission blockedUnprivilegedControl = service.beginRequest(
+                "ACME",
+                "/api/v1/admin/tenant-runtime/policy",
+                "PUT",
+                "ops@bbp.com",
+                false);
         TenantRuntimeEnforcementService.TenantRequestAdmission blockedPolicyRead = service.beginRequest(
                 "ACME",
                 "/api/v1/admin/tenant-runtime/policy",
                 "GET",
-                "ops@bbp.com");
+                "ops@bbp.com",
+                true);
         TenantRuntimeEnforcementService.TenantRequestAdmission blockedNonControl = service.beginRequest(
                 "ACME",
                 "/api/v1/private",
@@ -206,6 +217,8 @@ class TenantRuntimeEnforcementServiceTest {
         assertThat(blockedAdmissionWithContextPath.statusCode()).isEqualTo(HttpStatus.FORBIDDEN.value());
         assertThat(blockedMalformedPrefixAdmission.isAdmitted()).isFalse();
         assertThat(blockedMalformedPrefixAdmission.statusCode()).isEqualTo(HttpStatus.FORBIDDEN.value());
+        assertThat(blockedUnprivilegedControl.isAdmitted()).isFalse();
+        assertThat(blockedUnprivilegedControl.statusCode()).isEqualTo(HttpStatus.FORBIDDEN.value());
         assertThat(blockedPolicyRead.isAdmitted()).isFalse();
         assertThat(blockedPolicyRead.statusCode()).isEqualTo(HttpStatus.FORBIDDEN.value());
         assertThat(blockedNonControl.isAdmitted()).isFalse();
@@ -233,7 +246,8 @@ class TenantRuntimeEnforcementServiceTest {
                 "ACME",
                 "/api/v1/admin/tenant-runtime/policy",
                 "PUT",
-                "ops@bbp.com");
+                "ops@bbp.com",
+                true);
         service.completeRequest(controlAdmission, 200);
 
         assertThat(first.isAdmitted()).isTrue();
@@ -369,7 +383,8 @@ class TenantRuntimeEnforcementServiceTest {
                 "ACME",
                 "/api/v1/admin/tenant-runtime/policy",
                 "PUT",
-                "ops@bbp.com");
+                "ops@bbp.com",
+                true);
         assertThat(controlAdmission.isAdmitted()).isTrue();
         service.completeRequest(controlAdmission, 200);
 
