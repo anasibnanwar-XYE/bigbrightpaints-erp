@@ -195,10 +195,9 @@ public class OrchestratorIdempotencyService {
         try {
             return hashMapper.writeValueAsString(requestPayload);
         } catch (JsonProcessingException ex) {
-            log.warn(
-                    "Unable to serialize orchestrator payload for {}; using String fallback for idempotency hashing",
-                    commandName);
-            return String.valueOf(requestPayload);
+            throw new IllegalStateException(
+                    "Unable to deterministically hash orchestrator payload for command " + commandName,
+                    ex);
         }
     }
 }

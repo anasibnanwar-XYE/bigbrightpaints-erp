@@ -157,7 +157,7 @@ Update this file in every high-risk change set.
     - `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/accounting/controller/AccountingControllerExceptionHandlerTest.java`
 
 ## STAGE-103 Addendum (2026-02-22, orchestrator-runtime-hotfix)
-- Branch / PR: `tickets/tkt-erp-stage-103/orchestrator-runtime-hotfix` / PR #44 (https://github.com/anasibnanwar-XYE/bigbrightpaints-erp/pull/44)
+- Branch / PR: `tickets-tkt-erp-stage-103-orchestrator-runtime-hotfix` / PR #44 (https://github.com/anasibnanwar-XYE/bigbrightpaints-erp/pull/44)
 - High-risk paths:
   - `erp-domain/src/main/java/com/bigbrightpaints/erp/orchestrator/service/OrchestratorIdempotencyService.java`
   - `erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimeOrchestratorExecutableCoverageTest.java`
