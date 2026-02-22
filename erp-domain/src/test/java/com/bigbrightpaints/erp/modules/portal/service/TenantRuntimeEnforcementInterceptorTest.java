@@ -228,6 +228,30 @@ class TenantRuntimeEnforcementInterceptorTest {
     }
 
     @Test
+    void preHandle_holdState_allowsReadOnlyAndBlocksMutatingRequests() throws Exception {
+        settings.put(keyHoldState(55L), "HOLD");
+        settings.put(keyHoldReason(55L), "Temporary hold");
+        settings.put(keyPolicyReference(55L), "policy-hold");
+
+        MockHttpServletRequest readRequest = request("GET", "/api/v1/portal/dashboard");
+        boolean readAllowed = interceptor.preHandle(readRequest, new MockHttpServletResponse(), new Object());
+        assertThat(readAllowed).isTrue();
+        assertThat(readRequest.getAttribute(attrEnforced())).isEqualTo(Boolean.TRUE);
+        assertThat(readRequest.getAttribute(attrCompanyId())).isEqualTo(55L);
+
+        MockHttpServletRequest writeRequest = request("POST", "/api/v1/portal/dashboard");
+        assertThatThrownBy(() -> interceptor.preHandle(writeRequest, new MockHttpServletResponse(), new Object()))
+                .isInstanceOf(ApplicationException.class)
+                .satisfies(error -> {
+                    ApplicationException exception = (ApplicationException) error;
+                    assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.BUSINESS_INVALID_STATE);
+                    assertThat(exception.getDetails())
+                            .containsEntry("holdState", "HOLD")
+                            .containsEntry("path", "/api/v1/portal/dashboard");
+                });
+    }
+
+    @Test
     void preHandle_deniesWhenRequestsPerMinuteExceeded_withQuotaMetadata() throws Exception {
         settings.put(keyHoldState(55L), "ACTIVE");
         settings.put(keyMaxRequestsPerMinute(55L), "1");

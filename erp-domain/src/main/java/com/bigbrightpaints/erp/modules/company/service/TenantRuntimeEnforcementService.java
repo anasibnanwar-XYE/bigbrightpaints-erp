@@ -2,12 +2,15 @@ package com.bigbrightpaints.erp.modules.company.service;
 
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
+import com.bigbrightpaints.erp.core.config.SystemSetting;
+import com.bigbrightpaints.erp.core.config.SystemSettingsRepository;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -25,9 +28,11 @@ public class TenantRuntimeEnforcementService {
 
     private static final int MIN_LIMIT = 1;
     private static final String DEFAULT_REASON = "POLICY_ACTIVE";
+    private static final String DEFAULT_POLICY_REFERENCE = "bootstrap";
     private static final String UNKNOWN_ACTOR = "UNKNOWN_AUTH_ACTOR";
 
     private final CompanyRepository companyRepository;
+    private final SystemSettingsRepository systemSettingsRepository;
     private final UserAccountRepository userAccountRepository;
     private final AuditService auditService;
     private final int defaultMaxConcurrentRequests;
@@ -38,12 +43,14 @@ public class TenantRuntimeEnforcementService {
 
     public TenantRuntimeEnforcementService(
             CompanyRepository companyRepository,
+            SystemSettingsRepository systemSettingsRepository,
             UserAccountRepository userAccountRepository,
             AuditService auditService,
             @Value("${erp.tenant.runtime.default-max-concurrent-requests:200}") int defaultMaxConcurrentRequests,
             @Value("${erp.tenant.runtime.default-max-requests-per-minute:5000}") int defaultMaxRequestsPerMinute,
             @Value("${erp.tenant.runtime.default-max-active-users:500}") int defaultMaxActiveUsers) {
         this.companyRepository = companyRepository;
+        this.systemSettingsRepository = systemSettingsRepository;
         this.userAccountRepository = userAccountRepository;
         this.auditService = auditService;
         this.defaultMaxConcurrentRequests = sanitizeLimit(defaultMaxConcurrentRequests);
@@ -367,14 +374,175 @@ public class TenantRuntimeEnforcementService {
     }
 
     private TenantRuntimePolicy policyFor(String companyCode) {
-        return policies.computeIfAbsent(companyCode, key -> new TenantRuntimePolicy(
+        TenantRuntimePolicy persisted = loadPersistedPolicy(companyCode);
+        return policies.compute(companyCode, (key, current) -> {
+            if (persisted != null && shouldUsePersistedPolicy(current, persisted)) {
+                return persisted;
+            }
+            if (current != null) {
+                return current;
+            }
+            if (persisted != null) {
+                return persisted;
+            }
+            return defaultPolicy();
+        });
+    }
+
+    private boolean shouldUsePersistedPolicy(TenantRuntimePolicy current, TenantRuntimePolicy persisted) {
+        if (persisted == null) {
+            return false;
+        }
+        if (current == null) {
+            return true;
+        }
+        if (current.auditChainId != null
+                && current.auditChainId.equalsIgnoreCase(persisted.auditChainId)
+                && current.state == persisted.state
+                && current.maxConcurrentRequests == persisted.maxConcurrentRequests
+                && current.maxRequestsPerMinute == persisted.maxRequestsPerMinute
+                && current.maxActiveUsers == persisted.maxActiveUsers
+                && (current.reasonCode == null ? persisted.reasonCode == null
+                        : current.reasonCode.equalsIgnoreCase(persisted.reasonCode))) {
+            return false;
+        }
+        if (persisted.updatedAt == null) {
+            return true;
+        }
+        if (current.updatedAt == null) {
+            return true;
+        }
+        return !persisted.updatedAt.isBefore(current.updatedAt);
+    }
+
+    private TenantRuntimePolicy loadPersistedPolicy(String companyCode) {
+        if (!StringUtils.hasText(companyCode)) {
+            return null;
+        }
+        Company company = companyRepository.findByCodeIgnoreCase(companyCode.trim()).orElse(null);
+        if (company == null || company.getId() == null) {
+            return null;
+        }
+        Long companyId = company.getId();
+        String persistedState = readSetting(keyHoldState(companyId), null);
+        String persistedReason = readSetting(keyHoldReason(companyId), null);
+        String persistedMaxConcurrent = readSetting(keyMaxConcurrentRequests(companyId), null);
+        String persistedMaxPerMinute = readSetting(keyMaxRequestsPerMinute(companyId), null);
+        String persistedMaxActiveUsers = readSetting(keyMaxActiveUsers(companyId), null);
+        String persistedPolicyReference = readSetting(keyPolicyReference(companyId), null);
+        String persistedUpdatedAt = readSetting(keyPolicyUpdatedAt(companyId), null);
+
+        boolean hasPersistedPolicy = StringUtils.hasText(persistedState)
+                || StringUtils.hasText(persistedReason)
+                || StringUtils.hasText(persistedMaxConcurrent)
+                || StringUtils.hasText(persistedMaxPerMinute)
+                || StringUtils.hasText(persistedMaxActiveUsers)
+                || StringUtils.hasText(persistedPolicyReference)
+                || StringUtils.hasText(persistedUpdatedAt);
+        if (!hasPersistedPolicy) {
+            return null;
+        }
+
+        TenantRuntimeState state = normalizeState(persistedState);
+        String reason = StringUtils.hasText(persistedReason)
+                ? persistedReason.trim()
+                : DEFAULT_REASON;
+        int maxConcurrentRequests = parsePositiveInt(persistedMaxConcurrent, defaultMaxConcurrentRequests);
+        int maxRequestsPerMinute = parsePositiveInt(persistedMaxPerMinute, defaultMaxRequestsPerMinute);
+        int maxActiveUsers = parsePositiveInt(persistedMaxActiveUsers, defaultMaxActiveUsers);
+        String auditChainId = StringUtils.hasText(persistedPolicyReference)
+                ? persistedPolicyReference.trim()
+                : DEFAULT_POLICY_REFERENCE;
+        Instant updatedAt = parseInstantOrNow(persistedUpdatedAt);
+        return new TenantRuntimePolicy(
+                state,
+                reason,
+                maxConcurrentRequests,
+                maxRequestsPerMinute,
+                maxActiveUsers,
+                auditChainId,
+                updatedAt);
+    }
+
+    private TenantRuntimePolicy defaultPolicy() {
+        return new TenantRuntimePolicy(
                 TenantRuntimeState.ACTIVE,
                 DEFAULT_REASON,
                 defaultMaxConcurrentRequests,
                 defaultMaxRequestsPerMinute,
                 defaultMaxActiveUsers,
                 UUID.randomUUID().toString(),
-                CompanyTime.now()));
+                CompanyTime.now());
+    }
+
+    private TenantRuntimeState normalizeState(String rawState) {
+        if (!StringUtils.hasText(rawState)) {
+            return TenantRuntimeState.ACTIVE;
+        }
+        String normalized = rawState.trim().toUpperCase(Locale.ROOT);
+        return switch (normalized) {
+            case "ACTIVE" -> TenantRuntimeState.ACTIVE;
+            case "HOLD" -> TenantRuntimeState.HOLD;
+            case "BLOCKED" -> TenantRuntimeState.BLOCKED;
+            default -> TenantRuntimeState.BLOCKED;
+        };
+    }
+
+    private int parsePositiveInt(String rawValue, int fallback) {
+        if (!StringUtils.hasText(rawValue)) {
+            return fallback;
+        }
+        try {
+            int parsed = Integer.parseInt(rawValue.trim());
+            return parsed > 0 ? parsed : fallback;
+        } catch (NumberFormatException ignored) {
+            return fallback;
+        }
+    }
+
+    private Instant parseInstantOrNow(String rawValue) {
+        if (!StringUtils.hasText(rawValue)) {
+            return CompanyTime.now();
+        }
+        try {
+            return Instant.parse(rawValue.trim());
+        } catch (RuntimeException ignored) {
+            return CompanyTime.now();
+        }
+    }
+
+    private String readSetting(String key, String fallback) {
+        return systemSettingsRepository.findById(key)
+                .map(SystemSetting::getValue)
+                .orElse(fallback);
+    }
+
+    private String keyHoldState(Long companyId) {
+        return "tenant.runtime.hold-state." + companyId;
+    }
+
+    private String keyHoldReason(Long companyId) {
+        return "tenant.runtime.hold-reason." + companyId;
+    }
+
+    private String keyMaxActiveUsers(Long companyId) {
+        return "tenant.runtime.max-active-users." + companyId;
+    }
+
+    private String keyMaxRequestsPerMinute(Long companyId) {
+        return "tenant.runtime.max-requests-per-minute." + companyId;
+    }
+
+    private String keyMaxConcurrentRequests(Long companyId) {
+        return "tenant.runtime.max-concurrent-requests." + companyId;
+    }
+
+    private String keyPolicyReference(Long companyId) {
+        return "tenant.runtime.policy-reference." + companyId;
+    }
+
+    private String keyPolicyUpdatedAt(Long companyId) {
+        return "tenant.runtime.policy-updated-at." + companyId;
     }
 
     private TenantRuntimeCounters countersFor(String companyCode) {

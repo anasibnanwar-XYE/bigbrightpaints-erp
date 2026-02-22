@@ -17,6 +17,7 @@ import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
 import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
+import com.bigbrightpaints.erp.modules.sales.util.SalesOrderReference;
 import org.apache.commons.codec.digest.DigestUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -253,6 +254,44 @@ class AccountingFacadeTest {
         );
 
         assertThat(dto.referenceNumber()).isEqualTo(baseReference + "-0001");
+        verify(accountingService, never()).createJournalEntry(any());
+    }
+
+    @Test
+    void postSalesJournal_idempotentHitReturnsExistingEntryWithoutReposting() {
+        Long dealerId = 77L;
+        Dealer dealer = new Dealer();
+        Account receivable = new Account();
+        receivable.setCode("AR");
+        receivable.setName("Accounts Receivable");
+        ReflectionTestUtils.setField(receivable, "id", 701L);
+        dealer.setReceivableAccount(receivable);
+        when(companyEntityLookup.requireDealer(eq(company), eq(dealerId))).thenReturn(dealer);
+
+        String orderNumber = "SO-1001";
+        String canonicalReference = SalesOrderReference.invoiceReference(orderNumber);
+        JournalEntry existing = new JournalEntry();
+        ReflectionTestUtils.setField(existing, "id", 777L);
+        existing.setReferenceNumber(canonicalReference);
+        existing.setEntryDate(LocalDate.of(2026, 1, 5));
+        existing.setStatus("POSTED");
+        existing.setDealer(dealer);
+        when(journalReferenceResolver.findExistingEntry(eq(company), eq(canonicalReference)))
+                .thenReturn(Optional.of(existing));
+
+        JournalEntryDto dto = accountingFacade.postSalesJournal(
+                dealerId,
+                orderNumber,
+                null,
+                "sales replay",
+                Map.of(9001L, new BigDecimal("120.00")),
+                Map.of(9002L, new BigDecimal("21.60")),
+                new BigDecimal("141.60"),
+                null
+        );
+
+        assertThat(dto.id()).isEqualTo(777L);
+        assertThat(dto.referenceNumber()).isEqualTo(canonicalReference);
         verify(accountingService, never()).createJournalEntry(any());
     }
 

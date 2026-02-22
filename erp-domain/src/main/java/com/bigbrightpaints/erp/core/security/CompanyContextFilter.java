@@ -95,7 +95,11 @@ public class CompanyContextFilter extends OncePerRequestFilter {
                     response.sendError(HttpServletResponse.SC_FORBIDDEN, "Access denied to company: " + companyCode);
                     return;
                 }
-                if (companyService.resolveLifecycleStateByCode(companyCode) != CompanyLifecycleState.ACTIVE) {
+                CompanyLifecycleState lifecycleState = companyService.resolveLifecycleStateByCode(companyCode);
+                boolean lifecycleControlBypass = lifecycleState != CompanyLifecycleState.ACTIVE
+                        && isLifecycleControlRequest(request)
+                        && hasSuperAdminAuthority();
+                if (lifecycleState != CompanyLifecycleState.ACTIVE && !lifecycleControlBypass) {
                     response.sendError(HttpServletResponse.SC_FORBIDDEN,
                             "Tenant lifecycle state does not allow access");
                     return;
@@ -154,6 +158,30 @@ public class CompanyContextFilter extends OncePerRequestFilter {
             return null;
         }
         return auth.getName().trim();
+    }
+
+    private boolean hasSuperAdminAuthority() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()) {
+            return false;
+        }
+        return auth.getAuthorities().stream()
+                .anyMatch(granted -> "ROLE_SUPER_ADMIN".equalsIgnoreCase(granted.getAuthority()));
+    }
+
+    private boolean isLifecycleControlRequest(HttpServletRequest request) {
+        if (request == null || !StringUtils.hasText(request.getRequestURI())) {
+            return false;
+        }
+        String path = request.getRequestURI().trim();
+        if (!path.startsWith("/api/v1/companies/")) {
+            return false;
+        }
+        boolean lifecycleMutation = "POST".equalsIgnoreCase(request.getMethod())
+                && path.endsWith("/lifecycle-state");
+        boolean tenantMetricsRead = "GET".equalsIgnoreCase(request.getMethod())
+                && path.endsWith("/tenant-metrics");
+        return lifecycleMutation || tenantMetricsRead;
     }
 
     @Override

@@ -14,6 +14,8 @@ import static org.mockito.Mockito.clearInvocations;
 
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
+import com.bigbrightpaints.erp.core.config.SystemSetting;
+import com.bigbrightpaints.erp.core.config.SystemSettingsRepository;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
@@ -46,10 +48,14 @@ class TenantRuntimeEnforcementServiceTest {
     private UserAccountRepository userAccountRepository;
 
     @Mock
+    private SystemSettingsRepository systemSettingsRepository;
+
+    @Mock
     private AuditService auditService;
 
     private final Map<String, Company> companiesByCode = new HashMap<>();
     private final Map<Long, Long> activeUsersByCompanyId = new HashMap<>();
+    private final Map<String, String> persistedSettingsByKey = new HashMap<>();
 
     private TenantRuntimeEnforcementService service;
 
@@ -65,6 +71,7 @@ class TenantRuntimeEnforcementServiceTest {
 
         service = new TenantRuntimeEnforcementService(
                 companyRepository,
+                systemSettingsRepository,
                 userAccountRepository,
                 auditService,
                 3,
@@ -82,6 +89,15 @@ class TenantRuntimeEnforcementServiceTest {
                 .thenAnswer(invocation -> {
                     Long companyId = invocation.getArgument(0, Long.class);
                     return activeUsersByCompanyId.getOrDefault(companyId, 0L);
+                });
+        lenient().when(systemSettingsRepository.findById(any()))
+                .thenAnswer(invocation -> {
+                    String key = invocation.getArgument(0, String.class);
+                    String value = persistedSettingsByKey.get(key);
+                    if (value == null) {
+                        return Optional.empty();
+                    }
+                    return Optional.of(new SystemSetting(key, value));
                 });
     }
 
@@ -197,6 +213,20 @@ class TenantRuntimeEnforcementServiceTest {
     }
 
     @Test
+    void beginRequest_appliesPersistedPolicyFromSystemSettings() {
+        persistedSettingsByKey.put(keyHoldState(1L), "BLOCKED");
+        persistedSettingsByKey.put(keyHoldReason(1L), "policy_block");
+        persistedSettingsByKey.put(keyPolicyReference(1L), "policy-ref-01");
+
+        TenantRuntimeEnforcementService.TenantRequestAdmission admission =
+                service.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com");
+
+        assertThat(admission.isAdmitted()).isFalse();
+        assertThat(admission.statusCode()).isEqualTo(HttpStatus.FORBIDDEN.value());
+        assertThat(admission.message()).isEqualTo("Tenant is currently blocked");
+    }
+
+    @Test
     void beginRequest_rejectsWhenConcurrencyQuotaExceeded_andCompleteTracksErrors() {
         service.updateQuotas("ACME", 1, 10, 10, "concurrency_test", "ops@bbp.com");
 
@@ -282,5 +312,17 @@ class TenantRuntimeEnforcementServiceTest {
         company.setTimezone("UTC");
         company.setDefaultGstRate(BigDecimal.TEN);
         return company;
+    }
+
+    private String keyHoldState(Long companyId) {
+        return "tenant.runtime.hold-state." + companyId;
+    }
+
+    private String keyHoldReason(Long companyId) {
+        return "tenant.runtime.hold-reason." + companyId;
+    }
+
+    private String keyPolicyReference(Long companyId) {
+        return "tenant.runtime.policy-reference." + companyId;
     }
 }

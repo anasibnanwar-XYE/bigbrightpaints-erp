@@ -30,6 +30,7 @@ import org.springframework.mock.web.MockFilterChain;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 @ExtendWith(MockitoExtension.class)
@@ -144,6 +145,36 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
     }
 
     @Test
+    void allowsSuperAdminLifecycleControlWhenTenantIsNotActive() throws Exception {
+        authenticateSuperAdminForCompany("super-admin@bbp.com", "ACME");
+        when(companyService.resolveLifecycleStateByCode("ACME")).thenReturn(CompanyLifecycleState.HOLD);
+        TenantRuntimeEnforcementService.TenantRequestAdmission admittedAdmission =
+                admission(true, "ACME", 200, null);
+        when(tenantRuntimeEnforcementService.beginRequest(
+                "ACME",
+                "/api/v1/companies/1/lifecycle-state",
+                "POST",
+                "super-admin@bbp.com"))
+                .thenReturn(admittedAdmission);
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/companies/1/lifecycle-state");
+        request.setAttribute("jwtClaims", claims("ACME", null));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+
+        filter.doFilter(request, response, chain);
+
+        assertThat(chain.getRequest()).isNotNull();
+        verify(companyService).resolveLifecycleStateByCode("ACME");
+        verify(tenantRuntimeEnforcementService).beginRequest(
+                "ACME",
+                "/api/v1/companies/1/lifecycle-state",
+                "POST",
+                "super-admin@bbp.com");
+        verify(tenantRuntimeEnforcementService).completeRequest(eq(admittedAdmission), eq(200));
+    }
+
+    @Test
     void runtimeAdmissionDenied_writesEscapedJsonPayload_andCompletes() throws Exception {
         authenticateForCompany("actor@bbp.com", "ACME");
         when(companyService.resolveLifecycleStateByCode("ACME")).thenReturn(CompanyLifecycleState.ACTIVE);
@@ -224,6 +255,21 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
         UserPrincipal principal = new UserPrincipal(user);
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(principal, "n/a", principal.getAuthorities()));
+    }
+
+    private void authenticateSuperAdminForCompany(String email, String companyCode) {
+        Company company = new Company();
+        company.setCode(companyCode);
+
+        UserAccount user = new UserAccount(email, "hash", "Super Admin");
+        user.addCompany(company);
+
+        UserPrincipal principal = new UserPrincipal(user);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(
+                        principal,
+                        "n/a",
+                        java.util.List.of(new SimpleGrantedAuthority("ROLE_SUPER_ADMIN"))));
     }
 
     @SuppressWarnings("unchecked")
