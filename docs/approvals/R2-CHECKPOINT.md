@@ -195,3 +195,21 @@ Update this file in every high-risk change set.
 - Artifacts/links:
   - `erp-domain/src/main/java/com/bigbrightpaints/erp/orchestrator/service/OrchestratorIdempotencyService.java`
   - `erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimeOrchestratorExecutableCoverageTest.java`
+
+## STAGE-101 Addendum (2026-02-23, hr-domain)
+- Branch / PR: `tickets/tkt-erp-stage-101/hr-domain` / PR #49 (https://github.com/anasibnanwar-XYE/bigbrightpaints-erp/pull/49)
+- High-risk paths:
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/service/PayrollService.java`
+- Why this is R2: payroll posting metadata completeness and period-boundary controls are fail-closed controls that protect accounting liability-clearing integrity.
+- Approval mode: orchestrator
+- Human escalation required: no
+- Rollback owner: release governance + payroll/accounting owners
+- Verification evidence:
+  - Commands run:
+    - `cd erp-domain && mvn -B -ntp -Dtest='*Payroll*' test`
+    - `bash scripts/verify_local.sh`
+    - `bash ci/check-enterprise-policy.sh`
+  - Result summary: targeted payroll suite passed and `verify_local` passed in the branch validation lane; enterprise-policy check updated to include this checkpoint evidence for high-risk `modules/hr` changes.
+  - Artifacts/links:
+    - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/hr/service/PayrollService.java`
+    - `erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/payroll/TS_PayrollLiabilityClearingPolicyTest.java`
