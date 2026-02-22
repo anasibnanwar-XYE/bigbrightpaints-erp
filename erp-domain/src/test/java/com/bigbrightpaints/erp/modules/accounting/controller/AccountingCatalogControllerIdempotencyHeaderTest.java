@@ -13,6 +13,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class AccountingCatalogControllerIdempotencyHeaderTest {
@@ -32,14 +33,26 @@ class AccountingCatalogControllerIdempotencyHeaderTest {
     }
 
     @Test
-    void importCatalog_prefersPrimaryHeaderWhenPrimaryLegacyMismatch() {
+    void importCatalog_acceptsMatchingPrimaryAndLegacyHeaders() {
         ProductionCatalogService productionCatalogService = mock(ProductionCatalogService.class);
         when(productionCatalogService.importCatalog(any(), any())).thenReturn(null);
         AccountingCatalogController controller = new AccountingCatalogController(productionCatalogService);
 
-        controller.importCatalog(csvFile(), "hdr-001", "legacy-001");
+        controller.importCatalog(csvFile(), "hdr-001", "hdr-001");
 
         verify(productionCatalogService).importCatalog(any(), eq("hdr-001"));
+    }
+
+    @Test
+    void importCatalog_rejectsWhenPrimaryLegacyHeadersMismatch() {
+        ProductionCatalogService productionCatalogService = mock(ProductionCatalogService.class);
+        AccountingCatalogController controller = new AccountingCatalogController(productionCatalogService);
+
+        assertThatThrownBy(() -> controller.importCatalog(csvFile(), "hdr-001", "legacy-001"))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Idempotency key mismatch between Idempotency-Key and X-Idempotency-Key headers");
+
+        verifyNoInteractions(productionCatalogService);
     }
 
     private MultipartFile csvFile() {

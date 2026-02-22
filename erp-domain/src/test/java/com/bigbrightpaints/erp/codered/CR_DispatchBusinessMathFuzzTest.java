@@ -27,9 +27,12 @@ import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderRepository;
+import com.bigbrightpaints.erp.modules.sales.dto.CreditLimitOverrideDecisionRequest;
+import com.bigbrightpaints.erp.modules.sales.dto.CreditLimitOverrideRequestCreateRequest;
 import com.bigbrightpaints.erp.modules.sales.dto.DispatchConfirmRequest;
 import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderItemRequest;
 import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderRequest;
+import com.bigbrightpaints.erp.modules.sales.service.CreditLimitOverrideService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesService;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 import org.junit.jupiter.api.AfterEach;
@@ -61,6 +64,7 @@ class CR_DispatchBusinessMathFuzzTest extends AbstractIntegrationTest {
     @Autowired private FinishedGoodsService finishedGoodsService;
     @Autowired private FinishedGoodRepository finishedGoodRepository;
     @Autowired private SalesService salesService;
+    @Autowired private CreditLimitOverrideService creditLimitOverrideService;
     @Autowired private SalesOrderRepository salesOrderRepository;
     @Autowired private PackagingSlipRepository packagingSlipRepository;
     @Autowired private InvoiceRepository invoiceRepository;
@@ -137,6 +141,9 @@ class CR_DispatchBusinessMathFuzzTest extends AbstractIntegrationTest {
             BigDecimal discount = random.nextBoolean()
                     ? MoneyUtils.roundCurrency(BigDecimal.valueOf(random.nextInt(0, gross.movePointRight(2).intValue() + 1)).movePointLeft(2))
                     : null;
+            Long overrideRequestId = discount != null
+                    ? createApprovedDispatchOverride(dealer, slip, order, seed, i)
+                    : null;
 
             var response = salesService.confirmDispatch(new DispatchConfirmRequest(
                     slip.getId(),
@@ -157,7 +164,7 @@ class CR_DispatchBusinessMathFuzzTest extends AbstractIntegrationTest {
                     "codered",
                     false,
                     discount != null ? "fuzz-discount" : null,
-                    null
+                    overrideRequestId
             ));
             CompanyContextHolder.clear();
 
@@ -316,6 +323,33 @@ class CR_DispatchBusinessMathFuzzTest extends AbstractIntegrationTest {
                     p.setActive(true);
                     return productionProductRepository.save(p);
                 });
+    }
+
+    private Long createApprovedDispatchOverride(Dealer dealer,
+                                                PackagingSlip slip,
+                                                SalesOrder order,
+                                                long seed,
+                                                int iteration) {
+        Instant createdExpiry = Instant.parse("2099-01-01T00:00:00Z");
+        Instant approvedExpiry = Instant.parse("2099-01-02T00:00:00Z");
+        var created = creditLimitOverrideService.createRequest(
+                new CreditLimitOverrideRequestCreateRequest(
+                        dealer.getId(),
+                        slip.getId(),
+                        order.getId(),
+                        order.getTotalAmount(),
+                        "CODE-RED fuzz dispatch exception approval seed=" + seed + " i=" + iteration,
+                        createdExpiry
+                ),
+                "codered-maker");
+        var approved = creditLimitOverrideService.approveRequest(
+                created.id(),
+                new CreditLimitOverrideDecisionRequest(
+                        "CODE-RED fuzz dispatch exception approved seed=" + seed + " i=" + iteration,
+                        approvedExpiry
+                ),
+                "codered-checker");
+        return approved.id();
     }
 
     private static String shortId() {
