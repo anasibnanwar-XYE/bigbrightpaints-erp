@@ -31,6 +31,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 @Tag("critical")
@@ -150,7 +151,7 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
 
         TenantRuntimeEnforcementService.TenantRequestAdmission deniedAdmission =
                 admission(false, "ACME", 429, "quota \"hit\" \\\\ retry");
-        when(tenantRuntimeEnforcementService.beginRequest("ACME", "/api/v1/private", "POST", "actor@bbp.com"))
+        when(tenantRuntimeEnforcementService.beginRequest("ACME", "/api/v1/private", "POST", "actor@bbp.com", false))
                 .thenReturn(deniedAdmission);
 
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/private");
@@ -174,7 +175,7 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
 
         TenantRuntimeEnforcementService.TenantRequestAdmission admittedAdmission =
                 admission(true, "ACME", 200, null);
-        when(tenantRuntimeEnforcementService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com"))
+        when(tenantRuntimeEnforcementService.beginRequest("ACME", "/api/v1/private", "GET", "actor@bbp.com", false))
                 .thenReturn(admittedAdmission);
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/private");
@@ -195,6 +196,72 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
     }
 
     @Test
+    void lifecycleControlBypass_allowsSuperAdminOutsideTenantMembership_forInactiveTenant() throws Exception {
+        authenticateForCompanyWithAuthorities("super-admin@bbp.com", "ROOT", "ROLE_SUPER_ADMIN");
+        when(companyService.resolveLifecycleStateByCode("ACME")).thenReturn(CompanyLifecycleState.HOLD);
+        Company acme = new Company();
+        acme.setCode("ACME");
+        when(companyService.findByCode("ACME")).thenReturn(acme);
+
+        TenantRuntimeEnforcementService.TenantRequestAdmission admittedAdmission =
+                admission(true, "ACME", 200, null);
+        when(tenantRuntimeEnforcementService.beginRequest(
+                "ACME",
+                "/api/v1/companies/42/tenant-runtime/policy",
+                "PUT",
+                "super-admin@bbp.com",
+                true))
+                .thenReturn(admittedAdmission);
+
+        MockHttpServletRequest request = new MockHttpServletRequest("PUT", "/api/v1/companies/42/tenant-runtime/policy");
+        request.setAttribute("jwtClaims", claims("ACME", null));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        AtomicBoolean chainCalled = new AtomicBoolean(false);
+
+        filter.doFilter(request, response, (req, res) -> chainCalled.set(true));
+
+        assertThat(response.getStatus()).isEqualTo(200);
+        assertThat(chainCalled.get()).isTrue();
+        verify(tenantRuntimeEnforcementService).beginRequest(
+                "ACME",
+                "/api/v1/companies/42/tenant-runtime/policy",
+                "PUT",
+                "super-admin@bbp.com",
+                true);
+    }
+
+    @Test
+    void lifecycleControlBypass_deniesWithoutSuperAdminAuthority() throws Exception {
+        authenticateForCompanyWithAuthorities("admin@bbp.com", "ROOT", "ROLE_ADMIN");
+        when(companyService.resolveLifecycleStateByCode("ACME")).thenReturn(CompanyLifecycleState.HOLD);
+
+        MockHttpServletRequest request = new MockHttpServletRequest("PUT", "/api/v1/companies/42/tenant-runtime/policy");
+        request.setAttribute("jwtClaims", claims("ACME", null));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        assertThat(response.getStatus()).isEqualTo(403);
+        verify(tenantRuntimeEnforcementService).completeRequest(any(), eq(403));
+    }
+
+    @Test
+    void lifecycleControlBypass_deniesWhenCompanyIsMissing() throws Exception {
+        authenticateForCompanyWithAuthorities("super-admin@bbp.com", "ROOT", "ROLE_SUPER_ADMIN");
+        when(companyService.resolveLifecycleStateByCode("ACME")).thenReturn(CompanyLifecycleState.HOLD);
+        when(companyService.findByCode("ACME")).thenThrow(new IllegalArgumentException("missing"));
+
+        MockHttpServletRequest request = new MockHttpServletRequest("PUT", "/api/v1/companies/42/tenant-runtime/policy");
+        request.setAttribute("jwtClaims", claims("ACME", null));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        assertThat(response.getStatus()).isEqualTo(403);
+        verify(tenantRuntimeEnforcementService).completeRequest(any(), eq(403));
+    }
+
+    @Test
     void actuatorPaths_bypassFilterAndDoNotInvokeTenantEnforcement() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/actuator/health");
         request.setServletPath("/actuator/health");
@@ -207,6 +274,137 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
         verifyNoInteractions(tenantRuntimeEnforcementService, companyService);
     }
 
+    @Test
+    void privatePolicyAuthorityAndLifecycleHelpers_cover_guard_branches() {
+        SecurityContextHolder.clearContext();
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(filter, "hasSuperAdminAuthority")).isFalse();
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(
+                filter,
+                "hasTenantRuntimePolicyControlAuthority",
+                "/api/v1/admin/tenant-runtime/policy",
+                "PUT")).isFalse();
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("anonymous", "n/a"));
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(filter, "hasSuperAdminAuthority")).isFalse();
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(
+                filter,
+                "hasTenantRuntimePolicyControlAuthority",
+                "/api/v1/admin/tenant-runtime/policy",
+                "PUT")).isFalse();
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(
+                filter,
+                "hasAuthority",
+                SecurityContextHolder.getContext().getAuthentication(),
+                "ROLE_SUPER_ADMIN")).isFalse();
+
+        authenticateForCompanyWithAuthorities("super-admin@bbp.com", "ROOT", "ROLE_SUPER_ADMIN");
+        Company acme = new Company();
+        acme.setCode("ACME");
+        when(companyService.findByCode("ACME")).thenReturn(acme);
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(filter, "companyExists", "ACME")).isTrue();
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(filter, "companyExists", " ")).isFalse();
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(
+                filter,
+                "hasTenantRuntimePolicyControlAuthority",
+                "/api/v1/admin/tenant-runtime/policy/",
+                "PUT")).isTrue();
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(
+                filter,
+                "hasTenantRuntimePolicyControlAuthority",
+                "/api/v1/companies/42/tenant-runtime/policy",
+                "PUT")).isTrue();
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(
+                filter,
+                "hasTenantRuntimePolicyControlAuthority",
+                "/api/v1/companies/42/x/tenant-runtime/policy",
+                "PUT")).isFalse();
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(
+                filter,
+                "hasTenantRuntimePolicyControlAuthority",
+                "/api/v1/companies//tenant-runtime/policy",
+                "PUT")).isFalse();
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(
+                filter,
+                "hasTenantRuntimePolicyControlAuthority",
+                "/",
+                "PUT")).isFalse();
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(
+                filter,
+                "hasTenantRuntimePolicyControlAuthority",
+                "/api/v1/admin/tenant-runtime/policy",
+                "GET")).isFalse();
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(
+                filter,
+                "hasTenantRuntimePolicyControlAuthority",
+                "   ",
+                "PUT")).isFalse();
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(
+                filter,
+                "hasAuthority",
+                SecurityContextHolder.getContext().getAuthentication(),
+                " ")).isFalse();
+
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(filter, "isLifecycleControlRequest", null, "PUT"))
+                .isFalse();
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(filter, "isLifecycleControlRequest", "/api/v1/private", "PUT"))
+                .isFalse();
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(
+                filter,
+                "isLifecycleControlRequest",
+                "/api/v1/companies/7/lifecycle-state",
+                "POST")).isTrue();
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(
+                filter,
+                "isLifecycleControlRequest",
+                "/api/v1/companies/7/tenant-metrics",
+                "GET")).isTrue();
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(
+                filter,
+                "isLifecycleControlRequest",
+                "/api/v1/companies/7/tenant-runtime/policy",
+                "PUT")).isTrue();
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(
+                filter,
+                "isLifecycleControlRequest",
+                "/api/v1/companies/7/tenant-runtime/policy",
+                "PATCH")).isFalse();
+    }
+
+    @Test
+    void resolveApplicationPathAndShouldNotFilter_cover_edge_cases() {
+        assertThat((String) ReflectionTestUtils.invokeMethod(filter, "resolveApplicationPath", (Object) null)).isNull();
+
+        MockHttpServletRequest servletAndInfo = new MockHttpServletRequest();
+        servletAndInfo.setServletPath("/api/v1/companies");
+        servletAndInfo.setPathInfo("42/tenant-runtime/policy");
+        assertThat((String) ReflectionTestUtils.invokeMethod(filter, "resolveApplicationPath", servletAndInfo))
+                .isEqualTo("/api/v1/companies/42/tenant-runtime/policy");
+
+        MockHttpServletRequest blankUri = new MockHttpServletRequest();
+        blankUri.setRequestURI("   ");
+        assertThat((String) ReflectionTestUtils.invokeMethod(filter, "resolveApplicationPath", blankUri)).isNull();
+
+        MockHttpServletRequest rootContext = new MockHttpServletRequest();
+        rootContext.setRequestURI("/bbp");
+        rootContext.setContextPath("/bbp");
+        assertThat((String) ReflectionTestUtils.invokeMethod(filter, "resolveApplicationPath", rootContext))
+                .isEqualTo("/");
+
+        MockHttpServletRequest contextPrefix = new MockHttpServletRequest();
+        contextPrefix.setRequestURI("/bbp/api/v1/private");
+        contextPrefix.setContextPath("/bbp");
+        assertThat((String) ReflectionTestUtils.invokeMethod(filter, "resolveApplicationPath", contextPrefix))
+                .isEqualTo("/api/v1/private");
+        MockHttpServletRequest contextNoPrefix = new MockHttpServletRequest();
+        contextNoPrefix.setRequestURI("/api/v1/private");
+        contextNoPrefix.setContextPath("/bbp");
+        assertThat((String) ReflectionTestUtils.invokeMethod(filter, "resolveApplicationPath", contextNoPrefix))
+                .isEqualTo("/api/v1/private");
+
+        MockHttpServletRequest shouldNotFilterBlank = new MockHttpServletRequest();
+        shouldNotFilterBlank.setRequestURI("   ");
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(filter, "shouldNotFilter", shouldNotFilterBlank)).isFalse();
+    }
+
     private Claims claims(String companyCode, String legacyCompanyId) {
         Claims claims = org.mockito.Mockito.mock(Claims.class);
         when(claims.get("companyCode", String.class)).thenReturn(companyCode);
@@ -215,6 +413,10 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
     }
 
     private void authenticateForCompany(String email, String companyCode) {
+        authenticateForCompanyWithAuthorities(email, companyCode);
+    }
+
+    private void authenticateForCompanyWithAuthorities(String email, String companyCode, String... authorities) {
         Company company = new Company();
         company.setCode(companyCode);
 
@@ -222,8 +424,16 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
         user.addCompany(company);
 
         UserPrincipal principal = new UserPrincipal(user);
+        java.util.Collection<? extends org.springframework.security.core.GrantedAuthority> grantedAuthorities;
+        if (authorities == null || authorities.length == 0) {
+            grantedAuthorities = principal.getAuthorities();
+        } else {
+            grantedAuthorities = java.util.Arrays.stream(authorities)
+                    .map(authority -> (org.springframework.security.core.GrantedAuthority) () -> authority)
+                    .toList();
+        }
         SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(principal, "n/a", principal.getAuthorities()));
+                new UsernamePasswordAuthenticationToken(principal, "n/a", grantedAuthorities));
     }
 
     @SuppressWarnings("unchecked")
