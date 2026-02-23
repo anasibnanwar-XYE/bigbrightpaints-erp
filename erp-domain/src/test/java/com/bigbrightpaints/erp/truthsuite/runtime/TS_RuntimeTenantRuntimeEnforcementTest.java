@@ -215,6 +215,48 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
     }
 
     @Test
+    void rejectsSuperAdminLifecycleControlWhenTenantCodeDoesNotResolve() throws Exception {
+        authenticateSuperAdminWithoutCompany("super-admin@bbp.com");
+        when(companyService.resolveLifecycleStateByCode("MISSING")).thenReturn(CompanyLifecycleState.BLOCKED);
+        when(companyService.findByCode("MISSING"))
+                .thenThrow(new IllegalArgumentException("Company not found: MISSING"));
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/companies/1/lifecycle-state");
+        request.setAttribute("jwtClaims", claims("MISSING", null));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        assertThat(response.getStatus()).isEqualTo(403);
+        verify(companyService).resolveLifecycleStateByCode("MISSING");
+        verify(companyService).findByCode("MISSING");
+        verify(tenantRuntimeEnforcementService, org.mockito.Mockito.never()).beginRequest(
+                any(), any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean());
+        verify(tenantRuntimeEnforcementService).completeRequest(any(), eq(403));
+    }
+
+    @Test
+    void rejectsSuperAdminTenantMetricsReadWhenTenantCodeDoesNotResolve() throws Exception {
+        authenticateSuperAdminWithoutCompany("super-admin@bbp.com");
+        when(companyService.resolveLifecycleStateByCode("MISSING")).thenReturn(CompanyLifecycleState.BLOCKED);
+        when(companyService.findByCode("MISSING"))
+                .thenThrow(new IllegalArgumentException("Company not found: MISSING"));
+
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/companies/1/tenant-metrics");
+        request.setAttribute("jwtClaims", claims("MISSING", null));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        assertThat(response.getStatus()).isEqualTo(403);
+        verify(companyService).resolveLifecycleStateByCode("MISSING");
+        verify(companyService).findByCode("MISSING");
+        verify(tenantRuntimeEnforcementService, org.mockito.Mockito.never()).beginRequest(
+                any(), any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean());
+        verify(tenantRuntimeEnforcementService).completeRequest(any(), eq(403));
+    }
+
+    @Test
     void allowsSuperAdminLifecycleControlWhenTenantIsNotActive_withContextPath() throws Exception {
         authenticateSuperAdminForCompany("super-admin@bbp.com", "ACME");
         when(companyService.resolveLifecycleStateByCode("ACME")).thenReturn(CompanyLifecycleState.HOLD);

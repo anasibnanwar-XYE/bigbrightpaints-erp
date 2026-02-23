@@ -26,6 +26,8 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
     private static final String OTHER_COMPANY = "SECADMIN2";
     private static final String ADMIN_EMAIL = "admin-sec@bbp.com";
     private static final String ADMIN_PASSWORD = "Admin123!";
+    private static final String SUPER_ADMIN_EMAIL = "super-admin-sec@bbp.com";
+    private static final String SUPER_ADMIN_PASSWORD = "SuperAdmin123!";
     private static final String DEALER_EMAIL = "dealer-sec@bbp.com";
     private static final String DEALER_PASSWORD = "Dealer123!";
 
@@ -41,6 +43,8 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
     void setUp() {
         dataSeeder.ensureUser(ADMIN_EMAIL, ADMIN_PASSWORD, "Security Admin", COMPANY,
                 List.of("ROLE_ADMIN"));
+        dataSeeder.ensureUser(SUPER_ADMIN_EMAIL, SUPER_ADMIN_PASSWORD, "Security Super Admin", COMPANY,
+                List.of("ROLE_SUPER_ADMIN", "ROLE_ADMIN"));
         dataSeeder.ensureUser(DEALER_EMAIL, DEALER_PASSWORD, "Security Dealer", COMPANY,
                 List.of("ROLE_DEALER"));
         otherCompanyUser = dataSeeder.ensureUser("other-admin@bbp.com", "Other123!", "Other Admin", OTHER_COMPANY,
@@ -122,7 +126,7 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
 
     @Test
     void admin_user_create_is_blocked_when_active_user_quota_reached() {
-        String token = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
+        String token = login(SUPER_ADMIN_EMAIL, SUPER_ADMIN_PASSWORD, COMPANY);
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token);
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -158,6 +162,40 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
         Map<?, ?> errorData = (Map<?, ?>) createResponse.getBody().get("data");
         assertThat(errorData).isNotNull();
         assertThat(errorData.get("code")).isEqualTo("BUS_006");
+
+        ResponseEntity<Map> resetPolicyResponse = rest.exchange(
+                "/api/v1/admin/tenant-runtime/policy",
+                HttpMethod.PUT,
+                new HttpEntity<>(Map.of(
+                        "maxActiveUsers", 250,
+                        "maxRequestsPerMinute", 1200,
+                        "maxConcurrentRequests", 40,
+                        "holdState", "ACTIVE",
+                        "changeReason", "Quota test cleanup"
+                ), headers),
+                Map.class);
+        assertThat(resetPolicyResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    @Test
+    void tenant_runtime_policy_update_requires_super_admin_role() {
+        String token = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("X-Company-Code", COMPANY);
+
+        ResponseEntity<Map> response = rest.exchange(
+                "/api/v1/admin/tenant-runtime/policy",
+                HttpMethod.PUT,
+                new HttpEntity<>(Map.of(
+                        "holdState", "BLOCKED",
+                        "holdReason", "Security hold",
+                        "changeReason", "Role guard regression check"
+                ), headers),
+                Map.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
     }
 
     private String login(String email, String password, String companyCode) {

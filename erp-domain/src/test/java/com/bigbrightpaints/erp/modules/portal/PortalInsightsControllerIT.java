@@ -52,6 +52,8 @@ public class PortalInsightsControllerIT extends AbstractIntegrationTest {
     private static final String COMPANY_CODE = "ACME";
     private static final String ADMIN_EMAIL = "admin@bbp.com";
     private static final String ADMIN_PASSWORD = "admin123";
+    private static final String SUPER_ADMIN_EMAIL = "super-admin@bbp.com";
+    private static final String SUPER_ADMIN_PASSWORD = "superadmin123";
 
     @Autowired
     private TestRestTemplate rest;
@@ -93,6 +95,12 @@ public class PortalInsightsControllerIT extends AbstractIntegrationTest {
 
         company = dataSeeder.ensureCompany(COMPANY_CODE, "Acme Corp");
         dataSeeder.ensureUser(ADMIN_EMAIL, ADMIN_PASSWORD, "Admin", COMPANY_CODE, List.of("ROLE_ADMIN"));
+        dataSeeder.ensureUser(
+                SUPER_ADMIN_EMAIL,
+                SUPER_ADMIN_PASSWORD,
+                "Super Admin",
+                COMPANY_CODE,
+                List.of("ROLE_SUPER_ADMIN", "ROLE_ADMIN"));
 
         SalesOrder order = new SalesOrder();
         order.setCompany(company);
@@ -272,7 +280,7 @@ public class PortalInsightsControllerIT extends AbstractIntegrationTest {
                         "holdState", "BLOCKED",
                         "holdReason", "Incident containment",
                         "changeReason", "Security drill"
-                ), headers),
+                ), superAdminHeaders()),
                 Map.class
         );
         assertThat(policyResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -290,7 +298,7 @@ public class PortalInsightsControllerIT extends AbstractIntegrationTest {
                 new HttpEntity<>(headers),
                 Map.class
         );
-        assertThat(dashboard.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(dashboard.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
         assertThat(dashboard.getBody()).isNotNull();
         assertThat(dashboard.getBody().get("success")).isEqualTo(Boolean.FALSE);
         Map<?, ?> errorData = (Map<?, ?>) dashboard.getBody().get("data");
@@ -346,9 +354,17 @@ public class PortalInsightsControllerIT extends AbstractIntegrationTest {
     }
 
     private HttpHeaders authenticatedHeaders() {
+        return authenticatedHeaders(ADMIN_EMAIL, ADMIN_PASSWORD);
+    }
+
+    private HttpHeaders superAdminHeaders() {
+        return authenticatedHeaders(SUPER_ADMIN_EMAIL, SUPER_ADMIN_PASSWORD);
+    }
+
+    private HttpHeaders authenticatedHeaders(String email, String password) {
         Map<String, Object> loginPayload = Map.of(
-                "email", ADMIN_EMAIL,
-                "password", ADMIN_PASSWORD,
+                "email", email,
+                "password", password,
                 "companyCode", COMPANY_CODE
         );
         ResponseEntity<Map> loginResponse = rest.postForEntity("/api/v1/auth/login", loginPayload, Map.class);

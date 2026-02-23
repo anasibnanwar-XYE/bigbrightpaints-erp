@@ -92,9 +92,16 @@ public class CompanyContextFilter extends OncePerRequestFilter {
             if (companyCode != null) {
                 String runtimePath = resolveApplicationPath(request);
                 CompanyLifecycleState lifecycleState = companyService.resolveLifecycleStateByCode(companyCode);
-                boolean lifecycleControlBypass = lifecycleState != CompanyLifecycleState.ACTIVE
+                boolean lifecycleControlBypass = false;
+                if (lifecycleState != CompanyLifecycleState.ACTIVE
                         && isLifecycleControlRequest(runtimePath, request.getMethod())
-                        && hasSuperAdminAuthority();
+                        && hasSuperAdminAuthority()) {
+                    if (!companyExists(companyCode)) {
+                        response.sendError(HttpServletResponse.SC_FORBIDDEN, "Access denied to company: " + companyCode);
+                        return;
+                    }
+                    lifecycleControlBypass = true;
+                }
                 // Recovery endpoints for non-active tenants are intended for super-admin operators
                 // even when they are not explicitly attached to the tenant membership list.
                 if (!lifecycleControlBypass && !validateCompanyAccess(companyCode)) {
@@ -160,6 +167,18 @@ public class CompanyContextFilter extends OncePerRequestFilter {
         }
         return auth.getAuthorities().stream()
                 .anyMatch(granted -> "ROLE_SUPER_ADMIN".equalsIgnoreCase(granted.getAuthority()));
+    }
+
+    private boolean companyExists(String companyCode) {
+        if (!StringUtils.hasText(companyCode)) {
+            return false;
+        }
+        try {
+            companyService.findByCode(companyCode.trim());
+            return true;
+        } catch (IllegalArgumentException ignored) {
+            return false;
+        }
     }
 
     private boolean hasTenantRuntimePolicyControlAuthority(String requestPath, String requestMethod) {
