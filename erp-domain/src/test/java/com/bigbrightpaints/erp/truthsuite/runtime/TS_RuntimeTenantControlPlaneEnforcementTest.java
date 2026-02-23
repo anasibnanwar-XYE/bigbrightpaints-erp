@@ -467,6 +467,64 @@ class TS_RuntimeTenantControlPlaneEnforcementTest {
     }
 
     @Test
+    void coreRuntimeAdmission_snapshotFallsBackToLegacyTokenMetrics_whenCompanyScopedMetricsMissing() {
+        com.bigbrightpaints.erp.core.security.TenantRuntimeEnforcementService coreRuntimeService = coreRuntimeService();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> runtimeMetrics =
+                (Map<String, Object>) ReflectionTestUtils.getField(coreRuntimeService, "runtimeMetrics");
+        Object legacyMetrics = ReflectionTestUtils.invokeMethod(coreRuntimeService, "createMetrics", "ACME");
+        runtimeMetrics.put("acme", legacyMetrics);
+
+        Optional<com.bigbrightpaints.erp.core.security.TenantRuntimeEnforcementService.TenantRuntimeMetricsSnapshot> snapshot =
+                coreRuntimeService.snapshot("ACME");
+
+        assertThat(snapshot).isPresent();
+        assertThat(snapshot.orElseThrow().totalRequests()).isZero();
+    }
+
+    @Test
+    void coreRuntimeAdmission_snapshotAllUsesTenantToken_whenTokenFrequencyIsUnique() {
+        com.bigbrightpaints.erp.core.security.TenantRuntimeEnforcementService coreRuntimeService = coreRuntimeService();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> runtimeMetrics =
+                (Map<String, Object>) ReflectionTestUtils.getField(coreRuntimeService, "runtimeMetrics");
+        Object metrics = ReflectionTestUtils.invokeMethod(coreRuntimeService, "createMetrics", "ACME");
+        runtimeMetrics.put("201:acme", metrics);
+
+        Map<String, com.bigbrightpaints.erp.core.security.TenantRuntimeEnforcementService.TenantRuntimeMetricsSnapshot> snapshot =
+                coreRuntimeService.snapshotAll();
+
+        assertThat(snapshot).containsKey("acme");
+        assertThat(snapshot).doesNotContainKey("201:acme");
+    }
+
+    @Test
+    void coreRuntimeAdmission_runtimeMetricHelpers_coverNullAndBlankBranches() {
+        String keyWithoutCompany = ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.core.security.TenantRuntimeEnforcementService.class,
+                "runtimeMetricsKey",
+                null,
+                "acme");
+        String tokenForBlank = ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.core.security.TenantRuntimeEnforcementService.class,
+                "metricsToken",
+                "   ");
+        String tokenWithoutSeparator = ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.core.security.TenantRuntimeEnforcementService.class,
+                "metricsToken",
+                "acme");
+        String tokenWithTrailingSeparator = ReflectionTestUtils.invokeMethod(
+                com.bigbrightpaints.erp.core.security.TenantRuntimeEnforcementService.class,
+                "metricsToken",
+                "7:");
+
+        assertThat(keyWithoutCompany).isEqualTo("acme");
+        assertThat(tokenForBlank).isEqualTo("unknown");
+        assertThat(tokenWithoutSeparator).isEqualTo("acme");
+        assertThat(tokenWithTrailingSeparator).isEqualTo("7:");
+    }
+
+    @Test
     void coreRuntimeAdmission_normalizeTenantToken_returnsUnknown_forNullAndBlank() {
         com.bigbrightpaints.erp.core.security.TenantRuntimeEnforcementService coreRuntimeService = coreRuntimeService();
 
@@ -529,6 +587,27 @@ class TS_RuntimeTenantControlPlaneEnforcementTest {
         assertThat(meterRegistry.find("tenant.runtime.requests.active").tag("tenant", "ACME").gauge()).isNotNull();
         assertThat(meterRegistry.find("tenant.runtime.requests.total").tag("tenant", "ACME").gauge()).isNotNull();
         assertThat(meterRegistry.find("tenant.runtime.requests.denied").tag("tenant", "ACME").gauge()).isNotNull();
+    }
+
+    @Test
+    void coreRuntimeAdmission_createMetrics_usesUnknownTag_whenCompanyCodeBlank() {
+        SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+        com.bigbrightpaints.erp.core.security.TenantRuntimeEnforcementService meteredService =
+                new com.bigbrightpaints.erp.core.security.TenantRuntimeEnforcementService(
+                        companyRepository,
+                        systemSettingsRepository,
+                        auditService,
+                        enterpriseAuditTrailService,
+                        meterRegistry,
+                        0,
+                        0,
+                        30);
+
+        Object metrics = ReflectionTestUtils.invokeMethod(meteredService, "createMetrics", "   ");
+        assertThat(metrics).isNotNull();
+        assertThat(meterRegistry.find("tenant.runtime.requests.active").tag("tenant", "UNKNOWN").gauge()).isNotNull();
+        assertThat(meterRegistry.find("tenant.runtime.requests.total").tag("tenant", "UNKNOWN").gauge()).isNotNull();
+        assertThat(meterRegistry.find("tenant.runtime.requests.denied").tag("tenant", "UNKNOWN").gauge()).isNotNull();
     }
 
     private com.bigbrightpaints.erp.core.security.TenantRuntimeEnforcementService coreRuntimeService() {
