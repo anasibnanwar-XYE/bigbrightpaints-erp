@@ -1,13 +1,13 @@
-# Orchestrator Review
+# Review Evidence
 
 ticket: TKT-ERP-STAGE-103
 slice: SLICE-06
-status: approved
+reviewer: orchestrator
+status: pending
 
 ## Findings
-- none
-- catalog ownership centralized in SLICE-06 to prevent cross-slice overlap during harness verification
+- pending
 
 ## Evidence
-- commands: `bash ci/lint-knowledgebase.sh`
-- artifacts: commits `b9e67a68`, `4140f618`
+- commands: pending
+- artifacts: pending
