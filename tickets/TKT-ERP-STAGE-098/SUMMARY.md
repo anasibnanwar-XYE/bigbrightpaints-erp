@@ -3,7 +3,7 @@
 - title: Gate Fast Threshold Closure Tranche 1
 - goal: Raise anchored gate_fast changed-files line/branch coverage by adding deterministic tests for highest-deficit tenant runtime, company, admin/portal, purchasing, sales, and accounting-period services.
 - priority: high
-- status: in_progress
+- status: merged
 - base_branch: harness-engineering-orchestrator
 - created_at: 2026-02-20T10:48:51+00:00
 - updated_at: 2026-02-23T05:29:01+05:30

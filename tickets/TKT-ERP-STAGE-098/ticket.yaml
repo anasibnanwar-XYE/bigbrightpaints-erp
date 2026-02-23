@@ -4,7 +4,7 @@ goal: Raise anchored gate_fast changed-files line/branch coverage by adding dete
   tests for highest-deficit tenant runtime, company, admin/portal, purchasing, sales,
   and accounting-period services.
 priority: high
-status: in_progress
+status: merged
 base_branch: harness-engineering-orchestrator
 requested_base_branch: harness-engineering-orchestrator
 worktree_root: /Users/anas/Documents/orchestrator_erp/bigbrightpaints-erp_worktrees
