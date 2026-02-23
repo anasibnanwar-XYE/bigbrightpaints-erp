@@ -291,9 +291,6 @@ public class TenantRuntimeEnforcementService {
         boolean requiresFreshQuotaBaseline = validatedMaxConcurrentRequests == null
                 || validatedMaxRequestsPerMinute == null
                 || validatedMaxActiveUsers == null;
-        TenantRuntimePolicy persistedQuotaBaseline = requiresFreshQuotaBaseline
-                ? loadPersistedPolicyStrict(companyId)
-                : null;
         TenantRuntimePolicy policy = policyFor(normalizedCompany);
         String normalizedReason = stateMutation
                 ? requireStateReason(reasonCode, targetState)
@@ -304,7 +301,13 @@ public class TenantRuntimeEnforcementService {
         synchronized (policy) {
             previousChainId = policy.auditChainId;
             TenantRuntimeState nextState = stateMutation ? targetState : policy.state;
-            TenantRuntimePolicy quotaBaseline = persistedQuotaBaseline != null ? persistedQuotaBaseline : policy;
+            TenantRuntimePolicy quotaBaseline = policy;
+            if (requiresFreshQuotaBaseline) {
+                TenantRuntimePolicy persistedQuotaBaseline = loadPersistedPolicyStrict(companyId);
+                if (persistedQuotaBaseline != null) {
+                    quotaBaseline = persistedQuotaBaseline;
+                }
+            }
             int nextMaxConcurrentRequests = validatedMaxConcurrentRequests != null
                     ? validatedMaxConcurrentRequests
                     : quotaBaseline.maxConcurrentRequests;
