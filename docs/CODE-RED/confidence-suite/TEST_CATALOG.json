@@ -303,6 +303,26 @@
       "quality_flake_monitor": true
     },
     {
+      "id": "ts-inventory-dispatch-state-runtime-coverage",
+      "test_path": "erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/inventory/TS_InventoryDispatchStateRuntimeCoverageTest.java",
+      "owner": "erp-domain-team",
+      "class": "critical",
+      "module": "Inventory",
+      "gate_membership": [
+        "gate-fast",
+        "gate-core",
+        "gate-release",
+        "gate-reconciliation",
+        "gate-quality"
+      ],
+      "tags": [
+        "critical"
+      ],
+      "accounting_math_critical": true,
+      "cross_module_critical": true,
+      "quality_flake_monitor": true
+    },
+    {
       "id": "ts-accounting-controller-idempotency-header-parity-runtime",
       "test_path": "erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/accounting/TS_AccountingControllerIdempotencyHeaderParityRuntimeCoverageTest.java",
       "owner": "erp-domain-team",
