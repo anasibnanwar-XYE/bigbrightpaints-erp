@@ -277,6 +277,40 @@ class FactoryServiceTest {
     }
 
     @Test
+    void logBatch_replayMismatchWithPlanFailsClosedWithoutRegisterBatchSideEffect() {
+        stubNonProdProfile();
+        ProductionBatchRequest request = new ProductionBatchRequest(
+                "BATCH-PLAN-MISMATCH",
+                45.0,
+                "factory-user",
+                "incoming payload"
+        );
+        ProductionPlan plan = new ProductionPlan();
+        ReflectionTestUtils.setField(plan, "id", 88L);
+        plan.setCompany(company);
+        plan.setProductName("FG-MISMATCH");
+
+        ProductionBatch existing = new ProductionBatch();
+        existing.setCompany(company);
+        existing.setPlan(plan);
+        existing.setBatchNumber("BATCH-PLAN-MISMATCH");
+        existing.setQuantityProduced(44.0);
+        existing.setLoggedBy("factory-user");
+        existing.setNotes("stored payload");
+        existing.setProducedAt(Instant.parse("2026-02-20T00:00:00Z"));
+
+        when(batchRepository.findByCompanyAndBatchNumber(company, "BATCH-PLAN-MISMATCH")).thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> factoryService.logBatch(88L, request))
+                .isInstanceOfSatisfying(ApplicationException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.CONCURRENCY_CONFLICT));
+
+        verify(batchRepository, never()).insertIfAbsent(any(), any(), any(), any(), any(), any(), any());
+        verify(finishedGoodsService, never()).lockFinishedGoodByProductCode(any());
+        verify(finishedGoodsService, never()).registerBatch(any(FinishedGoodBatchRequest.class));
+    }
+
+    @Test
     void logBatch_concurrentInsertRehydratesExisting() {
         stubNonProdProfile();
         ProductionBatchRequest request = new ProductionBatchRequest(
