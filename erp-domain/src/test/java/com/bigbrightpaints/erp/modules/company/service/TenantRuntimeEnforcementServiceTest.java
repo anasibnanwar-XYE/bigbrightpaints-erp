@@ -38,6 +38,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -103,11 +106,21 @@ class TenantRuntimeEnforcementServiceTest {
                     }
                     return Optional.of(new SystemSetting(key, value));
                 });
+        lenient().when(systemSettingsRepository.save(any(SystemSetting.class)))
+                .thenAnswer(invocation -> {
+                    SystemSetting setting = invocation.getArgument(0, SystemSetting.class);
+                    if (setting != null && setting.getKey() != null) {
+                        persistedSettingsByKey.put(setting.getKey(), setting.getValue());
+                    }
+                    return setting;
+                });
+        authenticateAs("ROLE_SUPER_ADMIN");
     }
 
     @AfterEach
     void tearDown() {
         ReflectionTestUtils.setField(CompanyTime.class, "companyClock", null);
+        SecurityContextHolder.clearContext();
     }
 
     @Test
@@ -168,18 +181,31 @@ class TenantRuntimeEnforcementServiceTest {
     @Test
     void beginRequest_allowsTenantRuntimePolicyControlPath_whenHeldOrBlocked() {
         service.holdTenant("ACME", "maintenance_hold", "ops@bbp.com");
-        TenantRuntimeEnforcementService.TenantRequestAdmission heldAdmission = service.beginRequest(
+        TenantRuntimeEnforcementService.TenantRequestAdmission heldLegacyAdmission = service.beginRequest(
                 "ACME",
                 "/api/v1/admin/tenant-runtime/policy",
                 "PUT",
                 "ops@bbp.com",
                 true);
-        service.completeRequest(heldAdmission, 200);
+        TenantRuntimeEnforcementService.TenantRequestAdmission heldCanonicalAdmission = service.beginRequest(
+                "ACME",
+                "/api/v1/companies/1/tenant-runtime/policy",
+                "PUT",
+                "ops@bbp.com",
+                true);
+        service.completeRequest(heldLegacyAdmission, 200);
+        service.completeRequest(heldCanonicalAdmission, 200);
 
         service.blockTenant("ACME", "incident_block", "ops@bbp.com");
-        TenantRuntimeEnforcementService.TenantRequestAdmission blockedAdmission = service.beginRequest(
+        TenantRuntimeEnforcementService.TenantRequestAdmission blockedLegacyAdmission = service.beginRequest(
                 "ACME",
                 "/api/v1/admin/tenant-runtime/policy",
+                "PUT",
+                "ops@bbp.com",
+                true);
+        TenantRuntimeEnforcementService.TenantRequestAdmission blockedCanonicalAdmission = service.beginRequest(
+                "ACME",
+                "/api/v1/companies/1/tenant-runtime/policy",
                 "PUT",
                 "ops@bbp.com",
                 true);
@@ -212,10 +238,13 @@ class TenantRuntimeEnforcementServiceTest {
                 "/api/v1/private",
                 "GET",
                 "ops@bbp.com");
-        service.completeRequest(blockedAdmission, 200);
+        service.completeRequest(blockedLegacyAdmission, 200);
+        service.completeRequest(blockedCanonicalAdmission, 200);
 
-        assertThat(heldAdmission.isAdmitted()).isTrue();
-        assertThat(blockedAdmission.isAdmitted()).isTrue();
+        assertThat(heldLegacyAdmission.isAdmitted()).isTrue();
+        assertThat(heldCanonicalAdmission.isAdmitted()).isTrue();
+        assertThat(blockedLegacyAdmission.isAdmitted()).isTrue();
+        assertThat(blockedCanonicalAdmission.isAdmitted()).isTrue();
         assertThat(blockedAdmissionWithContextPath.isAdmitted()).isFalse();
         assertThat(blockedAdmissionWithContextPath.statusCode()).isEqualTo(HttpStatus.FORBIDDEN.value());
         assertThat(blockedMalformedPrefixAdmission.isAdmitted()).isFalse();
@@ -247,7 +276,7 @@ class TenantRuntimeEnforcementServiceTest {
                 "actor@bbp.com");
         TenantRuntimeEnforcementService.TenantRequestAdmission controlAdmission = service.beginRequest(
                 "ACME",
-                "/api/v1/admin/tenant-runtime/policy",
+                "/api/v1/companies/1/tenant-runtime/policy",
                 "PUT",
                 "ops@bbp.com",
                 true);
@@ -286,6 +315,27 @@ class TenantRuntimeEnforcementServiceTest {
         assertThatThrownBy(() -> service.holdTenant("UNKNOWN", "ops_hold", "ops@bbp.com"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Company not found: UNKNOWN");
+    }
+
+    @Test
+    void runtimePolicyMutations_requireSuperAdminWhenAuthenticationPresent() {
+        authenticateAs("ROLE_ADMIN");
+        assertThatThrownBy(() -> service.holdTenant("ACME", "maintenance", "ops@bbp.com"))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("SUPER_ADMIN authority required for tenant runtime policy updates");
+
+        authenticateAs("ROLE_SUPER_ADMIN");
+        TenantRuntimeEnforcementService.TenantRuntimeSnapshot snapshot =
+                service.holdTenant("ACME", "maintenance", "ops@bbp.com");
+        assertThat(snapshot.state()).isEqualTo(TenantRuntimeEnforcementService.TenantRuntimeState.HOLD);
+    }
+
+    @Test
+    void runtimePolicyMutations_failClosedWhenAuthenticationMissing() {
+        SecurityContextHolder.clearContext();
+        assertThatThrownBy(() -> service.holdTenant("ACME", "maintenance", "ops@bbp.com"))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("Authenticated SUPER_ADMIN authority required");
     }
 
     @Test
@@ -413,7 +463,7 @@ class TenantRuntimeEnforcementServiceTest {
 
         TenantRuntimeEnforcementService.TenantRequestAdmission controlAdmission = service.beginRequest(
                 "ACME",
-                "/api/v1/admin/tenant-runtime/policy",
+                "/api/v1/companies/1/tenant-runtime/policy",
                 "PUT",
                 "ops@bbp.com",
                 true);
@@ -448,7 +498,7 @@ class TenantRuntimeEnforcementServiceTest {
 
         TenantRuntimeEnforcementService.TenantRequestAdmission controlAdmission = service.beginRequest(
                 "ACME",
-                "/api/v1/admin/tenant-runtime/policy",
+                "/api/v1/companies/1/tenant-runtime/policy",
                 "PUT",
                 "ops@bbp.com",
                 true);
@@ -537,22 +587,62 @@ class TenantRuntimeEnforcementServiceTest {
     }
 
     @Test
-    void updateAndResumeTransitions_refreshAuditChain_andSanitizeLimits() {
+    void updateAndResumeTransitions_refreshAuditChain() {
         TenantRuntimeEnforcementService.TenantRuntimeSnapshot held =
                 service.holdTenant("ACME", "maintenance", "ops@bbp.com");
         TenantRuntimeEnforcementService.TenantRuntimeSnapshot updated =
-                service.updateQuotas("ACME", 0, -5, null, "ratchet", "ops@bbp.com");
+                service.updateQuotas("ACME", 4, 6, 8, "ratchet", "ops@bbp.com");
         TenantRuntimeEnforcementService.TenantRuntimeSnapshot resumed =
                 service.resumeTenant("ACME", "ops@bbp.com");
 
         assertThat(held.state()).isEqualTo(TenantRuntimeEnforcementService.TenantRuntimeState.HOLD);
-        assertThat(updated.maxConcurrentRequests()).isEqualTo(1);
-        assertThat(updated.maxRequestsPerMinute()).isEqualTo(1);
-        assertThat(updated.maxActiveUsers()).isEqualTo(3);
+        assertThat(updated.maxConcurrentRequests()).isEqualTo(4);
+        assertThat(updated.maxRequestsPerMinute()).isEqualTo(6);
+        assertThat(updated.maxActiveUsers()).isEqualTo(8);
         assertThat(updated.reasonCode()).isEqualTo("RATCHET");
         assertThat(resumed.state()).isEqualTo(TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE);
         assertThat(resumed.reasonCode()).isEqualTo("POLICY_ACTIVE");
         assertThat(resumed.auditChainId()).isNotEqualTo(held.auditChainId());
+    }
+
+    @Test
+    void updatePolicy_persistsSettingsAndSurvivesCacheInvalidation() {
+        service.updatePolicy(
+                "ACME",
+                TenantRuntimeEnforcementService.TenantRuntimeState.HOLD,
+                "persisted",
+                4,
+                6,
+                8,
+                "ops@bbp.com");
+
+        service.invalidatePolicyCache("ACME");
+        TenantRuntimeEnforcementService.TenantRuntimeSnapshot snapshot = service.snapshot("ACME");
+
+        assertThat(snapshot.state()).isEqualTo(TenantRuntimeEnforcementService.TenantRuntimeState.HOLD);
+        assertThat(snapshot.reasonCode()).isEqualTo("PERSISTED");
+        assertThat(snapshot.maxConcurrentRequests()).isEqualTo(4);
+        assertThat(snapshot.maxRequestsPerMinute()).isEqualTo(6);
+        assertThat(snapshot.maxActiveUsers()).isEqualTo(8);
+    }
+
+    @Test
+    void runtimePolicyMutations_failClosedForInvalidReasonAndQuotaValues() {
+        assertThatThrownBy(() -> service.holdTenant("ACME", "   ", "ops@bbp.com"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Reason code is required");
+
+        assertThatThrownBy(() -> service.blockTenant("ACME", null, "ops@bbp.com"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Reason code is required");
+
+        assertThatThrownBy(() -> service.updateQuotas("ACME", 0, 5, 5, "bad-limit", "ops@bbp.com"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("maxConcurrentRequests must be at least 1");
+
+        assertThatThrownBy(() -> service.updateQuotas("ACME", null, null, null, "bad-limit", "ops@bbp.com"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Runtime policy mutation payload is required");
     }
 
     @Test
@@ -577,7 +667,7 @@ class TenantRuntimeEnforcementServiceTest {
                 "actor@bbp.com");
         TenantRuntimeEnforcementService.TenantRequestAdmission controlTrailingSlashAllowed = service.beginRequest(
                 "ACME",
-                "/api/v1/admin/tenant-runtime/policy///",
+                "/api/v1/companies/1/tenant-runtime/policy///",
                 "PUT",
                 "ops@bbp.com",
                 true);
@@ -597,9 +687,10 @@ class TenantRuntimeEnforcementServiceTest {
 
     @Test
     void policyControlHelper_requiresPutMethodText_andTreatsRootPathAsNonControl() {
-        assertThat(invokeIsPolicyControlRequest("/api/v1/admin/tenant-runtime/policy", null, true)).isFalse();
-        assertThat(invokeIsPolicyControlRequest("/api/v1/admin/tenant-runtime/policy", "PATCH", true)).isFalse();
+        assertThat(invokeIsPolicyControlRequest("/api/v1/companies/1/tenant-runtime/policy", null, true)).isFalse();
+        assertThat(invokeIsPolicyControlRequest("/api/v1/companies/1/tenant-runtime/policy", "PATCH", true)).isFalse();
         assertThat(invokeIsPolicyControlRequest("/", "PUT", true)).isFalse();
+        assertThat(invokeIsPolicyControlRequest("/api/v1/companies/1/tenant-runtime/policy///", " put ", true)).isTrue();
         assertThat(invokeIsPolicyControlRequest("/api/v1/admin/tenant-runtime/policy///", " put ", true)).isTrue();
     }
 
@@ -1039,5 +1130,13 @@ class TenantRuntimeEnforcementServiceTest {
         Instant value = ReflectionTestUtils.invokeMethod(service, "parseInstantOrNow", rawValue);
         assertThat(value).isNotNull();
         return value;
+    }
+
+    private void authenticateAs(String authority) {
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(
+                        "tester@bbp.com",
+                        "n/a",
+                        java.util.List.of(() -> authority)));
     }
 }

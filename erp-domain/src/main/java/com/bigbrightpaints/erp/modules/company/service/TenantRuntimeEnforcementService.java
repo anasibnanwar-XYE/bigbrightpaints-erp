@@ -17,20 +17,30 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class TenantRuntimeEnforcementService {
 
+    private static final Logger log = LoggerFactory.getLogger(TenantRuntimeEnforcementService.class);
     private static final int MIN_LIMIT = 1;
     private static final String DEFAULT_REASON = "POLICY_ACTIVE";
     private static final String DEFAULT_POLICY_REFERENCE = "bootstrap";
     private static final String UNKNOWN_ACTOR = "UNKNOWN_AUTH_ACTOR";
     private static final String TENANT_RUNTIME_POLICY_PATH = "/api/v1/admin/tenant-runtime/policy";
+    private static final String CANONICAL_COMPANY_RUNTIME_POLICY_PREFIX = "/api/v1/companies/";
+    private static final String CANONICAL_COMPANY_RUNTIME_POLICY_SUFFIX = "/tenant-runtime/policy";
 
     private final CompanyRepository companyRepository;
     private final SystemSettingsRepository systemSettingsRepository;
@@ -194,58 +204,147 @@ public class TenantRuntimeEnforcementService {
         }
     }
 
+    @Transactional
     public TenantRuntimeSnapshot holdTenant(String companyCode, String reasonCode, String actor) {
-        return updateState(companyCode, TenantRuntimeState.HOLD, reasonCode, actor, "HOLD_TENANT");
+        return updatePolicy(
+                companyCode,
+                TenantRuntimeState.HOLD,
+                reasonCode,
+                null,
+                null,
+                null,
+                actor);
     }
 
+    @Transactional
     public TenantRuntimeSnapshot blockTenant(String companyCode, String reasonCode, String actor) {
-        return updateState(companyCode, TenantRuntimeState.BLOCKED, reasonCode, actor, "BLOCK_TENANT");
+        return updatePolicy(
+                companyCode,
+                TenantRuntimeState.BLOCKED,
+                reasonCode,
+                null,
+                null,
+                null,
+                actor);
     }
 
+    @Transactional
     public TenantRuntimeSnapshot resumeTenant(String companyCode, String actor) {
-        return updateState(companyCode, TenantRuntimeState.ACTIVE, DEFAULT_REASON, actor, "RESUME_TENANT");
+        return updatePolicy(
+                companyCode,
+                TenantRuntimeState.ACTIVE,
+                DEFAULT_REASON,
+                null,
+                null,
+                null,
+                actor);
     }
 
+    @Transactional
     public TenantRuntimeSnapshot updateQuotas(String companyCode,
                                               Integer maxConcurrentRequests,
                                               Integer maxRequestsPerMinute,
                                               Integer maxActiveUsers,
                                               String reasonCode,
                                               String actor) {
+        return updatePolicy(
+                companyCode,
+                null,
+                reasonCode,
+                maxConcurrentRequests,
+                maxRequestsPerMinute,
+                maxActiveUsers,
+                actor);
+    }
+
+    @Transactional
+    public TenantRuntimeSnapshot updatePolicy(String companyCode,
+                                              TenantRuntimeState targetState,
+                                              String reasonCode,
+                                              Integer maxConcurrentRequests,
+                                              Integer maxRequestsPerMinute,
+                                              Integer maxActiveUsers,
+                                              String actor) {
+        requireRuntimePolicyMutationAuthority();
+        Integer validatedMaxConcurrentRequests =
+                validateRuntimeLimit(maxConcurrentRequests, "maxConcurrentRequests");
+        Integer validatedMaxRequestsPerMinute =
+                validateRuntimeLimit(maxRequestsPerMinute, "maxRequestsPerMinute");
+        Integer validatedMaxActiveUsers =
+                validateRuntimeLimit(maxActiveUsers, "maxActiveUsers");
+        boolean stateMutation = targetState != null;
+        boolean quotaMutation = validatedMaxConcurrentRequests != null
+                || validatedMaxRequestsPerMinute != null
+                || validatedMaxActiveUsers != null;
+        if (!stateMutation && !quotaMutation) {
+            throw new IllegalArgumentException("Runtime policy mutation payload is required");
+        }
         String normalizedCompany = requireCompanyCode(companyCode);
         // Force fail-closed for unknown company code updates.
-        companyRepository.findByCodeIgnoreCase(normalizedCompany)
+        Company company = companyRepository.findByCodeIgnoreCase(normalizedCompany)
                 .orElseThrow(() -> new IllegalArgumentException("Company not found: " + normalizedCompany));
-
+        if (company.getId() == null) {
+            throw new IllegalArgumentException("Company not found: " + normalizedCompany);
+        }
+        Long companyId = company.getId();
         TenantRuntimePolicy policy = policyFor(normalizedCompany);
-        String normalizedReason = normalizeReason(reasonCode);
+        String normalizedReason = stateMutation
+                ? requireStateReason(reasonCode, targetState)
+                : normalizeReason(reasonCode);
         String previousChainId;
         String newChainId = UUID.randomUUID().toString();
         Instant now = CompanyTime.now();
         synchronized (policy) {
             previousChainId = policy.auditChainId;
-            if (maxConcurrentRequests != null) {
-                policy.maxConcurrentRequests = sanitizeLimit(maxConcurrentRequests);
+            TenantRuntimeState nextState = stateMutation ? targetState : policy.state;
+            int nextMaxConcurrentRequests = validatedMaxConcurrentRequests != null
+                    ? validatedMaxConcurrentRequests
+                    : policy.maxConcurrentRequests;
+            int nextMaxRequestsPerMinute = validatedMaxRequestsPerMinute != null
+                    ? validatedMaxRequestsPerMinute
+                    : policy.maxRequestsPerMinute;
+            int nextMaxActiveUsers = validatedMaxActiveUsers != null
+                    ? validatedMaxActiveUsers
+                    : policy.maxActiveUsers;
+            String nextReason = policy.reasonCode;
+            if (stateMutation || quotaMutation) {
+                nextReason = normalizedReason;
             }
-            if (maxRequestsPerMinute != null) {
-                policy.maxRequestsPerMinute = sanitizeLimit(maxRequestsPerMinute);
-            }
-            if (maxActiveUsers != null) {
-                policy.maxActiveUsers = sanitizeLimit(maxActiveUsers);
-            }
-            policy.reasonCode = normalizedReason;
-            policy.updatedAt = now;
+            Instant nextUpdatedAt = now;
+            long nextRefreshEpoch = System.currentTimeMillis() + persistedPolicyCacheTtlMillis;
+
+            persistPolicySettings(
+                    companyId,
+                    nextState,
+                    nextReason,
+                    nextMaxConcurrentRequests,
+                    nextMaxRequestsPerMinute,
+                    nextMaxActiveUsers,
+                    newChainId,
+                    nextUpdatedAt);
+
+            policy.state = nextState;
+            policy.reasonCode = nextReason;
+            policy.maxConcurrentRequests = nextMaxConcurrentRequests;
+            policy.maxRequestsPerMinute = nextMaxRequestsPerMinute;
+            policy.maxActiveUsers = nextMaxActiveUsers;
+            policy.updatedAt = nextUpdatedAt;
             policy.auditChainId = newChainId;
-            policy.policyRefreshAfterEpochMillis = System.currentTimeMillis() + persistedPolicyCacheTtlMillis;
+            policy.policyRefreshAfterEpochMillis = nextRefreshEpoch;
         }
-        auditPolicyChange(
-                "UPDATE_TENANT_QUOTAS",
-                normalizedCompany,
-                normalizeActor(actor),
-                normalizedReason,
-                previousChainId,
-                policy.auditChainId,
-                policy);
+        try {
+            auditPolicyChange(
+                    policyChangeAction(stateMutation, quotaMutation, targetState),
+                    normalizedCompany,
+                    resolveMutationActor(actor),
+                    normalizedReason,
+                    previousChainId,
+                    policy.auditChainId,
+                    policy);
+        } catch (RuntimeException ex) {
+            // Do not roll back policy mutations when audit sink is transiently unavailable.
+            log.warn("Tenant runtime policy audit logging failed for company {}", normalizedCompany, ex);
+        }
         return snapshot(normalizedCompany);
     }
 
@@ -400,7 +499,22 @@ public class TenantRuntimeEnforcementService {
         while (normalizedPath.endsWith("/") && normalizedPath.length() > 1) {
             normalizedPath = normalizedPath.substring(0, normalizedPath.length() - 1);
         }
-        return TENANT_RUNTIME_POLICY_PATH.equals(normalizedPath);
+        if (TENANT_RUNTIME_POLICY_PATH.equals(normalizedPath)) {
+            return true;
+        }
+        return isCanonicalCompanyRuntimePolicyPath(normalizedPath);
+    }
+
+    private boolean isCanonicalCompanyRuntimePolicyPath(String normalizedPath) {
+        if (!StringUtils.hasText(normalizedPath)
+                || !normalizedPath.startsWith(CANONICAL_COMPANY_RUNTIME_POLICY_PREFIX)
+                || !normalizedPath.endsWith(CANONICAL_COMPANY_RUNTIME_POLICY_SUFFIX)) {
+            return false;
+        }
+        int prefixLength = CANONICAL_COMPANY_RUNTIME_POLICY_PREFIX.length();
+        int suffixLength = CANONICAL_COMPANY_RUNTIME_POLICY_SUFFIX.length();
+        String companyIdSegment = normalizedPath.substring(prefixLength, normalizedPath.length() - suffixLength);
+        return StringUtils.hasText(companyIdSegment) && !companyIdSegment.contains("/");
     }
 
     private void auditRejection(TenantRuntimeRejection rejection, String actor, String requestPath, String requestMethod) {
@@ -648,6 +762,32 @@ public class TenantRuntimeEnforcementService {
         return "tenant.runtime.policy-updated-at." + companyId;
     }
 
+    private void persistPolicySettings(Long companyId,
+                                       TenantRuntimeState state,
+                                       String reasonCode,
+                                       int maxConcurrentRequests,
+                                       int maxRequestsPerMinute,
+                                       int maxActiveUsers,
+                                       String auditChainId,
+                                       Instant updatedAt) {
+        if (companyId == null || state == null) {
+            return;
+        }
+        persistSetting(keyHoldState(companyId), state.name());
+        persistSetting(keyHoldReason(companyId), reasonCode);
+        persistSetting(keyMaxActiveUsers(companyId), Integer.toString(maxActiveUsers));
+        persistSetting(keyMaxRequestsPerMinute(companyId), Integer.toString(maxRequestsPerMinute));
+        persistSetting(keyMaxConcurrentRequests(companyId), Integer.toString(maxConcurrentRequests));
+        persistSetting(keyPolicyReference(companyId), auditChainId);
+        persistSetting(keyPolicyUpdatedAt(companyId),
+                updatedAt != null ? updatedAt.toString() : CompanyTime.now().toString());
+    }
+
+    private void persistSetting(String key, String value) {
+        String normalizedValue = value == null ? "" : value;
+        systemSettingsRepository.save(new SystemSetting(key, normalizedValue));
+    }
+
     private TenantRuntimeCounters countersFor(String companyCode) {
         return counters.computeIfAbsent(companyCode, key -> new TenantRuntimeCounters());
     }
@@ -660,12 +800,72 @@ public class TenantRuntimeEnforcementService {
         return normalized;
     }
 
+    private String resolveMutationActor(String actor) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null && authentication.isAuthenticated() && StringUtils.hasText(authentication.getName())) {
+            return authentication.getName().trim();
+        }
+        return normalizeActor(actor);
+    }
+
+    private void requireRuntimePolicyMutationAuthority() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new AccessDeniedException(
+                    "Authenticated SUPER_ADMIN authority required for tenant runtime policy updates");
+        }
+        boolean superAdmin = authentication.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .anyMatch(authority -> "ROLE_SUPER_ADMIN".equalsIgnoreCase(authority));
+        if (!superAdmin) {
+            throw new AccessDeniedException("SUPER_ADMIN authority required for tenant runtime policy updates");
+        }
+    }
+
     private String requireCompanyCode(String companyCode) {
         String normalized = normalizeCompanyCode(companyCode);
         if (normalized == null) {
             throw new IllegalArgumentException("Company code is required");
         }
         return normalized;
+    }
+
+    private String requireStateReason(String reasonCode, TenantRuntimeState targetState) {
+        if (targetState == TenantRuntimeState.ACTIVE) {
+            return DEFAULT_REASON;
+        }
+        if (!StringUtils.hasText(reasonCode)) {
+            throw new IllegalArgumentException("Reason code is required for " + targetState.name() + " state updates");
+        }
+        return normalizeReason(reasonCode);
+    }
+
+    private Integer validateRuntimeLimit(Integer requestedLimit, String fieldName) {
+        if (requestedLimit == null) {
+            return null;
+        }
+        if (requestedLimit < MIN_LIMIT) {
+            throw new IllegalArgumentException(fieldName + " must be at least " + MIN_LIMIT);
+        }
+        return requestedLimit;
+    }
+
+    private String policyChangeAction(boolean stateMutation,
+                                      boolean quotaMutation,
+                                      TenantRuntimeState targetState) {
+        if (stateMutation && quotaMutation) {
+            return "UPDATE_TENANT_RUNTIME_POLICY";
+        }
+        if (quotaMutation) {
+            return "UPDATE_TENANT_QUOTAS";
+        }
+        if (targetState == TenantRuntimeState.HOLD) {
+            return "HOLD_TENANT";
+        }
+        if (targetState == TenantRuntimeState.BLOCKED) {
+            return "BLOCK_TENANT";
+        }
+        return "RESUME_TENANT";
     }
 
     private String normalizeCompanyCode(String companyCode) {
