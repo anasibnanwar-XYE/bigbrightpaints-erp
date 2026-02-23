@@ -1,28 +1,30 @@
 # Live Execution Plan (Async-Loop)
 
-Last updated: 2026-02-20
-Mode: Active (gate regression; deployment blocked)
+Last updated: 2026-02-23
+Mode: Active (`gate_fast` changed-files coverage blocker; deployment blocked)
 
 ## Goal
 - Restore gate freshness and re-close completion gates on canonical head.
-- Completion-gate board is pending and not safe-to-deploy due to 2026-02-20 gate failures (see `docs/system-map/COMPLETION_GATES_STATUS.md`).
+- Completion-gate board remains pending until changed-files coverage passes (see `docs/system-map/COMPLETION_GATES_STATUS.md`).
 
-## Current state (2026-02-20)
+## Current state (2026-02-23)
 - Async-loop status: `ACTIVE`.
-- Canonical head: `edc7cd7439bff5a83d5055057814dc65fb056b60` with anchor `06d85e792d2a80cd9fc1f8e5dc15d6dfa15dd93e`.
-- `gate_fast`: `FAIL` (changed-files coverage below threshold; line_ratio `0.3163`, branch_ratio `0.3320`).
+- Canonical base branch head: `6819522a09c00416a21d432e1a404b767d7b80d4`.
+- Latest gate run head: `ab2e919839b92f43072566e6aa707268d9ee8538` (`tickets/tkt-erp-stage-104/release-ops`).
+- `gate_fast`: `FAIL` (changed-files coverage below threshold; line_ratio `0.2223`, branch_ratio `0.1868`, files_considered `320`).
 - `gate_core`: `PASS`.
 - `gate_reconciliation`: `PASS`.
-- `gate_release`: `PASS` (SSH run with Postgres service on `127.0.0.1:55432`).
+- `gate_release`: `PASS` (release migration matrix and predeploy scans).
+- `check-architecture`: `PASS`.
+- Full regression run: `PASS` (`1661` tests, `0` failures, `0` errors, `4` skipped).
 - Evidence ledger:
-  - local run (pre-sync baseline): `artifacts/gate-ledger/a6f74013cd852d6160fedb283db29988637b7eba`
-  - ssh host run (latest): `/home/realnigga/tmp/bigbrightpaints-erp-gate096/artifacts/gate-ledger/edc7cd7439bff5a83d5055057814dc65fb056b60`
+  - gate refresh artifacts: `bigbrightpaints-erp_worktrees/TKT-ERP-STAGE-104/release-ops/artifacts/`
+  - full regression workspace: `bigbrightpaints-erp_worktrees/TKT-ERP-STAGE-104/refactor-techdebt-gc/erp-domain`
 
 ## Active constraints (refresh required)
-- Review dispatch capacity last confirmed blocked by external cap (max 6) on 2026-02-16; recheck required.
-- Direct commit review fallback last confirmed in use on 2026-02-16 while the cap persisted; recheck required.
-- Review queue status last confirmed clear through `d618ee04` on 2026-02-16; recheck required.
-- Release gate local prerequisite: ensure v2 matrix DB env is configured before rerun (`PGHOST=127.0.0.1 PGPORT=55432 PGUSER=erp PGPASSWORD=erp PGDATABASE=postgres`).
+- `gate_fast` is evaluating a wide changed-file surface (`320` files), which keeps coverage ratios below closure threshold.
+- Completion board cannot be marked safe-to-deploy until `gate_fast` passes on the intended anchor/diff base.
+- Release gate local prerequisite is now codified: auto-starts `gate_release_pg` on `127.0.0.1:55432` unless disabled (`AUTO_START_GATE_RELEASE_PG=false`).
 
 ## Live plan lanes
 
@@ -36,11 +38,11 @@ Mode: Active (gate regression; deployment blocked)
 1. Keep anchored `gate_fast` fresh on moving head.
 2. Re-run `gate_core`, `gate_reconciliation`, and `gate_release` on cadence for staging evidence.
 3. Record command outcomes in `asyncloop`.
-4. Current note (2026-02-20): anchored gate set on canonical head `edc7cd7439bff5a83d5055057814dc65fb056b60` with anchor `06d85e792d2a80cd9fc1f8e5dc15d6dfa15dd93e`:
-   - `gate_fast` FAIL (changed-files coverage below threshold; line_ratio `0.3163`, branch_ratio `0.3320`)
+4. Current note (2026-02-23): refreshed gate set on `ab2e919839b92f43072566e6aa707268d9ee8538`:
+   - `gate_fast` FAIL (changed-files coverage below threshold; line_ratio `0.2223`, branch_ratio `0.1868`, files_considered `320`)
    - `gate_core` PASS
    - `gate_reconciliation` PASS
-   - `gate_release` PASS (SSH run with Postgres service on `127.0.0.1:55432`)
+   - `gate_release` PASS
 
 ### Lane C: Consistency hardening (throughput lane)
 1. Prefer small, evidence-backed slices with low blast radius.
@@ -60,12 +62,15 @@ Mode: Active (gate regression; deployment blocked)
 - Final ledger gates pass on same closure evidence set.
 - M8/M9 async hardening lane is complete and recorded in `asyncloop`.
 
-## Latest gate evidence (2026-02-20)
-1. Canonical head: `edc7cd7439bff5a83d5055057814dc65fb056b60` with anchor `06d85e792d2a80cd9fc1f8e5dc15d6dfa15dd93e`.
-2. `gate_fast`: `FAIL` (changed-files coverage below threshold; line_ratio `0.3163`, branch_ratio `0.3320`).
-3. `gate_core`: `PASS`.
-4. `gate_reconciliation`: `PASS`.
-5. `gate_release`: `PASS` (SSH run with Postgres service on `127.0.0.1:55432`).
-6. Evidence ledger:
-   - local run (pre-sync baseline): `artifacts/gate-ledger/a6f74013cd852d6160fedb283db29988637b7eba`
-   - ssh host run (latest): `/home/realnigga/tmp/bigbrightpaints-erp-gate096/artifacts/gate-ledger/edc7cd7439bff5a83d5055057814dc65fb056b60`
+## Latest gate evidence (2026-02-23)
+1. Canonical base branch head: `6819522a09c00416a21d432e1a404b767d7b80d4`.
+2. Latest gate run head: `ab2e919839b92f43072566e6aa707268d9ee8538`.
+3. `gate_fast`: `FAIL` (changed-files coverage below threshold; line_ratio `0.2223`, branch_ratio `0.1868`, files_considered `320`).
+4. `gate_core`: `PASS`.
+5. `gate_reconciliation`: `PASS`.
+6. `gate_release`: `PASS`.
+7. `check-architecture`: `PASS`.
+8. Full regression lane: `PASS` (`1661` tests, `0` failures, `0` errors, `4` skipped).
+9. Evidence ledger:
+   - gate refresh artifacts: `bigbrightpaints-erp_worktrees/TKT-ERP-STAGE-104/release-ops/artifacts/`
+   - full regression workspace: `bigbrightpaints-erp_worktrees/TKT-ERP-STAGE-104/refactor-techdebt-gc/erp-domain`
