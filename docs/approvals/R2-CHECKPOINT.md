@@ -260,7 +260,7 @@ Update this file in every high-risk change set.
   - `erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimeTenantPolicyControlExecutableCoverageTest.java`
 
 ## STAGE-102 Addendum (2026-02-23, release-ops-land-v1)
-- Branch / PR: `tickets/tkt-erp-stage-102/release-ops-land-v1` / PR #72 (https://github.com/anasibnanwar-XYE/bigbrightpaints-erp/pull/72)
+- Branch / PR: branch `release-ops-land-v1` (ticket-102 release lane) / PR #72 (https://github.com/anasibnanwar-XYE/bigbrightpaints-erp/pull/72)
 - High-risk paths:
   - `erp-domain/src/main/java/com/bigbrightpaints/erp/core/security/CompanyContextFilter.java`
   - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/service/TenantRuntimeEnforcementService.java`
