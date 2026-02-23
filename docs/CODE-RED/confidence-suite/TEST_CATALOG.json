@@ -805,7 +805,7 @@
       "test_path": "erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimeTenantRuntimeEnforcementTest.java",
       "owner": "erp-domain-team",
       "class": "critical",
-      "module": "Runtime",
+      "module": "RuntimeCoverage",
       "gate_membership": [
         "gate-fast",
         "gate-core",
