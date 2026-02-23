@@ -41,6 +41,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Retryable;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -263,6 +265,10 @@ public class AccountingService {
         return entries.stream().map(this::toDto).toList();
     }
 
+    @Retryable(
+            value = DataIntegrityViolationException.class,
+            maxAttempts = 3,
+            backoff = @Backoff(delay = 50, maxDelay = 250, multiplier = 2.0))
     @Transactional
     public JournalEntryDto createJournalEntry(JournalEntryRequest request) {
         Map<String, String> auditMetadata = new HashMap<>();
@@ -533,12 +539,14 @@ public class AccountingService {
                     auditMetadata.put("journalEntryId", existingEntry.getId().toString());
                 }
                 ensureDuplicateMatchesExisting(existingEntry, entry, postedLines);
-                log.info("Idempotent return: journal entry '{}' already exists, returning existing entry",
+                log.info("Idempotent return after concurrent save race: journal entry '{}' already exists, returning existing entry",
                         entry.getReferenceNumber());
                 auditMetadata.put("idempotent", "true");
                 logAuditSuccessAfterCommit(AuditEvent.JOURNAL_ENTRY_POSTED, auditMetadata);
                 return toDto(existingEntry);
             }
+            log.info("Concurrent journal save conflict for reference '{}' detected; retrying in fresh transaction",
+                    entry.getReferenceNumber());
             throw ex;
         }
         boolean postedEventTrailRecorded = true;
@@ -798,6 +806,10 @@ public class AccountingService {
         return reversalDto;
     }
 
+    @Retryable(
+            value = DataIntegrityViolationException.class,
+            maxAttempts = 3,
+            backoff = @Backoff(delay = 50, maxDelay = 250, multiplier = 2.0))
     @Transactional
     public JournalEntryDto recordDealerReceipt(DealerReceiptRequest request) {
         Company company = companyContextService.requireCurrentCompany();
@@ -930,18 +942,8 @@ public class AccountingService {
         try {
             settlementAllocationRepository.saveAll(settlementRows);
         } catch (DataIntegrityViolationException ex) {
-            List<PartnerSettlementAllocation> concurrent = findAllocationsByIdempotencyKey(company, idempotencyKey);
-            if (!concurrent.isEmpty()) {
-                JournalEntry existingEntry = resolveReplayJournalEntryFromExistingAllocations(
-                        company,
-                        reference,
-                        idempotencyKey,
-                        concurrent);
-                linkReferenceMapping(company, idempotencyKey, existingEntry, ENTITY_TYPE_DEALER_RECEIPT);
-                validateDealerReceiptIdempotency(idempotencyKey, dealer, cashAccount, receivableAccount, amount, memo, existingEntry,
-                        concurrent, allocations);
-                return toDto(existingEntry);
-            }
+            log.info("Concurrent dealer receipt allocation conflict for idempotency key '{}' detected; retrying in fresh transaction",
+                    idempotencyKey);
             throw ex;
         }
         for (PartnerSettlementAllocation row : settlementRows) {
@@ -960,6 +962,10 @@ public class AccountingService {
         return entryDto;
     }
 
+    @Retryable(
+            value = DataIntegrityViolationException.class,
+            maxAttempts = 3,
+            backoff = @Backoff(delay = 50, maxDelay = 250, multiplier = 2.0))
     @Transactional
     public JournalEntryDto recordDealerReceiptSplit(DealerReceiptSplitRequest request) {
         Company company = companyContextService.requireCurrentCompany();
@@ -1105,17 +1111,8 @@ public class AccountingService {
         try {
             settlementAllocationRepository.saveAll(settlementRows);
         } catch (DataIntegrityViolationException ex) {
-            List<PartnerSettlementAllocation> concurrent = findAllocationsByIdempotencyKey(company, idempotencyKey);
-            if (!concurrent.isEmpty()) {
-                JournalEntry existingEntry = resolveReplayJournalEntryFromExistingAllocations(
-                        company,
-                        reference,
-                        idempotencyKey,
-                        concurrent);
-                linkReferenceMapping(company, idempotencyKey, existingEntry, ENTITY_TYPE_DEALER_RECEIPT_SPLIT);
-                validateSplitReceiptIdempotency(idempotencyKey, dealer, memo, existingEntry, lines);
-                return toDto(existingEntry);
-            }
+            log.info("Concurrent dealer split receipt allocation conflict for idempotency key '{}' detected; retrying in fresh transaction",
+                    idempotencyKey);
             throw ex;
         }
         for (PartnerSettlementAllocation row : settlementRows) {
@@ -1578,6 +1575,10 @@ public class AccountingService {
         );
     }
 
+    @Retryable(
+            value = DataIntegrityViolationException.class,
+            maxAttempts = 3,
+            backoff = @Backoff(delay = 50, maxDelay = 250, multiplier = 2.0))
     @Transactional
     public JournalEntryDto recordSupplierPayment(SupplierPaymentRequest request) {
         Company company = companyContextService.requireCurrentCompany();
@@ -1699,18 +1700,8 @@ public class AccountingService {
         try {
             settlementAllocationRepository.saveAll(settlementRows);
         } catch (DataIntegrityViolationException ex) {
-            List<PartnerSettlementAllocation> concurrent = findAllocationsByIdempotencyKey(company, idempotencyKey);
-            if (!concurrent.isEmpty()) {
-                JournalEntry existingEntry = resolveReplayJournalEntryFromExistingAllocations(
-                        company,
-                        reference,
-                        idempotencyKey,
-                        concurrent);
-                linkReferenceMapping(company, idempotencyKey, existingEntry, ENTITY_TYPE_SUPPLIER_PAYMENT);
-                validateSupplierPaymentIdempotency(idempotencyKey, supplier, cashAccount, payableAccount, amount, memo,
-                        existingEntry, concurrent, allocations);
-                return toDto(existingEntry);
-            }
+            log.info("Concurrent supplier payment allocation conflict for idempotency key '{}' detected; retrying in fresh transaction",
+                    idempotencyKey);
             throw ex;
         }
         for (Map.Entry<Long, BigDecimal> entryState : remainingByPurchase.entrySet()) {
@@ -1728,6 +1719,10 @@ public class AccountingService {
         return entryDto;
     }
 
+    @Retryable(
+            value = DataIntegrityViolationException.class,
+            maxAttempts = 3,
+            backoff = @Backoff(delay = 50, maxDelay = 250, multiplier = 2.0))
     @Transactional
     public PartnerSettlementResponse settleDealerInvoices(DealerSettlementRequest request) {
         Company company = companyContextService.requireCurrentCompany();
@@ -1898,24 +1893,8 @@ public class AccountingService {
         try {
             settlementAllocationRepository.saveAll(settlementRows);
         } catch (DataIntegrityViolationException ex) {
-            List<PartnerSettlementAllocation> concurrent = findAllocationsByIdempotencyKey(company, trimmedIdempotencyKey);
-            if (!concurrent.isEmpty()) {
-                JournalEntry existingEntry = resolveReplayJournalEntryFromExistingAllocations(
-                        company,
-                        reference,
-                        trimmedIdempotencyKey,
-                        concurrent);
-                linkReferenceMapping(company, trimmedIdempotencyKey, existingEntry, ENTITY_TYPE_DEALER_SETTLEMENT);
-                validateSettlementIdempotencyKey(trimmedIdempotencyKey, PartnerType.DEALER, dealer.getId(), concurrent, allocations);
-                validatePartnerSettlementJournalLines(
-                        trimmedIdempotencyKey,
-                        PartnerType.DEALER,
-                        dealer.getId(),
-                        memo,
-                        existingEntry,
-                        lineDraft.lines());
-                return buildDealerSettlementResponse(concurrent);
-            }
+            log.info("Concurrent dealer settlement allocation conflict for idempotency key '{}' detected; retrying in fresh transaction",
+                    trimmedIdempotencyKey);
             throw ex;
         }
         for (PartnerSettlementAllocation row : settlementRows) {
@@ -1959,6 +1938,10 @@ public class AccountingService {
         );
     }
 
+    @Retryable(
+            value = DataIntegrityViolationException.class,
+            maxAttempts = 3,
+            backoff = @Backoff(delay = 50, maxDelay = 250, multiplier = 2.0))
     @Transactional
     public PartnerSettlementResponse settleSupplierInvoices(SupplierSettlementRequest request) {
         Company company = companyContextService.requireCurrentCompany();
@@ -2119,24 +2102,8 @@ public class AccountingService {
         try {
             settlementAllocationRepository.saveAll(settlementRows);
         } catch (DataIntegrityViolationException ex) {
-            List<PartnerSettlementAllocation> concurrent = findAllocationsByIdempotencyKey(company, trimmedIdempotencyKey);
-            if (!concurrent.isEmpty()) {
-                JournalEntry existingEntry = resolveReplayJournalEntryFromExistingAllocations(
-                        company,
-                        reference,
-                        trimmedIdempotencyKey,
-                        concurrent);
-                linkReferenceMapping(company, trimmedIdempotencyKey, existingEntry, ENTITY_TYPE_SUPPLIER_SETTLEMENT);
-                validateSettlementIdempotencyKey(trimmedIdempotencyKey, PartnerType.SUPPLIER, supplier.getId(), concurrent, allocations);
-                validatePartnerSettlementJournalLines(
-                        trimmedIdempotencyKey,
-                        PartnerType.SUPPLIER,
-                        supplier.getId(),
-                        memo,
-                        existingEntry,
-                        lineDraft.lines());
-                return buildSupplierSettlementResponse(concurrent);
-            }
+            log.info("Concurrent supplier settlement allocation conflict for idempotency key '{}' detected; retrying in fresh transaction",
+                    trimmedIdempotencyKey);
             throw ex;
         }
         for (Map.Entry<Long, BigDecimal> entryState : remainingByPurchase.entrySet()) {
