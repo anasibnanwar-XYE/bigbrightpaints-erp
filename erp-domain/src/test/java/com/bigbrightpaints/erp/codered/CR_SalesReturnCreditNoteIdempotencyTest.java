@@ -348,7 +348,7 @@ class CR_SalesReturnCreditNoteIdempotencyTest extends AbstractIntegrationTest {
         BigDecimal grossWithoutDiscount = new BigDecimal("15.50")
                 .multiply(new BigDecimal("5"))
                 .setScale(2, RoundingMode.HALF_UP);
-        assertThat(startingOutstanding).isLessThan(grossWithoutDiscount);
+        assertThat(startingOutstanding).isEqualByComparingTo(grossWithoutDiscount.subtract(new BigDecimal("5.00")));
         BigDecimal creditAmount = startingOutstanding.divide(new BigDecimal("2"), 2, RoundingMode.HALF_UP);
         String idempotencyKey = "CN-DISC-IDEMP-" + UUID.randomUUID();
         CreditNoteRequest creditRequest = new CreditNoteRequest(
