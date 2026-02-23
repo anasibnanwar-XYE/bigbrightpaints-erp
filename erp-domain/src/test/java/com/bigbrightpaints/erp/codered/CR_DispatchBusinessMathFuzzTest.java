@@ -43,6 +43,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
@@ -142,7 +143,11 @@ class CR_DispatchBusinessMathFuzzTest extends AbstractIntegrationTest {
                     ? MoneyUtils.roundCurrency(BigDecimal.valueOf(random.nextInt(0, gross.movePointRight(2).intValue() + 1)).movePointLeft(2))
                     : null;
             Long overrideRequestId = discount != null
-                    ? createApprovedDispatchOverride(dealer, slip, order, seed, i)
+                    ? createApprovedDispatchOverride(
+                    dealer.getId(),
+                    slip.getId(),
+                    order.getId(),
+                    order.getTotalAmount())
                     : null;
 
             var response = salesService.confirmDispatch(new DispatchConfirmRequest(
@@ -272,6 +277,30 @@ class CR_DispatchBusinessMathFuzzTest extends AbstractIntegrationTest {
                 });
     }
 
+    private Long createApprovedDispatchOverride(Long dealerId,
+                                                Long slipId,
+                                                Long orderId,
+                                                BigDecimal dispatchAmount) {
+        var created = creditLimitOverrideService.createRequest(
+                new CreditLimitOverrideRequestCreateRequest(
+                        dealerId,
+                        slipId,
+                        orderId,
+                        dispatchAmount,
+                        "CODE-RED dispatch exception approval",
+                        Instant.now().plus(Duration.ofHours(2))
+                ),
+                "codered-maker");
+        var approved = creditLimitOverrideService.approveRequest(
+                created.id(),
+                new CreditLimitOverrideDecisionRequest(
+                        "CODE-RED dispatch exception approved",
+                        Instant.now().plus(Duration.ofHours(4))
+                ),
+                "codered-checker");
+        return approved.id();
+    }
+
     private FinishedGood ensureFinishedGoodWithCatalog(Company company, Map<String, Account> accounts, String sku) {
         FinishedGoodRequest req = new FinishedGoodRequest(
                 sku,
@@ -323,33 +352,6 @@ class CR_DispatchBusinessMathFuzzTest extends AbstractIntegrationTest {
                     p.setActive(true);
                     return productionProductRepository.save(p);
                 });
-    }
-
-    private Long createApprovedDispatchOverride(Dealer dealer,
-                                                PackagingSlip slip,
-                                                SalesOrder order,
-                                                long seed,
-                                                int iteration) {
-        Instant createdExpiry = Instant.parse("2099-01-01T00:00:00Z");
-        Instant approvedExpiry = Instant.parse("2099-01-02T00:00:00Z");
-        var created = creditLimitOverrideService.createRequest(
-                new CreditLimitOverrideRequestCreateRequest(
-                        dealer.getId(),
-                        slip.getId(),
-                        order.getId(),
-                        order.getTotalAmount(),
-                        "CODE-RED fuzz dispatch exception approval seed=" + seed + " i=" + iteration,
-                        createdExpiry
-                ),
-                "codered-maker");
-        var approved = creditLimitOverrideService.approveRequest(
-                created.id(),
-                new CreditLimitOverrideDecisionRequest(
-                        "CODE-RED fuzz dispatch exception approved seed=" + seed + " i=" + iteration,
-                        approvedExpiry
-                ),
-                "codered-checker");
-        return approved.id();
     }
 
     private static String shortId() {

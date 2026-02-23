@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.inventory.controller;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.modules.inventory.dto.RawMaterialBatchDto;
 import com.bigbrightpaints.erp.modules.inventory.dto.RawMaterialBatchRequest;
 import com.bigbrightpaints.erp.modules.inventory.dto.RawMaterialIntakeRequest;
@@ -14,6 +15,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -42,8 +44,14 @@ class RawMaterialControllerTest {
         RawMaterialBatchRequest request = batchRequest();
 
         assertThatThrownBy(() -> controller.createBatch(42L, "primary-key", "legacy-key", request))
-                .isInstanceOf(ApplicationException.class)
-                .hasMessageContaining("Idempotency key mismatch between Idempotency-Key and X-Idempotency-Key headers");
+                .isInstanceOfSatisfying(ApplicationException.class, ex -> {
+                    assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT);
+                    assertThat(ex.getMessage()).isEqualTo(
+                            "Idempotency key mismatch between Idempotency-Key and X-Idempotency-Key headers");
+                    assertThat(ex.getDetails())
+                            .containsEntry("idempotencyKeyHeader", "primary-key")
+                            .containsEntry("legacyIdempotencyKeyHeader", "legacy-key");
+                });
         verifyNoInteractions(rawMaterialService);
     }
 
@@ -64,8 +72,14 @@ class RawMaterialControllerTest {
         RawMaterialIntakeRequest request = intakeRequest();
 
         assertThatThrownBy(() -> controller.intake("primary-key", "legacy-key", request))
-                .isInstanceOf(ApplicationException.class)
-                .hasMessageContaining("Idempotency key mismatch between Idempotency-Key and X-Idempotency-Key headers");
+                .isInstanceOfSatisfying(ApplicationException.class, ex -> {
+                    assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT);
+                    assertThat(ex.getMessage()).isEqualTo(
+                            "Idempotency key mismatch between Idempotency-Key and X-Idempotency-Key headers");
+                    assertThat(ex.getDetails())
+                            .containsEntry("idempotencyKeyHeader", "primary-key")
+                            .containsEntry("legacyIdempotencyKeyHeader", "legacy-key");
+                });
         verifyNoInteractions(rawMaterialService);
     }
 

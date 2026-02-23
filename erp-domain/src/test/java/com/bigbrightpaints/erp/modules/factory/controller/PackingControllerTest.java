@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.factory.controller;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.modules.factory.dto.PackingLineRequest;
 import com.bigbrightpaints.erp.modules.factory.dto.PackingRequest;
 import com.bigbrightpaints.erp.modules.factory.service.BulkPackingService;
@@ -153,6 +154,7 @@ class PackingControllerTest {
     @Test
     void recordPacking_rejectsWhenPrimaryLegacyHeadersMismatch() {
         PackingController controller = new PackingController(packingService, bulkPackingService);
+
         PackingRequest request = new PackingRequest(
                 1L,
                 LocalDate.of(2026, 2, 6),
@@ -162,8 +164,15 @@ class PackingControllerTest {
         );
 
         assertThatThrownBy(() -> controller.recordPacking("header-key", "legacy-key", null, request))
-                .isInstanceOf(ApplicationException.class)
-                .hasMessageContaining("Idempotency key mismatch between Idempotency-Key and X-Idempotency-Key headers");
-        verifyNoInteractions(packingService, bulkPackingService);
+                .isInstanceOfSatisfying(ApplicationException.class, ex -> {
+                    assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT);
+                    assertThat(ex.getMessage()).isEqualTo(
+                            "Idempotency key mismatch between Idempotency-Key and X-Idempotency-Key headers");
+                    assertThat(ex.getDetails())
+                            .containsEntry("idempotencyKeyHeader", "header-key")
+                            .containsEntry("legacyIdempotencyKeyHeader", "legacy-key");
+                });
+
+        verifyNoInteractions(packingService);
     }
 }

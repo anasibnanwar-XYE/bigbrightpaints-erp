@@ -87,3 +87,16 @@
     - `com.bigbrightpaints.erp.codered.CR_DispatchBusinessMathFuzzTest` (`overrideRequestId` required when dispatch exceptions are applied).
     - `com.bigbrightpaints.erp.modules.accounting.controller.AccountingCatalogControllerIdempotencyHeaderTest` (header mismatch expectation drift).
   - `SLICE-06` remains `in_review` pending a clean full-suite pass.
+- `2026-02-23T05:19:52+05:30` full-suite rerun on `tickets/tkt-erp-stage-098/release-ops` completed cleanly:
+  - `cd erp-domain && mvn -B -ntp test` -> `PASS` (`1576` tests; `0` failures, `0` errors, `4` skipped; `BUILD SUCCESS`).
+- `2026-02-23T05:21:15+05:30` `SLICE-06` test-alignment commit created on `tickets/tkt-erp-stage-098/refactor-techdebt-gc`:
+  - commit: `7ba302b246188015fcda9e8abedc9ca462e28d41`
+  - files updated: `CR_DispatchBusinessMathFuzzTest`, `AccountingCatalogControllerIdempotencyHeaderTest`, `PackingControllerTest`, `InventoryAdjustmentControllerTest`, `OpeningStockImportControllerTest`, `RawMaterialControllerTest`, `PortalInsightsControllerIT`.
+  - validation:
+    - `bash ci/check-architecture.sh` -> `PASS`
+    - `cd erp-domain && mvn -B -ntp -Dtest=CR_DispatchBusinessMathFuzzTest,AccountingCatalogControllerIdempotencyHeaderTest,PackingControllerTest,InventoryAdjustmentControllerTest,OpeningStockImportControllerTest,RawMaterialControllerTest,PortalInsightsControllerIT test` -> `PASS` (`25` tests; `0` failures, `0` errors).
+- `2026-02-23T05:21:56+05:30` `SLICE-06` integrated into release-ops:
+  - merge commit: `b62fe0cd83af9712b1e2cba5f0d41a6985d22aa8` (`merge(ticket-098): integrate slice-06 into release-ops`).
+- `2026-02-23T05:22:00+05:30` post-merge required check rerun:
+  - `bash ci/check-architecture.sh` -> `PASS`
+  - `SLICE-06` status moved from `in_review` to `merged`.

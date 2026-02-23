@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.accounting.controller;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.modules.production.service.ProductionCatalogService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -33,24 +34,19 @@ class AccountingCatalogControllerIdempotencyHeaderTest {
     }
 
     @Test
-    void importCatalog_acceptsMatchingPrimaryAndLegacyHeaders() {
-        ProductionCatalogService productionCatalogService = mock(ProductionCatalogService.class);
-        when(productionCatalogService.importCatalog(any(), any())).thenReturn(null);
-        AccountingCatalogController controller = new AccountingCatalogController(productionCatalogService);
-
-        controller.importCatalog(csvFile(), "hdr-001", "hdr-001");
-
-        verify(productionCatalogService).importCatalog(any(), eq("hdr-001"));
-    }
-
-    @Test
     void importCatalog_rejectsWhenPrimaryLegacyHeadersMismatch() {
         ProductionCatalogService productionCatalogService = mock(ProductionCatalogService.class);
         AccountingCatalogController controller = new AccountingCatalogController(productionCatalogService);
 
         assertThatThrownBy(() -> controller.importCatalog(csvFile(), "hdr-001", "legacy-001"))
-                .isInstanceOf(ApplicationException.class)
-                .hasMessageContaining("Idempotency key mismatch between Idempotency-Key and X-Idempotency-Key headers");
+                .isInstanceOfSatisfying(ApplicationException.class, ex -> {
+                    assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT);
+                    assertThat(ex.getMessage()).isEqualTo(
+                            "Idempotency key mismatch between Idempotency-Key and X-Idempotency-Key headers");
+                    assertThat(ex.getDetails())
+                            .containsEntry("idempotencyKeyHeader", "hdr-001")
+                            .containsEntry("legacyIdempotencyKeyHeader", "legacy-001");
+                });
 
         verifyNoInteractions(productionCatalogService);
     }

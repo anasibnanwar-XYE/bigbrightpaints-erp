@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.inventory.controller;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.modules.inventory.dto.OpeningStockImportResponse;
 import com.bigbrightpaints.erp.modules.inventory.service.OpeningStockImportService;
 import org.junit.jupiter.api.Test;
@@ -12,6 +13,7 @@ import org.springframework.mock.web.MockMultipartFile;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -41,8 +43,14 @@ class OpeningStockImportControllerTest {
         MockMultipartFile file = csvFile();
 
         assertThatThrownBy(() -> controller.importOpeningStock("primary-key", "legacy-key", file))
-                .isInstanceOf(ApplicationException.class)
-                .hasMessageContaining("Idempotency key mismatch between Idempotency-Key and X-Idempotency-Key headers");
+                .isInstanceOfSatisfying(ApplicationException.class, ex -> {
+                    assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT);
+                    assertThat(ex.getMessage()).isEqualTo(
+                            "Idempotency key mismatch between Idempotency-Key and X-Idempotency-Key headers");
+                    assertThat(ex.getDetails())
+                            .containsEntry("idempotencyKeyHeader", "primary-key")
+                            .containsEntry("legacyIdempotencyKeyHeader", "legacy-key");
+                });
         verifyNoInteractions(openingStockImportService);
     }
 

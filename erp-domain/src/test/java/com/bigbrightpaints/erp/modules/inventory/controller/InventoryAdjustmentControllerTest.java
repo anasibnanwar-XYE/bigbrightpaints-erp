@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.inventory.controller;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryAdjustmentType;
 import com.bigbrightpaints.erp.modules.inventory.dto.InventoryAdjustmentRequest;
 import com.bigbrightpaints.erp.modules.inventory.service.InventoryAdjustmentService;
@@ -79,11 +80,18 @@ class InventoryAdjustmentControllerTest {
     @Test
     void createAdjustment_rejectsWhenPrimaryLegacyHeadersMismatch() {
         InventoryAdjustmentController controller = controller();
-        InventoryAdjustmentRequest request = validRequest(null);
 
+        InventoryAdjustmentRequest request = validRequest(null);
         assertThatThrownBy(() -> controller.createAdjustment("header-key", "legacy-key", request))
-                .isInstanceOf(ApplicationException.class)
-                .hasMessageContaining("Idempotency key mismatch between Idempotency-Key and X-Idempotency-Key headers");
+                .isInstanceOfSatisfying(ApplicationException.class, ex -> {
+                    assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT);
+                    assertThat(ex.getMessage()).isEqualTo(
+                            "Idempotency key mismatch between Idempotency-Key and X-Idempotency-Key headers");
+                    assertThat(ex.getDetails())
+                            .containsEntry("idempotencyKeyHeader", "header-key")
+                            .containsEntry("legacyIdempotencyKeyHeader", "legacy-key");
+                });
+
         verifyNoInteractions(inventoryAdjustmentService);
     }
 
