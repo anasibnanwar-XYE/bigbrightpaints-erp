@@ -49,6 +49,18 @@ resolve_diff_base() {
     return 0
   fi
 
+  # Prefer the canonical base when available so gate_fast diffs stay anchored to
+  # harness release lineage instead of drifting to unrelated main/master history.
+  if [[ -n "${CANONICAL_BASE_SHA:-}" ]]; then
+    git merge-base "$CANONICAL_BASE_SHA" HEAD
+    return 0
+  fi
+
+  if git rev-parse --verify --quiet "$CANONICAL_BASE_REF" >/dev/null; then
+    git merge-base "$CANONICAL_BASE_REF" HEAD
+    return 0
+  fi
+
   if git rev-parse --verify --quiet origin/main >/dev/null; then
     git merge-base origin/main HEAD
     return 0
