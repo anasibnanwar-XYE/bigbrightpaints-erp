@@ -918,6 +918,75 @@ class AccountingServiceTest {
     }
 
     @Test
+    void createJournalEntry_dataIntegrityConflictReturnsExistingOnSaveRace() {
+        LocalDate today = LocalDate.of(2024, 3, 26);
+        when(companyClock.today(company)).thenReturn(today);
+        AccountingPeriod period = new AccountingPeriod();
+        period.setYear(today.getYear());
+        period.setMonth(today.getMonthValue());
+        when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(period);
+
+        Account debitAccount = new Account();
+        ReflectionTestUtils.setField(debitAccount, "id", 241L);
+        debitAccount.setCompany(company);
+        debitAccount.setBalance(BigDecimal.ZERO);
+        debitAccount.setCode("DEBIT-RACE-EXISTING");
+        Account creditAccount = new Account();
+        ReflectionTestUtils.setField(creditAccount, "id", 242L);
+        creditAccount.setCompany(company);
+        creditAccount.setBalance(BigDecimal.ZERO);
+        creditAccount.setCode("CREDIT-RACE-EXISTING");
+        when(accountRepository.lockByCompanyAndId(eq(company), eq(241L))).thenReturn(Optional.of(debitAccount));
+        when(accountRepository.lockByCompanyAndId(eq(company), eq(242L))).thenReturn(Optional.of(creditAccount));
+
+        JournalEntry existingEntry = new JournalEntry();
+        existingEntry.setCompany(company);
+        existingEntry.setReferenceNumber("JE-RACE-EXISTING");
+        existingEntry.setEntryDate(today);
+        existingEntry.setMemo("save-race duplicate");
+        existingEntry.setStatus("POSTED");
+        ReflectionTestUtils.setField(existingEntry, "id", 777L);
+
+        JournalLine debitLine = new JournalLine();
+        debitLine.setJournalEntry(existingEntry);
+        debitLine.setAccount(debitAccount);
+        debitLine.setDebit(new BigDecimal("30.00"));
+        debitLine.setCredit(BigDecimal.ZERO);
+        existingEntry.getLines().add(debitLine);
+
+        JournalLine creditLine = new JournalLine();
+        creditLine.setJournalEntry(existingEntry);
+        creditLine.setAccount(creditAccount);
+        creditLine.setDebit(BigDecimal.ZERO);
+        creditLine.setCredit(new BigDecimal("30.00"));
+        existingEntry.getLines().add(creditLine);
+
+        when(journalEntryRepository.findByCompanyAndReferenceNumber(eq(company), eq("JE-RACE-EXISTING")))
+                .thenReturn(Optional.empty(), Optional.of(existingEntry));
+        when(journalEntryRepository.save(any())).thenThrow(new DataIntegrityViolationException("duplicate-journal"));
+
+        JournalEntryRequest request = new JournalEntryRequest(
+                "JE-RACE-EXISTING",
+                today,
+                "save-race duplicate",
+                null,
+                null,
+                Boolean.FALSE,
+                List.of(
+                        new JournalEntryRequest.JournalLineRequest(241L, "Debit line", new BigDecimal("30.00"), BigDecimal.ZERO),
+                        new JournalEntryRequest.JournalLineRequest(242L, "Credit line", BigDecimal.ZERO, new BigDecimal("30.00"))
+                )
+        );
+
+        JournalEntryDto result = accountingService.createJournalEntry(request);
+        assertThat(result).isNotNull();
+        assertThat(result.id()).isEqualTo(777L);
+        assertThat(result.referenceNumber()).isEqualTo("JE-RACE-EXISTING");
+        verify(accountRepository, never()).updateBalanceAtomic(any(), any(), any());
+        verify(accountingEventStore, never()).recordJournalEntryPosted(any(), any());
+    }
+
+    @Test
     void createJournalEntry_failsWhenAccountBalanceNotUpdated() {
         LocalDate today = LocalDate.of(2024, 3, 21);
         when(companyClock.today(company)).thenReturn(today);

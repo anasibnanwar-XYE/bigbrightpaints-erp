@@ -532,6 +532,19 @@ public class AccountingService {
         try {
             saved = journalEntryRepository.save(entry);
         } catch (DataIntegrityViolationException ex) {
+            Optional<JournalEntry> existing = journalEntryRepository.findByCompanyAndReferenceNumber(company, entry.getReferenceNumber());
+            if (existing.isPresent()) {
+                JournalEntry existingEntry = existing.get();
+                if (existingEntry.getId() != null) {
+                    auditMetadata.put("journalEntryId", existingEntry.getId().toString());
+                }
+                ensureDuplicateMatchesExisting(existingEntry, entry, postedLines);
+                log.info("Idempotent return after concurrent save race: journal entry '{}' already exists, returning existing entry",
+                        entry.getReferenceNumber());
+                auditMetadata.put("idempotent", "true");
+                logAuditSuccessAfterCommit(AuditEvent.JOURNAL_ENTRY_POSTED, auditMetadata);
+                return toDto(existingEntry);
+            }
             log.info("Concurrent journal save conflict for reference '{}' detected; retrying in fresh transaction",
                     entry.getReferenceNumber());
             throw ex;

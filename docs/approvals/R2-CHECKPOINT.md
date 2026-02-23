@@ -259,6 +259,29 @@ Update this file in every high-risk change set.
   - `erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimeTenantRuntimeEnforcementTest.java`
   - `erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimeTenantPolicyControlExecutableCoverageTest.java`
 
+## STAGE-106 Addendum (2026-02-23, orchestrator-runtime)
+- Ticket / PR: `TKT-ERP-STAGE-106` / PR #75 (https://github.com/anasibnanwar-XYE/bigbrightpaints-erp/pull/75)
+- Source branch: `tkt-erp-stage-106-orchestrator-runtime`
+- High-risk paths:
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingService.java`
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingServiceTest.java`
+- Why this is R2: idempotent accounting journal posting conflict handling is a fail-closed financial control path that impacts payroll/manual/reversal posting flows.
+- Approval mode: orchestrator
+- Human escalation required: no
+- Rollback owner: release governance + accounting owner
+- Verification evidence:
+  - Commands run:
+    - `cd erp-domain && mvn -B -ntp -Dtest='AccountingServiceTest#createJournalEntry_dataIntegrityConflictReturnsExistingOnSaveRace,AccountingServiceTest#createJournalEntry_dataIntegrityConflictRethrowsForRetryBoundary' test`
+    - `bash scripts/gate_fast.sh`
+    - `bash scripts/gate_core.sh`
+    - `bash scripts/gate_reconciliation.sh`
+    - `bash scripts/gate_release.sh`
+    - `bash ci/check-enterprise-policy.sh`
+  - Result summary: conflict-save duplicate recovery restored for self-invoked `createJournalEntry` callers while preserving retry-boundary rethrow when no duplicate row exists; gate ladder remained green on current branch evidence.
+- Artifacts/links:
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingService.java`
+  - `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingServiceTest.java`
+
 ## STAGE-102 Addendum (2026-02-23, release-ops-land-v1)
 - Branch / PR: branch `release-ops-land-v1` (ticket-102 release lane) / PR #72 (https://github.com/anasibnanwar-XYE/bigbrightpaints-erp/pull/72)
 - High-risk paths:
