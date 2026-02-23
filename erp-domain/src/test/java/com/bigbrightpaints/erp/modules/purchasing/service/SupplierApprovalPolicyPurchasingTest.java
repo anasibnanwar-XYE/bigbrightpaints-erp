@@ -37,11 +37,16 @@ class SupplierApprovalPolicyPurchasingTest {
     }
 
     @Test
-    void supplierApprovalDecisionEnforcesMakerChecker() {
+    void settlementOverrideApprovalFailsClosedWhenMissing() {
+        assertThrows(IllegalStateException.class, () -> policy.requireSettlementOverrideApproval(null));
+    }
+
+    @Test
+    void supplierApprovalDecisionEnforcesMakerCheckerCaseInsensitive() {
         assertThrows(IllegalArgumentException.class, () -> new SupplierApprovalDecision(
                 "APP-2",
-                "same-user",
-                "same-user",
+                "maker-user",
+                "MAKER-USER",
                 SupplierApprovalReasonCode.SUPPLIER_EXCEPTION,
                 Instant.parse("2026-02-20T00:00:00Z"),
                 Map.of("ticket", "TKT-ERP-STAGE-095", "approvalSource", "workflow")));

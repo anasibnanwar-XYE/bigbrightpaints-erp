@@ -27,6 +27,15 @@ class PurchasingWorkflowControllerTest {
     private PurchasingService purchasingService;
 
     @Test
+    void createGoodsReceipt_rejectsWhenRequestMissing() {
+        PurchasingWorkflowController controller = new PurchasingWorkflowController(purchasingService);
+
+        assertThatThrownBy(() -> controller.createGoodsReceipt("hdr-001", null, null))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Goods receipt request is required");
+    }
+
+    @Test
     void createGoodsReceipt_rejectsWhenIdempotencyMissing() {
         PurchasingWorkflowController controller = new PurchasingWorkflowController(purchasingService);
 
