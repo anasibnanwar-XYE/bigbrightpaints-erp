@@ -101,7 +101,7 @@ public class TenantRuntimeEnforcementService {
                 policyControlRequest,
                 requestMethod);
         if (stateRejection != null) {
-            usageCounters.rejectedRequests.incrementAndGet();
+            recordRejection(usageCounters);
             auditRejection(stateRejection, actor, requestPath, requestMethod);
             return TenantRequestAdmission.rejected(stateRejection);
         }
@@ -116,6 +116,7 @@ public class TenantRuntimeEnforcementService {
         int requestsInMinute = incrementMinuteCount(usageCounters, minuteBucket);
         int maxRequestsPerMinute = policy.effectiveMaxRequestsPerMinute(defaultMaxRequestsPerMinute);
         if (requestsInMinute > maxRequestsPerMinute) {
+            incrementMinuteRejectedCount(usageCounters, minuteBucket);
             usageCounters.rejectedRequests.incrementAndGet();
             TenantRuntimeRejection rejection = new TenantRuntimeRejection(
                     normalizedCompany,
@@ -136,7 +137,7 @@ public class TenantRuntimeEnforcementService {
         int maxConcurrentRequests = policy.effectiveMaxConcurrentRequests(defaultMaxConcurrentRequests);
         if (inFlightNow > maxConcurrentRequests) {
             usageCounters.inFlightRequests.decrementAndGet();
-            usageCounters.rejectedRequests.incrementAndGet();
+            recordRejection(usageCounters);
             TenantRuntimeRejection rejection = new TenantRuntimeRejection(
                     normalizedCompany,
                     policy.state,
@@ -177,7 +178,7 @@ public class TenantRuntimeEnforcementService {
 
         TenantRuntimeRejection stateRejection = stateRejection(policy, normalizedCompany, false, "POST");
         if (stateRejection != null) {
-            usageCounters.rejectedRequests.incrementAndGet();
+            recordRejection(usageCounters);
             auditRejection(stateRejection, actor, scope, "POST");
             throw stateRejection.asException();
         }
@@ -187,7 +188,7 @@ public class TenantRuntimeEnforcementService {
         long activeUsers = userAccountRepository.countDistinctByCompanies_IdAndEnabledTrue(company.getId());
         int maxActiveUsers = policy.effectiveMaxActiveUsers(defaultMaxActiveUsers);
         if (activeUsers > maxActiveUsers) {
-            usageCounters.rejectedRequests.incrementAndGet();
+            recordRejection(usageCounters);
             TenantRuntimeRejection rejection = new TenantRuntimeRejection(
                     normalizedCompany,
                     policy.state,
@@ -375,6 +376,7 @@ public class TenantRuntimeEnforcementService {
                         usageCounters.errorResponses.get(),
                         usageCounters.inFlightRequests.get(),
                         usageCounters.minuteRequestCount.get(),
+                        usageCounters.minuteRejectedCount.get(),
                         activeUsers));
     }
 
@@ -561,12 +563,34 @@ public class TenantRuntimeEnforcementService {
             if (previousBucket != minuteBucket) {
                 if (usageCounters.minuteBucket.compareAndSet(previousBucket, minuteBucket)) {
                     usageCounters.minuteRequestCount.set(0);
+                    usageCounters.minuteRejectedCount.set(0);
                 } else {
                     continue;
                 }
             }
             return usageCounters.minuteRequestCount.incrementAndGet();
         }
+    }
+
+    private int incrementMinuteRejectedCount(TenantRuntimeCounters usageCounters, long minuteBucket) {
+        while (true) {
+            long previousBucket = usageCounters.minuteBucket.get();
+            if (previousBucket != minuteBucket) {
+                if (usageCounters.minuteBucket.compareAndSet(previousBucket, minuteBucket)) {
+                    usageCounters.minuteRequestCount.set(0);
+                    usageCounters.minuteRejectedCount.set(0);
+                } else {
+                    continue;
+                }
+            }
+            return usageCounters.minuteRejectedCount.incrementAndGet();
+        }
+    }
+
+    private void recordRejection(TenantRuntimeCounters usageCounters) {
+        usageCounters.rejectedRequests.incrementAndGet();
+        long minuteBucket = CompanyTime.now().getEpochSecond() / 60L;
+        incrementMinuteRejectedCount(usageCounters, minuteBucket);
     }
 
     private TenantRuntimePolicy policyFor(String companyCode) {
@@ -957,6 +981,7 @@ public class TenantRuntimeEnforcementService {
                                        long errorResponses,
                                        int inFlightRequests,
                                        int minuteRequestCount,
+                                       int minuteRejectedCount,
                                        long activeUsers) {
     }
 
@@ -1171,6 +1196,7 @@ public class TenantRuntimeEnforcementService {
         private final AtomicLong errorResponses = new AtomicLong(0);
         private final AtomicLong minuteBucket = new AtomicLong(0);
         private final AtomicInteger minuteRequestCount = new AtomicInteger(0);
+        private final AtomicInteger minuteRejectedCount = new AtomicInteger(0);
     }
 
     private record TenantRuntimeRejection(String companyCode,

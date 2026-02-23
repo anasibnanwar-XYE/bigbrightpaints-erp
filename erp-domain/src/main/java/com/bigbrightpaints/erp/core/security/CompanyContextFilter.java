@@ -345,7 +345,11 @@ public class CompanyContextFilter extends OncePerRequestFilter {
             return ErrorCode.BUSINESS_INVALID_STATE.getCode();
         }
         String normalized = runtimeReasonCode.trim().toUpperCase();
-        if ("TENANT_CONCURRENCY_LIMIT".equals(normalized) || "TENANT_RATE_LIMIT".equals(normalized)) {
+        if ("TENANT_CONCURRENCY_LIMIT".equals(normalized)
+                || "TENANT_RATE_LIMIT".equals(normalized)
+                || "TENANT_CONCURRENCY_EXCEEDED".equals(normalized)
+                || "TENANT_REQUEST_RATE_EXCEEDED".equals(normalized)
+                || "TENANT_ACTIVE_USER_QUOTA_EXCEEDED".equals(normalized)) {
             return ErrorCode.BUSINESS_LIMIT_EXCEEDED.getCode();
         }
         return ErrorCode.BUSINESS_INVALID_STATE.getCode();

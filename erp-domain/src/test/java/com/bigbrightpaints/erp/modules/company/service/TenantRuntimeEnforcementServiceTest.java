@@ -373,6 +373,7 @@ class TenantRuntimeEnforcementServiceTest {
         assertThat(snapshot.metrics().totalRequests()).isEqualTo(1L);
         assertThat(snapshot.metrics().rejectedRequests()).isEqualTo(1L);
         assertThat(snapshot.metrics().minuteRequestCount()).isEqualTo(2);
+        assertThat(snapshot.metrics().minuteRejectedCount()).isEqualTo(1);
         assertThat(snapshot.metrics().inFlightRequests()).isEqualTo(0);
     }
 

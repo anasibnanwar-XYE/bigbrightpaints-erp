@@ -258,6 +258,16 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
         assertThat(invokeResolveApplicationPath(contextNotMatched)).isEqualTo("/outside/api/v1/private");
     }
 
+    @Test
+    void helperMethods_mapRuntimeErrorCode_handlesCurrentAndLegacyQuotaReasons() {
+        assertThat(invokeMapRuntimeErrorCode("TENANT_CONCURRENCY_LIMIT")).isEqualTo("BUS_006");
+        assertThat(invokeMapRuntimeErrorCode("TENANT_RATE_LIMIT")).isEqualTo("BUS_006");
+        assertThat(invokeMapRuntimeErrorCode("TENANT_CONCURRENCY_EXCEEDED")).isEqualTo("BUS_006");
+        assertThat(invokeMapRuntimeErrorCode("TENANT_REQUEST_RATE_EXCEEDED")).isEqualTo("BUS_006");
+        assertThat(invokeMapRuntimeErrorCode("TENANT_ACTIVE_USER_QUOTA_EXCEEDED")).isEqualTo("BUS_006");
+        assertThat(invokeMapRuntimeErrorCode("TENANT_BLOCKED")).isEqualTo("BUS_001");
+    }
+
     private void authenticate(String email, Set<String> authorities, Set<String> companyCodes) {
         UserAccount user = new UserAccount(email, "hash", "Operator");
         for (String code : companyCodes) {
@@ -342,6 +352,10 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
 
     private String invokeResolveApplicationPath(MockHttpServletRequest request) {
         return ReflectionTestUtils.invokeMethod(filter, "resolveApplicationPath", request);
+    }
+
+    private String invokeMapRuntimeErrorCode(String runtimeReasonCode) {
+        return ReflectionTestUtils.invokeMethod(filter, "mapRuntimeErrorCode", runtimeReasonCode);
     }
 
     @SuppressWarnings("unchecked")
