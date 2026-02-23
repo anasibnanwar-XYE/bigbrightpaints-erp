@@ -145,9 +145,14 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
         filter.doFilter(request, response, filterChain);
 
         assertThat(response.getStatus()).isEqualTo(429);
-        Map<String, String> payload =
+        Map<String, Object> payload =
                 OBJECT_MAPPER.readValue(response.getContentAsString(), new TypeReference<>() {});
         assertThat(payload).containsEntry("message", "bad \"quote\" \\\\ slash");
+        assertThat(payload).containsEntry("success", Boolean.FALSE);
+        Map<String, Object> data = castMap(payload.get("data"));
+        assertThat(data).containsEntry("code", "BUS_001");
+        Map<String, Object> details = castMap(data.get("details"));
+        assertThat(details).containsEntry("policyReference", "audit-chain");
         verify(filterChain, never()).doFilter(request, response);
     }
 
@@ -194,7 +199,7 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
         assertThat(invokeHasTenantRuntimePolicyControlAuthority("/api/v1/admin/tenant-runtime/policy", "PUT")).isTrue();
 
         authenticate("admin@bbp.com", Set.of("ROLE_ADMIN"), Set.of("ACME"));
-        assertThat(invokeHasTenantRuntimePolicyControlAuthority("/api/v1/admin/tenant-runtime/policy", "PUT")).isTrue();
+        assertThat(invokeHasTenantRuntimePolicyControlAuthority("/api/v1/admin/tenant-runtime/policy", "PUT")).isFalse();
         assertThat(invokeHasTenantRuntimePolicyControlAuthority("/api/v1/companies/77/tenant-runtime/policy", "PUT")).isFalse();
 
         MockHttpServletRequest lifecycleMutation = request("POST", "/api/v1/companies/77/lifecycle-state");
@@ -337,5 +342,11 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
 
     private String invokeResolveApplicationPath(MockHttpServletRequest request) {
         return ReflectionTestUtils.invokeMethod(filter, "resolveApplicationPath", request);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> castMap(Object value) {
+        assertThat(value).isInstanceOf(Map.class);
+        return (Map<String, Object>) value;
     }
 }

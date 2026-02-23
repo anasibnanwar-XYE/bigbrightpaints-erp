@@ -982,6 +982,10 @@ public class TenantRuntimeEnforcementService {
         private final int statusCode;
         private final String message;
         private final boolean policyControlRequest;
+        private final String reasonCode;
+        private final String limitType;
+        private final String observedValue;
+        private final String limitValue;
 
         private TenantRequestAdmission(boolean admitted,
                                        String companyCode,
@@ -999,6 +1003,30 @@ public class TenantRuntimeEnforcementService {
                                        int statusCode,
                                        String message,
                                        boolean policyControlRequest) {
+            this(admitted,
+                    companyCode,
+                    auditChainId,
+                    counters,
+                    statusCode,
+                    message,
+                    policyControlRequest,
+                    null,
+                    null,
+                    null,
+                    null);
+        }
+
+        private TenantRequestAdmission(boolean admitted,
+                                       String companyCode,
+                                       String auditChainId,
+                                       TenantRuntimeCounters counters,
+                                       int statusCode,
+                                       String message,
+                                       boolean policyControlRequest,
+                                       String reasonCode,
+                                       String limitType,
+                                       String observedValue,
+                                       String limitValue) {
             this.admitted = admitted;
             this.companyCode = companyCode;
             this.auditChainId = auditChainId;
@@ -1006,6 +1034,10 @@ public class TenantRuntimeEnforcementService {
             this.statusCode = statusCode;
             this.message = message;
             this.policyControlRequest = policyControlRequest;
+            this.reasonCode = reasonCode;
+            this.limitType = limitType;
+            this.observedValue = observedValue;
+            this.limitValue = limitValue;
         }
 
         public static TenantRequestAdmission notTracked() {
@@ -1038,7 +1070,12 @@ public class TenantRuntimeEnforcementService {
                     rejection.auditChainId,
                     null,
                     rejection.httpStatus.value(),
-                    rejection.reasonDetail);
+                    rejection.reasonDetail,
+                    false,
+                    rejection.reasonCode,
+                    rejection.limitType,
+                    rejection.observedValue,
+                    rejection.limitValue);
         }
 
         public boolean isAdmitted() {
@@ -1063,6 +1100,22 @@ public class TenantRuntimeEnforcementService {
 
         public String auditChainId() {
             return auditChainId;
+        }
+
+        public String reasonCode() {
+            return reasonCode;
+        }
+
+        public String limitType() {
+            return limitType;
+        }
+
+        public String observedValue() {
+            return observedValue;
+        }
+
+        public String limitValue() {
+            return limitValue;
         }
 
         private boolean isPolicyControlRequest() {

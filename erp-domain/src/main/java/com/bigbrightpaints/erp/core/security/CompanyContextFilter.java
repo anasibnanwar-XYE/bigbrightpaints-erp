@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.core.security;
 
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyLifecycleState;
@@ -113,18 +114,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
                         resolveCurrentActor(),
                         hasTenantRuntimePolicyControlAuthority(runtimePath, request.getMethod()));
                 if (!admission.isAdmitted()) {
-                    response.setStatus(admission.statusCode());
-                    response.setContentType("application/json");
-                    response.setCharacterEncoding("UTF-8");
-                    String message = admission.message();
-                    if (StringUtils.hasText(message)) {
-                        String escaped = message
-                                .replace("\\", "\\\\")
-                                .replace("\"", "\\\"");
-                        response.getWriter().write("{\"message\":\"" + escaped + "\"}");
-                    } else {
-                        response.getWriter().write("{\"message\":\"Access denied\"}");
-                    }
+                    writeRuntimeAdmissionRejection(request, response, admission);
                     return;
                 }
                 CompanyContextHolder.setCompanyCode(companyCode);
@@ -185,7 +175,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
             normalizedPath = normalizedPath.substring(0, normalizedPath.length() - 1);
         }
         if ("/api/v1/admin/tenant-runtime/policy".equals(normalizedPath)) {
-            return hasAuthority(auth, "ROLE_ADMIN") || hasAuthority(auth, "ROLE_SUPER_ADMIN");
+            return hasAuthority(auth, "ROLE_SUPER_ADMIN");
         }
         if (isCanonicalCompanyRuntimePolicyPath(normalizedPath)) {
             return hasAuthority(auth, "ROLE_SUPER_ADMIN");
@@ -275,5 +265,98 @@ public class CompanyContextFilter extends OncePerRequestFilter {
             return false;
         }
         return path.startsWith("/actuator") || path.startsWith("/swagger") || path.startsWith("/v3");
+    }
+
+    private void writeRuntimeAdmissionRejection(HttpServletRequest request,
+                                                HttpServletResponse response,
+                                                TenantRuntimeEnforcementService.TenantRequestAdmission admission)
+            throws IOException {
+        response.setStatus(admission.statusCode());
+        response.setContentType("application/json");
+        response.setCharacterEncoding("UTF-8");
+
+        String message = StringUtils.hasText(admission.message()) ? admission.message() : "Access denied";
+        String escapedMessage = escapeJson(message);
+        StringBuilder payload = new StringBuilder("{\"success\":false,\"message\":\"")
+                .append(escapedMessage)
+                .append("\",\"data\":{\"code\":\"")
+                .append(mapRuntimeErrorCode(admission.reasonCode()))
+                .append("\",\"message\":\"")
+                .append(escapedMessage)
+                .append("\",\"reason\":\"")
+                .append(escapedMessage)
+                .append("\"");
+        if (request != null && StringUtils.hasText(request.getRequestURI())) {
+            payload.append(",\"path\":\"")
+                    .append(escapeJson(request.getRequestURI()))
+                    .append("\"");
+        }
+        String policyReference = admission.auditChainId();
+        String limitType = admission.limitType();
+        String observedValue = admission.observedValue();
+        String limitValue = admission.limitValue();
+        boolean hasDetails = StringUtils.hasText(policyReference)
+                || StringUtils.hasText(limitType)
+                || StringUtils.hasText(observedValue)
+                || StringUtils.hasText(limitValue);
+        if (hasDetails) {
+            payload.append(",\"details\":{");
+            boolean firstDetail = true;
+            if (StringUtils.hasText(policyReference)) {
+                payload.append("\"policyReference\":\"")
+                        .append(escapeJson(policyReference))
+                        .append("\"");
+                firstDetail = false;
+            }
+            if (StringUtils.hasText(limitType)) {
+                if (!firstDetail) {
+                    payload.append(',');
+                }
+                payload.append("\"limitType\":\"")
+                        .append(escapeJson(limitType))
+                        .append("\"");
+                firstDetail = false;
+            }
+            if (StringUtils.hasText(observedValue)) {
+                if (!firstDetail) {
+                    payload.append(',');
+                }
+                payload.append("\"observedValue\":\"")
+                        .append(escapeJson(observedValue))
+                        .append("\"");
+                firstDetail = false;
+            }
+            if (StringUtils.hasText(limitValue)) {
+                if (!firstDetail) {
+                    payload.append(',');
+                }
+                payload.append("\"limitValue\":\"")
+                        .append(escapeJson(limitValue))
+                        .append("\"");
+            }
+            payload.append('}');
+        }
+        payload.append("}}");
+        response.getWriter().write(payload.toString());
+    }
+
+    private String mapRuntimeErrorCode(String runtimeReasonCode) {
+        if (!StringUtils.hasText(runtimeReasonCode)) {
+            return ErrorCode.BUSINESS_INVALID_STATE.getCode();
+        }
+        String normalized = runtimeReasonCode.trim().toUpperCase();
+        if ("TENANT_CONCURRENCY_LIMIT".equals(normalized) || "TENANT_RATE_LIMIT".equals(normalized)) {
+            return ErrorCode.BUSINESS_LIMIT_EXCEEDED.getCode();
+        }
+        return ErrorCode.BUSINESS_INVALID_STATE.getCode();
+    }
+
+    private String escapeJson(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"");
     }
 }
