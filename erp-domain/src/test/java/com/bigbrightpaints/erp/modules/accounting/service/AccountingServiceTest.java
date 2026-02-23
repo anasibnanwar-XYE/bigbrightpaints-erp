@@ -1185,6 +1185,50 @@ class AccountingServiceTest {
     }
 
     @Test
+    void createJournalEntry_dataIntegrityConflictRethrowsForRetryBoundary() {
+        LocalDate today = LocalDate.of(2024, 3, 26);
+        when(companyClock.today(company)).thenReturn(today);
+        AccountingPeriod period = new AccountingPeriod();
+        period.setYear(today.getYear());
+        period.setMonth(today.getMonthValue());
+        when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(period);
+        when(journalEntryRepository.findByCompanyAndReferenceNumber(eq(company), eq("JE-RACE-1")))
+                .thenReturn(Optional.empty());
+
+        Account debitAccount = new Account();
+        ReflectionTestUtils.setField(debitAccount, "id", 231L);
+        debitAccount.setCompany(company);
+        debitAccount.setBalance(BigDecimal.ZERO);
+        debitAccount.setCode("DEBIT-RACE");
+        Account creditAccount = new Account();
+        ReflectionTestUtils.setField(creditAccount, "id", 232L);
+        creditAccount.setCompany(company);
+        creditAccount.setBalance(BigDecimal.ZERO);
+        creditAccount.setCode("CREDIT-RACE");
+        when(accountRepository.lockByCompanyAndId(eq(company), eq(231L))).thenReturn(Optional.of(debitAccount));
+        when(accountRepository.lockByCompanyAndId(eq(company), eq(232L))).thenReturn(Optional.of(creditAccount));
+        when(journalEntryRepository.save(any())).thenThrow(new DataIntegrityViolationException("duplicate-journal"));
+
+        JournalEntryRequest request = new JournalEntryRequest(
+                "JE-RACE-1",
+                today,
+                "retry boundary conflict",
+                null,
+                null,
+                Boolean.FALSE,
+                List.of(
+                        new JournalEntryRequest.JournalLineRequest(231L, "Debit line", new BigDecimal("30.00"), BigDecimal.ZERO),
+                        new JournalEntryRequest.JournalLineRequest(232L, "Credit line", BigDecimal.ZERO, new BigDecimal("30.00"))
+                )
+        );
+
+        assertThatThrownBy(() -> accountingService.createJournalEntry(request))
+                .isInstanceOf(DataIntegrityViolationException.class);
+        verify(accountRepository, never()).updateBalanceAtomic(any(), any(), any());
+        verify(accountingEventStore, never()).recordJournalEntryPosted(any(), any());
+    }
+
+    @Test
     void createJournalEntry_rejectsEventTrailIncompatibleReferenceLength() {
         LocalDate today = LocalDate.of(2024, 3, 24);
         when(companyClock.today(company)).thenReturn(today);
