@@ -429,6 +429,56 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
     }
 
     @Test
+    void lifecycleControlBypass_allowsSuperAdminOutsideTenantMembership_forInactiveTenant() throws Exception {
+        authenticateForCompanyWithAuthorities("super-admin@bbp.com", "ROOT", "ROLE_SUPER_ADMIN");
+        when(companyService.resolveLifecycleStateByCode("ACME")).thenReturn(CompanyLifecycleState.HOLD);
+        Company acme = new Company();
+        acme.setCode("ACME");
+        when(companyService.findByCode("ACME")).thenReturn(acme);
+
+        TenantRuntimeEnforcementService.TenantRequestAdmission admittedAdmission =
+                admission(true, "ACME", 200, null);
+        when(tenantRuntimeEnforcementService.beginRequest(
+                "ACME",
+                "/api/v1/companies/42/tenant-runtime/policy",
+                "PUT",
+                "super-admin@bbp.com",
+                true))
+                .thenReturn(admittedAdmission);
+
+        MockHttpServletRequest request = new MockHttpServletRequest("PUT", "/api/v1/companies/42/tenant-runtime/policy");
+        request.setAttribute("jwtClaims", claims("ACME", null));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        AtomicBoolean chainCalled = new AtomicBoolean(false);
+
+        filter.doFilter(request, response, (req, res) -> chainCalled.set(true));
+
+        assertThat(response.getStatus()).isEqualTo(200);
+        assertThat(chainCalled.get()).isTrue();
+        verify(tenantRuntimeEnforcementService).beginRequest(
+                "ACME",
+                "/api/v1/companies/42/tenant-runtime/policy",
+                "PUT",
+                "super-admin@bbp.com",
+                true);
+    }
+
+    @Test
+    void lifecycleControlBypass_deniesWithoutSuperAdminAuthority() throws Exception {
+        authenticateForCompanyWithAuthorities("admin@bbp.com", "ROOT", "ROLE_ADMIN");
+        when(companyService.resolveLifecycleStateByCode("ACME")).thenReturn(CompanyLifecycleState.HOLD);
+
+        MockHttpServletRequest request = new MockHttpServletRequest("PUT", "/api/v1/companies/42/tenant-runtime/policy");
+        request.setAttribute("jwtClaims", claims("ACME", null));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, new MockFilterChain());
+
+        assertThat(response.getStatus()).isEqualTo(403);
+        verify(tenantRuntimeEnforcementService).completeRequest(any(), eq(403));
+    }
+
+    @Test
     void actuatorPaths_bypassFilterAndDoNotInvokeTenantEnforcement() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/actuator/health");
         request.setServletPath("/actuator/health");
@@ -449,6 +499,10 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
     }
 
     private void authenticateForCompany(String email, String companyCode) {
+        authenticateForCompanyWithAuthorities(email, companyCode);
+    }
+
+    private void authenticateForCompanyWithAuthorities(String email, String companyCode, String... authorities) {
         Company company = new Company();
         company.setCode(companyCode);
 
@@ -456,8 +510,16 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
         user.addCompany(company);
 
         UserPrincipal principal = new UserPrincipal(user);
+        java.util.Collection<? extends org.springframework.security.core.GrantedAuthority> grantedAuthorities;
+        if (authorities == null || authorities.length == 0) {
+            grantedAuthorities = principal.getAuthorities();
+        } else {
+            grantedAuthorities = java.util.Arrays.stream(authorities)
+                    .map(authority -> (org.springframework.security.core.GrantedAuthority) () -> authority)
+                    .toList();
+        }
         SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(principal, "n/a", principal.getAuthorities()));
+                new UsernamePasswordAuthenticationToken(principal, "n/a", grantedAuthorities));
     }
 
     private void authenticateSuperAdminForCompany(String email, String companyCode) {
