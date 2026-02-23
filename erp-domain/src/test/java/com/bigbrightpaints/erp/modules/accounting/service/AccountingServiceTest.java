@@ -3198,7 +3198,7 @@ class AccountingServiceTest {
     }
 
     @Test
-    void recordDealerReceipt_dataIntegrityFallbackRepairsReferenceMapping() {
+    void recordDealerReceipt_dataIntegrityConflictRethrowsForRetryBoundary() {
         AccountingService service = spy(accountingService);
 
         Dealer dealer = new Dealer();
@@ -3299,19 +3299,15 @@ class AccountingServiceTest {
                 ))
         );
 
-        JournalEntryDto response = service.recordDealerReceipt(request);
-
-        assertThat(response.id()).isEqualTo(911L);
-        verify(journalReferenceMappingRepository).save(mapping);
-        assertThat(mapping.getEntityId()).isEqualTo(911L);
-        assertThat(mapping.getEntityType()).isEqualTo("DEALER_RECEIPT");
-        assertThat(mapping.getCanonicalReference()).isEqualTo("DR-RACE-EXIST-1");
+        assertThatThrownBy(() -> service.recordDealerReceipt(request))
+                .isInstanceOf(DataIntegrityViolationException.class);
+        verify(journalReferenceMappingRepository, atLeastOnce()).save(any());
         verify(invoiceSettlementPolicy, never()).applySettlement(any(), any(), any());
         verify(dealerLedgerService, never()).syncInvoiceLedger(any(), any());
     }
 
     @Test
-    void recordDealerReceipt_dataIntegrityFallbackRejectsMappingAllocationJournalMismatch() {
+    void recordDealerReceipt_dataIntegrityConflictWinsBeforeReplayValidation() {
         AccountingService service = spy(accountingService);
 
         Dealer dealer = new Dealer();
@@ -3348,11 +3344,6 @@ class AccountingServiceTest {
         createdEntry.getLines().add(journalLine(createdEntry, cash, "Dealer receipt race", new BigDecimal("100.00"), BigDecimal.ZERO));
         createdEntry.getLines().add(journalLine(createdEntry, receivable, "Dealer receipt race", BigDecimal.ZERO, new BigDecimal("100.00")));
 
-        JournalEntry mappingEntry = new JournalEntry();
-        ReflectionTestUtils.setField(mappingEntry, "id", 1911L);
-        mappingEntry.setDealer(dealer);
-        mappingEntry.setReferenceNumber("DR-RACE-MISMATCH-MAP-1");
-
         JournalEntry concurrentEntry = new JournalEntry();
         ReflectionTestUtils.setField(concurrentEntry, "id", 1912L);
         concurrentEntry.setDealer(dealer);
@@ -3385,8 +3376,6 @@ class AccountingServiceTest {
         when(invoiceRepository.lockByCompanyAndId(eq(company), eq(502L))).thenReturn(Optional.of(invoice));
         when(settlementAllocationRepository.findByCompanyAndJournalEntryOrderByCreatedAtAsc(eq(company), eq(createdEntry)))
                 .thenReturn(List.of());
-        when(journalReferenceResolver.findExistingEntry(eq(company), eq("DR-RACE-MISMATCH-NEW-1")))
-                .thenReturn(Optional.of(mappingEntry));
         doReturn(stubEntry(1910L)).when(service).createJournalEntry(any(JournalEntryRequest.class));
         when(companyEntityLookup.requireJournalEntry(eq(company), eq(1910L))).thenReturn(createdEntry);
         when(settlementAllocationRepository.saveAll(any())).thenThrow(new DataIntegrityViolationException("duplicate"));
@@ -3410,12 +3399,11 @@ class AccountingServiceTest {
         );
 
         assertThatThrownBy(() -> service.recordDealerReceipt(request))
-                .isInstanceOf(ApplicationException.class)
-                .hasMessageContaining("different journal than settled allocations");
+                .isInstanceOf(DataIntegrityViolationException.class);
     }
 
     @Test
-    void recordDealerReceiptSplit_dataIntegrityFallbackRepairsReferenceMapping() {
+    void recordDealerReceiptSplit_dataIntegrityConflictRethrowsForRetryBoundary() {
         AccountingService service = spy(accountingService);
 
         Dealer dealer = new Dealer();
@@ -3506,19 +3494,15 @@ class AccountingServiceTest {
                 "IDEMP-DR-SPLIT-RACE"
         );
 
-        JournalEntryDto response = service.recordDealerReceiptSplit(request);
-
-        assertThat(response.id()).isEqualTo(921L);
-        verify(journalReferenceMappingRepository).save(mapping);
-        assertThat(mapping.getEntityId()).isEqualTo(921L);
-        assertThat(mapping.getEntityType()).isEqualTo("DEALER_RECEIPT_SPLIT");
-        assertThat(mapping.getCanonicalReference()).isEqualTo("DR-SPLIT-RACE-EXIST-1");
+        assertThatThrownBy(() -> service.recordDealerReceiptSplit(request))
+                .isInstanceOf(DataIntegrityViolationException.class);
+        verify(journalReferenceMappingRepository, atLeastOnce()).save(any());
         verify(invoiceSettlementPolicy, never()).applySettlement(any(), any(), any());
         verify(dealerLedgerService, never()).syncInvoiceLedger(any(), any());
     }
 
     @Test
-    void recordSupplierPayment_dataIntegrityFallbackRepairsReferenceMapping() {
+    void recordSupplierPayment_dataIntegrityConflictRethrowsForRetryBoundary() {
         AccountingService service = spy(accountingService);
 
         Supplier supplier = new Supplier();
@@ -3614,19 +3598,15 @@ class AccountingServiceTest {
                 ))
         );
 
-        JournalEntryDto response = service.recordSupplierPayment(request);
-
-        assertThat(response.id()).isEqualTo(931L);
-        verify(journalReferenceMappingRepository).save(mapping);
-        assertThat(mapping.getEntityId()).isEqualTo(931L);
-        assertThat(mapping.getEntityType()).isEqualTo("SUPPLIER_PAYMENT");
-        assertThat(mapping.getCanonicalReference()).isEqualTo("SUP-PAY-RACE-EXIST-1");
+        assertThatThrownBy(() -> service.recordSupplierPayment(request))
+                .isInstanceOf(DataIntegrityViolationException.class);
+        verify(journalReferenceMappingRepository, atLeastOnce()).save(any());
         assertThat(purchase.getOutstandingAmount()).isEqualByComparingTo("100.00");
         verify(rawMaterialPurchaseRepository, never()).saveAll(any());
     }
 
     @Test
-    void settleDealerInvoices_dataIntegrityFallbackRepairsReferenceMapping() {
+    void settleDealerInvoices_dataIntegrityConflictRethrowsForRetryBoundary() {
         AccountingService service = spy(accountingService);
 
         Dealer dealer = new Dealer();
@@ -3738,22 +3718,14 @@ class AccountingServiceTest {
                 null
         );
 
-        PartnerSettlementResponse response = service.settleDealerInvoices(request);
-
-        assertThat(response.journalEntry()).isNotNull();
-        assertThat(response.journalEntry().id()).isEqualTo(951L);
-        ArgumentCaptor<JournalReferenceMapping> mappingCaptor = ArgumentCaptor.forClass(JournalReferenceMapping.class);
-        verify(journalReferenceMappingRepository, atLeastOnce()).save(mappingCaptor.capture());
-        JournalReferenceMapping savedMapping = mappingCaptor.getAllValues().getLast();
-        assertThat(savedMapping.getLegacyReference()).isEqualTo("idemp-dr-settle-race");
-        assertThat(savedMapping.getEntityId()).isEqualTo(951L);
-        assertThat(savedMapping.getEntityType()).isEqualTo("DEALER_SETTLEMENT");
-        assertThat(savedMapping.getCanonicalReference()).isEqualTo("DR-SETTLE-RACE-EXIST-1");
+        assertThatThrownBy(() -> service.settleDealerInvoices(request))
+                .isInstanceOf(DataIntegrityViolationException.class);
+        verify(journalReferenceMappingRepository, atLeastOnce()).save(any());
         verify(invoiceSettlementPolicy, never()).applySettlement(any(), any(), any());
     }
 
     @Test
-    void settleSupplierInvoices_dataIntegrityFallbackRepairsReferenceMapping() {
+    void settleSupplierInvoices_dataIntegrityConflictRethrowsForRetryBoundary() {
         AccountingService service = spy(accountingService);
 
         Supplier supplier = new Supplier();
@@ -3890,14 +3862,9 @@ class AccountingServiceTest {
                 List.of(allocation)
         );
 
-        PartnerSettlementResponse response = service.settleSupplierInvoices(request);
-
-        assertThat(response.journalEntry()).isNotNull();
-        assertThat(response.journalEntry().id()).isEqualTo(961L);
-        verify(journalReferenceMappingRepository, times(2)).save(mapping);
-        assertThat(mapping.getEntityId()).isEqualTo(961L);
-        assertThat(mapping.getEntityType()).isEqualTo("SUPPLIER_SETTLEMENT");
-        assertThat(mapping.getCanonicalReference()).isEqualTo("SUP-SETTLE-RACE-NEW-1");
+        assertThatThrownBy(() -> service.settleSupplierInvoices(request))
+                .isInstanceOf(DataIntegrityViolationException.class);
+        verify(journalReferenceMappingRepository, atLeastOnce()).save(any());
         assertThat(purchase.getOutstandingAmount()).isEqualByComparingTo("100.00");
         verify(rawMaterialPurchaseRepository, never()).saveAll(any());
     }
@@ -7838,6 +7805,46 @@ class AccountingServiceTest {
                     assertThat(appEx.getDetails())
                             .containsEntry("partnerMismatchTypes", List.of("DEALER", "SUPPLIER"));
                 });
+    }
+
+    @Test
+    void decrementSignatureCount_handlesNullZeroSingleAndMultipleCounts() throws Exception {
+        Class<?> signatureType = Class.forName(
+                "com.bigbrightpaints.erp.modules.accounting.service.AccountingService$DealerPaymentSignature");
+        java.lang.reflect.Constructor<?> constructor = signatureType.getDeclaredConstructor(Long.class, BigDecimal.class);
+        constructor.setAccessible(true);
+        Object signature = constructor.newInstance(20L, new BigDecimal("100.00"));
+
+        Map<Object, Integer> counts = new java.util.HashMap<>();
+
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "decrementSignatureCount",
+                counts,
+                signature)).isFalse();
+
+        counts.put(signature, 0);
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "decrementSignatureCount",
+                counts,
+                signature)).isFalse();
+
+        counts.put(signature, 1);
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "decrementSignatureCount",
+                counts,
+                signature)).isTrue();
+        assertThat(counts).doesNotContainKey(signature);
+
+        counts.put(signature, 3);
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "decrementSignatureCount",
+                counts,
+                signature)).isTrue();
+        assertThat(counts).containsEntry(signature, 2);
     }
 
     private void assertPartnerReplayDetails(ApplicationException ex,
