@@ -197,7 +197,7 @@ Update this file in every high-risk change set.
   - `erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimeOrchestratorExecutableCoverageTest.java`
 
 ## STAGE-102 Addendum (2026-02-23, auth-rbac-company-repair)
-- Branch / PR: `tickets/tkt-erp-stage-102/auth-rbac-company-repair` / PR #61 (https://github.com/anasibnanwar-XYE/bigbrightpaints-erp/pull/61)
+- Ticket / PR: `tickets/TKT-ERP-STAGE-102` / PR #61 (https://github.com/anasibnanwar-XYE/bigbrightpaints-erp/pull/61)
 - High-risk paths:
   - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/service/TenantRuntimeEnforcementService.java`
   - `erp-domain/src/main/java/com/bigbrightpaints/erp/core/security/CompanyContextFilter.java`
@@ -216,4 +216,4 @@ Update this file in every high-risk change set.
     - `erp-domain/src/main/java/com/bigbrightpaints/erp/core/security/CompanyContextFilter.java`
     - `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/company/service/TenantRuntimeEnforcementServiceTest.java`
     - `erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimeTenantRuntimeEnforcementTest.java`
-    - `erp-domain/src/test/java/com/bigbrightpaints/erp/core/security/TS_RuntimeCompanyContextFilterExecutableCoverageTest.java`
+    - `erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimeCompanyContextFilterExecutableCoverageTest.java`
