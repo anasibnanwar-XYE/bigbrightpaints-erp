@@ -252,7 +252,9 @@ public class AccountingService {
         } else {
             entries = journalEntryRepository.findByCompanyOrderByEntryDateDescIdDesc(company, pageable).getContent();
         }
-        return entries.stream().map(this::toDto).toList();
+        return entries.stream()
+                .map(entry -> toDto(entry, resolveDisplayReferenceNumber(company, entry)))
+                .toList();
     }
 
     public List<JournalEntryDto> listJournalEntries(Long dealerId) {
@@ -2175,6 +2177,10 @@ public class AccountingService {
     }
 
     private JournalEntryDto toDto(JournalEntry entry) {
+        return toDto(entry, entry.getReferenceNumber());
+    }
+
+    private JournalEntryDto toDto(JournalEntry entry, String displayReferenceNumber) {
         List<JournalLineDto> lines = entry.getLines().stream()
                 .map(line -> new JournalLineDto(
                         line.getAccount().getId(),
@@ -2194,7 +2200,7 @@ public class AccountingService {
         JournalEntry reversalOf = entry.getReversalOf();
         JournalEntry reversalEntry = entry.getReversalEntry();
         String correctionType = entry.getCorrectionType() != null ? entry.getCorrectionType().name() : null;
-        return new JournalEntryDto(entry.getId(), entry.getPublicId(), entry.getReferenceNumber(),
+        return new JournalEntryDto(entry.getId(), entry.getPublicId(), displayReferenceNumber,
                 entry.getEntryDate(), entry.getMemo(), entry.getStatus(),
                 dealer != null ? dealer.getId() : null, dealerName,
                 supplier != null ? supplier.getId() : null, supplierName,
@@ -2211,6 +2217,28 @@ public class AccountingService {
                 entry.getCreatedBy(),
                 entry.getPostedBy(),
                 entry.getLastModifiedBy());
+    }
+
+    private String resolveDisplayReferenceNumber(Company company, JournalEntry entry) {
+        if (entry == null || !StringUtils.hasText(entry.getReferenceNumber())) {
+            return entry != null ? entry.getReferenceNumber() : null;
+        }
+        String canonicalReference = entry.getReferenceNumber().trim();
+        List<JournalReferenceMapping> mappings = journalReferenceMappingRepository
+                .findAllByCompanyAndCanonicalReferenceIgnoreCase(company, canonicalReference);
+        if (mappings.isEmpty()) {
+            return canonicalReference;
+        }
+        return mappings.stream()
+                .map(JournalReferenceMapping::getLegacyReference)
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .filter(legacyReference -> !legacyReference.equalsIgnoreCase(canonicalReference))
+                .sorted(Comparator
+                        .comparing((String reference) -> reference.toUpperCase(Locale.ROOT).contains("-INV-") ? 0 : 1)
+                        .thenComparingInt(String::length))
+                .findFirst()
+                .orElse(canonicalReference);
     }
 
     private Dealer requireDealer(Company company, Long dealerId) {

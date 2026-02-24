@@ -188,6 +188,7 @@ class SalesServiceTest {
         when(companyContextService.requireCurrentCompany()).thenReturn(company);
         when(companyClock.today(any())).thenReturn(java.time.LocalDate.of(2026, 1, 27));
         when(invoiceRepository.findAllByCompanyAndSalesOrderId(eq(company), anyLong())).thenReturn(List.of());
+        lenient().when(dealerRepository.findByCompanyAndCodeIgnoreCase(any(), anyString())).thenReturn(Optional.empty());
         lenient().when(packagingSlipRepository.findByIdAndCompany(anyLong(), eq(company)))
                 .thenAnswer(invocation -> {
                     Long slipId = invocation.getArgument(0);
@@ -924,10 +925,11 @@ class SalesServiceTest {
     }
 
     @Test
-    void deleteDealerDeactivatesReceivableAccountBeforeDelete() {
+    void deleteDealerMarksDealerInactiveAndDeactivatesReceivableAccount() {
         Dealer dealer = new Dealer();
         dealer.setCompany(company);
         setField(dealer, "id", 816L);
+        dealer.setStatus("ACTIVE");
 
         Account receivable = new Account();
         receivable.setCompany(company);
@@ -939,9 +941,10 @@ class SalesServiceTest {
 
         salesService.deleteDealer(816L);
 
+        assertEquals("INACTIVE", dealer.getStatus());
         assertFalse(receivable.isActive());
         verify(accountRepository).save(receivable);
-        verify(dealerRepository).delete(dealer);
+        verify(dealerRepository).save(dealer);
     }
 
     @Test

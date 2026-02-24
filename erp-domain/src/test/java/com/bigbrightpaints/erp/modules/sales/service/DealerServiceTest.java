@@ -35,6 +35,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -81,7 +82,9 @@ class DealerServiceTest {
         company.setCode("TEST");
 
         lenient().when(companyContextService.requireCurrentCompany()).thenReturn(company);
-        lenient().when(dealerRepository.findAllByCompanyAndPortalUserEmailIgnoreCase(eq(company), anyString())).thenReturn(List.of());
+        lenient().when(dealerRepository.findAllByCompanyAndPortalUserEmailIgnoreCase(eq(company), anyString()))
+                .thenReturn(List.of());
+        lenient().when(dealerRepository.findByCompanyAndEmailIgnoreCase(eq(company), anyString())).thenReturn(Optional.empty());
         lenient().when(dealerRepository.findByCompanyAndCodeIgnoreCase(eq(company), anyString())).thenReturn(Optional.empty());
         lenient().when(dealerRepository.save(any(Dealer.class))).thenAnswer(invocation -> {
             Dealer dealer = invocation.getArgument(0);
@@ -159,11 +162,33 @@ class DealerServiceTest {
     @Test
     void createDealer_rejectsDuplicatePortalMappingGracefully() {
         when(dealerRepository.findAllByCompanyAndPortalUserEmailIgnoreCase(eq(company), eq("dealer@example.com")))
-                .thenReturn(List.of(new Dealer(), new Dealer()));
+                .thenReturn(List.of(new Dealer()));
 
         assertThatThrownBy(() -> dealerService.createDealer(request()))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Dealer already exists for this portal user");
+    }
+
+    @Test
+    void createDealer_reusesExistingDealerByContactEmail() {
+        Dealer existing = new Dealer();
+        existing.setCompany(company);
+        ReflectionTestUtils.setField(existing, "id", 77L);
+        existing.setCode("LEGACY-DEALER");
+        existing.setName("Legacy Name");
+        existing.setStatus("INACTIVE");
+
+        when(dealerRepository.findByCompanyAndEmailIgnoreCase(eq(company), eq("dealer@example.com")))
+                .thenReturn(Optional.of(existing));
+
+        dealerService.createDealer(request());
+
+        ArgumentCaptor<Dealer> dealerCaptor = ArgumentCaptor.forClass(Dealer.class);
+        verify(dealerRepository, atLeastOnce()).save(dealerCaptor.capture());
+        Dealer saved = dealerCaptor.getAllValues().get(dealerCaptor.getAllValues().size() - 1);
+        assertThat(saved.getId()).isEqualTo(77L);
+        assertThat(saved.getCode()).isEqualTo("LEGACY-DEALER");
+        assertThat(saved.getStatus()).isEqualTo("ACTIVE");
     }
 
     private CreateDealerRequest request() {

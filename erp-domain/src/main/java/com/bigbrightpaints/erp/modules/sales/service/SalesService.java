@@ -9,9 +9,7 @@ import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.util.MoneyUtils;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
-import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
-import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLine;
@@ -35,6 +33,7 @@ import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccounts
 import com.bigbrightpaints.erp.modules.sales.domain.*;
 import com.bigbrightpaints.erp.modules.sales.dto.*;
 import com.bigbrightpaints.erp.modules.sales.event.SalesOrderCreatedEvent;
+import com.bigbrightpaints.erp.modules.sales.util.DealerProvisioningSupport;
 import com.bigbrightpaints.erp.modules.sales.util.SalesOrderReference;
 import org.apache.commons.codec.digest.DigestUtils;
 import org.slf4j.Logger;
@@ -222,7 +221,8 @@ public class SalesService {
     /* Dealers */
     public List<DealerDto> listDealers() {
         Company company = companyContextService.requireCurrentCompany();
-        List<Dealer> dealers = dealerRepository.findByCompanyOrderByNameAsc(company);
+        List<Dealer> dealers = dealerRepository.findByCompanyAndStatusIgnoreCaseOrderByNameAsc(
+                company, DealerProvisioningSupport.ACTIVE_STATUS);
         List<Long> dealerIds = dealers.stream().map(Dealer::getId).toList();
         var balances = dealerLedgerService.currentBalances(dealerIds);
         return dealers.stream()
@@ -233,15 +233,25 @@ public class SalesService {
     @Transactional
     public DealerDto createDealer(DealerRequest request) {
         Company company = companyContextService.requireCurrentCompany();
-        Dealer dealer = new Dealer();
-        dealer.setCompany(company);
+        Dealer dealer = dealerRepository.findByCompanyAndCodeIgnoreCase(company, request.code())
+                .orElseGet(() -> {
+                    Dealer fresh = new Dealer();
+                    fresh.setCompany(company);
+                    return fresh;
+                });
         dealer.setName(request.name());
         dealer.setCode(request.code());
         dealer.setEmail(request.email());
         dealer.setPhone(request.phone());
         dealer.setCreditLimit(request.creditLimit());
-        Account receivableAccount = createReceivableAccount(company, dealer);
-        dealer.setReceivableAccount(receivableAccount);
+        dealer.setStatus(DealerProvisioningSupport.ACTIVE_STATUS);
+        if (dealer.getReceivableAccount() == null) {
+            dealer.setReceivableAccount(DealerProvisioningSupport.createReceivableAccount(company, dealer, accountRepository));
+        } else if (!dealer.getReceivableAccount().isActive()) {
+            Account receivableAccount = dealer.getReceivableAccount();
+            receivableAccount.setActive(true);
+            accountRepository.save(receivableAccount);
+        }
         return toDto(dealerRepository.save(dealer));
     }
 
@@ -289,12 +299,13 @@ public class SalesService {
     @Transactional
     public void deleteDealer(Long id) {
         Dealer dealer = requireDealer(id);
+        dealer.setStatus(DealerProvisioningSupport.INACTIVE_STATUS);
         Account receivableAccount = dealer.getReceivableAccount();
         if (receivableAccount != null) {
             receivableAccount.setActive(false);
             accountRepository.save(receivableAccount);
         }
-        dealerRepository.delete(dealer);
+        dealerRepository.save(dealer);
     }
 
     private DealerDto toDto(Dealer dealer) {
@@ -310,27 +321,6 @@ public class SalesService {
     private Dealer requireDealer(Long id) {
         Company company = companyContextService.requireCurrentCompany();
         return companyEntityLookup.requireDealer(company, id);
-    }
-
-    private Account createReceivableAccount(Company company, Dealer dealer) {
-        String baseCode = "AR-" + dealer.getCode();
-        String code = baseCode;
-        int attempt = 1;
-        while (accountRepository.findByCompanyAndCodeIgnoreCase(company, code).isPresent()) {
-            code = baseCode + "-" + attempt++;
-        }
-        Account account = new Account();
-        account.setCompany(company);
-        account.setCode(code);
-        account.setName(dealer.getName() + " Receivable");
-        account.setType(AccountType.ASSET);
-        resolveControlAccount(company, "AR", AccountType.ASSET).ifPresent(account::setParent);
-        return accountRepository.save(account);
-    }
-
-    private Optional<Account> resolveControlAccount(Company company, String code, AccountType expectedType) {
-        return accountRepository.findByCompanyAndCodeIgnoreCase(company, code)
-                .filter(account -> account.getType() == expectedType);
     }
 
     /* Sales Orders */

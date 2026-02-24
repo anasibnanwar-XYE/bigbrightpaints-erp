@@ -62,6 +62,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.batch.support.transaction.ResourcelessTransactionManager;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -207,6 +209,32 @@ class AccountingServiceTest {
                 List.of()))
                 .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Payroll run number or id is required for posting");
+    }
+
+    @Test
+    void listJournalEntries_prefersMappedInvoiceReferenceWhenAvailable() {
+        JournalEntry entry = new JournalEntry();
+        ReflectionTestUtils.setField(entry, "id", 901L);
+        entry.setCompany(company);
+        entry.setReferenceNumber("INV-SO-901");
+        entry.setEntryDate(LocalDate.of(2026, 2, 23));
+        entry.setStatus("POSTED");
+
+        JournalReferenceMapping invoiceAlias = new JournalReferenceMapping();
+        invoiceAlias.setLegacyReference("TEST-INV-2026-00091");
+        invoiceAlias.setCanonicalReference("INV-SO-901");
+
+        when(journalEntryRepository.findByCompanyOrderByEntryDateDescIdDesc(
+                eq(company),
+                any(PageRequest.class)))
+                .thenReturn(new PageImpl<>(List.of(entry)));
+        when(journalReferenceMappingRepository.findAllByCompanyAndCanonicalReferenceIgnoreCase(company, "INV-SO-901"))
+                .thenReturn(List.of(invoiceAlias));
+
+        List<JournalEntryDto> listed = accountingService.listJournalEntries(null, null, 0, 50);
+
+        assertThat(listed).hasSize(1);
+        assertThat(listed.get(0).referenceNumber()).isEqualTo("TEST-INV-2026-00091");
     }
 
     @Test
