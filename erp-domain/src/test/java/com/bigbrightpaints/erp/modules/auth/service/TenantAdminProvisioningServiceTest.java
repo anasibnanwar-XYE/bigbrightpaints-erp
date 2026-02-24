@@ -1,5 +1,7 @@
 package com.bigbrightpaints.erp.modules.auth.service;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.notification.EmailService;
 import com.bigbrightpaints.erp.core.security.TokenBlacklistService;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
@@ -20,6 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -93,6 +96,33 @@ class TenantAdminProvisioningServiceTest {
         assertThatThrownBy(() -> service.resetTenantAdminPassword(target, "admin@ske.com"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("not assigned to company");
+    }
+
+    @Test
+    void resetTenantAdminPassword_surfacesCredentialEmailDispatchFailures() {
+        TenantAdminProvisioningService service = new TenantAdminProvisioningService(
+                userAccountRepository,
+                roleService,
+                passwordEncoder,
+                emailService,
+                tokenBlacklistService,
+                refreshTokenService);
+        Company target = company(55L, "SKE", "SKE");
+        UserAccount user = new UserAccount("admin@ske.com", "hash", "Admin");
+        user.addCompany(target);
+        Role adminRole = new Role();
+        adminRole.setName("ROLE_ADMIN");
+        user.addRole(adminRole);
+        when(userAccountRepository.findByEmailIgnoreCase("admin@ske.com")).thenReturn(Optional.of(user));
+        when(passwordEncoder.encode(any())).thenReturn("encoded");
+        when(userAccountRepository.save(any(UserAccount.class))).thenReturn(user);
+        doThrow(new ApplicationException(ErrorCode.SYSTEM_EXTERNAL_SERVICE_ERROR, "smtp-failed"))
+                .when(emailService)
+                .sendUserCredentialsEmail(eq("admin@ske.com"), eq("Admin"), any(), eq("SKE"));
+
+        assertThatThrownBy(() -> service.resetTenantAdminPassword(target, "admin@ske.com"))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("smtp-failed");
     }
 
     private Company company(Long id, String code, String name) {

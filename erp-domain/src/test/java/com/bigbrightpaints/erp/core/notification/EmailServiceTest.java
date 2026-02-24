@@ -18,6 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 @ExtendWith(MockitoExtension.class)
 class EmailServiceTest {
@@ -104,5 +105,39 @@ class EmailServiceTest {
                     ApplicationException appEx = (ApplicationException) ex;
                     assertThat(appEx.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT);
                 });
+    }
+
+    @Test
+    void sendUserCredentialsEmailThrowsWhenSmtpSendFails() {
+        doThrow(new MailSendException("smtp-failed"))
+                .when(mailSender).send(any(MimeMessagePreparator.class));
+
+        assertThatThrownBy(() -> emailService.sendUserCredentialsEmail(
+                "user@example.com",
+                "User",
+                "Temp@12345",
+                "SKE"))
+                .isInstanceOf(ApplicationException.class)
+                .satisfies(ex -> {
+                    ApplicationException appEx = (ApplicationException) ex;
+                    assertThat(appEx.getErrorCode()).isEqualTo(ErrorCode.SYSTEM_EXTERNAL_SERVICE_ERROR);
+                });
+    }
+
+    @Test
+    void sendUserCredentialsEmailThrowsWhenDeliveryDisabled() {
+        emailProperties.setSendCredentials(false);
+
+        assertThatThrownBy(() -> emailService.sendUserCredentialsEmail(
+                "user@example.com",
+                "User",
+                "Temp@12345",
+                "SKE"))
+                .isInstanceOf(ApplicationException.class)
+                .satisfies(ex -> {
+                    ApplicationException appEx = (ApplicationException) ex;
+                    assertThat(appEx.getErrorCode()).isEqualTo(ErrorCode.SYSTEM_CONFIGURATION_ERROR);
+                });
+        verifyNoInteractions(mailSender);
     }
 }

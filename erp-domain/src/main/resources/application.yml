@@ -126,6 +126,11 @@ erp:
     service-url: ${AI_SERVICE_URL:http://localhost:8000}
   auto-approval:
     enabled: ${ERP_AUTO_APPROVAL_ENABLED:true}
+  seed:
+    super-admin:
+      email: ${ERP_SEED_SUPER_ADMIN_EMAIL:}
+      password: ${ERP_SEED_SUPER_ADMIN_PASSWORD:}
+      company-code: ${ERP_SEED_SUPER_ADMIN_COMPANY_CODE:SKE}
   mail:
     enabled: true
     from-address: noreply@bigbrightpaints.com

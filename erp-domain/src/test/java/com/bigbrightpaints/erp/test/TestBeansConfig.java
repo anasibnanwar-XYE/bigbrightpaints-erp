@@ -6,6 +6,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.web.client.RestTemplateCustomizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
+import org.springframework.mail.javamail.JavaMailSender;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
@@ -19,6 +20,12 @@ public class TestBeansConfig {
     @Primary
     public RabbitTemplate rabbitTemplate() {
         return Mockito.mock(RabbitTemplate.class);
+    }
+
+    @Bean
+    @Primary
+    public JavaMailSender javaMailSender() {
+        return Mockito.mock(JavaMailSender.class);
     }
 
     @Bean
