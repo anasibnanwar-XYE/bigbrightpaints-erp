@@ -40,6 +40,14 @@ config_file = "agents/security_auditor.toml"
 description = "Performs strict code review for correctness, regressions, risks, tests, and merge readiness."
 config_file = "agents/code_reviewer.toml"
 
+[agents.merge_specialist]
+description = "Performs scoped integration merges, conflict resolution, and merge-evidence handoff."
+config_file = "agents/merge_specialist.toml"
+
+[agents.qa_reliability]
+description = "Runs cross-workflow/system-level QA verification and publishes release-gate evidence."
+config_file = "agents/qa_reliability.toml"
+
 [agents.performance]
 description = "Optimizes latency, throughput, and resource usage."
 config_file = "agents/performance.toml"
@@ -110,7 +118,11 @@ config_file = "agents/frontend_arch.toml"
 
 [agents."qa-reliability"]
 description = "QA and reliability work mapped to dedicated code-review and verification profile."
-config_file = "agents/cross_module.toml"
+config_file = "agents/qa_reliability.toml"
+
+[agents."merge-specialist"]
+description = "Merge specialist role for integration conflict handling and merge-readiness evidence."
+config_file = "agents/merge_specialist.toml"
 
 [agents."repo-cartographer"]
 description = "Repository architecture mapping work mapped to planning_architecture profile."

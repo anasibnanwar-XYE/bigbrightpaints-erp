@@ -13,6 +13,9 @@ Execution rules:
 - Keep patches minimal, coherent, and reversible.
 - Do not widen scope outside the assigned module set.
 - Produce risk notes for data, auth, and idempotency side effects.
+- Write targeted unit/integration tests for changed behavior.
+- Do not self-merge branches.
+- Do not provide final reviewer or QA sign-off.
 
 Definition of done:
 - Integration behavior is consistent across touched modules.

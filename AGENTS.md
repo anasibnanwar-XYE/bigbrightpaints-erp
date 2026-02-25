@@ -68,7 +68,7 @@ Human-friendly alias: `AGENTMAP.md`.
 
 ## Spawn-Agent Execution Order (Mandatory)
 - Orchestrator must delegate, not absorb module implementation when mapped role agents exist.
-- Non-doc slices follow: `planning` -> implementation slice agents (parallel) -> `code_reviewer` -> `qa-reliability` -> `release-ops` docs/release sync.
+- Non-doc slices follow: `planning` -> implementation slice agents (parallel) -> `merge-specialist` -> `code_reviewer` -> `qa-reliability` -> `release-ops` docs/release sync.
 - `qa-reliability` is the cross-workflow testing owner and validates integrated behavior after code-review approvals.
 
 ## Review Guidelines (Required)

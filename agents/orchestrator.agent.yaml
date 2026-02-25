@@ -104,6 +104,18 @@ execution_workflow:
         fallback:
           - model: gpt-5.3-codex
             reasoning: high
+      merge_specialist:
+        preferred_model: gpt-5.3-codex
+        preferred_reasoning: xhigh
+        fallback:
+          - model: gpt-5.3-codex
+            reasoning: high
+      qa_reliability:
+        preferred_model: gpt-5.3-codex
+        preferred_reasoning: xhigh
+        fallback:
+          - model: gpt-5.3-codex
+            reasoning: high
       performance:
         preferred_model: gpt-5.3-codex
         preferred_reasoning: high
@@ -205,8 +217,11 @@ execution_workflow:
         role: frontend_documentation
         config_file: .codex/agents/frontend_arch.toml
       qa-reliability:
-        role: cross_module
-        config_file: .codex/agents/cross_module.toml
+        role: qa_reliability
+        config_file: .codex/agents/qa_reliability.toml
+      merge-specialist:
+        role: merge_specialist
+        config_file: .codex/agents/merge_specialist.toml
       repo-cartographer:
         role: planning_architecture
         config_file: .codex/agents/planning_architecture.toml
@@ -287,6 +302,7 @@ governance_rules:
   - each worktree gets isolated task packet
   - direct implementation edits on base branches are prohibited
   - reviewers are review-only and never implement code
+  - merge-specialist owns integration/conflict-resolution evidence before code-review phase
   - qa-reliability owns cross-workflow validation and regression evidence on non-doc slices
   - docs-only commits must skip review subagents and must never trigger `@codex review` PR comments
   - non-doc commits require dedicated code_reviewer output with severity-tagged findings or explicit no-findings + residual-risk statement

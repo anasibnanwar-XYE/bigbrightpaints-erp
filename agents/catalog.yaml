@@ -197,12 +197,27 @@ agents:
 
   - id: qa-reliability
     name: QA and Reliability Agent
-    risk_tier: medium
+    risk_tier: high
     scopes:
       - scripts/
       - ci/
       - erp-domain/src/test/
       - docs/RELIABILITY.md
+    allowed_tools:
+      - read_files
+      - write_files
+      - run_shell
+      - run_ci_checks
+
+  - id: merge-specialist
+    name: Merge Specialist Agent
+    risk_tier: high
+    scopes:
+      - tickets/
+      - scripts/harness_orchestrator.py
+      - docs/agents/
+      - erp-domain/src/main/java/
+      - erp-domain/src/test/java/
     allowed_tools:
       - read_files
       - write_files

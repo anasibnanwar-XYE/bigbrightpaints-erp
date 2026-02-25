@@ -115,16 +115,27 @@ def parse_paths(paths: str, path_items: list[str]) -> list[str]:
     return deduped
 
 
+DOCS_ONLY_EXACT = {"AGENTS.md", "ARCHITECTURE.md", "README.md"}
+DOCS_ONLY_PREFIXES = ("docs/", "tickets/")
+
+
+def is_docs_only_file(path: str) -> bool:
+    p = str(path).strip()
+    if not p:
+        return False
+    if p in DOCS_ONLY_EXACT:
+        return True
+    if p.startswith(DOCS_ONLY_PREFIXES):
+        return True
+    return p.endswith(".md")
+
+
 def is_docs_only_scope(scope_paths: list[str]) -> bool:
     if not scope_paths:
         return False
     for path in scope_paths:
-        p = str(path).strip()
-        if not p:
-            continue
-        if p.startswith("docs/") or p in {"AGENTS.md", "ARCHITECTURE.md"}:
-            continue
-        return False
+        if not is_docs_only_file(path):
+            return False
     return True
 
 
@@ -572,7 +583,11 @@ def write_packet_files(repo_root: Path, ticket: dict[str, Any], slice_data: dict
         for x in ticket.get("mandatory_spawn_role_sequence", [])
         if str(x).strip()
     ]
-    role_sequence_display = " -> ".join(role_sequence) if role_sequence else "planning -> implementation -> code_reviewer -> qa_reliability -> release_ops"
+    role_sequence_display = (
+        " -> ".join(role_sequence)
+        if role_sequence
+        else "planning -> implementation -> merge_specialist -> code_reviewer -> qa_reliability -> release_ops"
+    )
 
     prompt_lines = [
         f"You are `{slice_data['primary_agent']}`.",
@@ -712,6 +727,7 @@ Worktree: `{slice_data['worktree_path']}`
     packet += "- Mark review status as `approved` only with concrete evidence.\n"
     packet += "\n## Testing Responsibility Split\n"
     packet += "- Implementation agents own targeted tests for changed behavior in-slice.\n"
+    packet += "- `merge-specialist` owns integration merge/conflict evidence before code-review phase.\n"
     packet += "- `qa-reliability` owns cross-workflow regression, gate evidence, and release-readiness signal.\n"
     packet += "- `release-ops` owns docs/release evidence sync before final merge.\n"
     packet += "\n## Agent Identity Contract\n"
@@ -919,6 +935,30 @@ def create_ticket(args: argparse.Namespace) -> int:
         dispatch_protocol.get("require_release_ops_docs_sync_before_merge", False)
         or review_pipeline.get("require_release_ops_for_non_doc_docs_sync", False)
     )
+    require_code_reviewer_non_doc = bool(
+        dispatch_protocol.get("require_code_reviewer_for_non_doc_slices", False)
+        or review_pipeline.get("require_code_reviewer_for_non_doc_slices", False)
+    )
+    require_merge_specialist_non_doc = bool(
+        dispatch_protocol.get("require_merge_specialist_for_non_doc_slices", False)
+        or review_pipeline.get("require_merge_specialist_for_non_doc_slices", False)
+    )
+    require_merge_before_code_review = bool(
+        dispatch_protocol.get("require_merge_specialist_before_code_review", False)
+        or review_pipeline.get("require_merge_specialist_before_code_review", False)
+    )
+    require_reviewer_head_sha_match = bool(
+        dispatch_protocol.get("require_reviewer_head_sha_match", False)
+        or review_pipeline.get("require_reviewer_head_sha_match", False)
+    )
+    require_qa_after_code_review_timestamp = bool(
+        dispatch_protocol.get("require_qa_after_code_review_timestamp", False)
+        or review_pipeline.get("require_qa_after_code_review_timestamp", False)
+    )
+    enforce_changed_file_docs_only_classification = bool(
+        dispatch_protocol.get("enforce_changed_file_docs_only_classification", False)
+        or review_pipeline.get("enforce_changed_file_docs_only_classification", False)
+    )
     mandatory_role_sequence = [
         str(x).strip()
         for x in dispatch_protocol.get("mandatory_spawn_role_sequence", [])
@@ -946,6 +986,10 @@ def create_ticket(args: argparse.Namespace) -> int:
         if not scope_paths_for_slice:
             raise RuntimeError(f"planned slice for agent '{agent_id}' has empty scope paths")
         docs_only_slice = is_docs_only_scope(scope_paths_for_slice)
+        if require_merge_specialist_non_doc and not docs_only_slice:
+            reviewers.add("merge-specialist")
+        if require_code_reviewer_non_doc and not docs_only_slice:
+            reviewers.add("code_reviewer")
         if require_qa_non_doc and not docs_only_slice:
             reviewers.add("qa-reliability")
         if require_release_ops_docs_sync and not docs_only_slice:
@@ -1010,8 +1054,14 @@ def create_ticket(args: argparse.Namespace) -> int:
         "orchestrator_authority": {"r1": "orchestrator", "r2": "orchestrator", "r3": "human"},
         "mandatory_spawn_role_sequence": mandatory_role_sequence,
         "review_enforcement": {
+            "require_merge_specialist_for_non_doc_slices": require_merge_specialist_non_doc,
+            "require_code_reviewer_for_non_doc_slices": require_code_reviewer_non_doc,
             "require_qa_reliability_for_non_doc_slices": require_qa_non_doc,
             "require_release_ops_docs_sync_before_merge": require_release_ops_docs_sync,
+            "require_merge_specialist_before_code_review": require_merge_before_code_review,
+            "require_reviewer_head_sha_match": require_reviewer_head_sha_match,
+            "require_qa_after_code_review_timestamp": require_qa_after_code_review_timestamp,
+            "enforce_changed_file_docs_only_classification": enforce_changed_file_docs_only_classification,
         },
         "slices": slices,
     }
@@ -1083,6 +1133,8 @@ def set_review_status(args: argparse.Namespace) -> int:
 
     review_file = ticket_dir(repo_root, args.ticket_id) / "slices" / args.slice_id / "reviews" / f"{args.reviewer}.md"
     review_file.parent.mkdir(parents=True, exist_ok=True)
+    review_head_sha = str(args.head_sha or "").strip() or branch_head_sha(repo_root, str(target_slice.get("branch", "")))
+    reviewed_at = utc_now()
 
     body = [
         "# Review Evidence",
@@ -1091,6 +1143,8 @@ def set_review_status(args: argparse.Namespace) -> int:
         f"slice: {args.slice_id}",
         f"reviewer: {args.reviewer}",
         f"status: {args.status}",
+        f"reviewed_at_utc: {reviewed_at}",
+        f"reviewed_head_sha: {review_head_sha or 'unknown'}",
         "",
         "## Findings",
         f"- {args.findings or 'none'}",
@@ -1106,10 +1160,27 @@ def set_review_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def resolve_branch_ref(repo_root: Path, branch: str) -> str:
+    ref = branch.strip()
+    if not ref:
+        return ref
+    if not branch_exists(repo_root, ref) and remote_branch_exists(repo_root, ref):
+        return f"origin/{ref}"
+    return ref
+
+
+def branch_head_sha(repo_root: Path, branch: str) -> str:
+    ref = resolve_branch_ref(repo_root, branch)
+    if not ref:
+        return ""
+    proc = run(["git", "rev-parse", ref], cwd=repo_root, check=False)
+    if proc.returncode != 0:
+        return ""
+    return proc.stdout.strip()
+
+
 def count_ahead(repo_root: Path, base_branch: str, branch: str) -> int:
-    ref = branch
-    if not branch_exists(repo_root, branch) and remote_branch_exists(repo_root, branch):
-        ref = f"origin/{branch}"
+    ref = resolve_branch_ref(repo_root, branch)
 
     proc = run(["git", "rev-list", "--count", f"{base_branch}..{ref}"], cwd=repo_root, check=False)
     if proc.returncode != 0:
@@ -1119,9 +1190,7 @@ def count_ahead(repo_root: Path, base_branch: str, branch: str) -> int:
 
 
 def changed_files(repo_root: Path, base_branch: str, branch: str) -> list[str]:
-    ref = branch
-    if not branch_exists(repo_root, branch) and remote_branch_exists(repo_root, branch):
-        ref = f"origin/{branch}"
+    ref = resolve_branch_ref(repo_root, branch)
 
     # Use merge-base diff so we only attribute files changed by the slice branch.
     # This avoids false scope/overlap violations when base branch moves forward
@@ -1162,14 +1231,41 @@ def cross_slice_overlaps(
     return overlap_map
 
 
-def reviewer_approved(path: Path) -> bool:
+def parse_review_file(path: Path) -> dict[str, str]:
     if not path.exists():
-        return False
-    text = path.read_text(encoding="utf-8", errors="replace").lower()
-    for line in text.splitlines():
-        if line.strip().startswith("status:"):
-            return line.split(":", 1)[1].strip() == "approved"
-    return False
+        return {}
+    values: dict[str, str] = {}
+    text = path.read_text(encoding="utf-8", errors="replace")
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        k = key.strip().lower()
+        if not k:
+            continue
+        if k in {"ticket", "slice", "reviewer", "status", "reviewed_at_utc", "reviewed_head_sha"}:
+            values[k] = value.strip()
+    return values
+
+
+def parse_reviewed_at(value: str) -> dt.datetime | None:
+    if not value:
+        return None
+    try:
+        norm = value.strip()
+        if norm.endswith("Z"):
+            norm = norm[:-1] + "+00:00"
+        parsed = dt.datetime.fromisoformat(norm)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=dt.timezone.utc)
+        return parsed.astimezone(dt.timezone.utc)
+    except ValueError:
+        return None
+
+
+def reviewer_approved(path: Path) -> bool:
+    return parse_review_file(path).get("status", "").strip().lower() == "approved"
 
 
 def ensure_base_checked_out(repo_root: Path, base_branch: str, allow_dirty: bool) -> None:
@@ -1190,6 +1286,49 @@ def verify_ticket(args: argparse.Namespace) -> int:
     base_branch = str(ticket.get("base_branch"))
     cleanup_default = bool(orchestrator_layer.get("automation", {}).get("cleanup_worktrees_on_merge", False))
     cleanup_enabled = cleanup_default if args.cleanup_worktrees is None else bool(args.cleanup_worktrees)
+    dispatch_protocol = orchestrator_layer.get("dispatch_protocol", {})
+    review_pipeline = orchestrator_layer.get("review_pipeline", {})
+    ticket_review_enforcement = ticket.get("review_enforcement", {})
+    require_merge_specialist_non_doc = bool(
+        ticket_review_enforcement.get("require_merge_specialist_for_non_doc_slices", False)
+        or dispatch_protocol.get("require_merge_specialist_for_non_doc_slices", False)
+        or review_pipeline.get("require_merge_specialist_for_non_doc_slices", False)
+    )
+    require_code_reviewer_non_doc = bool(
+        ticket_review_enforcement.get("require_code_reviewer_for_non_doc_slices", False)
+        or dispatch_protocol.get("require_code_reviewer_for_non_doc_slices", False)
+        or review_pipeline.get("require_code_reviewer_for_non_doc_slices", False)
+    )
+    require_qa_non_doc = bool(
+        ticket_review_enforcement.get("require_qa_reliability_for_non_doc_slices", False)
+        or dispatch_protocol.get("require_qa_reliability_for_non_doc_slices", False)
+        or review_pipeline.get("require_qa_reliability_for_non_doc_slices", False)
+    )
+    require_release_ops_docs_sync = bool(
+        ticket_review_enforcement.get("require_release_ops_docs_sync_before_merge", False)
+        or dispatch_protocol.get("require_release_ops_docs_sync_before_merge", False)
+        or review_pipeline.get("require_release_ops_for_non_doc_docs_sync", False)
+    )
+    require_merge_before_code_review = bool(
+        ticket_review_enforcement.get("require_merge_specialist_before_code_review", False)
+        or dispatch_protocol.get("require_merge_specialist_before_code_review", False)
+        or review_pipeline.get("require_merge_specialist_before_code_review", False)
+    )
+    require_reviewer_head_sha_match = bool(
+        ticket_review_enforcement.get("require_reviewer_head_sha_match", False)
+        or dispatch_protocol.get("require_reviewer_head_sha_match", False)
+        or review_pipeline.get("require_reviewer_head_sha_match", False)
+    )
+    require_qa_after_code_review_timestamp = bool(
+        ticket_review_enforcement.get("require_qa_after_code_review_timestamp", False)
+        or dispatch_protocol.get("require_qa_after_code_review_timestamp", False)
+        or review_pipeline.get("require_qa_after_code_review_timestamp", False)
+    )
+    enforce_changed_file_docs_only_classification = bool(
+        ticket_review_enforcement.get("enforce_changed_file_docs_only_classification", False)
+        or dispatch_protocol.get("enforce_changed_file_docs_only_classification", False)
+        or review_pipeline.get("enforce_changed_file_docs_only_classification", False)
+    )
 
     run(["git", "fetch", "origin", "--prune"], cwd=repo_root, check=False)
 
@@ -1377,24 +1516,127 @@ def verify_ticket(args: argparse.Namespace) -> int:
             )
             continue
 
-        pending_reviewers = []
+        docs_only_by_scope = is_docs_only_scope([str(p) for p in s.get("scope_paths", []) if str(p).strip()])
+        docs_only_by_change = is_docs_only_scope(changed_now)
+        docs_only_effective = docs_only_by_change if enforce_changed_file_docs_only_classification else docs_only_by_scope
+
+        if enforce_changed_file_docs_only_classification and docs_only_by_scope and not docs_only_by_change:
+            s["status"] = "review_policy_violation"
+            failed_count += 1
+            report_lines.append(f"## {sid} ({s.get('primary_agent')})")
+            report_lines.append("- status: review_policy_violation")
+            report_lines.append("- reason: slice declared docs-only scope but branch contains non-doc changed files")
+            report_lines.append("")
+            orchestrator_review.write_text(
+                f"# Orchestrator Review\n\n"
+                f"ticket: {args.ticket_id}\n"
+                f"slice: {sid}\n"
+                f"status: review_policy_violation\n\n"
+                f"## Notes\n"
+                f"- Docs-only scope mismatch detected using changed-file classification.\n",
+                encoding="utf-8",
+            )
+            continue
+
+        missing_required_reviewers: list[str] = []
+        if not docs_only_effective:
+            if require_merge_specialist_non_doc and "merge-specialist" not in reviewers:
+                missing_required_reviewers.append("merge-specialist")
+            if require_code_reviewer_non_doc and "code_reviewer" not in reviewers:
+                missing_required_reviewers.append("code_reviewer")
+            if require_qa_non_doc and "qa-reliability" not in reviewers:
+                missing_required_reviewers.append("qa-reliability")
+            if require_release_ops_docs_sync and "release-ops" not in reviewers:
+                missing_required_reviewers.append("release-ops")
+
+        if missing_required_reviewers:
+            s["status"] = "review_policy_violation"
+            failed_count += 1
+            report_lines.append(f"## {sid} ({s.get('primary_agent')})")
+            report_lines.append("- status: review_policy_violation")
+            report_lines.append(f"- missing_required_reviewers: {', '.join(sorted(set(missing_required_reviewers)))}")
+            report_lines.append("")
+            orchestrator_review.write_text(
+                f"# Orchestrator Review\n\n"
+                f"ticket: {args.ticket_id}\n"
+                f"slice: {sid}\n"
+                f"status: review_policy_violation\n\n"
+                f"## Notes\n"
+                f"- Mandatory reviewer roles missing for non-doc slice: {', '.join(sorted(set(missing_required_reviewers)))}\n",
+                encoding="utf-8",
+            )
+            continue
+
+        approved_head_sha = branch_head_sha(repo_root, branch)
+        review_meta: dict[str, dict[str, str]] = {}
+        pending_reviewers: list[str] = []
+        stale_sha_reviewers: list[str] = []
+        stale_time_reviewers: list[str] = []
+
         for reviewer in reviewers:
             rf = slice_dir / "reviews" / f"{reviewer}.md"
-            if not reviewer_approved(rf):
+            meta = parse_review_file(rf)
+            review_meta[reviewer] = meta
+            if meta.get("status", "").strip().lower() != "approved":
                 pending_reviewers.append(reviewer)
+                continue
+            if require_reviewer_head_sha_match:
+                reviewed_sha = meta.get("reviewed_head_sha", "").strip()
+                if not reviewed_sha or not approved_head_sha or reviewed_sha != approved_head_sha:
+                    stale_sha_reviewers.append(reviewer)
+
         qa_reviewer = "qa-reliability"
-        code_reviewers = [r for r in reviewers if r != qa_reviewer]
-        pending_code_reviewers = [r for r in pending_reviewers if r != qa_reviewer]
+        merge_reviewer = "merge-specialist"
+        non_code_reviewers = {qa_reviewer, merge_reviewer, "release-ops"}
+        code_reviewers = [r for r in reviewers if r not in non_code_reviewers]
+        pending_code_reviewers = [r for r in pending_reviewers if r in code_reviewers]
         qa_involved = qa_reviewer in reviewers
 
-        if pending_reviewers:
+        if require_merge_before_code_review and merge_reviewer in reviewers and code_reviewers:
+            merge_meta = review_meta.get(merge_reviewer, {})
+            merge_time = parse_reviewed_at(merge_meta.get("reviewed_at_utc", ""))
+            if merge_reviewer not in pending_reviewers and merge_reviewer not in stale_sha_reviewers:
+                if not merge_time:
+                    stale_time_reviewers.append(merge_reviewer)
+                for reviewer in code_reviewers:
+                    if reviewer in pending_reviewers or reviewer in stale_sha_reviewers:
+                        continue
+                    code_time = parse_reviewed_at(review_meta.get(reviewer, {}).get("reviewed_at_utc", ""))
+                    if not code_time or (merge_time and code_time < merge_time):
+                        stale_time_reviewers.append(reviewer)
+
+        if require_qa_after_code_review_timestamp and qa_involved:
+            qa_meta = review_meta.get(qa_reviewer, {})
+            qa_time = parse_reviewed_at(qa_meta.get("reviewed_at_utc", ""))
+            latest_code_review_time: dt.datetime | None = None
+            for reviewer in code_reviewers:
+                if reviewer in pending_reviewers or reviewer in stale_sha_reviewers:
+                    continue
+                ts = parse_reviewed_at(review_meta.get(reviewer, {}).get("reviewed_at_utc", ""))
+                if not ts:
+                    stale_time_reviewers.append(reviewer)
+                    continue
+                if latest_code_review_time is None or ts > latest_code_review_time:
+                    latest_code_review_time = ts
+            if qa_reviewer not in pending_reviewers and qa_reviewer not in stale_sha_reviewers:
+                if not qa_time or (latest_code_review_time and qa_time < latest_code_review_time):
+                    stale_time_reviewers.append(qa_reviewer)
+
+        all_pending = sorted(set(pending_reviewers + stale_sha_reviewers + stale_time_reviewers))
+        pending_code_reviewers = [r for r in all_pending if r in code_reviewers]
+
+        if all_pending:
             s["status"] = "pending_review"
             ready_count += 1
             report_lines.append(f"## {sid} ({s.get('primary_agent')})")
             report_lines.append("- status: pending_review")
             if qa_involved and pending_code_reviewers:
                 report_lines.append("- review_sequence_gate: code-review must complete before qa-reliability sign-off")
-            report_lines.append(f"- pending_reviewers: {', '.join(pending_reviewers)}")
+            if stale_sha_reviewers:
+                report_lines.append(f"- stale_head_sha_reviews: {', '.join(sorted(set(stale_sha_reviewers)))}")
+            if stale_time_reviewers:
+                report_lines.append(f"- stale_sequence_or_timestamp_reviews: {', '.join(sorted(set(stale_time_reviewers)))}")
+            report_lines.append(f"- pending_reviewers: {', '.join(all_pending)}")
             report_lines.append("")
             orchestrator_review.write_text(
                 f"# Orchestrator Review\n\n"
@@ -1407,7 +1649,17 @@ def verify_ticket(args: argparse.Namespace) -> int:
                     if qa_involved and pending_code_reviewers
                     else ""
                 )
-                + f"- Awaiting reviewer approvals: {', '.join(pending_reviewers)}\n",
+                + (
+                    f"- Stale head SHA reviews: {', '.join(sorted(set(stale_sha_reviewers)))}.\n"
+                    if stale_sha_reviewers
+                    else ""
+                )
+                + (
+                    f"- Sequence/timestamp re-review required: {', '.join(sorted(set(stale_time_reviewers)))}.\n"
+                    if stale_time_reviewers
+                    else ""
+                )
+                + f"- Awaiting reviewer approvals: {', '.join(all_pending)}\n",
                 encoding="utf-8",
             )
             continue
@@ -1590,6 +1842,7 @@ def parser() -> argparse.ArgumentParser:
     review.add_argument("--findings", default="")
     review.add_argument("--commands", default="")
     review.add_argument("--artifacts", default="")
+    review.add_argument("--head-sha", default="", help="Optional explicit commit SHA that this review approves")
     review.set_defaults(func=set_review_status)
 
     verify = sub.add_parser("verify", help="Run checks, evaluate reviews, optionally merge")
