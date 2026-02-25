@@ -1,24 +1,41 @@
 package com.bigbrightpaints.erp.core.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.bigbrightpaints.erp.core.config.EmailProperties;
+import com.bigbrightpaints.erp.core.notification.EmailService;
+import com.bigbrightpaints.erp.modules.auth.controller.AuthController;
+import com.bigbrightpaints.erp.modules.auth.domain.PasswordResetToken;
+import com.bigbrightpaints.erp.modules.auth.domain.PasswordResetTokenRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
+import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
+import com.bigbrightpaints.erp.modules.auth.service.AuthService;
+import com.bigbrightpaints.erp.modules.auth.service.PasswordResetService;
+import com.bigbrightpaints.erp.modules.auth.service.PasswordService;
+import com.bigbrightpaints.erp.modules.auth.service.RefreshTokenService;
+import com.bigbrightpaints.erp.modules.auth.web.ForgotPasswordRequest;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyLifecycleState;
 import com.bigbrightpaints.erp.modules.company.service.CompanyService;
 import com.bigbrightpaints.erp.modules.company.service.TenantRuntimeEnforcementService;
+import com.bigbrightpaints.erp.modules.rbac.domain.Role;
+import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -26,6 +43,7 @@ import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,6 +52,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -251,6 +271,240 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
         assertThat(invokeResolveApplicationPath(contextNotMatched)).isEqualTo("/outside/api/v1/private");
     }
 
+    @Test
+    void doFilter_allowsPublicPasswordResetBypassWithTrailingSlash() throws ServletException, IOException {
+        MockHttpServletRequest request = request("POST", "/api/v1/auth/password/forgot/superadmin/");
+        request.addHeader("X-Company-Code", "ACME");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, filterChain);
+
+        assertThat(response.getStatus()).isEqualTo(200);
+        verify(filterChain).doFilter(request, response);
+        verifyNoInteractions(companyService);
+        verify(tenantRuntimeEnforcementService, never())
+                .beginRequest(anyString(), anyString(), anyString(), anyString(), anyBoolean());
+    }
+
+    @Test
+    void helperMethods_coverPublicPasswordResetAndPathNormalizationBranches() {
+        assertThat(invokeIsPublicPasswordResetRequest("/api/v1/auth/password/forgot", "POST")).isTrue();
+        assertThat(invokeIsPublicPasswordResetRequest("/api/v1/auth/password/forgot/superadmin/", "POST")).isTrue();
+        assertThat(invokeIsPublicPasswordResetRequest("/api/v1/auth/password/reset/", "POST")).isTrue();
+        assertThat(invokeIsPublicPasswordResetRequest("/api/v1/auth/password/forgot", "GET")).isFalse();
+        assertThat(invokeIsPublicPasswordResetRequest(null, "POST")).isFalse();
+        assertThat(invokeIsPublicPasswordResetRequest("/api/v1/private", "POST")).isFalse();
+
+        assertThat(invokeNormalizePath(" /api/v1/auth/password/forgot/// ")).isEqualTo("/api/v1/auth/password/forgot");
+        assertThat(invokeNormalizePath("/")).isEqualTo("/");
+        assertThat(invokeNormalizePath("   ")).isEqualTo("   ");
+    }
+
+    @Test
+    void authController_superAdminForgotPasswordEndpoint_delegatesToPasswordResetService() {
+        AuthService authService = mock(AuthService.class);
+        PasswordService passwordService = mock(PasswordService.class);
+        PasswordResetService passwordResetService = mock(PasswordResetService.class);
+        AuthController controller = new AuthController(authService, passwordService, passwordResetService);
+
+        ResponseEntity<ApiResponse<String>> response =
+                controller.forgotPasswordForSuperAdmin(new ForgotPasswordRequest("superadmin@example.com"));
+
+        verify(passwordResetService).requestResetForSuperAdmin("superadmin@example.com");
+        assertThat(response.getStatusCode().value()).isEqualTo(200);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().success()).isTrue();
+        assertThat(response.getBody().message()).isEqualTo("If the email exists, a reset link has been sent");
+        assertThat(response.getBody().data()).isEqualTo("OK");
+    }
+
+    @Test
+    void passwordResetService_superAdminFlow_successAndMaskedFailures_runtimeCoverage() {
+        UserAccountRepository userRepo = mock(UserAccountRepository.class);
+        PasswordResetTokenRepository tokenRepo = mock(PasswordResetTokenRepository.class);
+        PasswordService passwordService = mock(PasswordService.class);
+        EmailService emailService = mock(EmailService.class);
+        TokenBlacklistService tokenBlacklistService = mock(TokenBlacklistService.class);
+        RefreshTokenService refreshTokenService = mock(RefreshTokenService.class);
+        EmailProperties emailProperties = emailProperties(true, true);
+        PasswordResetService service = new PasswordResetService(
+                userRepo,
+                tokenRepo,
+                passwordService,
+                emailService,
+                emailProperties,
+                tokenBlacklistService,
+                refreshTokenService);
+
+        UserAccount superAdmin = superAdminUser("superadmin@example.com");
+        when(userRepo.findByEmailIgnoreCase("superadmin@example.com")).thenReturn(Optional.of(superAdmin));
+
+        assertThatCode(() -> service.requestResetForSuperAdmin("superadmin@example.com")).doesNotThrowAnyException();
+
+        verify(tokenRepo).deleteByUser(superAdmin);
+        verify(tokenRepo).saveAndFlush(any(PasswordResetToken.class));
+        verify(emailService).sendSimpleEmail(eq("superadmin@example.com"), eq("Reset your BigBright ERP password"), anyString());
+    }
+
+    @Test
+    void passwordResetService_superAdminFlow_masksConfigurationAndPersistenceFailures_runtimeCoverage() {
+        UserAccount superAdmin = superAdminUser("superadmin@example.com");
+
+        UserAccountRepository disabledDeliveryRepo = mock(UserAccountRepository.class);
+        PasswordResetTokenRepository disabledDeliveryTokenRepo = mock(PasswordResetTokenRepository.class);
+        EmailService disabledDeliveryEmailService = mock(EmailService.class);
+        when(disabledDeliveryRepo.findByEmailIgnoreCase("superadmin@example.com")).thenReturn(Optional.of(superAdmin));
+        PasswordResetService disabledDeliveryService = new PasswordResetService(
+                disabledDeliveryRepo,
+                disabledDeliveryTokenRepo,
+                mock(PasswordService.class),
+                disabledDeliveryEmailService,
+                emailProperties(true, false),
+                mock(TokenBlacklistService.class),
+                mock(RefreshTokenService.class));
+        assertThatCode(() -> disabledDeliveryService.requestResetForSuperAdmin("superadmin@example.com"))
+                .doesNotThrowAnyException();
+        verify(disabledDeliveryTokenRepo, never()).saveAndFlush(any(PasswordResetToken.class));
+        verifyNoInteractions(disabledDeliveryEmailService);
+
+        UserAccountRepository disabledMailRepo = mock(UserAccountRepository.class);
+        PasswordResetTokenRepository disabledMailTokenRepo = mock(PasswordResetTokenRepository.class);
+        EmailService disabledMailEmailService = mock(EmailService.class);
+        when(disabledMailRepo.findByEmailIgnoreCase("superadmin@example.com")).thenReturn(Optional.of(superAdmin));
+        PasswordResetService disabledMailService = new PasswordResetService(
+                disabledMailRepo,
+                disabledMailTokenRepo,
+                mock(PasswordService.class),
+                disabledMailEmailService,
+                emailProperties(false, true),
+                mock(TokenBlacklistService.class),
+                mock(RefreshTokenService.class));
+        assertThatCode(() -> disabledMailService.requestResetForSuperAdmin("superadmin@example.com"))
+                .doesNotThrowAnyException();
+        verify(disabledMailTokenRepo, never()).saveAndFlush(any(PasswordResetToken.class));
+        verifyNoInteractions(disabledMailEmailService);
+
+        UserAccountRepository persistenceFailureRepo = mock(UserAccountRepository.class);
+        PasswordResetTokenRepository persistenceFailureTokenRepo = mock(PasswordResetTokenRepository.class);
+        EmailService persistenceFailureEmailService = mock(EmailService.class);
+        when(persistenceFailureRepo.findByEmailIgnoreCase("superadmin@example.com")).thenReturn(Optional.of(superAdmin));
+        doThrow(new DataAccessResourceFailureException("db unavailable"))
+                .when(persistenceFailureTokenRepo)
+                .saveAndFlush(any(PasswordResetToken.class));
+        PasswordResetService persistenceFailureService = new PasswordResetService(
+                persistenceFailureRepo,
+                persistenceFailureTokenRepo,
+                mock(PasswordService.class),
+                persistenceFailureEmailService,
+                emailProperties(true, true),
+                mock(TokenBlacklistService.class),
+                mock(RefreshTokenService.class));
+        assertThatCode(() -> persistenceFailureService.requestResetForSuperAdmin("superadmin@example.com"))
+                .doesNotThrowAnyException();
+        verify(persistenceFailureTokenRepo).deleteByUser(superAdmin);
+        verify(persistenceFailureTokenRepo).saveAndFlush(any(PasswordResetToken.class));
+        verifyNoInteractions(persistenceFailureEmailService);
+    }
+
+    @Test
+    void passwordResetService_superAdminFlow_masksDeliveryFailureAndCleanupFailure_runtimeCoverage() {
+        UserAccount superAdmin = superAdminUser("superadmin@example.com");
+        UserAccountRepository userRepo = mock(UserAccountRepository.class);
+        PasswordResetTokenRepository tokenRepo = mock(PasswordResetTokenRepository.class);
+        EmailService emailService = mock(EmailService.class);
+        when(userRepo.findByEmailIgnoreCase("superadmin@example.com")).thenReturn(Optional.of(superAdmin));
+        doNothing().doThrow(new DataAccessResourceFailureException("cleanup failed"))
+                .when(tokenRepo)
+                .deleteByUser(superAdmin);
+        doThrow(new RuntimeException("smtp down"))
+                .when(emailService)
+                .sendSimpleEmail(eq("superadmin@example.com"), eq("Reset your BigBright ERP password"), anyString());
+        PasswordResetService service = new PasswordResetService(
+                userRepo,
+                tokenRepo,
+                mock(PasswordService.class),
+                emailService,
+                emailProperties(true, true),
+                mock(TokenBlacklistService.class),
+                mock(RefreshTokenService.class));
+
+        assertThatCode(() -> service.requestResetForSuperAdmin("superadmin@example.com")).doesNotThrowAnyException();
+
+        verify(tokenRepo, times(2)).deleteByUser(superAdmin);
+        verify(tokenRepo).saveAndFlush(any(PasswordResetToken.class));
+        verify(emailService).sendSimpleEmail(eq("superadmin@example.com"), eq("Reset your BigBright ERP password"), anyString());
+    }
+
+    @Test
+    void passwordResetService_helperBranches_coverRoleFiltersAndEmailObfuscation_runtimeCoverage() {
+        PasswordResetService service = new PasswordResetService(
+                mock(UserAccountRepository.class),
+                mock(PasswordResetTokenRepository.class),
+                mock(PasswordService.class),
+                mock(EmailService.class),
+                emailProperties(true, true),
+                mock(TokenBlacklistService.class),
+                mock(RefreshTokenService.class));
+
+        assertThat(invokeHasSuperAdminRole(service, null)).isFalse();
+
+        UserAccount rolesNullUser = new UserAccount("roles-null@example.com", "hash", "Roles Null");
+        ReflectionTestUtils.setField(rolesNullUser, "roles", null);
+        assertThat(invokeHasSuperAdminRole(service, rolesNullUser)).isFalse();
+
+        UserAccount noRoleUser = new UserAccount("norole@example.com", "hash", "No Role");
+        assertThat(invokeHasSuperAdminRole(service, noRoleUser)).isFalse();
+
+        UserAccount nullRoleUser = new UserAccount("nullrole@example.com", "hash", "Null Role");
+        nullRoleUser.addRole(null);
+        assertThat(invokeHasSuperAdminRole(service, nullRoleUser)).isFalse();
+
+        UserAccount superAdmin = superAdminUser("superadmin@example.com");
+        assertThat(invokeHasSuperAdminRole(service, superAdmin)).isTrue();
+
+        assertThat(invokeObfuscateEmail(service, null)).isEqualTo("<empty>");
+        assertThat(invokeObfuscateEmail(service, "a@example.com")).isEqualTo("***");
+        assertThat(invokeObfuscateEmail(service, "admin@example.com")).isEqualTo("a***@example.com");
+
+        assertThatCode(() -> invokeCleanupFailedSuperAdminResetToken(service, null)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void passwordResetService_requestResetForSuperAdmin_skipsNonSuperAdminAndDisabledUsers_runtimeCoverage() {
+        UserAccountRepository userRepo = mock(UserAccountRepository.class);
+        PasswordResetTokenRepository tokenRepo = mock(PasswordResetTokenRepository.class);
+        EmailService emailService = mock(EmailService.class);
+        PasswordResetService service = new PasswordResetService(
+                userRepo,
+                tokenRepo,
+                mock(PasswordService.class),
+                emailService,
+                emailProperties(true, true),
+                mock(TokenBlacklistService.class),
+                mock(RefreshTokenService.class));
+
+        UserAccount nonSuperAdmin = new UserAccount("admin@example.com", "hash", "Admin");
+        nonSuperAdmin.setEnabled(true);
+        Role adminRole = new Role();
+        adminRole.setName("ROLE_ADMIN");
+        nonSuperAdmin.addRole(adminRole);
+        when(userRepo.findByEmailIgnoreCase("admin@example.com")).thenReturn(Optional.of(nonSuperAdmin));
+
+        UserAccount disabledSuperAdmin = superAdminUser("disabled-superadmin@example.com");
+        disabledSuperAdmin.setEnabled(false);
+        when(userRepo.findByEmailIgnoreCase("disabled-superadmin@example.com")).thenReturn(Optional.of(disabledSuperAdmin));
+
+        when(userRepo.findByEmailIgnoreCase("missing@example.com")).thenReturn(Optional.empty());
+
+        assertThatCode(() -> service.requestResetForSuperAdmin("admin@example.com")).doesNotThrowAnyException();
+        assertThatCode(() -> service.requestResetForSuperAdmin("disabled-superadmin@example.com")).doesNotThrowAnyException();
+        assertThatCode(() -> service.requestResetForSuperAdmin("missing@example.com")).doesNotThrowAnyException();
+
+        verify(tokenRepo, never()).deleteByUser(any(UserAccount.class));
+        verify(tokenRepo, never()).saveAndFlush(any(PasswordResetToken.class));
+        verifyNoInteractions(emailService);
+    }
+
     private void authenticate(String email, Set<String> authorities, Set<String> companyCodes) {
         UserAccount user = new UserAccount(email, "hash", "Operator");
         for (String code : companyCodes) {
@@ -341,5 +595,46 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
 
     private String invokeResolveApplicationPath(MockHttpServletRequest request) {
         return ReflectionTestUtils.invokeMethod(filter, "resolveApplicationPath", request);
+    }
+
+    private boolean invokeIsPublicPasswordResetRequest(String path, String method) {
+        Boolean result = ReflectionTestUtils.invokeMethod(filter, "isPublicPasswordResetRequest", path, method);
+        assertThat(result).isNotNull();
+        return result;
+    }
+
+    private String invokeNormalizePath(String path) {
+        return ReflectionTestUtils.invokeMethod(filter, "normalizePath", path);
+    }
+
+    private UserAccount superAdminUser(String email) {
+        UserAccount user = new UserAccount(email, "hash", "Super Admin");
+        user.setEnabled(true);
+        Role role = new Role();
+        role.setName("ROLE_SUPER_ADMIN");
+        user.addRole(role);
+        return user;
+    }
+
+    private EmailProperties emailProperties(boolean enabled, boolean sendPasswordReset) {
+        EmailProperties props = new EmailProperties();
+        props.setEnabled(enabled);
+        props.setSendPasswordReset(sendPasswordReset);
+        props.setBaseUrl("http://localhost:3004");
+        return props;
+    }
+
+    private boolean invokeHasSuperAdminRole(PasswordResetService service, UserAccount user) {
+        Boolean result = ReflectionTestUtils.invokeMethod(service, "hasSuperAdminRole", user);
+        assertThat(result).isNotNull();
+        return result;
+    }
+
+    private String invokeObfuscateEmail(PasswordResetService service, String email) {
+        return ReflectionTestUtils.invokeMethod(service, "obfuscateEmail", email);
+    }
+
+    private void invokeCleanupFailedSuperAdminResetToken(PasswordResetService service, UserAccount user) {
+        ReflectionTestUtils.invokeMethod(service, "cleanupFailedSuperAdminResetToken", user);
     }
 }

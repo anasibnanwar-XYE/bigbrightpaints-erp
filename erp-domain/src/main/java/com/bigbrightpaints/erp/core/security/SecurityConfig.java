@@ -59,6 +59,7 @@ public class SecurityConfig {
                                 "/api/v1/auth/login",
                                 "/api/v1/auth/refresh-token",
                                 "/api/v1/auth/password/forgot",
+                                "/api/v1/auth/password/forgot/superadmin",
                                 "/api/v1/auth/password/reset"
                         ).permitAll();
                 if (swaggerPublic) {

@@ -369,3 +369,32 @@ Update this file in every high-risk change set.
     - `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/auth/service/TenantAdminProvisioningServiceTest.java`
     - `erp-domain/src/test/java/com/bigbrightpaints/erp/core/notification/EmailServiceTest.java`
     - `erp-domain/src/test/java/com/bigbrightpaints/erp/core/config/DataInitializerTest.java`
+
+## STAGE-111 Addendum (2026-02-25, auth-rbac-company)
+- Ticket / PR: `TKT-ERP-STAGE-111` / pending PR creation
+- Source branch: `tickets/TKT-ERP-STAGE-111`
+- High-risk paths:
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/controller/AuthController.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/service/PasswordResetService.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/core/security/CompanyContextFilter.java`
+  - `erp-domain/src/main/java/com/bigbrightpaints/erp/core/security/SecurityConfig.java`
+- Why this is R2: superadmin password recovery and public reset endpoint admission changed across auth and tenant-boundary controls; these are high-risk identity-recovery and access-enforcement paths.
+- Approval mode: orchestrator
+- Human escalation required: no
+- Rollback owner: release governance + auth/security owners
+- Verification evidence:
+  - Commands run:
+    - `cd erp-domain && mvn -Dtest=PasswordResetServiceTest,ForgotPasswordRequestCompatibilityTest,CompanyContextFilterPasswordResetBypassTest test`
+    - `cd erp-domain && mvn -Dtest=EmailServiceTest,TenantAdminProvisioningServiceTest,CompanyServiceTest,AdminUserServiceTest,DealerServiceTest,DataInitializerTest,PasswordResetServiceTest,TS_RuntimeCompanyContextFilterExecutableCoverageTest test`
+    - `ssh asus-tuf-tail-ip 'cd /home/realnigga/tmp/tkt-erp-stage-111-auth-rbac-company/erp-domain && mvn -Dtest=AuthTenantAuthorityIT test'`
+    - `bash ci/check-architecture.sh`
+    - `bash ci/check-enterprise-policy.sh`
+  - Result summary:
+    - superadmin forgot-password flow now supports frontend `userid` payload alias, exposes a dedicated public endpoint, and fails closed when reset email delivery is disabled or SMTP dispatch fails.
+    - company-header enforcement now bypasses only the three public password-reset POST routes to prevent false 403/invalid-token outcomes.
+    - targeted unit/runtime suites passed (`Tests run: 99, Failures: 0, Errors: 0, Skipped: 0` across both Maven commands).
+    - Docker/Testcontainers integration lane validated on SSH host `asus-tuf-tail-ip` (`AuthTenantAuthorityIT`: `Tests run: 13, Failures: 0, Errors: 0, Skipped: 0`).
+  - Artifacts/links:
+    - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/web/ForgotPasswordRequest.java`
+    - `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/auth/web/ForgotPasswordRequestCompatibilityTest.java`
+    - `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/auth/CompanyContextFilterPasswordResetBypassTest.java`
