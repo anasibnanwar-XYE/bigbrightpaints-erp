@@ -221,6 +221,7 @@ def resolve_multi_agent_role_profile(orchestrator_layer: dict[str, Any], agent_i
     subagents = runtime.get("subagents", {})
     role_policy = subagents.get("role_model_policy", {})
     role_map = subagents.get("agent_role_mapping", {})
+    runtime_aliases = subagents.get("runtime_role_aliases", {})
 
     role_entry: Any = None
     if isinstance(role_map, dict):
@@ -236,21 +237,47 @@ def resolve_multi_agent_role_profile(orchestrator_layer: dict[str, Any], agent_i
         role = str(role_entry.get("role", "")).strip()
         config_file = str(role_entry.get("config_file", "")).strip()
 
-    policy: dict[str, Any] = {}
-    if role and isinstance(role_policy, dict):
-        candidate = role_policy.get(role, {})
+    requested_role = role
+    effective_role = requested_role
+    if isinstance(runtime_aliases, dict):
+        alias_entry = runtime_aliases.get(agent_id)
+        if isinstance(alias_entry, str):
+            candidate = alias_entry.strip()
+            if candidate:
+                effective_role = candidate
+        elif isinstance(alias_entry, dict):
+            candidate = str(alias_entry.get("observed_profile_role", "")).strip()
+            if candidate:
+                effective_role = candidate
+
+    requested_policy: dict[str, Any] = {}
+    if requested_role and isinstance(role_policy, dict):
+        candidate = role_policy.get(requested_role, {})
         if isinstance(candidate, dict):
-            policy = candidate
+            requested_policy = candidate
+
+    effective_policy: dict[str, Any] = {}
+    if effective_role and isinstance(role_policy, dict):
+        candidate = role_policy.get(effective_role, {})
+        if isinstance(candidate, dict):
+            effective_policy = candidate
+
+    policy = effective_policy or requested_policy
 
     fallback = policy.get("fallback", [])
     if not isinstance(fallback, list):
         fallback = []
 
     return {
-        "role": role,
+        "role": requested_role,
+        "requested_role": requested_role,
+        "effective_role": effective_role,
+        "runtime_alias_applied": bool(requested_role and effective_role and requested_role != effective_role),
         "config_file": config_file,
         "model": str(policy.get("preferred_model", "")).strip(),
         "reasoning": str(policy.get("preferred_reasoning", "")).strip(),
+        "requested_model": str(requested_policy.get("preferred_model", "")).strip(),
+        "requested_reasoning": str(requested_policy.get("preferred_reasoning", "")).strip(),
         "fallback": fallback,
     }
 
@@ -544,8 +571,14 @@ def write_packet_files(repo_root: Path, ticket: dict[str, Any], slice_data: dict
     slice_dir.mkdir(parents=True, exist_ok=True)
     reviews_dir.mkdir(parents=True, exist_ok=True)
 
-    preferred_role = str(slice_data.get("multi_agent_role", "")).strip()
+    requested_role = str(
+        slice_data.get("multi_agent_requested_role", slice_data.get("multi_agent_role", ""))
+    ).strip()
+    effective_role = str(
+        slice_data.get("multi_agent_effective_role", requested_role)
+    ).strip()
     preferred_config_file = str(slice_data.get("multi_agent_config_file", "")).strip()
+    runtime_alias_applied = bool(slice_data.get("multi_agent_runtime_alias_applied", False))
     ticket_title = str(ticket.get("title", "")).strip()
     ticket_goal = str(ticket.get("goal", "")).strip()
     objective = str(slice_data.get("objective", ticket_goal or "Unspecified objective")).strip()
@@ -619,13 +652,19 @@ def write_packet_files(repo_root: Path, ticket: dict[str, Any], slice_data: dict
         "- worktree_validation",
         "- codebase_impact_analysis",
     ]
-    if preferred_role:
+    if requested_role:
+        runtime_profile_label = (
+            f"`{effective_role}`" if effective_role else "`unknown`"
+        )
+        role_line = f"Use Codex custom multi-agent role `{requested_role}`"
+        if preferred_config_file:
+            role_line += f" from `{preferred_config_file}`."
+        else:
+            role_line += "."
+        role_line += f" Runtime expected profile: {runtime_profile_label}."
         prompt_lines.insert(
             2,
-            (
-                f"Use Codex custom multi-agent role `{preferred_role}`"
-                + (f" from `{preferred_config_file}`." if preferred_config_file else ".")
-            ),
+            role_line,
         )
 
     packet = f"""# Task Packet
@@ -653,13 +692,30 @@ Worktree: `{slice_data['worktree_path']}`
 {objective}
 
 """
-    if preferred_role:
+    if requested_role:
         packet += "## Custom Multi-Agent Role (Codex)\n"
-        packet += f"- role: `{preferred_role}`\n"
+        packet += f"- requested_role: `{requested_role}`\n"
+        packet += f"- runtime_expected_profile: `{effective_role or 'unknown'}`\n"
+        packet += f"- runtime_alias_applied: `{'true' if runtime_alias_applied else 'false'}`\n"
         if preferred_config_file:
             packet += f"- config_file: `{preferred_config_file}`\n"
-        packet += "- runtime_profile: `resolved at runtime from role config`\n"
+        requested_model = str(slice_data.get("multi_agent_requested_model", "")).strip()
+        requested_reasoning = str(slice_data.get("multi_agent_requested_reasoning", "")).strip()
+        resolved_model = str(slice_data.get("multi_agent_model", "")).strip()
+        resolved_reasoning = str(slice_data.get("multi_agent_reasoning", "")).strip()
+        if requested_model:
+            packet += f"- requested_model: `{requested_model}`\n"
+        if requested_reasoning:
+            packet += f"- requested_reasoning: `{requested_reasoning}`\n"
+        if resolved_model:
+            packet += f"- runtime_expected_model: `{resolved_model}`\n"
+        if resolved_reasoning:
+            packet += f"- runtime_expected_reasoning: `{resolved_reasoning}`\n"
         packet += "\n"
+
+    packet += "## Runtime Profile Verification (JSONL)\n"
+    packet += "- After agent dispatch, verify rollout `turn_context` fields (`model`, `effort`, `developer_instructions`) before accepting output.\n"
+    packet += "- If runtime profile does not match expected ticket role profile, mark as role-drift and escalate before merge.\n"
 
     packet += """## Agent Write Boundary (Enforced)
 """
@@ -1027,9 +1083,14 @@ def create_ticket(args: argparse.Namespace) -> int:
                 "worktree_path": str(wt),
                 "required_checks": required_checks,
                 "multi_agent_role": role_profile.get("role", ""),
+                "multi_agent_requested_role": role_profile.get("requested_role", ""),
+                "multi_agent_effective_role": role_profile.get("effective_role", ""),
+                "multi_agent_runtime_alias_applied": bool(role_profile.get("runtime_alias_applied", False)),
                 "multi_agent_config_file": role_profile.get("config_file", ""),
                 "multi_agent_model": role_profile.get("model", ""),
                 "multi_agent_reasoning": role_profile.get("reasoning", ""),
+                "multi_agent_requested_model": role_profile.get("requested_model", ""),
+                "multi_agent_requested_reasoning": role_profile.get("requested_reasoning", ""),
                 "multi_agent_fallback": role_profile.get("fallback", []),
                 "status": "ready",
                 "objective": args.goal,
