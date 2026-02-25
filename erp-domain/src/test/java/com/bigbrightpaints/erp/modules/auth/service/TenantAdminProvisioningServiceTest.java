@@ -119,6 +119,41 @@ class TenantAdminProvisioningServiceTest {
     }
 
     @Test
+    void provisionInitialAdmin_fallsBackToDefaultDisplayNameWhenCompanyMissingInHelper() {
+        TenantAdminProvisioningService service = new TenantAdminProvisioningService(
+                userAccountRepository,
+                roleService,
+                passwordEncoder,
+                emailService,
+                tokenBlacklistService,
+                refreshTokenService);
+
+        String displayName = ReflectionTestUtils.invokeMethod(
+                service,
+                "resolveFirstAdminDisplayName",
+                "   ",
+                null);
+
+        assertThat(displayName).isEqualTo("Company Admin");
+    }
+
+    @Test
+    void resetTenantAdminPassword_rejectsTransientCompanyTarget() {
+        TenantAdminProvisioningService service = new TenantAdminProvisioningService(
+                userAccountRepository,
+                roleService,
+                passwordEncoder,
+                emailService,
+                tokenBlacklistService,
+                refreshTokenService);
+        Company transientCompany = company(null, "SKE", "SKE");
+
+        assertThatThrownBy(() -> service.resetTenantAdminPassword(transientCompany, "admin@ske.com"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Company must exist");
+    }
+
+    @Test
     void resetTenantAdminPassword_rejectsUserOutsideCompany() {
         TenantAdminProvisioningService service = new TenantAdminProvisioningService(
                 userAccountRepository,
@@ -131,6 +166,29 @@ class TenantAdminProvisioningServiceTest {
         Company other = company(56L, "OTH", "Other");
         UserAccount user = new UserAccount("admin@ske.com", "hash", "Admin");
         user.addCompany(other);
+        Role adminRole = new Role();
+        adminRole.setName("ROLE_ADMIN");
+        user.addRole(adminRole);
+        when(userAccountRepository.findByEmailIgnoreCase("admin@ske.com")).thenReturn(Optional.of(user));
+
+        assertThatThrownBy(() -> service.resetTenantAdminPassword(target, "admin@ske.com"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("not assigned to company");
+    }
+
+    @Test
+    void resetTenantAdminPassword_rejectsUserAssignedOnlyToTransientCompanyMembership() {
+        TenantAdminProvisioningService service = new TenantAdminProvisioningService(
+                userAccountRepository,
+                roleService,
+                passwordEncoder,
+                emailService,
+                tokenBlacklistService,
+                refreshTokenService);
+        Company target = company(55L, "SKE", "SKE");
+        Company transientAssignment = company(null, "SKE", "SKE");
+        UserAccount user = new UserAccount("admin@ske.com", "hash", "Admin");
+        user.addCompany(transientAssignment);
         Role adminRole = new Role();
         adminRole.setName("ROLE_ADMIN");
         user.addRole(adminRole);
@@ -214,6 +272,44 @@ class TenantAdminProvisioningServiceTest {
 
         assertThat(resetEmail).isEqualTo("admin@ske.com");
         verify(emailService).sendUserCredentialsEmailRequired(eq("admin@ske.com"), eq("Admin"), any(), eq("SKE"));
+    }
+
+    @Test
+    void hasAnyAuthority_privateHelper_handlesNullAndBlankInputs() {
+        TenantAdminProvisioningService service = new TenantAdminProvisioningService(
+                userAccountRepository,
+                roleService,
+                passwordEncoder,
+                emailService,
+                tokenBlacklistService,
+                refreshTokenService);
+        UserAccount user = new UserAccount("admin@ske.com", "hash", "Admin");
+        user.getRoles().add(null);
+        Role blankRole = new Role();
+        blankRole.setName("   ");
+        user.addRole(blankRole);
+        Role adminRole = new Role();
+        adminRole.setName("ROLE_ADMIN");
+        user.addRole(adminRole);
+
+        boolean nullUser = invokeHasAnyAuthority(service, null, new String[] {"ROLE_ADMIN"});
+        boolean nullAuthorities = invokeHasAnyAuthority(service, user, null);
+        boolean emptyAuthorities = invokeHasAnyAuthority(service, user, new String[] {});
+        boolean blankThenValidAuthorities = invokeHasAnyAuthority(
+                service,
+                user,
+                new String[] {"   ", "ROLE_ADMIN"});
+
+        assertThat(nullUser).isFalse();
+        assertThat(nullAuthorities).isFalse();
+        assertThat(emptyAuthorities).isFalse();
+        assertThat(blankThenValidAuthorities).isTrue();
+    }
+
+    private boolean invokeHasAnyAuthority(TenantAdminProvisioningService service,
+                                          UserAccount user,
+                                          String[] authorities) {
+        return (boolean) ReflectionTestUtils.invokeMethod(service, "hasAnyAuthority", user, authorities);
     }
 
     private Company company(Long id, String code, String name) {

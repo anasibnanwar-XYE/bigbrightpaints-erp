@@ -132,11 +132,39 @@ public class DataInitializer {
             superAdmin.setMustChangePassword(true);
         }
         superAdmin.setDisplayName(SUPER_ADMIN_DISPLAY_NAME);
-        superAdmin.addCompany(superAdminCompany);
-        superAdmin.addRole(superAdminRole);
-        superAdmin.addRole(adminRole);
+        ensureCompanyMembership(superAdmin, superAdminCompany);
+        ensureRoleMembership(superAdmin, superAdminRole);
+        ensureRoleMembership(superAdmin, adminRole);
         userRepository.save(superAdmin);
         return superAdminCompany;
+    }
+
+    private void ensureCompanyMembership(UserAccount user, Company company) {
+        if (user == null || company == null) {
+            return;
+        }
+        boolean alreadyAssigned = user.getCompanies().stream().anyMatch(existing ->
+                existing != null
+                        && ((existing.getId() != null && company.getId() != null && existing.getId().equals(company.getId()))
+                        || (StringUtils.hasText(existing.getCode())
+                        && StringUtils.hasText(company.getCode())
+                        && existing.getCode().equalsIgnoreCase(company.getCode()))));
+        if (!alreadyAssigned) {
+            user.addCompany(company);
+        }
+    }
+
+    private void ensureRoleMembership(UserAccount user, Role role) {
+        if (user == null || role == null || !StringUtils.hasText(role.getName())) {
+            return;
+        }
+        boolean alreadyAssigned = user.getRoles().stream().anyMatch(existing ->
+                existing != null
+                        && StringUtils.hasText(existing.getName())
+                        && existing.getName().equalsIgnoreCase(role.getName()));
+        if (!alreadyAssigned) {
+            user.addRole(role);
+        }
     }
 
     private String normalizeCompanyCode(String configuredCompanyCode) {

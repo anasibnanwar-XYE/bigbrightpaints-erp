@@ -15,6 +15,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.Optional;
 
@@ -79,6 +80,44 @@ class DataInitializerTest {
 
         assertThat(existingSuperAdmin.getPasswordHash()).isEqualTo("keep-hash");
         verify(passwordEncoder, never()).encode("Bootstrap@123");
+    }
+
+    @Test
+    void seedDefaultUser_existingSuperAdmin_doesNotDuplicateRolesWhenRoleInstancesDiffer() throws Exception {
+        DataInitializer initializer = new DataInitializer();
+        Role adminRoleFromRepository = role("ROLE_ADMIN");
+        Role superAdminRoleFromRepository = role("ROLE_SUPER_ADMIN");
+        Company ske = company("SKE");
+        Company bbp = company("BBP");
+        UserAccount existingSuperAdmin = new UserAccount("super@erp.com", "keep-hash", "Existing Super Admin");
+        existingSuperAdmin.addRole(role("ROLE_ADMIN"));
+        existingSuperAdmin.addRole(role("ROLE_SUPER_ADMIN"));
+        UserAccount existingDevAdmin = new UserAccount("admin@bbp.dev", "dev-hash", "Dev Admin");
+
+        when(roleRepository.findByName("ROLE_ADMIN")).thenReturn(Optional.of(adminRoleFromRepository));
+        when(roleRepository.findByName("ROLE_SUPER_ADMIN")).thenReturn(Optional.of(superAdminRoleFromRepository));
+        when(companyRepository.findByCodeIgnoreCase("SKE")).thenReturn(Optional.of(ske));
+        when(companyRepository.findByCodeIgnoreCase("BBP")).thenReturn(Optional.of(bbp));
+        when(userRepository.findByEmailIgnoreCase("super@erp.com")).thenReturn(Optional.of(existingSuperAdmin));
+        when(userRepository.findByEmailIgnoreCase("admin@bbp.dev")).thenReturn(Optional.of(existingDevAdmin));
+        when(accountRepository.findByCompanyAndCodeIgnoreCase(any(Company.class), anyString()))
+                .thenReturn(Optional.of(new Account()));
+
+        CommandLineRunner runner = initializer.seedDefaultUser(
+                userRepository,
+                companyRepository,
+                roleRepository,
+                accountRepository,
+                passwordEncoder,
+                "super@erp.com",
+                "Bootstrap@123",
+                "SKE");
+
+        runner.run();
+
+        assertThat(existingSuperAdmin.getRoles()).extracting(Role::getName)
+                .containsExactlyInAnyOrder("ROLE_ADMIN", "ROLE_SUPER_ADMIN");
+        assertThat(existingSuperAdmin.getRoles()).hasSize(2);
     }
 
     @Test
@@ -213,6 +252,59 @@ class DataInitializerTest {
         verify(roleRepository, atLeast(2)).save(roleCaptor.capture());
         assertThat(roleCaptor.getAllValues()).extracting(Role::getName)
                 .contains("ROLE_ADMIN", "ROLE_SUPER_ADMIN");
+    }
+
+    @Test
+    void ensureCompanyMembership_handlesNullsAndAvoidsDuplicateMemberships() {
+        DataInitializer initializer = new DataInitializer();
+        Company company = company("SKE");
+
+        ReflectionTestUtils.invokeMethod(initializer, "ensureCompanyMembership", null, company);
+        ReflectionTestUtils.invokeMethod(initializer, "ensureCompanyMembership", new UserAccount("u@x.com", "h", "U"), null);
+
+        UserAccount userWithNullSlot = new UserAccount("a@x.com", "h", "A");
+        userWithNullSlot.getCompanies().add(null);
+        ReflectionTestUtils.invokeMethod(initializer, "ensureCompanyMembership", userWithNullSlot, company);
+        assertThat(userWithNullSlot.getCompanies()).contains(company);
+
+        UserAccount userWithCodeMatch = new UserAccount("b@x.com", "h", "B");
+        Company existingCodeMatch = company("ske");
+        userWithCodeMatch.addCompany(existingCodeMatch);
+        ReflectionTestUtils.invokeMethod(initializer, "ensureCompanyMembership", userWithCodeMatch, company);
+        assertThat(userWithCodeMatch.getCompanies()).hasSize(1);
+
+        UserAccount userWithIdMatch = new UserAccount("c@x.com", "h", "C");
+        Company existingIdMatch = company("OTHER");
+        ReflectionTestUtils.setField(existingIdMatch, "id", 7L);
+        Company targetIdMatch = company("DIFFERENT");
+        ReflectionTestUtils.setField(targetIdMatch, "id", 7L);
+        userWithIdMatch.addCompany(existingIdMatch);
+        ReflectionTestUtils.invokeMethod(initializer, "ensureCompanyMembership", userWithIdMatch, targetIdMatch);
+        assertThat(userWithIdMatch.getCompanies()).hasSize(1);
+    }
+
+    @Test
+    void ensureRoleMembership_handlesNullsAndAvoidsDuplicateRoleNames() {
+        DataInitializer initializer = new DataInitializer();
+        Role adminRole = role("ROLE_ADMIN");
+
+        ReflectionTestUtils.invokeMethod(initializer, "ensureRoleMembership", null, adminRole);
+        ReflectionTestUtils.invokeMethod(initializer, "ensureRoleMembership", new UserAccount("u@x.com", "h", "U"), null);
+        ReflectionTestUtils.invokeMethod(initializer, "ensureRoleMembership", new UserAccount("u2@x.com", "h", "U2"), role("   "));
+
+        UserAccount user = new UserAccount("seed@x.com", "h", "Seed");
+        user.getRoles().add(null);
+        user.addRole(role("   "));
+        ReflectionTestUtils.invokeMethod(initializer, "ensureRoleMembership", user, adminRole);
+        assertThat(user.getRoles().stream()
+                .filter(role -> role != null)
+                .map(Role::getName))
+                .contains("ROLE_ADMIN");
+
+        ReflectionTestUtils.invokeMethod(initializer, "ensureRoleMembership", user, role("role_admin"));
+        assertThat(user.getRoles().stream()
+                .filter(role -> role != null && "ROLE_ADMIN".equalsIgnoreCase(role.getName()))
+                .count()).isEqualTo(1);
     }
 
     private Role role(String name) {
