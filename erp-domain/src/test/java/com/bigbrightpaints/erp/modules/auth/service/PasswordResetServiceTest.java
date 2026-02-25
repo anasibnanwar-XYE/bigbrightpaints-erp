@@ -26,6 +26,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.transaction.UnexpectedRollbackException;
 
 @ExtendWith(MockitoExtension.class)
 class PasswordResetServiceTest {
@@ -142,6 +143,22 @@ class PasswordResetServiceTest {
         when(userAccountRepository.findByEmailIgnoreCase("superadmin@example.com"))
                 .thenReturn(Optional.of(superAdmin));
         doThrow(new DataAccessResourceFailureException("db unavailable"))
+                .when(tokenRepository)
+                .saveAndFlush(any(PasswordResetToken.class));
+
+        assertDoesNotThrow(() -> passwordResetService.requestResetForSuperAdmin("superadmin@example.com"));
+
+        verify(tokenRepository).deleteByUser(superAdmin);
+        verify(tokenRepository).saveAndFlush(any(PasswordResetToken.class));
+        verify(emailService, never()).sendSimpleEmail(any(), any(), any());
+    }
+
+    @Test
+    void requestResetForSuperAdminMasksUnexpectedRollbackFailure() {
+        UserAccount superAdmin = superAdminUser("superadmin@example.com");
+        when(userAccountRepository.findByEmailIgnoreCase("superadmin@example.com"))
+                .thenReturn(Optional.of(superAdmin));
+        doThrow(new UnexpectedRollbackException("tx marked rollback-only"))
                 .when(tokenRepository)
                 .saveAndFlush(any(PasswordResetToken.class));
 

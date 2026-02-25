@@ -67,7 +67,6 @@ public class PasswordResetService {
                 });
     }
 
-    @Transactional
     public void requestResetForSuperAdmin(String email) {
         userAccountRepository.findByEmailIgnoreCase(email)
                 .filter(UserAccount::isEnabled)
@@ -138,7 +137,7 @@ public class PasswordResetService {
                     + resetLink
                     + "\n\nThis link expires in 60 minutes.";
             emailService.sendSimpleEmail(user.getEmail(), "Reset your BigBright ERP password", body);
-        } catch (ApplicationException | DataAccessException ex) {
+        } catch (RuntimeException ex) {
             if (tokenPersisted) {
                 cleanupFailedSuperAdminResetToken(user);
             }
