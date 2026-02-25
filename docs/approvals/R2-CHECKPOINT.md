@@ -340,7 +340,7 @@ Update this file in every high-risk change set.
 
 ## STAGE-109 Addendum (2026-02-25, refactor-techdebt-gc)
 - Ticket / PR: `TKT-ERP-STAGE-109` / PR #81 (https://github.com/anasibnanwar-XYE/bigbrightpaints-erp/pull/81)
-- Source branch: `tickets/tkt-erp-stage-109/refactor-techdebt-gc`
+- Source branch: `tkt-erp-stage-109-refactor-techdebt-gc`
 - High-risk paths:
   - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/service/CompanyService.java`
   - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/controller/CompanyController.java`
