@@ -14,6 +14,8 @@ import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditLogRepository;
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
+import com.bigbrightpaints.erp.modules.auth.service.TenantAdminProvisioningService;
+import com.bigbrightpaints.erp.modules.company.dto.CompanyAdminCredentialResetDto;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyLifecycleState;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
@@ -56,6 +58,9 @@ class CompanyServiceTest {
     @Mock
     private TenantRuntimeEnforcementService tenantRuntimeEnforcementService;
 
+    @Mock
+    private TenantAdminProvisioningService tenantAdminProvisioningService;
+
     private CompanyService companyService;
 
     @BeforeEach
@@ -65,7 +70,8 @@ class CompanyServiceTest {
                 auditService,
                 userAccountRepository,
                 auditLogRepository,
-                tenantRuntimeEnforcementService);
+                tenantRuntimeEnforcementService,
+                tenantAdminProvisioningService);
     }
 
     @AfterEach
@@ -125,6 +131,19 @@ class CompanyServiceTest {
     }
 
     @Test
+    void update_preservesExistingGstRateWhenPayloadOmitsDefaultGstRate() {
+        authenticateAs("ROLE_SUPER_ADMIN");
+        Company target = company(2L, "ACME");
+        target.setDefaultGstRate(new BigDecimal("18.00"));
+        CompanyRequest request = new CompanyRequest("New Name", "NEW", "UTC", null);
+        when(repository.findById(2L)).thenReturn(Optional.of(target));
+
+        CompanyDto dto = companyService.update(2L, request, Set.of(target));
+
+        assertThat(dto.defaultGstRate()).isEqualByComparingTo("18.00");
+    }
+
+    @Test
     void update_deniesTenantAdminEvenWhenMember() {
         authenticateAs("ROLE_ADMIN");
         Company allowed = company(1L, "ACME");
@@ -135,6 +154,205 @@ class CompanyServiceTest {
                 .hasMessageContaining("SUPER_ADMIN authority required for tenant configuration updates");
 
         verify(repository, never()).findById(anyLong());
+    }
+
+    @Test
+    void create_normalizesCode_defaultsGstAndProvisionsFirstAdmin() {
+        authenticateAs("ROLE_SUPER_ADMIN");
+        Company incoming = new Company();
+        ReflectionTestUtils.setField(incoming, "id", 7L);
+        ReflectionTestUtils.setField(incoming, "publicId", UUID.randomUUID());
+        incoming.setName("SKE Corp");
+        incoming.setCode("SKE");
+        incoming.setTimezone("UTC");
+        incoming.setDefaultGstRate(BigDecimal.ZERO);
+        when(repository.findByCodeIgnoreCase("SKE")).thenReturn(Optional.empty());
+        when(repository.save(org.mockito.ArgumentMatchers.any(Company.class))).thenReturn(incoming);
+        when(tenantAdminProvisioningService.isCredentialEmailDeliveryEnabled()).thenReturn(true);
+
+        CompanyRequest request = new CompanyRequest(
+                "SKE Corp",
+                " ske ",
+                "UTC",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                "tenant-admin@ske.com",
+                "SKE Tenant Admin");
+
+        CompanyDto dto = companyService.create(request);
+
+        assertThat(dto.code()).isEqualTo("SKE");
+        assertThat(dto.defaultGstRate()).isEqualByComparingTo(BigDecimal.ZERO);
+        verify(tenantAdminProvisioningService).provisionInitialAdmin(
+                org.mockito.ArgumentMatchers.any(Company.class),
+                eq("tenant-admin@ske.com"),
+                eq("SKE Tenant Admin"));
+    }
+
+    @Test
+    void create_rejectsCaseInsensitiveDuplicateCompanyCode() {
+        authenticateAs("ROLE_SUPER_ADMIN");
+        Company existing = company(11L, "SKE");
+        when(repository.findByCodeIgnoreCase("SKE")).thenReturn(Optional.of(existing));
+
+        CompanyRequest request = new CompanyRequest("SKE Copy", "ske", "UTC", null);
+
+        assertThatThrownBy(() -> companyService.create(request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Company code already exists: SKE");
+        verify(repository, never()).save(org.mockito.ArgumentMatchers.any(Company.class));
+    }
+
+    @Test
+    void create_rejectsBlankCompanyCode() {
+        authenticateAs("ROLE_SUPER_ADMIN");
+        CompanyRequest request = new CompanyRequest("SKE Corp", "   ", "UTC", null);
+
+        assertThatThrownBy(() -> companyService.create(request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Company code is required");
+    }
+
+    @Test
+    void update_rejectsDuplicateCompanyCodeOwnedByAnotherCompany() {
+        authenticateAs("ROLE_SUPER_ADMIN");
+        Company target = company(2L, "ACME");
+        Company existing = company(9L, "NEW");
+        when(repository.findById(2L)).thenReturn(Optional.of(target));
+        when(repository.findByCodeIgnoreCase("NEW")).thenReturn(Optional.of(existing));
+        CompanyRequest request = new CompanyRequest("New Name", "NEW", "UTC", BigDecimal.TEN);
+
+        assertThatThrownBy(() -> companyService.update(2L, request, Set.of(target)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Company code already exists: NEW");
+    }
+
+    @Test
+    void update_allowsDuplicateLookupWhenCodeBelongsToSameCompany() {
+        authenticateAs("ROLE_SUPER_ADMIN");
+        Company target = company(2L, "ACME");
+        Company same = company(2L, "NEW");
+        when(repository.findById(2L)).thenReturn(Optional.of(target));
+        when(repository.findByCodeIgnoreCase("NEW")).thenReturn(Optional.of(same));
+        CompanyRequest request = new CompanyRequest("New Name", "NEW", "UTC", BigDecimal.TEN);
+
+        CompanyDto dto = companyService.update(2L, request, Set.of(target));
+
+        assertThat(dto.code()).isEqualTo("NEW");
+    }
+
+    @Test
+    void update_allowsDuplicateLookupWhenExistingCompanyIdIsNull() {
+        authenticateAs("ROLE_SUPER_ADMIN");
+        Company target = company(2L, "ACME");
+        Company existingWithoutId = new Company();
+        existingWithoutId.setCode("NEW");
+        when(repository.findById(2L)).thenReturn(Optional.of(target));
+        when(repository.findByCodeIgnoreCase("NEW")).thenReturn(Optional.of(existingWithoutId));
+        CompanyRequest request = new CompanyRequest("New Name", "NEW", "UTC", BigDecimal.TEN);
+
+        CompanyDto dto = companyService.update(2L, request, Set.of(target));
+
+        assertThat(dto.code()).isEqualTo("NEW");
+    }
+
+    @Test
+    void create_usesRequestedDefaultGstRateWhenProvided() {
+        authenticateAs("ROLE_SUPER_ADMIN");
+        Company incoming = company(7L, "SKE");
+        incoming.setDefaultGstRate(new BigDecimal("18.00"));
+        when(repository.findByCodeIgnoreCase("SKE")).thenReturn(Optional.empty());
+        when(repository.save(org.mockito.ArgumentMatchers.any(Company.class))).thenReturn(incoming);
+
+        CompanyRequest request = new CompanyRequest("SKE Corp", "ske", "UTC", new BigDecimal("18.00"));
+        CompanyDto dto = companyService.create(request);
+
+        assertThat(dto.defaultGstRate()).isEqualByComparingTo("18.00");
+    }
+
+    @Test
+    void create_skipsInitialAdminProvisioningWhenEmailIsBlank() {
+        authenticateAs("ROLE_SUPER_ADMIN");
+        Company incoming = company(7L, "SKE");
+        when(repository.findByCodeIgnoreCase("SKE")).thenReturn(Optional.empty());
+        when(repository.save(org.mockito.ArgumentMatchers.any(Company.class))).thenReturn(incoming);
+
+        CompanyRequest request = new CompanyRequest(
+                "SKE Corp",
+                "ske",
+                "UTC",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                "   ",
+                "Display");
+        CompanyDto dto = companyService.create(request);
+
+        assertThat(dto.code()).isEqualTo("SKE");
+        verify(tenantAdminProvisioningService, never()).isCredentialEmailDeliveryEnabled();
+        verify(tenantAdminProvisioningService, never())
+                .provisionInitialAdmin(
+                        org.mockito.ArgumentMatchers.any(Company.class),
+                        org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.anyString());
+    }
+
+    @Test
+    void create_requiresCredentialProvisioningDependenciesWhenFirstAdminIsRequested() {
+        authenticateAs("ROLE_SUPER_ADMIN");
+        CompanyService serviceWithoutProvisioning = new CompanyService(
+                repository,
+                auditService,
+                userAccountRepository,
+                auditLogRepository);
+        Company incoming = company(7L, "SKE");
+        when(repository.findByCodeIgnoreCase("SKE")).thenReturn(Optional.empty());
+        when(repository.save(org.mockito.ArgumentMatchers.any(Company.class))).thenReturn(incoming);
+
+        CompanyRequest request = new CompanyRequest(
+                "SKE Corp",
+                "ske",
+                "UTC",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                "tenant-admin@ske.com",
+                "Tenant Admin");
+
+        assertThatThrownBy(() -> serviceWithoutProvisioning.create(request))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Credential provisioning dependencies are not available");
+    }
+
+    @Test
+    void companyRequest_legacyQuotaConstructor_initializesAdminFieldsAsNull() {
+        CompanyRequest request = new CompanyRequest(
+                "Acme",
+                "ACME",
+                "UTC",
+                BigDecimal.TEN,
+                10L,
+                20L,
+                30L,
+                40L,
+                true,
+                true);
+
+        assertThat(request.firstAdminEmail()).isNull();
+        assertThat(request.firstAdminDisplayName()).isNull();
     }
 
     @Test
@@ -451,6 +669,36 @@ class CompanyServiceTest {
                 new CompanyService.TenantRuntimePolicyMutationRequest("HOLD", "policy", null, null, null)))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Tenant runtime enforcement service unavailable");
+    }
+
+    @Test
+    void resetTenantAdminPassword_resetsAndEmailsTemporaryCredentials() {
+        authenticateAs("ROLE_SUPER_ADMIN");
+        Company company = company(5L, "SKE");
+        when(repository.findById(5L)).thenReturn(Optional.of(company));
+        when(tenantAdminProvisioningService.isCredentialEmailDeliveryEnabled()).thenReturn(true);
+        when(tenantAdminProvisioningService.resetTenantAdminPassword(company, "tenant-admin@ske.com"))
+                .thenReturn("tenant-admin@ske.com");
+
+        CompanyAdminCredentialResetDto response = companyService.resetTenantAdminPassword(5L, "tenant-admin@ske.com");
+
+        assertThat(response.companyCode()).isEqualTo("SKE");
+        assertThat(response.adminEmail()).isEqualTo("tenant-admin@ske.com");
+        verify(tenantAdminProvisioningService).resetTenantAdminPassword(company, "tenant-admin@ske.com");
+    }
+
+    @Test
+    void resetTenantAdminPassword_rejectsWhenCredentialEmailDeliveryIsDisabled() {
+        authenticateAs("ROLE_SUPER_ADMIN");
+        Company company = company(5L, "SKE");
+        when(repository.findById(5L)).thenReturn(Optional.of(company));
+        when(tenantAdminProvisioningService.isCredentialEmailDeliveryEnabled()).thenReturn(false);
+
+        assertThatThrownBy(() -> companyService.resetTenantAdminPassword(5L, "tenant-admin@ske.com"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Credential email delivery is disabled");
+
+        verify(tenantAdminProvisioningService, never()).resetTenantAdminPassword(company, "tenant-admin@ske.com");
     }
 
     private void configureHardLimitEnvelope(Company company) {

@@ -57,6 +57,14 @@ public class EmailService {
     }
 
     public void sendUserCredentialsEmail(String to, String displayName, String password) {
+        sendUserCredentialsEmail(to, displayName, password, null);
+    }
+
+    public boolean isCredentialEmailDeliveryEnabled() {
+        return properties.isEnabled() && properties.isSendCredentials();
+    }
+
+    public void sendUserCredentialsEmail(String to, String displayName, String password, String companyCode) {
         if (!properties.isSendCredentials()) {
             log.debug("Credential email sending disabled. Skipping for {}", to);
             return;
@@ -66,9 +74,27 @@ public class EmailService {
         context.setVariable("displayName", displayName);
         context.setVariable("email", to);
         context.setVariable("temporaryPassword", password);
+        context.setVariable("companyCode", StringUtils.hasText(companyCode) ? companyCode.trim() : null);
         context.setVariable("loginUrl", properties.getBaseUrl());
         context.setVariable("preheader", "Your Orchestrator ERP account is ready.");
         sendHtmlEmail(to, subject, "mail/credentials", context);
+    }
+
+    public void sendUserCredentialsEmailRequired(String to, String displayName, String password, String companyCode) {
+        if (!isCredentialEmailDeliveryEnabled()) {
+            throw new ApplicationException(
+                    ErrorCode.SYSTEM_CONFIGURATION_ERROR,
+                    "Credential email delivery is disabled; enable erp.mail.enabled=true and erp.mail.send-credentials=true");
+        }
+        String subject = "Your BigBright ERP account credentials";
+        Context context = new Context();
+        context.setVariable("displayName", displayName);
+        context.setVariable("email", to);
+        context.setVariable("temporaryPassword", password);
+        context.setVariable("companyCode", StringUtils.hasText(companyCode) ? companyCode.trim() : null);
+        context.setVariable("loginUrl", properties.getBaseUrl());
+        context.setVariable("preheader", "Your Orchestrator ERP account is ready.");
+        sendHtmlEmailRequired(to, subject, "mail/credentials", context);
     }
 
     public void sendPasswordResetEmail(String to, String displayName, String resetToken) {
@@ -216,6 +242,37 @@ public class EmailService {
             log.info("Sent HTML email to {}", to);
         } catch (MailException ex) {
             log.error("Failed to send HTML email to {}: {}", to, ex.getMessage(), ex);
+        }
+    }
+
+    private void sendHtmlEmailRequired(String to, String subject, String templateName, Context context) {
+        if (!properties.isEnabled()) {
+            throw new ApplicationException(
+                    ErrorCode.SYSTEM_CONFIGURATION_ERROR,
+                    "Email delivery is disabled; enable erp.mail.enabled and SMTP settings");
+        }
+        if (!StringUtils.hasText(to)) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Email recipient is required");
+        }
+        MimeMessagePreparator preparator = mimeMessage -> {
+            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
+            helper.setTo(to);
+            helper.setFrom(properties.getFromAddress());
+            helper.setSubject(subject);
+            applyStandardTemplateVariables(context, subject);
+            String html = templateEngine.process(templateName, context);
+            helper.setText(html, true);
+        };
+        try {
+            mailSender.send(preparator);
+            log.info("Sent HTML email to {}", to);
+        } catch (MailException ex) {
+            log.error("Failed to send HTML email to {}: {}", to, ex.getMessage(), ex);
+            throw new ApplicationException(
+                    ErrorCode.SYSTEM_EXTERNAL_SERVICE_ERROR,
+                    "Failed to dispatch email via SMTP",
+                    ex
+            ).withDetail("recipient", to);
         }
     }
 

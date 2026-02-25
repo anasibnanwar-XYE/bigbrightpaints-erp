@@ -9,16 +9,25 @@ import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.rbac.domain.Role;
 import com.bigbrightpaints.erp.modules.rbac.domain.RoleRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
+import java.util.Locale;
 
 @Configuration
 public class DataInitializer {
+
+    private static final Logger log = LoggerFactory.getLogger(DataInitializer.class);
+    private static final String DEFAULT_SUPER_ADMIN_COMPANY_CODE = "SKE";
+    private static final String SUPER_ADMIN_DISPLAY_NAME = "Platform Super Admin";
 
     @Bean
     @Profile({"dev", "seed"})
@@ -26,8 +35,34 @@ public class DataInitializer {
                                       CompanyRepository companyRepository,
                                       RoleRepository roleRepository,
                                       AccountRepository accountRepository,
-                                      PasswordEncoder passwordEncoder) {
+                                      PasswordEncoder passwordEncoder,
+                                      @Value("${erp.seed.super-admin.email:}") String superAdminEmail,
+                                      @Value("${erp.seed.super-admin.password:}") String superAdminPassword,
+                                      @Value("${erp.seed.super-admin.company-code:SKE}") String superAdminCompanyCode) {
         return args -> {
+            Role adminRole = roleRepository.findByName("ROLE_ADMIN").orElseGet(() -> {
+                Role role = new Role();
+                role.setName("ROLE_ADMIN");
+                role.setDescription("Platform administrator");
+                return roleRepository.save(role);
+            });
+            Role superAdminRole = roleRepository.findByName("ROLE_SUPER_ADMIN").orElseGet(() -> {
+                Role role = new Role();
+                role.setName("ROLE_SUPER_ADMIN");
+                role.setDescription("Platform super administrator");
+                return roleRepository.save(role);
+            });
+
+            Company superAdminCompany = seedConfiguredSuperAdmin(
+                    userRepository,
+                    companyRepository,
+                    passwordEncoder,
+                    adminRole,
+                    superAdminRole,
+                    superAdminEmail,
+                    superAdminPassword,
+                    superAdminCompanyCode);
+
             Company company = companyRepository.findByCodeIgnoreCase("BBP")
                     .orElseGet(() -> {
                         Company c = new Company();
@@ -37,12 +72,6 @@ public class DataInitializer {
                         c.setBaseCurrency("INR");
                         return companyRepository.save(c);
                     });
-            Role adminRole = roleRepository.findByName("ROLE_ADMIN").orElseGet(() -> {
-                Role role = new Role();
-                role.setName("ROLE_ADMIN");
-                role.setDescription("Platform administrator");
-                return roleRepository.save(role);
-            });
 
             userRepository.findByEmailIgnoreCase("admin@bbp.dev").orElseGet(() -> {
                 UserAccount user = new UserAccount(
@@ -54,9 +83,95 @@ public class DataInitializer {
                 return userRepository.save(user);
             });
 
+            seedDefaultAccounts(superAdminCompany, accountRepository);
+            if (superAdminCompany != null) {
+                setCompanyDefaultAccounts(superAdminCompany, companyRepository, accountRepository);
+            }
             seedDefaultAccounts(company, accountRepository);
             setCompanyDefaultAccounts(company, companyRepository, accountRepository);
         };
+    }
+
+    private Company seedConfiguredSuperAdmin(UserAccountRepository userRepository,
+                                             CompanyRepository companyRepository,
+                                             PasswordEncoder passwordEncoder,
+                                             Role adminRole,
+                                             Role superAdminRole,
+                                             String configuredEmail,
+                                             String configuredPassword,
+                                             String configuredCompanyCode) {
+        if (!StringUtils.hasText(configuredEmail)) {
+            log.info("Super-admin seed skipped: set erp.seed.super-admin.email to enable bootstrap");
+            return null;
+        }
+        String normalizedEmail = configuredEmail.trim().toLowerCase(Locale.ROOT);
+        String normalizedCompanyCode = normalizeCompanyCode(configuredCompanyCode);
+        UserAccount existingSuperAdmin = userRepository.findByEmailIgnoreCase(normalizedEmail).orElse(null);
+        if (existingSuperAdmin == null && !StringUtils.hasText(configuredPassword)) {
+            throw new IllegalStateException(
+                    "erp.seed.super-admin.password is required when bootstrap super-admin user does not exist");
+        }
+        Company superAdminCompany = companyRepository.findByCodeIgnoreCase(normalizedCompanyCode)
+                .orElseGet(() -> {
+                    Company company = new Company();
+                    company.setName(normalizedCompanyCode);
+                    company.setCode(normalizedCompanyCode);
+                    company.setTimezone("UTC");
+                    company.setBaseCurrency("INR");
+                    company.setDefaultGstRate(java.math.BigDecimal.ZERO);
+                    return companyRepository.save(company);
+                });
+
+        UserAccount superAdmin = existingSuperAdmin == null
+                ? new UserAccount(
+                        normalizedEmail,
+                        passwordEncoder.encode(configuredPassword),
+                        SUPER_ADMIN_DISPLAY_NAME)
+                : existingSuperAdmin;
+        if (existingSuperAdmin == null) {
+            superAdmin.setMustChangePassword(true);
+        }
+        superAdmin.setDisplayName(SUPER_ADMIN_DISPLAY_NAME);
+        ensureCompanyMembership(superAdmin, superAdminCompany);
+        ensureRoleMembership(superAdmin, superAdminRole);
+        ensureRoleMembership(superAdmin, adminRole);
+        userRepository.save(superAdmin);
+        return superAdminCompany;
+    }
+
+    private void ensureCompanyMembership(UserAccount user, Company company) {
+        if (user == null || company == null) {
+            return;
+        }
+        boolean alreadyAssigned = user.getCompanies().stream().anyMatch(existing ->
+                existing != null
+                        && ((existing.getId() != null && company.getId() != null && existing.getId().equals(company.getId()))
+                        || (StringUtils.hasText(existing.getCode())
+                        && StringUtils.hasText(company.getCode())
+                        && existing.getCode().equalsIgnoreCase(company.getCode()))));
+        if (!alreadyAssigned) {
+            user.addCompany(company);
+        }
+    }
+
+    private void ensureRoleMembership(UserAccount user, Role role) {
+        if (user == null || role == null || !StringUtils.hasText(role.getName())) {
+            return;
+        }
+        boolean alreadyAssigned = user.getRoles().stream().anyMatch(existing ->
+                existing != null
+                        && StringUtils.hasText(existing.getName())
+                        && existing.getName().equalsIgnoreCase(role.getName()));
+        if (!alreadyAssigned) {
+            user.addRole(role);
+        }
+    }
+
+    private String normalizeCompanyCode(String configuredCompanyCode) {
+        if (!StringUtils.hasText(configuredCompanyCode)) {
+            return DEFAULT_SUPER_ADMIN_COMPANY_CODE;
+        }
+        return configuredCompanyCode.trim().toUpperCase(Locale.ROOT);
     }
 
     private void seedDefaultAccounts(Company company, AccountRepository accountRepository) {
