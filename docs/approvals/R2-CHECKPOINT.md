@@ -401,7 +401,7 @@ Update this file in every high-risk change set.
 
 ## STAGE-111 Addendum (2026-02-25, auth-rbac-company follow-up)
 - Ticket / PR: `TKT-ERP-STAGE-111` / PR #84 (https://github.com/anasibnanwar-XYE/bigbrightpaints-erp/pull/84)
-- Source branch: `tickets/tkt-erp-stage-111/auth-rbac-company`
+- Source branch: `tickets/TKT-ERP-STAGE-111`
 - High-risk paths:
   - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/service/PasswordResetService.java`
   - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/domain/PasswordResetTokenRepository.java`
