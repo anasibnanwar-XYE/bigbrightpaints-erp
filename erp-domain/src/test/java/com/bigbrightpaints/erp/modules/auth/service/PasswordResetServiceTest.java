@@ -21,6 +21,7 @@ import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.rbac.domain.Role;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.BeforeEach;
@@ -201,6 +202,92 @@ class PasswordResetServiceTest {
     }
 
     @Test
+    void requestResetForSuperAdminFallsBackToGeneratedCorrelationIdForMalformedHeader() {
+        UserAccount superAdmin = superAdminUser("superadmin@example.com");
+        when(userAccountRepository.findByEmailIgnoreCase("superadmin@example.com"))
+                .thenReturn(Optional.of(superAdmin));
+        doThrow(new RuntimeException("smtp down"))
+                .when(emailService)
+                .sendSimpleEmail(eq("superadmin@example.com"), any(), any());
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/auth/password/forgot/superadmin");
+        request.addHeader("X-Correlation-Id", "corr-bad\r\nx-injected:1|evil");
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+        try {
+            List<String> messages = captureServiceLogMessages(
+                    () -> passwordResetService.requestResetForSuperAdmin("superadmin@example.com"));
+            assertTrue(
+                    messages.stream().noneMatch(message -> message.contains("corr-bad")),
+                    "Expected malformed request correlation header to be rejected in logs");
+            assertTrue(
+                    messages.stream().anyMatch(message -> message.matches(".*correlationId=[0-9a-fA-F\\-]{36}.*")),
+                    "Expected fallback UUID correlation id when request header is malformed");
+        } finally {
+            RequestContextHolder.resetRequestAttributes();
+        }
+    }
+
+    @Test
+    void requestResetForSuperAdminRedactsRawExceptionMessagesInLogs() {
+        UserAccount superAdmin = superAdminUser("superadmin@example.com");
+        when(userAccountRepository.findByEmailIgnoreCase("superadmin@example.com"))
+                .thenReturn(Optional.of(superAdmin));
+        doThrow(new RuntimeException("smtp credential leak"))
+                .when(emailService)
+                .sendSimpleEmail(eq("superadmin@example.com"), any(), any());
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/auth/password/forgot/superadmin");
+        request.addHeader("X-Correlation-Id", "corr-redaction-123");
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+        try {
+            List<String> messages = captureServiceLogMessages(
+                    () -> passwordResetService.requestResetForSuperAdmin("superadmin@example.com"));
+            assertTrue(
+                    messages.stream().anyMatch(message -> message.contains("reasonCode=RESET_DISPATCH_FAILURE")),
+                    "Expected dispatch failure reason code in masked superadmin forgot logs");
+            assertTrue(
+                    messages.stream().anyMatch(message -> message.contains("exceptionClass=RuntimeException")),
+                    "Expected exception class to remain available in masked superadmin forgot logs");
+            assertTrue(
+                    messages.stream().noneMatch(message -> message.contains("smtp credential leak")),
+                    "Expected raw exception message to be redacted from logs");
+        } finally {
+            RequestContextHolder.resetRequestAttributes();
+        }
+    }
+
+    @Test
+    void requestResetForSuperAdminCleanupFailureEmitsSecurityEventCode() {
+        UserAccount superAdmin = superAdminUser("superadmin@example.com");
+        when(userAccountRepository.findByEmailIgnoreCase("superadmin@example.com"))
+                .thenReturn(Optional.of(superAdmin));
+        doThrow(new RuntimeException("smtp down"))
+                .when(emailService)
+                .sendSimpleEmail(eq("superadmin@example.com"), any(), any());
+        doThrow(new RuntimeException("cleanup token leaked"))
+                .when(tokenRepository)
+                .deleteByToken(anyString());
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/auth/password/forgot/superadmin");
+        request.addHeader("X-Correlation-Id", "corr-cleanup-123");
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+        try {
+            List<String> messages = captureServiceLogMessages(
+                    () -> passwordResetService.requestResetForSuperAdmin("superadmin@example.com"));
+            assertTrue(
+                    messages.stream().anyMatch(message -> message.contains(
+                                    "securityEventCode=SEC_AUTH_SUPERADMIN_RESET_CLEANUP_FAILURE")
+                            && message.contains("correlationId=corr-cleanup-123")),
+                    "Expected cleanup failures to emit a deterministic security event code with correlation id");
+            assertTrue(
+                    messages.stream().noneMatch(message -> message.contains("cleanup token leaked")),
+                    "Expected cleanup raw exception details to remain redacted");
+        } finally {
+            RequestContextHolder.resetRequestAttributes();
+        }
+    }
+
+    @Test
     void requestResetForSuperAdminStoresTokenBeforeSuccessfulEmailDispatch() {
         UserAccount superAdmin = superAdminUser("superadmin@example.com");
         when(userAccountRepository.findByEmailIgnoreCase("superadmin@example.com"))
@@ -274,5 +361,20 @@ class PasswordResetServiceTest {
         role.setName("ROLE_SUPER_ADMIN");
         user.addRole(role);
         return user;
+    }
+
+    private List<String> captureServiceLogMessages(Runnable invocation) {
+        Logger serviceLogger = (Logger) LoggerFactory.getLogger(PasswordResetService.class);
+        ListAppender<ILoggingEvent> listAppender = new ListAppender<>();
+        listAppender.start();
+        serviceLogger.addAppender(listAppender);
+        try {
+            invocation.run();
+            return listAppender.list.stream()
+                    .map(ILoggingEvent::getFormattedMessage)
+                    .toList();
+        } finally {
+            serviceLogger.detachAppender(listAppender);
+        }
     }
 }

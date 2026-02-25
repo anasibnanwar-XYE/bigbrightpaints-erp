@@ -26,6 +26,7 @@ import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 @Service
 public class PasswordResetService {
@@ -37,6 +38,14 @@ public class PasswordResetService {
     private static final String CORRELATION_ID_HEADER = "X-Correlation-Id";
     private static final String REQUEST_ID_HEADER = "X-Request-Id";
     private static final String TRACE_ID_HEADER = "X-Trace-Id";
+    private static final int MAX_CORRELATION_ID_LENGTH = 128;
+    private static final Pattern SAFE_CORRELATION_ID_PATTERN =
+            Pattern.compile("^[A-Za-z0-9._:-]{1,128}$");
+    private static final String SUPER_ADMIN_MASKED_OUTCOME = "request_accepted";
+    private static final String SUPER_ADMIN_DISPATCH_FAILURE_REASON_CODE = "RESET_DISPATCH_FAILURE";
+    private static final String SUPER_ADMIN_CLEANUP_FAILURE_REASON_CODE = "RESET_CLEANUP_FAILURE";
+    private static final String SUPER_ADMIN_CLEANUP_FAILURE_SECURITY_EVENT_CODE =
+            "SEC_AUTH_SUPERADMIN_RESET_CLEANUP_FAILURE";
 
     private final UserAccountRepository userAccountRepository;
     private final PasswordResetTokenRepository tokenRepository;
@@ -94,10 +103,11 @@ public class PasswordResetService {
                 .ifPresentOrElse(
                         user -> dispatchSuperAdminResetEmail(user, correlationId),
                         () -> log.info(
-                                "event=password_reset.superadmin_forgot.suppressed policy={} correlationId={} email={} reason=no_eligible_superadmin",
+                                "event=password_reset.superadmin_forgot.suppressed policy={} correlationId={} email={} outcome={} reasonCode=masked_eligibility",
                                 RESET_POLICY_SCOPE,
                                 correlationId,
-                                requestedEmail));
+                                requestedEmail,
+                                SUPER_ADMIN_MASKED_OUTCOME));
     }
 
     @Transactional
@@ -168,12 +178,12 @@ public class PasswordResetService {
             cleanupFailedSuperAdminResetToken(user, persistedToken, correlationId);
             // Keep public endpoint semantics uniform to avoid account-enumeration side channels.
             log.warn(
-                    "event=password_reset.superadmin_forgot.masked policy={} correlationId={} email={} outcome=suppressed_failure cause={} message={}",
+                    "event=password_reset.superadmin_forgot.masked policy={} correlationId={} email={} outcome=suppressed_failure reasonCode={} exceptionClass={}",
                     RESET_POLICY_SCOPE,
                     correlationId,
                     maskedEmail,
-                    ex.getClass().getSimpleName(),
-                    safeExceptionMessage(ex));
+                    SUPER_ADMIN_DISPATCH_FAILURE_REASON_CODE,
+                    ex.getClass().getSimpleName());
         }
     }
 
@@ -215,12 +225,18 @@ public class PasswordResetService {
                     maskedEmail);
         } catch (RuntimeException cleanupEx) {
             log.warn(
-                    "event=password_reset.superadmin_forgot.cleanup policy={} correlationId={} email={} outcome=cleanup_failed cause={} message={}",
+                    "event=password_reset.superadmin_forgot.cleanup policy={} correlationId={} email={} outcome=cleanup_failed reasonCode={} exceptionClass={}",
                     RESET_POLICY_SCOPE,
                     correlationId,
                     maskedEmail,
-                    cleanupEx.getClass().getSimpleName(),
-                    safeExceptionMessage(cleanupEx));
+                    SUPER_ADMIN_CLEANUP_FAILURE_REASON_CODE,
+                    cleanupEx.getClass().getSimpleName());
+            log.error(
+                    "event=password_reset.superadmin_forgot.security_alert policy={} correlationId={} email={} securityEventCode={} outcome=manual_remediation_required",
+                    RESET_POLICY_SCOPE,
+                    correlationId,
+                    maskedEmail,
+                    SUPER_ADMIN_CLEANUP_FAILURE_SECURITY_EVENT_CODE);
         }
     }
 
@@ -259,8 +275,9 @@ public class PasswordResetService {
                 request.getHeader(CORRELATION_ID_HEADER),
                 request.getHeader(REQUEST_ID_HEADER),
                 request.getHeader(TRACE_ID_HEADER));
-        if (StringUtils.hasText(headerCorrelationId)) {
-            return headerCorrelationId.trim();
+        String sanitizedCorrelationId = sanitizeCorrelationId(headerCorrelationId);
+        if (sanitizedCorrelationId != null) {
+            return sanitizedCorrelationId;
         }
         return UUID.randomUUID().toString();
     }
@@ -277,14 +294,23 @@ public class PasswordResetService {
         return null;
     }
 
-    private String safeExceptionMessage(RuntimeException exception) {
-        if (exception == null) {
-            return "<none>";
+    private String sanitizeCorrelationId(String correlationId) {
+        if (!StringUtils.hasText(correlationId)) {
+            return null;
         }
-        String message = exception.getMessage();
-        if (!StringUtils.hasText(message)) {
-            return "<empty>";
+        String candidate = correlationId.trim();
+        if (!StringUtils.hasText(candidate)) {
+            return null;
         }
-        return message.trim();
+        if (candidate.length() > MAX_CORRELATION_ID_LENGTH) {
+            return null;
+        }
+        if (candidate.indexOf('\r') >= 0 || candidate.indexOf('\n') >= 0) {
+            return null;
+        }
+        if (!SAFE_CORRELATION_ID_PATTERN.matcher(candidate).matches()) {
+            return null;
+        }
+        return candidate;
     }
 }
