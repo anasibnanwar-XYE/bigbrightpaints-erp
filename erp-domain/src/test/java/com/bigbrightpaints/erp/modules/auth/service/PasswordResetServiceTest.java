@@ -2,10 +2,14 @@ package com.bigbrightpaints.erp.modules.auth.service;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.bigbrightpaints.erp.core.config.EmailProperties;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
@@ -18,6 +22,7 @@ import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.rbac.domain.Role;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -25,8 +30,14 @@ import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.slf4j.LoggerFactory;
+import org.springframework.batch.support.transaction.ResourcelessTransactionManager;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.transaction.UnexpectedRollbackException;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+import org.springframework.mock.web.MockHttpServletRequest;
 
 @ExtendWith(MockitoExtension.class)
 class PasswordResetServiceTest {
@@ -60,7 +71,8 @@ class PasswordResetServiceTest {
                 emailService,
                 emailProperties,
                 tokenBlacklistService,
-                refreshTokenService);
+                refreshTokenService,
+                new ResourcelessTransactionManager());
     }
 
     @Test
@@ -125,6 +137,67 @@ class PasswordResetServiceTest {
         inOrder.verify(tokenRepository).saveAndFlush(tokenCaptor.capture());
         inOrder.verify(emailService).sendSimpleEmail(eq("superadmin@example.com"), any(), any());
         inOrder.verify(tokenRepository).deleteByToken(tokenCaptor.getValue().getToken());
+    }
+
+    @Test
+    void requestResetForSuperAdminExecutesTokenLifecycleWithinActiveTransactions() {
+        UserAccount superAdmin = superAdminUser("superadmin@example.com");
+        when(userAccountRepository.findByEmailIgnoreCase("superadmin@example.com"))
+                .thenReturn(Optional.of(superAdmin));
+
+        AtomicBoolean deleteByUserInTx = new AtomicBoolean(false);
+        AtomicBoolean saveAndFlushInTx = new AtomicBoolean(false);
+        AtomicBoolean cleanupInTx = new AtomicBoolean(false);
+        doAnswer(invocation -> {
+            deleteByUserInTx.set(TransactionSynchronizationManager.isActualTransactionActive());
+            return null;
+        }).when(tokenRepository).deleteByUser(superAdmin);
+        doAnswer(invocation -> {
+            saveAndFlushInTx.set(TransactionSynchronizationManager.isActualTransactionActive());
+            return invocation.getArgument(0);
+        }).when(tokenRepository).saveAndFlush(any(PasswordResetToken.class));
+        doAnswer(invocation -> {
+            cleanupInTx.set(TransactionSynchronizationManager.isActualTransactionActive());
+            return null;
+        }).when(tokenRepository).deleteByToken(anyString());
+        doThrow(new RuntimeException("smtp down"))
+                .when(emailService)
+                .sendSimpleEmail(eq("superadmin@example.com"), any(), any());
+
+        passwordResetService.requestResetForSuperAdmin("superadmin@example.com");
+
+        assertTrue(deleteByUserInTx.get(), "deleteByUser should execute inside an active transaction");
+        assertTrue(saveAndFlushInTx.get(), "saveAndFlush should execute inside an active transaction");
+        assertTrue(cleanupInTx.get(), "cleanup deleteByToken should execute inside an active transaction");
+    }
+
+    @Test
+    void requestResetForSuperAdminPropagatesRequestCorrelationIdIntoStructuredLogs() {
+        UserAccount superAdmin = superAdminUser("superadmin@example.com");
+        when(userAccountRepository.findByEmailIgnoreCase("superadmin@example.com"))
+                .thenReturn(Optional.of(superAdmin));
+        doThrow(new RuntimeException("smtp down"))
+                .when(emailService)
+                .sendSimpleEmail(eq("superadmin@example.com"), any(), any());
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/auth/password/forgot/superadmin");
+        request.addHeader("X-Correlation-Id", "corr-support-123");
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+
+        Logger serviceLogger = (Logger) LoggerFactory.getLogger(PasswordResetService.class);
+        ListAppender<ILoggingEvent> listAppender = new ListAppender<>();
+        listAppender.start();
+        serviceLogger.addAppender(listAppender);
+        try {
+            passwordResetService.requestResetForSuperAdmin("superadmin@example.com");
+            assertTrue(
+                    listAppender.list.stream().map(ILoggingEvent::getFormattedMessage)
+                            .anyMatch(message -> message.contains("correlationId=corr-support-123")),
+                    "Expected structured log message to contain the request correlation id");
+        } finally {
+            serviceLogger.detachAppender(listAppender);
+            RequestContextHolder.resetRequestAttributes();
+        }
     }
 
     @Test
