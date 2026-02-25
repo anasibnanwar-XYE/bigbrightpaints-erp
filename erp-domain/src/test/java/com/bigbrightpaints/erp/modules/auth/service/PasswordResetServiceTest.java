@@ -5,12 +5,16 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
+import com.bigbrightpaints.erp.core.config.EmailProperties;
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.notification.EmailService;
 import com.bigbrightpaints.erp.core.security.TokenBlacklistService;
 import com.bigbrightpaints.erp.modules.auth.domain.PasswordResetToken;
 import com.bigbrightpaints.erp.modules.auth.domain.PasswordResetTokenRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
+import com.bigbrightpaints.erp.modules.rbac.domain.Role;
 import java.time.Instant;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -36,15 +40,21 @@ class PasswordResetServiceTest {
     @Mock
     private RefreshTokenService refreshTokenService;
 
+    private EmailProperties emailProperties;
     private PasswordResetService passwordResetService;
 
     @BeforeEach
     void setup() {
+        emailProperties = new EmailProperties();
+        emailProperties.setEnabled(true);
+        emailProperties.setSendPasswordReset(true);
+        emailProperties.setBaseUrl("http://localhost:3004");
         passwordResetService = new PasswordResetService(
                 userAccountRepository,
                 tokenRepository,
                 passwordService,
                 emailService,
+                emailProperties,
                 tokenBlacklistService,
                 refreshTokenService);
     }
@@ -77,5 +87,63 @@ class PasswordResetServiceTest {
                 () -> passwordResetService.resetPassword("token", "NewPass123", "NewPass123"));
 
         verify(passwordService, never()).resetPassword(any(), any(), any());
+    }
+
+    @Test
+    void requestResetForSuperAdminThrowsWhenResetEmailDeliveryDisabled() {
+        UserAccount superAdmin = superAdminUser("superadmin@example.com");
+        when(userAccountRepository.findByEmailIgnoreCase("superadmin@example.com"))
+                .thenReturn(Optional.of(superAdmin));
+        emailProperties.setSendPasswordReset(false);
+
+        assertThrows(ApplicationException.class,
+                () -> passwordResetService.requestResetForSuperAdmin("superadmin@example.com"));
+
+        verify(tokenRepository, never()).deleteByUser(any());
+        verify(tokenRepository, never()).save(any());
+        verify(emailService, never()).sendSimpleEmail(any(), any(), any());
+    }
+
+    @Test
+    void requestResetForSuperAdminPropagatesSmtpDispatchFailure() {
+        UserAccount superAdmin = superAdminUser("superadmin@example.com");
+        when(userAccountRepository.findByEmailIgnoreCase("superadmin@example.com"))
+                .thenReturn(Optional.of(superAdmin));
+        doThrow(new ApplicationException(ErrorCode.SYSTEM_EXTERNAL_SERVICE_ERROR, "Failed to dispatch email via SMTP"))
+                .when(emailService)
+                .sendSimpleEmail(eq("superadmin@example.com"), any(), any());
+
+        assertThrows(ApplicationException.class,
+                () -> passwordResetService.requestResetForSuperAdmin("superadmin@example.com"));
+
+        verify(tokenRepository).deleteByUser(superAdmin);
+        verify(tokenRepository).save(any(PasswordResetToken.class));
+        verify(emailService).sendSimpleEmail(eq("superadmin@example.com"), any(), any());
+    }
+
+    @Test
+    void requestResetForSuperAdminSkipsNonSuperAdminUsers() {
+        UserAccount adminUser = new UserAccount("admin@example.com", "hash", "Admin");
+        adminUser.setEnabled(true);
+        Role adminRole = new Role();
+        adminRole.setName("ROLE_ADMIN");
+        adminUser.addRole(adminRole);
+        when(userAccountRepository.findByEmailIgnoreCase("admin@example.com"))
+                .thenReturn(Optional.of(adminUser));
+
+        passwordResetService.requestResetForSuperAdmin("admin@example.com");
+
+        verify(tokenRepository, never()).deleteByUser(any());
+        verify(tokenRepository, never()).save(any());
+        verify(emailService, never()).sendSimpleEmail(any(), any(), any());
+    }
+
+    private UserAccount superAdminUser(String email) {
+        UserAccount user = new UserAccount(email, "hash", "Super Admin");
+        user.setEnabled(true);
+        Role role = new Role();
+        role.setName("ROLE_SUPER_ADMIN");
+        user.addRole(role);
+        return user;
     }
 }

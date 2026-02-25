@@ -1,5 +1,8 @@
 package com.bigbrightpaints.erp.modules.auth.service;
 
+import com.bigbrightpaints.erp.core.config.EmailProperties;
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.notification.EmailService;
 import com.bigbrightpaints.erp.core.security.TokenBlacklistService;
 import com.bigbrightpaints.erp.modules.auth.domain.PasswordResetToken;
@@ -8,6 +11,7 @@ import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.security.SecureRandom;
 import java.time.Instant;
@@ -17,11 +21,13 @@ import java.util.Base64;
 public class PasswordResetService {
 
     private static final long RESET_TOKEN_TTL_SECONDS = 3600; // 1 hour
+    private static final String SUPER_ADMIN_ROLE = "ROLE_SUPER_ADMIN";
 
     private final UserAccountRepository userAccountRepository;
     private final PasswordResetTokenRepository tokenRepository;
     private final PasswordService passwordService;
     private final EmailService emailService;
+    private final EmailProperties emailProperties;
     private final TokenBlacklistService tokenBlacklistService;
     private final RefreshTokenService refreshTokenService;
     private final SecureRandom secureRandom = new SecureRandom();
@@ -30,12 +36,14 @@ public class PasswordResetService {
                                 PasswordResetTokenRepository tokenRepository,
                                 PasswordService passwordService,
                                 EmailService emailService,
+                                EmailProperties emailProperties,
                                 TokenBlacklistService tokenBlacklistService,
                                 RefreshTokenService refreshTokenService) {
         this.userAccountRepository = userAccountRepository;
         this.tokenRepository = tokenRepository;
         this.passwordService = passwordService;
         this.emailService = emailService;
+        this.emailProperties = emailProperties;
         this.tokenBlacklistService = tokenBlacklistService;
         this.refreshTokenService = refreshTokenService;
     }
@@ -52,6 +60,29 @@ public class PasswordResetService {
                     PasswordResetToken resetToken = new PasswordResetToken(user, token, expiresAt);
                     tokenRepository.save(resetToken);
                     emailService.sendPasswordResetEmail(user.getEmail(), user.getDisplayName(), token);
+                });
+    }
+
+    @Transactional
+    public void requestResetForSuperAdmin(String email) {
+        userAccountRepository.findByEmailIgnoreCase(email)
+                .filter(UserAccount::isEnabled)
+                .filter(this::hasSuperAdminRole)
+                .ifPresent(user -> {
+                    ensureRequiredResetEmailDelivery();
+                    tokenRepository.deleteByUser(user);
+                    String token = generateToken();
+                    Instant now = Instant.now();
+                    Instant expiresAt = now.plusSeconds(RESET_TOKEN_TTL_SECONDS);
+                    PasswordResetToken resetToken = new PasswordResetToken(user, token, expiresAt);
+                    tokenRepository.save(resetToken);
+                    String resetLink = emailProperties.getBaseUrl() + "/reset-password?token=" + token;
+                    String displayName = StringUtils.hasText(user.getDisplayName()) ? user.getDisplayName().trim() : "User";
+                    String body = "Hello " + displayName
+                            + ",\n\nUse this secure link to reset your BigBright ERP password:\n"
+                            + resetLink
+                            + "\n\nThis link expires in 60 minutes.";
+                    emailService.sendSimpleEmail(user.getEmail(), "Reset your BigBright ERP password", body);
                 });
     }
 
@@ -82,5 +113,21 @@ public class PasswordResetService {
         byte[] bytes = new byte[32];
         secureRandom.nextBytes(bytes);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    }
+
+    private boolean hasSuperAdminRole(UserAccount user) {
+        if (user == null || user.getRoles() == null || user.getRoles().isEmpty()) {
+            return false;
+        }
+        return user.getRoles().stream()
+                .anyMatch(role -> role != null && SUPER_ADMIN_ROLE.equalsIgnoreCase(role.getName()));
+    }
+
+    private void ensureRequiredResetEmailDelivery() {
+        if (!emailProperties.isEnabled() || !emailProperties.isSendPasswordReset()) {
+            throw new ApplicationException(
+                    ErrorCode.SYSTEM_CONFIGURATION_ERROR,
+                    "Password reset email delivery is disabled; enable erp.mail.enabled=true and erp.mail.send-password-reset=true");
+        }
     }
 }

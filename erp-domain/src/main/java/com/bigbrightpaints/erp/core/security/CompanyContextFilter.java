@@ -39,6 +39,11 @@ public class CompanyContextFilter extends OncePerRequestFilter {
         TenantRuntimeEnforcementService.TenantRequestAdmission admission =
                 TenantRuntimeEnforcementService.TenantRequestAdmission.notTracked();
         try {
+            String runtimePath = resolveApplicationPath(request);
+            if (isPublicPasswordResetRequest(runtimePath, request.getMethod())) {
+                filterChain.doFilter(request, response);
+                return;
+            }
             String headerCompanyCode = request.getHeader("X-Company-Code");
             String legacyHeaderCompanyId = request.getHeader("X-Company-Id");
             if (StringUtils.hasText(headerCompanyCode) && StringUtils.hasText(legacyHeaderCompanyId)
@@ -89,7 +94,6 @@ public class CompanyContextFilter extends OncePerRequestFilter {
             }
             String companyCode = StringUtils.hasText(requestedCompany) ? requestedCompany.trim() : null;
             if (companyCode != null) {
-                String runtimePath = resolveApplicationPath(request);
                 CompanyLifecycleState lifecycleState = companyService.resolveLifecycleStateByCode(companyCode);
                 boolean lifecycleControlBypass = false;
                 if (lifecycleState != CompanyLifecycleState.ACTIVE
@@ -293,5 +297,26 @@ public class CompanyContextFilter extends OncePerRequestFilter {
             return false;
         }
         return path.startsWith("/actuator") || path.startsWith("/swagger") || path.startsWith("/v3");
+    }
+
+    private boolean isPublicPasswordResetRequest(String path, String method) {
+        if (!"POST".equalsIgnoreCase(method) || !StringUtils.hasText(path)) {
+            return false;
+        }
+        String normalizedPath = normalizePath(path);
+        return "/api/v1/auth/password/forgot".equals(normalizedPath)
+                || "/api/v1/auth/password/forgot/superadmin".equals(normalizedPath)
+                || "/api/v1/auth/password/reset".equals(normalizedPath);
+    }
+
+    private String normalizePath(String path) {
+        if (!StringUtils.hasText(path)) {
+            return path;
+        }
+        String normalizedPath = path.trim();
+        while (normalizedPath.endsWith("/") && normalizedPath.length() > 1) {
+            normalizedPath = normalizedPath.substring(0, normalizedPath.length() - 1);
+        }
+        return normalizedPath;
     }
 }

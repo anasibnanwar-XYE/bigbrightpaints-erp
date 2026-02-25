@@ -110,6 +110,13 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.success("If the email exists, a reset link has been sent", "OK"));
     }
 
+    @PostMapping("/password/forgot/superadmin")
+    public ResponseEntity<ApiResponse<String>> forgotPasswordForSuperAdmin(
+            @Valid @RequestBody ForgotPasswordRequest request) {
+        passwordResetService.requestResetForSuperAdmin(request.email());
+        return ResponseEntity.ok(ApiResponse.success("If the email exists, a reset link has been sent", "OK"));
+    }
+
     @PostMapping("/password/reset")
     public ResponseEntity<ApiResponse<String>> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
         passwordResetService.resetPassword(request.token(), request.newPassword(), request.confirmPassword());
