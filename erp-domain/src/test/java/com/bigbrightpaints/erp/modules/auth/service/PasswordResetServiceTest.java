@@ -25,6 +25,7 @@ import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.dao.DataAccessResourceFailureException;
 
 @ExtendWith(MockitoExtension.class)
 class PasswordResetServiceTest {
@@ -101,7 +102,7 @@ class PasswordResetServiceTest {
         assertDoesNotThrow(() -> passwordResetService.requestResetForSuperAdmin("superadmin@example.com"));
 
         verify(tokenRepository, never()).deleteByUser(any());
-        verify(tokenRepository, never()).save(any());
+        verify(tokenRepository, never()).saveAndFlush(any(PasswordResetToken.class));
         verify(emailService, never()).sendSimpleEmail(any(), any(), any());
     }
 
@@ -116,8 +117,8 @@ class PasswordResetServiceTest {
 
         assertDoesNotThrow(() -> passwordResetService.requestResetForSuperAdmin("superadmin@example.com"));
 
-        verify(tokenRepository).deleteByUser(superAdmin);
-        verify(tokenRepository).save(any(PasswordResetToken.class));
+        verify(tokenRepository, times(2)).deleteByUser(superAdmin);
+        verify(tokenRepository).saveAndFlush(any(PasswordResetToken.class));
         verify(emailService).sendSimpleEmail(eq("superadmin@example.com"), any(), any());
     }
 
@@ -131,8 +132,24 @@ class PasswordResetServiceTest {
 
         InOrder inOrder = inOrder(tokenRepository, emailService);
         inOrder.verify(tokenRepository).deleteByUser(superAdmin);
-        inOrder.verify(tokenRepository).save(any(PasswordResetToken.class));
+        inOrder.verify(tokenRepository).saveAndFlush(any(PasswordResetToken.class));
         inOrder.verify(emailService).sendSimpleEmail(eq("superadmin@example.com"), any(), any());
+    }
+
+    @Test
+    void requestResetForSuperAdminMasksTokenPersistenceFailure() {
+        UserAccount superAdmin = superAdminUser("superadmin@example.com");
+        when(userAccountRepository.findByEmailIgnoreCase("superadmin@example.com"))
+                .thenReturn(Optional.of(superAdmin));
+        doThrow(new DataAccessResourceFailureException("db unavailable"))
+                .when(tokenRepository)
+                .saveAndFlush(any(PasswordResetToken.class));
+
+        assertDoesNotThrow(() -> passwordResetService.requestResetForSuperAdmin("superadmin@example.com"));
+
+        verify(tokenRepository).deleteByUser(superAdmin);
+        verify(tokenRepository).saveAndFlush(any(PasswordResetToken.class));
+        verify(emailService, never()).sendSimpleEmail(any(), any(), any());
     }
 
     @Test
@@ -148,7 +165,7 @@ class PasswordResetServiceTest {
         passwordResetService.requestResetForSuperAdmin("admin@example.com");
 
         verify(tokenRepository, never()).deleteByUser(any());
-        verify(tokenRepository, never()).save(any());
+        verify(tokenRepository, never()).saveAndFlush(any(PasswordResetToken.class));
         verify(emailService, never()).sendSimpleEmail(any(), any(), any());
     }
 

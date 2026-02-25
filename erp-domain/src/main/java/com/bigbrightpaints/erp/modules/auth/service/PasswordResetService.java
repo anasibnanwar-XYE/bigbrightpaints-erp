@@ -11,6 +11,7 @@ import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -120,6 +121,7 @@ public class PasswordResetService {
     }
 
     private void dispatchSuperAdminResetEmail(UserAccount user) {
+        boolean tokenPersisted = false;
         try {
             ensureRequiredResetEmailDelivery();
             String token = generateToken();
@@ -127,7 +129,8 @@ public class PasswordResetService {
             Instant expiresAt = now.plusSeconds(RESET_TOKEN_TTL_SECONDS);
             tokenRepository.deleteByUser(user);
             PasswordResetToken resetToken = new PasswordResetToken(user, token, expiresAt);
-            tokenRepository.save(resetToken);
+            tokenRepository.saveAndFlush(resetToken);
+            tokenPersisted = true;
             String resetLink = emailProperties.getBaseUrl() + "/reset-password?token=" + token;
             String displayName = StringUtils.hasText(user.getDisplayName()) ? user.getDisplayName().trim() : "User";
             String body = "Hello " + displayName
@@ -135,11 +138,27 @@ public class PasswordResetService {
                     + resetLink
                     + "\n\nThis link expires in 60 minutes.";
             emailService.sendSimpleEmail(user.getEmail(), "Reset your BigBright ERP password", body);
-        } catch (ApplicationException ex) {
+        } catch (ApplicationException | DataAccessException ex) {
+            if (tokenPersisted) {
+                cleanupFailedSuperAdminResetToken(user);
+            }
             // Keep public endpoint semantics uniform to avoid account-enumeration side channels.
             log.warn("Super-admin forgot-password delivery suppressed for {}: {}",
                     obfuscateEmail(user != null ? user.getEmail() : null),
                     ex.getMessage());
+        }
+    }
+
+    private void cleanupFailedSuperAdminResetToken(UserAccount user) {
+        if (user == null) {
+            return;
+        }
+        try {
+            tokenRepository.deleteByUser(user);
+        } catch (DataAccessException cleanupEx) {
+            log.warn("Super-admin forgot-password cleanup failed for {}: {}",
+                    obfuscateEmail(user.getEmail()),
+                    cleanupEx.getMessage());
         }
     }
 
