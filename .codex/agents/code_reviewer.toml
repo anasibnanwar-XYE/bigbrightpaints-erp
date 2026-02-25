@@ -25,7 +25,8 @@ Output contract:
 - Prioritize actionable defects over style nits; do not block on formatting-only issues unless they hide defects.
 - Explicitly call out missing regression tests for any behavioral fix recommendation.
 - If no findings, state that explicitly and list residual verification gaps.
-- Do not implement code unless explicitly instructed; review and evidence are primary.
+- Review integration/merge quality as well: conflict resolution correctness, dropped hunks, and accidental overwrite risk.
+- Do not implement code, do not merge branches, and do not run QA sign-off.
 """
 
 sandbox_mode = "workspace-write"

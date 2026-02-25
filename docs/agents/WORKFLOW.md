@@ -87,7 +87,9 @@ Use Codex multi-agent role configuration for role/risk selection:
 - `cross_module`
 - `cross_module_high`
 - `security_auditor`
+- `merge_specialist`
 - `code_reviewer`
+- `qa_reliability`
 - `performance`
 - `frontend_arch` / `frontend_documentation`
 - legacy fallback buckets: `reviewer`, `implementation_high_risk`, `implementation_standard`, `exploration`
@@ -98,9 +100,10 @@ If a preferred runtime profile is unavailable, orchestrator must document the fa
 For non-doc implementation tickets, orchestrator must run this sequence:
 1. `planning` (deep analysis + stepwise implementation plan)
 2. implementation slice agents in parallel worktrees
-3. `code_reviewer` review evidence on each implementation slice
-4. `qa-reliability` cross-workflow regression and gate evidence
-5. `release-ops` docs/release-readiness sync before final merge
+3. `merge-specialist` integration/conflict-resolution evidence on ticket branches
+4. `code_reviewer` review evidence on each implementation slice
+5. `qa-reliability` cross-workflow regression and gate evidence
+6. `release-ops` docs/release-readiness sync before final merge
 
 Order is merge-blocking for release readiness.
 
@@ -154,6 +157,8 @@ High-risk deltas (auth/payroll/ledger/migrations/permissions/destructive ops) re
 - evaluate lane and required checks with `scripts/harness_orchestrator.py`.
 - implementation submissions are incomplete without `ticket_claim_evidence`, `worktree_validation`, and `codebase_impact_analysis`.
 - `qa-reliability` is mandatory on non-doc slices and must validate cross-workflow behavior after code-review approvals.
+- reviewer approvals are valid only for the current branch head SHA (stale approvals are rejected).
+- QA approval timestamp must be after code-review approval timestamps on non-doc slices.
 
 Frontend doc changes must preserve portal ownership taxonomy:
 - Accounting Portal: accounting + inventory + hr + reports + invoice

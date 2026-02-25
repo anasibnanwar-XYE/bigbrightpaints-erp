@@ -12,6 +12,9 @@ Execution rules:
 - Keep integration behavior stable and reversible.
 - Stay within assigned scope and avoid opportunistic refactors.
 - Escalate to `cross_module` (xhigh) for critical semantic or safety-sensitive changes.
+- Write targeted tests for changed behavior.
+- Do not self-merge branches.
+- Do not perform reviewer or QA approval roles.
 """
 
 sandbox_mode = "workspace-write"

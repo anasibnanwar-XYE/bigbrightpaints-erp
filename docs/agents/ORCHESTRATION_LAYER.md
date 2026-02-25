@@ -25,7 +25,7 @@ This defines how the orchestrator controls all agents in long-running async loop
 6. It assigns at least one reviewer agent.
 7. For high-risk slices, it adds `security-governance` and `qa-reliability` reviewers.
 8. It runs required guard checks before marking done.
-9. For non-doc slices, it enforces role order: planning -> implementation -> code review -> qa-reliability -> release-ops sync.
+9. For non-doc slices, it enforces role order: planning -> implementation -> merge-specialist -> code review -> qa-reliability -> release-ops sync.
 
 ## Agent Claim and Isolation Contract
 - Agents must not start edits before claim is recorded in ticket artifacts.
@@ -50,6 +50,11 @@ This defines how the orchestrator controls all agents in long-running async loop
 - It validates integrated behavior after code-review approvals and before final merge.
 - It publishes regression/gate evidence used by orchestrator merge readiness.
 
+## Merge Specialist Role
+- `merge-specialist` owns integration merge/conflict handling between implementation and review phases.
+- It provides merge-evidence artifacts and flags semantic conflict risk before code-review and QA stages.
+- It does not replace code review or QA.
+
 ## Subagent Role Routing
 Orchestrator selects runtime role by scope and risk:
 - `orchestrator`
@@ -60,7 +65,9 @@ Orchestrator selects runtime role by scope and risk:
 - `cross_module`
 - `cross_module_high`
 - `security_auditor`
+- `merge_specialist`
 - `code_reviewer`
+- `qa_reliability`
 - `performance`
 - `frontend_arch` / `frontend_documentation`
 - legacy fallback buckets: `reviewer`, `implementation_high_risk`, `implementation_standard`, `exploration`
@@ -80,8 +87,10 @@ Fallback role/profile decision must be logged in ticket timeline.
     - `bash ci/lint-knowledgebase.sh`
     - `bash ci/check-architecture.sh`
     - `bash ci/check-enterprise-policy.sh`
-  - runtime/config/schema/test changes never qualify for docs-only review skip.
-  - resolve lane/check mapping with `scripts/harness_orchestrator.py`.
+- runtime/config/schema/test changes never qualify for docs-only review skip.
+- resolve lane/check mapping with `scripts/harness_orchestrator.py`.
+- approvals must target the current branch head SHA; stale approvals are treated as pending.
+- QA timestamp must be after code-review approvals for non-doc slices.
 - Evidence must be appended to `asyncloop` for traceability.
 
 ## Strict-Lane Runbook Alignment

@@ -72,6 +72,18 @@ runtime:
         fallback:
           - model: gpt-5.3-codex
             reasoning: high
+      merge_specialist:
+        preferred_model: gpt-5.3-codex
+        preferred_reasoning: xhigh
+        fallback:
+          - model: gpt-5.3-codex
+            reasoning: high
+      qa_reliability:
+        preferred_model: gpt-5.3-codex
+        preferred_reasoning: xhigh
+        fallback:
+          - model: gpt-5.3-codex
+            reasoning: high
       performance:
         preferred_model: gpt-5.3-codex
         preferred_reasoning: high
@@ -173,8 +185,11 @@ runtime:
         role: frontend_documentation
         config_file: .codex/agents/frontend_arch.toml
       qa-reliability:
-        role: cross_module
-        config_file: .codex/agents/cross_module.toml
+        role: qa_reliability
+        config_file: .codex/agents/qa_reliability.toml
+      merge-specialist:
+        role: merge_specialist
+        config_file: .codex/agents/merge_specialist.toml
       repo-cartographer:
         role: planning_architecture
         config_file: .codex/agents/planning_architecture.toml
@@ -244,14 +259,21 @@ dispatch_protocol:
   mandatory_spawn_role_sequence:
     - planning
     - implementation
+    - merge_specialist
     - code_reviewer
     - qa_reliability
     - release_ops
   require_planning_subagent_before_implementation: true
+  require_merge_specialist_before_code_review: true
+  require_merge_specialist_for_non_doc_slices: true
+  require_code_reviewer_for_non_doc_slices: true
   require_code_reviewer_before_qa: true
   planner_owns_specialized_role_assignment: true
   require_qa_reliability_for_non_doc_slices: true
   require_release_ops_docs_sync_before_merge: true
+  require_reviewer_head_sha_match: true
+  require_qa_after_code_review_timestamp: true
+  enforce_changed_file_docs_only_classification: true
   require_frontend_contract_docs_sync_on_api_surface_change: true
   enforce_ticket_first_gate: true
   require_worktree_branch_validation_before_edits: true
@@ -436,6 +458,7 @@ routing_rules:
 
 always_available_agents:
   - full-codebase-explorer
+  - merge-specialist
   - refactor-techdebt-gc
 
 review_pipeline:
@@ -445,7 +468,14 @@ review_pipeline:
   block_on_scope_violations: true
   require_static_review_before_merge: true
   require_codex_review_guidelines_check: true
+  require_merge_specialist_for_non_doc_slices: true
+  require_code_reviewer_for_non_doc_slices: true
   require_qa_reliability_for_non_doc_slices: true
+  require_merge_specialist_before_code_review: true
+  require_code_reviewer_before_qa: true
+  require_reviewer_head_sha_match: true
+  require_qa_after_code_review_timestamp: true
+  enforce_changed_file_docs_only_classification: true
   require_release_ops_for_non_doc_docs_sync: true
   docs_only_policy:
     skip_review_subagents: true
