@@ -49,6 +49,9 @@ execution_workflow:
     - codex_exec
   subagents:
     require_explicit_model_and_reasoning: true
+    forbidden_spawn_roles:
+      - default
+      - worker
     role_model_policy:
       orchestrator:
         preferred_model: gpt-5.3-codex
@@ -234,15 +237,13 @@ execution_workflow:
       full-codebase-explorer:
         role: exploration
         config_file: .codex/agents/explorer.toml
-      default:
-        role: cross_module_high
-        config_file: .codex/agents/cross_module_high.toml
     execution_rules:
       - each subagent must be bound to one ticket slice and one YAML role
       - each subagent must read only its own task packet before coding
       - each subagent must identify itself in first line of every result
       - orchestrator must monitor drift and interrupt on cross-scope edits
       - orchestrator must choose subagent custom role from `agent_role_mapping` before dispatch
+      - orchestrator must reject fallback agent types `default` and `worker`
       - each implementation worker must validate assigned branch/worktree before edits
       - implementation workers must not edit base branches (`harness-engineering-orchestrator`, `main`, `master`)
       - each implementation submission must include codebase impact analysis

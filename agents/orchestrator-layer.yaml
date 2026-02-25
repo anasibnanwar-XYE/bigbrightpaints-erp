@@ -17,6 +17,9 @@ runtime:
     - codex_exec
   subagents:
     require_explicit_model_and_reasoning: true
+    forbidden_spawn_roles:
+      - default
+      - worker
     role_model_policy:
       orchestrator:
         preferred_model: gpt-5.3-codex
@@ -202,9 +205,6 @@ runtime:
       full-codebase-explorer:
         role: exploration
         config_file: .codex/agents/explorer.toml
-      default:
-        role: cross_module_high
-        config_file: .codex/agents/cross_module_high.toml
     drift_policy:
       allow_minor_context_drift: true
       implementation_commits_must_return_to_slice_scope: true

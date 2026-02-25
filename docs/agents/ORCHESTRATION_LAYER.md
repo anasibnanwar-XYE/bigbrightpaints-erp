@@ -72,10 +72,12 @@ Orchestrator selects runtime role by scope and risk:
 - `performance`
 - `frontend_arch` / `frontend_documentation`
 - legacy fallback buckets: `reviewer`, `implementation_high_risk`, `implementation_standard`, `exploration`
+- forbidden fallback agent types: `default`, `worker`
 
 Existing YAML agent IDs map into these custom roles through `runtime.subagents.agent_role_mapping` in `agents/orchestrator-layer.yaml` and project-level role config in `.codex/config.toml`.
 
 Fallback role/profile decision must be logged in ticket timeline.
+No implicit `default` role mapping is allowed for ticket slices.
 
 ## Review Model (Mandatory)
 - Every slice requires:

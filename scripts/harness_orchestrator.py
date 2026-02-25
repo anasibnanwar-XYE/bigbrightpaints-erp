@@ -22,6 +22,8 @@ RISK_ORDER = {
     "low": 3,
 }
 
+FORBIDDEN_SPAWN_ROLES = {"default", "worker"}
+
 
 # Lightweight domain-edge model used by the orchestrator for cross-workflow planning.
 # Edges are directional: upstream -> downstream.
@@ -217,6 +219,11 @@ def risk_for_agent(catalog: dict[str, Any], agent_id: str) -> str:
 
 
 def resolve_multi_agent_role_profile(orchestrator_layer: dict[str, Any], agent_id: str) -> dict[str, Any]:
+    if agent_id in FORBIDDEN_SPAWN_ROLES:
+        raise RuntimeError(
+            f"forbidden subagent role requested in orchestrator workflow: {agent_id}"
+        )
+
     runtime = orchestrator_layer.get("runtime", {})
     subagents = runtime.get("subagents", {})
     role_policy = subagents.get("role_model_policy", {})
@@ -225,8 +232,8 @@ def resolve_multi_agent_role_profile(orchestrator_layer: dict[str, Any], agent_i
     role_entry: Any = None
     if isinstance(role_map, dict):
         role_entry = role_map.get(agent_id)
-        if role_entry is None:
-            role_entry = role_map.get("default")
+    if role_entry is None:
+        raise RuntimeError(f"no explicit multi-agent role mapping for agent id: {agent_id}")
 
     role = ""
     config_file = ""
