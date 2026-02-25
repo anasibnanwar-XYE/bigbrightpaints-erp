@@ -372,7 +372,7 @@ Update this file in every high-risk change set.
 
 ## STAGE-111 Addendum (2026-02-25, auth-rbac-company)
 - Ticket / PR: `TKT-ERP-STAGE-111` / pending PR creation
-- Source branch: `tickets/tkt-erp-stage-111/auth-rbac-company`
+- Source branch: `tickets/TKT-ERP-STAGE-111`
 - High-risk paths:
   - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/controller/AuthController.java`
   - `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/service/PasswordResetService.java`

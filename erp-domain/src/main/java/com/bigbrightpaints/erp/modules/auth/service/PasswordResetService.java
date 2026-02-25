@@ -125,6 +125,9 @@ public class PasswordResetService {
             String token = generateToken();
             Instant now = Instant.now();
             Instant expiresAt = now.plusSeconds(RESET_TOKEN_TTL_SECONDS);
+            tokenRepository.deleteByUser(user);
+            PasswordResetToken resetToken = new PasswordResetToken(user, token, expiresAt);
+            tokenRepository.save(resetToken);
             String resetLink = emailProperties.getBaseUrl() + "/reset-password?token=" + token;
             String displayName = StringUtils.hasText(user.getDisplayName()) ? user.getDisplayName().trim() : "User";
             String body = "Hello " + displayName
@@ -132,9 +135,6 @@ public class PasswordResetService {
                     + resetLink
                     + "\n\nThis link expires in 60 minutes.";
             emailService.sendSimpleEmail(user.getEmail(), "Reset your BigBright ERP password", body);
-            tokenRepository.deleteByUser(user);
-            PasswordResetToken resetToken = new PasswordResetToken(user, token, expiresAt);
-            tokenRepository.save(resetToken);
         } catch (ApplicationException ex) {
             // Keep public endpoint semantics uniform to avoid account-enumeration side channels.
             log.warn("Super-admin forgot-password delivery suppressed for {}: {}",

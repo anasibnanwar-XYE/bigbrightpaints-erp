@@ -21,6 +21,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -115,22 +116,23 @@ class PasswordResetServiceTest {
 
         assertDoesNotThrow(() -> passwordResetService.requestResetForSuperAdmin("superadmin@example.com"));
 
+        verify(tokenRepository).deleteByUser(superAdmin);
+        verify(tokenRepository).save(any(PasswordResetToken.class));
         verify(emailService).sendSimpleEmail(eq("superadmin@example.com"), any(), any());
-        verify(tokenRepository, never()).deleteByUser(any());
-        verify(tokenRepository, never()).save(any());
     }
 
     @Test
-    void requestResetForSuperAdminStoresTokenAfterSuccessfulEmailDispatch() {
+    void requestResetForSuperAdminStoresTokenBeforeSuccessfulEmailDispatch() {
         UserAccount superAdmin = superAdminUser("superadmin@example.com");
         when(userAccountRepository.findByEmailIgnoreCase("superadmin@example.com"))
                 .thenReturn(Optional.of(superAdmin));
 
         passwordResetService.requestResetForSuperAdmin("superadmin@example.com");
 
-        verify(emailService).sendSimpleEmail(eq("superadmin@example.com"), any(), any());
-        verify(tokenRepository).deleteByUser(superAdmin);
-        verify(tokenRepository).save(any(PasswordResetToken.class));
+        InOrder inOrder = inOrder(tokenRepository, emailService);
+        inOrder.verify(tokenRepository).deleteByUser(superAdmin);
+        inOrder.verify(tokenRepository).save(any(PasswordResetToken.class));
+        inOrder.verify(emailService).sendSimpleEmail(eq("superadmin@example.com"), any(), any());
     }
 
     @Test
