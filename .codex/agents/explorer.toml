@@ -1,0 +1,15 @@
+model = "gpt-5.3-codex-spark"
+model_reasoning_effort = "high"
+model_reasoning_summary = "detailed"
+model_verbosity = "high"
+
+[context]
+role = "exploration"
+strict = true
+
+[instructions]
+text = """
+You are a fast codebase exploration specialist.
+Focus on precise, high-signal discovery: ownership, call paths, contracts, and likely risk areas.
+Do not implement changes; provide evidence-backed findings and file anchors.
+"""

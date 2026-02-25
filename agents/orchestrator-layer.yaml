@@ -25,25 +25,25 @@ runtime:
           - model: gpt-5.3-codex
             reasoning: high
       planning:
-        preferred_model: gpt-5.2-codex
+        preferred_model: gpt-5.3-codex
         preferred_reasoning: xhigh
         fallback:
           - model: gpt-5.3-codex
             reasoning: high
       planning_architecture:
-        preferred_model: gpt-5.2-codex
+        preferred_model: gpt-5.3-codex
         preferred_reasoning: xhigh
         fallback:
           - model: gpt-5.3-codex
             reasoning: high
       backend_arch:
-        preferred_model: gpt-5.2-codex
+        preferred_model: gpt-5.3-codex
         preferred_reasoning: xhigh
         fallback:
           - model: gpt-5.3-codex
             reasoning: high
       product_analyst:
-        preferred_model: gpt-5.2-codex
+        preferred_model: gpt-5.3-codex
         preferred_reasoning: xhigh
         fallback:
           - model: gpt-5.3-codex
@@ -91,7 +91,7 @@ runtime:
           - model: gpt-5.3-codex
             reasoning: medium
       orchestrator_planning:
-        preferred_model: gpt-5.2-codex
+        preferred_model: gpt-5.3-codex
         preferred_reasoning: xhigh
         fallback:
           - model: gpt-5.3-codex
@@ -116,12 +116,16 @@ runtime:
             reasoning: medium
       exploration:
         preferred_model: gpt-5.3-codex-spark
-        preferred_reasoning: xhigh
+        preferred_reasoning: high
         fallback:
-          - model: codex-mini-latest
-            reasoning: high
           - model: gpt-5.3-codex
             reasoning: medium
+      release_ops:
+        preferred_model: gpt-5.3-codex
+        preferred_reasoning: medium
+        fallback:
+          - model: gpt-5.3-codex
+            reasoning: high
     agent_role_mapping:
       orchestrator:
         role: orchestrator
@@ -142,8 +146,8 @@ runtime:
         role: cross_module
         config_file: .codex/agents/cross_module.toml
       release-ops:
-        role: cross_module
-        config_file: .codex/agents/cross_module.toml
+        role: release_ops
+        config_file: .codex/agents/release_ops.toml
       security-governance:
         role: security_auditor
         config_file: .codex/agents/security_auditor.toml
@@ -169,14 +173,14 @@ runtime:
         role: frontend_documentation
         config_file: .codex/agents/frontend_arch.toml
       qa-reliability:
-        role: code_reviewer
-        config_file: .codex/agents/code_reviewer.toml
+        role: cross_module
+        config_file: .codex/agents/cross_module.toml
       repo-cartographer:
         role: planning_architecture
         config_file: .codex/agents/planning_architecture.toml
       full-codebase-explorer:
-        role: planning
-        config_file: .codex/agents/planning.toml
+        role: exploration
+        config_file: .codex/agents/explorer.toml
       default:
         role: cross_module_high
         config_file: .codex/agents/cross_module_high.toml
@@ -237,6 +241,18 @@ dispatch_protocol:
   ask_human_next_focus_when_idle: false
   autonomous_continuous_execution: true
   stop_condition_exact_prompt: STOP
+  mandatory_spawn_role_sequence:
+    - planning
+    - implementation
+    - code_reviewer
+    - qa_reliability
+    - release_ops
+  require_planning_subagent_before_implementation: true
+  require_code_reviewer_before_qa: true
+  planner_owns_specialized_role_assignment: true
+  require_qa_reliability_for_non_doc_slices: true
+  require_release_ops_docs_sync_before_merge: true
+  require_frontend_contract_docs_sync_on_api_surface_change: true
   enforce_ticket_first_gate: true
   require_worktree_branch_validation_before_edits: true
   require_codebase_impact_analysis_in_results: true
@@ -429,6 +445,8 @@ review_pipeline:
   block_on_scope_violations: true
   require_static_review_before_merge: true
   require_codex_review_guidelines_check: true
+  require_qa_reliability_for_non_doc_slices: true
+  require_release_ops_for_non_doc_docs_sync: true
   docs_only_policy:
     skip_review_subagents: true
     skip_codex_review_comment: true

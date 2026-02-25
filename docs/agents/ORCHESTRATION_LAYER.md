@@ -25,6 +25,7 @@ This defines how the orchestrator controls all agents in long-running async loop
 6. It assigns at least one reviewer agent.
 7. For high-risk slices, it adds `security-governance` and `qa-reliability` reviewers.
 8. It runs required guard checks before marking done.
+9. For non-doc slices, it enforces role order: planning -> implementation -> code review -> qa-reliability -> release-ops sync.
 
 ## Agent Claim and Isolation Contract
 - Agents must not start edits before claim is recorded in ticket artifacts.
@@ -43,6 +44,11 @@ This defines how the orchestrator controls all agents in long-running async loop
 - `ticket_claim_evidence`
 - `worktree_validation`
 - `codebase_impact_analysis`
+
+## QA Reliability Role
+- `qa-reliability` is the cross-workflow testing owner, not a superficial reviewer.
+- It validates integrated behavior after code-review approvals and before final merge.
+- It publishes regression/gate evidence used by orchestrator merge readiness.
 
 ## Subagent Role Routing
 Orchestrator selects runtime role by scope and risk:

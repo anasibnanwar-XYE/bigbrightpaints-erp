@@ -9,12 +9,17 @@ allowed_operations:
   - run_tests
   - triage_failures
   - improve_harness
+  - run_cross_workflow_regression
+  - publish_release_readiness_evidence
 required_checks_before_done:
   - bash scripts/verify_local.sh
+  - bash scripts/gate_fast.sh
 escalation_triggers:
   - non_reproducible_red_state
   - infra_dependency_unavailable
-risk_tier: medium
+  - cross_workflow_regression_detected
+  - missing_release_readiness_evidence
+risk_tier: high
 permissions_profile: enterprise_autonomous
 timeout_policy: none
 cross_module_workflow_required: true

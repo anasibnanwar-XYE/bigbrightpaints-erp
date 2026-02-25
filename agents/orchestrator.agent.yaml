@@ -57,25 +57,25 @@ execution_workflow:
           - model: gpt-5.3-codex
             reasoning: high
       planning:
-        preferred_model: gpt-5.2-codex
+        preferred_model: gpt-5.3-codex
         preferred_reasoning: xhigh
         fallback:
           - model: gpt-5.3-codex
             reasoning: high
       planning_architecture:
-        preferred_model: gpt-5.2-codex
+        preferred_model: gpt-5.3-codex
         preferred_reasoning: xhigh
         fallback:
           - model: gpt-5.3-codex
             reasoning: high
       backend_arch:
-        preferred_model: gpt-5.2-codex
+        preferred_model: gpt-5.3-codex
         preferred_reasoning: xhigh
         fallback:
           - model: gpt-5.3-codex
             reasoning: high
       product_analyst:
-        preferred_model: gpt-5.2-codex
+        preferred_model: gpt-5.3-codex
         preferred_reasoning: xhigh
         fallback:
           - model: gpt-5.3-codex
@@ -123,7 +123,7 @@ execution_workflow:
           - model: gpt-5.3-codex
             reasoning: medium
       orchestrator_planning:
-        preferred_model: gpt-5.2-codex
+        preferred_model: gpt-5.3-codex
         preferred_reasoning: xhigh
         fallback:
           - model: gpt-5.3-codex
@@ -148,12 +148,16 @@ execution_workflow:
             reasoning: medium
       exploration:
         preferred_model: gpt-5.3-codex-spark
-        preferred_reasoning: xhigh
+        preferred_reasoning: high
         fallback:
-          - model: codex-mini-latest
-            reasoning: high
           - model: gpt-5.3-codex
             reasoning: medium
+      release_ops:
+        preferred_model: gpt-5.3-codex
+        preferred_reasoning: medium
+        fallback:
+          - model: gpt-5.3-codex
+            reasoning: high
     agent_role_mapping:
       orchestrator:
         role: orchestrator
@@ -174,8 +178,8 @@ execution_workflow:
         role: cross_module
         config_file: .codex/agents/cross_module.toml
       release-ops:
-        role: cross_module
-        config_file: .codex/agents/cross_module.toml
+        role: release_ops
+        config_file: .codex/agents/release_ops.toml
       security-governance:
         role: security_auditor
         config_file: .codex/agents/security_auditor.toml
@@ -201,14 +205,14 @@ execution_workflow:
         role: frontend_documentation
         config_file: .codex/agents/frontend_arch.toml
       qa-reliability:
-        role: code_reviewer
-        config_file: .codex/agents/code_reviewer.toml
+        role: cross_module
+        config_file: .codex/agents/cross_module.toml
       repo-cartographer:
         role: planning_architecture
         config_file: .codex/agents/planning_architecture.toml
       full-codebase-explorer:
-        role: planning
-        config_file: .codex/agents/planning.toml
+        role: exploration
+        config_file: .codex/agents/explorer.toml
       default:
         role: cross_module_high
         config_file: .codex/agents/cross_module_high.toml
@@ -277,11 +281,13 @@ interaction_contract:
     - irreversible_r3_decision_required
 governance_rules:
   - orchestrator decides next steps; workers do not self-assign
+  - planner defines specialized role routing for each ticket before implementation dispatch
   - orchestrator role is coordination-first and should not absorb worker implementation scope unless no matching worker role exists
   - every worker must claim ticket slice before edits and release claim on done/blocked
   - each worktree gets isolated task packet
   - direct implementation edits on base branches are prohibited
   - reviewers are review-only and never implement code
+  - qa-reliability owns cross-workflow validation and regression evidence on non-doc slices
   - docs-only commits must skip review subagents and must never trigger `@codex review` PR comments
   - non-doc commits require dedicated code_reviewer output with severity-tagged findings or explicit no-findings + residual-risk statement
   - non-doc implementation submissions must include ticket_claim_evidence, worktree_validation, and codebase_impact_analysis

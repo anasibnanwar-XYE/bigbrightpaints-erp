@@ -66,6 +66,11 @@ Human-friendly alias: `AGENTMAP.md`.
 - `codebase_impact_analysis` must cover upstream dependencies, downstream consumers, and contract/API/event implications.
 - If branch/worktree/claim/impact gates cannot be satisfied, block the slice and escalate with evidence.
 
+## Spawn-Agent Execution Order (Mandatory)
+- Orchestrator must delegate, not absorb module implementation when mapped role agents exist.
+- Non-doc slices follow: `planning` -> implementation slice agents (parallel) -> `code_reviewer` -> `qa-reliability` -> `release-ops` docs/release sync.
+- `qa-reliability` is the cross-workflow testing owner and validates integrated behavior after code-review approvals.
+
 ## Review Guidelines (Required)
 - PII: enforce redaction and avoid sensitive payload logging (`docs/SECURITY.md`).
 - AuthZ/RBAC/company isolation: verify fail-closed semantics and tenant scope checks.

@@ -94,6 +94,16 @@ Use Codex multi-agent role configuration for role/risk selection:
 
 If a preferred runtime profile is unavailable, orchestrator must document the fallback role/profile choice in ticket timeline.
 
+## Required Execution Order (Non-Doc Slices)
+For non-doc implementation tickets, orchestrator must run this sequence:
+1. `planning` (deep analysis + stepwise implementation plan)
+2. implementation slice agents in parallel worktrees
+3. `code_reviewer` review evidence on each implementation slice
+4. `qa-reliability` cross-workflow regression and gate evidence
+5. `release-ops` docs/release-readiness sync before final merge
+
+Order is merge-blocking for release readiness.
+
 ## Agent-ID to Role Mapping
 - Existing YAML agent IDs are mapped to custom multi-agent roles in:
   - `agents/orchestrator-layer.yaml` -> `runtime.subagents.agent_role_mapping`
@@ -143,6 +153,7 @@ High-risk deltas (auth/payroll/ledger/migrations/permissions/destructive ops) re
 - runtime/config/schema/test changes never qualify for docs-only review skip.
 - evaluate lane and required checks with `scripts/harness_orchestrator.py`.
 - implementation submissions are incomplete without `ticket_claim_evidence`, `worktree_validation`, and `codebase_impact_analysis`.
+- `qa-reliability` is mandatory on non-doc slices and must validate cross-workflow behavior after code-review approvals.
 
 Frontend doc changes must preserve portal ownership taxonomy:
 - Accounting Portal: accounting + inventory + hr + reports + invoice

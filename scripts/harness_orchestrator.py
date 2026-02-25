@@ -115,6 +115,19 @@ def parse_paths(paths: str, path_items: list[str]) -> list[str]:
     return deduped
 
 
+def is_docs_only_scope(scope_paths: list[str]) -> bool:
+    if not scope_paths:
+        return False
+    for path in scope_paths:
+        p = str(path).strip()
+        if not p:
+            continue
+        if p.startswith("docs/") or p in {"AGENTS.md", "ARCHITECTURE.md"}:
+            continue
+        return False
+    return True
+
+
 def load_contracts(repo_root: Path) -> tuple[dict[str, Any], dict[str, Any], dict[str, dict[str, Any]]]:
     orchestrator_layer = load_yaml(repo_root / "agents" / "orchestrator-layer.yaml")
     catalog = load_yaml(repo_root / "agents" / "catalog.yaml")
@@ -554,6 +567,12 @@ def write_packet_files(repo_root: Path, ticket: dict[str, Any], slice_data: dict
             read_only_base_branches.add(base_branch_ref.split("/", 1)[1])
     read_only_base_branches = sorted(read_only_base_branches)
     read_only_display = ", ".join(f"`{b}`" for b in read_only_base_branches)
+    role_sequence = [
+        str(x).strip()
+        for x in ticket.get("mandatory_spawn_role_sequence", [])
+        if str(x).strip()
+    ]
+    role_sequence_display = " -> ".join(role_sequence) if role_sequence else "planning -> implementation -> code_reviewer -> qa_reliability -> release_ops"
 
     prompt_lines = [
         f"You are `{slice_data['primary_agent']}`.",
@@ -642,6 +661,7 @@ Worktree: `{slice_data['worktree_path']}`
     packet += f"- Base branches are read-only for implementation: {read_only_display}\n"
     packet += "- Claim evidence must be recorded in `ticket.yaml` and `TIMELINE.md` before edits.\n"
     packet += "- If any gate fails, stop and report blocker instead of patching.\n"
+    packet += f"- Mandatory orchestrator delegation sequence: `{role_sequence_display}`.\n"
 
     if acceptance_criteria:
         packet += "\n## Acceptance Criteria\n"
@@ -690,6 +710,10 @@ Worktree: `{slice_data['worktree_path']}`
     packet += "- Review-only agents do not commit code.\n"
     packet += "- Add one review file per reviewer under `tickets/<id>/slices/<slice>/reviews/`.\n"
     packet += "- Mark review status as `approved` only with concrete evidence.\n"
+    packet += "\n## Testing Responsibility Split\n"
+    packet += "- Implementation agents own targeted tests for changed behavior in-slice.\n"
+    packet += "- `qa-reliability` owns cross-workflow regression, gate evidence, and release-readiness signal.\n"
+    packet += "- `release-ops` owns docs/release evidence sync before final merge.\n"
     packet += "\n## Agent Identity Contract\n"
     packet += f"- First output line must be: `I am {slice_data['primary_agent']} and I own {sid}.`\n"
     packet += "\n## Required Output Contract\n"
@@ -885,6 +909,21 @@ def create_ticket(args: argparse.Namespace) -> int:
         g["matched_rules"].add(route["rule_path"])
 
     high_risk_reviewers = reviewers_high_risk(orchestrator_layer)
+    dispatch_protocol = orchestrator_layer.get("dispatch_protocol", {})
+    review_pipeline = orchestrator_layer.get("review_pipeline", {})
+    require_qa_non_doc = bool(
+        dispatch_protocol.get("require_qa_reliability_for_non_doc_slices", False)
+        or review_pipeline.get("require_qa_reliability_for_non_doc_slices", False)
+    )
+    require_release_ops_docs_sync = bool(
+        dispatch_protocol.get("require_release_ops_docs_sync_before_merge", False)
+        or review_pipeline.get("require_release_ops_for_non_doc_docs_sync", False)
+    )
+    mandatory_role_sequence = [
+        str(x).strip()
+        for x in dispatch_protocol.get("mandatory_spawn_role_sequence", [])
+        if str(x).strip()
+    ]
 
     sorted_agents = sorted(
         grouped.keys(),
@@ -903,6 +942,14 @@ def create_ticket(args: argparse.Namespace) -> int:
         risk_tier = risk_for_agent(catalog, agent_id)
         if risk_tier in {"high", "critical"}:
             reviewers.update(high_risk_reviewers)
+        scope_paths_for_slice = sorted(group["scope_paths"])
+        if not scope_paths_for_slice:
+            raise RuntimeError(f"planned slice for agent '{agent_id}' has empty scope paths")
+        docs_only_slice = is_docs_only_scope(scope_paths_for_slice)
+        if require_qa_non_doc and not docs_only_slice:
+            reviewers.add("qa-reliability")
+        if require_release_ops_docs_sync and not docs_only_slice:
+            reviewers.add("release-ops")
         reviewers.discard(agent_id)
 
         branch = f"tickets/{ticket_id.lower()}/{agent_id}"
@@ -915,12 +962,20 @@ def create_ticket(args: argparse.Namespace) -> int:
         for check in agent_def.get("required_checks_before_done", []):
             required_checks.append(str(check))
 
+        scope_text = ", ".join(scope_paths_for_slice)
+        task_summary = f"Implement ticket goal within explicit scope paths: {scope_text}"
+        acceptance_criteria = [
+            f"Changes are limited to declared scope paths for {agent_id}.",
+            f"Deliver objective for: {scope_text}.",
+            "Targeted tests for changed behavior are added/updated and passing.",
+        ]
+
         slices.append(
             {
                 "id": f"SLICE-{idx:02d}",
                 "primary_agent": agent_id,
                 "reviewers": sorted(reviewers),
-                "scope_paths": sorted(group["scope_paths"]),
+                "scope_paths": scope_paths_for_slice,
                 "allowed_scope_paths": allowed_scope_paths,
                 "matched_rules": sorted(group["matched_rules"]),
                 "lane": lane,
@@ -934,6 +989,9 @@ def create_ticket(args: argparse.Namespace) -> int:
                 "multi_agent_fallback": role_profile.get("fallback", []),
                 "status": "ready",
                 "objective": args.goal,
+                "task_summary": task_summary,
+                "problem_statement": f"Implement ticket objective for scoped ownership paths: {scope_text}",
+                "acceptance_criteria": acceptance_criteria,
             }
         )
 
@@ -950,6 +1008,11 @@ def create_ticket(args: argparse.Namespace) -> int:
         "updated_at": utc_now(),
         "r3_required": True,
         "orchestrator_authority": {"r1": "orchestrator", "r2": "orchestrator", "r3": "human"},
+        "mandatory_spawn_role_sequence": mandatory_role_sequence,
+        "review_enforcement": {
+            "require_qa_reliability_for_non_doc_slices": require_qa_non_doc,
+            "require_release_ops_docs_sync_before_merge": require_release_ops_docs_sync,
+        },
         "slices": slices,
     }
     annotate_ticket_workflow(ticket)
@@ -1319,12 +1382,18 @@ def verify_ticket(args: argparse.Namespace) -> int:
             rf = slice_dir / "reviews" / f"{reviewer}.md"
             if not reviewer_approved(rf):
                 pending_reviewers.append(reviewer)
+        qa_reviewer = "qa-reliability"
+        code_reviewers = [r for r in reviewers if r != qa_reviewer]
+        pending_code_reviewers = [r for r in pending_reviewers if r != qa_reviewer]
+        qa_involved = qa_reviewer in reviewers
 
         if pending_reviewers:
             s["status"] = "pending_review"
             ready_count += 1
             report_lines.append(f"## {sid} ({s.get('primary_agent')})")
             report_lines.append("- status: pending_review")
+            if qa_involved and pending_code_reviewers:
+                report_lines.append("- review_sequence_gate: code-review must complete before qa-reliability sign-off")
             report_lines.append(f"- pending_reviewers: {', '.join(pending_reviewers)}")
             report_lines.append("")
             orchestrator_review.write_text(
@@ -1333,7 +1402,12 @@ def verify_ticket(args: argparse.Namespace) -> int:
                 f"slice: {sid}\n"
                 f"status: pending_review\n\n"
                 f"## Notes\n"
-                f"- Awaiting reviewer approvals: {', '.join(pending_reviewers)}\n",
+                + (
+                    "- Review sequence gate active: code-review approvals must complete before qa-reliability is final.\n"
+                    if qa_involved and pending_code_reviewers
+                    else ""
+                )
+                + f"- Awaiting reviewer approvals: {', '.join(pending_reviewers)}\n",
                 encoding="utf-8",
             )
             continue

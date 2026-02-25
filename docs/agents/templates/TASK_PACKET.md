@@ -29,6 +29,7 @@ Worktree: `<path>`
 - Base branches are read-only for implementation: `harness-engineering-orchestrator`, `main`, `master`.
 - Claim evidence must be present in `tickets/<TKT-ID>/ticket.yaml` and `tickets/<TKT-ID>/TIMELINE.md` before edits.
 - If branch/worktree/claim validation fails, stop and report blocker instead of patching.
+- Mandatory role sequence: `planning -> implementation -> code_reviewer -> qa_reliability -> release_ops`.
 
 ## Required Checks Before Done
 - `<command 1>`
@@ -37,6 +38,11 @@ Worktree: `<path>`
 ## Reviewer Contract
 - Review-only agents do not commit code.
 - Attach findings with evidence to `tickets/<id>/slices/<slice>/reviews/<reviewer>.md`.
+
+## Testing Responsibility Split
+- Implementation agents write targeted tests for changed behavior.
+- `qa-reliability` owns cross-workflow regression verification after code-review approvals.
+- `release-ops` ensures docs/release-readiness sync before final merge.
 
 ## Shipability Bar
 - Minimal patch, deterministic behavior, evidence-backed checks.

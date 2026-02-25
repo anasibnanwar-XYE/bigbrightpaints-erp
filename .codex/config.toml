@@ -74,7 +74,7 @@ config_file = "agents/cross_module.toml"
 
 [agents."release-ops"]
 description = "Release and ops execution mapped to critical cross-module execution profile."
-config_file = "agents/cross_module.toml"
+config_file = "agents/release_ops.toml"
 
 [agents."security-governance"]
 description = "Security/governance reviews mapped to the security auditor profile."
@@ -118,4 +118,4 @@ config_file = "agents/planning_architecture.toml"
 
 [agents."full-codebase-explorer"]
 description = "Full codebase exploration work mapped to the planning profile."
-config_file = "agents/planning.toml"
+config_file = "agents/explorer.toml"
