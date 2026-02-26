@@ -35,6 +35,7 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -49,6 +50,12 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     private static final Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);
     private static final String BULK_VARIANT_PATH = "/api/v1/accounting/catalog/products/bulk-variants";
     private static final String BULK_VARIANT_OPERATION = "catalog-bulk-variants";
+    private static final List<String> BULK_VARIANT_RESPONSE_DETAIL_ALLOWLIST = List.of(
+            "generated",
+            "conflicts",
+            "wouldCreate",
+            "created",
+            "operation");
     private static final Set<String> SETTLEMENT_FAILURE_DETAIL_ALLOWLIST = Set.of(
             IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY,
             IntegrationFailureMetadataSchema.KEY_PARTNER_TYPE,
@@ -127,8 +134,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         errorResponse.put("timestamp", LocalDateTime.now());
         errorResponse.put("path", request.getRequestURI());
 
-        Map<String, Object> details = ex.getDetails();
-        if (shouldIncludeDetailsInResponse(ex, request, details)) {
+        Map<String, Object> details = resolveResponseDetails(ex, request, ex.getDetails());
+        if (!details.isEmpty()) {
             errorResponse.put("details", details);
         }
 
@@ -494,16 +501,31 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return builder.toString();
     }
 
-    private boolean shouldIncludeDetailsInResponse(ApplicationException ex,
-                                                   HttpServletRequest request,
-                                                   Map<String, Object> details) {
+    private Map<String, Object> resolveResponseDetails(ApplicationException ex,
+                                                       HttpServletRequest request,
+                                                       Map<String, Object> details) {
         if (details == null || details.isEmpty()) {
-            return false;
+            return Map.of();
         }
         if (!isProductionMode()) {
-            return true;
+            return details;
         }
-        return isBulkVariantConflictDetailsSafeToExpose(ex, request, details);
+        return sanitizeBulkVariantConflictDetails(ex, request, details);
+    }
+
+    private Map<String, Object> sanitizeBulkVariantConflictDetails(ApplicationException ex,
+                                                                   HttpServletRequest request,
+                                                                   Map<String, Object> details) {
+        if (!isBulkVariantConflictDetailsSafeToExpose(ex, request, details)) {
+            return Map.of();
+        }
+        Map<String, Object> sanitizedDetails = new LinkedHashMap<>();
+        for (String key : BULK_VARIANT_RESPONSE_DETAIL_ALLOWLIST) {
+            if (details.containsKey(key)) {
+                sanitizedDetails.put(key, details.get(key));
+            }
+        }
+        return sanitizedDetails;
     }
 
     private boolean isBulkVariantConflictDetailsSafeToExpose(ApplicationException ex,
@@ -512,11 +534,48 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         if (ex == null || request == null || ex.getErrorCode() != ErrorCode.CONCURRENCY_CONFLICT) {
             return false;
         }
-        if (!BULK_VARIANT_PATH.equals(request.getRequestURI())) {
+        if (!isBulkVariantEndpoint(request)) {
             return false;
         }
         Object operation = details.get("operation");
         return BULK_VARIANT_OPERATION.equals(operation);
+    }
+
+    private boolean isBulkVariantEndpoint(HttpServletRequest request) {
+        String normalizedPath = normalizeRequestPath(request);
+        return BULK_VARIANT_PATH.equals(normalizedPath);
+    }
+
+    private String normalizeRequestPath(HttpServletRequest request) {
+        String servletPath = normalizeEndpointPath(request.getServletPath());
+        if (StringUtils.hasText(servletPath)) {
+            return servletPath;
+        }
+
+        String requestUri = request.getRequestURI();
+        if (!StringUtils.hasText(requestUri)) {
+            return "";
+        }
+
+        String contextPath = request.getContextPath();
+        if (StringUtils.hasText(contextPath) && requestUri.startsWith(contextPath)) {
+            requestUri = requestUri.substring(contextPath.length());
+        }
+        return normalizeEndpointPath(requestUri);
+    }
+
+    private String normalizeEndpointPath(String value) {
+        if (!StringUtils.hasText(value)) {
+            return "";
+        }
+        String normalized = value.trim();
+        if (!normalized.startsWith("/")) {
+            normalized = "/" + normalized;
+        }
+        while (normalized.length() > 1 && normalized.endsWith("/")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        return normalized;
     }
 
     private void logSettlementFailureAudit(HttpServletRequest request,
