@@ -2,6 +2,7 @@ package com.bigbrightpaints.erp.modules.auth.service;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -15,6 +16,7 @@ import com.bigbrightpaints.erp.core.config.EmailProperties;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.notification.EmailService;
+import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.core.security.TokenBlacklistService;
 import com.bigbrightpaints.erp.modules.auth.domain.PasswordResetToken;
 import com.bigbrightpaints.erp.modules.auth.domain.PasswordResetTokenRepository;
@@ -722,6 +724,32 @@ class PasswordResetServiceTest {
     }
 
     @Test
+    void resolveTenantContextForObservabilityPrefersCompanyContextHolderValue() {
+        CompanyContextHolder.setCompanyCode("HOLDER_TENANT");
+        try {
+            assertEquals(
+                    "HOLDER_TENANT",
+                    ReflectionTestUtils.invokeMethod(passwordResetService, "resolveTenantContextForObservability"));
+        } finally {
+            CompanyContextHolder.clear();
+            RequestContextHolder.resetRequestAttributes();
+        }
+    }
+
+    @Test
+    void resolveTenantContextForObservabilityReturnsNullWhenRequestAttributesContainNoRequest() {
+        ServletRequestAttributes attributes = new ServletRequestAttributes(new MockHttpServletRequest());
+        ReflectionTestUtils.setField(attributes, "request", null);
+        RequestContextHolder.setRequestAttributes(attributes);
+        CompanyContextHolder.clear();
+        try {
+            assertNull(ReflectionTestUtils.invokeMethod(passwordResetService, "resolveTenantContextForObservability"));
+        } finally {
+            RequestContextHolder.resetRequestAttributes();
+        }
+    }
+
+    @Test
     void sanitizeTenantContextForLogCoversRedactionBranches() {
         assertEquals(
                 "<empty>",
@@ -729,6 +757,9 @@ class PasswordResetServiceTest {
         assertEquals(
                 "<empty>",
                 ReflectionTestUtils.invokeMethod(passwordResetService, "sanitizeTenantContextForLog", "   "));
+        assertEquals(
+                "<empty>",
+                ReflectionTestUtils.invokeMethod(passwordResetService, "sanitizeTenantContextForLog", "\u0007"));
         assertEquals(
                 "<redacted>",
                 ReflectionTestUtils.invokeMethod(
@@ -741,6 +772,12 @@ class PasswordResetServiceTest {
                         passwordResetService,
                         "sanitizeTenantContextForLog",
                         "TENANT\nINJECT"));
+        assertEquals(
+                "<redacted>",
+                ReflectionTestUtils.invokeMethod(
+                        passwordResetService,
+                        "sanitizeTenantContextForLog",
+                        "TENANT\rINJECT"));
         assertEquals(
                 "<redacted>",
                 ReflectionTestUtils.invokeMethod(passwordResetService, "sanitizeTenantContextForLog", "bad|tenant"));
