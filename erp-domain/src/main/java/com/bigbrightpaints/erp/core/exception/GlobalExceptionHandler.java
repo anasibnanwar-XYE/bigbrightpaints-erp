@@ -47,6 +47,8 @@ import java.util.UUID;
 public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+    private static final String BULK_VARIANT_PATH = "/api/v1/accounting/catalog/products/bulk-variants";
+    private static final String BULK_VARIANT_OPERATION = "catalog-bulk-variants";
     private static final Set<String> SETTLEMENT_FAILURE_DETAIL_ALLOWLIST = Set.of(
             IntegrationFailureMetadataSchema.KEY_IDEMPOTENCY_KEY,
             IntegrationFailureMetadataSchema.KEY_PARTNER_TYPE,
@@ -125,9 +127,9 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         errorResponse.put("timestamp", LocalDateTime.now());
         errorResponse.put("path", request.getRequestURI());
 
-        // Only include details in non-production environments
-        if (!isProductionMode() && !ex.getDetails().isEmpty()) {
-            errorResponse.put("details", ex.getDetails());
+        Map<String, Object> details = ex.getDetails();
+        if (shouldIncludeDetailsInResponse(ex, request, details)) {
+            errorResponse.put("details", details);
         }
 
         logSettlementFailureAudit(request, traceId, ex);
@@ -490,6 +492,31 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             builder.append("; and ").append(errors.size() - 3).append(" more");
         }
         return builder.toString();
+    }
+
+    private boolean shouldIncludeDetailsInResponse(ApplicationException ex,
+                                                   HttpServletRequest request,
+                                                   Map<String, Object> details) {
+        if (details == null || details.isEmpty()) {
+            return false;
+        }
+        if (!isProductionMode()) {
+            return true;
+        }
+        return isBulkVariantConflictDetailsSafeToExpose(ex, request, details);
+    }
+
+    private boolean isBulkVariantConflictDetailsSafeToExpose(ApplicationException ex,
+                                                             HttpServletRequest request,
+                                                             Map<String, Object> details) {
+        if (ex == null || request == null || ex.getErrorCode() != ErrorCode.CONCURRENCY_CONFLICT) {
+            return false;
+        }
+        if (!BULK_VARIANT_PATH.equals(request.getRequestURI())) {
+            return false;
+        }
+        Object operation = details.get("operation");
+        return BULK_VARIANT_OPERATION.equals(operation);
     }
 
     private void logSettlementFailureAudit(HttpServletRequest request,
