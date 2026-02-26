@@ -12,6 +12,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
@@ -25,6 +26,8 @@ import java.util.Set;
 public class CompanyContextFilter extends OncePerRequestFilter {
 
     private static final Logger log = LoggerFactory.getLogger(CompanyContextFilter.class);
+    private static final String CONTROL_PLANE_AUTH_DENIED_MESSAGE =
+            "Access denied to company control request";
     private static final Set<String> PUBLIC_PASSWORD_RESET_ENDPOINTS = Set.of(
             "/api/v1/auth/password/forgot",
             "/api/v1/auth/password/forgot/superadmin",
@@ -50,9 +53,10 @@ public class CompanyContextFilter extends OncePerRequestFilter {
                 return;
             }
             boolean lifecycleControlRequest = isLifecycleControlRequest(runtimePath, request.getMethod());
-            Long lifecycleControlCompanyId = lifecycleControlRequest
-                    ? extractCompanyIdFromLifecycleControlPath(runtimePath)
-                    : null;
+            if (lifecycleControlRequest && !hasAuthenticatedPrincipal()) {
+                response.sendError(HttpServletResponse.SC_FORBIDDEN, CONTROL_PLANE_AUTH_DENIED_MESSAGE);
+                return;
+            }
             String headerCompanyCode = request.getHeader("X-Company-Code");
             String legacyHeaderCompanyId = request.getHeader("X-Company-Id");
             if (StringUtils.hasText(headerCompanyCode) && StringUtils.hasText(legacyHeaderCompanyId)
@@ -104,6 +108,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
             String companyCode = StringUtils.hasText(requestedCompany) ? requestedCompany.trim() : null;
             boolean lifecycleControlBypass = false;
             if (lifecycleControlRequest) {
+                Long lifecycleControlCompanyId = extractCompanyIdFromLifecycleControlPath(runtimePath);
                 if (lifecycleControlCompanyId == null) {
                     response.sendError(HttpServletResponse.SC_FORBIDDEN, "Invalid company control target path");
                     return;
@@ -169,11 +174,18 @@ public class CompanyContextFilter extends OncePerRequestFilter {
         }
     }
 
-    private boolean validateCompanyAccess(String companyCode) {
+    private boolean hasAuthenticatedPrincipal() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated()) {
+        return auth != null
+                && auth.isAuthenticated()
+                && !(auth instanceof AnonymousAuthenticationToken);
+    }
+
+    private boolean validateCompanyAccess(String companyCode) {
+        if (!hasAuthenticatedPrincipal()) {
             return false;
         }
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         Object principal = auth.getPrincipal();
         if (principal instanceof UserPrincipal userPrincipal) {
             UserAccount user = userPrincipal.getUser();
@@ -197,19 +209,19 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     }
 
     private boolean hasSuperAdminAuthority() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated()) {
+        if (!hasAuthenticatedPrincipal()) {
             return false;
         }
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         return auth.getAuthorities().stream()
                 .anyMatch(granted -> "ROLE_SUPER_ADMIN".equalsIgnoreCase(granted.getAuthority()));
     }
 
     private boolean hasTenantRuntimePolicyControlAuthority(String requestPath, String requestMethod) {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || !auth.isAuthenticated()) {
+        if (!hasAuthenticatedPrincipal()) {
             return false;
         }
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (!"PUT".equalsIgnoreCase(requestMethod) || !StringUtils.hasText(requestPath)) {
             return false;
         }

@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.company.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -200,6 +201,27 @@ class CompanyServiceTest {
         assertThatThrownBy(() -> companyService.getTenantMetrics(1L))
                 .isInstanceOf(AccessDeniedException.class)
                 .hasMessageContaining("Bound company context does not match targeted tenant");
+    }
+
+    @Test
+    void resolveCompanyCodeById_returnsNullForNullAndUnknownTargets_andTrimsResolvedValue() {
+        Company company = company(2L, "  TENANT-A  ");
+        when(repository.findById(77L)).thenReturn(Optional.empty());
+        when(repository.findById(2L)).thenReturn(Optional.of(company));
+
+        assertThat(companyService.resolveCompanyCodeById(null)).isNull();
+        assertThat(companyService.resolveCompanyCodeById(77L)).isNull();
+        assertThat(companyService.resolveCompanyCodeById(2L)).isEqualTo("TENANT-A");
+    }
+
+    @Test
+    void assertBoundControlPlaneCompanyMatchesTarget_allowsBlankTargetCode() {
+        CompanyContextHolder.setCompanyCode("ROOT");
+
+        assertThatCode(() -> ReflectionTestUtils.invokeMethod(
+                companyService,
+                "assertBoundControlPlaneCompanyMatchesTarget",
+                "   ")).doesNotThrowAnyException();
     }
 
     @Test

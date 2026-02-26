@@ -21,10 +21,13 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -34,10 +37,13 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class CompanyContextFilterControlPlaneBindingTest {
+
+    private static final String CONTROL_PLANE_AUTH_DENIED_MESSAGE = "Access denied to company control request";
 
     @Mock
     private TenantRuntimeEnforcementService tenantRuntimeEnforcementService;
@@ -111,6 +117,105 @@ class CompanyContextFilterControlPlaneBindingTest {
         verify(tenantRuntimeEnforcementService, never())
                 .beginRequest(anyString(), anyString(), anyString(), anyString(), anyBoolean());
         verify(filterChain, never()).doFilter(request, response);
+    }
+
+    @Test
+    void lifecycleControlRequest_rejectsUnauthenticatedBeforeResolvingTenantFromPath()
+            throws ServletException, IOException {
+        MockHttpServletRequest existingTenantRequest = request("POST", "/api/v1/companies/42/lifecycle-state");
+        MockHttpServletResponse existingTenantResponse = new MockHttpServletResponse();
+        filter.doFilter(existingTenantRequest, existingTenantResponse, filterChain);
+        assertThat(existingTenantResponse.getStatus()).isEqualTo(403);
+        assertThat(existingTenantResponse.getErrorMessage()).isEqualTo(CONTROL_PLANE_AUTH_DENIED_MESSAGE);
+
+        MockHttpServletRequest unknownTenantRequest = request("POST", "/api/v1/companies/404/lifecycle-state");
+        MockHttpServletResponse unknownTenantResponse = new MockHttpServletResponse();
+        filter.doFilter(unknownTenantRequest, unknownTenantResponse, filterChain);
+        assertThat(unknownTenantResponse.getStatus()).isEqualTo(403);
+        assertThat(unknownTenantResponse.getErrorMessage()).isEqualTo(CONTROL_PLANE_AUTH_DENIED_MESSAGE);
+
+        verifyNoInteractions(companyService);
+        verify(tenantRuntimeEnforcementService, never())
+                .beginRequest(anyString(), anyString(), anyString(), anyString(), anyBoolean());
+        verify(filterChain, never()).doFilter(any(), any());
+    }
+
+    @Test
+    void lifecycleControlRequest_rejectsAnonymousAuthenticationBeforeResolvingTenantFromPath()
+            throws ServletException, IOException {
+        SecurityContextHolder.getContext().setAuthentication(new AnonymousAuthenticationToken(
+                "anonymous",
+                "anonymousUser",
+                List.of(new SimpleGrantedAuthority("ROLE_ANONYMOUS"))));
+        MockHttpServletRequest request = request("POST", "/api/v1/companies/999/lifecycle-state");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, filterChain);
+
+        assertThat(response.getStatus()).isEqualTo(403);
+        assertThat(response.getErrorMessage()).isEqualTo(CONTROL_PLANE_AUTH_DENIED_MESSAGE);
+        verifyNoInteractions(companyService);
+        verify(tenantRuntimeEnforcementService, never())
+                .beginRequest(anyString(), anyString(), anyString(), anyString(), anyBoolean());
+        verify(filterChain, never()).doFilter(request, response);
+    }
+
+    @Test
+    void lifecycleControlRequest_rejectsWhenTargetPathDoesNotContainNumericCompanyId()
+            throws ServletException, IOException {
+        authenticate("root-superadmin@bbp.com", Set.of("ROLE_SUPER_ADMIN"), Set.of("ROOT"));
+
+        MockHttpServletRequest request = request("POST", "/api/v1/companies/not-a-number/lifecycle-state");
+        request.setAttribute("jwtClaims", claimsFor("ROOT"));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, filterChain);
+
+        assertThat(response.getStatus()).isEqualTo(403);
+        assertThat(response.getErrorMessage()).isEqualTo("Invalid company control target path");
+        verifyNoInteractions(companyService);
+        verify(tenantRuntimeEnforcementService, never())
+                .beginRequest(anyString(), anyString(), anyString(), anyString(), anyBoolean());
+        verify(filterChain, never()).doFilter(request, response);
+    }
+
+    @Test
+    void lifecycleControlRequest_rejectsWhenResolvedPathTargetCompanyIsMissing()
+            throws ServletException, IOException {
+        authenticate("root-superadmin@bbp.com", Set.of("ROLE_SUPER_ADMIN"), Set.of("ROOT"));
+        when(companyService.resolveCompanyCodeById(404L)).thenReturn(null);
+
+        MockHttpServletRequest request = request("POST", "/api/v1/companies/404/lifecycle-state");
+        request.setAttribute("jwtClaims", claimsFor("ROOT"));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, filterChain);
+
+        assertThat(response.getStatus()).isEqualTo(403);
+        assertThat(response.getErrorMessage()).isEqualTo("Access denied to company control target");
+        verify(companyService).resolveCompanyCodeById(404L);
+        verify(companyService, never()).resolveLifecycleStateByCode(anyString());
+        verify(tenantRuntimeEnforcementService, never())
+                .beginRequest(anyString(), anyString(), anyString(), anyString(), anyBoolean());
+        verify(filterChain, never()).doFilter(request, response);
+    }
+
+    @Test
+    void extractCompanyIdFromLifecycleControlPath_handlesMalformedAndOverflowValues() {
+        assertThat(extractCompanyId(null)).isNull();
+        assertThat(extractCompanyId("   ")).isNull();
+        assertThat(extractCompanyId("/api/v1/private")).isNull();
+        assertThat(extractCompanyId("/api/v1/companies/not-a-number/lifecycle-state")).isNull();
+        assertThat(extractCompanyId("/api/v1/companies//lifecycle-state")).isNull();
+        assertThat(extractCompanyId("/api/v1/companies/999999999999999999999999/lifecycle-state")).isNull();
+        assertThat(extractCompanyId("/api/v1/companies/42/lifecycle-state")).isEqualTo(42L);
+    }
+
+    private Long extractCompanyId(String path) {
+        return ReflectionTestUtils.invokeMethod(
+                filter,
+                "extractCompanyIdFromLifecycleControlPath",
+                path);
     }
 
     private void authenticate(String email, Set<String> authorities, Set<String> companyCodes) {
