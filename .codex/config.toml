@@ -30,7 +30,7 @@ config_file = "agents/frontend_arch.toml"
 
 [agents.frontend_documentation]
 description = "Maintains frontend endpoint maps, portal ownership docs, and frontend handoff consistency."
-config_file = "agents/frontend_arch.toml"
+config_file = "agents/frontend_documentation.toml"
 
 [agents.security_auditor]
 description = "Finds auth, injection, and secrets risks."
@@ -106,7 +106,7 @@ config_file = "agents/cross_module_high.toml"
 
 [agents."frontend-documentation"]
 description = "Frontend documentation work mapped to frontend architecture/doc profile."
-config_file = "agents/frontend_arch.toml"
+config_file = "agents/frontend_documentation.toml"
 
 [agents."qa-reliability"]
 description = "QA and reliability work mapped to dedicated code-review and verification profile."

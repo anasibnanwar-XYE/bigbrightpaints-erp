@@ -117,10 +117,12 @@ execution_workflow:
           - model: gpt-5.3-codex
             reasoning: medium
       frontend_documentation:
-        preferred_model: gpt-5.3-codex
-        preferred_reasoning: high
+        preferred_model: gpt-5.3-codex-spark
+        preferred_reasoning: medium
         fallback:
-          - model: gpt-5.3-codex
+          - model: codex-mini-latest
+            reasoning: medium
+          - model: gpt-5.3-codex-spark
             reasoning: medium
       orchestrator_planning:
         preferred_model: gpt-5.2-codex
@@ -199,7 +201,7 @@ execution_workflow:
         config_file: .codex/agents/cross_module_high.toml
       frontend-documentation:
         role: frontend_documentation
-        config_file: .codex/agents/frontend_arch.toml
+        config_file: .codex/agents/frontend_documentation.toml
       qa-reliability:
         role: code_reviewer
         config_file: .codex/agents/code_reviewer.toml
