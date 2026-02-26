@@ -542,26 +542,57 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     private boolean isBulkVariantEndpoint(HttpServletRequest request) {
-        String normalizedPath = normalizeRequestPath(request);
-        return BULK_VARIANT_PATH.equals(normalizedPath);
+        for (String candidatePath : resolveNormalizedRequestPaths(request)) {
+            if (matchesEndpointPath(candidatePath, BULK_VARIANT_PATH)) {
+                return true;
+            }
+        }
+        return false;
     }
 
-    private String normalizeRequestPath(HttpServletRequest request) {
-        String servletPath = normalizeEndpointPath(request.getServletPath());
-        if (StringUtils.hasText(servletPath)) {
-            return servletPath;
+    private List<String> resolveNormalizedRequestPaths(HttpServletRequest request) {
+        if (request == null) {
+            return List.of();
         }
 
-        String requestUri = request.getRequestURI();
+        String servletPath = normalizeEndpointPath(request.getServletPath());
+        String pathInfo = normalizeEndpointPath(request.getPathInfo());
+        String combinedServletPath = normalizeEndpointPath(joinServletPathAndPathInfo(servletPath, pathInfo));
+        String requestUri = normalizeEndpointPath(stripContextPath(request.getRequestURI(), request.getContextPath()));
+
+        return List.of(
+                combinedServletPath,
+                servletPath,
+                pathInfo,
+                requestUri);
+    }
+
+    private String joinServletPathAndPathInfo(String servletPath, String pathInfo) {
+        if (!StringUtils.hasText(pathInfo)) {
+            return servletPath;
+        }
+        if (!StringUtils.hasText(servletPath) || "/".equals(servletPath)) {
+            return pathInfo;
+        }
+        return servletPath + pathInfo;
+    }
+
+    private String stripContextPath(String requestUri, String contextPath) {
         if (!StringUtils.hasText(requestUri)) {
             return "";
         }
-
-        String contextPath = request.getContextPath();
         if (StringUtils.hasText(contextPath) && requestUri.startsWith(contextPath)) {
-            requestUri = requestUri.substring(contextPath.length());
+            String stripped = requestUri.substring(contextPath.length());
+            return StringUtils.hasText(stripped) ? stripped : "/";
         }
-        return normalizeEndpointPath(requestUri);
+        return requestUri;
+    }
+
+    private boolean matchesEndpointPath(String normalizedPath, String endpointPath) {
+        if (!StringUtils.hasText(normalizedPath) || !StringUtils.hasText(endpointPath)) {
+            return false;
+        }
+        return normalizedPath.equals(endpointPath) || normalizedPath.endsWith(endpointPath);
     }
 
     private String normalizeEndpointPath(String value) {
