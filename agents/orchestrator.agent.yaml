@@ -135,8 +135,8 @@ execution_workflow:
           - model: gpt-5.3-codex
             reasoning: high
       frontend_documentation:
-        preferred_model: gpt-5.3-codex
-        preferred_reasoning: high
+        preferred_model: gpt-5.3-codex-spark
+        preferred_reasoning: medium
         fallback:
           - model: gpt-5.3-codex
             reasoning: high
@@ -221,7 +221,7 @@ execution_workflow:
         config_file: .codex/agents/cross_module_high.toml
       frontend-documentation:
         role: frontend_documentation
-        config_file: .codex/agents/frontend_arch.toml
+        config_file: .codex/agents/frontend_documentation.toml
       qa-reliability:
         role: qa_reliability
         config_file: .codex/agents/qa_reliability.toml
