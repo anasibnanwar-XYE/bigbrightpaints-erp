@@ -15,7 +15,6 @@ import com.bigbrightpaints.erp.core.config.EmailProperties;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.notification.EmailService;
-import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.core.security.TokenBlacklistService;
 import com.bigbrightpaints.erp.modules.auth.domain.PasswordResetToken;
 import com.bigbrightpaints.erp.modules.auth.domain.PasswordResetTokenRepository;
@@ -408,8 +407,8 @@ class PasswordResetServiceTest {
 
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/auth/password/forgot/superadmin");
         request.addHeader("X-Correlation-Id", "corr-global-scope-123");
+        request.addHeader("X-Company-Code", "TENANT_A");
         RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
-        CompanyContextHolder.setCompanyCode("TENANT_A");
         try {
             List<String> messages = captureServiceLogMessages(
                     () -> passwordResetService.requestResetForSuperAdmin("superadmin@example.com"));
@@ -422,7 +421,6 @@ class PasswordResetServiceTest {
                     "Expected superadmin forgot flow to explicitly ignore tenant context under global-identity policy");
         } finally {
             RequestContextHolder.resetRequestAttributes();
-            CompanyContextHolder.clear();
         }
         verify(tokenRepository).deleteByUser(superAdmin);
         verify(tokenRepository).saveAndFlush(any(PasswordResetToken.class));
@@ -437,8 +435,8 @@ class PasswordResetServiceTest {
 
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/auth/password/reset");
         request.addHeader("X-Correlation-Id", "corr-reset-scope-123");
+        request.addHeader("X-Company-Code", "TENANT_B");
         RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
-        CompanyContextHolder.setCompanyCode("TENANT_B");
         try {
             List<String> messages = captureServiceLogMessages(
                     () -> passwordResetService.resetPassword("token-value", "NewPass123", "NewPass123"));
@@ -451,7 +449,6 @@ class PasswordResetServiceTest {
                     "Expected password reset to use global identity policy even when tenant context is present");
         } finally {
             RequestContextHolder.resetRequestAttributes();
-            CompanyContextHolder.clear();
         }
 
         verify(passwordService).resetPassword(superAdmin, "NewPass123", "NewPass123");
@@ -684,8 +681,8 @@ class PasswordResetServiceTest {
 
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/auth/password/forgot");
         request.addHeader("X-Correlation-Id", "corr-request-scope-123");
+        request.addHeader("X-Company-Code", "TENANT\nINJECT");
         RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
-        CompanyContextHolder.setCompanyCode("TENANT\nINJECT");
         try {
             List<String> messages = captureServiceLogMessages(
                     () -> passwordResetService.requestReset("user@example.com"));
@@ -697,7 +694,30 @@ class PasswordResetServiceTest {
                     "Expected malformed tenant context to be redacted in global-identity scope logs");
         } finally {
             RequestContextHolder.resetRequestAttributes();
-            CompanyContextHolder.clear();
+        }
+    }
+
+    @Test
+    void requestResetScopeUsesLegacyCompanyHeaderWhenPrimaryHeaderMissing() {
+        UserAccount user = new UserAccount("user@example.com", "hash", "User");
+        user.setEnabled(true);
+        when(userAccountRepository.findByEmailIgnoreCase("user@example.com")).thenReturn(Optional.of(user));
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/auth/password/forgot");
+        request.addHeader("X-Correlation-Id", "corr-legacy-header-123");
+        request.addHeader("X-Company-Id", "LEGACY_TENANT");
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+        try {
+            List<String> messages = captureServiceLogMessages(
+                    () -> passwordResetService.requestReset("user@example.com"));
+            assertTrue(
+                    messages.stream().anyMatch(message -> message.contains("event=password_reset.scope")
+                            && message.contains("operation=forgot_password")
+                            && message.contains("correlationId=corr-legacy-header-123")
+                            && message.contains("tenantContext=LEGACY_TENANT")),
+                    "Expected legacy company header to be observed when company context holder is empty");
+        } finally {
+            RequestContextHolder.resetRequestAttributes();
         }
     }
 

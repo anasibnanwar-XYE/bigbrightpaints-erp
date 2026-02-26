@@ -39,6 +39,8 @@ public class PasswordResetService {
     private static final String CORRELATION_ID_HEADER = "X-Correlation-Id";
     private static final String REQUEST_ID_HEADER = "X-Request-Id";
     private static final String TRACE_ID_HEADER = "X-Trace-Id";
+    private static final String COMPANY_CODE_HEADER = "X-Company-Code";
+    private static final String LEGACY_COMPANY_ID_HEADER = "X-Company-Id";
     private static final int MAX_CORRELATION_ID_LENGTH = 128;
     private static final Pattern SAFE_CORRELATION_ID_PATTERN =
             Pattern.compile("^[A-Za-z0-9._:-]{1,128}$");
@@ -279,7 +281,7 @@ public class PasswordResetService {
     }
 
     private void logTenantContextIgnoredIfPresent(String operation, String correlationId) {
-        String tenantContext = CompanyContextHolder.getCompanyCode();
+        String tenantContext = resolveTenantContextForObservability();
         if (!StringUtils.hasText(tenantContext)) {
             return;
         }
@@ -289,6 +291,24 @@ public class PasswordResetService {
                 operation,
                 correlationId,
                 sanitizeTenantContextForLog(tenantContext));
+    }
+
+    private String resolveTenantContextForObservability() {
+        String tenantContext = CompanyContextHolder.getCompanyCode();
+        if (StringUtils.hasText(tenantContext)) {
+            return tenantContext;
+        }
+        ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+        if (attributes == null) {
+            return null;
+        }
+        HttpServletRequest request = attributes.getRequest();
+        if (request == null) {
+            return null;
+        }
+        return firstNonBlank(
+                request.getHeader(COMPANY_CODE_HEADER),
+                request.getHeader(LEGACY_COMPANY_ID_HEADER));
     }
 
     private String obfuscateEmail(String email) {
