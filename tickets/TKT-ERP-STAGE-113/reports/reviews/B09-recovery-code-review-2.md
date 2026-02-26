@@ -1,8 +1,8 @@
 # B09 Recovery Code Review 2
 
-Ticket: `TKT-ERP-STAGE-113`  
-Branch: `tickets/tkt-erp-stage-113/b09-orchestrator-correlation-sanitization-recovery`  
-Worktree: `/Users/anas/Documents/orchestrator_erp/bigbrightpaints-erp_worktrees/TKT-ERP-STAGE-113/blocker-remediation-orchestrator_worktrees/TKT-ERP-STAGE-113/B09-orchestrator-correlation-sanitization-recovery`  
+Ticket: `TKT-ERP-STAGE-113`
+Branch: `tickets/tkt-erp-stage-113/b09-orchestrator-correlation-sanitization-recovery`
+Worktree: `/Users/anas/Documents/orchestrator_erp/bigbrightpaints-erp_worktrees/TKT-ERP-STAGE-113/blocker-remediation-orchestrator_worktrees/TKT-ERP-STAGE-113/B09-orchestrator-correlation-sanitization-recovery`
 Reviewed HEAD: `355ca643bc9dfbb1f82c5db9140caf95f2fb36ae`
 
 ## Findings (Ordered by Severity)
