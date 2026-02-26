@@ -2,7 +2,6 @@ package com.bigbrightpaints.erp.modules.auth.service;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -22,7 +21,6 @@ import com.bigbrightpaints.erp.modules.auth.domain.PasswordResetTokenRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.rbac.domain.Role;
-import java.lang.reflect.InvocationTargetException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -40,6 +38,7 @@ import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.UnexpectedRollbackException;
+import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.context.request.RequestContextHolder;
@@ -360,65 +359,220 @@ class PasswordResetServiceTest {
     }
 
     @Test
-    void issueSuperAdminResetTokenThrowsWhenLifecycleTemplateReturnsBlankToken() {
+    void requestResetForSuperAdminMasksBlankTokenLifecycleResult() {
+        UserAccount superAdmin = superAdminUser("superadmin@example.com");
+        when(userAccountRepository.findByEmailIgnoreCase("superadmin@example.com"))
+                .thenReturn(Optional.of(superAdmin));
+
         TransactionTemplate lifecycleTemplate = mock(TransactionTemplate.class);
         when(lifecycleTemplate.execute(any())).thenReturn("   ");
         ReflectionTestUtils.setField(passwordResetService, "tokenLifecycleTransactionTemplate", lifecycleTemplate);
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/auth/password/forgot/superadmin");
+        request.addHeader("X-Correlation-Id", "corr-blank-token-123");
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+        try {
+            List<String> messages = captureServiceLogMessages(
+                    () -> passwordResetService.requestResetForSuperAdmin("superadmin@example.com"));
 
-        IllegalStateException ex = assertThrows(
-                IllegalStateException.class,
-                () -> invokePrivate(
-                        "issueSuperAdminResetToken",
-                        new Class<?>[] {UserAccount.class, String.class, String.class},
-                        superAdminUser("superadmin@example.com"),
-                        "corr-token-guard-123",
-                        "s***@example.com"));
-
-        assertTrue(
-                ex.getMessage().contains("Failed to persist super-admin password reset token"),
-                "Expected explicit guard failure when token persistence result is blank");
+            assertTrue(
+                    messages.stream().anyMatch(message -> message.contains("reasonCode=RESET_DISPATCH_FAILURE")
+                            && message.contains("exceptionClass=IllegalStateException")
+                            && message.contains("correlationId=corr-blank-token-123")),
+                    "Expected blank token persistence to be fail-closed and masked in public forgot-password flow");
+        } finally {
+            RequestContextHolder.resetRequestAttributes();
+        }
         verify(lifecycleTemplate).execute(any());
+        verify(tokenRepository, never()).deleteByToken(anyString());
+        verify(emailService, never()).sendSimpleEmail(any(), any(), any());
     }
 
     @Test
-    void assertTokenLifecycleTransactionActiveThrowsWhenNoTransactionIsActive() {
-        IllegalStateException ex = assertThrows(
-                IllegalStateException.class,
-                () -> invokePrivate(
-                        "assertTokenLifecycleTransactionActive",
-                        new Class<?>[] {String.class, String.class, String.class},
-                        "issue",
-                        "corr-transaction-123",
-                        "s***@example.com"));
+    @SuppressWarnings("unchecked")
+    void requestResetForSuperAdminMasksMissingLifecycleTransactionAndLogsReasonCode() {
+        UserAccount superAdmin = superAdminUser("superadmin@example.com");
+        when(userAccountRepository.findByEmailIgnoreCase("superadmin@example.com"))
+                .thenReturn(Optional.of(superAdmin));
 
-        assertTrue(
-                ex.getMessage().contains("requires an active transaction"),
-                "Expected fail-closed behavior when lifecycle operation runs outside a transaction");
+        TransactionTemplate lifecycleTemplate = mock(TransactionTemplate.class);
+        when(lifecycleTemplate.execute(any())).thenAnswer(invocation -> {
+            TransactionCallback<String> callback = (TransactionCallback<String>) invocation.getArgument(0);
+            return callback.doInTransaction(null);
+        });
+        ReflectionTestUtils.setField(passwordResetService, "tokenLifecycleTransactionTemplate", lifecycleTemplate);
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/auth/password/forgot/superadmin");
+        request.addHeader("X-Correlation-Id", "corr-tx-missing-123");
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+        try {
+            List<String> messages = captureServiceLogMessages(
+                    () -> passwordResetService.requestResetForSuperAdmin("superadmin@example.com"));
+            assertTrue(
+                    messages.stream().anyMatch(message -> message.contains("outcome=missing_transaction")
+                            && message.contains("stage=issue")
+                            && message.contains("correlationId=corr-tx-missing-123")),
+                    "Expected lifecycle stage to emit transaction-missing evidence with correlation id");
+            assertTrue(
+                    messages.stream().anyMatch(message -> message.contains("reasonCode=RESET_DISPATCH_FAILURE")
+                            && message.contains("exceptionClass=IllegalStateException")),
+                    "Expected missing transaction to be masked by public forgot-password response contract");
+        } finally {
+            RequestContextHolder.resetRequestAttributes();
+        }
+        verify(tokenRepository, never()).deleteByUser(any());
+        verify(tokenRepository, never()).saveAndFlush(any(PasswordResetToken.class));
+        verify(emailService, never()).sendSimpleEmail(any(), any(), any());
     }
 
     @Test
-    void firstNonBlankHandlesNullEmptyAndBlankInputs() {
-        assertNull(invokePrivate("firstNonBlank", new Class<?>[] {String[].class}, (Object) null));
-        assertNull(invokePrivate("firstNonBlank", new Class<?>[] {String[].class}, (Object) new String[] {}));
-        assertNull(invokePrivate("firstNonBlank", new Class<?>[] {String[].class}, (Object) new String[] {" ", "\t"}));
-        assertEquals(
-                "x-request-id-123",
-                invokePrivate(
-                        "firstNonBlank",
-                        new Class<?>[] {String[].class},
-                        (Object) new String[] {" ", "x-request-id-123", "x-trace-id-456"}));
+    void requestResetForSuperAdminUsesRequestIdWhenCorrelationHeaderIsBlank() {
+        UserAccount superAdmin = superAdminUser("superadmin@example.com");
+        when(userAccountRepository.findByEmailIgnoreCase("superadmin@example.com"))
+                .thenReturn(Optional.of(superAdmin));
+        doThrow(new RuntimeException("smtp down"))
+                .when(emailService)
+                .sendSimpleEmail(eq("superadmin@example.com"), any(), any());
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/auth/password/forgot/superadmin");
+        request.addHeader("X-Correlation-Id", "   ");
+        request.addHeader("X-Request-Id", "req-fallback-123");
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+        try {
+            List<String> messages = captureServiceLogMessages(
+                    () -> passwordResetService.requestResetForSuperAdmin("superadmin@example.com"));
+            assertTrue(
+                    messages.stream().anyMatch(message -> message.contains("correlationId=req-fallback-123")),
+                    "Expected request-id header to be used when primary correlation header is blank");
+        } finally {
+            RequestContextHolder.resetRequestAttributes();
+        }
     }
 
     @Test
-    void sanitizeCorrelationIdRejectsInvalidAndAcceptsSafeCandidates() {
-        assertNull(invokePrivate("sanitizeCorrelationId", new Class<?>[] {String.class}, (Object) null));
-        assertNull(invokePrivate("sanitizeCorrelationId", new Class<?>[] {String.class}, "   "));
-        assertNull(invokePrivate("sanitizeCorrelationId", new Class<?>[] {String.class}, "x".repeat(129)));
-        assertNull(invokePrivate("sanitizeCorrelationId", new Class<?>[] {String.class}, "corr-bad\nheader"));
-        assertNull(invokePrivate("sanitizeCorrelationId", new Class<?>[] {String.class}, "bad|pattern"));
-        assertEquals(
-                "trace-id_123:abc.def",
-                invokePrivate("sanitizeCorrelationId", new Class<?>[] {String.class}, "  trace-id_123:abc.def  "));
+    void requestResetForSuperAdminFallsBackToGeneratedCorrelationIdWhenAllHeadersAreBlank() {
+        UserAccount superAdmin = superAdminUser("superadmin@example.com");
+        when(userAccountRepository.findByEmailIgnoreCase("superadmin@example.com"))
+                .thenReturn(Optional.of(superAdmin));
+        doThrow(new RuntimeException("smtp down"))
+                .when(emailService)
+                .sendSimpleEmail(eq("superadmin@example.com"), any(), any());
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/auth/password/forgot/superadmin");
+        request.addHeader("X-Correlation-Id", "   ");
+        request.addHeader("X-Request-Id", " ");
+        request.addHeader("X-Trace-Id", "\t");
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+        try {
+            List<String> messages = captureServiceLogMessages(
+                    () -> passwordResetService.requestResetForSuperAdmin("superadmin@example.com"));
+            assertTrue(
+                    messages.stream().anyMatch(message -> message.matches(".*correlationId=[0-9a-fA-F\\-]{36}.*")),
+                    "Expected fallback UUID correlation id when all correlation headers are blank");
+        } finally {
+            RequestContextHolder.resetRequestAttributes();
+        }
+    }
+
+    @Test
+    void requestResetForSuperAdminFallsBackToGeneratedCorrelationIdForOversizedHeader() {
+        UserAccount superAdmin = superAdminUser("superadmin@example.com");
+        when(userAccountRepository.findByEmailIgnoreCase("superadmin@example.com"))
+                .thenReturn(Optional.of(superAdmin));
+        doThrow(new RuntimeException("smtp down"))
+                .when(emailService)
+                .sendSimpleEmail(eq("superadmin@example.com"), any(), any());
+        String oversizedCorrelationId = "x".repeat(129);
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/auth/password/forgot/superadmin");
+        request.addHeader("X-Correlation-Id", oversizedCorrelationId);
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+        try {
+            List<String> messages = captureServiceLogMessages(
+                    () -> passwordResetService.requestResetForSuperAdmin("superadmin@example.com"));
+            assertTrue(
+                    messages.stream().noneMatch(message -> message.contains(oversizedCorrelationId)),
+                    "Expected oversized correlation header to be rejected from structured logs");
+            assertTrue(
+                    messages.stream().anyMatch(message -> message.matches(".*correlationId=[0-9a-fA-F\\-]{36}.*")),
+                    "Expected fallback UUID correlation id when correlation header exceeds max length");
+        } finally {
+            RequestContextHolder.resetRequestAttributes();
+        }
+    }
+
+    @Test
+    void requestResetForSuperAdminFallsBackToGeneratedCorrelationIdForPatternMismatchHeader() {
+        UserAccount superAdmin = superAdminUser("superadmin@example.com");
+        when(userAccountRepository.findByEmailIgnoreCase("superadmin@example.com"))
+                .thenReturn(Optional.of(superAdmin));
+        doThrow(new RuntimeException("smtp down"))
+                .when(emailService)
+                .sendSimpleEmail(eq("superadmin@example.com"), any(), any());
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/auth/password/forgot/superadmin");
+        request.addHeader("X-Correlation-Id", "bad|pattern");
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+        try {
+            List<String> messages = captureServiceLogMessages(
+                    () -> passwordResetService.requestResetForSuperAdmin("superadmin@example.com"));
+            assertTrue(
+                    messages.stream().noneMatch(message -> message.contains("bad|pattern")),
+                    "Expected pattern-mismatched correlation header to be rejected in logs");
+            assertTrue(
+                    messages.stream().anyMatch(message -> message.matches(".*correlationId=[0-9a-fA-F\\-]{36}.*")),
+                    "Expected fallback UUID correlation id when header contains disallowed characters");
+        } finally {
+            RequestContextHolder.resetRequestAttributes();
+        }
+    }
+
+    @Test
+    void requestResetForSuperAdminFallsBackToGeneratedCorrelationIdForEmbeddedNewlineHeader() {
+        UserAccount superAdmin = superAdminUser("superadmin@example.com");
+        when(userAccountRepository.findByEmailIgnoreCase("superadmin@example.com"))
+                .thenReturn(Optional.of(superAdmin));
+        doThrow(new RuntimeException("smtp down"))
+                .when(emailService)
+                .sendSimpleEmail(eq("superadmin@example.com"), any(), any());
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/auth/password/forgot/superadmin");
+        request.addHeader("X-Correlation-Id", "corr-newline\nsegment");
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+        try {
+            List<String> messages = captureServiceLogMessages(
+                    () -> passwordResetService.requestResetForSuperAdmin("superadmin@example.com"));
+            assertTrue(
+                    messages.stream().noneMatch(message -> message.contains("corr-newline")),
+                    "Expected newline-bearing correlation header to be rejected in logs");
+            assertTrue(
+                    messages.stream().anyMatch(message -> message.matches(".*correlationId=[0-9a-fA-F\\-]{36}.*")),
+                    "Expected fallback UUID correlation id when header contains an embedded newline");
+        } finally {
+            RequestContextHolder.resetRequestAttributes();
+        }
+    }
+
+    @Test
+    void requestResetForSuperAdminFallsBackToGeneratedCorrelationIdForControlCharacterOnlyHeader() {
+        UserAccount superAdmin = superAdminUser("superadmin@example.com");
+        when(userAccountRepository.findByEmailIgnoreCase("superadmin@example.com"))
+                .thenReturn(Optional.of(superAdmin));
+        doThrow(new RuntimeException("smtp down"))
+                .when(emailService)
+                .sendSimpleEmail(eq("superadmin@example.com"), any(), any());
+
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/auth/password/forgot/superadmin");
+        request.addHeader("X-Correlation-Id", "\u0007");
+        RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
+        try {
+            List<String> messages = captureServiceLogMessages(
+                    () -> passwordResetService.requestResetForSuperAdmin("superadmin@example.com"));
+            assertTrue(
+                    messages.stream().anyMatch(message -> message.matches(".*correlationId=[0-9a-fA-F\\-]{36}.*")),
+                    "Expected fallback UUID correlation id when trim collapses control-only header values");
+        } finally {
+            RequestContextHolder.resetRequestAttributes();
+        }
     }
 
     private UserAccount superAdminUser(String email) {
@@ -442,26 +596,6 @@ class PasswordResetServiceTest {
                     .toList();
         } finally {
             serviceLogger.detachAppender(listAppender);
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    private <T> T invokePrivate(String methodName, Class<?>[] parameterTypes, Object... args) {
-        try {
-            var method = PasswordResetService.class.getDeclaredMethod(methodName, parameterTypes);
-            method.setAccessible(true);
-            return (T) method.invoke(passwordResetService, args);
-        } catch (InvocationTargetException ex) {
-            Throwable cause = ex.getCause();
-            if (cause instanceof RuntimeException runtimeException) {
-                throw runtimeException;
-            }
-            if (cause instanceof Error error) {
-                throw error;
-            }
-            throw new RuntimeException(cause);
-        } catch (ReflectiveOperationException ex) {
-            throw new RuntimeException(ex);
         }
     }
 }
