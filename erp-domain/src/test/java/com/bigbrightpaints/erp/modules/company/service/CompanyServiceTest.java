@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.company.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -13,6 +14,7 @@ import static org.mockito.Mockito.when;
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditLogRepository;
 import com.bigbrightpaints.erp.core.audit.AuditService;
+import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.service.TenantAdminProvisioningService;
 import com.bigbrightpaints.erp.modules.company.dto.CompanyAdminCredentialResetDto;
@@ -77,6 +79,7 @@ class CompanyServiceTest {
     @AfterEach
     void tearDown() {
         SecurityContextHolder.clearContext();
+        CompanyContextHolder.clear();
     }
 
     @Test
@@ -186,6 +189,39 @@ class CompanyServiceTest {
                 org.mockito.ArgumentMatchers.any(Company.class),
                 eq("tenant-admin@ske.com"),
                 eq("SKE Tenant Admin"));
+    }
+
+    @Test
+    void getTenantMetrics_deniesWhenBoundContextDoesNotMatchTargetTenant() {
+        authenticateAs("ROLE_SUPER_ADMIN");
+        CompanyContextHolder.setCompanyCode("ROOT");
+        Company target = company(1L, "TENANT-A");
+        when(repository.findById(1L)).thenReturn(Optional.of(target));
+
+        assertThatThrownBy(() -> companyService.getTenantMetrics(1L))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("Bound company context does not match targeted tenant");
+    }
+
+    @Test
+    void resolveCompanyCodeById_returnsNullForNullAndUnknownTargets_andTrimsResolvedValue() {
+        Company company = company(2L, "  TENANT-A  ");
+        when(repository.findById(77L)).thenReturn(Optional.empty());
+        when(repository.findById(2L)).thenReturn(Optional.of(company));
+
+        assertThat(companyService.resolveCompanyCodeById(null)).isNull();
+        assertThat(companyService.resolveCompanyCodeById(77L)).isNull();
+        assertThat(companyService.resolveCompanyCodeById(2L)).isEqualTo("TENANT-A");
+    }
+
+    @Test
+    void assertBoundControlPlaneCompanyMatchesTarget_allowsBlankTargetCode() {
+        CompanyContextHolder.setCompanyCode("ROOT");
+
+        assertThatCode(() -> ReflectionTestUtils.invokeMethod(
+                companyService,
+                "assertBoundControlPlaneCompanyMatchesTarget",
+                "   ")).doesNotThrowAnyException();
     }
 
     @Test
