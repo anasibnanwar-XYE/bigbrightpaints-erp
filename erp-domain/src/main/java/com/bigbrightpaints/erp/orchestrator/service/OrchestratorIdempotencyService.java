@@ -2,7 +2,6 @@ package com.bigbrightpaints.erp.orchestrator.service;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
-import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.orchestrator.repository.OrchestratorCommand;
@@ -13,7 +12,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.time.Instant;
 import java.util.HexFormat;
 import java.util.UUID;
 import java.util.function.Supplier;
@@ -26,7 +24,6 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
-import org.springframework.beans.factory.annotation.Value;
 
 @Service
 public class OrchestratorIdempotencyService {
@@ -41,27 +38,16 @@ public class OrchestratorIdempotencyService {
     private final CompanyContextService companyContextService;
     private final ObjectMapper hashMapper;
     private final TransactionTemplate txTemplate;
-    private final long staleInProgressTimeoutSeconds;
 
     public OrchestratorIdempotencyService(OrchestratorCommandRepository commandRepository,
                                          CompanyContextService companyContextService,
                                          ObjectMapper objectMapper,
                                          PlatformTransactionManager txManager) {
-        this(commandRepository, companyContextService, objectMapper, txManager, 300L);
-    }
-
-    public OrchestratorIdempotencyService(OrchestratorCommandRepository commandRepository,
-                                         CompanyContextService companyContextService,
-                                         ObjectMapper objectMapper,
-                                         PlatformTransactionManager txManager,
-                                         @Value("${orchestrator.idempotency.in-progress-timeout-seconds:300}")
-                                         long staleInProgressTimeoutSeconds) {
         this.commandRepository = commandRepository;
         this.companyContextService = companyContextService;
         this.hashMapper = objectMapper.copy()
                 .configure(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY, true)
                 .configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true);
-        this.staleInProgressTimeoutSeconds = Math.max(1L, staleInProgressTimeoutSeconds);
         TransactionTemplate template = new TransactionTemplate(txManager);
         template.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         this.txTemplate = template;
@@ -102,12 +88,6 @@ public class OrchestratorIdempotencyService {
                         .withDetail("idempotencyKey", key);
             }
 
-            if (existing.getStatus() == OrchestratorCommand.Status.IN_PROGRESS && isStaleInProgress(existing)) {
-                existing.markRetry();
-                commandRepository.save(existing);
-                return new CommandLease(existing.getTraceId(), existing, true);
-            }
-
             if (existing.getStatus() == OrchestratorCommand.Status.FAILED) {
                 existing.markRetry();
                 commandRepository.save(existing);
@@ -116,18 +96,6 @@ public class OrchestratorIdempotencyService {
 
             return new CommandLease(existing.getTraceId(), existing, false);
         });
-    }
-
-    private boolean isStaleInProgress(OrchestratorCommand command) {
-        if (command == null || command.getStatus() != OrchestratorCommand.Status.IN_PROGRESS) {
-            return false;
-        }
-        Instant updatedAt = command.getUpdatedAt();
-        if (updatedAt == null) {
-            return false;
-        }
-        Instant cutoff = CompanyTime.now().minusSeconds(staleInProgressTimeoutSeconds);
-        return updatedAt.isBefore(cutoff);
     }
 
     public void markSuccess(OrchestratorCommand command) {

@@ -193,7 +193,7 @@ class OrchestratorIdempotencyServiceTest {
     }
 
     @Test
-    void startRetriesStaleInProgressReservationWhenPayloadMatches() {
+    void startDoesNotRetryStaleInProgressReservation() {
         Map<String, Object> payload = Map.of("orderId", "101", "amount", "5000");
         String requestHash = ReflectionTestUtils.invokeMethod(
                 service,
@@ -221,8 +221,8 @@ class OrchestratorIdempotencyServiceTest {
                 payload,
                 () -> "trace-seed");
 
-        assertThat(lease.shouldExecute()).isTrue();
-        verify(commandRepository).save(existing);
+        assertThat(lease.shouldExecute()).isFalse();
+        verify(commandRepository, never()).save(existing);
     }
 
     @Test
