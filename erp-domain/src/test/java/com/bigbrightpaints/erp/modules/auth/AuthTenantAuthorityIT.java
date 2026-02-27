@@ -356,6 +356,38 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
     }
 
     @Test
+    void root_only_super_admin_can_create_tenant_admin_user_for_foreign_tenant() {
+        String rootOnlySuperAdminEmail = "root-only-create-super-admin@" + System.nanoTime() + ".bbp.com";
+        dataSeeder.ensureUser(rootOnlySuperAdminEmail, PASSWORD, "Root Only Create Super Admin", ROOT_TENANT,
+                List.of("ROLE_SUPER_ADMIN"));
+        String token = login(rootOnlySuperAdminEmail, ROOT_TENANT);
+        Long tenantAId = companyRepository.findByCodeIgnoreCase(TENANT_A).map(Company::getId).orElseThrow();
+        String candidateEmail = "root-super-candidate-" + System.nanoTime() + "@bbp.com";
+
+        ResponseEntity<Map> response = rest.exchange(
+                "/api/v1/admin/users",
+                HttpMethod.POST,
+                new HttpEntity<>(Map.of(
+                        "email", candidateEmail,
+                        "password", "ChangeMe123!",
+                        "displayName", "Created By Root Super Admin",
+                        "companyIds", List.of(tenantAId),
+                        "roles", List.of("ROLE_ADMIN")
+                ), jsonHeaders(token, ROOT_TENANT)),
+                Map.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> body = response.getBody();
+        assertThat(body).isNotNull();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) body.get("data");
+        assertThat(data.get("email")).isEqualTo(candidateEmail);
+        @SuppressWarnings("unchecked")
+        List<String> companies = (List<String>) data.get("companies");
+        assertThat(companies).contains(TENANT_A);
+    }
+
+    @Test
     void super_admin_without_admin_role_can_execute_admin_only_sales_target_flow() {
         String token = login(SUPER_ADMIN_HIERARCHY_EMAIL, TENANT_A);
         String targetName = "Hierarchy Target " + System.nanoTime();
