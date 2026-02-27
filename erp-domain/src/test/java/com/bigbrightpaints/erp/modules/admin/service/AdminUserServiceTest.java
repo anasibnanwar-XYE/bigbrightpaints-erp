@@ -32,6 +32,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -90,15 +91,15 @@ class AdminUserServiceTest {
         ReflectionTestUtils.setField(company, "id", 1L);
         company.setCode("TEST");
         when(companyContextService.requireCurrentCompany()).thenReturn(company);
-        when(passwordEncoder.encode(any())).thenReturn("encoded");
-        when(userRepository.save(any(UserAccount.class))).thenAnswer(invocation -> {
+        lenient().when(passwordEncoder.encode(any())).thenReturn("encoded");
+        lenient().when(userRepository.save(any(UserAccount.class))).thenAnswer(invocation -> {
             UserAccount user = invocation.getArgument(0);
             if (user.getId() == null) {
                 ReflectionTestUtils.setField(user, "id", 200L);
             }
             return user;
         });
-        when(roleService.ensureRoleExists(anyString())).thenAnswer(invocation -> {
+        lenient().when(roleService.ensureRoleExists(anyString())).thenAnswer(invocation -> {
             Role role = new Role();
             role.setName(invocation.getArgument(0));
             return role;
@@ -178,5 +179,58 @@ class AdminUserServiceTest {
                 .extracting(Company::getCode)
                 .containsExactly("FOREIGN");
         verify(tenantRuntimePolicyService).assertCanAddEnabledUser(foreignCompany, "ADMIN_USER_CREATE");
+    }
+
+    @Test
+    void createUser_nonSuperAdminRejectsForeignCompanyScope() {
+        assertThatThrownBy(() -> service.createUser(new CreateUserRequest(
+                "scope-user@example.com",
+                "Password@123",
+                "Scope User",
+                List.of(2L),
+                List.of("ROLE_SALES")
+        ))).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("User must be assigned to the active company");
+    }
+
+    @Test
+    void createUser_superAdminRejectsMissingCompanyAssignments() {
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+                "super-admin@bbp.com",
+                "n/a",
+                List.of(new SimpleGrantedAuthority("ROLE_SUPER_ADMIN"))));
+        try {
+            assertThatThrownBy(() -> service.createUser(new CreateUserRequest(
+                    "missing-company@example.com",
+                    "Password@123",
+                    "Missing Company",
+                    List.of(),
+                    List.of("ROLE_SALES")
+            ))).isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("User must belong to an active company");
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
+    }
+
+    @Test
+    void createUser_superAdminRejectsUnknownCompanyId() {
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+                "super-admin@bbp.com",
+                "n/a",
+                List.of(new SimpleGrantedAuthority("ROLE_SUPER_ADMIN"))));
+        when(companyRepository.findAllById(any())).thenReturn(List.of());
+        try {
+            assertThatThrownBy(() -> service.createUser(new CreateUserRequest(
+                    "unknown-company@example.com",
+                    "Password@123",
+                    "Unknown Company",
+                    List.of(99L),
+                    List.of("ROLE_SALES")
+            ))).isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("Company not found: 99");
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
     }
 }
