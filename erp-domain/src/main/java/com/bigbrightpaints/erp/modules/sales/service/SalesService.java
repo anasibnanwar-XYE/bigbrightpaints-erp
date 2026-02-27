@@ -914,6 +914,34 @@ public class SalesService {
                 .orElse(null);
     }
 
+    private long dispatchSelectableSlipCount(List<PackagingSlip> slips) {
+        if (slips == null || slips.isEmpty()) {
+            return 0;
+        }
+        return slips.stream()
+                .filter(this::isDispatchPendingSlip)
+                .count();
+    }
+
+    private PackagingSlip findSingleDispatchSelectableSlip(List<PackagingSlip> slips) {
+        if (dispatchSelectableSlipCount(slips) != 1) {
+            return null;
+        }
+        return slips.stream()
+                .filter(this::isDispatchPendingSlip)
+                .findFirst()
+                .orElse(null);
+    }
+
+    private boolean isDispatchPendingSlip(PackagingSlip slip) {
+        if (slip == null) {
+            return false;
+        }
+        String status = slip.getStatus();
+        return !"CANCELLED".equalsIgnoreCase(status)
+                && !"DISPATCHED".equalsIgnoreCase(status);
+    }
+
     private void assertSlipDispatchable(PackagingSlip slip) {
         String status = slip.getStatus();
         if ("CANCELLED".equalsIgnoreCase(status)) {
@@ -2013,12 +2041,12 @@ public class SalesService {
                     .findFirst()
                     .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Packing slip not found"));
         } else {
-            long activeSlips = activeSlipCount(orderSlips);
+            long activeSlips = dispatchSelectableSlipCount(orderSlips);
             if (activeSlips > 1) {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
                         "Multiple packing slips found for order " + salesOrderId + "; provide packingSlipId");
             }
-            slip = findSingleActiveSlip(orderSlips);
+            slip = findSingleDispatchSelectableSlip(orderSlips);
             if (slip == null) {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
                         "No active packing slip found for order " + salesOrderId);

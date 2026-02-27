@@ -1098,6 +1098,29 @@ class SalesServiceTest {
     }
 
     @Test
+    void confirmDispatchFailsWhenOnlyDispatchedSlipExistsWithoutPackingSlipId() {
+        SalesOrder order = new SalesOrder();
+        setField(order, "id", 10L);
+        order.setStatus("READY_TO_SHIP");
+
+        PackagingSlip dispatchedSlip = new PackagingSlip();
+        dispatchedSlip.setCompany(company);
+        dispatchedSlip.setSalesOrder(order);
+        dispatchedSlip.setStatus("DISPATCHED");
+        setField(dispatchedSlip, "id", 55L);
+
+        when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, 10L))
+                .thenReturn(List.of(dispatchedSlip));
+        when(companyEntityLookup.requireSalesOrder(company, 10L)).thenReturn(order);
+
+        DispatchConfirmRequest request = new DispatchConfirmRequest(null, 10L, List.of(), null, null, false, null, null);
+
+        ApplicationException ex = assertThrows(ApplicationException.class, () -> salesService.confirmDispatch(request));
+        assertEquals(ErrorCode.VALIDATION_INVALID_REFERENCE, ex.getErrorCode());
+        assertTrue(ex.getMessage().contains("No active packing slip found for order 10"));
+    }
+
+    @Test
     void confirmDispatchOrderIdOnlyWithCancelledAndBackorderSkipsCancelledSelection() {
         SalesOrder order = new SalesOrder();
         setField(order, "id", 10L);
@@ -1122,6 +1145,35 @@ class SalesServiceTest {
         DispatchConfirmRequest request = new DispatchConfirmRequest(null, 10L, List.of(), null, null, false, null, null);
 
         ApplicationException ex = assertThrows(ApplicationException.class, () -> salesService.confirmDispatch(request));
+        assertTrue(ex.getMessage().contains("Dealer with receivable account is required for dispatch"));
+    }
+
+    @Test
+    void confirmDispatchOrderIdOnlyWithDispatchedAndPendingSkipsDispatchedSelection() {
+        SalesOrder order = new SalesOrder();
+        setField(order, "id", 10L);
+        order.setStatus("READY_TO_SHIP");
+
+        PackagingSlip dispatchedSlip = new PackagingSlip();
+        dispatchedSlip.setCompany(company);
+        dispatchedSlip.setSalesOrder(order);
+        dispatchedSlip.setStatus("DISPATCHED");
+        setField(dispatchedSlip, "id", 55L);
+
+        PackagingSlip pendingSlip = new PackagingSlip();
+        pendingSlip.setCompany(company);
+        pendingSlip.setSalesOrder(order);
+        pendingSlip.setStatus("PENDING");
+        setField(pendingSlip, "id", 56L);
+
+        when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, 10L))
+                .thenReturn(List.of(dispatchedSlip, pendingSlip));
+        when(companyEntityLookup.requireSalesOrder(company, 10L)).thenReturn(order);
+
+        DispatchConfirmRequest request = new DispatchConfirmRequest(null, 10L, List.of(), null, null, false, null, null);
+
+        ApplicationException ex = assertThrows(ApplicationException.class, () -> salesService.confirmDispatch(request));
+        assertFalse(ex.getMessage().contains("Multiple packing slips found for order 10; provide packingSlipId"));
         assertTrue(ex.getMessage().contains("Dealer with receivable account is required for dispatch"));
     }
 
