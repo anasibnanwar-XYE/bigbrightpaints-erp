@@ -744,6 +744,7 @@ public class SalesService {
         SalesOrder order = requireOrder(id);
         String currentStatus = normalizeStatusToken(order.getStatus());
         if ("CONFIRMED".equals(currentStatus)) {
+            order.setStatus("CONFIRMED");
             return toDto(order);
         }
         if (!CONFIRMABLE_ORDER_STATUSES.contains(currentStatus)) {
@@ -895,7 +896,7 @@ public class SalesService {
             return 0;
         }
         return slips.stream()
-                .filter(this::isDispatchSelectableSlip)
+                .filter(slip -> !("CANCELLED".equalsIgnoreCase(slip.getStatus())))
                 .count();
     }
 
@@ -908,23 +909,12 @@ public class SalesService {
             return null;
         }
         return slips.stream()
-                .filter(this::isDispatchSelectableSlip)
+                .filter(slip -> !("CANCELLED".equalsIgnoreCase(slip.getStatus())))
                 .findFirst()
                 .orElse(null);
     }
 
-    private boolean isDispatchSelectableSlip(PackagingSlip slip) {
-        if (slip == null) {
-            return false;
-        }
-        String status = slip.getStatus();
-        return !"CANCELLED".equalsIgnoreCase(status);
-    }
-
     private void assertSlipDispatchable(PackagingSlip slip) {
-        if (slip == null) {
-            return;
-        }
         String status = slip.getStatus();
         if ("CANCELLED".equalsIgnoreCase(status)) {
             throw new ApplicationException(
