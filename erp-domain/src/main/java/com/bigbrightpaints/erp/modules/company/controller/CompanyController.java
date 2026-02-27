@@ -36,10 +36,13 @@ public class CompanyController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING','ROLE_SALES')")
+    @PreAuthorize("hasAnyAuthority('ROLE_SUPER_ADMIN','ROLE_ADMIN','ROLE_ACCOUNTING','ROLE_SALES')")
     public ResponseEntity<ApiResponse<List<CompanyDto>>> list(@AuthenticationPrincipal UserPrincipal principal) {
         if (principal == null) {
             return ResponseEntity.status(401).body(ApiResponse.failure("Unauthenticated"));
+        }
+        if (isSuperAdmin(principal)) {
+            return ResponseEntity.ok(ApiResponse.success(companyService.findAll()));
         }
         return ResponseEntity.ok(ApiResponse.success(companyService.findAll(requireCompanyContext(principal))));
     }
@@ -114,6 +117,15 @@ public class CompanyController {
             throw new AccessDeniedException("Missing authenticated company context");
         }
         return principal.getUser().getCompanies();
+    }
+
+    private boolean isSuperAdmin(UserPrincipal principal) {
+        if (principal == null || principal.getUser() == null || principal.getUser().getRoles() == null) {
+            return false;
+        }
+        return principal.getUser().getRoles().stream()
+                .filter(role -> role != null && role.getName() != null)
+                .anyMatch(role -> "ROLE_SUPER_ADMIN".equalsIgnoreCase(role.getName()));
     }
 
     public record CompanyTenantRuntimePolicyRequest(String holdState,

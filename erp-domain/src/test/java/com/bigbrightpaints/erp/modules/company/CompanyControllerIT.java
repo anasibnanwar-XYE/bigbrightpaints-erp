@@ -9,6 +9,7 @@ import org.springframework.http.*;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -72,6 +73,26 @@ public class CompanyControllerIT extends AbstractIntegrationTest {
 
         ResponseEntity<Map> listResp = rest.exchange("/api/v1/companies", HttpMethod.GET, new HttpEntity<>(headers), Map.class);
         assertThat(listResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    @Test
+    void list_companies_returns_all_tenants_for_root_only_super_admin() {
+        String rootOnlySuperAdminEmail = "root-list-super-admin@bbp.com";
+        dataSeeder.ensureUser(rootOnlySuperAdminEmail, ADMIN_PASSWORD, "Root List Super Admin", ROOT_COMPANY_CODE,
+                java.util.List.of("ROLE_SUPER_ADMIN"));
+        String token = loginToken(rootOnlySuperAdminEmail, ROOT_COMPANY_CODE);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        ResponseEntity<Map> listResp = rest.exchange("/api/v1/companies", HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+        assertThat(listResp.getStatusCode()).isEqualTo(HttpStatus.OK);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> companies = (List<Map<String, Object>>) listResp.getBody().get("data");
+        assertThat(companies).isNotNull();
+        assertThat(companies)
+                .extracting(company -> company.get("code").toString().toUpperCase(Locale.ROOT))
+                .contains(ROOT_COMPANY_CODE, COMPANY_CODE);
     }
 
     @Test
