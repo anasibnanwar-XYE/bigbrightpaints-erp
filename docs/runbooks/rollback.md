@@ -93,3 +93,17 @@ Record one immutable evidence entry per rollback event or drill with these requi
   1. halt deployment before V21 is applied.
   2. run Flyway v2 `validate` and confirm pending set is intact.
   3. resume rollout only after approval with corrected migration plan.
+
+## V22 Rollback/Forward-Fix Notes (2026-02-27)
+- Migration: `erp-domain/src/main/resources/db/migration_v2/V22__promotions_image_url.sql`
+- Primary strategy: forward-fix (preferred). This is an additive nullable column and should not require DB restore for standard rollback scenarios.
+- Forward-fix path:
+  1. if `imageUrl` contract needs correction, ship a new compensating `migration_v2` script;
+  2. keep existing `image_url` column in place to avoid destructive rollback;
+  3. rerun promotion API smoke tests and tenant-level regression checks.
+- Emergency rollback path (pre-apply only):
+  1. halt deployment before V22 is applied;
+  2. run Flyway v2 `validate` and verify pending migration set;
+  3. resume release only after migration plan approval.
+- Data-loss warning:
+  - do not drop `promotions.image_url` during rollback unless explicit R2 approval confirms acceptable data loss.

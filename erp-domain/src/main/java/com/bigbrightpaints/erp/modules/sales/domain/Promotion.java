@@ -28,6 +28,9 @@ public class Promotion extends VersionedEntity {
 
     private String description;
 
+    @Column(name = "image_url", length = 1024)
+    private String imageUrl;
+
     @Column(name = "discount_type", nullable = false)
     private String discountType;
 
@@ -58,6 +61,8 @@ public class Promotion extends VersionedEntity {
     public void setName(String name) { this.name = name; }
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
+    public String getImageUrl() { return imageUrl; }
+    public void setImageUrl(String imageUrl) { this.imageUrl = imageUrl; }
     public String getDiscountType() { return discountType; }
     public void setDiscountType(String discountType) { this.discountType = discountType; }
     public BigDecimal getDiscountValue() { return discountValue; }

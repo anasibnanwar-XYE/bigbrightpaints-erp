@@ -11,6 +11,7 @@ import java.util.Optional;
 public interface CreditRequestRepository extends JpaRepository<CreditRequest, Long> {
     List<CreditRequest> findByCompanyOrderByCreatedAtDesc(Company company);
     List<CreditRequest> findByCompanyAndStatusOrderByCreatedAtDesc(Company company, String status);
+    long countByCompanyAndStatusIgnoreCase(Company company, String status);
 
     @Query("""
             select request

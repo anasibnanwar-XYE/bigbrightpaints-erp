@@ -1,7 +1,6 @@
 package com.bigbrightpaints.erp.modules.sales;
 
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
-import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
@@ -10,6 +9,8 @@ import com.bigbrightpaints.erp.modules.production.domain.ProductionBrand;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionBrandRepository;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProduct;
 import com.bigbrightpaints.erp.modules.production.domain.ProductionProductRepository;
+import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
+import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,6 +32,10 @@ public class SalesControllerIT extends AbstractIntegrationTest {
     private static final String ADMIN_PASSWORD = "admin123";
     private static final String SALES_EMAIL = "sales@bbp.com";
     private static final String SALES_PASSWORD = "sales123";
+    private static final String SALES_DISPATCH_EMAIL = "sales-dispatch@bbp.com";
+    private static final String SALES_DISPATCH_PASSWORD = "salesdispatch123";
+    private static final String FACTORY_DISPATCH_EMAIL = "factory-dispatch@bbp.com";
+    private static final String FACTORY_DISPATCH_PASSWORD = "factorydispatch123";
     private static final String TEST_SKU = "SKU-TEST-001";
 
     @Autowired private TestRestTemplate rest;
@@ -38,12 +43,24 @@ public class SalesControllerIT extends AbstractIntegrationTest {
     @Autowired private ProductionBrandRepository productionBrandRepository;
     @Autowired private ProductionProductRepository productionProductRepository;
     @Autowired private FinishedGoodRepository finishedGoodRepository;
-    @Autowired private AccountRepository accountRepository;
+    @Autowired private DealerRepository dealerRepository;
 
     @BeforeEach
     void seed() {
         dataSeeder.ensureUser(ADMIN_EMAIL, ADMIN_PASSWORD, "Admin", COMPANY_CODE, List.of("ROLE_ADMIN", "ROLE_SALES"));
         dataSeeder.ensureUser(SALES_EMAIL, SALES_PASSWORD, "Sales User", COMPANY_CODE, List.of("ROLE_SALES"));
+        dataSeeder.ensureUser(
+                SALES_DISPATCH_EMAIL,
+                SALES_DISPATCH_PASSWORD,
+                "Sales Dispatch User",
+                COMPANY_CODE,
+                List.of("ROLE_SALES", "dispatch.confirm"));
+        dataSeeder.ensureUser(
+                FACTORY_DISPATCH_EMAIL,
+                FACTORY_DISPATCH_PASSWORD,
+                "Factory Dispatch User",
+                COMPANY_CODE,
+                List.of("ROLE_FACTORY", "dispatch.confirm"));
         ensureProductAndFinishedGood();
     }
 
@@ -130,12 +147,12 @@ public class SalesControllerIT extends AbstractIntegrationTest {
     }
 
     private Long createCreditRequest(HttpHeaders headers, String reason) {
-        return createCreditRequest(headers, reason, null);
+        return createCreditRequest(headers, null, new BigDecimal("1500.00"), reason);
     }
 
-    private Long createCreditRequest(HttpHeaders headers, String reason, Long dealerId) {
+    private Long createCreditRequest(HttpHeaders headers, Long dealerId, BigDecimal amountRequested, String reason) {
         Map<String, Object> request = new HashMap<>();
-        request.put("amountRequested", new BigDecimal("1500.00"));
+        request.put("amountRequested", amountRequested);
         request.put("reason", reason);
         if (dealerId != null) {
             request.put("dealerId", dealerId);
@@ -149,6 +166,68 @@ public class SalesControllerIT extends AbstractIntegrationTest {
         assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         Map<?, ?> data = (Map<?, ?>) createResponse.getBody().get("data");
         return ((Number) data.get("id")).longValue();
+    }
+
+    private Map<?, ?> salesDashboardData(HttpHeaders headers) {
+        ResponseEntity<Map> dashboardResponse = rest.exchange(
+                "/api/v1/sales/dashboard",
+                HttpMethod.GET,
+                new HttpEntity<>(headers),
+                Map.class);
+        assertThat(dashboardResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return (Map<?, ?>) dashboardResponse.getBody().get("data");
+    }
+
+    private Long createPersistedDealer(String code, BigDecimal creditLimit) {
+        Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
+        Dealer dealer = new Dealer();
+        dealer.setCompany(company);
+        dealer.setCode(code);
+        dealer.setName("Integration Dealer " + code);
+        dealer.setStatus("ACTIVE");
+        dealer.setCreditLimit(creditLimit);
+        return dealerRepository.save(dealer).getId();
+    }
+
+    private void createSalesOrder(HttpHeaders headers, Long dealerId) {
+        BigDecimal unitPrice = new BigDecimal("100.00");
+        BigDecimal quantity = new BigDecimal("2");
+        BigDecimal expectedTotal = unitPrice.multiply(quantity);
+
+        Map<String, Object> lineItem = new HashMap<>();
+        lineItem.put("productCode", TEST_SKU);
+        lineItem.put("description", "Dashboard test line item");
+        lineItem.put("quantity", quantity);
+        lineItem.put("unitPrice", unitPrice);
+        lineItem.put("gstRate", BigDecimal.ZERO);
+
+        Map<String, Object> orderReq = new HashMap<>();
+        orderReq.put("dealerId", dealerId);
+        orderReq.put("totalAmount", expectedTotal);
+        orderReq.put("currency", "INR");
+        orderReq.put("notes", "Dashboard test order");
+        orderReq.put("items", List.of(lineItem));
+        orderReq.put("gstTreatment", "NONE");
+        orderReq.put("gstRate", null);
+
+        ResponseEntity<Map> orderResponse = rest.exchange(
+                "/api/v1/sales/orders",
+                HttpMethod.POST,
+                new HttpEntity<>(orderReq, headers),
+                Map.class);
+        assertThat(orderResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    private long bucketCount(Map<?, ?> dashboardData, String bucket) {
+        Map<?, ?> buckets = (Map<?, ?>) dashboardData.get("orderStatusBuckets");
+        return longValue(buckets.get(bucket));
+    }
+
+    private long longValue(Object value) {
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        return Long.parseLong(String.valueOf(value));
     }
 
     @Test
@@ -206,8 +285,33 @@ public class SalesControllerIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void dispatch_confirm_requires_permission() {
-        String token = loginToken(SALES_EMAIL, SALES_PASSWORD);
+    void sales_dashboard_exposes_metrics_and_tracks_activity() {
+        HttpHeaders salesHeaders = authenticatedHeaders(loginToken(SALES_EMAIL, SALES_PASSWORD));
+        Map<?, ?> dashboardBefore = salesDashboardData(salesHeaders);
+        long pendingBefore = longValue(dashboardBefore.get("pendingCreditRequests"));
+        long dealersBefore = longValue(dashboardBefore.get("activeDealers"));
+        long ordersBefore = longValue(dashboardBefore.get("totalOrders"));
+        long inProgressBefore = bucketCount(dashboardBefore, "in_progress");
+
+        HttpHeaders adminHeaders = authenticatedHeaders(loginToken());
+        Long dealerId = createDealer(adminHeaders, "Dashboard Dealer");
+        createSalesOrder(adminHeaders, dealerId);
+        createCreditRequest(salesHeaders, "Dashboard metric credit request");
+
+        Map<?, ?> dashboardAfter = salesDashboardData(salesHeaders);
+        assertThat(longValue(dashboardAfter.get("pendingCreditRequests"))).isEqualTo(pendingBefore + 1);
+        assertThat(longValue(dashboardAfter.get("activeDealers"))).isGreaterThanOrEqualTo(dealersBefore + 1);
+        assertThat(longValue(dashboardAfter.get("totalOrders"))).isGreaterThanOrEqualTo(ordersBefore + 1);
+        assertThat(bucketCount(dashboardAfter, "in_progress")).isGreaterThanOrEqualTo(inProgressBefore + 1);
+        @SuppressWarnings("unchecked")
+        Map<String, ?> buckets = (Map<String, ?>) dashboardAfter.get("orderStatusBuckets");
+        assertThat(buckets).containsKeys(
+                "open", "in_progress", "dispatched", "completed", "cancelled", "other");
+    }
+
+    @Test
+    void dispatch_confirm_denies_sales_even_with_dispatch_confirm_authority() {
+        String token = loginToken(SALES_DISPATCH_EMAIL, SALES_DISPATCH_PASSWORD);
 
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token);
@@ -231,10 +335,41 @@ public class SalesControllerIT extends AbstractIntegrationTest {
     }
 
     @Test
+    void dispatch_confirm_allows_factory_with_dispatch_confirm_authority_to_reach_business_validation() {
+        String token = loginToken(FACTORY_DISPATCH_EMAIL, FACTORY_DISPATCH_PASSWORD);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("X-Company-Id", COMPANY_CODE);
+
+        Map<String, Object> line = Map.of(
+                "shipQty", new BigDecimal("1.00")
+        );
+        Map<String, Object> payload = Map.of(
+                "packingSlipId", 9999,
+                "lines", List.of(line)
+        );
+
+        ResponseEntity<Map> response = rest.exchange(
+                "/api/v1/sales/dispatch/confirm",
+                HttpMethod.POST,
+                new HttpEntity<>(payload, headers),
+                Map.class);
+        assertThat(response.getStatusCode()).isNotEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(response.getStatusCode().is4xxClientError()).isTrue();
+    }
+
+    @Test
     void credit_request_approve_requires_decision_reason_metadata() {
         String token = loginToken();
         HttpHeaders headers = authenticatedHeaders(token);
-        Long creditRequestId = createCreditRequest(headers, "Temporary limit extension");
+        Long dealerId = createPersistedDealer("CRR" + System.nanoTime(), new BigDecimal("100000.00"));
+        Long creditRequestId = createCreditRequest(
+                headers,
+                dealerId,
+                new BigDecimal("1500.00"),
+                "Temporary limit extension");
 
         ResponseEntity<Map> missingReasonResponse = rest.exchange(
                 "/api/v1/sales/credit-requests/" + creditRequestId + "/approve",
@@ -251,6 +386,31 @@ public class SalesControllerIT extends AbstractIntegrationTest {
         assertThat(approveResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         Map<?, ?> approvedData = (Map<?, ?>) approveResponse.getBody().get("data");
         assertThat(approvedData.get("status")).isEqualTo("APPROVED");
+    }
+
+    @Test
+    void credit_request_approve_increments_dealer_credit_limit() {
+        String token = loginToken();
+        HttpHeaders headers = authenticatedHeaders(token);
+        BigDecimal initialLimit = new BigDecimal("200000.00");
+        Long dealerId = createPersistedDealer("CRL" + System.nanoTime(), initialLimit);
+        BigDecimal increment = new BigDecimal("1500.00");
+        Long creditRequestId = createCreditRequest(
+                headers,
+                dealerId,
+                increment,
+                "Temporary increase for seasonal order spike");
+
+        Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
+        ResponseEntity<Map> approveResponse = rest.exchange(
+                "/api/v1/sales/credit-requests/" + creditRequestId + "/approve",
+                HttpMethod.POST,
+                new HttpEntity<>(Map.of("reason", "Approved after payment behavior review"), headers),
+                Map.class);
+        assertThat(approveResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        Dealer afterApproval = dealerRepository.findByCompanyAndId(company, dealerId).orElseThrow();
+        assertThat(afterApproval.getCreditLimit()).isEqualByComparingTo(initialLimit.add(increment));
     }
 
     @Test
@@ -281,7 +441,11 @@ public class SalesControllerIT extends AbstractIntegrationTest {
         String token = loginToken();
         HttpHeaders headers = authenticatedHeaders(token);
         Long dealerId = createDealer(headers, "Credit Dealer");
-        Long creditRequestId = createCreditRequest(headers, "Need temporary extension with dealer link", dealerId);
+        Long creditRequestId = createCreditRequest(
+                headers,
+                dealerId,
+                new BigDecimal("1500.00"),
+                "Need temporary extension with dealer link");
 
         ResponseEntity<Map> listResponse = rest.exchange(
                 "/api/v1/sales/credit-requests",

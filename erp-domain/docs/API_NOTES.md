@@ -1,6 +1,7 @@
 # API Notes
 
 ## Notes
+- Sales module API contract and role/scope map: `erp-domain/docs/SALES_PORTAL_MODULE_CONTRACT.md`
 - `GET /api/v1/accounting/gst/return` aggregates POSTED journal entries only.
 - `POST /api/v1/raw-materials/intake` is disabled by default (`ERP_RAW_MATERIAL_INTAKE_ENABLED=false`) and is intended
   for internal adjustments, not supplier invoice capture.

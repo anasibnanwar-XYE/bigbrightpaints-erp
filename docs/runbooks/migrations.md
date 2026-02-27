@@ -124,3 +124,24 @@ mvn -B -ntp -f erp-domain/pom.xml org.flywaydb:flyway-maven-plugin:repair \
   - do not edit applied migration files;
   - if bad permission links are detected post-apply, ship a compensating v2 migration to remove/replace incorrect `role_permissions` rows;
   - if rollout must pause pre-apply, hold deployment and re-run v2 validate before resume.
+
+## V22 Execution Notes (2026-02-27)
+- Migration: `erp-domain/src/main/resources/db/migration_v2/V22__promotions_image_url.sql`
+- Change type: additive nullable column for promotion media metadata (`promotions.image_url`).
+- Safety profile:
+  - DDL is additive and idempotent via `ADD COLUMN IF NOT EXISTS`.
+  - No backfill required.
+  - Existing promotion flows remain valid when `image_url` is null.
+- Required rollout posture:
+  1. ensure `flyway-v2` chain is active in the runtime profile set (`prod` grouped to `flyway-v2`);
+  2. apply migration in standard v2 startup flow;
+  3. verify promotions create/update/list with and without `imageUrl`.
+- Dry-run / validation commands:
+  1. `bash scripts/flyway_overlap_scan.sh --migration-set v2`
+  2. `bash scripts/guard_flyway_v2_referential_contract.sh`
+  3. `bash scripts/guard_legacy_migration_freeze.sh`
+  4. `mvn -B -ntp -f erp-domain/pom.xml -DskipTests flyway:validate -Pflyway-v2`
+- Rollback/forward-fix strategy:
+  - do not edit applied migration files;
+  - prefer forward-fix migration if validation constraints need tightening;
+  - do not drop `image_url` in rollback unless explicit data-loss approval is granted.

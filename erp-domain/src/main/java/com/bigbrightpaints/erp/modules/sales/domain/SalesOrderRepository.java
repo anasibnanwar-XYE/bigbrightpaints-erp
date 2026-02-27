@@ -142,4 +142,12 @@ public interface SalesOrderRepository extends JpaRepository<SalesOrder, Long> {
             @Param("dealer") Dealer dealer,
             @Param("statuses") Set<String> statuses,
             @Param("excludeOrderId") Long excludeOrderId);
+
+    @Query("""
+            select upper(trim(coalesce(o.status, 'UNKNOWN'))), count(o)
+            from SalesOrder o
+            where o.company = :company
+            group by upper(trim(coalesce(o.status, 'UNKNOWN')))
+            """)
+    List<Object[]> countByCompanyGroupedByNormalizedStatus(@Param("company") Company company);
 }

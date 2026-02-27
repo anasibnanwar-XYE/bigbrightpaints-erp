@@ -3,6 +3,9 @@ spring:
     name: erp-domain
   profiles:
     default: prod
+    group:
+      prod:
+        - flyway-v2
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/erp_domain}
     username: ${SPRING_DATASOURCE_USERNAME:erp}

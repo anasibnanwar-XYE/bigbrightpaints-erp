@@ -63,6 +63,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -130,6 +131,18 @@ public class SalesService {
     private static final String DISPATCH_REASON_CODE_TAX_OVERRIDE = "TAX_OVERRIDE";
     private static final String DISPATCH_REASON_CODE_LINE_OVERRIDE = "LINE_OVERRIDE";
     private static final String DISPATCH_REASON_CODE_COMPOSITE_OVERRIDE = "COMPOSITE_OVERRIDE";
+    private static final String DASHBOARD_BUCKET_OPEN = "open";
+    private static final String DASHBOARD_BUCKET_IN_PROGRESS = "in_progress";
+    private static final String DASHBOARD_BUCKET_DISPATCHED = "dispatched";
+    private static final String DASHBOARD_BUCKET_COMPLETED = "completed";
+    private static final String DASHBOARD_BUCKET_CANCELLED = "cancelled";
+    private static final String DASHBOARD_BUCKET_OTHER = "other";
+    private static final Set<String> DASHBOARD_OPEN_STATUSES = Set.of("BOOKED", "CONFIRMED");
+    private static final Set<String> DASHBOARD_IN_PROGRESS_STATUSES = Set.of(
+            "RESERVED", "PENDING_PRODUCTION", "PENDING_INVENTORY", "PROCESSING", "READY_TO_SHIP", "ON_HOLD");
+    private static final Set<String> DASHBOARD_DISPATCHED_STATUSES = Set.of("SHIPPED", "FULFILLED");
+    private static final Set<String> DASHBOARD_COMPLETED_STATUSES = Set.of("COMPLETED", "CLOSED");
+    private static final Set<String> DASHBOARD_CANCELLED_STATUSES = Set.of("CANCELLED", "REJECTED");
 
     private final CompanyContextService companyContextService;
     private final DealerRepository dealerRepository;
@@ -371,6 +384,65 @@ public class SalesService {
                             company, dealer, status);
         }
         return orders.stream().map(this::toDto).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public SalesDashboardDto getDashboard() {
+        Company company = companyContextService.requireCurrentCompany();
+        long activeDealers = dealerRepository.countByCompanyAndStatusIgnoreCase(
+                company,
+                DealerProvisioningSupport.ACTIVE_STATUS);
+        long pendingCreditRequests = creditRequestRepository.countByCompanyAndStatusIgnoreCase(
+                company,
+                CREDIT_REQUEST_STATUS_PENDING);
+        Map<String, Long> orderStatusBuckets = initializeDashboardBuckets();
+        long totalOrders = 0L;
+        for (Object[] row : salesOrderRepository.countByCompanyGroupedByNormalizedStatus(company)) {
+            if (row == null || row.length < 2 || !(row[1] instanceof Number)) {
+                continue;
+            }
+            String status = row[0] != null ? row[0].toString() : "";
+            long count = ((Number) row[1]).longValue();
+            totalOrders += count;
+            String bucket = resolveDashboardOrderBucket(status);
+            orderStatusBuckets.merge(bucket, count, Long::sum);
+        }
+        return new SalesDashboardDto(
+                activeDealers,
+                totalOrders,
+                Map.copyOf(orderStatusBuckets),
+                pendingCreditRequests);
+    }
+
+    private Map<String, Long> initializeDashboardBuckets() {
+        Map<String, Long> buckets = new LinkedHashMap<>();
+        buckets.put(DASHBOARD_BUCKET_OPEN, 0L);
+        buckets.put(DASHBOARD_BUCKET_IN_PROGRESS, 0L);
+        buckets.put(DASHBOARD_BUCKET_DISPATCHED, 0L);
+        buckets.put(DASHBOARD_BUCKET_COMPLETED, 0L);
+        buckets.put(DASHBOARD_BUCKET_CANCELLED, 0L);
+        buckets.put(DASHBOARD_BUCKET_OTHER, 0L);
+        return buckets;
+    }
+
+    private String resolveDashboardOrderBucket(String status) {
+        String normalized = normalizeStatusToken(status);
+        if (DASHBOARD_OPEN_STATUSES.contains(normalized)) {
+            return DASHBOARD_BUCKET_OPEN;
+        }
+        if (DASHBOARD_IN_PROGRESS_STATUSES.contains(normalized)) {
+            return DASHBOARD_BUCKET_IN_PROGRESS;
+        }
+        if (DASHBOARD_DISPATCHED_STATUSES.contains(normalized)) {
+            return DASHBOARD_BUCKET_DISPATCHED;
+        }
+        if (DASHBOARD_COMPLETED_STATUSES.contains(normalized)) {
+            return DASHBOARD_BUCKET_COMPLETED;
+        }
+        if (DASHBOARD_CANCELLED_STATUSES.contains(normalized)) {
+            return DASHBOARD_BUCKET_CANCELLED;
+        }
+        return DASHBOARD_BUCKET_OTHER;
     }
 
     public SalesOrderDto createOrder(SalesOrderRequest request) {
@@ -1588,6 +1660,7 @@ public class SalesService {
     private void mapPromotion(Promotion promotion, PromotionRequest request) {
         promotion.setName(request.name());
         promotion.setDescription(request.description());
+        promotion.setImageUrl(request.imageUrl());
         promotion.setDiscountType(request.discountType());
         promotion.setDiscountValue(request.discountValue());
         promotion.setStartDate(request.startDate());
@@ -1597,6 +1670,7 @@ public class SalesService {
 
     private PromotionDto toDto(Promotion promotion) {
         return new PromotionDto(promotion.getId(), promotion.getPublicId(), promotion.getName(), promotion.getDescription(),
+                promotion.getImageUrl(),
                 promotion.getDiscountType(), promotion.getDiscountValue(), promotion.getStartDate(), promotion.getEndDate(), promotion.getStatus());
     }
 
@@ -1798,8 +1872,22 @@ public class SalesService {
         CreditRequest creditRequest = requireCreditRequest(id);
         requirePendingCreditRequest(creditRequest, "approved");
         String normalizedDecisionReason = requireCreditDecisionReason(decisionReason, "approve");
+        Dealer dealer = requireCreditRequestDealerForApproval(creditRequest);
+        BigDecimal increment = requirePositiveCreditLimitIncrement(creditRequest);
+        BigDecimal oldLimit = requireCurrentDealerCreditLimit(dealer);
+        BigDecimal newLimit = oldLimit.add(increment);
+        dealer.setCreditLimit(newLimit);
+        creditRequest.setDealer(dealer);
         creditRequest.setStatus("APPROVED");
-        auditCreditRequestDecision(AuditEvent.TRANSACTION_APPROVED, creditRequest, normalizedDecisionReason);
+        Map<String, String> metadataOverrides = new HashMap<>();
+        metadataOverrides.put("oldLimit", oldLimit.toPlainString());
+        metadataOverrides.put("newLimit", newLimit.toPlainString());
+        metadataOverrides.put("increment", increment.toPlainString());
+        auditCreditRequestDecision(
+                AuditEvent.TRANSACTION_APPROVED,
+                creditRequest,
+                normalizedDecisionReason,
+                metadataOverrides);
         return toDto(creditRequest);
     }
 
@@ -1851,7 +1939,49 @@ public class SalesService {
         return reason.trim();
     }
 
+    private Dealer requireCreditRequestDealerForApproval(CreditRequest creditRequest) {
+        Dealer dealer = creditRequest.getDealer();
+        if (dealer == null || dealer.getId() == null) {
+            throw new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE,
+                    "Credit request approval requires an assigned dealer")
+                    .withDetail("requiredField", "dealerId")
+                    .withDetail("resourceType", "credit_request");
+        }
+        Company company = companyContextService.requireCurrentCompany();
+        return dealerRepository.lockByCompanyAndId(company, dealer.getId())
+                .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                        "Dealer linked to credit request was not found"));
+    }
+
+    private BigDecimal requirePositiveCreditLimitIncrement(CreditRequest creditRequest) {
+        BigDecimal amountRequested = creditRequest.getAmountRequested();
+        if (amountRequested == null || amountRequested.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Credit request amount must be greater than zero to approve")
+                    .withDetail("resourceType", "credit_request")
+                    .withDetail("field", "amountRequested");
+        }
+        return amountRequested;
+    }
+
+    private BigDecimal requireCurrentDealerCreditLimit(Dealer dealer) {
+        if (dealer.getCreditLimit() == null || dealer.getCreditLimit().compareTo(BigDecimal.ZERO) < 0) {
+            throw new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE,
+                    "Dealer credit limit is missing or invalid")
+                    .withDetail("resourceType", "dealer")
+                    .withDetail("dealerId", dealer.getId());
+        }
+        return dealer.getCreditLimit();
+    }
+
     private void auditCreditRequestDecision(AuditEvent event, CreditRequest creditRequest, String decisionReason) {
+        auditCreditRequestDecision(event, creditRequest, decisionReason, Map.of());
+    }
+
+    private void auditCreditRequestDecision(AuditEvent event,
+                                            CreditRequest creditRequest,
+                                            String decisionReason,
+                                            Map<String, String> metadataOverrides) {
         Map<String, String> metadata = new HashMap<>();
         metadata.put("resourceType", "credit_request");
         metadata.put("decisionStatus", normalizeCreditRequestStatus(creditRequest.getStatus(), false));
@@ -1868,6 +1998,9 @@ public class SalesService {
         }
         if (StringUtils.hasText(creditRequest.getReason())) {
             metadata.put("requestReason", creditRequest.getReason().trim());
+        }
+        if (metadataOverrides != null && !metadataOverrides.isEmpty()) {
+            metadata.putAll(metadataOverrides);
         }
         auditService.logSuccess(event, metadata);
     }

@@ -52,6 +52,12 @@ public class SalesController {
         return ResponseEntity.ok(ApiResponse.success(salesService.listOrders(status, dealerId, page, size)));
     }
 
+    @GetMapping("/sales/dashboard")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_SALES','ROLE_FACTORY','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<SalesDashboardDto>> dashboard() {
+        return ResponseEntity.ok(ApiResponse.success("Sales dashboard", salesService.getDashboard()));
+    }
+
     @PostMapping("/sales/orders")
     @PreAuthorize("hasAnyAuthority('ROLE_SALES','ROLE_ADMIN')")
     public ResponseEntity<ApiResponse<SalesOrderDto>> createOrder(
@@ -237,7 +243,7 @@ public class SalesController {
 
     /* Dispatch confirmation (final invoice + AR at shipment) */
     @PostMapping("/sales/dispatch/confirm")
-    @PreAuthorize("hasAnyAuthority('ROLE_SALES','ROLE_ACCOUNTING','ROLE_ADMIN') and hasAuthority('dispatch.confirm')")
+    @PreAuthorize("hasAnyAuthority('ROLE_FACTORY','ROLE_ADMIN') and hasAuthority('dispatch.confirm')")
     public ResponseEntity<ApiResponse<DispatchConfirmResponse>> confirmDispatch(@Valid @RequestBody DispatchConfirmRequest request) {
         return ResponseEntity.ok(ApiResponse.success("Dispatch confirmed", salesService.confirmDispatch(request)));
     }

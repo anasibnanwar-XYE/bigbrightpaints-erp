@@ -8,8 +8,23 @@ public record PromotionDto(Long id,
                            UUID publicId,
                            String name,
                            String description,
+                           String imageUrl,
                            String discountType,
                            BigDecimal discountValue,
                            LocalDate startDate,
                            LocalDate endDate,
-                           String status) {}
+                           String status) {
+    public PromotionDto(
+            Long id,
+            UUID publicId,
+            String name,
+            String description,
+            String discountType,
+            BigDecimal discountValue,
+            LocalDate startDate,
+            LocalDate endDate,
+            String status
+    ) {
+        this(id, publicId, name, description, null, discountType, discountValue, startDate, endDate, status);
+    }
+}

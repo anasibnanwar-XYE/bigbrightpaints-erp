@@ -15,6 +15,7 @@ import java.util.Optional;
 public interface DealerRepository extends JpaRepository<Dealer, Long> {
     List<Dealer> findByCompanyOrderByNameAsc(Company company);
     List<Dealer> findByCompanyAndStatusIgnoreCaseOrderByNameAsc(Company company, String status);
+    long countByCompanyAndStatusIgnoreCase(Company company, String status);
     Optional<Dealer> findByCompanyAndId(Company company, Long id);
     Optional<Dealer> findByCompanyAndCodeIgnoreCase(Company company, String code);
     Optional<Dealer> findByCompanyAndEmailIgnoreCase(Company company, String email);
