@@ -227,6 +227,29 @@ class SalesServiceTest {
     }
 
     @Test
+    void getDashboardSkipsMalformedAggregateRowsAndKeepsDefaultBuckets() {
+        when(dealerRepository.countByCompanyAndStatusIgnoreCase(eq(company), anyString())).thenReturn(0L);
+        when(creditRequestRepository.countByCompanyAndStatusIgnoreCase(company, "PENDING")).thenReturn(0L);
+        when(salesOrderRepository.countByCompanyGroupedByNormalizedStatus(company)).thenReturn(
+                java.util.Arrays.asList(
+                        null,
+                        new Object[] {"BOOKED"},
+                        new Object[] {"BOOKED", "not-a-number"},
+                        new Object[] {null, 2L}
+                ));
+
+        SalesDashboardDto dashboard = salesService.getDashboard();
+
+        assertEquals(2L, dashboard.totalOrders());
+        assertEquals(0L, dashboard.orderStatusBuckets().get("open"));
+        assertEquals(0L, dashboard.orderStatusBuckets().get("in_progress"));
+        assertEquals(0L, dashboard.orderStatusBuckets().get("dispatched"));
+        assertEquals(0L, dashboard.orderStatusBuckets().get("completed"));
+        assertEquals(0L, dashboard.orderStatusBuckets().get("cancelled"));
+        assertEquals(2L, dashboard.orderStatusBuckets().get("other"));
+    }
+
+    @Test
     void createCreditRequestNormalizesPendingStatusForAdminQueue() {
         when(creditRequestRepository.save(any(CreditRequest.class))).thenAnswer(invocation -> {
             CreditRequest entity = invocation.getArgument(0);
@@ -509,6 +532,90 @@ class SalesServiceTest {
         assertEquals(ErrorCode.VALIDATION_INVALID_INPUT, ex.getErrorCode());
         assertEquals("PENDING", existing.getStatus());
         assertEquals(new BigDecimal("2000"), dealer.getCreditLimit());
+        verify(auditService, never()).logSuccess(any(), any());
+    }
+
+    @Test
+    void approveCreditRequestFailsClosedWhenAmountRequestedIsMissing() {
+        Dealer dealer = dealerWithCreditLimit(83L, new BigDecimal("2000"));
+        CreditRequest existing = new CreditRequest();
+        existing.setCompany(company);
+        existing.setDealer(dealer);
+        existing.setAmountRequested(null);
+        existing.setStatus("PENDING");
+        setField(existing, "id", 919L);
+
+        when(companyEntityLookup.requireCreditRequest(company, 919L)).thenReturn(existing);
+        when(dealerRepository.lockByCompanyAndId(company, 83L)).thenReturn(Optional.of(dealer));
+
+        ApplicationException ex = assertThrows(ApplicationException.class,
+                () -> salesService.approveCreditRequest(919L, "Approved"));
+
+        assertEquals(ErrorCode.VALIDATION_INVALID_INPUT, ex.getErrorCode());
+        assertEquals("PENDING", existing.getStatus());
+        verify(auditService, never()).logSuccess(any(), any());
+    }
+
+    @Test
+    void approveCreditRequestFailsClosedWhenDealerIdIsMissing() {
+        Dealer dealer = dealerWithCreditLimit(84L, new BigDecimal("2100"));
+        setField(dealer, "id", null);
+        CreditRequest existing = new CreditRequest();
+        existing.setCompany(company);
+        existing.setDealer(dealer);
+        existing.setAmountRequested(new BigDecimal("100"));
+        existing.setStatus("PENDING");
+        setField(existing, "id", 920L);
+
+        when(companyEntityLookup.requireCreditRequest(company, 920L)).thenReturn(existing);
+
+        ApplicationException ex = assertThrows(ApplicationException.class,
+                () -> salesService.approveCreditRequest(920L, "Approved"));
+
+        assertEquals(ErrorCode.BUSINESS_INVALID_STATE, ex.getErrorCode());
+        verify(dealerRepository, never()).lockByCompanyAndId(any(), anyLong());
+        verify(auditService, never()).logSuccess(any(), any());
+    }
+
+    @Test
+    void approveCreditRequestFailsClosedWhenDealerLimitIsMissing() {
+        Dealer dealer = dealerWithCreditLimit(85L, new BigDecimal("2100"));
+        dealer.setCreditLimit(null);
+        CreditRequest existing = new CreditRequest();
+        existing.setCompany(company);
+        existing.setDealer(dealer);
+        existing.setAmountRequested(new BigDecimal("100"));
+        existing.setStatus("PENDING");
+        setField(existing, "id", 921L);
+
+        when(companyEntityLookup.requireCreditRequest(company, 921L)).thenReturn(existing);
+        when(dealerRepository.lockByCompanyAndId(company, 85L)).thenReturn(Optional.of(dealer));
+
+        ApplicationException ex = assertThrows(ApplicationException.class,
+                () -> salesService.approveCreditRequest(921L, "Approved"));
+
+        assertEquals(ErrorCode.BUSINESS_INVALID_STATE, ex.getErrorCode());
+        verify(auditService, never()).logSuccess(any(), any());
+    }
+
+    @Test
+    void approveCreditRequestFailsClosedWhenDealerLimitIsNegative() {
+        Dealer dealer = dealerWithCreditLimit(86L, new BigDecimal("2100"));
+        dealer.setCreditLimit(new BigDecimal("-1"));
+        CreditRequest existing = new CreditRequest();
+        existing.setCompany(company);
+        existing.setDealer(dealer);
+        existing.setAmountRequested(new BigDecimal("100"));
+        existing.setStatus("PENDING");
+        setField(existing, "id", 922L);
+
+        when(companyEntityLookup.requireCreditRequest(company, 922L)).thenReturn(existing);
+        when(dealerRepository.lockByCompanyAndId(company, 86L)).thenReturn(Optional.of(dealer));
+
+        ApplicationException ex = assertThrows(ApplicationException.class,
+                () -> salesService.approveCreditRequest(922L, "Approved"));
+
+        assertEquals(ErrorCode.BUSINESS_INVALID_STATE, ex.getErrorCode());
         verify(auditService, never()).logSuccess(any(), any());
     }
 
@@ -3682,6 +3789,40 @@ class SalesServiceTest {
         assertEquals(BigDecimal.ZERO.setScale(2), saved.getGstRoundingAdjustment());
         assertEquals(new BigDecimal("36.00"), saved.getItems().get(0).getGstAmount());
         assertEquals(new BigDecimal("2.50"), saved.getItems().get(1).getGstAmount());
+    }
+
+    @Test
+    void promotionRequestLegacyConstructorDefaultsImageUrlToNull() {
+        PromotionRequest request = new PromotionRequest(
+                "Campaign",
+                "Description",
+                "PERCENTAGE",
+                new BigDecimal("10.00"),
+                java.time.LocalDate.of(2026, 5, 1),
+                java.time.LocalDate.of(2026, 5, 31),
+                "ACTIVE"
+        );
+
+        assertEquals("Campaign", request.name());
+        assertNull(request.imageUrl());
+    }
+
+    @Test
+    void promotionDtoLegacyConstructorDefaultsImageUrlToNull() {
+        PromotionDto dto = new PromotionDto(
+                901L,
+                UUID.randomUUID(),
+                "Campaign",
+                "Description",
+                "PERCENTAGE",
+                new BigDecimal("10.00"),
+                java.time.LocalDate.of(2026, 5, 1),
+                java.time.LocalDate.of(2026, 5, 31),
+                "ACTIVE"
+        );
+
+        assertEquals("Campaign", dto.name());
+        assertNull(dto.imageUrl());
     }
 
     @Test
