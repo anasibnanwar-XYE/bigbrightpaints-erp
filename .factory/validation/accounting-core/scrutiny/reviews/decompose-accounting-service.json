@@ -1,0 +1,45 @@
+{
+  "featureId": "decompose-accounting-service",
+  "reviewedAt": "2026-02-28T12:39:32Z",
+  "commitId": "62b747a0a41a698d0caf449f1de1571fcf96948d",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The commit introduces seven new accounting service classes and rewires the controller/facade, but the decomposition objective is not met: nearly all legacy logic remains concentrated in a new 5703-line AccountingCoreService, while the new services are mostly pass-through delegates.",
+    "issues": [
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingCoreService.java",
+        "line": 78,
+        "severity": "blocking",
+        "description": "Feature requirement was to aggressively decompose the 5728-line AccountingService into focused services, but the implementation moves the god-class body almost intact into AccountingCoreService (5703 lines), leaving the same monolithic responsibility concentration under a new class name."
+      },
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/JournalEntryService.java",
+        "line": 24,
+        "severity": "blocking",
+        "description": "Target services were expected to own focused domain logic (e.g., journal creation/reversal/listing). Instead, JournalEntryService and sibling services are thin delegates to AccountingCoreService/AccountingIdempotencyService (e.g., JournalEntryService lines 24-53, DealerReceiptService lines 17-23, SettlementService lines 19-29), so the promised single-responsibility decomposition was not actually implemented."
+      },
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/controller/AccountingController.java",
+        "line": 254,
+        "severity": "non_blocking",
+        "description": "The controller introduces compatibility bridge factories that instantiate anonymous service subclasses with null constructor dependencies (lines 254-370). This keeps tests/backward constructors working, but increases indirection and maintainability cost in a class that is expected to stay thin."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The backend-worker skill's decomposition procedure is too permissive against rename-only decompositions; it says to move methods into focused services but does not explicitly guard against relocating the god-class body into a new monolith class.",
+      "evidence": "SKILL.md Step 3 requires decomposition into focused services; reviewed commit creates AccountingCoreService at 5703 lines and keeps new services as wrappers. This passed worker self-verification despite not meeting decomposition intent."
+    },
+    {
+      "area": "conventions",
+      "observation": "Mission convention 'No service class should exceed ~500 lines' is currently not enforced by review gates for decomposition features, allowing a 5703-line replacement service to pass implementation phase checks.",
+      "evidence": "AGENTS.md line 35 defines the ~500-line rule; commit 62b747a0 adds AccountingCoreService with 5703 lines and worker handoff still marks success."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail: although wiring and facade thinning were implemented, the feature's core objective (true service decomposition of accounting logic) was not achieved because logic remains centralized in a new 5703-line AccountingCoreService and the new services primarily proxy calls."
+}

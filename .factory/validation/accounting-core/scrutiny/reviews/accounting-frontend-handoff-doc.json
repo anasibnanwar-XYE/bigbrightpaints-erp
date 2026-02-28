@@ -1,0 +1,40 @@
+{
+  "featureId": "accounting-frontend-handoff-doc",
+  "reviewedAt": "2026-02-28T12:40:03Z",
+  "commitId": "328b870754209f8c49c93b43598df0c4a0e03a8e",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The commit substantially expands the accounting handoff and correctly documents 73/73 accounting controller method-path combinations plus required flows/state machines/error-code coverage. However, the response-contract section is not fully complete/accurate for all accounting DTOs, leaving blocking gaps against the feature requirement for complete request/response DTO documentation with field-level contract detail.",
+    "issues": [
+      {
+        "file": ".factory/library/frontend-handoff.md",
+        "line": 835,
+        "severity": "blocking",
+        "description": "`ConfigurationHealthService.ConfigurationHealthReport` is left as a placeholder ('Schema source not auto-expanded') instead of enumerating its fields. The feature explicitly requires all request/response DTOs to be documented with field-level contract detail; this endpoint response contract is incomplete."
+      },
+      {
+        "file": ".factory/library/frontend-handoff.md",
+        "line": 710,
+        "severity": "blocking",
+        "description": "`PageResponse<AccountingAuditTrailEntryDto>` is documented as if top-level fields are the audit entry fields, but the real wire DTO is a wrapper with `content`, `totalElements`, `totalPages`, `page`, and `size` (see `erp-domain/src/main/java/com/bigbrightpaints/erp/shared/dto/PageResponse.java:5`). This misstates the actual response shape and breaks the 'complete/accurate DTO contract' requirement."
+      },
+      {
+        "file": ".factory/library/frontend-handoff.md",
+        "line": 732,
+        "severity": "blocking",
+        "description": "`PageResponse<AccountingTransactionAuditListItemDto>` has the same contract-shape issue: documented fields correspond to list items rather than the actual paginated wrapper schema (`content`, `totalElements`, `totalPages`, `page`, `size`). This is an API-contract accuracy defect for frontend handoff."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "Current worker verification guidance/checks emphasize endpoint/path coverage but do not enforce DTO schema completeness/shape validation for frontend handoff docs, allowing placeholder and wrapper-shape mistakes to pass worker self-verification.",
+      "evidence": "Handoff verification lists endpoint coverage checks (`controller_method_paths 73`, `missing 0`) and flow/state section checks, but no DTO-schema completeness check; resulting doc still contains placeholder at `.factory/library/frontend-handoff.md:835` and incorrect PageResponse contract shape at lines 710 and 732."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail: endpoint inventory and major flow/state coverage are strong, but blocking DTO-contract completeness/accuracy issues remain in the accounting handoff (placeholder response schema and incorrect paginated response shape documentation)."
+}

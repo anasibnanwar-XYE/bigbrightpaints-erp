@@ -1,0 +1,50 @@
+{
+  "featureId": "gst-tax-improvements",
+  "reviewedAt": "2026-02-28T18:17:57+05:30",
+  "commitId": "1314d6be8ae2223ad5f7e910c56776d8b1935f41",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The feature delivers substantial GST infrastructure (GstService, GST master fields, component persistence, TaxService integration, and reconciliation endpoint), but two blocking correctness gaps remain: company-level state code is not configurable through existing company APIs (breaking runtime state-based split decisioning), and GST reconciliation input-tax-credit calculation overstates credit by ignoring purchase-return reductions. I also noted a non-blocking API error-handling gap for invalid period formats.",
+    "issues": [
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/dto/CompanyRequest.java",
+        "line": 13,
+        "severity": "blocking",
+        "description": "Company state code is added to the Company entity but is not exposed in company create/update contracts, so runtime flows cannot reliably populate `company.stateCode`. Sales/Purchase GST split logic depends on `company.getStateCode()` (SalesService:2411, PurchasingService:560) and `GstService.resolveTaxType(..., failOnMissingStates=true)` throws when state codes are absent (GstService:80-84). This violates the requirement to auto-determine intra/inter-state from company state code."
+      },
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/TaxService.java",
+        "line": 175,
+        "severity": "blocking",
+        "description": "`generateGstReconciliation` overstates purchase input tax credit because it sums each purchase line tax component directly from the original purchase lines and does not account for returned quantities or purchase-return reversals. `collectInputTaxCredit` iterates full lines (TaxService:167-177) and `resolvePurchaseLineBreakdown` uses full line tax (TaxService:207+), while returns only update `returnedQuantity` in PurchasingService (PurchasingService:1216). Result: reconciliation can report higher ITC than actually eligible, violating the requirement to compare collected vs paid GST accurately."
+      },
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/controller/AccountingController.java",
+        "line": 809,
+        "severity": "non_blocking",
+        "description": "`period` is parsed with `YearMonth.parse(period)` without validation handling. Invalid values throw `DateTimeParseException`, which is not mapped to a validation response by the current exception handlers, producing a generic 500 instead of a structured 400 validation error for `/gst/reconciliation` (same pattern also exists for `/gst/return`)."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "Feature handoff payload does not include `skillFeedback`, which makes skill-procedure conformance triage less actionable for scrutiny reviewers.",
+      "evidence": "Handoff file `.../handoffs/2026-02-28T11-32-41-094Z__gst-tax-improvements__facaa97b-8844-49f0-92fb-88335928a15c.json` has handoff keys `[salientSummary, whatWasImplemented, whatWasLeftUndone, verification, tests, discoveredIssues]` and no `skillFeedback` object."
+    },
+    {
+      "area": "knowledge",
+      "observation": "Frontend handoff currently documents dealer/supplier `stateCode` as optional, but backend GST decisioning in taxable flows is fail-closed when state codes are missing; this mismatch can cause frontend teams to implement payloads that trigger server-side validation failures.",
+      "evidence": "`.factory/library/frontend-handoff.md` lines ~1078-1098 mark `stateCode` optional; `GstService.resolveTaxType` throws on missing source/destination when taxable (GstService:80-84), and Sales/Purchasing call split with company/dealer/supplier states (SalesService:2616/2727, PurchasingService:669/722)."
+    },
+    {
+      "area": "conventions",
+      "observation": "No documented convention/checklist currently enforces that when a new Company domain field is introduced for cross-module tax logic, corresponding company API contracts and DTO mappings must be updated in the same feature.",
+      "evidence": "`Company` gained `stateCode` (Company.java:39,169-178), but `CompanyRequest`/`CompanyDto` and `CompanyService` create/update mappings omit it (CompanyRequest.java:13+, CompanyService.java:134-137 and 161-165, CompanyDto.java fields)."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Review failed due to two blocking issues: (1) missing company state-code configurability undermines required intra/inter-state GST decisioning in runtime flows, and (2) GST reconciliation input-tax-credit calculation ignores purchase-return effects, producing inaccurate liability numbers. One additional non-blocking issue exists around invalid period parsing returning 500 instead of validation errors."
+}

@@ -1,0 +1,40 @@
+{
+  "featureId": "settlement-and-period-improvements",
+  "reviewedAt": "2026-02-28T12:46:23Z",
+  "commitId": "73240743275fe7664c1a28f3e368525a206ff168",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The feature delivers substantial scope (auto-settle endpoints, period checklist/trial-balance gating, and reconciliation APIs), but two blocking correctness issues remain: supplier auto-settle can fail for valid amount-only requests due to idempotency/reference handling, and bank reconciliation computes variance against current account balance rather than the reconciled period balance.",
+    "issues": [
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingCoreService.java",
+        "line": 1963,
+        "severity": "blocking",
+        "description": "`autoSettleSupplier` forwards optional `referenceNumber`/`idempotencyKey` directly into `recordSupplierPayment` (lines 1976-1983), but `recordSupplierPayment` requires at least one of them and throws when both are absent (`resolveReceiptIdempotencyKey`, lines 1831 and 2903-2911). This breaks the intended single-call auto-settlement flow for supplier requests that only provide amount (which should be valid per the API contract and dealer parity)."
+      },
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/ReconciliationService.java",
+        "line": 292,
+        "severity": "blocking",
+        "description": "`reconcileBankAccount` computes discrepancy using `account.getBalance()` (current running balance) while unmatched items are derived from a bounded statement window (`findLinesForAccountBetween`, line 254). For historical statements this can produce materially incorrect differences because post-period activity is included in ledger balance but excluded from uncleared-item calculations."
+      },
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/invoice/domain/InvoiceRepository.java",
+        "line": 102,
+        "severity": "non_blocking",
+        "description": "Dealer auto-settlement ordering is implemented as `dueDate, issueDate, id` rather than strictly oldest-issued invoice first. If business FIFO is intended by invoice age, due-date-first ordering can allocate newer overdue invoices ahead of older invoices."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Mission guidance and feature/skill requirements conflict on `.factory` edits: AGENTS says not to modify `.factory` mission infrastructure, while the backend-worker skill and this feature require updating `.factory/library/frontend-handoff.md` for API changes.",
+      "evidence": "AGENTS.md:13 says 'Do NOT modify .factory/ directory contents (mission infrastructure)'; backend-worker SKILL.md:61 requires updating `.factory/library/frontend-handoff.md`; handoff for this feature explicitly states that `.factory/library/frontend-handoff.md` was updated."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed feature settlement-and-period-improvements (commit 73240743275fe7664c1a28f3e368525a206ff168), including handoff, transcript skeleton, and full diff. Result is FAIL due to two blocking implementation issues in supplier auto-settlement idempotency/reference handling and bank reconciliation balance basis; one additional non-blocking FIFO-ordering concern is noted."
+}

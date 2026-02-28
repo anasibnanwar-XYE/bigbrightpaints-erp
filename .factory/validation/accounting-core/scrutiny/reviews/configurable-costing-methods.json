@@ -1,0 +1,31 @@
+{
+  "featureId": "configurable-costing-methods",
+  "reviewedAt": "2026-02-28T12:40:50Z",
+  "commitId": "fd35c00a",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Reviewed the worker handoff, commit diff, and current implementation for period-level costing methods. The feature requirements are satisfied: accounting periods carry costing_method with WEIGHTED_AVERAGE default, costing resolution is period/date scoped via CostingMethodService, FinishedGoodsService and InventoryAdjustmentService both resolve costing method by movement date, accounting period create/update endpoints accept/set costing method (with backward-compatible upsert default), and non-retroactive behavior is covered by integration tests that assert prior movement unit costs remain unchanged after switching period method.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Mission guidance and worker skill instructions conflict on whether .factory files are editable.",
+      "evidence": "AGENTS.md:13 says 'Do NOT modify .factory/ directory contents (mission infrastructure)', while backend-worker/SKILL.md:61 requires updating `.factory/library/frontend-handoff.md` when API endpoints change; this feature commit updates `.factory/library/frontend-handoff.md`."
+    },
+    {
+      "area": "skills",
+      "observation": "The backend-worker skill's strict TDD procedure is not reflected in observed execution order, but handoff still marks procedure as followed.",
+      "evidence": "Skill Step 2 requires writing/running failing tests first, but transcript skeleton for worker session fa4f8eee-be04-4dff-803c-f12012896093 shows ApplyPatch edits before the first mvn test execution."
+    },
+    {
+      "area": "services",
+      "observation": "A commonly used setup command appears outside services.yaml, which may reduce reproducibility across workers.",
+      "evidence": "Transcript skeleton includes execution of `.factory/init.sh`, but `.factory/services.yaml` only defines compile/test/build/lint commands and does not list init/setup as a named command."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Pass. No blocking or non-blocking implementation defects were found in the reviewed feature state for configurable costing methods. The worker session's refinements correctly preserve backward compatibility for period upsert and strengthen non-retroactive costing coverage."
+}

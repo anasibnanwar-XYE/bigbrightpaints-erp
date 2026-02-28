@@ -1,0 +1,57 @@
+{
+  "featureId": "standardize-journal-creation-flows",
+  "reviewedAt": "2026-02-28T12:49:58.525838Z",
+  "commitId": "de122309",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The feature delivers the new standardized DTOs, facade methods, migration-backed journal typing/source metadata, and manual/list/reverse endpoints. However, the requirement that all cross-module journal creation flows route through the standardized AccountingService facade path is not fully met: multiple factory/production flows still call non-standard facade methods that build raw JournalEntryRequest and invoke accountingService.createJournalEntry directly instead of createStandardJournal(JournalCreationRequest).",
+    "issues": [
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingFacade.java",
+        "line": 637,
+        "severity": "blocking",
+        "description": "postMaterialConsumption still constructs JournalEntryRequest and calls accountingService.createJournalEntry directly (line 704) instead of routing through createStandardJournal(JournalCreationRequest). This violates the explicit requirement to standardize all cross-module journal creation through the facade standard DTO path."
+      },
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingFacade.java",
+        "line": 721,
+        "severity": "blocking",
+        "description": "postLaborOverheadApplied also bypasses the standardized flow by building JournalEntryRequest and calling accountingService.createJournalEntry directly (line 803), leaving a cross-module factory/production posting path unstandardized."
+      },
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingFacade.java",
+        "line": 1464,
+        "severity": "blocking",
+        "description": "postSimpleJournal (used by factory modules) posts via accountingService.createJournalEntry (line 1515) and does not set standardized sourceModule/sourceReference/journalType metadata via JournalCreationRequest. Because ProductionLogService and PackingService still use this API, not all cross-module operations are standardized as requested."
+      },
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/service/ProductionLogService.java",
+        "line": 203,
+        "severity": "blocking",
+        "description": "Production flow still calls accountingFacade.postSimpleJournal for semi-finished receipt posting. That method bypasses createStandardJournal, so this cross-module journal creation flow remains outside the standardized contract."
+      },
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/factory/service/PackingService.java",
+        "line": 709,
+        "severity": "blocking",
+        "description": "Packing flow continues to call accountingFacade.postSimpleJournal (verified in commit grep), which bypasses createStandardJournal. This contradicts the requirement that journal creation be cleanly standardized through JournalCreationRequest + createStandardJournal."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The transcript skeleton in this mission stores only a compact summary string, so there is no step-level tool trace or skillFeedback for validating whether backend-worker procedure (especially TDD-first) was actually followed.",
+      "evidence": "/home/realnigga/.factory/missions/9cf481ca-5e0f-423d-8241-8364a13a7137/worker-transcripts.jsonl contains one record for this session with keys {workerSessionId, featureId, milestone, skeleton, timestamp}; extracted metadata shows skillFeedback=null and no per-step event records."
+    },
+    {
+      "area": "conventions",
+      "observation": "Mission guidance and backend-worker skill still prescribe event-driven cross-module communication, but this feature requirement explicitly forbids introducing ApplicationEvents/listeners for journal creation and expects direct standardized facade calls; the guidance is outdated/contradictory for accounting journal flows.",
+      "evidence": "AGENTS.md line 39: 'Event-driven: Cross-module side effects should use Spring ApplicationEvents, not direct service calls'; feature description requires 'DO NOT introduce Spring ApplicationEvents or event listeners for journal creation. Keep existing direct call pattern'. backend-worker/SKILL.md line 41 repeats event-driven guidance."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed handoff, commit de122309, diff, and transcript skeleton. Core standardized journal/manual APIs were added, but the feature fails acceptance because factory/production posting paths still bypass createStandardJournal via legacy AccountingFacade methods (postMaterialConsumption, postLaborOverheadApplied, postSimpleJournal) used by ProductionLogService/PackingService."
+}

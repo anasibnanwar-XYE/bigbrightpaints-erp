@@ -1,0 +1,39 @@
+{
+  "featureId": "accounting-audit-trail-improvements",
+  "reviewedAt": "2026-02-28T12:49:00Z",
+  "commitId": "d5bcd1dc",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The feature adds a new accounting audit-trail query endpoint, emits immutable audit events for major accounting flows, and updates frontend handoff docs. However, settlement action typing is incomplete: supplier settlements are generated with SUP-* references and are recorded as generic system journal actions instead of settlement actions, which leaves settlement transactions not distinctly auditable by action type as required.",
+    "issues": [
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingComplianceAuditService.java",
+        "line": 306,
+        "severity": "blocking",
+        "description": "Settlement detection is reference-prefix based (`SET*`/`RCPT*`/contains `SETTLEMENT`). Supplier settlement journals use `SUP-*` references, so those entries are classified as `SYSTEM_JOURNAL_CREATED` instead of settlement-specific actions. Evidence: `AccountingCoreService.resolveSupplierSettlementReference` returns `referenceNumberService.supplierPaymentReference(...)` (line 3125), and `ReferenceNumberService.supplierPaymentReference` uses `SUP-%s` keys (line 64). This breaks complete settlement action typing/filtering expected by VAL-ACCT-007 and the feature requirement for settlement audit coverage."
+      },
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AuditTrailQueryService.java",
+        "line": 49,
+        "severity": "non_blocking",
+        "description": "Query filtering by `user`, `actionType`, and `entityType` is done in-memory after loading all matching company/date events, then paginated in memory. This is functionally correct but can become expensive for large audit tables and undermines scalable pagination semantics."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Mission guidance is internally contradictory on `.factory` edits: AGENTS.md marks `.factory/` as off-limits, while backend-worker skill mandates updating `.factory/library/frontend-handoff.md` for endpoint changes.",
+      "evidence": "AGENTS.md: 'Do NOT modify .factory/ directory contents (mission infrastructure)' vs `.factory/skills/backend-worker/SKILL.md` Step 5 requiring updates to `.factory/library/frontend-handoff.md`; this feature commit modified `.factory/library/frontend-handoff.md`."
+    },
+    {
+      "area": "skills",
+      "observation": "The backend-worker skill enforces TDD ('write tests first'), but transcript sequencing shows multiple code patches before the first targeted test run, while handoff still marks procedure as followed.",
+      "evidence": "worker-transcripts.jsonl session ddfb26f7-517d-46ae-b12c-4a58eec8baae: tool sequence includes repeated `ApplyPatch` steps before first `Execute` running `mvn test -Djacoco.skip=true -Dtest='AccountingComplianceAuditServiceTest,AuditTrailQueryServiceTest' -pl .`; handoff.skillFeedback.followedProcedure=true."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Review failed due to a blocking settlement-classification gap: supplier settlements are not emitted as settlement-specific audit actions. Endpoint/query surface and most audit capture flows are present, but this classification bug prevents complete settlement-level audit action coverage."
+}
