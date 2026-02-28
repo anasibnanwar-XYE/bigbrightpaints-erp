@@ -1,0 +1,26 @@
+{
+  "featureId": "fix-critical-auth-bugs",
+  "reviewedAt": "2026-02-28T10:33:00Z",
+  "commitId": "20d525fba77228256c89e8d9f411943f25822c96",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Reviewed commit 20d525fba77228256c89e8d9f411943f25822c96 against the feature requirements. AuthService.refresh now sets the JWT name claim and AuthResponse displayName from user display name (matching login), AuthService.logout now derives identity from parsed JWT subject instead of caller-provided email, and logout path now logs warning events when token parse/blacklist operations fail rather than silently swallowing exceptions. Updated tests in AuthServiceAuditAttributionTest cover claim consistency, token-derived logout identity, and warning-log behavior for blacklist failures.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "knowledge",
+      "observation": "Mission feature metadata and AGENTS known-failure guidance are out of sync, which can mislead workers during baseline validation decisions.",
+      "evidence": "features.json (fix-critical-auth-bugs description) still says gate-fast has 1 tolerated pre-existing failure TS_RuntimeTenantPolicyControlExecutableCoverageTest, while AGENTS.md states that test is RESOLVED and gate-fast passes 377/377."
+    },
+    {
+      "area": "skills",
+      "observation": "backend-worker skill verification guidance conflicts with mission-level AGENTS guidance about which test command to run.",
+      "evidence": "backend-worker/SKILL.md Step 4 says to run `mvn test -Djacoco.skip=true -T4`, while mission AGENTS.md explicitly says DO NOT run `mvn test -T4` and to use gate-fast/unit commands instead."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Feature implementation satisfies the assigned auth bug fixes with no blocking code issues found in the reviewed diff; only shared-state documentation/skill alignment gaps were observed."
+}

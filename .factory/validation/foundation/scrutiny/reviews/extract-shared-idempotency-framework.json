@@ -1,0 +1,45 @@
+{
+  "featureId": "extract-shared-idempotency-framework",
+  "reviewedAt": "2026-02-28T05:11:14Z",
+  "commitId": "a687a068abe2efbd2d8ca2e5a2720dd27db0c172",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The commit introduces the shared core.idempotency package and migrates the six targeted services to consume parts of it, but the feature does not satisfy the stated expectedBehavior/validation contract requirement that copy-pasted idempotency helpers be eliminated codebase-wide. Blocking duplicate helpers remain in module services outside core.idempotency.",
+    "issues": [
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/service/SalesReturnService.java",
+        "line": 651,
+        "severity": "blocking",
+        "description": "SalesReturnService still keeps local idempotency helper implementations (`normalizeToken` at line 651 and `sha256Hex` at line 665) for return-key hashing. This violates VAL-FOUND-002 / expectedBehavior requiring no duplicated normalizeToken/sha256Hex helpers outside the shared core.idempotency framework."
+      },
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/production/service/ProductionCatalogService.java",
+        "line": 1817,
+        "severity": "blocking",
+        "description": "ProductionCatalogService still defines a local `sha256Hex` helper (`sha256Hex(MultipartFile file)`), so repository-wide sha256 hashing helpers are not centralized to core.idempotency as required by the feature verification criteria."
+      },
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/core/idempotency/IdempotencyReservationService.java",
+        "line": 82,
+        "severity": "non_blocking",
+        "description": "The new generic `reserve(...)` API is introduced but has no callers in `src/main/java` at this commit; modules still use per-service reservation/retry code paths. This limits deduplication of reservation/replay flow compared with the feature intent."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "`backend-worker` verification guidance conflicts with mission guidance: the skill mandates `mvn test -Djacoco.skip=true -T4`, while AGENTS.md explicitly forbids `mvn test -T4` and directs workers to gate-fast + unit suites. This mismatch can cause workers to follow outdated validation steps.",
+      "evidence": ".factory/skills/backend-worker/SKILL.md:51 requires `mvn test -Djacoco.skip=true -T4`; mission AGENTS.md:56-63 defines baseline `mvn test -Pgate-fast -Djacoco.skip=true` and states `DO NOT run: mvn test -T4`."
+    },
+    {
+      "area": "conventions",
+      "observation": "Shared idempotency service is annotated with `@Service` but repeatedly instantiated manually with `new` in module services; if constructor injection is the intended Spring convention, that rule is not documented clearly in shared guidance.",
+      "evidence": "`IdempotencyReservationService` is a Spring bean at core/idempotency/IdempotencyReservationService.java:15-16, but modules construct it directly (e.g., SalesService.java:174, PurchasingService.java:90, AccountingService.java:132 in commit a687a068)."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail: blocking gaps remain against the feature's own expectedBehavior/VAL-FOUND-002 centralization requirement because duplicate idempotency helper methods still exist outside core.idempotency."
+}

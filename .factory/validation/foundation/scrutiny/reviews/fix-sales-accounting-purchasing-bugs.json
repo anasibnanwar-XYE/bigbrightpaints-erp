@@ -1,0 +1,26 @@
+{
+  "featureId": "fix-sales-accounting-purchasing-bugs",
+  "reviewedAt": "2026-02-28T05:05:32Z",
+  "commitId": "73f86e9d34bcf6785c47896219338622c5d29408",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Reviewed commit 73f86e9d34bcf6785c47896219338622c5d29408 against feature requirements. SalesService now threads request payment mode through legacy idempotency replay signature reconstruction (including missing-stored-signature paths), AccountingService reversal standard path now returns DTOs built from the saved reversal entity, and PurchasingService now rejects returns that would push outstanding below zero using ApplicationException(ErrorCode.RETURN_EXCEEDS_OUTSTANDING). Targeted regression tests were added/updated for all three bug areas and align with expected behavior.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "Feature-level TDD requirement ('Write failing tests FIRST') is not clearly evidenced by transcript ordering, and current review signal can miss this gap.",
+      "evidence": "worker-transcripts.jsonl for session a72ba5b3-9322-457d-96b0-60dd3450a85e shows multiple ApplyPatch steps before the first feature-scoped test execution (`mvn test -Djacoco.skip=true -Dtest='*Sales*,*Accounting*,*Purchasing*' -pl .`), and no explicit red-phase failing run of the three new test cases appears before implementation edits."
+    },
+    {
+      "area": "skills",
+      "observation": "backend-worker verification guidance conflicts with mission guidance, which can cause unnecessary/forbidden test command usage.",
+      "evidence": "AGENTS.md says DO NOT run `mvn test -T4` (use gate-fast/unit commands), while .factory/skills/backend-worker/SKILL.md Step 4 still instructs `cd erp-domain && mvn test -Djacoco.skip=true -T4`."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Pass: the submitted implementation covers the three assigned bug fixes with no blocking code defects found in the reviewed diff; only shared-state/skill-process documentation gaps were observed."
+}

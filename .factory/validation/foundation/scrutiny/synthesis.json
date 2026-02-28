@@ -1,0 +1,84 @@
+{
+  "milestone": "foundation",
+  "round": 1,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "cd erp-domain && mvn test -Pgate-fast -Djacoco.skip=true",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "cd erp-domain && mvn compile -q",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "echo \"Checkstyle in advisory mode (49962 pre-existing violations). Skipped as hard gate.\"",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 5,
+    "passed": 4,
+    "failed": 1,
+    "failedFeatures": [
+      "extract-shared-idempotency-framework"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "extract-shared-idempotency-framework",
+      "severity": "blocking",
+      "description": "SalesReturnService still keeps local idempotency helper implementations (`normalizeToken` and `sha256Hex`) outside `core.idempotency`, violating the feature's deduplication requirement."
+    },
+    {
+      "featureId": "extract-shared-idempotency-framework",
+      "severity": "blocking",
+      "description": "ProductionCatalogService still defines a local `sha256Hex(MultipartFile file)` helper, so hashing helper logic is not fully centralized to `core.idempotency`."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "backend-worker skill",
+      "suggestion": "Update validator guidance to align with mission policy: use `mvn test -Pgate-fast -Djacoco.skip=true` baseline (and unit suite when needed), and remove/avoid `mvn test -T4`.",
+      "evidence": "Observed across multiple reviews (fix-critical-auth-bugs, fix-critical-payroll-hr-bugs, fix-sales-accounting-purchasing-bugs, extract-shared-idempotency-framework) that backend-worker instructions conflict with AGENTS guidance and led to procedure deviations.",
+      "isSystemic": true
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Add explicit guidance that schema changes must be mirrored across both Flyway tracks (`src/main/resources/db/migration` and `src/main/resources/db/migration_v2`) when both are active in test/runtime paths.",
+      "evidence": "fix-critical-payroll-hr-bugs handoff reported first-pass failure caused by column missing in migration_v2 path after only one track was updated.",
+      "isSystemic": false
+    },
+    {
+      "target": "scrutiny-feature-reviewer skill",
+      "suggestion": "Clarify TDD evidence expectations (what qualifies as proof of a red-phase run) and how to score micro-fixes that reuse existing tests but do not add new failing tests.",
+      "evidence": "Reviews flagged inconsistent test-first evidence interpretation in fix-sales-accounting-purchasing-bugs and unify-error-handling-and-validation.",
+      "isSystemic": true
+    },
+    {
+      "target": "mission feature metadata generation",
+      "suggestion": "Ensure feature descriptions are refreshed when pre-existing failure assumptions change, so workers are not told to tolerate already-fixed failures.",
+      "evidence": "fix-critical-auth-bugs feature description still references a tolerated gate-fast failure while AGENTS states that failure was already resolved and gate-fast passes 377/377.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [
+    {
+      "observation": "Duplicate reports that backend-worker test command guidance conflicts with AGENTS",
+      "reason": "duplicate"
+    },
+    {
+      "observation": "`IdempotencyReservationService` is instantiated with `new` in some modules despite being a Spring `@Service`",
+      "reason": "ambiguous (may be deliberate utility-style usage; not enough evidence of correctness issue)"
+    },
+    {
+      "observation": "Unify-error-handling-and-validation review noted missing direct unit tests for modified MFA activate/disable invalid branches",
+      "reason": "feature-specific non-blocking quality note, not shared-state guidance"
+    }
+  ],
+  "previousRound": null
+}

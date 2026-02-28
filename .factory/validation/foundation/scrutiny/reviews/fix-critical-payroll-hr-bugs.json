@@ -1,0 +1,26 @@
+{
+  "featureId": "fix-critical-payroll-hr-bugs",
+  "reviewedAt": "2026-02-28T05:06:17Z",
+  "commitId": "e9a0a6df4b2f6f18d754d2ec4c23f1b7926440f7",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Implementation matches the feature requirements: PayrollService now persists markAsPaid paymentReference on PayrollRun, payroll standardHoursPerDay null/zero is guarded via ApplicationException, HrService enum parsing paths now convert invalid enum values to ApplicationException with validation ErrorCode, and the delegated tenant policy truthsuite failure was addressed by restoring ROLE_ADMIN membership in DataInitializer.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "backend-worker verification guidance conflicts with mission AGENTS guidance, which can push workers toward disallowed/slow validation commands.",
+      "evidence": ".factory/skills/backend-worker/SKILL.md:51 instructs `mvn test -Djacoco.skip=true -T4`, while mission AGENTS.md:62 explicitly says DO NOT run `mvn test -T4`; handoff skillFeedback shows procedure deviation (`followedProcedure: false`)."
+    },
+    {
+      "area": "knowledge",
+      "observation": "Dual Flyway tracks (`db/migration` and `db/migration_v2`) are not clearly documented in mission-level guidance, leading to avoidable first-pass schema mismatches when adding columns.",
+      "evidence": "Handoff verification notes first scoped run failed because `payroll_runs.payment_reference` was missing in migration_v2 path (handoff line containing \"missing in migration_v2 path\"); mission AGENTS.md documents migration numbering but does not call out the need to mirror schema changes in both tracks."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Reviewed commit e9a0a6df for fix-critical-payroll-hr-bugs and found no blocking defects; required payroll/hr bug fixes and tenant-policy baseline failure fix are implemented and covered by targeted runtime tests. Two shared-state gaps were observed (skill command mismatch and dual-migration-track documentation gap)."
+}
