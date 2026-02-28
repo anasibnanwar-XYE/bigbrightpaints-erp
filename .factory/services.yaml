@@ -1,8 +1,9 @@
 commands:
   compile: cd erp-domain && mvn compile -q
-  test: cd erp-domain && mvn test -Djacoco.skip=true -T4
-  test-fast: cd erp-domain && mvn test -Pgate-fast -Djacoco.skip=true
-  test-coverage: cd erp-domain && mvn verify
+  test: cd erp-domain && mvn test -Pgate-fast -Djacoco.skip=true
+  test-unit: cd erp-domain && mvn test -Djacoco.skip=true '-Dtest=!*IT,!*ITCase,!*codered*' -pl .
+  test-full: cd erp-domain && mvn test -Djacoco.skip=true '-Dtest=!*IT,!*ITCase,!*codered*' -pl .
+  test-coverage: cd erp-domain && mvn verify -Pgate-fast
   build: cd erp-domain && mvn package -DskipTests -q
   checkstyle: cd erp-domain && mvn checkstyle:check -q
 
