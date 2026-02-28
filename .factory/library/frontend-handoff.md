@@ -1084,150 +1084,305 @@ _Total documented accounting endpoints: **73**._
 
 ### Product Catalog & Inventory
 
-#### Endpoint Map (catalog)
+Comprehensive handoff for `VAL-DOC-004` covering catalog, inventory, dispatch, and manufacturing API surfaces.
 
-All responses are wrapped in `ApiResponse<T>`.
+> Response convention: endpoints below return `ApiResponse<T>` unless explicitly noted (`DELETE /api/v1/factory/production-plans/{id}` and `DELETE /api/v1/accounting/raw-materials/{id}` return `204`).
+
+#### Endpoint Map — Catalog (brands/products/bulk/search)
+
+Auth default: `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING','ROLE_SALES','ROLE_FACTORY')`.
+
+| Method | Path | Request | Response `data` |
+|---|---|---|---|
+| POST | `/api/v1/catalog/brands` | `CatalogBrandRequest` | `CatalogBrandDto` |
+| GET | `/api/v1/catalog/brands` | Query: `active?` | `List<CatalogBrandDto>` |
+| GET | `/api/v1/catalog/brands/{brandId}` | — | `CatalogBrandDto` |
+| PUT | `/api/v1/catalog/brands/{brandId}` | `CatalogBrandRequest` | `CatalogBrandDto` |
+| DELETE | `/api/v1/catalog/brands/{brandId}` | — | `CatalogBrandDto` (deactivated) |
+| POST | `/api/v1/catalog/products` | `CatalogProductRequest` | `CatalogProductDto` |
+| GET | `/api/v1/catalog/products` | Query: `brandId?`, `color?`, `size?`, `active?`, `page`, `pageSize` | `PageResponse<CatalogProductDto>` |
+| GET | `/api/v1/catalog/products/{productId}` | — | `CatalogProductDto` |
+| PUT | `/api/v1/catalog/products/{productId}` | `CatalogProductRequest` | `CatalogProductDto` |
+| DELETE | `/api/v1/catalog/products/{productId}` | — | `CatalogProductDto` (deactivated) |
+| POST | `/api/v1/catalog/products/bulk` | `List<CatalogProductBulkItemRequest>` | `CatalogProductBulkResponse` |
+| GET | `/api/v1/production/brands` | — | `List<ProductionBrandDto>` |
+| GET | `/api/v1/production/brands/{brandId}/products` | — | `List<ProductionProductDto>` |
+
+#### Endpoint Map — Inventory (stock, batches, movement history, adjustments, dispatch)
+
+##### Finished goods stock + batch APIs
 
 | Method | Path | Auth | Request | Response `data` |
 |---|---|---|---|---|
-| POST | `/api/v1/catalog/brands` | `ROLE_ADMIN/ROLE_ACCOUNTING/ROLE_SALES/ROLE_FACTORY` | `CatalogBrandRequest` | `CatalogBrandDto` |
-| GET | `/api/v1/catalog/brands` | `ROLE_ADMIN/ROLE_ACCOUNTING/ROLE_SALES/ROLE_FACTORY` | Query: `active?` | `List<CatalogBrandDto>` |
-| GET | `/api/v1/catalog/brands/{brandId}` | `ROLE_ADMIN/ROLE_ACCOUNTING/ROLE_SALES/ROLE_FACTORY` | — | `CatalogBrandDto` |
-| PUT | `/api/v1/catalog/brands/{brandId}` | `ROLE_ADMIN/ROLE_ACCOUNTING/ROLE_SALES/ROLE_FACTORY` | `CatalogBrandRequest` | `CatalogBrandDto` |
-| DELETE | `/api/v1/catalog/brands/{brandId}` | `ROLE_ADMIN/ROLE_ACCOUNTING/ROLE_SALES/ROLE_FACTORY` | — | `CatalogBrandDto` (inactive) |
-| POST | `/api/v1/catalog/products` | `ROLE_ADMIN/ROLE_ACCOUNTING/ROLE_SALES/ROLE_FACTORY` | `CatalogProductRequest` | `CatalogProductDto` |
-| GET | `/api/v1/catalog/products` | `ROLE_ADMIN/ROLE_ACCOUNTING/ROLE_SALES/ROLE_FACTORY` | Query: `brandId?`, `color?`, `size?`, `active?`, `page`, `pageSize` | `PageResponse<CatalogProductDto>` |
-| GET | `/api/v1/catalog/products/{productId}` | `ROLE_ADMIN/ROLE_ACCOUNTING/ROLE_SALES/ROLE_FACTORY` | — | `CatalogProductDto` |
-| PUT | `/api/v1/catalog/products/{productId}` | `ROLE_ADMIN/ROLE_ACCOUNTING/ROLE_SALES/ROLE_FACTORY` | `CatalogProductRequest` | `CatalogProductDto` |
-| DELETE | `/api/v1/catalog/products/{productId}` | `ROLE_ADMIN/ROLE_ACCOUNTING/ROLE_SALES/ROLE_FACTORY` | — | `CatalogProductDto` (inactive) |
-| POST | `/api/v1/catalog/products/bulk` | `ROLE_ADMIN/ROLE_ACCOUNTING/ROLE_SALES/ROLE_FACTORY` | `List<CatalogProductBulkItemRequest>` | `CatalogProductBulkResponse` |
+| GET | `/api/v1/finished-goods` | ADMIN/FACTORY/SALES/ACCOUNTING | — | `List<FinishedGoodDto>` |
+| GET | `/api/v1/finished-goods/{id}` | ADMIN/FACTORY/SALES/ACCOUNTING | — | `FinishedGoodDto` |
+| POST | `/api/v1/finished-goods` | ADMIN/FACTORY | `FinishedGoodRequest` | `FinishedGoodDto` |
+| PUT | `/api/v1/finished-goods/{id}` | ADMIN/FACTORY | `FinishedGoodRequest` | `FinishedGoodDto` |
+| GET | `/api/v1/finished-goods/{id}/batches` | ADMIN/FACTORY/SALES | — | `List<FinishedGoodBatchDto>` |
+| POST | `/api/v1/finished-goods/{id}/batches` | ADMIN/FACTORY | `FinishedGoodBatchRequest` | `FinishedGoodBatchDto` |
+| GET | `/api/v1/finished-goods/stock-summary` | ADMIN/FACTORY/SALES/ACCOUNTING | — | `List<StockSummaryDto>` |
+| GET | `/api/v1/finished-goods/low-stock` | ADMIN/FACTORY/SALES | Query: `threshold?` | `List<FinishedGoodDto>` |
+| GET | `/api/v1/finished-goods/{id}/low-stock-threshold` | ADMIN/FACTORY/SALES/ACCOUNTING | — | `FinishedGoodLowStockThresholdDto` |
+| PUT | `/api/v1/finished-goods/{id}/low-stock-threshold` | ADMIN/FACTORY/ACCOUNTING | `FinishedGoodLowStockThresholdRequest` | `FinishedGoodLowStockThresholdDto` |
 
-#### User Flows
+##### Raw material stock + batch APIs
 
-1. **Brand setup**
-   1. `POST /api/v1/catalog/brands` to create brand (name/logo/description)
-   2. `GET /api/v1/catalog/brands?active=true` to refresh dropdown options
+Auth default for controller: `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING','ROLE_FACTORY')`.
 
-2. **Product setup (single)**
-   1. `GET /api/v1/catalog/brands?active=true` for brand dropdown
-   2. `POST /api/v1/catalog/products` with brand + colors + sizes + carton mapping
-   3. `GET /api/v1/catalog/products?brandId={id}&page=0&pageSize=20` to refresh list
+| Method | Path | Request | Response `data` |
+|---|---|---|---|
+| GET | `/api/v1/accounting/raw-materials` | — | `List<RawMaterialDto>` |
+| POST | `/api/v1/accounting/raw-materials` | `RawMaterialRequest` | `RawMaterialDto` |
+| PUT | `/api/v1/accounting/raw-materials/{id}` | `RawMaterialRequest` | `RawMaterialDto` |
+| DELETE | `/api/v1/accounting/raw-materials/{id}` | — | `204 No Content` |
+| GET | `/api/v1/raw-materials/stock` | — | `StockSummaryDto` |
+| GET | `/api/v1/raw-materials/stock/inventory` | — | `List<InventoryStockSnapshot>` |
+| GET | `/api/v1/raw-materials/stock/low-stock` | — | `List<InventoryStockSnapshot>` |
+| GET | `/api/v1/raw-material-batches/{rawMaterialId}` | — | `List<RawMaterialBatchDto>` |
+| POST | `/api/v1/raw-material-batches/{rawMaterialId}` | Headers: `Idempotency-Key`/`X-Idempotency-Key`, body `RawMaterialBatchRequest` | `RawMaterialBatchDto` |
+| POST | `/api/v1/raw-materials/intake` | Headers: `Idempotency-Key`/`X-Idempotency-Key`, body `RawMaterialIntakeRequest` | `RawMaterialBatchDto` |
 
-3. **Product bulk create/update**
-   1. Build list payload for `POST /api/v1/catalog/products/bulk`
-   2. Inspect `results[]` for per-item `success`, `action`, and `message`
-   3. Re-submit failed rows only after validation corrections
+##### Inventory adjustment + traceability APIs
 
-4. **Catalog search/filter**
-   1. Query `GET /api/v1/catalog/products` with optional `brandId`, `color`, `size`, `active`
-   2. Use `page` + `pageSize` for pagination
+| Method | Path | Auth | Request | Response `data` |
+|---|---|---|---|---|
+| GET | `/api/v1/inventory/adjustments` | ADMIN/ACCOUNTING | — | `List<InventoryAdjustmentDto>` |
+| POST | `/api/v1/inventory/adjustments` | ADMIN/ACCOUNTING | Header/body idempotency + `InventoryAdjustmentRequest` | `InventoryAdjustmentDto` |
+| GET | `/api/v1/inventory/batches/{id}/movements` | ADMIN/FACTORY/ACCOUNTING/SALES | Query: `batchType?` | `InventoryBatchTraceabilityDto` |
+| POST | `/api/v1/inventory/opening-stock` | ADMIN/ACCOUNTING/FACTORY | `multipart/form-data` (`file`) + idempotency header | `OpeningStockImportResponse` |
+
+##### Dispatch APIs
+
+| Method | Path | Auth | Request | Response `data` |
+|---|---|---|---|---|
+| GET | `/api/v1/dispatch/pending` | ADMIN/FACTORY/SALES | — | `List<PackagingSlipDto>` |
+| GET | `/api/v1/dispatch/preview/{slipId}` | ADMIN/FACTORY | — | `DispatchPreviewDto` |
+| GET | `/api/v1/dispatch/slip/{slipId}` | ADMIN/FACTORY/SALES | — | `PackagingSlipDto` |
+| GET | `/api/v1/dispatch/order/{orderId}` | ADMIN/FACTORY/SALES | — | `PackagingSlipDto` |
+| POST | `/api/v1/dispatch/confirm` | ADMIN/FACTORY + authority `dispatch.confirm` | `DispatchConfirmationRequest` | `DispatchConfirmationResponse` |
+| PATCH | `/api/v1/dispatch/slip/{slipId}/status` | ADMIN/FACTORY | Query: `status` | `PackagingSlipDto` |
+| POST | `/api/v1/dispatch/backorder/{slipId}/cancel` | ADMIN/FACTORY | Query: `reason?` | `PackagingSlipDto` |
+
+#### Endpoint Map — Manufacturing (plans, logs, packing, wastage)
+
+##### Core factory endpoints (`/api/v1/factory`)
+
+Default auth: `hasAnyAuthority('ROLE_ADMIN','ROLE_FACTORY')` unless noted.
+
+| Method | Path | Request | Response `data` |
+|---|---|---|---|
+| GET | `/api/v1/factory/production-plans` | — | `List<ProductionPlanDto>` |
+| POST | `/api/v1/factory/production-plans` | `ProductionPlanRequest` | `ProductionPlanDto` |
+| PUT | `/api/v1/factory/production-plans/{id}` | `ProductionPlanRequest` | `ProductionPlanDto` |
+| PATCH | `/api/v1/factory/production-plans/{id}/status` | Body `{ status }` | `ProductionPlanDto` |
+| DELETE | `/api/v1/factory/production-plans/{id}` | — | `204 No Content` |
+| GET | `/api/v1/factory/production-batches` | — | `List<ProductionBatchDto>` |
+| POST | `/api/v1/factory/production-batches` | Query `planId?` + `ProductionBatchRequest` | `ProductionBatchDto` |
+| GET | `/api/v1/factory/tasks` | — | `List<FactoryTaskDto>` |
+| POST | `/api/v1/factory/tasks` | `FactoryTaskRequest` | `FactoryTaskDto` |
+| PUT | `/api/v1/factory/tasks/{id}` | `FactoryTaskRequest` | `FactoryTaskDto` |
+| GET | `/api/v1/factory/dashboard` | — | `FactoryDashboardDto` |
+| POST | `/api/v1/factory/cost-allocation` | `CostAllocationRequest` | `CostAllocationResponse` |
+
+##### Production logs (`/api/v1/factory/production/logs`)
+
+Auth: `hasAnyAuthority('ROLE_ADMIN','ROLE_FACTORY')`.
+
+| Method | Path | Request | Response `data` |
+|---|---|---|---|
+| POST | `/api/v1/factory/production/logs` | `ProductionLogRequest` | `ProductionLogDetailDto` |
+| GET | `/api/v1/factory/production/logs` | — | `List<ProductionLogDto>` |
+| GET | `/api/v1/factory/production/logs/{id}` | — | `ProductionLogDetailDto` |
+
+##### Packing + bulk-to-size packing (`/api/v1/factory`)
+
+Auth default: `hasAnyAuthority('ROLE_FACTORY','ROLE_ACCOUNTING','ROLE_ADMIN')`.
+
+| Method | Path | Request | Response `data` |
+|---|---|---|---|
+| POST | `/api/v1/factory/packing-records` | Headers: idempotency (`Idempotency-Key`/`X-Idempotency-Key`/`X-Request-Id`), body `PackingRequest` | `ProductionLogDetailDto` |
+| POST | `/api/v1/factory/packing-records/{productionLogId}/complete` | — | `ProductionLogDetailDto` |
+| GET | `/api/v1/factory/unpacked-batches` | — | `List<UnpackedBatchDto>` |
+| GET | `/api/v1/factory/production-logs/{productionLogId}/packing-history` | — | `List<PackingRecordDto>` |
+| POST | `/api/v1/factory/pack` | `BulkPackRequest` | `BulkPackResponse` |
+| GET | `/api/v1/factory/bulk-batches/{finishedGoodId}` | — | `List<BulkPackResponse.ChildBatchDto>` |
+| GET | `/api/v1/factory/bulk-batches/{parentBatchId}/children` | — | `List<BulkPackResponse.ChildBatchDto>` |
+
+##### Packaging mapping configuration (`/api/v1/factory/packaging-mappings`)
+
+| Method | Path | Auth | Request | Response `data` |
+|---|---|---|---|---|
+| GET | `/api/v1/factory/packaging-mappings` | ADMIN/FACTORY | — | `List<PackagingSizeMappingDto>` |
+| GET | `/api/v1/factory/packaging-mappings/active` | ADMIN/FACTORY | — | `List<PackagingSizeMappingDto>` |
+| POST | `/api/v1/factory/packaging-mappings` | ADMIN | `PackagingSizeMappingRequest` | `PackagingSizeMappingDto` |
+| PUT | `/api/v1/factory/packaging-mappings/{id}` | ADMIN | `PackagingSizeMappingRequest` | `PackagingSizeMappingDto` |
+| DELETE | `/api/v1/factory/packaging-mappings/{id}` | ADMIN | — | `ApiResponse<Void>` |
+
+##### Wastage/cost analytics endpoints
+
+Auth for report controller endpoints: `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')`.
+
+| Method | Path | Request | Response `data` |
+|---|---|---|---|
+| GET | `/api/v1/reports/wastage` | — | `List<WastageReportDto>` |
+| GET | `/api/v1/reports/production-logs/{id}/cost-breakdown` | — | `CostBreakdownDto` |
+| GET | `/api/v1/reports/monthly-production-costs` | Query: `year`, `month` | `MonthlyProductionCostDto` |
+
+#### Required User Flows
+
+1. **Product setup flow (`create brand -> create product -> set sizes/cartons`)**
+   1. `POST /api/v1/catalog/brands`.
+   2. `GET /api/v1/catalog/brands?active=true` (brand dropdown refresh).
+   3. `POST /api/v1/catalog/products` with `colors[]`, `sizes[]`, and full `cartonSizes[]` mapping.
+   4. `GET /api/v1/catalog/products?brandId={brandId}&page=0&pageSize=20` (table refresh/search).
+   5. Optional bulk path: `POST /api/v1/catalog/products/bulk` and render row-level result states.
+
+2. **Production flow (`plan -> log -> pack -> stock`)**
+   1. Create plan: `POST /api/v1/factory/production-plans`.
+   2. Log production with consumed materials and costs: `POST /api/v1/factory/production/logs`.
+   3. Record packing sessions (repeat as needed): `POST /api/v1/factory/packing-records`.
+   4. Finalize log/wastage: `POST /api/v1/factory/packing-records/{productionLogId}/complete`.
+   5. Verify stock: `GET /api/v1/finished-goods/stock-summary` + `GET /api/v1/finished-goods/{id}/batches`.
+   6. Optional size conversion: `POST /api/v1/factory/pack`.
+
+3. **Dispatch flow (`reserve -> preview -> confirm`)**
+   1. Reserve inventory by confirming sales order: `POST /api/v1/sales/orders/{id}/confirm`.
+   2. Resolve slip: `GET /api/v1/dispatch/order/{orderId}` (or list via `/pending`).
+   3. Show preview modal: `GET /api/v1/dispatch/preview/{slipId}`.
+   4. Confirm actual shipped quantities: `POST /api/v1/dispatch/confirm`.
+   5. Refresh slip and totals: `GET /api/v1/dispatch/slip/{slipId}`.
+   6. If needed, cancel generated backorder slip: `POST /api/v1/dispatch/backorder/{slipId}/cancel`.
 
 #### State Machines
 
-- **Brand lifecycle**: `ACTIVE -> INACTIVE` via `DELETE /api/v1/catalog/brands/{brandId}`
-- **Product lifecycle**: `ACTIVE -> INACTIVE` via `DELETE /api/v1/catalog/products/{productId}`
+##### Production log lifecycle (`ProductionLogStatus`)
 
-#### Error Codes (catalog)
+- `MIXED` (domain default/internal) -> `READY_TO_PACK` on `POST /api/v1/factory/production/logs`.
+- `READY_TO_PACK` -> `PARTIAL_PACKED` when `POST /api/v1/factory/packing-records` packs only part of quantity.
+- `READY_TO_PACK`/`PARTIAL_PACKED` -> `FULLY_PACKED` when packed quantity reaches mixed quantity or `POST /packing-records/{id}/complete` runs.
+- `PARTIAL_PACKED` -> `READY_TO_PACK` is possible if cumulative packed quantity returns to zero (service recalculation path).
+- Wastage is materialized at completion (`wastageQuantity`, `wastageReasonCode`).
 
-- `BUS_001` (`BUSINESS_INVALID_STATE`): brand inactive but used for product create/update
-- `BUS_002` (`BUSINESS_DUPLICATE_ENTRY`): duplicate brand name or duplicate product name within brand
-- `BUS_003` (`BUSINESS_ENTITY_NOT_FOUND`): brand/product not found for current company
-- `VAL_001` (`VALIDATION_INVALID_INPUT`): invalid payload (missing colors/sizes/carton mapping, invalid GST range, etc.)
+##### Dispatch slip lifecycle (`PackagingSlip.status`)
 
-#### Data Contracts
+Operational statuses: `PENDING`, `PENDING_STOCK`, `PENDING_PRODUCTION`, `RESERVED`, `BACKORDER`, `DISPATCHED`, `CANCELLED`.
 
-- `CatalogBrandRequest`
-  - `name` (required), `logoUrl` (optional), `description` (optional), `active` (optional)
+- Auto reservation path: shortages -> `PENDING_PRODUCTION`; no shortages -> `RESERVED`.
+- Manual status endpoint (`PATCH /dispatch/slip/{id}/status`) only allows transitions among: `PENDING`, `PENDING_STOCK`, `PENDING_PRODUCTION`, `RESERVED`.
+- `POST /dispatch/confirm`:
+  - if any quantity shipped -> current slip `DISPATCHED`.
+  - if partial shipment -> backorder slip is created in `BACKORDER`.
+  - if no shipment and shortage persists -> `PENDING_STOCK`.
+- `POST /dispatch/backorder/{id}/cancel` moves `BACKORDER -> CANCELLED` and releases reservations.
+- Terminal states: `DISPATCHED`, `CANCELLED`.
 
-- `CatalogBrandDto`
-  - `id`, `publicId`, `name`, `code`, `logoUrl`, `description`, `active`
+#### Error Codes (catalog/inventory/manufacturing)
 
-- `CatalogProductRequest`
-  - `brandId` (required)
-  - `name` (required)
-  - `colors: string[]` (required, at least one)
-  - `sizes: string[]` (required, at least one)
-  - `cartonSizes: [{ size, piecesPerCarton }]` (required; every size must be mapped)
-  - `unitOfMeasure` (required)
-  - `hsnCode` (required)
-  - `gstRate` (required, 0..100)
-  - `active` (optional)
+| ErrorCode enum | Wire code | Typical trigger in this module area | Frontend behavior |
+|---|---|---|---|
+| `BUSINESS_INVALID_STATE` | `BUS_001` | Inactive brand used for product mutation, invalid dispatch/backorder state transition | Show non-retryable state error; reload entity state |
+| `BUSINESS_DUPLICATE_ENTRY` | `BUS_002` | Duplicate brand name/product name | Inline field error + keep form open |
+| `BUSINESS_ENTITY_NOT_FOUND` | `BUS_003` | Brand/product/batch/mapping not found | Show not-found toast and navigate back to list |
+| `BUSINESS_CONSTRAINT_VIOLATION` | `BUS_004` | Insufficient stock/business guardrails | Block submit and surface corrective action |
+| `VALIDATION_INVALID_INPUT` | `VAL_001` | Missing/invalid sizes-carton mapping, invalid quantities/status | Inline validation + do not retry automatically |
+| `VALIDATION_MISSING_REQUIRED_FIELD` | `VAL_002` | Missing idempotency key or required payload fields | Highlight required fields/headers |
+| `VALIDATION_INVALID_REFERENCE` | `VAL_006` | Raw material/account/reference IDs invalid | Refresh dropdown data and force re-selection |
+| `CONCURRENCY_CONFLICT` | `CONC_001` | Race during reservation/dispatch/stock update | Refetch latest slip/stock and allow one retry |
+| `INTERNAL_CONCURRENCY_FAILURE` | `CONC_003` | Internal lock/retry exhaustion in packing flows | Show retry CTA with trace ID |
+| `DUPLICATE_ENTITY` | `DATA_001` | Duplicate packaging-size mapping | Inline duplicate warning on mapping screen |
 
-- `CatalogProductDto`
-  - `id`, `publicId`, `brandId`, `brandName`, `brandCode`
-  - `name`, `sku` (auto-generated by backend), `colors`, `sizes`, `cartonSizes`
-  - `unitOfMeasure`, `hsnCode`, `gstRate`, `active`
+#### Data Contracts (DTOs)
 
-- `CatalogProductBulkItemRequest`
-  - `id` (optional), `sku` (optional), `product` (`CatalogProductRequest`, required)
+##### Catalog DTOs
 
-- `CatalogProductBulkResponse`
-  - `total`, `succeeded`, `failed`
-  - `results[]` with `index`, `success`, `action`, `productId`, `sku`, `message`, `product`
+- `CatalogBrandRequest`: `name*`, `logoUrl`, `description`, `active`.
+- `CatalogBrandDto`: `id`, `publicId`, `name`, `code`, `logoUrl`, `description`, `active`.
+- `CatalogProductRequest`: `brandId*`, `name*`, `colors[]`, `sizes[]`, `cartonSizes[]`, `unitOfMeasure*`, `hsnCode*`, `gstRate* (0..100)`, `active`.
+- `CatalogProductCartonSizeRequest`: `size*`, `piecesPerCarton* (>0)`.
+- `CatalogProductDto`: `id`, `publicId`, `brandId`, `brandName`, `brandCode`, `name`, `sku`, `colors[]`, `sizes[]`, `cartonSizes[]`, `unitOfMeasure`, `hsnCode`, `gstRate`, `active`.
+- `CatalogProductCartonSizeDto`: `size`, `piecesPerCarton`.
+- `CatalogProductBulkItemRequest`: `id?`, `sku?`, `product*`.
+- `CatalogProductBulkItemResult`: `index`, `success`, `action`, `productId`, `sku`, `message`, `product`.
+- `CatalogProductBulkResponse`: `total`, `succeeded`, `failed`, `results[]`.
+- `PageResponse<CatalogProductDto>`: `content`, `totalElements`, `totalPages`, `page`, `size`.
+- `ProductionBrandDto` (read-model): `id`, `publicId`, `name`, `code`, `productCount`.
+- `ProductionProductDto` (read-model): `id`, `publicId`, `brandId`, `brandName`, `brandCode`, `productName`, `category`, `defaultColour`, `sizeLabel`, `unitOfMeasure`, `skuCode`, `active`, pricing/tax fields, `metadata`.
 
-#### UI Hints
+##### Inventory + dispatch DTOs
 
-- **Brand dropdown**: load from `GET /api/v1/catalog/brands?active=true` and store `brandId`
-- **Color input**: multi-select chips/tags (`colors[]`)
-- **Size grid**: editable rows for each size with mandatory `piecesPerCarton`; send as `cartonSizes[]`
-- **Bulk upload screen**: show row-level status from `results[]`; allow retry only for failed rows
-- **Search UX**: expose filters for brand, color, size, active status and server-side pagination controls
+- `FinishedGoodRequest`: `productCode*`, `name*`, `unit`, `costingMethod`, account IDs.
+- `FinishedGoodDto`: identity + stock totals + costing/account fields.
+- `FinishedGoodBatchRequest`: `finishedGoodId*`, `batchCode`, `quantity* (>0)`, `unitCost* (>=0)`, `manufacturedAt`, `expiryDate`.
+- `FinishedGoodBatchDto`: identity + `batchCode`, quantities, cost, manufacture/expiry dates.
+- `FinishedGoodLowStockThresholdRequest`: `threshold* (>=0)`.
+- `FinishedGoodLowStockThresholdDto`: `finishedGoodId`, `productCode`, `threshold`.
+- `StockSummaryDto`: shared stock rollup (`currentStock`, `reservedStock`, `availableStock`, `weightedAverageCost`, batch/material counters).
+- `RawMaterialRequest`: `name*`, `sku`, `unitType*`, `reorderLevel*`, `minStock*`, `maxStock*`, `inventoryAccountId`, `costingMethod`.
+- `RawMaterialDto`: identity + stock levels + status + accounting/costing metadata.
+- `RawMaterialBatchRequest`: `batchCode`, `quantity*`, `unit*`, `costPerUnit*`, `supplierId*`, `notes`.
+- `RawMaterialBatchDto`: identity + batch/supplier/quantity/cost fields.
+- `RawMaterialIntakeRequest`: `rawMaterialId*`, `batchCode`, `quantity*`, `unit*`, `costPerUnit*`, `supplierId*`, `notes`.
+- `InventoryStockSnapshot`: `name`, `sku`, `currentStock`, `reorderLevel`, `status`.
+- `InventoryAdjustmentRequest`: `adjustmentDate`, `type* (DAMAGED|SHRINKAGE|OBSOLETE)`, `adjustmentAccountId*`, `reason`, `adminOverride`, `idempotencyKey*`, `lines*`.
+- `InventoryAdjustmentRequest.LineRequest`: `finishedGoodId*`, `quantity*`, `unitCost*`, `note`.
+- `InventoryAdjustmentDto`: identity + `referenceNumber`, `adjustmentDate`, `type`, `status`, `reason`, `totalAmount`, `journalEntryId`, `lines[]`.
+- `InventoryAdjustmentLineDto`: `finishedGoodId`, `finishedGoodName`, `quantity`, `unitCost`, `amount`, `note`.
+- `InventoryBatchTraceabilityDto`: batch identity/type/item/source + quantity/cost + `movements[]`.
+- `InventoryBatchMovementDto`: movement identity/type/qty/cost + `referenceType/referenceId` + linked journal/slip IDs.
+- `OpeningStockImportResponse`: created counts + `errors[]` (`rowNumber`, `message`).
+- `PackagingSlipDto`: slip identity + order/dealer + status/timestamps + journal links + `lines[]`.
+- `PackagingSlipLineDto`: line batch/product/ordered/shipped/backorder/qty/cost/notes fields.
+- `DispatchPreviewDto`: slip/order/dealer summary + `lines[]` with availability/suggested ship quantities.
+- `DispatchConfirmationRequest`: `packagingSlipId*`, `lines*`, `notes`, `confirmedBy`, `overrideRequestId`.
+- `DispatchConfirmationRequest.LineConfirmation`: `lineId*`, `shippedQuantity*`, `notes`.
+- `DispatchConfirmationResponse`: slip + totals + `lines[]` + `backorderSlipId`.
+- `DispatchConfirmationResponse.LineResult`: ordered/shipped/backorder quantities + costing and notes.
 
-#### Inventory & Dispatch Endpoint Map (finished goods)
+##### Manufacturing DTOs
 
-| Method | Path | Auth | Request | Response `data` |
-|---|---|---|---|---|
-| GET | `/api/v1/finished-goods` | `ROLE_ADMIN/ROLE_FACTORY/ROLE_SALES/ROLE_ACCOUNTING` | — | `List<FinishedGoodDto>` |
-| GET | `/api/v1/finished-goods/{id}` | `ROLE_ADMIN/ROLE_FACTORY/ROLE_SALES/ROLE_ACCOUNTING` | — | `FinishedGoodDto` |
-| POST | `/api/v1/finished-goods` | `ROLE_ADMIN/ROLE_FACTORY` | `FinishedGoodRequest` | `FinishedGoodDto` |
-| PUT | `/api/v1/finished-goods/{id}` | `ROLE_ADMIN/ROLE_FACTORY` | `FinishedGoodRequest` | `FinishedGoodDto` |
-| GET | `/api/v1/finished-goods/{id}/batches` | `ROLE_ADMIN/ROLE_FACTORY/ROLE_SALES` | — | `List<FinishedGoodBatchDto>` |
-| POST | `/api/v1/finished-goods/{id}/batches` | `ROLE_ADMIN/ROLE_FACTORY` | `FinishedGoodBatchRequest` | `FinishedGoodBatchDto` |
-| GET | `/api/v1/finished-goods/stock-summary` | `ROLE_ADMIN/ROLE_FACTORY/ROLE_SALES/ROLE_ACCOUNTING` | — | `List<StockSummaryDto>` |
-| GET | `/api/v1/finished-goods/low-stock?threshold={n}` | `ROLE_ADMIN/ROLE_FACTORY/ROLE_SALES` | query `threshold` (default `100`) | `List<FinishedGoodDto>` |
-| GET | `/api/v1/dispatch/pending` | `ROLE_ADMIN/ROLE_FACTORY/ROLE_SALES` | — | `List<PackagingSlipDto>` |
-| GET | `/api/v1/dispatch/preview/{slipId}` | `ROLE_ADMIN/ROLE_FACTORY` | — | `DispatchPreviewDto` |
-| GET | `/api/v1/dispatch/slip/{slipId}` | `ROLE_ADMIN/ROLE_FACTORY/ROLE_SALES` | — | `PackagingSlipDto` |
-| GET | `/api/v1/dispatch/order/{orderId}` | `ROLE_ADMIN/ROLE_FACTORY/ROLE_SALES` | — | `PackagingSlipDto` |
-| PATCH | `/api/v1/dispatch/slip/{slipId}/status?status={value}` | `ROLE_ADMIN/ROLE_FACTORY` | query `status` | `PackagingSlipDto` |
-| POST | `/api/v1/dispatch/backorder/{slipId}/cancel?reason={text}` | `ROLE_ADMIN/ROLE_FACTORY` | optional query `reason` | `PackagingSlipDto` |
-| POST | `/api/v1/dispatch/confirm` | `ROLE_ADMIN/ROLE_FACTORY` + `dispatch.confirm` | `DispatchConfirmationRequest` | `DispatchConfirmationResponse` |
+- `ProductionPlanRequest`: `planNumber*`, `productName*`, `quantity*`, `plannedDate*`, `notes`.
+- `ProductionPlanDto`: identity + plan/product/qty/date/status/notes.
+- `ProductionBatchRequest` (legacy path): `batchNumber*`, `quantityProduced*`, `loggedBy`, `notes`.
+- `ProductionBatchDto` (legacy path): identity + batch/qty/timestamp/user/notes.
+- `ProductionLogRequest`: `brandId*`, `productId*`, `batchColour`, `batchSize*`, `unitOfMeasure`, `mixedQuantity*`, `producedAt`, `notes`, `createdBy`, `addToFinishedGoods`, `salesOrderId`, `laborCost`, `overheadCost`, `materials*`.
+- `ProductionLogRequest.MaterialUsageRequest`: `rawMaterialId*`, `quantity* (>0)`, `unitOfMeasure`.
+- `ProductionLogDto`: lifecycle summary with output, packed quantity, wastage, status, cost totals.
+- `ProductionLogDetailDto`: `ProductionLogDto` fields + notes + `materials[]` + `packingRecords[]`.
+- `ProductionLogMaterialDto`: raw material batch and movement linkage + quantity/cost fields.
+- `ProductionLogPackingRecordDto`: packing output linkage (`finishedGoodId/batchId`, packaging size, packed quantity, packed metadata).
+- `PackingRequest`: `productionLogId*`, `packedDate`, `packedBy`, `idempotencyKey`, `lines*`.
+- `PackingLineRequest`: `packagingSize*`, `quantityLiters`, `piecesCount`, `boxesCount`, `piecesPerBox` (all positive when provided).
+- `PackingRecordDto`: persisted packing record with line-level box/piece metadata.
+- `UnpackedBatchDto`: production log quantities (`mixed`, `packed`, `remaining`) and status.
+- `BulkPackRequest`: `bulkBatchId*`, `packs*`, `packagingMaterials`, `skipPackagingConsumption`, `packDate`, `packedBy`, `notes`, `idempotencyKey`.
+- `BulkPackRequest.PackLine`: `childSkuId*`, `quantity*`, `sizeLabel`, `unit`.
+- `BulkPackRequest.MaterialConsumption`: `materialId*`, `quantity*`, `unit`.
+- `BulkPackResponse`: consumed bulk qty/cost/journal + created `childBatches[]`.
+- `BulkPackResponse.ChildBatchDto`: child batch identity + SKU/size + qty/cost/value.
+- `PackagingSizeMappingRequest`: `packagingSize`, `rawMaterialId`, `unitsPerPack`, `cartonSize`, `litersPerUnit`.
+- `PackagingSizeMappingDto`: identity + mapping, raw material descriptors, activity flag.
+- `FactoryTaskRequest` / `FactoryTaskDto`: task metadata (`title`, `assignee`, `status`, due/sales/slip linkage).
+- `FactoryDashboardDto`: `productionEfficiency`, `completedPlans`, `batchesLogged`, `alerts`.
+- `CostAllocationRequest`: period + labor/overhead + target account IDs + notes.
+- `CostAllocationResponse`: allocation totals, affected journals, summary.
+- `WastageReportDto`: wastage quantity/percentage/value by production log.
+- `CostBreakdownDto`: per-log material/labor/overhead/unit cost split.
+- `MonthlyProductionCostDto`: monthly totals (`liters`, costs, average/loss metrics).
 
-#### Inventory & Dispatch User Flows
+#### UI Hints (frontend implementation)
 
-1. **Reserve → preview → confirm dispatch**
-   1. Sales confirmation reserves stock and creates/updates packaging slip.
-   2. Factory loads slips via `GET /api/v1/dispatch/pending`.
-   3. Factory opens `GET /api/v1/dispatch/preview/{slipId}` for suggested ship qty and shortages.
-   4. Factory submits shipped quantities using `POST /api/v1/dispatch/confirm`.
-   5. UI refreshes with `GET /api/v1/dispatch/slip/{slipId}` or response payload.
-
-2. **Backorder cancellation**
-   1. For a `BACKORDER` slip, call `POST /api/v1/dispatch/backorder/{slipId}/cancel`.
-   2. Backend releases reserved quantities and marks slip `CANCELLED`.
-   3. Refresh order slip state from `GET /api/v1/dispatch/order/{orderId}`.
-
-3. **Stock monitoring**
-   1. Load rollup via `GET /api/v1/finished-goods/stock-summary`.
-   2. Show warning list via `GET /api/v1/finished-goods/low-stock?threshold=...`.
-
-#### Packaging Slip State Machine
-
-- `PENDING` → `RESERVED` (inventory reserved)
-- `RESERVED` → `DISPATCHED` (dispatch confirmed)
-- `RESERVED`/`PENDING_*` → `BACKORDER` (shortage remains)
-- `BACKORDER` → `CANCELLED` (cancel backorder endpoint)
-- Terminal states: `DISPATCHED`, `CANCELLED`
-
-#### Inventory/Dispatch Error Handling Notes
-
-- `VALIDATION_INVALID_INPUT`: missing slip/line confirmation, invalid shipped qty.
-- `VALIDATION_INVALID_STATE`: invalid slip transition, dispatched slip mutation attempt, insufficient reserved stock.
-- `CONCURRENCY_CONFLICT`: duplicate/open backorder slip race; frontend should refetch slip and retry once.
-
-#### Backend Decomposition Note
-
-Backend now routes finished-goods logic through focused services: catalog, stock, reservation, and dispatch. API contracts above are backward-compatible; frontend behavior does not need endpoint changes.
+- **Brand dropdown**: source from `GET /api/v1/catalog/brands?active=true`; store/use `brandId` only.
+- **Color input**: chip-style multi-select; preserve order entered by user when sending `colors[]`.
+- **Size grid inputs**: render one row per selected size with mandatory `piecesPerCarton`; send to `cartonSizes[]`.
+- **HSN lookup**:
+  - Backend currently validates/persists `hsnCode` but does not expose a dedicated HSN master endpoint.
+  - Recommended UX: local searchable HSN dataset/autocomplete in UI + final backend validation on submit.
+- **Product search/filter**: always use server pagination (`page`, `pageSize`); backend caps `pageSize` at 100.
+- **Bulk upsert UX**: render `CatalogProductBulkResponse.results[]` row by row; retry only failed rows.
+- **Dispatch confirm UI**: force explicit per-line shipped quantity entry (cannot exceed ordered quantity).
+- **Slip status controls**: only expose `PENDING`, `PENDING_STOCK`, `PENDING_PRODUCTION`, `RESERVED`; do not expose direct set to `DISPATCHED/BACKORDER/CANCELLED`.
+- **Idempotency-sensitive screens**: send stable idempotency keys for inventory adjustments, opening-stock import, raw-material intake/batch creation, and packing records.
+- **Wastage dashboard**: combine `/reports/wastage` with `/reports/monthly-production-costs` for trend + variance cards.
 
 ### Sales & Dealers
 
