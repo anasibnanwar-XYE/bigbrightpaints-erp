@@ -35,6 +35,8 @@ _To be documented_
 | POST | `/api/v1/superadmin/tenants/{id}/suspend` | `ROLE_SUPER_ADMIN` | None | `SuperAdminTenantDto` |
 | POST | `/api/v1/superadmin/tenants/{id}/activate` | `ROLE_SUPER_ADMIN` | None | `SuperAdminTenantDto` |
 | GET | `/api/v1/superadmin/tenants/{id}/usage` | `ROLE_SUPER_ADMIN` | None | `SuperAdminTenantUsageDto` |
+| GET | `/api/v1/superadmin/tenants/coa-templates` | `ROLE_SUPER_ADMIN` | None | `List<CoATemplateDto>` |
+| POST | `/api/v1/superadmin/tenants/onboard` | `ROLE_SUPER_ADMIN` | `TenantOnboardingRequest` | `TenantOnboardingResponse` |
 
 All responses are wrapped in `ApiResponse<T>`.
 
@@ -62,6 +64,12 @@ All responses are wrapped in `ApiResponse<T>`.
 5. **Inspect tenant usage**
    1. `GET /api/v1/superadmin/tenants/{id}/usage`
    2. Show API calls, active users, storage, last activity timestamp.
+
+6. **Tenant onboarding (single-call bootstrap)**
+   1. `GET /api/v1/superadmin/tenants/coa-templates` to populate template dropdown (Generic / Indian Standard / Manufacturing).
+   2. Submit onboarding form once via `POST /api/v1/superadmin/tenants/onboard`.
+   3. Backend creates tenant company, admin user, full chart of accounts from selected template, default accounting period, and baseline system settings.
+   4. Frontend stores/display one-time `adminTemporaryPassword` immediately after success.
 
 #### State Machine (superadmin view)
 
@@ -107,6 +115,38 @@ Backend lifecycle states `HOLD`/`BLOCKED` are exposed as `SUSPENDED` in superadm
   - `storageBytes: number`
   - `lastActivityAt: string | null` (ISO-8601)
 
+- `CoATemplateDto`
+  - `code: "GENERIC" | "INDIAN_STANDARD" | "MANUFACTURING"`
+  - `name: string`
+  - `description: string`
+  - `accountCount: number` (always 50-100)
+
+- `TenantOnboardingRequest`
+  - `name: string` (required, max 255)
+  - `code: string` (required, max 64, normalized uppercase)
+  - `timezone: string` (required, max 64)
+  - `defaultGstRate?: number` (0-100)
+  - `maxActiveUsers?: number >= 0`
+  - `maxApiRequests?: number >= 0`
+  - `maxStorageBytes?: number >= 0`
+  - `maxConcurrentUsers?: number >= 0`
+  - `softLimitEnabled?: boolean`
+  - `hardLimitEnabled?: boolean`
+  - `firstAdminEmail: string` (required email)
+  - `firstAdminDisplayName?: string`
+  - `coaTemplateCode: "GENERIC" | "INDIAN_STANDARD" | "MANUFACTURING"` (required)
+
+- `TenantOnboardingResponse`
+  - `companyId: number`
+  - `companyCode: string`
+  - `templateCode: string`
+  - `accountsCreated: number`
+  - `accountingPeriodId: number`
+  - `adminEmail: string`
+  - `adminTemporaryPassword: string` (show once, do not persist in browser local storage)
+  - `credentialsEmailSent: boolean`
+  - `systemSettingsInitialized: boolean`
+
 #### UI Hints
 
 - Use a status filter dropdown with only `ACTIVE` and `SUSPENDED` values.
@@ -114,6 +154,9 @@ Backend lifecycle states `HOLD`/`BLOCKED` are exposed as `SUSPENDED` in superadm
 - For lifecycle buttons, show confirmation modals before suspend/activate.
 - Treat `lastActivityAt = null` as “No activity yet”.
 - Refresh dashboard + tenant list after lifecycle mutation to keep aggregates in sync.
+- For onboarding, fetch templates first and show `name + description + accountCount` in template picker.
+- On onboarding success, immediately display/copy `adminTemporaryPassword` in a modal and force explicit acknowledgement.
+- Disable duplicate submits on onboarding button until API response is received.
 
 ### Accounting
 _To be documented_
