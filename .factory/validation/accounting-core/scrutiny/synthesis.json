@@ -1,6 +1,6 @@
 {
   "milestone": "accounting-core",
-  "round": 2,
+  "round": 3,
   "status": "fail",
   "validatorsRun": {
     "test": {
@@ -20,78 +20,34 @@
     }
   },
   "reviewsSummary": {
-    "total": 4,
-    "passed": 2,
-    "failed": 2,
+    "total": 1,
+    "passed": 0,
+    "failed": 1,
     "failedFeatures": [
-      "deep-accounting-logic-migration",
-      "fix-accounting-decomposition-and-standardization"
+      "fix-remaining-accounting-scrutiny-gaps"
     ]
   },
   "blockingIssues": [
     {
-      "featureId": "deep-accounting-logic-migration",
+      "featureId": "fix-remaining-accounting-scrutiny-gaps",
       "severity": "blocking",
-      "description": "Accounting decomposition is still not achieved: core business implementation remains concentrated in AccountingCoreEngine (6179+ lines), so focused services do not own domain logic."
+      "description": "Real decomposition is still not achieved: AccountingCoreEngine remains a 6212-line monolith containing core accounting behaviors, so business logic is still centralized instead of owned by focused services."
     },
     {
-      "featureId": "deep-accounting-logic-migration",
+      "featureId": "fix-remaining-accounting-scrutiny-gaps",
       "severity": "blocking",
-      "description": "Journal/settlement focused services still rely on inheritance/super delegation to monolithic engine methods rather than independent implementations."
-    },
-    {
-      "featureId": "fix-accounting-decomposition-and-standardization",
-      "severity": "blocking",
-      "description": "Cross-module journal standardization is still incomplete: packing/factory posting path (AccountingFacade.postPackingJournal) continues to call createJournalEntry directly instead of createStandardJournal(JournalCreationRequest)."
-    },
-    {
-      "featureId": "fix-accounting-decomposition-and-standardization",
-      "severity": "blocking",
-      "description": "Supplier settlement compliance audit typing is still incomplete because AccountingComplianceAuditService settlement detection does not include SUP-* references."
+      "description": "Settlement flow still uses delegation chain (SettlementService -> AccountingIdempotencyService -> AccountingCoreEngine super methods), so focused services still do not own migrated domain logic."
     }
   ],
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
       "target": "backend-worker skill",
-      "suggestion": "Strengthen decomposition acceptance criteria: explicitly fail implementations that relocate monolith logic into renamed base/engine classes, and require focused services to own business logic (not super/delegate wrappers).",
-      "evidence": "Both deep-accounting-logic-migration and fix-accounting-decomposition-and-standardization still centralize logic in AccountingCoreEngine while focused services mostly delegate/inherit.",
+      "suggestion": "Add an explicit decomposition verification checkpoint requiring focused services to own migrated business logic, and explicitly reject wrapper/delegation outcomes that preserve monolithic core implementations.",
+      "evidence": "In accounting-core reruns, logic remains concentrated in AccountingCoreEngine (6212 lines) while focused services still delegate (e.g., SettlementService -> AccountingIdempotencyService -> super methods), yet wrapper-style decomposition remains possible under current procedural guidance.",
       "isSystemic": true
-    },
-    {
-      "target": "AGENTS.md",
-      "suggestion": "Resolve .factory guidance conflict by explicitly allowing `.factory/library/frontend-handoff.md` updates for endpoint/contract changes while keeping mission infrastructure paths off-limits.",
-      "evidence": "Two independent fix-feature reviews observed contradictory instruction between off-limits `.factory` guidance and mandatory frontend handoff updates.",
-      "isSystemic": true
-    },
-    {
-      "target": "backend-worker skill",
-      "suggestion": "Add a required frontend-handoff DTO parity check step that compares documented contracts against source DTO/record wrapper shapes (e.g., PageResponse wrappers and nested records).",
-      "evidence": "accounting-frontend-handoff contracts required a dedicated fix feature because wrapper/placeholder mismatches were not caught by current verification steps.",
-      "isSystemic": true
-    },
-    {
-      "target": "backend-worker skill",
-      "suggestion": "For audit-classification fixes, require verification of all active audit pipelines (domain trail and compliance trail) to prevent partial-path fixes.",
-      "evidence": "fix-accounting-decomposition-and-standardization updated one audit classification path, but supplier settlement typing remained incorrect in AccountingComplianceAuditService.",
-      "isSystemic": false
-    },
-    {
-      "target": "AGENTS.md",
-      "suggestion": "Document a canonical deterministic fallback strategy for auto-settlement references/idempotency keys to avoid drift across service layers.",
-      "evidence": "fix-gst-settlement-reconciliation showed two fallback-generation layers using different fingerprints without a declared shared convention.",
-      "isSystemic": false
     }
   ],
-  "rejectedObservations": [
-    {
-      "observation": "Duplicate decomposition-bypass observation reported separately by two reviewers (skills and conventions variants).",
-      "reason": "duplicate"
-    },
-    {
-      "observation": "Duplicate .factory guidance-conflict observation repeated across two fix reviews.",
-      "reason": "duplicate"
-    }
-  ],
-  "previousRound": ".factory/validation/accounting-core/scrutiny/synthesis.round1.json"
+  "rejectedObservations": [],
+  "previousRound": ".factory/validation/accounting-core/scrutiny/synthesis.round2.json"
 }

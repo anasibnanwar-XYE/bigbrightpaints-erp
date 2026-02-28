@@ -1,0 +1,34 @@
+{
+  "featureId": "fix-remaining-accounting-scrutiny-gaps",
+  "reviewedAt": "2026-02-28T15:17:03Z",
+  "commitId": "fabe6032",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The fix correctly resolves two previously reported accounting-core gaps (packing journal now routes through createStandardJournal, and SUP-* references are classified as settlement in compliance audit), but prior blocking decomposition failures from the referenced failed features remain unresolved: core accounting logic is still centralized in AccountingCoreEngine and focused services still delegate to inherited monolith methods.",
+    "issues": [
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingCoreEngine.java",
+        "line": 78,
+        "severity": "blocking",
+        "description": "Real decomposition is still not achieved. AccountingCoreEngine remains a 6212-line monolith containing primary accounting behaviors (e.g., createJournalEntry at line 450 and settleSupplierInvoices at line 2218), so the original centralization failure from prior scrutiny remains."
+      },
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/SettlementService.java",
+        "line": 117,
+        "severity": "blocking",
+        "description": "Focused settlement service still delegates key behavior instead of owning migrated domain logic: SettlementService forwards settleDealerInvoices/settleSupplierInvoices to AccountingIdempotencyService (lines 117/127), which then delegates to super methods in AccountingCoreEngine (AccountingIdempotencyService line 120). This preserves the delegation-chain failure pattern called out in prior reviews."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "The backend-worker decomposition procedure is still vulnerable to wrapper/delegation outcomes that preserve a monolithic core implementation.",
+      "evidence": ".factory/skills/backend-worker/SKILL.md Step 3 allows updating the god service to delegate after creating focused services, but does not add an explicit verification checkpoint that focused services must own migrated business logic. Current code still concentrates logic in AccountingCoreEngine (6212 lines) while settlement flow delegates through SettlementService -> AccountingIdempotencyService -> super.*."
+    }
+  ],
+  "addressesFailureFrom": "/home/realnigga/Desktop/Mission-control/.factory/validation/accounting-core/scrutiny/reviews/deep-accounting-logic-migration.json; /home/realnigga/Desktop/Mission-control/.factory/validation/accounting-core/scrutiny/reviews/fix-accounting-decomposition-and-standardization.json",
+  "summary": "FAIL: this fix successfully closes the two targeted scrutiny gaps (postPackingJournal canonical routing and SUP-* settlement classification), but it does not resolve the remaining blocking decomposition failures inherited from the prior failed features."
+}
