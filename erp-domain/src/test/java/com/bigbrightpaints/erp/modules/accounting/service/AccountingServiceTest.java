@@ -12,6 +12,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriod;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodStatus;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalCorrectionType;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLine;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
@@ -414,7 +415,7 @@ class AccountingServiceTest {
     void reverseJournalEntry_suppressesLegacySummaryAudit_afterCommit() {
         LocalDate today = LocalDate.of(2024, 4, 1);
         when(companyClock.today(company)).thenReturn(today);
-        AccountingPeriod openPeriod = new AccountingPeriod();
+        AccountingPeriod openPeriod = openPeriod(today);
         when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(openPeriod);
 
         AccountingService service = spy(accountingService);
@@ -449,7 +450,7 @@ class AccountingServiceTest {
     void reverseJournalEntry_skipsSuccessAudit_whenTransactionRollsBack() {
         LocalDate today = LocalDate.of(2024, 4, 1);
         when(companyClock.today(company)).thenReturn(today);
-        AccountingPeriod openPeriod = new AccountingPeriod();
+        AccountingPeriod openPeriod = openPeriod(today);
         when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(openPeriod);
 
         AccountingService service = spy(accountingService);
@@ -484,7 +485,7 @@ class AccountingServiceTest {
     void reverseJournalEntry_skipsLegacySummaryAudit_withoutToggle() {
         LocalDate today = LocalDate.of(2024, 4, 1);
         when(companyClock.today(company)).thenReturn(today);
-        AccountingPeriod openPeriod = new AccountingPeriod();
+        AccountingPeriod openPeriod = openPeriod(today);
         when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(openPeriod);
 
         AccountingService service = spy(accountingService);
@@ -512,6 +513,38 @@ class AccountingServiceTest {
         });
 
         verify(auditService, never()).logSuccess(eq(AuditEvent.JOURNAL_ENTRY_REVERSED), any());
+    }
+
+    @Test
+    void reverseJournalEntry_returnsDtoFromSavedEntityForStandardPath() {
+        LocalDate today = LocalDate.of(2024, 4, 2);
+        when(companyClock.today(company)).thenReturn(today);
+        AccountingPeriod openPeriod = openPeriod(today);
+        when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(openPeriod);
+
+        AccountingService service = spy(accountingService);
+        JournalEntry original = reversalSourceEntry(503L, "REV-CONSISTENT-DTO", today);
+        JournalEntry reversal = new JournalEntry();
+        ReflectionTestUtils.setField(reversal, "id", 903L);
+
+        when(companyEntityLookup.requireJournalEntry(company, 503L)).thenReturn(original);
+        when(companyEntityLookup.requireJournalEntry(company, 903L)).thenReturn(reversal);
+        when(journalEntryRepository.save(any(JournalEntry.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        doReturn(stubEntry(903L)).when(service).createJournalEntry(any(JournalEntryRequest.class));
+
+        JournalEntryReversalRequest request = new JournalEntryReversalRequest(
+                today,
+                false,
+                "Consistent dto",
+                "Standard reversal",
+                Boolean.FALSE
+        );
+
+        JournalEntryDto result = service.reverseJournalEntry(503L, request);
+
+        assertThat(result.id()).isEqualTo(903L);
+        assertThat(result.correctionType()).isEqualTo(JournalCorrectionType.REVERSAL.name());
+        assertThat(result.correctionReason()).isEqualTo("Consistent dto");
     }
 
     @Test
@@ -1378,7 +1411,7 @@ class AccountingServiceTest {
     void reverseJournalEntry_failsWhenEventTrailPersistenceFailsInStrictMode() {
         LocalDate today = LocalDate.of(2024, 4, 2);
         when(companyClock.today(company)).thenReturn(today);
-        AccountingPeriod openPeriod = new AccountingPeriod();
+        AccountingPeriod openPeriod = openPeriod(today);
         when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(openPeriod);
 
         AccountingService service = spy(accountingService);
@@ -1426,7 +1459,7 @@ class AccountingServiceTest {
         ReflectionTestUtils.setField(accountingService, "strictAccountingEventTrail", false);
         LocalDate today = LocalDate.of(2024, 4, 3);
         when(companyClock.today(company)).thenReturn(today);
-        AccountingPeriod openPeriod = new AccountingPeriod();
+        AccountingPeriod openPeriod = openPeriod(today);
         when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(openPeriod);
 
         AccountingService service = spy(accountingService);
@@ -1472,7 +1505,7 @@ class AccountingServiceTest {
         ReflectionTestUtils.setField(accountingService, "strictAccountingEventTrail", false);
         LocalDate today = LocalDate.of(2024, 4, 4);
         when(companyClock.today(company)).thenReturn(today);
-        AccountingPeriod openPeriod = new AccountingPeriod();
+        AccountingPeriod openPeriod = openPeriod(today);
         when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(openPeriod);
 
         AccountingService service = spy(accountingService);
@@ -1518,7 +1551,7 @@ class AccountingServiceTest {
         ReflectionTestUtils.setField(accountingService, "strictAccountingEventTrail", false);
         LocalDate today = LocalDate.of(2024, 4, 3);
         when(companyClock.today(company)).thenReturn(today);
-        AccountingPeriod openPeriod = new AccountingPeriod();
+        AccountingPeriod openPeriod = openPeriod(today);
         when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(openPeriod);
 
         AccountingService service = spy(accountingService);
@@ -8012,6 +8045,14 @@ class AccountingServiceTest {
                 .contains(existingAppliedMarker);
         assertThat(String.valueOf(ex.getDetails().get("requestAllocationSignatureDigest")))
                 .contains(requestAppliedMarker);
+    }
+
+    private AccountingPeriod openPeriod(LocalDate date) {
+        AccountingPeriod period = new AccountingPeriod();
+        period.setYear(date.getYear());
+        period.setMonth(date.getMonthValue());
+        period.setStatus(AccountingPeriodStatus.OPEN);
+        return period;
     }
 
     private JournalLine journalLine(JournalEntry entry,

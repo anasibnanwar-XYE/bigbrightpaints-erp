@@ -26,6 +26,7 @@ public enum ErrorCode {
     BUSINESS_LIMIT_EXCEEDED("BUS_006", "Operation limit exceeded"),
     BUSINESS_INVALID_OPERATION("BUS_007", "Invalid operation"),
     BUSINESS_DEPENDENCY_EXISTS("BUS_008", "Cannot delete due to existing dependencies"),
+    RETURN_EXCEEDS_OUTSTANDING("BUS_009", "Return exceeds outstanding amount"),
 
     // Validation Errors (3000-3999)
     VALIDATION_INVALID_INPUT("VAL_001", "Invalid input provided"),

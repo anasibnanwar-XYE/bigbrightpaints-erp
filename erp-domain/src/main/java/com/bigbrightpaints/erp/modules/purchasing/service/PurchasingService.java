@@ -1089,6 +1089,13 @@ public class PurchasingService {
         }
         BigDecimal currentOutstanding = currency(MoneyUtils.zeroIfNull(purchase.getOutstandingAmount()));
         BigDecimal newOutstanding = currency(currentOutstanding.subtract(amount));
+        if (newOutstanding.compareTo(BigDecimal.ZERO) < 0) {
+            throw new ApplicationException(ErrorCode.RETURN_EXCEEDS_OUTSTANDING,
+                    "Purchase return amount exceeds outstanding payable")
+                    .withDetail("purchaseId", purchase.getId())
+                    .withDetail("currentOutstanding", currentOutstanding)
+                    .withDetail("returnAmount", amount);
+        }
         purchase.setOutstandingAmount(newOutstanding);
         if (purchase.getOutstandingAmount().compareTo(BigDecimal.ZERO) == 0 && isPurchaseFullyReturned(purchase)) {
             purchase.setStatus("VOID");

@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.purchasing.service;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
@@ -314,8 +315,8 @@ class PurchasingServiceTest {
     }
 
     @Test
-    @DisplayName("recordPurchaseReturn allows supplier credit when return exceeds outstanding payable")
-    void recordPurchaseReturn_amountExceedsOutstanding_createsSupplierCredit() {
+    @DisplayName("recordPurchaseReturn rejects return when amount exceeds outstanding payable")
+    void recordPurchaseReturn_amountExceedsOutstanding_throws() {
         when(companyContextService.requireCurrentCompany()).thenReturn(company);
         when(companyEntityLookup.requireSupplier(company, 10L)).thenReturn(supplier);
         RawMaterialPurchase purchase = new RawMaterialPurchase();
@@ -358,12 +359,13 @@ class PurchasingServiceTest {
                 "Defective"
         );
 
-        JournalEntryDto result = purchasingService.recordPurchaseReturn(request);
+        assertThatThrownBy(() -> purchasingService.recordPurchaseReturn(request))
+                .isInstanceOf(ApplicationException.class)
+                .satisfies(ex -> assertThat(((ApplicationException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.RETURN_EXCEEDS_OUTSTANDING))
+                .hasMessageContaining("outstanding");
 
-        assertThat(result).isNotNull();
-        assertThat(purchase.getOutstandingAmount()).isEqualByComparingTo(new BigDecimal("-5.00"));
-        verify(accountingFacade).postPurchaseReturn(any(), any(), any(), any(), any(), any(), any());
-        verify(rawMaterialRepository).deductStockIfSufficient(20L, BigDecimal.ONE);
+        assertThat(purchase.getOutstandingAmount()).isEqualByComparingTo(new BigDecimal("5.00"));
     }
 
     @Test

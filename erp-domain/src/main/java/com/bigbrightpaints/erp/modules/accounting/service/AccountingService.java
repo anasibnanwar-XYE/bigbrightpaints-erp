@@ -805,7 +805,7 @@ public class AccountingService {
         }
         recordJournalEntryReversedEventSafe(entry, reversalEntry, sanitizedReason);
         logAuditSuccessAfterCommit(AuditEvent.JOURNAL_ENTRY_REVERSED, auditMetadata);
-        return reversalDto;
+        return toDto(reversalEntry);
     }
 
     @Retryable(
