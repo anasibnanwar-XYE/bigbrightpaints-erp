@@ -30,6 +30,9 @@ Testing surface: tools, URLs, setup steps, isolation notes, known quirks.
 - Tests use H2 for unit tests, Testcontainers PostgreSQL for integration tests
 - RabbitMQ health check excluded in dev profile
 - When running Maven with `-f erp-domain/pom.xml` from outside `erp-domain`, `.mvn/settings.xml` may not resolve; run commands from `erp-domain` or pass `--settings /home/realnigga/Desktop/Mission-control/erp-domain/.mvn/settings.xml` explicitly.
+- On this host, Docker DB startup may fail because port `5432` is already occupied by a local PostgreSQL service; for assertion validation, prefer API integration tests (Testcontainers) over docker-compose app runtime.
+- For tenant/admin API integration classes under the v2 migration surface, add `-Dspring.jpa.hibernate.ddl-auto=update` in test commands to align ephemeral schema (not production code).
+- `SuperAdminControllerIT#superAdmin_canSuspendActivateListAndReadUsage` can fail on lifecycle check-constraint mismatch (`ACTIVE/HOLD/BLOCKED` vs `SUSPENDED`) in current branch; use narrower tenant/admin evidence tests for dashboard/metrics, module configuration, and runtime enforcement while that branch issue is unresolved.
 
 ## Flow Validator Guidance: api
 - Surface: backend REST API + CLI test runner (`curl`, `mvn test`) for evidence collection.

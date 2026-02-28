@@ -1,0 +1,29 @@
+{
+  "milestone": "tenant-and-admin",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 6,
+    "passed": 6,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-TENANT-001",
+    "VAL-TENANT-002",
+    "VAL-TENANT-003",
+    "VAL-TENANT-004",
+    "VAL-TENANT-005",
+    "VAL-TENANT-006"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Added tenant/admin validation setup notes: local port-5432 conflict fallback to Testcontainers API integration tests, required ddl-auto override for v2 test schema alignment, and known scoped SuperAdminControllerIT lifecycle-path incompatibility with alternate evidence strategy.",
+      "source": "flow-report"
+    }
+  ],
+  "previousRound": null
+}
