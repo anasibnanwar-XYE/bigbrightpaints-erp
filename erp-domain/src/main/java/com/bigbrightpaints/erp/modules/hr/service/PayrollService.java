@@ -318,7 +318,8 @@ public class PayrollService {
             dailyRate = BigDecimal.ZERO;
         }
         BigDecimal dailyWage = employee.getDailyWage() != null ? employee.getDailyWage() : dailyRate;
-        BigDecimal hourlyRate = dailyRate.divide(employee.getStandardHoursPerDay(), 2, RoundingMode.HALF_UP);
+        BigDecimal standardHoursPerDay = requireValidStandardHoursPerDay(employee);
+        BigDecimal hourlyRate = dailyRate.divide(standardHoursPerDay, 2, RoundingMode.HALF_UP);
         line.setDailyWage(dailyWage);
         line.setDailyRate(dailyRate);
         line.setHourlyRate(hourlyRate);
@@ -571,6 +572,9 @@ public class PayrollService {
                     .withDetail("canonicalPath", PAYROLL_PAYMENTS_CANONICAL_PATH);
         }
         canonicalPaymentReference = canonicalPaymentReference.trim();
+        String persistedPaymentReference = StringUtils.hasText(paymentReference)
+                ? paymentReference.trim()
+                : canonicalPaymentReference;
 
         if (run.getStatus() != PayrollRun.PayrollStatus.POSTED
                 && run.getStatus() != PayrollRun.PayrollStatus.PAID) {
@@ -608,8 +612,16 @@ public class PayrollService {
             payrollRunLineRepository.saveAll(dirtyLines);
         }
 
+        boolean payrollRunDirty = false;
         if (run.getStatus() != PayrollRun.PayrollStatus.PAID) {
             run.setStatus(PayrollRun.PayrollStatus.PAID);
+            payrollRunDirty = true;
+        }
+        if (!Objects.equals(run.getPaymentReference(), persistedPaymentReference)) {
+            run.setPaymentReference(persistedPaymentReference);
+            payrollRunDirty = true;
+        }
+        if (payrollRunDirty) {
             payrollRunRepository.save(run);
         }
         return toDto(run);
@@ -658,6 +670,17 @@ public class PayrollService {
 
     private boolean hasPositive(BigDecimal value) {
         return value != null && value.compareTo(BigDecimal.ZERO) > 0;
+    }
+
+    private BigDecimal requireValidStandardHoursPerDay(Employee employee) {
+        BigDecimal configuredStandardHours = employee != null ? employee.getConfiguredStandardHoursPerDay() : null;
+        if (configuredStandardHours == null || configuredStandardHours.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Employee standardHoursPerDay must be greater than zero for payroll calculation")
+                    .withDetail("employeeId", employee != null ? employee.getId() : null)
+                    .withDetail("configuredStandardHoursPerDay", configuredStandardHours);
+        }
+        return configuredStandardHours;
     }
 
     private boolean hasPostingJournalLink(PayrollRun run) {
@@ -759,8 +782,9 @@ public class PayrollService {
 
             BigDecimal baseDays = presentDays.add(holidayDays);
             BigDecimal basePay = emp.getDailyRate().multiply(baseDays);
+            BigDecimal standardHoursPerDay = requireValidStandardHoursPerDay(emp);
             BigDecimal hourlyRate = emp.getDailyRate().divide(
-                    emp.getStandardHoursPerDay(), 2, RoundingMode.HALF_UP);
+                    standardHoursPerDay, 2, RoundingMode.HALF_UP);
             BigDecimal otPay = hourlyRate.multiply(
                     emp.getOvertimeRateMultiplier()).multiply(otHours);
             BigDecimal doubleOtPay = hourlyRate.multiply(

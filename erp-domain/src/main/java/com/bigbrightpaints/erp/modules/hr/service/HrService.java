@@ -62,10 +62,10 @@ public class HrService {
         // Payroll fields
         if (request.phone() != null) employee.setPhone(request.phone());
         if (request.employeeType() != null) {
-            employee.setEmployeeType(Employee.EmployeeType.valueOf(request.employeeType()));
+            employee.setEmployeeType(parseEmployeeType(request.employeeType()));
         }
         if (request.paymentSchedule() != null) {
-            employee.setPaymentSchedule(Employee.PaymentSchedule.valueOf(request.paymentSchedule()));
+            employee.setPaymentSchedule(parsePaymentSchedule(request.paymentSchedule()));
         }
         if (request.monthlySalary() != null) employee.setMonthlySalary(request.monthlySalary());
         if (request.dailyWage() != null) employee.setDailyWage(request.dailyWage());
@@ -97,10 +97,10 @@ public class HrService {
         // Payroll fields
         if (request.phone() != null) employee.setPhone(request.phone());
         if (request.employeeType() != null) {
-            employee.setEmployeeType(Employee.EmployeeType.valueOf(request.employeeType()));
+            employee.setEmployeeType(parseEmployeeType(request.employeeType()));
         }
         if (request.paymentSchedule() != null) {
-            employee.setPaymentSchedule(Employee.PaymentSchedule.valueOf(request.paymentSchedule()));
+            employee.setPaymentSchedule(parsePaymentSchedule(request.paymentSchedule()));
         }
         if (request.monthlySalary() != null) employee.setMonthlySalary(request.monthlySalary());
         if (request.dailyWage() != null) employee.setDailyWage(request.dailyWage());
@@ -159,7 +159,7 @@ public class HrService {
         leaveRequest.setEndDate(request.endDate());
         leaveRequest.setReason(request.reason());
         if (request.status() != null) {
-            leaveRequest.setStatus(request.status());
+            leaveRequest.setStatus(parseLeaveStatus(request.status()));
         }
         return toDto(leaveRequestRepository.save(leaveRequest));
     }
@@ -167,7 +167,7 @@ public class HrService {
     @Transactional
     public LeaveRequestDto updateLeaveStatus(Long id, String status) {
         LeaveRequest leaveRequest = requireLeaveRequest(id);
-        leaveRequest.setStatus(status);
+        leaveRequest.setStatus(parseLeaveStatus(status));
         return toDto(leaveRequest);
     }
 
@@ -261,7 +261,7 @@ public class HrService {
                     return a;
                 });
         
-        attendance.setStatus(Attendance.AttendanceStatus.valueOf(request.status()));
+        attendance.setStatus(parseAttendanceStatus(request.status()));
         if (request.checkInTime() != null) attendance.setCheckInTime(request.checkInTime());
         if (request.checkOutTime() != null) attendance.setCheckOutTime(request.checkOutTime());
         if (request.regularHours() != null) attendance.setRegularHours(request.regularHours());
@@ -299,7 +299,7 @@ public class HrService {
                                 return a;
                             });
                     
-                    attendance.setStatus(Attendance.AttendanceStatus.valueOf(request.status()));
+                    attendance.setStatus(parseAttendanceStatus(request.status()));
                     if (request.checkInTime() != null) attendance.setCheckInTime(request.checkInTime());
                     if (request.checkOutTime() != null) attendance.setCheckOutTime(request.checkOutTime());
                     if (request.regularHours() != null) attendance.setRegularHours(request.regularHours());
@@ -331,6 +331,46 @@ public class HrService {
         return new AttendanceSummaryDto(today, totalEmployees, present, absent, halfDay, leave, notMarked);
     }
 
+    private Employee.EmployeeType parseEmployeeType(String rawEmployeeType) {
+        try {
+            return Employee.EmployeeType.valueOf(rawEmployeeType);
+        } catch (RuntimeException ex) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Invalid employeeType. Allowed values: " + java.util.Arrays.toString(Employee.EmployeeType.values()))
+                    .withDetail("employeeType", rawEmployeeType);
+        }
+    }
+
+    private Employee.PaymentSchedule parsePaymentSchedule(String rawPaymentSchedule) {
+        try {
+            return Employee.PaymentSchedule.valueOf(rawPaymentSchedule);
+        } catch (RuntimeException ex) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Invalid paymentSchedule. Allowed values: " + java.util.Arrays.toString(Employee.PaymentSchedule.values()))
+                    .withDetail("paymentSchedule", rawPaymentSchedule);
+        }
+    }
+
+    private Attendance.AttendanceStatus parseAttendanceStatus(String rawAttendanceStatus) {
+        try {
+            return Attendance.AttendanceStatus.valueOf(rawAttendanceStatus);
+        } catch (RuntimeException ex) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Invalid attendance status. Allowed values: " + java.util.Arrays.toString(Attendance.AttendanceStatus.values()))
+                    .withDetail("attendanceStatus", rawAttendanceStatus);
+        }
+    }
+
+    private String parseLeaveStatus(String rawLeaveStatus) {
+        try {
+            return LeaveStatus.valueOf(rawLeaveStatus).name();
+        } catch (RuntimeException ex) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Invalid leave status. Allowed values: " + java.util.Arrays.toString(LeaveStatus.values()))
+                    .withDetail("leaveStatus", rawLeaveStatus);
+        }
+    }
+
     private AttendanceDto toAttendanceDto(Attendance a) {
         Employee emp = a.getEmployee();
         return new AttendanceDto(
@@ -356,5 +396,12 @@ public class HrService {
     private String getCurrentUser() {
         var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
         return auth != null ? auth.getName() : "SYSTEM";
+    }
+
+    private enum LeaveStatus {
+        PENDING,
+        APPROVED,
+        REJECTED,
+        CANCELLED
     }
 }

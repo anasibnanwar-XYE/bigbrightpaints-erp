@@ -150,6 +150,7 @@ public class Employee extends VersionedEntity {
         BigDecimal resolved = standardHoursPerDay != null ? standardHoursPerDay : new BigDecimal("8");
         return resolved.compareTo(BigDecimal.ZERO) > 0 ? resolved : BigDecimal.ONE;
     }
+    public BigDecimal getConfiguredStandardHoursPerDay() { return standardHoursPerDay; }
     public void setStandardHoursPerDay(BigDecimal standardHoursPerDay) { this.standardHoursPerDay = standardHoursPerDay; }
 
     public String getFullName() {
