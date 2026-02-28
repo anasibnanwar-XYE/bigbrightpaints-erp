@@ -90,7 +90,7 @@ public class MfaService {
         // Decrypt the MFA secret for validation
         String decryptedSecret = requireActiveSecret(user);
         if (!isValidTotp(decryptedSecret, code)) {
-            throw new IllegalArgumentException("Invalid MFA code");
+            throw new ApplicationException(ErrorCode.AUTH_MFA_INVALID, "Invalid MFA code");
         }
         user.setMfaEnabled(true);
         userAccountRepository.save(user);
@@ -110,7 +110,7 @@ public class MfaService {
             cleared = true;
         }
         if (!cleared) {
-            throw new IllegalArgumentException("Invalid MFA verification data");
+            throw new ApplicationException(ErrorCode.AUTH_MFA_INVALID, "Invalid MFA verification data");
         }
         clearMfa(user);
         userAccountRepository.save(user);
