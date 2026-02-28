@@ -14,6 +14,7 @@ import static org.mockito.Mockito.when;
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditLogRepository;
 import com.bigbrightpaints.erp.core.audit.AuditService;
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.service.TenantAdminProvisioningService;
@@ -249,7 +250,7 @@ class CompanyServiceTest {
         CompanyRequest request = new CompanyRequest("SKE Copy", "ske", "UTC", null);
 
         assertThatThrownBy(() -> companyService.create(request))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Company code already exists: SKE");
         verify(repository, never()).save(org.mockito.ArgumentMatchers.any(Company.class));
     }
@@ -260,7 +261,7 @@ class CompanyServiceTest {
         CompanyRequest request = new CompanyRequest("SKE Corp", "   ", "UTC", null);
 
         assertThatThrownBy(() -> companyService.create(request))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Company code is required");
     }
 
@@ -274,7 +275,7 @@ class CompanyServiceTest {
         CompanyRequest request = new CompanyRequest("New Name", "NEW", "UTC", BigDecimal.TEN);
 
         assertThatThrownBy(() -> companyService.update(2L, request, Set.of(target)))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Company code already exists: NEW");
     }
 
@@ -393,7 +394,7 @@ class CompanyServiceTest {
                 "Tenant Admin");
 
         assertThatThrownBy(() -> serviceWithoutProvisioning.create(request))
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Credential provisioning dependencies are not available");
     }
 
@@ -659,7 +660,7 @@ class CompanyServiceTest {
         assertThatThrownBy(() -> companyService.updateTenantRuntimePolicy(
                 1L,
                 new CompanyService.TenantRuntimePolicyMutationRequest(null, null, null, null, null)))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Runtime policy mutation payload is required");
     }
 
@@ -672,7 +673,7 @@ class CompanyServiceTest {
         assertThatThrownBy(() -> companyService.updateTenantRuntimePolicy(
                 1L,
                 new CompanyService.TenantRuntimePolicyMutationRequest("PAUSED", "policy", null, null, null)))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Unsupported runtime holdState");
     }
 
@@ -727,7 +728,7 @@ class CompanyServiceTest {
         assertThatThrownBy(() -> withoutRuntimeService.updateTenantRuntimePolicy(
                 1L,
                 new CompanyService.TenantRuntimePolicyMutationRequest("HOLD", "policy", null, null, null)))
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Tenant runtime enforcement service unavailable");
     }
 
@@ -755,7 +756,7 @@ class CompanyServiceTest {
         when(tenantAdminProvisioningService.isCredentialEmailDeliveryEnabled()).thenReturn(false);
 
         assertThatThrownBy(() -> companyService.resetTenantAdminPassword(5L, "tenant-admin@ske.com"))
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Credential email delivery is disabled");
 
         verify(tenantAdminProvisioningService, never()).resetTenantAdminPassword(company, "tenant-admin@ske.com");

@@ -5,12 +5,12 @@ import com.bigbrightpaints.erp.modules.factory.service.BulkPackingService;
 import com.bigbrightpaints.erp.modules.factory.service.PackingService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
+import com.bigbrightpaints.erp.core.idempotency.IdempotencySignatureBuilder;
+import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
 import com.bigbrightpaints.erp.core.util.IdempotencyHeaderUtils;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import jakarta.validation.Valid;
-import java.math.BigDecimal;
 import java.util.List;
-import org.apache.commons.codec.digest.DigestUtils;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.util.StringUtils;
@@ -121,39 +121,28 @@ public class PackingController {
             if (requestScoped.length() <= MAX_IDEMPOTENCY_KEY_LENGTH) {
                 return requestScoped;
             }
-            return "REQH|" + PACKING_COMMAND + "|" + DigestUtils.sha256Hex(requestScoped);
+            return "REQH|" + PACKING_COMMAND + "|" + IdempotencyUtils.sha256Hex(requestScoped);
         }
-        return "AUTO|" + PACKING_COMMAND + "|" + DigestUtils.sha256Hex(buildRequestSignature(request));
+        return "AUTO|" + PACKING_COMMAND + "|" + IdempotencyUtils.sha256Hex(buildRequestSignature(request));
     }
 
     private String buildRequestSignature(PackingRequest request) {
-        StringBuilder payload = new StringBuilder();
-        payload.append("log=").append(request.productionLogId())
-                .append("|date=").append(request.packedDate())
-                .append("|by=").append(clean(request.packedBy()));
+        IdempotencySignatureBuilder payload = IdempotencySignatureBuilder.create()
+                .add("log=" + request.productionLogId())
+                .add("date=" + request.packedDate())
+                .add("by=" + IdempotencyUtils.normalizeToken(request.packedBy()));
         if (request.lines() != null) {
             int idx = 0;
             for (PackingLineRequest line : request.lines()) {
                 idx++;
-                payload.append("|line").append(idx).append(':')
-                        .append(clean(line.packagingSize()))
-                        .append(':').append(decimalToken(line.quantityLiters()))
-                        .append(':').append(line.piecesCount())
-                        .append(':').append(line.boxesCount())
-                        .append(':').append(line.piecesPerBox());
+                payload.add("line" + idx + ':'
+                        + IdempotencyUtils.normalizeToken(line.packagingSize())
+                        + ':' + IdempotencyUtils.normalizeDecimal(line.quantityLiters())
+                        + ':' + line.piecesCount()
+                        + ':' + line.boxesCount()
+                        + ':' + line.piecesPerBox());
             }
         }
-        return payload.toString();
-    }
-
-    private String decimalToken(BigDecimal value) {
-        if (value == null) {
-            return "";
-        }
-        return value.stripTrailingZeros().toPlainString();
-    }
-
-    private String clean(String value) {
-        return value == null ? "" : value.trim();
+        return payload.buildPayload();
     }
 }

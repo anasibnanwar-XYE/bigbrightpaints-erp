@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.modules.purchasing.service.SupplierApprovalDecision;
 import com.bigbrightpaints.erp.modules.purchasing.service.SupplierApprovalPolicy;
 import com.bigbrightpaints.erp.modules.purchasing.service.SupplierApprovalReasonCode;
@@ -21,7 +22,7 @@ class TS_P2PSupplierApprovalCoverageTest {
 
     @Test
     void supplierApprovalDecisionFailsClosedWhenMakerCheckerBoundaryDiffersOnlyByCaseAndWhitespace() {
-        assertThrows(IllegalArgumentException.class, () -> new SupplierApprovalDecision(
+        assertThrows(ApplicationException.class, () -> new SupplierApprovalDecision(
                 "APP-SUP-301",
                 " maker-user ",
                 "MAKER-USER",
@@ -99,8 +100,8 @@ class TS_P2PSupplierApprovalCoverageTest {
 
     @Test
     void supplierApprovalPolicyFailsClosedForMissingOrWrongApprovalContext() {
-        IllegalStateException missingApproval = assertThrows(
-                IllegalStateException.class,
+        ApplicationException missingApproval = assertThrows(
+                ApplicationException.class,
                 () -> policy.requireSupplierExceptionApproval(null));
         assertEquals("Supplier exception approval is required", missingApproval.getMessage());
 
@@ -112,8 +113,8 @@ class TS_P2PSupplierApprovalCoverageTest {
                 Instant.parse("2026-02-20T00:00:00Z"),
                 metadataWithSource("sourceSystem", "workflow"));
 
-        IllegalArgumentException wrongReason = assertThrows(
-                IllegalArgumentException.class,
+        ApplicationException wrongReason = assertThrows(
+                ApplicationException.class,
                 () -> policy.requireSettlementOverrideApproval(supplierException));
         assertEquals("Settlement override approval must use SETTLEMENT_OVERRIDE reason code", wrongReason.getMessage());
 

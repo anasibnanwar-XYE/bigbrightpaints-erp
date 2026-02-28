@@ -1,11 +1,12 @@
 package com.bigbrightpaints.erp.modules.sales.dto;
 
+import com.bigbrightpaints.erp.core.idempotency.IdempotencySignatureBuilder;
+import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 
 import java.math.BigDecimal;
-import java.util.Locale;
 import java.util.List;
 
 public record SalesOrderRequest(
@@ -37,41 +38,45 @@ public record SalesOrderRequest(
     }
 
     public String normalizedPaymentMode() {
-        if (paymentMode == null || paymentMode.isBlank()) {
+        String normalized = IdempotencyUtils.normalizeUpperToken(paymentMode);
+        if (normalized.isBlank()) {
             return DEFAULT_PAYMENT_MODE;
         }
-        return paymentMode.trim().toUpperCase(Locale.ROOT);
+        return normalized;
     }
 
     public String resolveIdempotencyKey() {
-        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
-            return idempotencyKey.trim();
+        String normalized = IdempotencyUtils.normalizeKey(idempotencyKey);
+        if (normalized != null) {
+            return normalized;
         }
         return resolveDerivedIdempotencyKey(false);
     }
 
     public String resolveIdempotencyKeyIncludingDefaultPaymentMode() {
-        if (idempotencyKey != null && !idempotencyKey.isBlank()) {
-            return idempotencyKey.trim();
+        String normalized = IdempotencyUtils.normalizeKey(idempotencyKey);
+        if (normalized != null) {
+            return normalized;
         }
         return resolveDerivedIdempotencyKey(true);
     }
 
     private String resolveDerivedIdempotencyKey(boolean includeDefaultPaymentModeSegment) {
-        StringBuilder sb = new StringBuilder();
         String normalizedPaymentMode = normalizedPaymentMode();
-        sb.append(dealerId == null ? "null" : dealerId)
-                .append('|').append(totalAmount)
-                .append('|').append(currency == null ? "" : currency.trim().toUpperCase(Locale.ROOT));
+        IdempotencySignatureBuilder signatureBuilder = IdempotencySignatureBuilder.create()
+                .add(dealerId == null ? "null" : dealerId)
+                .add(totalAmount)
+                .addUpperToken(currency);
         if (includeDefaultPaymentModeSegment || !DEFAULT_PAYMENT_MODE.equals(normalizedPaymentMode)) {
-            sb.append('|').append(normalizedPaymentMode);
+            signatureBuilder.add(normalizedPaymentMode);
         }
-        for (SalesOrderItemRequest item : items) {
-            sb.append('|')
-                    .append(item.productCode() == null ? "" : item.productCode().trim().toUpperCase(Locale.ROOT))
-                    .append(':').append(item.quantity())
-                    .append(':').append(item.unitPrice());
+        if (items != null) {
+            for (SalesOrderItemRequest item : items) {
+                signatureBuilder.add(IdempotencyUtils.normalizeUpperToken(item.productCode())
+                        + ':' + item.quantity()
+                        + ':' + item.unitPrice());
+            }
         }
-        return org.apache.commons.codec.digest.DigestUtils.sha256Hex(sb.toString());
+        return signatureBuilder.buildHash();
     }
 }

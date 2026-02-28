@@ -2,6 +2,8 @@ package com.bigbrightpaints.erp.modules.accounting.service;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
+import com.bigbrightpaints.erp.core.idempotency.IdempotencySignatureBuilder;
+import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
@@ -1703,27 +1705,20 @@ public class AccountingFacade {
                                                  BigDecimal totalAmount,
                                                  String reason) {
         String base = "CRN-" + sanitize(invoiceNumber);
-        StringBuilder fingerprint = new StringBuilder();
-        fingerprint.append(base)
-                .append("|dealer=").append(dealerId != null ? dealerId : "NA")
-                .append("|total=").append(normalizeDecimal(totalAmount))
-                .append("|reason=").append(reason != null ? reason.trim() : "");
+        IdempotencySignatureBuilder fingerprint = IdempotencySignatureBuilder.create()
+                .add(base)
+                .add("dealer=" + (dealerId != null ? dealerId : "NA"))
+                .add("total=" + IdempotencyUtils.normalizeDecimal(totalAmount))
+                .add("reason=" + IdempotencyUtils.normalizeToken(reason));
         if (returnLines != null && !returnLines.isEmpty()) {
             returnLines.entrySet().stream()
                     .sorted(Map.Entry.comparingByKey())
                     .forEach(entry -> fingerprint
-                            .append("|acc=").append(entry.getKey())
-                            .append(":").append(normalizeDecimal(entry.getValue())));
+                            .add("acc=" + entry.getKey()
+                                    + ":" + IdempotencyUtils.normalizeDecimal(entry.getValue())));
         }
-        String hash = org.apache.commons.codec.digest.DigestUtils.sha256Hex(fingerprint.toString());
+        String hash = IdempotencyUtils.sha256Hex(fingerprint.buildPayload());
         return base + "-H" + hash.substring(0, 12);
-    }
-
-    private String normalizeDecimal(BigDecimal value) {
-        if (value == null) {
-            return "0";
-        }
-        return value.stripTrailingZeros().toPlainString();
     }
 
     private String resolveSalesReturnReference(Company company, String baseReference, String hashReference) {

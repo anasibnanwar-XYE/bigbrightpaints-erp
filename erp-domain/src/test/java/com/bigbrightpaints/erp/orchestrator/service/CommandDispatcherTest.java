@@ -406,7 +406,7 @@ class CommandDispatcherTest {
                 .thenReturn(new OrchestratorIdempotencyService.CommandLease("trace-invalid-dispatch", command, true));
 
         assertThatThrownBy(() -> commandDispatcher.dispatchBatch(request, "idem-invalid-dispatch", "req-invalid-dispatch", "COMP", "user-1"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("greater than zero for dispatch");
 
         verify(integrationCoordinator, never()).updateProductionStatus(ArgumentMatchers.anyString(), ArgumentMatchers.anyString());
@@ -425,7 +425,7 @@ class CommandDispatcherTest {
         verify(idempotencyService).markFailed(
                 ArgumentMatchers.eq(command),
                 ArgumentMatchers.argThat((RuntimeException ex) ->
-                        ex instanceof IllegalArgumentException
+                        ex instanceof ApplicationException
                                 && ex.getMessage() != null
                                 && ex.getMessage().contains("greater than zero for dispatch")));
         verify(idempotencyService, never()).markSuccess(ArgumentMatchers.any());
@@ -442,13 +442,13 @@ class CommandDispatcherTest {
                 .thenReturn(new OrchestratorIdempotencyService.CommandLease("trace-null-dispatch", command, true));
 
         assertThatThrownBy(() -> commandDispatcher.dispatchBatch(null, "idem-null-dispatch", "req-null-dispatch", "COMP", "user-1"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("greater than zero for dispatch");
 
         verify(idempotencyService).markFailed(
                 ArgumentMatchers.eq(command),
                 ArgumentMatchers.argThat((RuntimeException ex) ->
-                        ex instanceof IllegalArgumentException
+                        ex instanceof ApplicationException
                                 && ex.getMessage() != null
                                 && ex.getMessage().contains("greater than zero for dispatch")));
         verify(idempotencyService, never()).markSuccess(ArgumentMatchers.any());
@@ -466,7 +466,7 @@ class CommandDispatcherTest {
                 .thenReturn(new OrchestratorIdempotencyService.CommandLease("trace-invalid-payroll", command, true));
 
         assertThatThrownBy(() -> commandDispatcher.runPayroll(request, "idem-invalid-payroll", "req-invalid-payroll", "COMP", "user-1"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("greater than zero for payroll");
 
         verify(integrationCoordinator, never()).syncEmployees(ArgumentMatchers.anyString());
@@ -493,7 +493,7 @@ class CommandDispatcherTest {
         verify(idempotencyService).markFailed(
                 ArgumentMatchers.eq(command),
                 ArgumentMatchers.argThat((RuntimeException ex) ->
-                        ex instanceof IllegalArgumentException
+                        ex instanceof ApplicationException
                                 && ex.getMessage() != null
                                 && ex.getMessage().contains("greater than zero for payroll")));
         verify(idempotencyService, never()).markSuccess(ArgumentMatchers.any());
@@ -510,13 +510,13 @@ class CommandDispatcherTest {
                 .thenReturn(new OrchestratorIdempotencyService.CommandLease("trace-null-payroll", command, true));
 
         assertThatThrownBy(() -> commandDispatcher.runPayroll(null, "idem-null-payroll", "req-null-payroll", "COMP", "user-1"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("greater than zero for payroll");
 
         verify(idempotencyService).markFailed(
                 ArgumentMatchers.eq(command),
                 ArgumentMatchers.argThat((RuntimeException ex) ->
-                        ex instanceof IllegalArgumentException
+                        ex instanceof ApplicationException
                                 && ex.getMessage() != null
                                 && ex.getMessage().contains("greater than zero for payroll")));
         verify(idempotencyService, never()).markSuccess(ArgumentMatchers.any());

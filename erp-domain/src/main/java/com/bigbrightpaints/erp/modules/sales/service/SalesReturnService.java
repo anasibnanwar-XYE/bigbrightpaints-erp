@@ -2,6 +2,7 @@ package com.bigbrightpaints.erp.modules.sales.service;
 
 import com.bigbrightpaints.erp.core.idempotency.IdempotencySignatureBuilder;
 import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
+import com.bigbrightpaints.erp.core.validation.ValidationUtils;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.core.util.MoneyUtils;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
@@ -108,7 +109,7 @@ public class SalesReturnService {
             if (invoiceLine == null) {
                 throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Invoice line not found: " + lineRequest.invoiceLineId());
             }
-            BigDecimal quantity = requirePositive(lineRequest.quantity(), "lines.quantity");
+            BigDecimal quantity = ValidationUtils.requirePositive(lineRequest.quantity(), "lines.quantity");
             if (quantity.compareTo(invoiceLine.getQuantity()) > 0) {
                 throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Return quantity exceeds invoiced amount for " + invoiceLine.getProductCode());
             }
@@ -235,7 +236,7 @@ public class SalesReturnService {
             if (invoiceLine == null) {
                 throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Invoice line not found: " + lineRequest.invoiceLineId());
             }
-            BigDecimal quantity = requirePositive(lineRequest.quantity(), "lines.quantity");
+            BigDecimal quantity = ValidationUtils.requirePositive(lineRequest.quantity(), "lines.quantity");
             if (quantity.compareTo(invoiceLine.getQuantity()) > 0) {
                 throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Return quantity exceeds invoiced amount for " + invoiceLine.getProductCode());
             }
@@ -272,7 +273,7 @@ public class SalesReturnService {
             if (invoiceLine == null) {
                 continue;
             }
-            BigDecimal quantity = requirePositive(lineRequest.quantity(), "lines.quantity");
+            BigDecimal quantity = ValidationUtils.requirePositive(lineRequest.quantity(), "lines.quantity");
             FinishedGood finishedGood = finishedGoodsByCode.computeIfAbsent(
                     invoiceLine.getProductCode(),
                     code -> lockFinishedGood(company, code)
@@ -292,7 +293,7 @@ public class SalesReturnService {
             if (invoiceLine == null) {
                 continue;
             }
-            BigDecimal quantity = requirePositive(lineRequest.quantity(), "lines.quantity");
+            BigDecimal quantity = ValidationUtils.requirePositive(lineRequest.quantity(), "lines.quantity");
             FinishedGood finishedGood = finishedGoodsByCode.computeIfAbsent(
                     invoiceLine.getProductCode(),
                     code -> lockFinishedGood(company, code)
@@ -335,7 +336,7 @@ public class SalesReturnService {
             if (invoiceLine == null) {
                 continue;
             }
-            BigDecimal quantity = requirePositive(lineRequest.quantity(), "lines.quantity");
+            BigDecimal quantity = ValidationUtils.requirePositive(lineRequest.quantity(), "lines.quantity");
             FinishedGood finishedGood = finishedGoodsByCode.computeIfAbsent(
                     invoiceLine.getProductCode(),
                     code -> lockFinishedGood(company, code)
@@ -683,13 +684,6 @@ public class SalesReturnService {
             throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Return quantity exceeds dispatched quantity for " + finishedGood.getProductCode());
         }
         return MoneyUtils.safeDivide(costTotal, quantity, 4, RoundingMode.HALF_UP);
-    }
-
-    private BigDecimal requirePositive(BigDecimal value, String field) {
-        if (value == null || value.compareTo(BigDecimal.ZERO) <= 0) {
-            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(field + " must be positive");
-        }
-        return value;
     }
 
     private FinishedGood lockFinishedGood(Company company, String productCode) {

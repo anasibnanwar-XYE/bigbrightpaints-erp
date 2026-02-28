@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.truthsuite.p2p;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.modules.invoice.service.SettlementApprovalDecision;
 import com.bigbrightpaints.erp.modules.invoice.service.SettlementApprovalReasonCode;
 import com.bigbrightpaints.erp.modules.purchasing.service.SupplierApprovalDecision;
@@ -23,7 +24,7 @@ class TS_P2PApprovalRuntimeTest {
 
     @Test
     void settlementApprovalDecisionFailsClosedWhenMetadataTicketMissing() {
-        assertThrows(IllegalArgumentException.class, () -> new SettlementApprovalDecision(
+        assertThrows(ApplicationException.class, () -> new SettlementApprovalDecision(
                 "APP-SET-001",
                 "maker-a",
                 "checker-b",
@@ -34,7 +35,7 @@ class TS_P2PApprovalRuntimeTest {
 
     @Test
     void settlementApprovalDecisionFailsClosedWhenMetadataSourceMissing() {
-        assertThrows(IllegalArgumentException.class, () -> new SettlementApprovalDecision(
+        assertThrows(ApplicationException.class, () -> new SettlementApprovalDecision(
                 "APP-SET-002",
                 "maker-a",
                 "checker-b",
@@ -45,7 +46,7 @@ class TS_P2PApprovalRuntimeTest {
 
     @Test
     void supplierApprovalDecisionEnforcesMakerCheckerSeparation() {
-        assertThrows(IllegalArgumentException.class, () -> new SupplierApprovalDecision(
+        assertThrows(ApplicationException.class, () -> new SupplierApprovalDecision(
                 "APP-SUP-001",
                 "same-user",
                 "same-user",
@@ -92,15 +93,15 @@ class TS_P2PApprovalRuntimeTest {
         assertEquals(SupplierApprovalReasonCode.SETTLEMENT_OVERRIDE,
                 policy.requireSettlementOverrideApproval(settlementOverride).reasonCode());
 
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(ApplicationException.class,
                 () -> policy.requireSupplierExceptionApproval(settlementOverride));
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(ApplicationException.class,
                 () -> policy.requireSettlementOverrideApproval(supplierException));
     }
 
     @Test
     void settlementApprovalDecisionEnforcesMakerCheckerAndRequireApprovedContextBranches() {
-        assertThrows(IllegalArgumentException.class, () -> new SettlementApprovalDecision(
+        assertThrows(ApplicationException.class, () -> new SettlementApprovalDecision(
                 "APP-SET-003",
                 "same-user",
                 "same-user",
@@ -117,14 +118,14 @@ class TS_P2PApprovalRuntimeTest {
                 Map.of("ticket", "TKT-ERP-STAGE-095", "approvalSource", "workflow"));
         assertSame(valid, SettlementApprovalDecision.requireApproved(valid, "Settlement override"));
 
-        IllegalStateException missingApproval = assertThrows(IllegalStateException.class,
+        ApplicationException missingApproval = assertThrows(ApplicationException.class,
                 () -> SettlementApprovalDecision.requireApproved(null, "  "));
         assertEquals("Settlement approval is required", missingApproval.getMessage());
     }
 
     @Test
     void settlementApprovalDecisionRejectsNullMetadataAndBlankTextInputs() {
-        assertThrows(IllegalArgumentException.class, () -> new SettlementApprovalDecision(
+        assertThrows(ApplicationException.class, () -> new SettlementApprovalDecision(
                 "APP-SET-005",
                 "maker-a",
                 "checker-b",
@@ -132,7 +133,7 @@ class TS_P2PApprovalRuntimeTest {
                 Instant.parse("2026-02-20T00:00:00Z"),
                 null));
 
-        assertThrows(IllegalArgumentException.class, () -> new SettlementApprovalDecision(
+        assertThrows(ApplicationException.class, () -> new SettlementApprovalDecision(
                 " ",
                 "maker-a",
                 "checker-b",
@@ -173,11 +174,11 @@ class TS_P2PApprovalRuntimeTest {
                 Map.of("ticket", "TKT-ERP-STAGE-095", "approvalSource", "workflow"));
         assertSame(valid, SupplierApprovalDecision.requireApproved(valid, "Supplier exception"));
 
-        IllegalStateException missingApproval = assertThrows(IllegalStateException.class,
+        ApplicationException missingApproval = assertThrows(ApplicationException.class,
                 () -> SupplierApprovalDecision.requireApproved(null, " "));
         assertEquals("Supplier approval is required", missingApproval.getMessage());
 
-        assertThrows(IllegalArgumentException.class, () -> new SupplierApprovalDecision(
+        assertThrows(ApplicationException.class, () -> new SupplierApprovalDecision(
                 "APP-SUP-006",
                 "maker-a",
                 "checker-b",
@@ -185,7 +186,7 @@ class TS_P2PApprovalRuntimeTest {
                 Instant.parse("2026-02-20T00:00:00Z"),
                 null));
 
-        assertThrows(IllegalArgumentException.class, () -> new SupplierApprovalDecision(
+        assertThrows(ApplicationException.class, () -> new SupplierApprovalDecision(
                 "APP-SUP-007",
                 "maker-a",
                 "checker-b",
@@ -193,7 +194,7 @@ class TS_P2PApprovalRuntimeTest {
                 Instant.parse("2026-02-20T00:00:00Z"),
                 Map.of("approvalSource", "workflow")));
 
-        assertThrows(IllegalArgumentException.class, () -> new SupplierApprovalDecision(
+        assertThrows(ApplicationException.class, () -> new SupplierApprovalDecision(
                 "APP-SUP-008",
                 "maker-a",
                 "checker-b",
@@ -201,7 +202,7 @@ class TS_P2PApprovalRuntimeTest {
                 Instant.parse("2026-02-20T00:00:00Z"),
                 Map.of("ticket", "TKT-ERP-STAGE-095")));
 
-        assertThrows(IllegalArgumentException.class, () -> new SupplierApprovalDecision(
+        assertThrows(ApplicationException.class, () -> new SupplierApprovalDecision(
                 " ",
                 "maker-a",
                 "checker-b",

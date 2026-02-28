@@ -16,6 +16,7 @@ import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.config.SystemSetting;
 import com.bigbrightpaints.erp.core.config.SystemSettingsRepository;
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
@@ -277,14 +278,14 @@ class TenantRuntimeEnforcementServiceTest {
     @Test
     void enforceAuthOperationAllowed_failClosedWhenCompanyNotFound() {
         assertThatThrownBy(() -> service.enforceAuthOperationAllowed("UNKNOWN", "actor@bbp.com", "login"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Company not found: UNKNOWN");
     }
 
     @Test
     void holdTenant_failClosedWhenCompanyNotFound() {
         assertThatThrownBy(() -> service.holdTenant("UNKNOWN", "ops_hold", "ops@bbp.com"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Company not found: UNKNOWN");
     }
 
@@ -610,18 +611,18 @@ class TenantRuntimeEnforcementServiceTest {
     @Test
     void updatePolicy_rejectsNoMutationPayload() {
         assertThatThrownBy(() -> service.updatePolicy("ACME", null, "reason", null, null, null, "ops@bbp.com"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Runtime policy mutation payload is required");
     }
 
     @Test
     void updateAndSnapshot_failClosedForUnknownOrMissingCompanyCode() {
         assertThatThrownBy(() -> service.updateQuotas("UNKNOWN", 5, 5, 5, "reason", "ops@bbp.com"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Company not found: UNKNOWN");
 
         assertThatThrownBy(() -> service.snapshot("   "))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Company code is required");
     }
 

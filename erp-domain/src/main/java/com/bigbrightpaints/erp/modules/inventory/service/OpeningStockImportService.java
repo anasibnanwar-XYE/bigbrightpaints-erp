@@ -5,6 +5,7 @@ import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
+import com.bigbrightpaints.erp.core.validation.ValidationUtils;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.MoneyUtils;
@@ -424,8 +425,8 @@ public class OpeningStockImportService {
         if (!StringUtils.hasText(unit)) {
             throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Unit is required for raw material " + row.displayKey());
         }
-        BigDecimal quantity = requirePositive(row.quantity, "quantity");
-        BigDecimal unitCost = requirePositive(row.unitCost, "unit_cost");
+        BigDecimal quantity = ValidationUtils.requirePositive(row.quantity, "quantity");
+        BigDecimal unitCost = ValidationUtils.requirePositive(row.unitCost, "unit_cost");
         Long inventoryAccountId = resolveInventoryAccountId(company, material);
         String batchCode = resolveRawMaterialBatchCode(material, row.batchCode);
 
@@ -461,8 +462,8 @@ public class OpeningStockImportService {
 
     private OpeningMovementResult handleFinishedGood(Company company, OpeningRow row) {
         FinishedGood finishedGood = resolveFinishedGood(company, row);
-        BigDecimal quantity = requirePositive(row.quantity, "quantity");
-        BigDecimal unitCost = requirePositive(row.unitCost, "unit_cost");
+        BigDecimal quantity = ValidationUtils.requirePositive(row.quantity, "quantity");
+        BigDecimal unitCost = ValidationUtils.requirePositive(row.unitCost, "unit_cost");
         Long inventoryAccountId = resolveInventoryAccountId(company, finishedGood);
         Instant manufacturedAt = row.manufacturedDate != null
                 ? row.manufacturedDate.atStartOfDay(resolveZone(company)).toInstant()
@@ -601,13 +602,6 @@ public class OpeningStockImportService {
                 .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Finished good creation failed"));
         row.markCreated();
         return finishedGood;
-    }
-
-    private static BigDecimal requirePositive(BigDecimal value, String field) {
-        if (value == null || value.compareTo(BigDecimal.ZERO) <= 0) {
-            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(field + " must be greater than zero");
-        }
-        return value;
     }
 
     private static String firstNonBlank(String... values) {

@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.truthsuite.p2p;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.modules.invoice.service.SettlementApprovalDecision;
 import com.bigbrightpaints.erp.modules.invoice.service.SettlementApprovalReasonCode;
 import com.bigbrightpaints.erp.modules.purchasing.service.SupplierApprovalDecision;
@@ -19,21 +20,21 @@ class TS_truthsuite_p2p_Approval_Test {
 
     @Test
     void approvalContractsFailClosedAndEnforceMakerChecker() {
-        assertThrows(IllegalArgumentException.class, () -> new SettlementApprovalDecision(
+        assertThrows(ApplicationException.class, () -> new SettlementApprovalDecision(
                 "APP-A1",
                 "maker",
                 "checker",
                 SettlementApprovalReasonCode.SETTLEMENT_OVERRIDE,
                 Instant.parse("2026-02-20T00:00:00Z"),
                 Map.of("approvalSource", "workflow")));
-        assertThrows(IllegalArgumentException.class, () -> new SettlementApprovalDecision(
+        assertThrows(ApplicationException.class, () -> new SettlementApprovalDecision(
                 "APP-A2",
                 "maker",
                 "checker",
                 SettlementApprovalReasonCode.SETTLEMENT_OVERRIDE,
                 Instant.parse("2026-02-20T00:00:00Z"),
                 Map.of("ticket", "TKT-ERP-STAGE-095")));
-        assertThrows(IllegalArgumentException.class, () -> new SupplierApprovalDecision(
+        assertThrows(ApplicationException.class, () -> new SupplierApprovalDecision(
                 "APP-A3",
                 "same-user",
                 "same-user",
@@ -64,9 +65,9 @@ class TS_truthsuite_p2p_Approval_Test {
                 policy.requireSupplierExceptionApproval(supplierException).reasonCode());
         assertEquals(SupplierApprovalReasonCode.SETTLEMENT_OVERRIDE,
                 policy.requireSettlementOverrideApproval(settlementOverride).reasonCode());
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(ApplicationException.class,
                 () -> policy.requireSupplierExceptionApproval(settlementOverride));
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(ApplicationException.class,
                 () -> policy.requireSettlementOverrideApproval(supplierException));
         assertThrows(UnsupportedOperationException.class,
                 () -> settlementOverride.immutableAuditMetadata().put("x", "y"));

@@ -95,9 +95,9 @@ class TS_RuntimeTenantPolicyControlExecutableCoverageTest {
                 new CompanyService.TenantRuntimePolicyMutationRequest("HOLD", "policy", 1, 1, 1);
 
         assertThatThrownBy(() -> oneArg.updateTenantRuntimePolicy(1L, mutation))
-                .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(ApplicationException.class);
         assertThatThrownBy(() -> fourArg.updateTenantRuntimePolicy(1L, mutation))
-                .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(ApplicationException.class);
     }
 
     @Test
@@ -204,15 +204,15 @@ class TS_RuntimeTenantPolicyControlExecutableCoverageTest {
 
         authenticate("super@bbp.com", "ROLE_SUPER_ADMIN");
         assertThatThrownBy(() -> companyService.updateTenantRuntimePolicy(12L, null))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(ApplicationException.class);
         assertThatThrownBy(() -> companyService.updateTenantRuntimePolicy(
                 12L,
                 new CompanyService.TenantRuntimePolicyMutationRequest(null, null, null, null, null)))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(ApplicationException.class);
         assertThatThrownBy(() -> companyService.updateTenantRuntimePolicy(
                 12L,
                 new CompanyService.TenantRuntimePolicyMutationRequest("UNKNOWN", "x", null, null, null)))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(ApplicationException.class);
     }
 
     @Test
@@ -322,9 +322,9 @@ class TS_RuntimeTenantPolicyControlExecutableCoverageTest {
         assertThat(service.updatePolicy("ACME", null, "users-only", null, null, 44, "super")).isNotNull();
 
         assertThatThrownBy(() -> service.updatePolicy("ACME", null, "noop", null, null, null, "super"))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(ApplicationException.class);
         assertThatThrownBy(() -> service.updatePolicy("UNKNOWN", null, "x", 1, null, null, "super"))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(ApplicationException.class);
 
         assertThatCode(() -> service.enforceAuthOperationAllowed("ACME", "actor", "login"))
                 .doesNotThrowAnyException();
@@ -427,17 +427,17 @@ class TS_RuntimeTenantPolicyControlExecutableCoverageTest {
         when(userAccountRepository.findByEmailIgnoreCase("duplicate@ske.com"))
                 .thenReturn(Optional.of(new UserAccount("duplicate@ske.com", "hash", "Dup")));
         assertThatThrownBy(() -> service.provisionInitialAdmin(company, "duplicate@ske.com", "Dup"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("already exists");
 
         assertThatThrownBy(() -> service.provisionInitialAdmin(null, "new@ske.com", "x"))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(ApplicationException.class);
 
         Company transientCompany = new Company();
         transientCompany.setCode("TMP");
         transientCompany.setName("Transient");
         assertThatThrownBy(() -> service.provisionInitialAdmin(transientCompany, "new@tmp.com", "x"))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(ApplicationException.class);
     }
 
     @Test
@@ -465,7 +465,7 @@ class TS_RuntimeTenantPolicyControlExecutableCoverageTest {
         outsider.addRole(outsiderRole);
         when(userAccountRepository.findByEmailIgnoreCase("outsider@ske.com")).thenReturn(Optional.of(outsider));
         assertThatThrownBy(() -> service.resetTenantAdminPassword(target, "outsider@ske.com"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("not assigned to company");
 
         UserAccount nonAdmin = new UserAccount("user@ske.com", "hash", "User");
@@ -475,11 +475,11 @@ class TS_RuntimeTenantPolicyControlExecutableCoverageTest {
         nonAdmin.addRole(userRole);
         when(userAccountRepository.findByEmailIgnoreCase("user@ske.com")).thenReturn(Optional.of(nonAdmin));
         assertThatThrownBy(() -> service.resetTenantAdminPassword(target, "user@ske.com"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("not an admin");
 
         assertThatThrownBy(() -> service.resetTenantAdminPassword(target, "missing@ske.com"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("not found");
 
         UserAccount admin = new UserAccount("admin@ske.com", "hash", "Admin");
@@ -506,7 +506,7 @@ class TS_RuntimeTenantPolicyControlExecutableCoverageTest {
                 .hasMessageContaining("smtp-failed");
 
         assertThatThrownBy(() -> service.resetTenantAdminPassword(null, "admin@ske.com"))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(ApplicationException.class);
     }
 
     @Test

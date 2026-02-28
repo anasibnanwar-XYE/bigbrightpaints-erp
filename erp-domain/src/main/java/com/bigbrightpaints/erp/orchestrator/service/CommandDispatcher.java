@@ -437,7 +437,7 @@ public class CommandDispatcher {
         if (postingAmount != null && postingAmount.compareTo(BigDecimal.ZERO) > 0) {
             return;
         }
-        IllegalArgumentException ex =
+        com.bigbrightpaints.erp.core.exception.ApplicationException ex =
                 com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
                         "Posting amount must be greater than zero for " + operation);
         idempotencyService.markFailed(command, ex);

@@ -114,7 +114,7 @@ class TenantAdminProvisioningServiceTest {
         Company company = company(10L, "SKE", "SKE");
 
         assertThatThrownBy(() -> service.provisionInitialAdmin(company, "   ", "New Admin"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("firstAdminEmail is required");
     }
 
@@ -149,7 +149,7 @@ class TenantAdminProvisioningServiceTest {
         Company transientCompany = company(null, "SKE", "SKE");
 
         assertThatThrownBy(() -> service.resetTenantAdminPassword(transientCompany, "admin@ske.com"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Company must exist");
     }
 
@@ -172,7 +172,7 @@ class TenantAdminProvisioningServiceTest {
         when(userAccountRepository.findByEmailIgnoreCase("admin@ske.com")).thenReturn(Optional.of(user));
 
         assertThatThrownBy(() -> service.resetTenantAdminPassword(target, "admin@ske.com"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("not assigned to company");
     }
 
@@ -195,7 +195,7 @@ class TenantAdminProvisioningServiceTest {
         when(userAccountRepository.findByEmailIgnoreCase("admin@ske.com")).thenReturn(Optional.of(user));
 
         assertThatThrownBy(() -> service.resetTenantAdminPassword(target, "admin@ske.com"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("not assigned to company");
     }
 
@@ -242,7 +242,7 @@ class TenantAdminProvisioningServiceTest {
         when(userAccountRepository.findByEmailIgnoreCase("admin@ske.com")).thenReturn(Optional.of(user));
 
         assertThatThrownBy(() -> service.resetTenantAdminPassword(target, "admin@ske.com"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("not an admin");
     }
 

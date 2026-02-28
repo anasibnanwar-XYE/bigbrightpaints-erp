@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.truthsuite.p2p;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
 import com.bigbrightpaints.erp.modules.invoice.service.InvoiceSettlementPolicy;
 import com.bigbrightpaints.erp.modules.invoice.service.SettlementApprovalDecision;
@@ -36,7 +37,7 @@ class TS_P2PSettlementRuntimeTest {
     @Test
     void settlementOverrideFailsClosedWhenReferenceMissing() {
         SettlementApprovalDecision approval = approvedOverride("APP-SET-101");
-        assertThrows(IllegalArgumentException.class, () ->
+        assertThrows(ApplicationException.class, () ->
                 policy.applySettlementWithOverride(
                         invoice,
                         BigDecimal.valueOf(40),
@@ -57,7 +58,7 @@ class TS_P2PSettlementRuntimeTest {
                 Instant.parse("2026-02-20T00:00:00Z"),
                 Map.of("ticket", "TKT-ERP-STAGE-095", "approvalSource", "workflow"));
 
-        assertThrows(IllegalArgumentException.class, () ->
+        assertThrows(ApplicationException.class, () ->
                 policy.applySettlementWithOverride(
                         invoice,
                         BigDecimal.valueOf(40),
@@ -96,7 +97,7 @@ class TS_P2PSettlementRuntimeTest {
 
         assertEquals(SettlementApprovalReasonCode.SUPPLIER_EXCEPTION,
                 policy.requireSupplierExceptionApproval(supplierException).reasonCode());
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(ApplicationException.class,
                 () -> policy.requireSupplierExceptionApproval(settlementOverride));
     }
 
@@ -143,7 +144,7 @@ class TS_P2PSettlementRuntimeTest {
 
     @Test
     void settlementOverrideRejectsNegativeDiscountAndWriteOff() {
-        assertThrows(IllegalArgumentException.class, () ->
+        assertThrows(ApplicationException.class, () ->
                 policy.applySettlementWithOverride(
                         invoice,
                         BigDecimal.valueOf(30),
@@ -153,7 +154,7 @@ class TS_P2PSettlementRuntimeTest {
                         "SETTLE-OVERRIDE-108A",
                         approvedOverride("APP-SET-108A")));
 
-        assertThrows(IllegalArgumentException.class, () ->
+        assertThrows(ApplicationException.class, () ->
                 policy.applySettlementWithOverride(
                         invoice,
                         BigDecimal.valueOf(30),
@@ -181,7 +182,7 @@ class TS_P2PSettlementRuntimeTest {
 
     @Test
     void settlementOverrideFailsClosedWhenSupplierExceptionApprovalMissing() {
-        assertThrows(IllegalStateException.class, () -> policy.requireSupplierExceptionApproval(null));
+        assertThrows(ApplicationException.class, () -> policy.requireSupplierExceptionApproval(null));
     }
 
     @Test
@@ -198,13 +199,13 @@ class TS_P2PSettlementRuntimeTest {
     @Test
     void settlementFailsClosedOnVoidAndReversedInvoices() {
         invoice.setStatus(InvoiceSettlementPolicy.InvoiceStatus.VOID.name());
-        assertThrows(IllegalStateException.class,
+        assertThrows(ApplicationException.class,
                 () -> policy.applySettlement(invoice, BigDecimal.valueOf(10), "SETTLE-VOID-111"));
         assertEquals(BigDecimal.valueOf(100), invoice.getOutstandingAmount());
         assertEquals(0, invoice.getPaymentReferences().size());
 
         invoice.setStatus(InvoiceSettlementPolicy.InvoiceStatus.REVERSED.name());
-        assertThrows(IllegalStateException.class,
+        assertThrows(ApplicationException.class,
                 () -> policy.applySettlement(invoice, BigDecimal.valueOf(10), "SETTLE-REV-111"));
         assertEquals(BigDecimal.valueOf(100), invoice.getOutstandingAmount());
         assertEquals(0, invoice.getPaymentReferences().size());

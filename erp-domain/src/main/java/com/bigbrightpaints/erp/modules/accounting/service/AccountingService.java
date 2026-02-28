@@ -9,6 +9,7 @@ import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.idempotency.IdempotencyReservationService;
 import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
+import com.bigbrightpaints.erp.core.validation.ValidationUtils;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.util.MoneyUtils;
@@ -820,7 +821,7 @@ public class AccountingService {
                 .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Dealer not found"));
         Account receivableAccount = requireDealerReceivable(dealer);
         Account cashAccount = requireCashAccountForSettlement(company, request.cashAccountId(), "dealer receipt", false);
-        BigDecimal amount = requirePositive(request.amount(), "amount");
+        BigDecimal amount = ValidationUtils.requirePositive(request.amount(), "amount");
         List<SettlementAllocationRequest> allocations = request.allocations();
         validatePaymentAllocations(allocations, amount, "dealer receipt", true);
         String memo = StringUtils.hasText(request.memo())
@@ -905,7 +906,7 @@ public class AccountingService {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
                         "Dealer settlements cannot allocate to purchases");
             }
-            BigDecimal applied = requirePositive(allocation.appliedAmount(), "appliedAmount");
+            BigDecimal applied = ValidationUtils.requirePositive(allocation.appliedAmount(), "appliedAmount");
             Invoice invoice = invoiceRepository.lockByCompanyAndId(company, allocation.invoiceId())
                     .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Invoice not found"));
             if (invoice.getDealer() == null || !invoice.getDealer().getId().equals(dealer.getId())) {
@@ -982,7 +983,7 @@ public class AccountingService {
         List<JournalEntryRequest.JournalLineRequest> lines = new java.util.ArrayList<>();
         for (DealerReceiptSplitRequest.IncomingLine line : request.incomingLines()) {
             Account incoming = requireCashAccountForSettlement(company, line.accountId(), "dealer split receipt", false);
-            BigDecimal amt = requirePositive(line.amount(), "amount");
+            BigDecimal amt = ValidationUtils.requirePositive(line.amount(), "amount");
             total = total.add(amt);
             lines.add(new JournalEntryRequest.JournalLineRequest(incoming.getId(), "Dealer receipt", amt, BigDecimal.ZERO));
         }
@@ -1183,7 +1184,7 @@ public class AccountingService {
         }
 
         Account cashAccount = requireCashAccountForSettlement(company, request.cashAccountId(), "payroll payment");
-        BigDecimal amount = requirePositive(request.amount(), "amount");
+        BigDecimal amount = ValidationUtils.requirePositive(request.amount(), "amount");
 
         Account salaryPayableAccount = accountRepository.findByCompanyAndCodeIgnoreCase(company, "SALARY-PAYABLE")
                 .orElseThrow(() -> new ApplicationException(ErrorCode.SYSTEM_CONFIGURATION_ERROR,
@@ -1589,7 +1590,7 @@ public class AccountingService {
                 .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Supplier not found"));
         Account payableAccount = requireSupplierPayable(supplier);
         Account cashAccount = requireCashAccountForSettlement(company, request.cashAccountId(), "supplier payment", false);
-        BigDecimal amount = requirePositive(request.amount(), "amount");
+        BigDecimal amount = ValidationUtils.requirePositive(request.amount(), "amount");
         List<SettlementAllocationRequest> allocations = request.allocations();
         validatePaymentAllocations(allocations, amount, "supplier payment", false);
         String memo = StringUtils.hasText(request.memo())
@@ -1663,7 +1664,7 @@ public class AccountingService {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
                         "Supplier payments cannot allocate to invoices");
             }
-            BigDecimal applied = requirePositive(allocation.appliedAmount(), "appliedAmount");
+            BigDecimal applied = ValidationUtils.requirePositive(allocation.appliedAmount(), "appliedAmount");
             RawMaterialPurchase purchase = null;
             if (allocation.purchaseId() != null) {
                 purchase = rawMaterialPurchaseRepository.lockByCompanyAndId(company, allocation.purchaseId())
@@ -1834,7 +1835,7 @@ public class AccountingService {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
                         "Dealer settlements cannot allocate to purchases");
             }
-            BigDecimal applied = requirePositive(allocation.appliedAmount(), "appliedAmount");
+            BigDecimal applied = ValidationUtils.requirePositive(allocation.appliedAmount(), "appliedAmount");
             BigDecimal discount = normalizeNonNegative(allocation.discountAmount(), "discountAmount");
             BigDecimal writeOff = normalizeNonNegative(allocation.writeOffAmount(), "writeOffAmount");
             BigDecimal fxAdjustment = MoneyUtils.zeroIfNull(allocation.fxAdjustment());
@@ -2035,7 +2036,7 @@ public class AccountingService {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
                         "Supplier settlements cannot allocate to invoices");
             }
-            BigDecimal applied = requirePositive(allocation.appliedAmount(), "appliedAmount");
+            BigDecimal applied = ValidationUtils.requirePositive(allocation.appliedAmount(), "appliedAmount");
             BigDecimal discount = normalizeNonNegative(allocation.discountAmount(), "discountAmount");
             BigDecimal writeOff = normalizeNonNegative(allocation.writeOffAmount(), "writeOffAmount");
             BigDecimal fxAdjustment = MoneyUtils.zeroIfNull(allocation.fxAdjustment());
@@ -2287,13 +2288,6 @@ public class AccountingService {
         return account;
     }
 
-    private BigDecimal requirePositive(BigDecimal value, String field) {
-        if (value == null || value.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Value for " + field + " must be greater than zero");
-        }
-        return value;
-    }
-
     private BigDecimal normalizeNonNegative(BigDecimal value, String field) {
         BigDecimal normalized = MoneyUtils.zeroIfNull(value);
         if (normalized.compareTo(BigDecimal.ZERO) < 0) {
@@ -2331,7 +2325,7 @@ public class AccountingService {
                             "Purchase allocation is required for supplier payments; use /api/v1/accounting/settlements/suppliers for on-account credits");
                 }
             }
-            BigDecimal applied = requirePositive(allocation.appliedAmount(), "appliedAmount");
+            BigDecimal applied = ValidationUtils.requirePositive(allocation.appliedAmount(), "appliedAmount");
             BigDecimal discount = normalizeNonNegative(allocation.discountAmount(), "discountAmount");
             BigDecimal writeOff = normalizeNonNegative(allocation.writeOffAmount(), "writeOffAmount");
             BigDecimal fxAdjustment = MoneyUtils.zeroIfNull(allocation.fxAdjustment());
@@ -3123,7 +3117,7 @@ public class AccountingService {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
                         "Dealer settlements cannot allocate to purchases");
             }
-            BigDecimal applied = requirePositive(allocation.appliedAmount(), "appliedAmount");
+            BigDecimal applied = ValidationUtils.requirePositive(allocation.appliedAmount(), "appliedAmount");
             BigDecimal discount = normalizeNonNegative(allocation.discountAmount(), "discountAmount");
             BigDecimal writeOff = normalizeNonNegative(allocation.writeOffAmount(), "writeOffAmount");
             BigDecimal fxAdjustment = MoneyUtils.zeroIfNull(allocation.fxAdjustment());
@@ -3141,7 +3135,7 @@ public class AccountingService {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
                         "Supplier settlements cannot allocate to invoices");
             }
-            BigDecimal applied = requirePositive(allocation.appliedAmount(), "appliedAmount");
+            BigDecimal applied = ValidationUtils.requirePositive(allocation.appliedAmount(), "appliedAmount");
             BigDecimal discount = normalizeNonNegative(allocation.discountAmount(), "discountAmount");
             BigDecimal writeOff = normalizeNonNegative(allocation.writeOffAmount(), "writeOffAmount");
             BigDecimal fxAdjustment = MoneyUtils.zeroIfNull(allocation.fxAdjustment());
@@ -3172,7 +3166,7 @@ public class AccountingService {
             return new SettlementTotals(totalApplied, totalDiscount, totalWriteOff, totalFxGain, totalFxLoss);
         }
         for (SettlementAllocationRequest allocation : allocations) {
-            BigDecimal applied = requirePositive(allocation.appliedAmount(), "appliedAmount");
+            BigDecimal applied = ValidationUtils.requirePositive(allocation.appliedAmount(), "appliedAmount");
             BigDecimal discount = normalizeNonNegative(allocation.discountAmount(), "discountAmount");
             BigDecimal writeOff = normalizeNonNegative(allocation.writeOffAmount(), "writeOffAmount");
             BigDecimal fxAdjustment = MoneyUtils.zeroIfNull(allocation.fxAdjustment());
@@ -3304,7 +3298,7 @@ public class AccountingService {
         } else {
             BigDecimal paymentTotal = BigDecimal.ZERO;
             for (SettlementPaymentRequest payment : paymentRequests) {
-                BigDecimal amount = requirePositive(payment.amount(), "payment amount");
+                BigDecimal amount = ValidationUtils.requirePositive(payment.amount(), "payment amount");
                 Account account = requireCashAccountForSettlement(
                         company,
                         payment.accountId(),
@@ -4796,7 +4790,7 @@ public class AccountingService {
         String memo = StringUtils.hasText(request.memo()) ? request.memo().trim() : "Bad debt write-off for invoice " + invoice.getInvoiceNumber();
         BigDecimal outstanding = MoneyUtils.zeroIfNull(invoice.getOutstandingAmount());
         BigDecimal amount = request.amount() != null ? request.amount() : outstanding;
-        amount = requirePositive(amount, "amount");
+        amount = ValidationUtils.requirePositive(amount, "amount");
         if (amount.compareTo(outstanding) > 0) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
                     "Bad debt write-off exceeds invoice outstanding amount")

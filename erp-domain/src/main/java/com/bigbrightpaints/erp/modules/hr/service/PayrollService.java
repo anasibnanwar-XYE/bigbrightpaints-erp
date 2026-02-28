@@ -5,6 +5,7 @@ import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
+import com.bigbrightpaints.erp.core.idempotency.IdempotencySignatureBuilder;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
@@ -17,7 +18,6 @@ import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.modules.hr.domain.*;
 import jakarta.transaction.Transactional;
-import org.apache.commons.codec.digest.DigestUtils;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.util.StringUtils;
@@ -917,9 +917,12 @@ public class PayrollService {
                                     LocalDate periodStart,
                                     LocalDate periodEnd,
                                     String remarks) {
-        String normalizedRemarks = StringUtils.hasText(remarks) ? remarks.trim() : "";
-        String signature = "%s|%s|%s|%s".formatted(runType.name(), periodStart, periodEnd, normalizedRemarks);
-        return DigestUtils.sha256Hex(signature);
+        return IdempotencySignatureBuilder.create()
+                .add(runType.name())
+                .add(periodStart)
+                .add(periodEnd)
+                .addToken(remarks)
+                .buildHash();
     }
 
     static String buildRunSignature(PayrollRun run) {

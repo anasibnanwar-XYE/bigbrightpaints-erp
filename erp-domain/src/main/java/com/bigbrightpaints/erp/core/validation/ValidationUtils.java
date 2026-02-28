@@ -66,19 +66,19 @@ public final class ValidationUtils {
         return entity.get();
     }
 
-    public static IllegalArgumentException invalidInput(String message) {
-        return new IllegalArgumentException(message);
+    public static ApplicationException invalidInput(String message) {
+        return new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, message);
     }
 
-    public static IllegalArgumentException invalidInput(String message, Throwable cause) {
-        return new IllegalArgumentException(message, cause);
+    public static ApplicationException invalidInput(String message, Throwable cause) {
+        return new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, message, cause);
     }
 
-    public static IllegalStateException invalidState(String message) {
-        return new IllegalStateException(message);
+    public static ApplicationException invalidState(String message) {
+        return new ApplicationException(ErrorCode.VALIDATION_INVALID_STATE, message);
     }
 
-    public static IllegalStateException invalidState(String message, Throwable cause) {
-        return new IllegalStateException(message, cause);
+    public static ApplicationException invalidState(String message, Throwable cause) {
+        return new ApplicationException(ErrorCode.VALIDATION_INVALID_STATE, message, cause);
     }
 }

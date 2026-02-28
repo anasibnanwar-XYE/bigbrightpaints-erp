@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.truthsuite.p2p;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
 import com.bigbrightpaints.erp.modules.invoice.service.InvoiceSettlementPolicy;
 import com.bigbrightpaints.erp.modules.invoice.service.SettlementApprovalDecision;
@@ -48,7 +49,7 @@ class TS_truthsuite_p2p_Settlement_Test {
                 Instant.parse("2026-02-20T00:00:00Z"),
                 Map.of("ticket", "TKT-ERP-STAGE-095", "approvalSource", "workflow"));
 
-        assertThrows(IllegalArgumentException.class, () ->
+        assertThrows(ApplicationException.class, () ->
                 policy.applySettlementWithOverride(
                         invoice,
                         BigDecimal.valueOf(40),
@@ -57,7 +58,7 @@ class TS_truthsuite_p2p_Settlement_Test {
                         BigDecimal.ZERO,
                         " ",
                         validOverride));
-        assertThrows(IllegalArgumentException.class, () ->
+        assertThrows(ApplicationException.class, () ->
                 policy.applySettlementWithOverride(
                         invoice,
                         BigDecimal.valueOf(40),
@@ -98,7 +99,7 @@ class TS_truthsuite_p2p_Settlement_Test {
         assertEquals(InvoiceSettlementPolicy.InvoiceStatus.PARTIAL.name(), invoice.getStatus());
         assertEquals(SettlementApprovalReasonCode.SUPPLIER_EXCEPTION,
                 policy.requireSupplierExceptionApproval(supplierException).reasonCode());
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(ApplicationException.class,
                 () -> policy.requireSupplierExceptionApproval(validOverride));
     }
 }

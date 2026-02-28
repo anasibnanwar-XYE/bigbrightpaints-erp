@@ -35,6 +35,7 @@ public enum ErrorCode {
     VALIDATION_OUT_OF_RANGE("VAL_004", "Value is out of acceptable range"),
     VALIDATION_INVALID_DATE("VAL_005", "Invalid date or time value"),
     VALIDATION_INVALID_REFERENCE("VAL_006", "Invalid reference to another resource"),
+    VALIDATION_INVALID_STATE("VAL_007", "Invalid state for requested operation"),
 
     // System Errors (4000-4999)
     SYSTEM_INTERNAL_ERROR("SYS_001", "An internal error occurred"),

@@ -6,6 +6,7 @@ import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.idempotency.IdempotencyReservationService;
 import com.bigbrightpaints.erp.core.idempotency.IdempotencySignatureBuilder;
+import com.bigbrightpaints.erp.core.validation.ValidationUtils;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.util.CostingMethodUtils;
@@ -253,8 +254,8 @@ public class RawMaterialService {
                                        RawMaterialBatchRequest request,
                                        ReceiptContext context) {
         RawMaterial material = requireMaterial(rawMaterialId);
-        BigDecimal quantity = requirePositive(request.quantity(), "quantity");
-        BigDecimal costPerUnit = requirePositive(request.costPerUnit(), "costPerUnit");
+        BigDecimal quantity = ValidationUtils.requirePositive(request.quantity(), "quantity");
+        BigDecimal costPerUnit = ValidationUtils.requirePositive(request.costPerUnit(), "costPerUnit");
         Supplier supplier = requireSupplier(material.getCompany(), request.supplierId());
         ensurePostingAccounts(material, supplier);
         RawMaterialBatch batch = new RawMaterialBatch();
@@ -303,13 +304,6 @@ public class RawMaterialService {
                 request.notes()
         );
         return createBatch(request.rawMaterialId(), batchRequest, idempotencyKey);
-    }
-
-    private BigDecimal requirePositive(BigDecimal value, String fieldName) {
-        if (value == null || value.compareTo(BigDecimal.ZERO) <= 0) {
-            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(fieldName + " must be positive");
-        }
-        return value;
     }
 
     private RawMaterial requireMaterial(Long rawMaterialId) {

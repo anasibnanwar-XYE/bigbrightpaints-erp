@@ -5,6 +5,7 @@ import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.idempotency.IdempotencyReservationService;
 import com.bigbrightpaints.erp.core.idempotency.IdempotencySignatureBuilder;
 import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
+import com.bigbrightpaints.erp.core.validation.ValidationUtils;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CostingMethodUtils;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
@@ -204,8 +205,8 @@ public class InventoryAdjustmentService {
     private InventoryAdjustmentLine buildLine(InventoryAdjustment adjustment,
                                               FinishedGood finishedGood,
                                               InventoryAdjustmentRequest.LineRequest lineRequest) {
-        BigDecimal quantity = requirePositive(lineRequest.quantity(), "quantity");
-        BigDecimal unitCost = requirePositive(lineRequest.unitCost(), "unitCost");
+        BigDecimal quantity = ValidationUtils.requirePositive(lineRequest.quantity(), "quantity");
+        BigDecimal unitCost = ValidationUtils.requirePositive(lineRequest.unitCost(), "unitCost");
         BigDecimal currentStock = finishedGood.getCurrentStock() == null ? BigDecimal.ZERO : finishedGood.getCurrentStock();
         BigDecimal reservedStock = safeQuantity(finishedGood.getReservedStock());
         BigDecimal available = currentStock.subtract(reservedStock);
@@ -298,13 +299,6 @@ public class InventoryAdjustmentService {
                 adjustment.getJournalEntryId(),
                 lines
         );
-    }
-
-    private BigDecimal requirePositive(BigDecimal value, String field) {
-        if (value == null || value.compareTo(BigDecimal.ZERO) <= 0) {
-            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(field + " must be greater than zero");
-        }
-        return value;
     }
 
     private BigDecimal safeQuantity(BigDecimal value) {

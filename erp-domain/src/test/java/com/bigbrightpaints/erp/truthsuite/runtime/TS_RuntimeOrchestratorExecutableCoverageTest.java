@@ -10,6 +10,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.modules.accounting.service.DealerLedgerService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -346,7 +347,7 @@ class TS_RuntimeOrchestratorExecutableCoverageTest {
                 "req-dispatch-zero",
                 "C1",
                 "ops@bbp.com"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("greater than zero for dispatch");
         verify(idempotencyService).markFailed(eq(invalidDispatch), any(RuntimeException.class));
     }
