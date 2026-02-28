@@ -1,5 +1,9 @@
 package com.bigbrightpaints.erp.modules.auth.service;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.notification.EmailService;
@@ -20,6 +24,7 @@ import com.bigbrightpaints.erp.modules.rbac.domain.Role;
 import io.jsonwebtoken.Claims;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Date;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,6 +32,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -232,7 +238,7 @@ class AuthServiceAuditAttributionTest {
                 eq("user@example.com"),
                 eq("ACME"),
                 argThat((Map<String, Object> claims) ->
-                        claims != null && user.getEmail().equals(claims.get("name")))))
+                        claims != null && user.getDisplayName().equals(claims.get("name")))))
                 .thenReturn("access-new");
         when(refreshTokenService.issue(eq("user@example.com"), any(Instant.class))).thenReturn("refresh-new");
         when(properties.getRefreshTokenTtlSeconds()).thenReturn(3600L);
@@ -244,7 +250,7 @@ class AuthServiceAuditAttributionTest {
         assertThat(response.accessToken()).isEqualTo("access-new");
         assertThat(response.refreshToken()).isEqualTo("refresh-new");
         assertThat(response.companyCode()).isEqualTo("ACME");
-        assertThat(response.displayName()).isEqualTo(user.getEmail());
+        assertThat(response.displayName()).isEqualTo(user.getDisplayName());
         verify(tenantRuntimeEnforcementService).enforceAuthOperationAllowed("ACME", "user@example.com", "REFRESH_TOKEN");
     }
 
@@ -264,25 +270,56 @@ class AuthServiceAuditAttributionTest {
     }
 
     @Test
-    void logoutFallsBackToRevokeAll_andSkipsBlacklistWhenClaimsIncomplete() {
+    void logoutDerivesIdentityFromTokenSubject_whenRefreshingTokenIsAbsent() {
         Claims claims = org.mockito.Mockito.mock(Claims.class);
+        Instant expiresAt = Instant.parse("2026-01-01T00:05:00Z");
         when(tokenService.parse("access-token")).thenReturn(claims);
-        when(claims.getId()).thenReturn(null);
+        when(claims.getSubject()).thenReturn("token-user@example.com");
+        when(claims.getId()).thenReturn("jti-logout");
+        when(claims.getExpiration()).thenReturn(Date.from(expiresAt));
 
-        authService.logout("   ", "access-token", "user@example.com");
+        authService.logout("   ", "access-token");
 
-        verify(refreshTokenService).revokeAllForUser("user@example.com");
-        verify(tokenBlacklistService, never()).blacklistToken(any(), any(), any(), any());
+        verify(refreshTokenService).revokeAllForUser("token-user@example.com");
+        verify(refreshTokenService, never()).revokeAllForUser("caller@example.com");
+        verify(tokenBlacklistService).blacklistToken(
+                "jti-logout",
+                expiresAt,
+                "token-user@example.com",
+                "logout");
     }
 
     @Test
-    void logoutIgnoresTokenParseErrors() {
-        when(tokenService.parse("bad-token")).thenThrow(new IllegalArgumentException("bad token"));
+    void logoutLogsWarningWhenTokenBlacklistingFails() {
+        Logger logger = (Logger) LoggerFactory.getLogger(AuthService.class);
+        ListAppender<ILoggingEvent> logAppender = new ListAppender<>();
+        logger.addAppender(logAppender);
+        logAppender.start();
+        Claims claims = org.mockito.Mockito.mock(Claims.class);
+        Instant expiresAt = Instant.parse("2026-01-01T00:05:00Z");
+        when(tokenService.parse("access-token")).thenReturn(claims);
+        when(claims.getSubject()).thenReturn("user@example.com");
+        when(claims.getId()).thenReturn("jti-logout");
+        when(claims.getExpiration()).thenReturn(Date.from(expiresAt));
+        doThrow(new RuntimeException("store unavailable"))
+                .when(tokenBlacklistService)
+                .blacklistToken("jti-logout", expiresAt, "user@example.com", "logout");
 
-        authService.logout("refresh-token", "bad-token", "user@example.com");
+        try {
+            authService.logout("refresh-token", "access-token");
+        } finally {
+            logger.detachAppender(logAppender);
+            logAppender.stop();
+        }
 
         verify(refreshTokenService).revoke("refresh-token");
-        verify(tokenBlacklistService, never()).blacklistToken(any(), any(), any(), any());
+        verify(tokenBlacklistService).blacklistToken("jti-logout", expiresAt, "user@example.com", "logout");
+        assertThat(logAppender.list)
+                .anySatisfy(event -> {
+                    assertThat(event.getLevel()).isEqualTo(Level.WARN);
+                    assertThat(event.getFormattedMessage())
+                            .contains("Failed to blacklist access token during logout");
+                });
     }
 
     @Test

@@ -59,15 +59,13 @@ public class AuthController {
     public ResponseEntity<Void> logout(@RequestParam(required = false) String refreshToken,
                                        Authentication authentication) {
         String accessToken = null;
-        String userEmail = null;
         if (authentication != null) {
-            userEmail = authentication.getName();
             Object credentials = authentication.getCredentials();
             if (credentials instanceof String token && !token.isBlank()) {
                 accessToken = token;
             }
         }
-        authService.logout(refreshToken, accessToken, userEmail);
+        authService.logout(refreshToken, accessToken);
         return ResponseEntity.noContent().build();
     }
 

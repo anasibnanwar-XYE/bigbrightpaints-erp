@@ -20,6 +20,8 @@ import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.company.service.TenantRuntimeEnforcementService;
 import io.jsonwebtoken.Claims;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.authentication.LockedException;
@@ -36,6 +38,7 @@ import java.util.UUID;
 @Service
 public class AuthService {
 
+    private static final Logger log = LoggerFactory.getLogger(AuthService.class);
     private static final int MAX_FAILED_ATTEMPTS = 5;
     private static final Duration LOCKOUT_DURATION = Duration.ofMinutes(15);
     private static final String SUPER_ADMIN_ROLE = "ROLE_SUPER_ADMIN";
@@ -178,12 +181,12 @@ public class AuthService {
                 company.getCode(),
                 userEmail,
                 "REFRESH_TOKEN");
-        Map<String, Object> claims = Map.of("name", userEmail);
+        Map<String, Object> claims = Map.of("name", user.getDisplayName());
         String accessToken = tokenService.generateAccessToken(userEmail, company.getCode(), claims);
         String refreshToken = refreshTokenService.issue(userEmail,
                 Instant.now().plusSeconds(properties.getRefreshTokenTtlSeconds()));
         return new AuthResponse("Bearer", accessToken, refreshToken, properties.getAccessTokenTtlSeconds(),
-                company.getCode(), userEmail, user.isMustChangePassword());
+                company.getCode(), user.getDisplayName(), user.isMustChangePassword());
     }
 
     private Company resolveCompanyForUser(UserAccount user, String companyCode) {
@@ -217,21 +220,50 @@ public class AuthService {
         return trimmed.isEmpty() ? null : trimmed;
     }
 
-    public void logout(String refreshToken, String accessToken, String userEmail) {
+    public void logout(String refreshToken, String accessToken) {
+        Claims accessTokenClaims = parseLogoutClaims(accessToken);
+        String tokenUserEmail = extractTokenSubject(accessTokenClaims);
+
         if (refreshToken != null && !refreshToken.isBlank()) {
             refreshTokenService.revoke(refreshToken);
-        } else if (userEmail != null && !userEmail.isBlank()) {
-            refreshTokenService.revokeAllForUser(userEmail);
+        } else if (tokenUserEmail != null) {
+            refreshTokenService.revokeAllForUser(tokenUserEmail);
         }
-        blacklistAccessToken(accessToken, userEmail);
+
+        blacklistAccessToken(accessTokenClaims, tokenUserEmail);
     }
 
-    private void blacklistAccessToken(String accessToken, String userEmail) {
+    private Claims parseLogoutClaims(String accessToken) {
         if (accessToken == null || accessToken.isBlank()) {
+            return null;
+        }
+
+        try {
+            return tokenService.parse(accessToken);
+        } catch (Exception ex) {
+            log.warn("Failed to parse access token during logout; skipping token-derived identity operations", ex);
+            return null;
+        }
+    }
+
+    private String extractTokenSubject(Claims claims) {
+        if (claims == null) {
+            return null;
+        }
+        String subject = claims.getSubject();
+        if (subject == null) {
+            return null;
+        }
+        String normalized = subject.trim();
+        return normalized.isEmpty() ? null : normalized;
+    }
+
+    private void blacklistAccessToken(Claims claims, String userEmail) {
+        if (claims == null) {
             return;
         }
+
         try {
-            Claims claims = tokenService.parse(accessToken);
             if (claims.getId() == null || claims.getExpiration() == null) {
                 return;
             }
@@ -240,8 +272,8 @@ public class AuthService {
                     claims.getExpiration().toInstant(),
                     userEmail,
                     "logout");
-        } catch (Exception ignored) {
-            // Best-effort logout: skip blacklist if token cannot be parsed.
+        } catch (Exception ex) {
+            log.warn("Failed to blacklist access token during logout", ex);
         }
     }
 
