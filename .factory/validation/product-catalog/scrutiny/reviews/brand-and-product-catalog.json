@@ -1,0 +1,62 @@
+{
+  "featureId": "brand-and-product-catalog",
+  "reviewedAt": "2026-02-28T17:40:29Z",
+  "commitId": "dd3d52d0",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Catalog brand/product CRUD, search/filter, and schema additions are largely implemented as required, but bulk per-item validation has a blocking gap: bean validation is bypassed because CatalogService catches generic Exception for each item, so invalid payloads return FAILED rows instead of validation errors.",
+    "issues": [
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/production/controller/CatalogController.java",
+        "line": 105,
+        "severity": "blocking",
+        "description": "Bulk endpoint expects per-item bean validation, but method-level validation on list elements is effectively neutralized by service-level exception swallowing; invalid nested fields do not trigger request rejection/structured validation response."
+      },
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/production/service/CatalogService.java",
+        "line": 205,
+        "severity": "blocking",
+        "description": "bulkUpsertProducts catches ApplicationException and generic Exception per item, converting validation exceptions (including jakarta.validation.ConstraintViolationException thrown during create/update) into success=FALSE row messages instead of enforcing invalid item constraints. This violates the feature\u2019s expected behavior for per-item validation and allows malformed records (e.g., blank product name) to be reported as ordinary FAILED entries rather than validation errors."
+      },
+      {
+        "file": "erp-domain/src/test/java/com/bigbrightpaints/erp/modules/production/service/CatalogServiceBulkUpsertTest.java",
+        "line": 70,
+        "severity": "non_blocking",
+        "description": "Bulk tests only cover one business-validation failure path (empty cartonSizes) and do not assert behavior for bean-validation failures (e.g., blank name, null brandId), which would have exposed the exception-swallowing bug in bulk processing."
+      }
+    ]
+  },
+  "issues": [
+    {
+      "severity": "blocking",
+      "description": "Bulk per-item bean validation is bypassed due to generic exception catching in CatalogService.bulkUpsertProducts.",
+      "evidence": "CatalogController.java:105 uses @Valid list elements, but CatalogService.java:205-222 catches Exception for each item and maps it to FAILED result message."
+    },
+    {
+      "severity": "blocking",
+      "description": "Feature expectation 'Bulk product creation with per-item validation' is not fully met for Jakarta Bean Validation constraints.",
+      "evidence": "features.json:1529 requires per-item validation; bulk test only exercises business rule failure, not bean-validation failures (CatalogServiceBulkUpsertTest.java:70-114)."
+    },
+    {
+      "severity": "non_blocking",
+      "description": "CatalogService exceeds mission guidance service size threshold (~500 lines).",
+      "evidence": "CatalogService.java is 516 lines (wc output), while AGENTS.md mandates no service class should exceed ~500 lines."
+    }
+  ],
+  "sharedStateObservations": [
+    {
+      "target": "AGENTS.md|skill",
+      "observation": "Mission guidance conflicts with backend-worker skill on whether .factory content may be edited.",
+      "rationale": "AGENTS.md says do not modify .factory contents, but backend-worker/SKILL.md mandates updating .factory/library/frontend-handoff.md for API changes; workers consistently edit this file, so guidance should be clarified to avoid ambiguity."
+    },
+    {
+      "target": "services.yaml",
+      "observation": "Worker procedure frequently invokes .factory/init.sh, but no setup/init command is documented in services.yaml.",
+      "rationale": "Transcript skeleton for session d55fcb5b includes executing .factory/init.sh, while services.yaml only lists compile/test/build/lint and runtime services; documenting init command would improve reproducibility."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Fail: core catalog CRUD/search/mapping work is present, but bulk validation handling has a blocking correctness issue because per-item bean-validation exceptions are swallowed and downgraded to generic FAILED row messages."
+}

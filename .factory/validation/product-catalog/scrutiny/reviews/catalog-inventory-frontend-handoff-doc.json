@@ -1,0 +1,70 @@
+{
+  "featureId": "catalog-inventory-frontend-handoff-doc",
+  "reviewedAt": "2026-02-28T17:41:17Z",
+  "commitId": "045c9bd708f9d0d53db0048857eff3ea5a35adee",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The handoff doc is broad and mostly aligned with controllers/DTOs, but it contains blocking accuracy issues in core flow/state-machine semantics (dispatch reserve step and production lifecycle transition), plus a few completeness gaps around auth and feature-flagged endpoints.",
+    "issues": [
+      {
+        "file": ".factory/library/frontend-handoff.md",
+        "line": 1249,
+        "severity": "blocking",
+        "description": "Dispatch flow documents reservation as `POST /api/v1/sales/orders/{id}/confirm`, but that endpoint only sets order status to CONFIRMED and does not reserve inventory or create/update packaging slip reservations."
+      },
+      {
+        "file": ".factory/library/frontend-handoff.md",
+        "line": 1263,
+        "severity": "blocking",
+        "description": "Production lifecycle claims `PARTIAL_PACKED -> READY_TO_PACK` can happen via recalculation, but current packing logic only increments packed quantity atomically; there is no decrement/reversal path from PARTIAL back to READY in implemented workflows."
+      },
+      {
+        "file": ".factory/library/frontend-handoff.md",
+        "line": 1130,
+        "severity": "non_blocking",
+        "description": "Raw-material section states a controller-level default auth that includes ROLE_FACTORY, but `/api/v1/raw-materials/intake` is explicitly restricted to ADMIN/ACCOUNTING. This can mislead frontend role gating for that operation."
+      },
+      {
+        "file": ".factory/library/frontend-handoff.md",
+        "line": 1142,
+        "severity": "non_blocking",
+        "description": "Endpoints `/api/v1/raw-material-batches/{rawMaterialId}` and `/api/v1/factory/production-batches` are documented as generally available, but both are feature-flag/profile gated in service logic (disabled by default in prod unless explicitly enabled)."
+      }
+    ]
+  },
+  "issues": [
+    {
+      "severity": "blocking",
+      "description": "Dispatch reserve step in documented user flow is inaccurate.",
+      "evidence": "Doc: .factory/library/frontend-handoff.md:1249 says reserve via POST /api/v1/sales/orders/{id}/confirm. Code: SalesController.java:85-88 maps this endpoint; SalesService.java:881-884 only sets status CONFIRMED. Actual dispatch/inventory mutation occurs via DispatchController.java:94-122 using salesService.confirmDispatch(...)."
+    },
+    {
+      "severity": "blocking",
+      "description": "Documented production-log transition PARTIAL_PACKED -> READY_TO_PACK is not reachable in implemented flow.",
+      "evidence": "Doc: .factory/library/frontend-handoff.md:1263 states transition is possible. Code: ProductionLogRepository.java:27-31 only increments totalPackedQuantity; PackingService.java:370-376 can set READY_TO_PACK only when packedQuantity <= 0, which cannot occur after partial packing under increment-only updates."
+    },
+    {
+      "severity": "non_blocking",
+      "description": "Auth detail mismatch for raw-material intake endpoint.",
+      "evidence": "Doc: .factory/library/frontend-handoff.md:1130 sets raw-material auth default including ROLE_FACTORY and line 1143 lists intake endpoint without override note. Code: RawMaterialController.java:77-78 adds endpoint-specific @PreAuthorize('ROLE_ADMIN','ROLE_ACCOUNTING') for /raw-materials/intake."
+    },
+    {
+      "severity": "non_blocking",
+      "description": "Feature-flag/profile gating for documented endpoints is omitted from handoff.",
+      "evidence": "Doc includes POST /api/v1/raw-material-batches/{rawMaterialId} (.factory/library/frontend-handoff.md:1142) and POST /api/v1/factory/production-batches (:1180). Code gates: RawMaterialService.java:87,215-219 (erp.raw-material.intake.enabled; disabled path throws BUSINESS_CONSTRAINT_VIOLATION) and FactoryService.java:47,244-251 (erp.factory.legacy-batch.enabled and prod-profile check)."
+    }
+  ],
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "target": "skill",
+      "observation": "backend-worker skill procedure is not explicit about how to validate documentation-only features against backend behavior (flow semantics/state transitions/role constraints), which contributed to factual drift in this handoff.",
+      "rationale": "The skill focuses on TDD/compile/test flow; documentation-only work can pass those checks while still being behavior-inaccurate unless there is an explicit cross-check step against controllers/services.",
+      "evidence": ".factory/skills/backend-worker/SKILL.md emphasizes test-first + compile/test and handoff writing, but does not include a mandatory endpoint/flow/state-machine trace-back checklist for doc-only features."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Review failed due to two blocking documentation inaccuracies: an incorrect dispatch reservation flow step and an impossible production lifecycle transition. Additional non-blocking gaps exist around role-specific auth clarity and feature-flag/prod gating disclosure for certain endpoints."
+}

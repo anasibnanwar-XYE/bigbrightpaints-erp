@@ -1,0 +1,61 @@
+{
+  "featureId": "inventory-batch-tracking-and-manufacturing",
+  "reviewedAt": "2026-02-28T17:50:19Z",
+  "commitId": "af67c7c9",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The feature delivers the new batch movement endpoint, raw-material movement linkage into production logs, packing linkage into production detail DTOs, and low-stock threshold APIs with focused tests and gate-fast evidence. However, there is a blocking functional gap against the batch-tracking requirement: raw-material batch metadata does not ingest manufacturing/expiry dates in purchase/intake paths, so those fields are not reliably tracked for every raw-material batch as specified.",
+    "issues": [
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/dto/RawMaterialBatchRequest.java",
+        "line": 8,
+        "severity": "blocking",
+        "description": "RawMaterialBatchRequest does not expose manufacturingDate or expiryDate inputs, making it impossible for goods-receipt/intake flows to capture those required batch-traceability fields."
+      },
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/service/RawMaterialService.java",
+        "line": 272,
+        "severity": "blocking",
+        "description": "recordReceipt hard-sets manufacturedAt to now and never sets expiryDate from caller data, so purchased raw-material batches cannot preserve actual manufacturing/expiry metadata required by the feature contract."
+      },
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/service/OpeningStockImportService.java",
+        "line": 471,
+        "severity": "blocking",
+        "description": "Opening stock import parses manufacturedDate but has no expiry-date field in OpeningRow and no expiry assignment for imported raw-material or finished-good batches, leaving required batch expiry tracking incomplete."
+      }
+    ]
+  },
+  "issues": [
+    {
+      "severity": "blocking",
+      "description": "Requirement 'ensure every inventory batch (raw material and finished good) tracks ... manufacturing date, expiry date' is not fully met for raw-material purchase/intake/opening-stock flows.",
+      "evidence": "RawMaterialBatchRequest.java:8-15 has no manufactured/expiry fields; RawMaterialService.java:272 sets manufacturedAt to current time and never sets expiryDate; PurchasingService.java:444-450 constructs RawMaterialBatchRequest with only batchCode/quantity/unit/cost/supplier/notes; OpeningStockImportService.java:726 defines only manufacturedDate in OpeningRow and no expiry parsing or assignment."
+    },
+    {
+      "severity": "non_blocking",
+      "description": "Low-stock thresholds are persisted and configurable via dedicated endpoints, but they are not surfaced in the main FinishedGoodDto payload.",
+      "evidence": "FinishedGoodsWorkflowService.java:199-217 implements get/update threshold and resolveLowStockThreshold; FinishedGoodDto.java:6-18 does not include lowStockThreshold, so clients must call separate threshold endpoint to display/edit this value."
+    }
+  ],
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "target": "AGENTS.md|skill",
+      "observation": "Mission guidance and worker skill instructions conflict about .factory modifications.",
+      "rationale": "AGENTS.md forbids modifying .factory mission infrastructure, while backend-worker skill mandates updating .factory/library/frontend-handoff.md for API changes; this inconsistency can cause procedural drift and confusion for workers performing API features.",
+      "evidence": "/home/realnigga/.factory/missions/9cf481ca-5e0f-423d-8241-8364a13a7137/AGENTS.md:13 vs /home/realnigga/Desktop/Mission-control/.factory/skills/backend-worker/SKILL.md:61"
+    },
+    {
+      "area": "services",
+      "target": "services.yaml",
+      "observation": "Worker transcript shows routine use of .factory/init.sh but services.yaml does not define an init/setup command.",
+      "rationale": "Standardizing this command in services.yaml would improve reproducibility for workers and reviewers and reduce ad-hoc setup invocation patterns.",
+      "evidence": "worker-transcripts.jsonl entry for session cdb634ba-a46a-4031-969a-ac673a42d835 includes Execute '/home/realnigga/Desktop/Mission-control/.factory/init.sh'; /home/realnigga/Desktop/Mission-control/.factory/services.yaml lists compile/test/build/lint but no init command"
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Review result: fail. Most traceability and stock-linkage behaviors are implemented (movement history endpoint, production material movement linkage, packing-to-production linkage, and per-product low-stock threshold APIs), but a blocking gap remains because required manufacturing/expiry metadata is not captured for raw-material batches across key intake flows, so the 'every batch tracks manufacturing+expiry' contract is not fully satisfied."
+}

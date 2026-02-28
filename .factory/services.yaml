@@ -1,4 +1,5 @@
 commands:
+  init: /home/realnigga/Desktop/Mission-control/.factory/init.sh
   compile: cd erp-domain && mvn compile -q
   test: cd erp-domain && mvn test -Pgate-fast -Djacoco.skip=true
   test-unit: cd erp-domain && mvn test -Djacoco.skip=true '-Dtest=!*IT,!*ITCase,!*codered*' -pl .

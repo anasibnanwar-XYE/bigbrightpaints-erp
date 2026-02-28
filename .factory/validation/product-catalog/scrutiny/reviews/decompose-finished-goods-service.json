@@ -1,0 +1,43 @@
+{
+  "featureId": "decompose-finished-goods-service",
+  "reviewedAt": "2026-02-28T17:33:02Z",
+  "commitId": "8bd59ccaf83f960fdbe4b998579a0a04e67b3229",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The commit keeps FinishedGoodsService as a facade and updates selected callers/tests, but the decomposition is not real: business logic was moved wholesale into a new 2,119-line FinishedGoodsWorkflowService while the four new focused services are pass-through delegators.",
+    "issues": [
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/service/FinishedGoodsWorkflowService.java",
+        "line": 50,
+        "severity": "blocking",
+        "description": "Decomposition quality fails the feature intent and mission convention: a new god service (2,119 lines) centralizes nearly all original FinishedGoodsService logic instead of distributing real logic into catalog/stock/reservation/dispatch services."
+      },
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/service/FinishedGoodsCatalogService.java",
+        "line": 19,
+        "severity": "blocking",
+        "description": "FinishedGoodsCatalogService is only a thin forwarding layer to workflowService for all operations; no catalog-specific business logic was migrated into the focused service. The same pass-through pattern is repeated in FinishedGoodsStockService, FinishedGoodsReservationService, and FinishedGoodsDispatchService."
+      }
+    ]
+  },
+  "issues": [
+    {
+      "severity": "blocking",
+      "description": "The refactor does not perform actual logic migration into the four focused services; it introduces a renamed monolith (FinishedGoodsWorkflowService) and keeps focused services as delegators.",
+      "evidence": "wc -l shows FinishedGoodsWorkflowService at 2119 lines and focused services at 38/58/22/64 lines; method bodies in FinishedGoodsCatalogService (lines 19-36), FinishedGoodsStockService (23-56), FinishedGoodsReservationService (15-20), and FinishedGoodsDispatchService (21-62) are direct workflowService forwards."
+    }
+  ],
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "target": "skill",
+      "observation": "The backend-worker skill enforces strict TDD ordering, but decomposition work in this mission is often executed as behavior-preserving refactor-first with immediate regression validation.",
+      "rationale": "Handoff skillFeedback reports followedProcedure=false due to skipping strict Step 2 in favor of refactor-first. Codifying this allowed alternative for decomposition-heavy tasks would align procedure with real workflow and reduce avoidable process deviations.",
+      "evidence": ".factory/skills/backend-worker/SKILL.md (Step 2: Write Tests First) vs handoff skillFeedback.deviations in /home/realnigga/.factory/missions/9cf481ca-5e0f-423d-8241-8364a13a7137/handoffs/2026-02-28T16-41-42-891Z__decompose-finished-goods-service__f2a82b23-c599-404b-ae16-790dc07577d3.json"
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Review failed: caller wiring and targeted tests were updated, but the core decomposition objective was not met because business logic remains concentrated in a new 2,119-line workflow service and the four focused services are pass-through wrappers rather than true domain-specific implementations."
+}
