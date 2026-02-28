@@ -209,239 +209,863 @@ Current runtime path mapping used by backend:
 
 ### Accounting
 
-#### Internal Service Structure (Refactor: no API contract change)
+Comprehensive frontend handoff for `VAL-DOC-003` (chart of accounts, journals, settlement, period controls, reconciliation, GST, audit, catalog bridge, and temporal/reporting endpoints).
 
-`AccountingService` is now a thin compatibility facade. Endpoint behavior and DTO contracts are unchanged, but backend responsibilities are split into focused services:
+> Response envelope convention: almost all endpoints return `ApiResponse<T>` where payload is in `data`; PDF endpoints return raw `byte[]`; CSV endpoint returns `text/csv` string.
 
-1. `JournalEntryService`
-   - Journal listing, manual/system journal creation, reversal, cascade reversal, reference routing.
-2. `DealerReceiptService`
-   - Dealer receipt recording and split/hybrid receipt posting flows.
-3. `SettlementService`
-   - Dealer/supplier settlement posting, supplier payment posting, allocation orchestration.
-4. `CreditDebitNoteService`
-   - Credit note, debit note, accrual, and bad-debt write-off journal workflows.
-5. `AccountingAuditService`
-   - Audit digest generation and CSV digest export routing.
-6. `AccountingIdempotencyService`
-   - Idempotency-backed reservation/replay handling for accounting mutation flows.
-7. `InventoryAccountingService`
-   - Landed-cost posting, inventory revaluation, and WIP adjustment posting.
+#### Complete Endpoint Map (all accounting controllers)
 
-#### Controller Wiring Update
-
-- `AccountingController` now delegates accounting endpoints to the focused services above (journal, receipt, settlement, notes, audit, inventory).
-- Account-list and account-create endpoints continue through `AccountingService` facade for backward compatibility.
-- **Frontend impact:** none expected. Existing paths, payloads, response envelopes, and error shapes remain unchanged.
-
-#### Accounting Period Costing Method (period-scoped)
-
-##### Endpoint Map
-
-| Method | Path | Auth | Request | Response `data` |
+| Method | Path | Auth | Request body | Response `data` type |
 |---|---|---|---|---|
-| GET | `/api/v1/accounting/periods` | Authenticated accounting user | None | `List<AccountingPeriodDto>` |
-| POST | `/api/v1/accounting/periods` | Authenticated accounting user | `AccountingPeriodUpsertRequest` | `AccountingPeriodDto` |
-| PUT | `/api/v1/accounting/periods/{periodId}` | Authenticated accounting user | `AccountingPeriodUpdateRequest` | `AccountingPeriodDto` |
+| `GET` | `/api/v1/accounting/accounts` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `List<AccountDto>` |
+| `POST` | `/api/v1/accounting/accounts` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `AccountRequest` | `AccountDto` |
+| `GET` | `/api/v1/accounting/accounts/tree` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `List<AccountHierarchyService.AccountNode>` |
+| `GET` | `/api/v1/accounting/accounts/tree/{type}` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `List<AccountHierarchyService.AccountNode>` |
+| `GET` | `/api/v1/accounting/accounts/{accountId}/activity` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `TemporalBalanceService.AccountActivityReport` |
+| `GET` | `/api/v1/accounting/accounts/{accountId}/balance/as-of` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `BigDecimal` |
+| `GET` | `/api/v1/accounting/accounts/{accountId}/balance/compare` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `TemporalBalanceService.BalanceComparison` |
+| `POST` | `/api/v1/accounting/accruals` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `AccrualRequest` | `JournalEntryDto` |
+| `GET` | `/api/v1/accounting/aging/dealers/{dealerId}` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `AgingSummaryResponse` |
+| `GET` | `/api/v1/accounting/aging/dealers/{dealerId}/pdf` | `hasAuthority('ROLE_ADMIN')` | `—` | `byte[]` |
+| `GET` | `/api/v1/accounting/aging/suppliers/{supplierId}` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `AgingSummaryResponse` |
+| `GET` | `/api/v1/accounting/aging/suppliers/{supplierId}/pdf` | `hasAuthority('ROLE_ADMIN')` | `—` | `byte[]` |
+| `GET` | `/api/v1/accounting/audit-trail` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `PageResponse<AccountingAuditTrailEntryDto>` |
+| `GET` | `/api/v1/accounting/audit/digest` | `hasAuthority('ROLE_ADMIN')` | `—` | `AuditDigestResponse` |
+| `GET` | `/api/v1/accounting/audit/digest.csv` | `hasAuthority('ROLE_ADMIN')` | `—` | `String` |
+| `GET` | `/api/v1/accounting/audit/transactions` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `PageResponse<AccountingTransactionAuditListItemDto>` |
+| `GET` | `/api/v1/accounting/audit/transactions/{journalEntryId}` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `AccountingTransactionAuditDetailDto` |
+| `POST` | `/api/v1/accounting/bad-debts/write-off` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `BadDebtWriteOffRequest` | `JournalEntryDto` |
+| `POST` | `/api/v1/accounting/catalog/import` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `multipart/form-data` | `CatalogImportResponse` |
+| `GET` | `/api/v1/accounting/catalog/products` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `List<ProductionProductDto>` |
+| `POST` | `/api/v1/accounting/catalog/products` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `ProductCreateRequest` | `ProductionProductDto` |
+| `POST` | `/api/v1/accounting/catalog/products/bulk-variants` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `BulkVariantRequest` | `BulkVariantResponse` |
+| `PUT` | `/api/v1/accounting/catalog/products/{id}` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `ProductUpdateRequest` | `ProductionProductDto` |
+| `GET` | `/api/v1/accounting/configuration/health` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `ConfigurationHealthService.ConfigurationHealthReport` |
+| `POST` | `/api/v1/accounting/credit-notes` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `CreditNoteRequest` | `JournalEntryDto` |
+| `GET` | `/api/v1/accounting/date-context` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `Map<String, Object>` |
+| `POST` | `/api/v1/accounting/dealers/{dealerId}/auto-settle` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `AutoSettlementRequest` | `PartnerSettlementResponse` |
+| `POST` | `/api/v1/accounting/debit-notes` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `DebitNoteRequest` | `JournalEntryDto` |
+| `GET` | `/api/v1/accounting/default-accounts` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `CompanyDefaultAccountsResponse` |
+| `PUT` | `/api/v1/accounting/default-accounts` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `CompanyDefaultAccountsRequest` | `CompanyDefaultAccountsResponse` |
+| `GET` | `/api/v1/accounting/gst/reconciliation` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `GstReconciliationDto` |
+| `GET` | `/api/v1/accounting/gst/return` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `GstReturnDto` |
+| `POST` | `/api/v1/accounting/inventory/landed-cost` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `LandedCostRequest` | `JournalEntryDto` |
+| `POST` | `/api/v1/accounting/inventory/revaluation` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `InventoryRevaluationRequest` | `JournalEntryDto` |
+| `POST` | `/api/v1/accounting/inventory/wip-adjustment` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `WipAdjustmentRequest` | `JournalEntryDto` |
+| `GET` | `/api/v1/accounting/journal-entries` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `List<JournalEntryDto>` |
+| `POST` | `/api/v1/accounting/journal-entries` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `JournalEntryRequest` | `JournalEntryDto` |
+| `POST` | `/api/v1/accounting/journal-entries/{entryId}/cascade-reverse` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `JournalEntryReversalRequest` | `List<JournalEntryDto>` |
+| `POST` | `/api/v1/accounting/journal-entries/{entryId}/reverse` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `JournalEntryReversalRequest` | `JournalEntryDto` |
+| `GET` | `/api/v1/accounting/journals` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `List<JournalListItemDto>` |
+| `POST` | `/api/v1/accounting/journals/manual` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `ManualJournalRequest` | `JournalEntryDto` |
+| `POST` | `/api/v1/accounting/journals/{entryId}/reverse` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `JournalEntryReversalRequest` | `JournalEntryDto` |
+| `GET` | `/api/v1/accounting/month-end/checklist` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `MonthEndChecklistDto` |
+| `POST` | `/api/v1/accounting/month-end/checklist/{periodId}` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `MonthEndChecklistUpdateRequest` | `MonthEndChecklistDto` |
+| `POST` | `/api/v1/accounting/payroll/payments` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `PayrollPaymentRequest` | `JournalEntryDto` |
+| `POST` | `/api/v1/accounting/payroll/payments/batch` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `PayrollBatchPaymentRequest` | `PayrollBatchPaymentResponse` |
+| `GET` | `/api/v1/accounting/periods` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `List<AccountingPeriodDto>` |
+| `POST` | `/api/v1/accounting/periods` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `AccountingPeriodUpsertRequest` | `AccountingPeriodDto` |
+| `PUT` | `/api/v1/accounting/periods/{periodId}` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `AccountingPeriodUpdateRequest` | `AccountingPeriodDto` |
+| `POST` | `/api/v1/accounting/periods/{periodId}/close` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `AccountingPeriodCloseRequest` | `AccountingPeriodDto` |
+| `POST` | `/api/v1/accounting/periods/{periodId}/lock` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `AccountingPeriodLockRequest` | `AccountingPeriodDto` |
+| `POST` | `/api/v1/accounting/periods/{periodId}/reopen` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `AccountingPeriodReopenRequest` | `AccountingPeriodDto` |
+| `POST` | `/api/v1/accounting/receipts/dealer` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `DealerReceiptRequest` | `JournalEntryDto` |
+| `POST` | `/api/v1/accounting/receipts/dealer/hybrid` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `DealerReceiptSplitRequest` | `JournalEntryDto` |
+| `POST` | `/api/v1/accounting/reconciliation/bank` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `BankReconciliationRequest` | `BankReconciliationSummaryDto` |
+| `GET` | `/api/v1/accounting/reconciliation/subledger` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `ReconciliationService.SubledgerReconciliationReport` |
+| `GET` | `/api/v1/accounting/reports/aging/dealer/{dealerId}` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `AgingReportService.DealerAgingDetail` |
+| `GET` | `/api/v1/accounting/reports/aging/dealer/{dealerId}/detailed` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `AgingReportService.DealerAgingDetailedReport` |
+| `GET` | `/api/v1/accounting/reports/aging/receivables` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `AgingReportService.AgedReceivablesReport` |
+| `GET` | `/api/v1/accounting/reports/balance-sheet/hierarchy` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `AccountHierarchyService.BalanceSheetHierarchy` |
+| `GET` | `/api/v1/accounting/reports/dso/dealer/{dealerId}` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `AgingReportService.DSOReport` |
+| `GET` | `/api/v1/accounting/reports/income-statement/hierarchy` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `AccountHierarchyService.IncomeStatementHierarchy` |
+| `GET` | `/api/v1/accounting/sales/returns` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING','ROLE_SALES')` | `—` | `List<JournalEntryDto>` |
+| `POST` | `/api/v1/accounting/sales/returns` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `SalesReturnRequest` | `JournalEntryDto` |
+| `POST` | `/api/v1/accounting/settlements/dealers` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `DealerSettlementRequest` | `PartnerSettlementResponse` |
+| `POST` | `/api/v1/accounting/settlements/suppliers` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `SupplierSettlementRequest` | `PartnerSettlementResponse` |
+| `GET` | `/api/v1/accounting/statements/dealers/{dealerId}` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `PartnerStatementResponse` |
+| `GET` | `/api/v1/accounting/statements/dealers/{dealerId}/pdf` | `hasAuthority('ROLE_ADMIN')` | `—` | `byte[]` |
+| `GET` | `/api/v1/accounting/statements/suppliers/{supplierId}` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `PartnerStatementResponse` |
+| `GET` | `/api/v1/accounting/statements/suppliers/{supplierId}/pdf` | `hasAuthority('ROLE_ADMIN')` | `—` | `byte[]` |
+| `POST` | `/api/v1/accounting/suppliers/payments` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `SupplierPaymentRequest` | `JournalEntryDto` |
+| `POST` | `/api/v1/accounting/suppliers/{supplierId}/auto-settle` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `AutoSettlementRequest` | `PartnerSettlementResponse` |
+| `GET` | `/api/v1/accounting/trial-balance/as-of` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `TemporalBalanceService.TrialBalanceSnapshot` |
 
-`POST /periods` accepts `costingMethod` as optional. If omitted/null, backend defaults to `WEIGHTED_AVERAGE` for backward compatibility.
+_Total documented accounting endpoints: **73**._
 
-##### Costing Policy (critical behavior)
+#### Required User Flows (API call sequences)
 
-- Allowed values: `FIFO`, `LIFO`, `WEIGHTED_AVERAGE`.
-- Costing method is resolved from the **active accounting period** at movement time.
-- Method applies to inventory movements posted in that period (dispatch and inventory adjustments).
-- **No retroactive revaluation:** changing method in a new period does not recalculate or mutate historical movement costs from prior periods.
+1. **Chart of accounts setup**
+   1. `GET /api/v1/accounting/accounts` (bootstrap account list)
+   2. `GET /api/v1/accounting/accounts/tree` (hierarchy rendering)
+   3. `POST /api/v1/accounting/accounts` (create account)
+   4. `GET /api/v1/accounting/default-accounts` + `PUT /api/v1/accounting/default-accounts` (default mappings)
+   5. Optional typed tree views: `GET /api/v1/accounting/accounts/tree/{type}`
 
-##### User Flow: Change costing for next period
+2. **Manual journal entry**
+   1. Dropdown preload: `GET /api/v1/accounting/accounts`, `GET /api/v1/dealers`, `GET /api/v1/suppliers`
+   2. Create manual journal: `POST /api/v1/accounting/journals/manual` (preferred multi-line path)
+   3. List and filter: `GET /api/v1/accounting/journals?fromDate&toDate&type&sourceModule`
+   4. Reverse (single): `POST /api/v1/accounting/journals/{entryId}/reverse` or `/journal-entries/{entryId}/reverse`
+   5. Reverse (cascade): `POST /api/v1/accounting/journal-entries/{entryId}/cascade-reverse`
 
-1. Load periods via `GET /api/v1/accounting/periods`.
-2. Upsert/create the target period via `POST /api/v1/accounting/periods` with `{ year, month, costingMethod }`.
-3. If period already exists, update only method via `PUT /api/v1/accounting/periods/{periodId}`.
-4. New dispatch/adjustment transactions in that period use the new method automatically.
+3. **Auto-settlement (hands-off)**
+   1. Dealer lookup + outstanding context: `GET /api/v1/dealers`, statement/aging endpoints as needed
+   2. Dealer auto-settle: `POST /api/v1/accounting/dealers/{dealerId}/auto-settle`
+   3. Supplier auto-settle: `POST /api/v1/accounting/suppliers/{supplierId}/auto-settle`
+   4. For explicit allocation flows use `POST /settlements/dealers`, `POST /settlements/suppliers`, `POST /receipts/dealer`, `POST /suppliers/payments`
 
-##### Data Contracts
+4. **Period close / reopen**
+   1. Load periods: `GET /api/v1/accounting/periods`
+   2. Validate readiness: `GET /api/v1/accounting/month-end/checklist?periodId={id}`
+   3. Optionally mark checklist controls: `POST /api/v1/accounting/month-end/checklist/{periodId}`
+   4. Close: `POST /api/v1/accounting/periods/{periodId}/close` (requires non-empty `note`; `force` optional)
+   5. Reopen: `POST /api/v1/accounting/periods/{periodId}/reopen` (requires `reason`; auto-reverses closing journal when applicable)
 
-- `AccountingPeriodUpsertRequest`
-  - `year: number` (required, `1900..9999`)
-  - `month: number` (required, `1..12`)
-  - `costingMethod?: "FIFO" | "LIFO" | "WEIGHTED_AVERAGE"` (optional, defaults to `WEIGHTED_AVERAGE`)
+5. **Bank reconciliation**
+   1. Account source: `GET /api/v1/accounting/accounts` (ASSET/bank account selection)
+   2. Submit statement match: `POST /api/v1/accounting/reconciliation/bank`
+   3. Cross-check AR/AP controls: `GET /api/v1/accounting/reconciliation/subledger`
 
-- `AccountingPeriodUpdateRequest`
-  - `costingMethod: "FIFO" | "LIFO" | "WEIGHTED_AVERAGE"` (required)
+6. **GST return preparation**
+   1. Run tax return: `GET /api/v1/accounting/gst/return?period=YYYY-MM`
+   2. Run component reconciliation: `GET /api/v1/accounting/gst/reconciliation?period=YYYY-MM`
+   3. Optional diagnostics for audit period: `GET /api/v1/accounting/audit-trail`
 
-- `AccountingPeriodDto`
-  - Includes `costingMethod: "FIFO" | "LIFO" | "WEIGHTED_AVERAGE"` for frontend display and filtering.
+#### State Machines
 
-##### Error Handling
+1. **Journal lifecycle** (`JournalEntry.status`)
+   - `DRAFT/PENDING` -> `POSTED` on successful creation/posting
+   - `POSTED` -> `REVERSED` via reversal endpoints
+   - `POSTED` -> `VOIDED` when reversal request uses `voidOnly=true` (still creates correction linkage)
+   - Guardrails: entry must balance, period must be open, already-reversed/voided entries are rejected
 
-- `400 VALIDATION_INVALID_INPUT` for invalid month/year or missing `costingMethod` on `PUT`.
-- `400 VALIDATION_INVALID_REFERENCE` when period id is unknown for the tenant/company.
+2. **Accounting period lifecycle** (`AccountingPeriodStatus`)
+   - `OPEN` -> `LOCKED` via `/periods/{id}/lock`
+   - `OPEN` or `LOCKED` -> `CLOSED` via `/periods/{id}/close` (checklist + reconciliation + balancing validations)
+   - `LOCKED/CLOSED` -> `OPEN` via `/periods/{id}/reopen` (reason required; closes snapshot + reverses closing journal when present)
 
-##### UI Hints
+3. **Settlement lifecycle** (frontend orchestration state)
+   - `INITIATED` (draft UI form)
+   - `VALIDATED` (allocations/payments pass amount/account checks)
+   - `POSTED` (journal + allocation rows persisted, returns `PartnerSettlementResponse`)
+   - `PARTIALLY_SETTLED` / `FULLY_SETTLED` determined by outstanding balance after allocation
+   - `REVERSED` when the settlement-linked journal is reversed
 
-- Use a radio/select control for costing method (three fixed enum options).
-- On period list screens, show costing method badge per row to make method transitions visible.
-- Show an inline note: “Changes affect only new movements in this period; prior periods are not revalued.”
+#### Accounting ErrorCodes (all referenced in accounting module)
 
-#### GST Tax Flows (India)
+| ErrorCode enum | Wire code | Description | Suggested frontend behavior |
+|---|---|---|---|
+| `BUSINESS_CONSTRAINT_VIOLATION` | `BUS_004` | Business rule violation | Show business-rule toast/banner; do not auto-retry; keep action disabled until user changes input/state. |
+| `BUSINESS_DUPLICATE_ENTRY` | `BUS_002` | Duplicate entry found | Show business-rule toast/banner; do not auto-retry; keep action disabled until user changes input/state. |
+| `BUSINESS_ENTITY_NOT_FOUND` | `BUS_003` | Requested resource not found | Show business-rule toast/banner; do not auto-retry; keep action disabled until user changes input/state. |
+| `BUSINESS_INVALID_STATE` | `BUS_001` | Operation not allowed in current state | Show business-rule toast/banner; do not auto-retry; keep action disabled until user changes input/state. |
+| `CONCURRENCY_CONFLICT` | `CONC_001` | Resource was modified by another user | Show stale-data dialog and force refresh before retry. |
+| `INTERNAL_CONCURRENCY_FAILURE` | `CONC_003` | Internal concurrency failure | Show stale-data dialog and force refresh before retry. |
+| `SYSTEM_CONFIGURATION_ERROR` | `SYS_005` | System configuration error | Show non-field error with retry option; log traceId for support. |
+| `SYSTEM_DATABASE_ERROR` | `SYS_003` | Database operation failed | Show non-field error with retry option; log traceId for support. |
+| `SYSTEM_INTERNAL_ERROR` | `SYS_001` | An internal error occurred | Show non-field error with retry option; log traceId for support. |
+| `VALIDATION_INVALID_DATE` | `VAL_005` | Invalid date or time value | Show blocking validation message and keep form editable. |
+| `VALIDATION_INVALID_INPUT` | `VAL_001` | Invalid input provided | Show blocking validation message and keep form editable. |
+| `VALIDATION_INVALID_REFERENCE` | `VAL_006` | Invalid reference to another resource | Mark referenced selector invalid and refresh dropdown source. |
+| `VALIDATION_MISSING_REQUIRED_FIELD` | `VAL_002` | Required field is missing | Inline field validation + prevent submit. |
 
-##### Endpoint Map
+#### Request DTO Contracts (all endpoint request bodies)
 
-| Method | Path | Auth | Query | Response `data` |
-|---|---|---|---|---|
-| GET | `/api/v1/accounting/gst/return` | `ROLE_ADMIN`,`ROLE_ACCOUNTING` | `period=YYYY-MM` (optional) | `GstReturnDto` |
-| GET | `/api/v1/accounting/gst/reconciliation` | `ROLE_ADMIN`,`ROLE_ACCOUNTING` | `period=YYYY-MM` (optional) | `GstReconciliationDto` |
+- **`AccountRequest`**
+  - `code`: `String` — validation `@NotBlank`
+  - `name`: `String` — validation `@NotBlank`
+  - `type`: `AccountType` — validation `@NotNull`
+  - `parentId`: `Long` — validation `—`
+- **`AccrualRequest`**
+  - `debitAccountId`: `Long` — validation `@NotNull`
+  - `creditAccountId`: `Long` — validation `@NotNull`
+  - `amount`: `BigDecimal` — validation `@NotNull; @DecimalMin(value = "0.01")`
+  - `entryDate`: `LocalDate` — validation `—`
+  - `referenceNumber`: `String` — validation `—`
+  - `memo`: `String` — validation `—`
+  - `idempotencyKey`: `String` — validation `—`
+  - `autoReverseDate`: `LocalDate` — validation `—`
+  - `adminOverride`: `Boolean` — validation `—`
+- **`BadDebtWriteOffRequest`**
+  - `invoiceId`: `Long` — validation `@NotNull`
+  - `expenseAccountId`: `Long` — validation `@NotNull`
+  - `amount`: `BigDecimal` — validation `@NotNull; @DecimalMin(value = "0.01")`
+  - `entryDate`: `LocalDate` — validation `—`
+  - `referenceNumber`: `String` — validation `—`
+  - `memo`: `String` — validation `—`
+  - `idempotencyKey`: `String` — validation `—`
+  - `adminOverride`: `Boolean` — validation `—`
+- **`ProductCreateRequest`**
+  - `brandId`: `Long` — validation `—`
+  - `brandName`: `String` — validation `—`
+  - `brandCode`: `String` — validation `—`
+  - `productName`: `String` — validation `@NotBlank(message = "Product name is required")`
+  - `category`: `String` — validation `@NotBlank(message = "Category is required")`
+  - `defaultColour`: `String` — validation `—`
+  - `sizeLabel`: `String` — validation `—`
+  - `unitOfMeasure`: `String` — validation `—`
+  - `customSkuCode`: `String` — validation `@JsonProperty(access = JsonProperty.Access.WRITE_ONLY)`
+  - `basePrice`: `BigDecimal` — validation `—`
+  - `gstRate`: `BigDecimal` — validation `—`
+  - `minDiscountPercent`: `BigDecimal` — validation `—`
+  - `minSellingPrice`: `BigDecimal` — validation `—`
+  - `metadata`: `Map<String, Object>` — validation `—`
+- **`BulkVariantRequest`**
+  - `brandId`: `Long` — validation `—`
+  - `brandName`: `String` — validation `—`
+  - `brandCode`: `String` — validation `—`
+  - `baseProductName`: `String` — validation `@NotBlank`
+  - `category`: `String` — validation `@NotBlank`
+  - `colors`: `List<String>` — validation `—`
+  - `sizes`: `List<String>` — validation `—`
+  - `colorSizeMatrix`: `List<ColorSizeMatrixEntry>` — validation `@Valid`
+  - `unitOfMeasure`: `String` — validation `—`
+  - `skuPrefix`: `String` — validation `—`
+  - `basePrice`: `BigDecimal` — validation `—`
+  - `gstRate`: `BigDecimal` — validation `—`
+  - `minDiscountPercent`: `BigDecimal` — validation `—`
+  - `minSellingPrice`: `BigDecimal` — validation `—`
+  - `metadata`: `Map<String, Object>` — validation `—`
+- **`ProductUpdateRequest`**
+  - `productName`: `String` — validation `—`
+  - `category`: `String` — validation `—`
+  - `defaultColour`: `String` — validation `—`
+  - `sizeLabel`: `String` — validation `—`
+  - `unitOfMeasure`: `String` — validation `—`
+  - `basePrice`: `BigDecimal` — validation `—`
+  - `gstRate`: `BigDecimal` — validation `—`
+  - `minDiscountPercent`: `BigDecimal` — validation `—`
+  - `minSellingPrice`: `BigDecimal` — validation `—`
+  - `metadata`: `Map<String, Object>` — validation `—`
+- **`CreditNoteRequest`**
+  - `invoiceId`: `Long` — validation `@NotNull`
+  - `amount`: `BigDecimal` — validation `@DecimalMin(value = "0.01")`
+  - `entryDate`: `LocalDate` — validation `—`
+  - `referenceNumber`: `String` — validation `—`
+  - `memo`: `String` — validation `—`
+  - `idempotencyKey`: `String` — validation `—`
+  - `adminOverride`: `Boolean` — validation `—`
+- **`AutoSettlementRequest`**
+  - `cashAccountId`: `Long` — validation `—`
+  - `amount`: `BigDecimal` — validation `@NotNull; @DecimalMin(value = "0.01")`
+  - `referenceNumber`: `String` — validation `—`
+  - `memo`: `String` — validation `—`
+  - `idempotencyKey`: `String` — validation `—`
+- **`DebitNoteRequest`**
+  - `purchaseId`: `Long` — validation `@NotNull`
+  - `amount`: `BigDecimal` — validation `@DecimalMin(value = "0.01")`
+  - `entryDate`: `LocalDate` — validation `—`
+  - `referenceNumber`: `String` — validation `—`
+  - `memo`: `String` — validation `—`
+  - `idempotencyKey`: `String` — validation `—`
+  - `adminOverride`: `Boolean` — validation `—`
+- **`CompanyDefaultAccountsRequest`**
+  - `inventoryAccountId`: `Long` — validation `—`
+  - `cogsAccountId`: `Long` — validation `—`
+  - `revenueAccountId`: `Long` — validation `—`
+  - `discountAccountId`: `Long` — validation `—`
+  - `taxAccountId`: `Long` — validation `—`
+- **`LandedCostRequest`**
+  - `rawMaterialPurchaseId`: `Long` — validation `@NotNull`
+  - `amount`: `BigDecimal` — validation `@NotNull`
+  - `inventoryAccountId`: `Long` — validation `@NotNull`
+  - `offsetAccountId`: `Long` — validation `@NotNull`
+  - `entryDate`: `LocalDate` — validation `—`
+  - `memo`: `String` — validation `—`
+  - `referenceNumber`: `String` — validation `—`
+  - `idempotencyKey`: `String` — validation `—`
+  - `adminOverride`: `Boolean` — validation `—`
+- **`InventoryRevaluationRequest`**
+  - `inventoryAccountId`: `Long` — validation `@NotNull`
+  - `revaluationAccountId`: `Long` — validation `@NotNull`
+  - `deltaAmount`: `BigDecimal` — validation `@NotNull`
+  - `memo`: `String` — validation `—`
+  - `entryDate`: `LocalDate` — validation `—`
+  - `referenceNumber`: `String` — validation `—`
+  - `idempotencyKey`: `String` — validation `—`
+  - `adminOverride`: `Boolean` — validation `—`
+- **`WipAdjustmentRequest`**
+  - `productionLogId`: `Long` — validation `@NotNull`
+  - `amount`: `BigDecimal` — validation `@NotNull`
+  - `wipAccountId`: `Long` — validation `@NotNull`
+  - `inventoryAccountId`: `Long` — validation `@NotNull`
+  - `direction`: `Direction` — validation `@NotNull`
+  - `memo`: `String` — validation `—`
+  - `entryDate`: `LocalDate` — validation `—`
+  - `referenceNumber`: `String` — validation `—`
+  - `idempotencyKey`: `String` — validation `—`
+  - `adminOverride`: `Boolean` — validation `—`
+- **`JournalEntryRequest`**
+  - `referenceNumber`: `String` — validation `—`
+  - `entryDate`: `LocalDate` — validation `@NotNull`
+  - `memo`: `String` — validation `—`
+  - `dealerId`: `Long` — validation `—`
+  - `supplierId`: `Long` — validation `—`
+  - `adminOverride`: `Boolean` — validation `—`
+  - `lines`: `List<JournalLineRequest>` — validation `@NotEmpty; @Valid`
+  - `currency`: `String` — validation `—`
+  - `fxRate`: `BigDecimal` — validation `—`
+  - `sourceModule`: `String` — validation `—`
+  - `sourceReference`: `String` — validation `—`
+  - `journalType`: `String` — validation `—`
+- **`JournalEntryReversalRequest`**
+  - `reversalDate`: `LocalDate` — validation `—`
+  - `voidOnly`: `boolean` — validation `—`
+  - `reason`: `String` — validation `—`
+  - `memo`: `String` — validation `—`
+  - `adminOverride`: `Boolean` — validation `—`
+  - `reversalPercentage`: `BigDecimal` — validation `@DecimalMin("0.01"); @DecimalMax("100.00")`
+  - `cascadeRelatedEntries`: `boolean` — validation `—`
+  - `relatedEntryIds`: `List<Long>` — validation `—`
+  - `reasonCode`: `ReversalReasonCode` — validation `—`
+  - `approvedBy`: `String` — validation `—`
+  - `supportingDocumentRef`: `String` — validation `—`
+- **`ManualJournalRequest`**
+  - `entryDate`: `LocalDate` — validation `—`
+  - `narration`: `String` — validation `—`
+  - `idempotencyKey`: `String` — validation `—`
+  - `adminOverride`: `Boolean` — validation `—`
+  - `lines`: `List<LineRequest>` — validation `—`
+- **`MonthEndChecklistUpdateRequest`**
+  - `bankReconciled`: `Boolean` — validation `—`
+  - `inventoryCounted`: `Boolean` — validation `—`
+  - `note`: `String` — validation `—`
+- **`PayrollPaymentRequest`**
+  - `payrollRunId`: `Long` — validation `@NotNull`
+  - `cashAccountId`: `Long` — validation `@NotNull`
+  - `expenseAccountId`: `Long` — validation `@NotNull`
+  - `amount`: `BigDecimal` — validation `@NotNull; @DecimalMin(value = "0.01")`
+  - `referenceNumber`: `String` — validation `—`
+  - `memo`: `String` — validation `—`
+- **`PayrollBatchPaymentRequest`**
+  - `runDate`: `LocalDate` — validation `@NotNull`
+  - `cashAccountId`: `Long` — validation `@NotNull`
+  - `expenseAccountId`: `Long` — validation `@NotNull`
+  - `taxPayableAccountId`: `Long` — validation `—`
+  - `pfPayableAccountId`: `Long` — validation `—`
+  - `employerTaxExpenseAccountId`: `Long` — validation `—`
+  - `employerPfExpenseAccountId`: `Long` — validation `—`
+  - `defaultTaxRate`: `BigDecimal` — validation `@DecimalMin("0.00")`
+  - `defaultPfRate`: `BigDecimal` — validation `@DecimalMin("0.00")`
+  - `employerTaxRate`: `BigDecimal` — validation `@DecimalMin("0.00")`
+  - `employerPfRate`: `BigDecimal` — validation `@DecimalMin("0.00")`
+  - `referenceNumber`: `String` — validation `—`
+  - `memo`: `String` — validation `—`
+  - `lines`: `List<PayrollLine>` — validation `@NotEmpty; @Valid`
+- **`AccountingPeriodUpsertRequest`**
+  - `year`: `int` — validation `@Min(1900); @Max(9999)`
+  - `month`: `int` — validation `@Min(1); @Max(12)`
+  - `costingMethod`: `CostingMethod` — validation `—`
+- **`AccountingPeriodUpdateRequest`**
+  - `costingMethod`: `CostingMethod` — validation `@NotNull`
+- **`AccountingPeriodCloseRequest`**
+  - `force`: `Boolean` — validation `—`
+  - `note`: `String` — validation `—`
+- **`AccountingPeriodLockRequest`**
+  - `reason`: `String` — validation `—`
+- **`AccountingPeriodReopenRequest`**
+  - `reason`: `String` — validation `—`
+- **`DealerReceiptRequest`**
+  - `dealerId`: `Long` — validation `@NotNull`
+  - `cashAccountId`: `Long` — validation `@NotNull`
+  - `amount`: `BigDecimal` — validation `@NotNull; @DecimalMin(value = "0.01")`
+  - `referenceNumber`: `String` — validation `—`
+  - `memo`: `String` — validation `—`
+  - `idempotencyKey`: `String` — validation `—`
+  - `allocations`: `List<SettlementAllocationRequest>` — validation `@NotEmpty(message = "Allocations are required for dealer receipts; use settlement endpoints or include allocations"); @Valid`
+- **`DealerReceiptSplitRequest`**
+  - `dealerId`: `Long` — validation `@NotNull`
+  - `incomingLines`: `List<IncomingLine>` — validation `@NotEmpty; @Valid`
+  - `referenceNumber`: `String` — validation `—`
+  - `memo`: `String` — validation `—`
+  - `idempotencyKey`: `String` — validation `—`
+- **`BankReconciliationRequest`**
+  - `bankAccountId`: `Long` — validation `@NotNull`
+  - `statementDate`: `LocalDate` — validation `@NotNull`
+  - `statementEndingBalance`: `BigDecimal` — validation `@NotNull`
+  - `startDate`: `LocalDate` — validation `—`
+  - `endDate`: `LocalDate` — validation `—`
+  - `clearedReferences`: `List<String>` — validation `—`
+  - `accountingPeriodId`: `Long` — validation `—`
+  - `markAsComplete`: `Boolean` — validation `—`
+  - `note`: `String` — validation `—`
+- **`SalesReturnRequest`**
+  - `invoiceId`: `Long` — validation `@NotNull`
+  - `reason`: `String` — validation `@NotBlank`
+  - `lines`: `List<ReturnLine>` — validation `@NotEmpty; @Valid`
+- **`DealerSettlementRequest`**
+  - `dealerId`: `Long` — validation `@NotNull`
+  - `cashAccountId`: `Long` — validation `—`
+  - `discountAccountId`: `Long` — validation `—`
+  - `writeOffAccountId`: `Long` — validation `—`
+  - `fxGainAccountId`: `Long` — validation `—`
+  - `fxLossAccountId`: `Long` — validation `—`
+  - `settlementDate`: `LocalDate` — validation `—`
+  - `referenceNumber`: `String` — validation `—`
+  - `memo`: `String` — validation `—`
+  - `idempotencyKey`: `String` — validation `—`
+  - `adminOverride`: `Boolean` — validation `—`
+  - `allocations`: `List<SettlementAllocationRequest>` — validation `@NotEmpty; @Valid`
+  - `payments`: `List<SettlementPaymentRequest>` — validation `@Valid`
+- **`SupplierSettlementRequest`**
+  - `supplierId`: `Long` — validation `@NotNull`
+  - `cashAccountId`: `Long` — validation `@NotNull`
+  - `discountAccountId`: `Long` — validation `—`
+  - `writeOffAccountId`: `Long` — validation `—`
+  - `fxGainAccountId`: `Long` — validation `—`
+  - `fxLossAccountId`: `Long` — validation `—`
+  - `settlementDate`: `LocalDate` — validation `—`
+  - `referenceNumber`: `String` — validation `—`
+  - `memo`: `String` — validation `—`
+  - `idempotencyKey`: `String` — validation `—`
+  - `adminOverride`: `Boolean` — validation `—`
+  - `allocations`: `List<SettlementAllocationRequest>` — validation `@NotEmpty; @Valid`
+- **`SupplierPaymentRequest`**
+  - `supplierId`: `Long` — validation `@NotNull`
+  - `cashAccountId`: `Long` — validation `@NotNull`
+  - `amount`: `BigDecimal` — validation `@NotNull; @DecimalMin(value = "0.01")`
+  - `referenceNumber`: `String` — validation `—`
+  - `memo`: `String` — validation `—`
+  - `idempotencyKey`: `String` — validation `—`
+  - `allocations`: `List<SettlementAllocationRequest>` — validation `@NotEmpty(message = "Allocations are required for supplier payments; use settlement endpoints or include allocations"); @Valid`
 
-##### Flow
+#### Response DTO Contracts (all endpoint `data` types)
 
-1. Load `gst/reconciliation` for month dashboard (component split).
-2. Load `gst/return` for filing summary (`outputTax`, `inputTax`, `netPayable`).
-3. Use same selected period (`YYYY-MM`) in both API calls.
+- **`List<AccountDto>`**
+  - `id`: `Long`
+  - `publicId`: `UUID`
+  - `code`: `String`
+  - `name`: `String`
+  - `type`: `AccountType`
+  - `balance`: `BigDecimal`
+- **`AccountDto`**
+  - `id`: `Long`
+  - `publicId`: `UUID`
+  - `code`: `String`
+  - `name`: `String`
+  - `type`: `AccountType`
+  - `balance`: `BigDecimal`
+- **`List<AccountHierarchyService.AccountNode>`**
+  - `id`: `Long`
+  - `code`: `String`
+  - `name`: `String`
+  - `type`: `String`
+  - `balance`: `BigDecimal`
+  - `level`: `Integer`
+  - `parentId`: `Long`
+  - `children`: `List<AccountNode>`
+- **`TemporalBalanceService.AccountActivityReport`**
+  - `accountCode`: `String`
+  - `accountName`: `String`
+  - `startDate`: `LocalDate`
+  - `endDate`: `LocalDate`
+  - `openingBalance`: `BigDecimal`
+  - `closingBalance`: `BigDecimal`
+  - `totalDebits`: `BigDecimal`
+  - `totalCredits`: `BigDecimal`
+  - `movements`: `List<AccountMovement>`
+- **`BigDecimal`**
+  - Primitive/raw payload type (no DTO field list).
+- **`TemporalBalanceService.BalanceComparison`**
+  - `accountId`: `Long`
+  - `date1`: `LocalDate`
+  - `balance1`: `BigDecimal`
+  - `date2`: `LocalDate`
+  - `balance2`: `BigDecimal`
+  - `change`: `BigDecimal`
+- **`JournalEntryDto`**
+  - `id`: `Long`
+  - `publicId`: `UUID`
+  - `referenceNumber`: `String`
+  - `entryDate`: `LocalDate`
+  - `memo`: `String`
+  - `status`: `String`
+  - `dealerId`: `Long`
+  - `dealerName`: `String`
+  - `supplierId`: `Long`
+  - `supplierName`: `String`
+  - `accountingPeriodId`: `Long`
+  - `accountingPeriodLabel`: `String`
+  - `accountingPeriodStatus`: `String`
+  - `reversalOfEntryId`: `Long`
+  - `reversalEntryId`: `Long`
+  - `correctionType`: `String`
+  - `correctionReason`: `String`
+  - `voidReason`: `String`
+  - `lines`: `List<JournalLineDto>`
+  - `createdAt`: `Instant`
+  - `updatedAt`: `Instant`
+  - `postedAt`: `Instant`
+  - `createdBy`: `String`
+  - `postedBy`: `String`
+  - `lastModifiedBy`: `String`
+- **`AgingSummaryResponse`**
+  - `partnerId`: `Long`
+  - `partnerName`: `String`
+  - `totalOutstanding`: `BigDecimal`
+  - `buckets`: `List<AgingBucketDto>`
+- **`byte[]`**
+  - Primitive/raw payload type (no DTO field list).
+- **`PageResponse<AccountingAuditTrailEntryDto>`**
+  - `id`: `Long`
+  - `timestamp`: `Instant`
+  - `companyId`: `Long`
+  - `companyCode`: `String`
+  - `actorUserId`: `Long`
+  - `actorIdentifier`: `String`
+  - `actionType`: `String`
+  - `entityType`: `String`
+  - `entityId`: `String`
+  - `referenceNumber`: `String`
+  - `traceId`: `String`
+  - `ipAddress`: `String`
+  - `beforeState`: `String`
+  - `afterState`: `String`
+  - `sensitiveOperation`: `boolean`
+  - `metadata`: `Map<String, String>`
+- **`AuditDigestResponse`**
+  - `periodLabel`: `String`
+  - `entries`: `List<String>`
+- **`String`**
+  - Primitive/raw payload type (no DTO field list).
+- **`PageResponse<AccountingTransactionAuditListItemDto>`**
+  - `journalEntryId`: `Long`
+  - `referenceNumber`: `String`
+  - `entryDate`: `LocalDate`
+  - `status`: `String`
+  - `module`: `String`
+  - `transactionType`: `String`
+  - `memo`: `String`
+  - `dealerId`: `Long`
+  - `dealerName`: `String`
+  - `supplierId`: `Long`
+  - `supplierName`: `String`
+  - `totalDebit`: `BigDecimal`
+  - `totalCredit`: `BigDecimal`
+  - `reversalOfId`: `Long`
+  - `reversalEntryId`: `Long`
+  - `correctionType`: `String`
+  - `consistencyStatus`: `String`
+  - `postedAt`: `Instant`
+- **`AccountingTransactionAuditDetailDto`**
+  - `journalEntryId`: `Long`
+  - `journalPublicId`: `UUID`
+  - `referenceNumber`: `String`
+  - `entryDate`: `LocalDate`
+  - `status`: `String`
+  - `module`: `String`
+  - `transactionType`: `String`
+  - `memo`: `String`
+  - `dealerId`: `Long`
+  - `dealerName`: `String`
+  - `supplierId`: `Long`
+  - `supplierName`: `String`
+  - `accountingPeriodId`: `Long`
+  - `accountingPeriodLabel`: `String`
+  - `accountingPeriodStatus`: `String`
+  - `reversalOfId`: `Long`
+  - `reversalEntryId`: `Long`
+  - `correctionType`: `String`
+  - `correctionReason`: `String`
+  - `voidReason`: `String`
+  - `totalDebit`: `BigDecimal`
+  - `totalCredit`: `BigDecimal`
+  - `consistencyStatus`: `String`
+  - `consistencyNotes`: `List<String>`
+  - `lines`: `List<JournalLineDto>`
+  - `linkedDocuments`: `List<LinkedDocument>`
+  - `settlementAllocations`: `List<SettlementAllocation>`
+  - `eventTrail`: `List<EventTrailItem>`
+  - `createdAt`: `Instant`
+  - `updatedAt`: `Instant`
+  - `postedAt`: `Instant`
+  - `createdBy`: `String`
+  - `postedBy`: `String`
+  - `lastModifiedBy`: `String`
+- **`CatalogImportResponse`**
+  - `rowsProcessed`: `int`
+  - `brandsCreated`: `int`
+  - `productsCreated`: `int`
+  - `productsUpdated`: `int`
+  - `rawMaterialsSeeded`: `int`
+  - `errors`: `List<ImportError>`
+- **`List<ProductionProductDto>`**
+  - `id`: `Long`
+  - `publicId`: `UUID`
+  - `brandId`: `Long`
+  - `brandName`: `String`
+  - `brandCode`: `String`
+  - `productName`: `String`
+  - `category`: `String`
+  - `defaultColour`: `String`
+  - `sizeLabel`: `String`
+  - `unitOfMeasure`: `String`
+  - `skuCode`: `String`
+  - `active`: `boolean`
+  - `basePrice`: `BigDecimal`
+  - `gstRate`: `BigDecimal`
+  - `minDiscountPercent`: `BigDecimal`
+  - `minSellingPrice`: `BigDecimal`
+  - `metadata`: `Map<String, Object>`
+- **`ProductionProductDto`**
+  - `id`: `Long`
+  - `publicId`: `UUID`
+  - `brandId`: `Long`
+  - `brandName`: `String`
+  - `brandCode`: `String`
+  - `productName`: `String`
+  - `category`: `String`
+  - `defaultColour`: `String`
+  - `sizeLabel`: `String`
+  - `unitOfMeasure`: `String`
+  - `skuCode`: `String`
+  - `active`: `boolean`
+  - `basePrice`: `BigDecimal`
+  - `gstRate`: `BigDecimal`
+  - `minDiscountPercent`: `BigDecimal`
+  - `minSellingPrice`: `BigDecimal`
+  - `metadata`: `Map<String, Object>`
+- **`BulkVariantResponse`**
+  - `generated`: `List<VariantItem>`
+  - `conflicts`: `List<VariantItem>`
+  - `wouldCreate`: `List<VariantItem>`
+  - `created`: `List<VariantItem>`
+- **`ConfigurationHealthService.ConfigurationHealthReport`**
+  - _Schema source not auto-expanded; refer to OpenAPI/service DTO type._
+- **`Map<String, Object>`**
+  - Primitive/raw payload type (no DTO field list).
+- **`PartnerSettlementResponse`**
+  - `journalEntry`: `JournalEntryDto`
+  - `totalApplied`: `BigDecimal`
+  - `cashAmount`: `BigDecimal`
+  - `totalDiscount`: `BigDecimal`
+  - `totalWriteOff`: `BigDecimal`
+  - `totalFxGain`: `BigDecimal`
+  - `totalFxLoss`: `BigDecimal`
+  - `allocations`: `List<Allocation>`
+- **`CompanyDefaultAccountsResponse`**
+  - `inventoryAccountId`: `Long`
+  - `cogsAccountId`: `Long`
+  - `revenueAccountId`: `Long`
+  - `discountAccountId`: `Long`
+  - `taxAccountId`: `Long`
+- **`GstReconciliationDto`**
+  - `period`: `YearMonth`
+  - `periodStart`: `LocalDate`
+  - `periodEnd`: `LocalDate`
+  - `collected`: `GstComponentSummary`
+  - `inputTaxCredit`: `GstComponentSummary`
+  - `netLiability`: `GstComponentSummary`
+  - `cgst`: `BigDecimal`
+  - `sgst`: `BigDecimal`
+  - `igst`: `BigDecimal`
+  - `total`: `BigDecimal`
+- **`GstReturnDto`**
+  - `period`: `YearMonth`
+  - `periodStart`: `LocalDate`
+  - `periodEnd`: `LocalDate`
+  - `outputTax`: `BigDecimal`
+  - `inputTax`: `BigDecimal`
+  - `netPayable`: `BigDecimal`
+- **`List<JournalEntryDto>`**
+  - `id`: `Long`
+  - `publicId`: `UUID`
+  - `referenceNumber`: `String`
+  - `entryDate`: `LocalDate`
+  - `memo`: `String`
+  - `status`: `String`
+  - `dealerId`: `Long`
+  - `dealerName`: `String`
+  - `supplierId`: `Long`
+  - `supplierName`: `String`
+  - `accountingPeriodId`: `Long`
+  - `accountingPeriodLabel`: `String`
+  - `accountingPeriodStatus`: `String`
+  - `reversalOfEntryId`: `Long`
+  - `reversalEntryId`: `Long`
+  - `correctionType`: `String`
+  - `correctionReason`: `String`
+  - `voidReason`: `String`
+  - `lines`: `List<JournalLineDto>`
+  - `createdAt`: `Instant`
+  - `updatedAt`: `Instant`
+  - `postedAt`: `Instant`
+  - `createdBy`: `String`
+  - `postedBy`: `String`
+  - `lastModifiedBy`: `String`
+- **`List<JournalListItemDto>`**
+  - `id`: `Long`
+  - `referenceNumber`: `String`
+  - `entryDate`: `LocalDate`
+  - `memo`: `String`
+  - `status`: `String`
+  - `journalType`: `String`
+  - `sourceModule`: `String`
+  - `sourceReference`: `String`
+  - `totalDebit`: `BigDecimal`
+  - `totalCredit`: `BigDecimal`
+- **`MonthEndChecklistDto`**
+  - `period`: `AccountingPeriodDto`
+  - `items`: `List<MonthEndChecklistItemDto>`
+  - `readyToClose`: `boolean`
+- **`PayrollBatchPaymentResponse`**
+  - `payrollRunId`: `Long`
+  - `runDate`: `LocalDate`
+  - `grossAmount`: `BigDecimal`
+  - `totalTaxWithholding`: `BigDecimal`
+  - `totalPfWithholding`: `BigDecimal`
+  - `totalAdvances`: `BigDecimal`
+  - `netPayAmount`: `BigDecimal`
+  - `employerTaxAmount`: `BigDecimal`
+  - `employerPfAmount`: `BigDecimal`
+  - `totalEmployerCost`: `BigDecimal`
+  - `payrollJournalId`: `Long`
+  - `employerContribJournalId`: `Long`
+  - `lines`: `List<LineTotal>`
+- **`List<AccountingPeriodDto>`**
+  - `id`: `Long`
+  - `year`: `int`
+  - `month`: `int`
+  - `startDate`: `LocalDate`
+  - `endDate`: `LocalDate`
+  - `label`: `String`
+  - `status`: `String`
+  - `bankReconciled`: `boolean`
+  - `bankReconciledAt`: `Instant`
+  - `bankReconciledBy`: `String`
+  - `inventoryCounted`: `boolean`
+  - `inventoryCountedAt`: `Instant`
+  - `inventoryCountedBy`: `String`
+  - `closedAt`: `Instant`
+  - `closedBy`: `String`
+  - `closedReason`: `String`
+  - `lockedAt`: `Instant`
+  - `lockedBy`: `String`
+  - `lockReason`: `String`
+  - `reopenedAt`: `Instant`
+  - `reopenedBy`: `String`
+  - `reopenReason`: `String`
+  - `closingJournalEntryId`: `Long`
+  - `checklistNotes`: `String`
+  - `costingMethod`: `String`
+- **`AccountingPeriodDto`**
+  - `id`: `Long`
+  - `year`: `int`
+  - `month`: `int`
+  - `startDate`: `LocalDate`
+  - `endDate`: `LocalDate`
+  - `label`: `String`
+  - `status`: `String`
+  - `bankReconciled`: `boolean`
+  - `bankReconciledAt`: `Instant`
+  - `bankReconciledBy`: `String`
+  - `inventoryCounted`: `boolean`
+  - `inventoryCountedAt`: `Instant`
+  - `inventoryCountedBy`: `String`
+  - `closedAt`: `Instant`
+  - `closedBy`: `String`
+  - `closedReason`: `String`
+  - `lockedAt`: `Instant`
+  - `lockedBy`: `String`
+  - `lockReason`: `String`
+  - `reopenedAt`: `Instant`
+  - `reopenedBy`: `String`
+  - `reopenReason`: `String`
+  - `closingJournalEntryId`: `Long`
+  - `checklistNotes`: `String`
+  - `costingMethod`: `String`
+- **`BankReconciliationSummaryDto`**
+  - `accountId`: `Long`
+  - `accountCode`: `String`
+  - `accountName`: `String`
+  - `statementDate`: `LocalDate`
+  - `ledgerBalance`: `BigDecimal`
+  - `statementEndingBalance`: `BigDecimal`
+  - `outstandingDeposits`: `BigDecimal`
+  - `outstandingChecks`: `BigDecimal`
+  - `difference`: `BigDecimal`
+  - `balanced`: `boolean`
+  - `unclearedDeposits`: `List<BankReconciliationItemDto>`
+  - `unclearedChecks`: `List<BankReconciliationItemDto>`
+- **`ReconciliationService.SubledgerReconciliationReport`**
+  - `dealerReconciliation`: `ReconciliationResult`
+  - `supplierReconciliation`: `SupplierReconciliationResult`
+  - `combinedVariance`: `BigDecimal`
+  - `reconciled`: `boolean`
+- **`AgingReportService.DealerAgingDetail`**
+  - `dealerId`: `Long`
+  - `dealerCode`: `String`
+  - `dealerName`: `String`
+  - `buckets`: `AgingBuckets`
+  - `totalOutstanding`: `BigDecimal`
+- **`AgingReportService.DealerAgingDetailedReport`**
+  - `dealerId`: `Long`
+  - `dealerCode`: `String`
+  - `dealerName`: `String`
+  - `lineItems`: `List<AgingLineItem>`
+  - `buckets`: `AgingBuckets`
+  - `totalOutstanding`: `BigDecimal`
+  - `averageDSO`: `double`
+- **`AgingReportService.AgedReceivablesReport`**
+  - `asOfDate`: `LocalDate`
+  - `dealers`: `List<DealerAgingDetail>`
+  - `totalBuckets`: `AgingBuckets`
+  - `grandTotal`: `BigDecimal`
+- **`AccountHierarchyService.BalanceSheetHierarchy`**
+  - `assets`: `List<AccountNode>`
+  - `totalAssets`: `BigDecimal`
+  - `liabilities`: `List<AccountNode>`
+  - `totalLiabilities`: `BigDecimal`
+  - `equity`: `List<AccountNode>`
+  - `totalEquity`: `BigDecimal`
+- **`AgingReportService.DSOReport`**
+  - `dealerId`: `Long`
+  - `dealerName`: `String`
+  - `averageDSO`: `double`
+  - `totalOutstanding`: `BigDecimal`
+  - `openInvoices`: `int`
+  - `overdueInvoices`: `long`
+- **`AccountHierarchyService.IncomeStatementHierarchy`**
+  - `revenue`: `List<AccountNode>`
+  - `totalRevenue`: `BigDecimal`
+  - `cogs`: `List<AccountNode>`
+  - `totalCogs`: `BigDecimal`
+  - `grossProfit`: `BigDecimal`
+  - `expenses`: `List<AccountNode>`
+  - `totalExpenses`: `BigDecimal`
+  - `netIncome`: `BigDecimal`
+- **`PartnerStatementResponse`**
+  - `partnerId`: `Long`
+  - `partnerName`: `String`
+  - `fromDate`: `LocalDate`
+  - `toDate`: `LocalDate`
+  - `openingBalance`: `BigDecimal`
+  - `closingBalance`: `BigDecimal`
+  - `transactions`: `List<StatementTransactionDto>`
+- **`TemporalBalanceService.TrialBalanceSnapshot`**
+  - `asOfDate`: `LocalDate`
+  - `entries`: `List<TrialBalanceEntry>`
+  - `totalDebits`: `BigDecimal`
+  - `totalCredits`: `BigDecimal`
 
-##### Data Contracts
+#### UI Hints (accounting screens)
 
-- `GstReturnDto`
-  - `period: YYYY-MM`
-  - `periodStart: date`
-  - `periodEnd: date`
-  - `outputTax: number`
-  - `inputTax: number`
-  - `netPayable: number`
-
-- `GstReconciliationDto`
-  - `period: YYYY-MM`
-  - `periodStart: date`
-  - `periodEnd: date`
-  - `collected: { cgst, sgst, igst, total }`
-  - `inputTaxCredit: { cgst, sgst, igst, total }`
-  - `netLiability: { cgst, sgst, igst, total }`
-
-##### Error Handling
-
-- `400 VALIDATION_INVALID_DATE` when `period` is in the future.
-- `400 VALIDATION_INVALID_INPUT` in non-GST mode if GST accounts are configured inconsistently.
-
-##### UI Hints
-
-- Show component cards for CGST/SGST/IGST and one total card.
-- Display negative `netLiability.total` as input credit carry-forward.
-- Default period picker to current month when period query is omitted.
-
-#### Hands-off Settlement, Period Close, and Reconciliation
-
-##### Endpoint Map
-
-| Method | Path | Auth | Request | Response `data` |
-|---|---|---|---|---|
-| POST | `/api/v1/accounting/dealers/{dealerId}/auto-settle` | `ROLE_ADMIN`,`ROLE_ACCOUNTING` | `AutoSettlementRequest` | `PartnerSettlementResponse` |
-| POST | `/api/v1/accounting/suppliers/{supplierId}/auto-settle` | `ROLE_ADMIN`,`ROLE_ACCOUNTING` | `AutoSettlementRequest` | `PartnerSettlementResponse` |
-| GET | `/api/v1/accounting/month-end/checklist` | `ROLE_ADMIN`,`ROLE_ACCOUNTING` | Query: `periodId?` | `MonthEndChecklistDto` |
-| POST | `/api/v1/accounting/periods/{periodId}/close` | `ROLE_ADMIN`,`ROLE_ACCOUNTING` | `AccountingPeriodCloseRequest` | `AccountingPeriodDto` |
-| POST | `/api/v1/accounting/periods/{periodId}/reopen` | `ROLE_ADMIN`,`ROLE_ACCOUNTING` | `AccountingPeriodReopenRequest` | `AccountingPeriodDto` |
-| POST | `/api/v1/accounting/reconciliation/bank` | `ROLE_ADMIN`,`ROLE_ACCOUNTING` | `BankReconciliationRequest` | `BankReconciliationSummaryDto` |
-| GET | `/api/v1/accounting/reconciliation/subledger` | `ROLE_ADMIN`,`ROLE_ACCOUNTING` | None | `SubledgerReconciliationReport` |
-
-##### User Flows
-
-1. **Dealer auto-settlement (FIFO):**
-   1. Submit `POST /dealers/{dealerId}/auto-settle` with `amount` (and optional `cashAccountId`, `referenceNumber`, `memo`, `idempotencyKey`).
-   2. Backend allocates against oldest outstanding invoices first.
-   3. Backend creates receipt journal + settlement allocation rows in one transaction.
-   4. UI receives `PartnerSettlementResponse.allocations[]` for receipt allocation breakdown.
-
-2. **Supplier auto-settlement (FIFO):**
-   1. Submit `POST /suppliers/{supplierId}/auto-settle` with settlement amount.
-   2. Backend allocates against oldest outstanding purchases first.
-   3. Backend creates supplier payment journal + allocation rows atomically.
-
-3. **Period close checklist + close/reopen:**
-   1. Load checklist via `GET /month-end/checklist?periodId={id}`.
-   2. Block close until checklist items are complete (including `trialBalanceBalanced`, reconciliation controls, and unposted/unlinked checks).
-   3. Close via `POST /periods/{periodId}/close` with reason (`note`).
-   4. Reopen via `POST /periods/{periodId}/reopen` with reason. Backend stores reopen audit fields (`reopenedAt`, `reopenedBy`, `reopenReason`).
-
-4. **Reconciliation diagnostics:**
-   1. Run `POST /reconciliation/bank` with statement info and optional cleared refs; show unmatched deposits/checks and difference.
-   2. Run `GET /reconciliation/subledger` to compare AR/AP GL totals against dealer/supplier sub-ledgers and render discrepancy rows.
-
-##### Data Contracts
-
-- `AutoSettlementRequest`
-  - `cashAccountId?: number` (optional; backend can resolve default active cash/bank account)
-  - `amount: number` (required, `>= 0.01`)
-  - `referenceNumber?: string`
-  - `memo?: string`
-  - `idempotencyKey?: string`
-
-- `MonthEndChecklistItemDto.key` now includes `trialBalanceBalanced` with pass/fail details.
-
-- `BankReconciliationSummaryDto`
-  - `ledgerBalance`, `statementEndingBalance`, `outstandingDeposits`, `outstandingChecks`, `difference`, `balanced`
-  - `unclearedDeposits[]` and `unclearedChecks[]` include reference/date/memo/debit/credit/net for UI discrepancy tables.
-
-- `SubledgerReconciliationReport`
-  - `dealerReconciliation` (AR vs dealer ledger totals + per-dealer discrepancies)
-  - `supplierReconciliation` (AP vs supplier ledger totals + per-supplier discrepancies)
-  - `combinedVariance`, `reconciled`
-
-##### Error Codes / UI Behavior
-
-- `VALIDATION_INVALID_INPUT` for over-allocation or missing open items in auto-settle.
-- `VALIDATION_MISSING_REQUIRED_FIELD` when no `cashAccountId` provided and no default active cash/bank account exists.
-- `VALIDATION_INVALID_REFERENCE` when dealer/supplier/account is not found.
-- `VALIDATION_INVALID_STATE` for close attempts when checklist controls fail (trial balance mismatch, unreconciled controls, unposted/unlinked documents).
-
-##### UI Hints
-
-- Auto-settle dialogs should show amount-first UX with optional cash-account override.
-- In settlement success toasts, include count of allocations applied.
-- Period-close screens should render checklist as strict pass/fail rows and disable close CTA until all rows pass (unless using explicit force flow).
-- Reconciliation pages should highlight discrepancy rows and show variance badges (`within tolerance` vs `exceeds tolerance`).
-
-#### Accounting Compliance Audit Trail
-
-##### Endpoint Map
-
-| Method | Path | Auth | Query Params | Response `data` |
-|---|---|---|---|---|
-| GET | `/api/v1/accounting/audit-trail` | `ROLE_ADMIN`,`ROLE_ACCOUNTING` | `from?`, `to?` (ISO date), `user?`, `actionType?`, `entityType?`, `page=0..`, `size<=200` | `PageResponse<AccountingAuditTrailEntryDto>` |
-
-##### Filter Behavior
-
-- `from` / `to`: inclusive date range window on event timestamp.
-- `user`: matches `actorIdentifier` (typically email/username) or numeric actor user id.
-- `actionType`: exact action key (for example `MANUAL_JOURNAL_CREATED`, `JOURNAL_REVERSED`, `PERIOD_CLOSED`, `PERIOD_REOPENED`, `COSTING_METHOD_CHANGED`, `ACCOUNT_DEACTIVATED`).
-- `entityType`: exact business entity key (`JOURNAL_ENTRY`, `ACCOUNTING_PERIOD`, `ACCOUNT`).
-- Results are tenant/company scoped and sorted newest-first.
-
-##### Data Contract
-
-- `AccountingAuditTrailEntryDto`
-  - `id: number`
-  - `timestamp: string` (ISO-8601 UTC)
-  - `companyId: number`
-  - `companyCode: string`
-  - `actorUserId: number | null`
-  - `actorIdentifier: string` (email/username/system actor)
-  - `actionType: string`
-  - `entityType: string`
-  - `entityId: string | null`
-  - `referenceNumber: string | null`
-  - `traceId: string | null`
-  - `ipAddress: string | null`
-  - `beforeState: string` (JSON snapshot)
-  - `afterState: string` (JSON snapshot)
-  - `sensitiveOperation: boolean`
-  - `metadata: Record<string,string>`
-
-##### UI Guidance
-
-- Render audit rows in a compliance table with fixed columns: `timestamp`, `user`, `action`, `entity`, `traceId`, `sensitive`.
-- Show `beforeState`/`afterState` in expandable JSON viewers.
-- Highlight `sensitiveOperation=true` entries with warning styling/badge.
-- Expose quick filters for common sensitive actions: manual journal, costing method change, account deactivation.
-- Treat audit entries as immutable: UI should provide read-only views only (no edit/delete controls).
+- **Dropdown sources**
+  - Account dropdowns: `GET /api/v1/accounting/accounts`
+  - Dealer dropdowns/search: `GET /api/v1/dealers`, `GET /api/v1/dealers/search?query=`
+  - Supplier dropdowns: `GET /api/v1/suppliers`
+  - Catalog product selection in accounting context: `GET /api/v1/accounting/catalog/products`
+- **Computed fields**
+  - GST component split is computed server-side: `taxType=INTRA_STATE` => `cgst+sgst`; `INTER_STATE` => `igst`
+  - Settlement totals (`totalApplied`, `totalDiscount`, `totalFxGain/loss`) are computed; render read-only summary cards
+  - Statement running balances and period checklist readiness are server computed; never recompute from partial UI data
+- **Dependent fields**
+  - `sourceState`/`destState` (dealer/supplier/company state codes) decide GST type and tax split
+  - In settlement requests, non-zero discount/write-off/fx values require corresponding account IDs (`discountAccountId`, `writeOffAccountId`, etc.)
+  - Period close requires checklist controls satisfied unless `force=true` is explicitly used
+- **Idempotency**
+  - For mutation endpoints supporting replay protection, send `Idempotency-Key` (preferred). Legacy `X-Idempotency-Key` is accepted; mismatches are rejected.
 
 ### Product Catalog & Inventory
 _To be documented_
