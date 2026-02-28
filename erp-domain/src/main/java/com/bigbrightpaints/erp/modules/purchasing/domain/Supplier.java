@@ -2,6 +2,7 @@ package com.bigbrightpaints.erp.modules.purchasing.domain;
 
 import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
+import com.bigbrightpaints.erp.modules.accounting.domain.GstRegistrationType;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.PositiveOrZero;
@@ -37,6 +38,16 @@ public class Supplier extends VersionedEntity {
     private String email;
     private String phone;
     private String address;
+
+    @Column(name = "gst_number")
+    private String gstNumber;
+
+    @Column(name = "state_code")
+    private String stateCode;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "gst_registration_type", nullable = false)
+    private GstRegistrationType gstRegistrationType = GstRegistrationType.UNREGISTERED;
 
     @Column(name = "credit_limit", nullable = false)
     @PositiveOrZero
@@ -124,6 +135,30 @@ public class Supplier extends VersionedEntity {
 
     public void setAddress(String address) {
         this.address = address;
+    }
+
+    public String getGstNumber() {
+        return gstNumber;
+    }
+
+    public void setGstNumber(String gstNumber) {
+        this.gstNumber = gstNumber;
+    }
+
+    public String getStateCode() {
+        return stateCode;
+    }
+
+    public void setStateCode(String stateCode) {
+        this.stateCode = stateCode;
+    }
+
+    public GstRegistrationType getGstRegistrationType() {
+        return gstRegistrationType;
+    }
+
+    public void setGstRegistrationType(GstRegistrationType gstRegistrationType) {
+        this.gstRegistrationType = gstRegistrationType == null ? GstRegistrationType.UNREGISTERED : gstRegistrationType;
     }
 
     public BigDecimal getCreditLimit() {

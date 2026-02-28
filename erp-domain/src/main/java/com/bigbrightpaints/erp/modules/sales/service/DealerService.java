@@ -2,6 +2,7 @@ package com.bigbrightpaints.erp.modules.sales.service;
 
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.GstRegistrationType;
 import com.bigbrightpaints.erp.modules.accounting.service.DealerLedgerService;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
@@ -30,7 +31,9 @@ import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 @Service
 public class DealerService {
@@ -43,6 +46,7 @@ public class DealerService {
     private static final String DIGITS = "0123456789";
     private static final String SPECIAL = "!@#$%^&*";
     private static final String ALL = LOWER + UPPER + DIGITS + SPECIAL;
+    private static final Pattern GSTIN_PATTERN = Pattern.compile("^[0-9]{2}[A-Z0-9]{13}$");
 
     private final DealerRepository dealerRepository;
     private final CompanyContextService companyContextService;
@@ -91,6 +95,9 @@ public class DealerService {
         dealer.setEmail(contactEmail);
         dealer.setPhone(request.contactPhone().trim());
         dealer.setAddress(request.address());
+        dealer.setGstNumber(normalizeGstNumber(request.gstNumber()));
+        dealer.setStateCode(normalizeStateCode(request.stateCode()));
+        dealer.setGstRegistrationType(resolveRegistrationType(request.gstRegistrationType()));
         dealer.setStatus(DealerProvisioningSupport.ACTIVE_STATUS);
         if (request.creditLimit() != null) {
             dealer.setCreditLimit(request.creditLimit());
@@ -161,7 +168,9 @@ public class DealerService {
                             balances.getOrDefault(dealer.getId(), BigDecimal.ZERO),
                             dealer.getCreditLimit(),
                             receivableAccount != null ? receivableAccount.getId() : null,
-                            receivableAccount != null ? receivableAccount.getCode() : null
+                            receivableAccount != null ? receivableAccount.getCode() : null,
+                            dealer.getStateCode(),
+                            dealer.getGstRegistrationType()
                     );
                 })
                 .toList();
@@ -188,6 +197,9 @@ public class DealerService {
         if (request.address() != null) {
             dealer.setAddress(request.address());
         }
+        dealer.setGstNumber(normalizeGstNumber(request.gstNumber()));
+        dealer.setStateCode(normalizeStateCode(request.stateCode()));
+        dealer.setGstRegistrationType(resolveRegistrationType(request.gstRegistrationType()));
         if (request.creditLimit() != null) {
             dealer.setCreditLimit(request.creditLimit());
         }
@@ -287,7 +299,36 @@ public class DealerService {
                 outstandingBalance,
                 receivableAccount != null ? receivableAccount.getId() : null,
                 receivableAccount != null ? receivableAccount.getCode() : null,
-                portalEmail
+                portalEmail,
+                dealer.getGstNumber(),
+                dealer.getStateCode(),
+                dealer.getGstRegistrationType()
         );
+    }
+
+    private String normalizeGstNumber(String gstNumber) {
+        if (!StringUtils.hasText(gstNumber)) {
+            return null;
+        }
+        String normalized = gstNumber.trim().toUpperCase(Locale.ROOT);
+        if (!GSTIN_PATTERN.matcher(normalized).matches()) {
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("GST number must be a valid 15-character GSTIN");
+        }
+        return normalized;
+    }
+
+    private String normalizeStateCode(String stateCode) {
+        if (!StringUtils.hasText(stateCode)) {
+            return null;
+        }
+        String normalized = stateCode.trim().toUpperCase(Locale.ROOT);
+        if (normalized.length() != 2) {
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("State code must be exactly 2 characters");
+        }
+        return normalized;
+    }
+
+    private GstRegistrationType resolveRegistrationType(GstRegistrationType registrationType) {
+        return registrationType == null ? GstRegistrationType.UNREGISTERED : registrationType;
     }
 }

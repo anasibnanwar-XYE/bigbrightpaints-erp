@@ -7,6 +7,7 @@ import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodService;
+import com.bigbrightpaints.erp.modules.accounting.service.GstService;
 import com.bigbrightpaints.erp.modules.accounting.service.ReferenceNumberService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
@@ -88,6 +89,8 @@ class PurchasingServiceGoodsReceiptTest {
     private CompanyClock companyClock;
     @Mock
     private AccountingPeriodService accountingPeriodService;
+    @Mock
+    private GstService gstService;
 
     private PurchasingService purchasingService;
     private Company company;
@@ -112,6 +115,7 @@ class PurchasingServiceGoodsReceiptTest {
                 referenceNumberService,
                 companyClock,
                 accountingPeriodService,
+                gstService,
                 new ResourcelessTransactionManager()
         );
 

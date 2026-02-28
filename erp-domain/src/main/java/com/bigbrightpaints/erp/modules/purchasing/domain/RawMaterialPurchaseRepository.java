@@ -27,6 +27,11 @@ public interface RawMaterialPurchaseRepository extends JpaRepository<RawMaterial
     List<RawMaterialPurchase> findByCompanyAndSupplierWithLinesOrderByInvoiceDateDesc(@Param("company") Company company,
                                                                                       @Param("supplier") Supplier supplier);
 
+    @EntityGraph(attributePaths = {"supplier", "lines"})
+    List<RawMaterialPurchase> findByCompanyAndInvoiceDateBetweenOrderByInvoiceDateAsc(Company company,
+                                                                                        LocalDate start,
+                                                                                        LocalDate end);
+
     Optional<RawMaterialPurchase> findByCompanyAndId(Company company, Long id);
     Optional<RawMaterialPurchase> findByCompanyAndInvoiceNumberIgnoreCase(Company company, String invoiceNumber);
     Optional<RawMaterialPurchase> findByCompanyAndGoodsReceipt(Company company, GoodsReceipt goodsReceipt);

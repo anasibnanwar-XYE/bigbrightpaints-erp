@@ -51,6 +51,15 @@ public class RawMaterialPurchaseLine extends VersionedEntity {
     @Column(name = "tax_amount")
     private BigDecimal taxAmount;
 
+    @Column(name = "cgst_amount")
+    private BigDecimal cgstAmount;
+
+    @Column(name = "sgst_amount")
+    private BigDecimal sgstAmount;
+
+    @Column(name = "igst_amount")
+    private BigDecimal igstAmount;
+
     @Column(name = "notes")
     private String notes;
 
@@ -77,6 +86,12 @@ public class RawMaterialPurchaseLine extends VersionedEntity {
     public void setTaxRate(BigDecimal taxRate) { this.taxRate = taxRate; }
     public BigDecimal getTaxAmount() { return taxAmount; }
     public void setTaxAmount(BigDecimal taxAmount) { this.taxAmount = taxAmount; }
+    public BigDecimal getCgstAmount() { return cgstAmount; }
+    public void setCgstAmount(BigDecimal cgstAmount) { this.cgstAmount = cgstAmount; }
+    public BigDecimal getSgstAmount() { return sgstAmount; }
+    public void setSgstAmount(BigDecimal sgstAmount) { this.sgstAmount = sgstAmount; }
+    public BigDecimal getIgstAmount() { return igstAmount; }
+    public void setIgstAmount(BigDecimal igstAmount) { this.igstAmount = igstAmount; }
     public String getNotes() { return notes; }
     public void setNotes(String notes) { this.notes = notes; }
 }

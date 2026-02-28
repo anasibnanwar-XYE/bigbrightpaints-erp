@@ -190,7 +190,17 @@ public class AccountingFacade {
                                             Map<Long, BigDecimal> taxLines,
                                             BigDecimal totalAmount,
                                             String referenceNumber) {
-        return postSalesJournal(dealerId, orderNumber, entryDate, memo, revenueLines, taxLines, null, totalAmount, referenceNumber);
+        return postSalesJournal(
+                dealerId,
+                orderNumber,
+                entryDate,
+                memo,
+                revenueLines,
+                taxLines,
+                null,
+                null,
+                totalAmount,
+                referenceNumber);
     }
 
     /**
@@ -218,6 +228,7 @@ public class AccountingFacade {
                                             Map<Long, BigDecimal> revenueLines,
                                             Map<Long, BigDecimal> taxLines,
                                             Map<Long, BigDecimal> discountLines,
+                                            JournalCreationRequest.GstBreakdown gstBreakdown,
                                             BigDecimal totalAmount,
                                             String referenceNumber) {
         Objects.requireNonNull(dealerId, "Dealer ID is required");
@@ -289,18 +300,7 @@ public class AccountingFacade {
             });
         }
 
-        // Cr: Tax accounts
-        if (taxLines != null) {
-            taxLines.forEach((accountId, amount) -> {
-                if (amount.compareTo(BigDecimal.ZERO) > 0) {
-                    lines.add(new JournalEntryRequest.JournalLineRequest(
-                            accountId,
-                            resolvedMemo,
-                            BigDecimal.ZERO,
-                            amount.abs()));
-                }
-            });
-        }
+        appendSalesTaxLines(company, lines, taxLines, gstBreakdown, resolvedMemo, orderNumber);
 
         // Validate balance
         BigDecimal totalDebits = calculateTotalDebits(lines);
@@ -322,7 +322,7 @@ public class AccountingFacade {
                 resolvedMemo,
                 "SALES",
                 requestReference,
-                null,
+                gstBreakdown,
                 toStandardLines(lines),
                 postingDate,
                 dealer.getId(),
@@ -351,6 +351,32 @@ public class AccountingFacade {
         return created;
     }
 
+    @Transactional(isolation = Isolation.REPEATABLE_READ)
+    @Retryable(value = {OptimisticLockingFailureException.class, CannotAcquireLockException.class},
+            maxAttempts = 3,
+            backoff = @Backoff(delay = 100))
+    public JournalEntryDto postSalesJournal(Long dealerId,
+                                            String orderNumber,
+                                            LocalDate entryDate,
+                                            String memo,
+                                            Map<Long, BigDecimal> revenueLines,
+                                            Map<Long, BigDecimal> taxLines,
+                                            Map<Long, BigDecimal> discountLines,
+                                            BigDecimal totalAmount,
+                                            String referenceNumber) {
+        return postSalesJournal(
+                dealerId,
+                orderNumber,
+                entryDate,
+                memo,
+                revenueLines,
+                taxLines,
+                discountLines,
+                null,
+                totalAmount,
+                referenceNumber);
+    }
+
     /**
      * Post purchase journal entry (Dr Inventory / Cr Payable).
      *
@@ -370,7 +396,16 @@ public class AccountingFacade {
                                                String memo,
                                                Map<Long, BigDecimal> inventoryLines,
                                                BigDecimal totalAmount) {
-        return postPurchaseJournal(supplierId, invoiceNumber, invoiceDate, memo, inventoryLines, null, totalAmount, null);
+        return postPurchaseJournal(
+                supplierId,
+                invoiceNumber,
+                invoiceDate,
+                memo,
+                inventoryLines,
+                null,
+                null,
+                totalAmount,
+                null);
     }
 
     @Transactional(isolation = Isolation.REPEATABLE_READ)
@@ -381,6 +416,7 @@ public class AccountingFacade {
                                                String memo,
                                                Map<Long, BigDecimal> inventoryLines,
                                                Map<Long, BigDecimal> taxLines,
+                                               JournalCreationRequest.GstBreakdown gstBreakdown,
                                                BigDecimal totalAmount,
                                                String referenceNumber) {
         Objects.requireNonNull(supplierId, "Supplier ID is required");
@@ -448,21 +484,7 @@ public class AccountingFacade {
             }
         }
 
-        BigDecimal taxTotal = BigDecimal.ZERO;
-        if (taxLines != null && !taxLines.isEmpty()) {
-            TaxAccountConfiguration taxConfig = companyAccountingSettingsService.requireTaxAccounts();
-            for (Map.Entry<Long, BigDecimal> entry : taxLines.entrySet()) {
-                BigDecimal amount = entry.getValue();
-                if (amount != null && amount.compareTo(BigDecimal.ZERO) > 0) {
-                    lines.add(new JournalEntryRequest.JournalLineRequest(
-                            entry.getKey() != null ? entry.getKey() : taxConfig.inputTaxAccountId(),
-                            "Input tax for " + resolvedMemo,
-                            amount.abs(),
-                            BigDecimal.ZERO));
-                    taxTotal = taxTotal.add(amount.abs());
-                }
-            }
-        }
+        BigDecimal taxTotal = appendPurchaseTaxLines(company, lines, taxLines, gstBreakdown, resolvedMemo);
 
         if (inventoryTotal.add(taxTotal).compareTo(totalAmount.abs()) != 0) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
@@ -487,9 +509,7 @@ public class AccountingFacade {
                 resolvedMemo,
                 "PURCHASING",
                 reference,
-                taxTotal.compareTo(BigDecimal.ZERO) > 0
-                        ? new JournalCreationRequest.GstBreakdown(inventoryTotal, BigDecimal.ZERO, BigDecimal.ZERO, taxTotal)
-                        : null,
+                resolvePurchaseBreakdown(inventoryTotal, taxTotal, gstBreakdown),
                 toStandardLines(lines),
                 postingDate,
                 null,
@@ -506,6 +526,28 @@ public class AccountingFacade {
         return entry;
     }
 
+    @Transactional(isolation = Isolation.REPEATABLE_READ)
+    @Retryable(value = OptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 100))
+    public JournalEntryDto postPurchaseJournal(Long supplierId,
+                                               String invoiceNumber,
+                                               LocalDate invoiceDate,
+                                               String memo,
+                                               Map<Long, BigDecimal> inventoryLines,
+                                               Map<Long, BigDecimal> taxLines,
+                                               BigDecimal totalAmount,
+                                               String referenceNumber) {
+        return postPurchaseJournal(
+                supplierId,
+                invoiceNumber,
+                invoiceDate,
+                memo,
+                inventoryLines,
+                taxLines,
+                null,
+                totalAmount,
+                referenceNumber);
+    }
+
     /**
      * Post purchase return journal entry (Dr AP / Cr Inventory).
      */
@@ -517,7 +559,7 @@ public class AccountingFacade {
                                               String memo,
                                               Map<Long, BigDecimal> inventoryCredits,
                                               BigDecimal totalAmount) {
-        return postPurchaseReturn(supplierId, referenceNumber, returnDate, memo, inventoryCredits, null, totalAmount);
+        return postPurchaseReturn(supplierId, referenceNumber, returnDate, memo, inventoryCredits, null, null, totalAmount);
     }
 
     /**
@@ -531,6 +573,7 @@ public class AccountingFacade {
                                               String memo,
                                               Map<Long, BigDecimal> inventoryCredits,
                                               Map<Long, BigDecimal> taxCredits,
+                                              JournalCreationRequest.GstBreakdown gstBreakdown,
                                               BigDecimal totalAmount) {
         Objects.requireNonNull(supplierId, "Supplier ID is required");
         Objects.requireNonNull(totalAmount, "Total amount is required");
@@ -578,21 +621,7 @@ public class AccountingFacade {
             }
         }
 
-        if (taxCredits != null && !taxCredits.isEmpty()) {
-            TaxAccountConfiguration taxConfig = companyAccountingSettingsService.requireTaxAccounts();
-            for (Map.Entry<Long, BigDecimal> entry : taxCredits.entrySet()) {
-                BigDecimal amount = entry.getValue();
-                if (amount != null && amount.compareTo(BigDecimal.ZERO) > 0) {
-                    Long accountId = entry.getKey() != null ? entry.getKey() : taxConfig.inputTaxAccountId();
-                    totalCredits = totalCredits.add(amount.abs());
-                    lines.add(new JournalEntryRequest.JournalLineRequest(
-                            accountId,
-                            "Reverse input tax for " + resolvedMemo,
-                            BigDecimal.ZERO,
-                            amount.abs()));
-                }
-            }
-        }
+        totalCredits = totalCredits.add(appendPurchaseReturnTaxLines(company, lines, taxCredits, gstBreakdown, resolvedMemo));
 
         if (totalAmount.subtract(totalCredits).abs().compareTo(BALANCE_TOLERANCE) > 0) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
@@ -608,7 +637,7 @@ public class AccountingFacade {
                 resolvedMemo,
                 "PURCHASING_RETURN",
                 reference,
-                null,
+                gstBreakdown,
                 toStandardLines(lines),
                 postingDate,
                 null,
@@ -620,6 +649,26 @@ public class AccountingFacade {
                 reference, supplier.getName(), totalAmount);
 
         return createStandardJournal(request);
+    }
+
+    @Transactional(isolation = Isolation.REPEATABLE_READ)
+    @Retryable(value = OptimisticLockingFailureException.class, maxAttempts = 3, backoff = @Backoff(delay = 100))
+    public JournalEntryDto postPurchaseReturn(Long supplierId,
+                                              String referenceNumber,
+                                              LocalDate returnDate,
+                                              String memo,
+                                              Map<Long, BigDecimal> inventoryCredits,
+                                              Map<Long, BigDecimal> taxCredits,
+                                              BigDecimal totalAmount) {
+        return postPurchaseReturn(
+                supplierId,
+                referenceNumber,
+                returnDate,
+                memo,
+                inventoryCredits,
+                taxCredits,
+                null,
+                totalAmount);
     }
 
     /**
@@ -1618,6 +1667,203 @@ public class AccountingFacade {
                 .filter(Objects::nonNull)
                 .findFirst()
                 .orElse(fallback);
+    }
+
+    private void appendSalesTaxLines(Company company,
+                                     List<JournalEntryRequest.JournalLineRequest> lines,
+                                     Map<Long, BigDecimal> taxLines,
+                                     JournalCreationRequest.GstBreakdown gstBreakdown,
+                                     String resolvedMemo,
+                                     String orderNumber) {
+        if (breakdownHasTax(gstBreakdown)) {
+            Long taxAccountId = resolveTaxAccountId(company, taxLines, false);
+            appendComponentCreditLines(lines, taxAccountId, resolvedMemo, orderNumber, gstBreakdown, "output");
+            return;
+        }
+        if (taxLines == null) {
+            return;
+        }
+        taxLines.forEach((accountId, amount) -> {
+            if (amount != null && amount.compareTo(BigDecimal.ZERO) > 0) {
+                lines.add(new JournalEntryRequest.JournalLineRequest(
+                        accountId,
+                        resolvedMemo,
+                        BigDecimal.ZERO,
+                        amount.abs()));
+            }
+        });
+    }
+
+    private BigDecimal appendPurchaseTaxLines(Company company,
+                                              List<JournalEntryRequest.JournalLineRequest> lines,
+                                              Map<Long, BigDecimal> taxLines,
+                                              JournalCreationRequest.GstBreakdown gstBreakdown,
+                                              String resolvedMemo) {
+        if (breakdownHasTax(gstBreakdown)) {
+            Long taxAccountId = resolveTaxAccountId(company, taxLines, true);
+            return appendComponentDebitLines(lines, taxAccountId, resolvedMemo, gstBreakdown, "input");
+        }
+        BigDecimal taxTotal = BigDecimal.ZERO;
+        if (taxLines == null || taxLines.isEmpty()) {
+            return taxTotal;
+        }
+        TaxAccountConfiguration taxConfig = companyAccountingSettingsService.requireTaxAccounts();
+        for (Map.Entry<Long, BigDecimal> entry : taxLines.entrySet()) {
+            BigDecimal amount = entry.getValue();
+            if (amount != null && amount.compareTo(BigDecimal.ZERO) > 0) {
+                lines.add(new JournalEntryRequest.JournalLineRequest(
+                        entry.getKey() != null ? entry.getKey() : taxConfig.inputTaxAccountId(),
+                        "Input tax for " + resolvedMemo,
+                        amount.abs(),
+                        BigDecimal.ZERO));
+                taxTotal = taxTotal.add(amount.abs());
+            }
+        }
+        return taxTotal;
+    }
+
+    private BigDecimal appendPurchaseReturnTaxLines(Company company,
+                                                    List<JournalEntryRequest.JournalLineRequest> lines,
+                                                    Map<Long, BigDecimal> taxCredits,
+                                                    JournalCreationRequest.GstBreakdown gstBreakdown,
+                                                    String resolvedMemo) {
+        if (breakdownHasTax(gstBreakdown)) {
+            Long taxAccountId = resolveTaxAccountId(company, taxCredits, true);
+            return appendComponentCreditLines(lines, taxAccountId, resolvedMemo, null, gstBreakdown, "reverse input");
+        }
+        BigDecimal taxTotal = BigDecimal.ZERO;
+        if (taxCredits == null || taxCredits.isEmpty()) {
+            return taxTotal;
+        }
+        TaxAccountConfiguration taxConfig = companyAccountingSettingsService.requireTaxAccounts();
+        for (Map.Entry<Long, BigDecimal> entry : taxCredits.entrySet()) {
+            BigDecimal amount = entry.getValue();
+            if (amount != null && amount.compareTo(BigDecimal.ZERO) > 0) {
+                Long accountId = entry.getKey() != null ? entry.getKey() : taxConfig.inputTaxAccountId();
+                taxTotal = taxTotal.add(amount.abs());
+                lines.add(new JournalEntryRequest.JournalLineRequest(
+                        accountId,
+                        "Reverse input tax for " + resolvedMemo,
+                        BigDecimal.ZERO,
+                        amount.abs()));
+            }
+        }
+        return taxTotal;
+    }
+
+    private BigDecimal appendComponentDebitLines(List<JournalEntryRequest.JournalLineRequest> lines,
+                                                 Long taxAccountId,
+                                                 String resolvedMemo,
+                                                 JournalCreationRequest.GstBreakdown breakdown,
+                                                 String labelPrefix) {
+        BigDecimal total = BigDecimal.ZERO;
+        if (breakdown.cgst() != null && breakdown.cgst().compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal amount = breakdown.cgst().abs();
+            lines.add(new JournalEntryRequest.JournalLineRequest(
+                    taxAccountId,
+                    "CGST " + labelPrefix + " tax for " + resolvedMemo,
+                    amount,
+                    BigDecimal.ZERO));
+            total = total.add(amount);
+        }
+        if (breakdown.sgst() != null && breakdown.sgst().compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal amount = breakdown.sgst().abs();
+            lines.add(new JournalEntryRequest.JournalLineRequest(
+                    taxAccountId,
+                    "SGST " + labelPrefix + " tax for " + resolvedMemo,
+                    amount,
+                    BigDecimal.ZERO));
+            total = total.add(amount);
+        }
+        if (breakdown.igst() != null && breakdown.igst().compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal amount = breakdown.igst().abs();
+            lines.add(new JournalEntryRequest.JournalLineRequest(
+                    taxAccountId,
+                    "IGST " + labelPrefix + " tax for " + resolvedMemo,
+                    amount,
+                    BigDecimal.ZERO));
+            total = total.add(amount);
+        }
+        return total;
+    }
+
+    private BigDecimal appendComponentCreditLines(List<JournalEntryRequest.JournalLineRequest> lines,
+                                                  Long taxAccountId,
+                                                  String resolvedMemo,
+                                                  String orderNumber,
+                                                  JournalCreationRequest.GstBreakdown breakdown,
+                                                  String labelPrefix) {
+        BigDecimal total = BigDecimal.ZERO;
+        String context = StringUtils.hasText(orderNumber) ? orderNumber : resolvedMemo;
+        if (breakdown.cgst() != null && breakdown.cgst().compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal amount = breakdown.cgst().abs();
+            lines.add(new JournalEntryRequest.JournalLineRequest(
+                    taxAccountId,
+                    "CGST " + labelPrefix + " tax for " + context,
+                    BigDecimal.ZERO,
+                    amount));
+            total = total.add(amount);
+        }
+        if (breakdown.sgst() != null && breakdown.sgst().compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal amount = breakdown.sgst().abs();
+            lines.add(new JournalEntryRequest.JournalLineRequest(
+                    taxAccountId,
+                    "SGST " + labelPrefix + " tax for " + context,
+                    BigDecimal.ZERO,
+                    amount));
+            total = total.add(amount);
+        }
+        if (breakdown.igst() != null && breakdown.igst().compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal amount = breakdown.igst().abs();
+            lines.add(new JournalEntryRequest.JournalLineRequest(
+                    taxAccountId,
+                    "IGST " + labelPrefix + " tax for " + context,
+                    BigDecimal.ZERO,
+                    amount));
+            total = total.add(amount);
+        }
+        return total;
+    }
+
+    private Long resolveTaxAccountId(Company company, Map<Long, BigDecimal> taxLines, boolean inputTax) {
+        if (taxLines != null) {
+            Optional<Long> fromMap = taxLines.keySet().stream().filter(Objects::nonNull).findFirst();
+            if (fromMap.isPresent()) {
+                return fromMap.get();
+            }
+        }
+        TaxAccountConfiguration taxConfig = companyAccountingSettingsService.requireTaxAccounts();
+        Long accountId = inputTax ? taxConfig.inputTaxAccountId() : taxConfig.outputTaxAccountId();
+        if (accountId == null) {
+            throw new ApplicationException(
+                    ErrorCode.VALIDATION_INVALID_REFERENCE,
+                    (inputTax ? "Input" : "Output") + " tax account is not configured");
+        }
+        return accountId;
+    }
+
+    private JournalCreationRequest.GstBreakdown resolvePurchaseBreakdown(BigDecimal taxableAmount,
+                                                                         BigDecimal taxTotal,
+                                                                         JournalCreationRequest.GstBreakdown provided) {
+        if (provided != null) {
+            return provided;
+        }
+        if (taxTotal == null || taxTotal.compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
+        }
+        return new JournalCreationRequest.GstBreakdown(taxableAmount, BigDecimal.ZERO, BigDecimal.ZERO, taxTotal);
+    }
+
+    private boolean breakdownHasTax(JournalCreationRequest.GstBreakdown breakdown) {
+        if (breakdown == null) {
+            return false;
+        }
+        BigDecimal cgst = breakdown.cgst() == null ? BigDecimal.ZERO : breakdown.cgst();
+        BigDecimal sgst = breakdown.sgst() == null ? BigDecimal.ZERO : breakdown.sgst();
+        BigDecimal igst = breakdown.igst() == null ? BigDecimal.ZERO : breakdown.igst();
+        return cgst.compareTo(BigDecimal.ZERO) > 0
+                || sgst.compareTo(BigDecimal.ZERO) > 0
+                || igst.compareTo(BigDecimal.ZERO) > 0;
     }
 
     private void ensureSalesJournalReferenceMapping(Company company,

@@ -16,7 +16,14 @@ class TS_P2PPurchaseJournalLinkageTest {
         TruthSuiteFileAssert.assertContainsInOrder(
                 PURCHASING_SERVICE,
                 "// Post journal FIRST to avoid orphan purchases if journal fails",
-                "JournalEntryDto entry = postPurchaseEntry(request, supplier, inventoryDebits, taxAmount, totalAmount, referenceNumber);",
+                "JournalEntryDto entry = postPurchaseEntry(",
+                "request,",
+                "supplier,",
+                "inventoryDebits,",
+                "taxAmount,",
+                "totalAmount,",
+                "referenceNumber,",
+                "gstBreakdown);",
                 "purchase.setJournalEntry(linkedJournal);",
                 "purchase = purchaseRepository.save(purchase);");
     }

@@ -50,6 +50,7 @@ import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlip;
 import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipLine;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyAccountingSettingsService;
+import com.bigbrightpaints.erp.modules.accounting.service.GstService;
 import org.apache.commons.codec.digest.DigestUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -70,6 +71,7 @@ import org.springframework.transaction.support.SimpleTransactionStatus;
 
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -133,6 +135,8 @@ class SalesServiceTest {
     @Mock
     private CompanyAccountingSettingsService companyAccountingSettingsService;
     @Mock
+    private GstService gstService;
+    @Mock
     private CreditLimitOverrideService creditLimitOverrideService;
     @Mock
     private AuditService auditService;
@@ -169,6 +173,7 @@ class SalesServiceTest {
                 factoryTaskRepository,
                 companyDefaultAccountsService,
                 companyAccountingSettingsService,
+                gstService,
                 creditLimitOverrideService,
                 auditService,
                 companyClock,
@@ -191,6 +196,24 @@ class SalesServiceTest {
         when(companyContextService.requireCurrentCompany()).thenReturn(company);
         when(companyClock.today(any())).thenReturn(java.time.LocalDate.of(2026, 1, 27));
         when(invoiceRepository.findAllByCompanyAndSalesOrderId(eq(company), anyLong())).thenReturn(List.of());
+        lenient().when(gstService.calculateGst(any(), any(), any(), any())).thenAnswer(invocation -> {
+            BigDecimal amount = invocation.getArgument(0);
+            BigDecimal rate = invocation.getArgument(3);
+            BigDecimal taxable = amount == null ? BigDecimal.ZERO : amount;
+            BigDecimal resolvedRate = rate == null ? BigDecimal.ZERO : rate;
+            BigDecimal igst = taxable.multiply(resolvedRate).divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+            return new GstService.GstBreakdown(taxable, BigDecimal.ZERO, BigDecimal.ZERO, igst, GstService.TaxType.INTER_STATE);
+        });
+        lenient().when(gstService.splitTaxAmount(any(), any(), any(), any())).thenAnswer(invocation -> {
+            BigDecimal taxable = invocation.getArgument(0);
+            BigDecimal tax = invocation.getArgument(1);
+            return new GstService.GstBreakdown(
+                    taxable == null ? BigDecimal.ZERO : taxable,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    tax == null ? BigDecimal.ZERO : tax,
+                    GstService.TaxType.INTER_STATE);
+        });
         lenient().when(dealerRepository.findByCompanyAndCodeIgnoreCase(any(), anyString())).thenReturn(Optional.empty());
         lenient().when(packagingSlipRepository.findByIdAndCompany(anyLong(), eq(company)))
                 .thenAnswer(invocation -> {

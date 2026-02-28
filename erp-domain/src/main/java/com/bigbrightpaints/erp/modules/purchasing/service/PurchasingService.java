@@ -14,6 +14,7 @@ import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodService;
+import com.bigbrightpaints.erp.modules.accounting.service.GstService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReference;
@@ -88,6 +89,7 @@ public class PurchasingService {
     private final ReferenceNumberService referenceNumberService;
     private final CompanyClock companyClock;
     private final AccountingPeriodService accountingPeriodService;
+    private final GstService gstService;
     private final IdempotencyReservationService idempotencyReservationService = new IdempotencyReservationService();
     private final TransactionTemplate transactionTemplate;
 
@@ -105,6 +107,7 @@ public class PurchasingService {
                              ReferenceNumberService referenceNumberService,
                              CompanyClock companyClock,
                              AccountingPeriodService accountingPeriodService,
+                             GstService gstService,
                              PlatformTransactionManager transactionManager) {
         this.companyContextService = companyContextService;
         this.purchaseRepository = purchaseRepository;
@@ -120,6 +123,7 @@ public class PurchasingService {
         this.referenceNumberService = referenceNumberService;
         this.companyClock = companyClock;
         this.accountingPeriodService = accountingPeriodService;
+        this.gstService = gstService;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
@@ -550,6 +554,11 @@ public class PurchasingService {
 
         BigDecimal inventoryTotal = BigDecimal.ZERO;
         BigDecimal taxTotal = BigDecimal.ZERO;
+        BigDecimal totalCgst = BigDecimal.ZERO;
+        BigDecimal totalSgst = BigDecimal.ZERO;
+        BigDecimal totalIgst = BigDecimal.ZERO;
+        String companyStateCode = company.getStateCode();
+        String supplierStateCode = supplier.getStateCode();
         Map<Long, BigDecimal> inventoryDebits = new HashMap<>();
         List<PurchaseLineCalc> computedLines = new ArrayList<>();
         boolean hasTaxableLines = false;
@@ -656,8 +665,26 @@ public class PurchasingService {
 
             inventoryTotal = inventoryTotal.add(lineNet);
             taxTotal = taxTotal.add(lineTax);
+            GstService.GstBreakdown lineBreakdown = lineTax.compareTo(BigDecimal.ZERO) > 0
+                    ? gstService.splitTaxAmount(lineNet, lineTax, companyStateCode, supplierStateCode)
+                    : gstService.splitTaxAmount(lineNet, BigDecimal.ZERO, companyStateCode, supplierStateCode);
+            totalCgst = totalCgst.add(lineBreakdown.cgst());
+            totalSgst = totalSgst.add(lineBreakdown.sgst());
+            totalIgst = totalIgst.add(lineBreakdown.igst());
             inventoryDebits.merge(inventoryAccountId, lineNet, BigDecimal::add);
-            computedLines.add(new PurchaseLineCalc(rawMaterial, quantity, unit, batchCode, netUnitCost, lineNet, lineTax, lineTaxRate, lineRequest.notes()));
+            computedLines.add(new PurchaseLineCalc(
+                    rawMaterial,
+                    quantity,
+                    unit,
+                    batchCode,
+                    netUnitCost,
+                    lineNet,
+                    lineTax,
+                    lineTaxRate,
+                    lineRequest.notes(),
+                    lineBreakdown.cgst(),
+                    lineBreakdown.sgst(),
+                    lineBreakdown.igst()));
         }
 
         if (invoiceMaterialIds.size() != receiptQuantities.size()) {
@@ -681,6 +708,9 @@ public class PurchasingService {
                 && !computedLines.isEmpty()) {
             List<PurchaseLineCalc> allocatedLines = new ArrayList<>(computedLines.size());
             BigDecimal remaining = taxAmount;
+            totalCgst = BigDecimal.ZERO;
+            totalSgst = BigDecimal.ZERO;
+            totalIgst = BigDecimal.ZERO;
             for (int i = 0; i < computedLines.size(); i++) {
                 PurchaseLineCalc line = computedLines.get(i);
                 BigDecimal allocatedTax = (i == computedLines.size() - 1)
@@ -688,6 +718,12 @@ public class PurchasingService {
                         : currency(line.lineNet().multiply(taxAmount)
                                 .divide(inventoryTotal, 6, RoundingMode.HALF_UP));
                 remaining = remaining.subtract(allocatedTax);
+                GstService.GstBreakdown lineBreakdown = allocatedTax.compareTo(BigDecimal.ZERO) > 0
+                        ? gstService.splitTaxAmount(line.lineNet(), allocatedTax, companyStateCode, supplierStateCode)
+                        : gstService.splitTaxAmount(line.lineNet(), BigDecimal.ZERO, companyStateCode, supplierStateCode);
+                totalCgst = totalCgst.add(lineBreakdown.cgst());
+                totalSgst = totalSgst.add(lineBreakdown.sgst());
+                totalIgst = totalIgst.add(lineBreakdown.igst());
                 allocatedLines.add(new PurchaseLineCalc(
                         line.rawMaterial(),
                         line.quantity(),
@@ -697,14 +733,28 @@ public class PurchasingService {
                         line.lineNet(),
                         allocatedTax,
                         null,
-                        line.notes()));
+                        line.notes(),
+                        lineBreakdown.cgst(),
+                        lineBreakdown.sgst(),
+                        lineBreakdown.igst()));
             }
             computedLines = allocatedLines;
         }
 
+        JournalCreationRequest.GstBreakdown gstBreakdown = taxAmount.compareTo(BigDecimal.ZERO) > 0
+                ? new JournalCreationRequest.GstBreakdown(inventoryTotal, totalCgst, totalSgst, totalIgst)
+                : null;
+
         // Post journal FIRST to avoid orphan purchases if journal fails
         String referenceNumber = referenceNumberService.purchaseReference(company, supplier, invoiceNumber);
-        JournalEntryDto entry = postPurchaseEntry(request, supplier, inventoryDebits, taxAmount, totalAmount, referenceNumber);
+        JournalEntryDto entry = postPurchaseEntry(
+                request,
+                supplier,
+                inventoryDebits,
+                taxAmount,
+                totalAmount,
+                referenceNumber,
+                gstBreakdown);
         JournalEntry linkedJournal = null;
         if (entry != null) {
             linkedJournal = companyEntityLookup.requireJournalEntry(company, entry.id());
@@ -779,6 +829,9 @@ public class PurchasingService {
             line.setLineTotal(lineTotal);
             line.setTaxAmount(lineCalc.lineTax());
             line.setTaxRate(lineCalc.taxRate());
+            line.setCgstAmount(lineCalc.cgstAmount());
+            line.setSgstAmount(lineCalc.sgstAmount());
+            line.setIgstAmount(lineCalc.igstAmount());
             line.setNotes(lineCalc.notes());
             purchase.getLines().add(line);
         }
@@ -926,9 +979,16 @@ public class PurchasingService {
 
         // Post journal FIRST before deducting stock
         Map<Long, BigDecimal> taxCredits = null;
+        JournalCreationRequest.GstBreakdown gstBreakdown = null;
         if (taxAmount.compareTo(BigDecimal.ZERO) > 0) {
             taxCredits = new HashMap<>();
             taxCredits.put(null, taxAmount);
+            GstService.GstBreakdown split = gstService.splitTaxAmount(
+                    lineNet,
+                    taxAmount,
+                    company.getStateCode(),
+                    supplier.getStateCode());
+            gstBreakdown = new JournalCreationRequest.GstBreakdown(lineNet, split.cgst(), split.sgst(), split.igst());
         }
         JournalEntryDto entry = accountingFacade.postPurchaseReturn(
                 supplier.getId(),
@@ -937,6 +997,7 @@ public class PurchasingService {
                 memo,
                 Map.of(material.getInventoryAccountId(), lineNet),
                 taxCredits,
+                gstBreakdown,
                 totalAmount
         );
 
@@ -967,9 +1028,16 @@ public class PurchasingService {
         BigDecimal taxAmount = computeReturnTax(purchase, material, quantity);
         BigDecimal totalAmount = currency(lineNet.add(taxAmount));
         Map<Long, BigDecimal> taxCredits = null;
+        JournalCreationRequest.GstBreakdown gstBreakdown = null;
         if (taxAmount.compareTo(BigDecimal.ZERO) > 0) {
             taxCredits = new HashMap<>();
             taxCredits.put(null, taxAmount);
+            GstService.GstBreakdown split = gstService.splitTaxAmount(
+                    lineNet,
+                    taxAmount,
+                    companyContextService.requireCurrentCompany().getStateCode(),
+                    supplier.getStateCode());
+            gstBreakdown = new JournalCreationRequest.GstBreakdown(lineNet, split.cgst(), split.sgst(), split.igst());
         }
         JournalEntryDto entry = accountingFacade.postPurchaseReturn(
                 supplier.getId(),
@@ -978,6 +1046,7 @@ public class PurchasingService {
                 memo,
                 Map.of(material.getInventoryAccountId(), lineNet),
                 taxCredits,
+                gstBreakdown,
                 totalAmount
         );
         if (entry != null) {
@@ -1186,7 +1255,8 @@ public class PurchasingService {
                                               Map<Long, BigDecimal> inventoryDebits,
                                               BigDecimal taxAmount,
                                               BigDecimal totalAmount,
-                                              String referenceNumber) {
+                                              String referenceNumber,
+                                              JournalCreationRequest.GstBreakdown gstBreakdown) {
         if (inventoryDebits.isEmpty() || totalAmount.compareTo(BigDecimal.ZERO) <= 0) {
             return null;
         }
@@ -1221,7 +1291,7 @@ public class PurchasingService {
                 standardizedMemo,
                 "PURCHASING",
                 referenceNumber,
-                null,
+                gstBreakdown,
                 standardizedLines,
                 entryDate,
                 null,
@@ -1239,6 +1309,7 @@ public class PurchasingService {
                 memo,
                 inventoryDebits,
                 taxLines,
+                standardizedPurchaseRequest.gstBreakdown(),
                 totalAmount,
                 referenceNumber
         );
@@ -1288,7 +1359,10 @@ public class PurchasingService {
                 line.getLineTotal(),
                 line.getTaxRate(),
                 line.getTaxAmount(),
-                line.getNotes()
+                line.getNotes(),
+                line.getCgstAmount(),
+                line.getSgstAmount(),
+                line.getIgstAmount()
         );
     }
 
@@ -1664,7 +1738,10 @@ public class PurchasingService {
             BigDecimal lineNet,
             BigDecimal lineTax,
             BigDecimal taxRate,
-            String notes
+            String notes,
+            BigDecimal cgstAmount,
+            BigDecimal sgstAmount,
+            BigDecimal igstAmount
     ) {
     }
 

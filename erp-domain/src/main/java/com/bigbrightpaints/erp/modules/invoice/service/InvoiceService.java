@@ -326,7 +326,10 @@ public class InvoiceService {
                         line.getLineTotal(),
                         line.getTaxableAmount(),
                         line.getTaxAmount(),
-                        line.getDiscountAmount()))
+                        line.getDiscountAmount(),
+                        line.getCgstAmount(),
+                        line.getSgstAmount(),
+                        line.getIgstAmount()))
                 .toList();
         Dealer dealer = invoice.getDealer();
         return new InvoiceDto(

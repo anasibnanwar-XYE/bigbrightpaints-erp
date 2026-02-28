@@ -11,4 +11,22 @@ public record InvoiceLineDto(Long id,
                              BigDecimal lineTotal,
                              BigDecimal taxableAmount,
                              BigDecimal taxAmount,
-                             BigDecimal discountAmount) {}
+                             BigDecimal discountAmount,
+                             BigDecimal cgstAmount,
+                             BigDecimal sgstAmount,
+                             BigDecimal igstAmount) {
+
+    public InvoiceLineDto(Long id,
+                          String productCode,
+                          String description,
+                          BigDecimal quantity,
+                          BigDecimal unitPrice,
+                          BigDecimal taxRate,
+                          BigDecimal lineTotal,
+                          BigDecimal taxableAmount,
+                          BigDecimal taxAmount,
+                          BigDecimal discountAmount) {
+        this(id, productCode, description, quantity, unitPrice, taxRate, lineTotal, taxableAmount, taxAmount,
+                discountAmount, null, null, null);
+    }
+}

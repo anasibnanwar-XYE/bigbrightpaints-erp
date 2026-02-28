@@ -750,6 +750,13 @@ public class AccountingController {
         return ResponseEntity.ok(ApiResponse.success(taxService.generateGstReturn(target)));
     }
 
+    @GetMapping("/gst/reconciliation")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<GstReconciliationDto>> getGstReconciliation(@RequestParam(required = false) String period) {
+        YearMonth target = period != null && !period.isBlank() ? YearMonth.parse(period) : null;
+        return ResponseEntity.ok(ApiResponse.success(taxService.generateGstReconciliation(target)));
+    }
+
     @PostMapping("/bad-debts/write-off")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
     public ResponseEntity<ApiResponse<JournalEntryDto>> writeOffBadDebt(@Valid @RequestBody BadDebtWriteOffRequest request) {

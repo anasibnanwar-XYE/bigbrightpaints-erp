@@ -11,9 +11,12 @@ import com.bigbrightpaints.erp.modules.accounting.domain.JournalLine;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.GstReturnDto;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyAccountingSettingsService;
+import com.bigbrightpaints.erp.modules.accounting.service.GstService;
 import com.bigbrightpaints.erp.modules.accounting.service.TaxService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
+import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.YearMonth;
@@ -38,13 +41,24 @@ class TS_RuntimeTaxServiceExecutableCoverageTest {
     private CompanyClock companyClock;
     @Mock
     private JournalLineRepository journalLineRepository;
+    @Mock
+    private InvoiceRepository invoiceRepository;
+    @Mock
+    private RawMaterialPurchaseRepository rawMaterialPurchaseRepository;
 
     private TaxService taxService;
     private Company company;
 
     @BeforeEach
     void setUp() {
-        taxService = new TaxService(companyContextService, companyAccountingSettingsService, companyClock, journalLineRepository);
+        taxService = new TaxService(
+                companyContextService,
+                companyAccountingSettingsService,
+                companyClock,
+                journalLineRepository,
+                new GstService(),
+                invoiceRepository,
+                rawMaterialPurchaseRepository);
         company = new Company();
         company.setCode("TRUTH");
         when(companyContextService.requireCurrentCompany()).thenReturn(company);

@@ -36,6 +36,9 @@ public class Company extends VersionedEntity {
     @Column(nullable = false)
     private String timezone;
 
+    @Column(name = "state_code")
+    private String stateCode;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -161,6 +164,18 @@ public class Company extends VersionedEntity {
 
     public void setTimezone(String timezone) {
         this.timezone = timezone;
+    }
+
+    public String getStateCode() {
+        return stateCode;
+    }
+
+    public void setStateCode(String stateCode) {
+        if (stateCode == null || stateCode.isBlank()) {
+            this.stateCode = null;
+            return;
+        }
+        this.stateCode = stateCode.trim().toUpperCase();
     }
 
     public Account getPayrollExpenseAccount() {

@@ -20,6 +20,7 @@ import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
 import com.bigbrightpaints.erp.modules.accounting.service.DealerLedgerService;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyAccountingSettingsService;
+import com.bigbrightpaints.erp.modules.accounting.service.GstService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.inventory.domain.*;
@@ -170,6 +171,7 @@ public class SalesService {
     private final FactoryTaskRepository factoryTaskRepository;
     private final CompanyDefaultAccountsService companyDefaultAccountsService;
     private final CompanyAccountingSettingsService companyAccountingSettingsService;
+    private final GstService gstService;
     private final CreditLimitOverrideService creditLimitOverrideService;
     private final AuditService auditService;
     private final IdempotencyReservationService idempotencyReservationService = new IdempotencyReservationService();
@@ -198,6 +200,7 @@ public class SalesService {
                         FactoryTaskRepository factoryTaskRepository,
                         CompanyDefaultAccountsService companyDefaultAccountsService,
                         CompanyAccountingSettingsService companyAccountingSettingsService,
+                        GstService gstService,
                         CreditLimitOverrideService creditLimitOverrideService,
                         AuditService auditService,
                         CompanyClock companyClock,
@@ -225,6 +228,7 @@ public class SalesService {
         this.factoryTaskRepository = factoryTaskRepository;
         this.companyDefaultAccountsService = companyDefaultAccountsService;
         this.companyAccountingSettingsService = companyAccountingSettingsService;
+        this.gstService = gstService;
         this.creditLimitOverrideService = creditLimitOverrideService;
         this.auditService = auditService;
         this.companyClock = companyClock;
@@ -259,6 +263,9 @@ public class SalesService {
         dealer.setCode(request.code());
         dealer.setEmail(request.email());
         dealer.setPhone(request.phone());
+        dealer.setGstNumber(normalizeGstNumber(request.gstNumber()));
+        dealer.setStateCode(normalizeStateCode(request.stateCode()));
+        dealer.setGstRegistrationType(request.gstRegistrationType());
         dealer.setCreditLimit(request.creditLimit());
         dealer.setStatus(DealerProvisioningSupport.ACTIVE_STATUS);
         if (dealer.getReceivableAccount() == null) {
@@ -280,6 +287,9 @@ public class SalesService {
         dealer.setCode(request.code());
         dealer.setEmail(request.email());
         dealer.setPhone(request.phone());
+        dealer.setGstNumber(normalizeGstNumber(request.gstNumber()));
+        dealer.setStateCode(normalizeStateCode(request.stateCode()));
+        dealer.setGstRegistrationType(request.gstRegistrationType());
         dealer.setCreditLimit(request.creditLimit());
         syncReceivableAccount(dealer, oldCode, request.code(), oldName, request.name());
         return toDto(dealer);
@@ -331,7 +341,30 @@ public class SalesService {
 
     private DealerDto toDto(Dealer dealer, BigDecimal outstandingBalance) {
         return new DealerDto(dealer.getId(), dealer.getPublicId(), dealer.getName(), dealer.getCode(), dealer.getEmail(),
-                dealer.getPhone(), dealer.getStatus(), dealer.getCreditLimit(), outstandingBalance);
+                dealer.getPhone(), dealer.getStatus(), dealer.getCreditLimit(), outstandingBalance,
+                dealer.getGstNumber(), dealer.getStateCode(), dealer.getGstRegistrationType());
+    }
+
+    private String normalizeGstNumber(String gstNumber) {
+        if (!StringUtils.hasText(gstNumber)) {
+            return null;
+        }
+        String normalized = gstNumber.trim().toUpperCase(Locale.ROOT);
+        if (!normalized.matches("^[0-9]{2}[A-Z0-9]{13}$")) {
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("GST number must be a valid 15-character GSTIN");
+        }
+        return normalized;
+    }
+
+    private String normalizeStateCode(String stateCode) {
+        if (!StringUtils.hasText(stateCode)) {
+            return null;
+        }
+        String normalized = stateCode.trim().toUpperCase(Locale.ROOT);
+        if (normalized.length() != 2) {
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("State code must be exactly 2 characters");
+        }
+        return normalized;
     }
 
     private Dealer requireDealer(Long id) {
@@ -2358,8 +2391,13 @@ public class SalesService {
         List<InvoiceLine> invoiceLines = new ArrayList<>();
         BigDecimal subtotal = BigDecimal.ZERO;
         BigDecimal taxTotal = BigDecimal.ZERO;
+        BigDecimal totalCgst = BigDecimal.ZERO;
+        BigDecimal totalSgst = BigDecimal.ZERO;
+        BigDecimal totalIgst = BigDecimal.ZERO;
         Long gstOutputAccountId = null;
         CompanyDefaultAccountsService.DefaultAccounts defaults = companyDefaultAccountsService.getDefaults();
+        String companyStateCode = company != null ? company.getStateCode() : null;
+        String dealerStateCode = dealer.getStateCode();
 
         for (var slipLine : slip.getLines()) {
             DispatchConfirmRequest.DispatchLine override = lineOverrides.get(slipLine.getId());
@@ -2562,6 +2600,13 @@ public class SalesService {
                     taxByAccount.merge(gstOutputAccountId, lineTax, BigDecimal::add);
                 }
 
+                GstService.GstBreakdown lineBreakdown = lineTax.compareTo(BigDecimal.ZERO) > 0
+                        ? gstService.splitTaxAmount(lineNet, lineTax, companyStateCode, dealerStateCode)
+                        : gstService.splitTaxAmount(lineNet, BigDecimal.ZERO, companyStateCode, dealerStateCode);
+                totalCgst = totalCgst.add(lineBreakdown.cgst());
+                totalSgst = totalSgst.add(lineBreakdown.sgst());
+                totalIgst = totalIgst.add(lineBreakdown.igst());
+
                 InvoiceLine invLine = new InvoiceLine();
                 invLine.setProductCode(fg.getProductCode());
                 invLine.setDescription(item.getDescription());
@@ -2571,6 +2616,9 @@ public class SalesService {
                 invLine.setDiscountAmount(discount);
                 invLine.setTaxableAmount(lineNet);
                 invLine.setTaxAmount(lineTax);
+                invLine.setCgstAmount(lineBreakdown.cgst());
+                invLine.setSgstAmount(lineBreakdown.sgst());
+                invLine.setIgstAmount(lineBreakdown.igst());
                 invLine.setLineTotal(lineTotal);
                 invoiceLines.add(invLine);
 
@@ -2663,6 +2711,13 @@ public class SalesService {
                     taxByAccount.merge(gstOutputAccountId, lineTax, BigDecimal::add);
                 }
 
+                GstService.GstBreakdown lineBreakdown = lineTax.compareTo(BigDecimal.ZERO) > 0
+                        ? gstService.splitTaxAmount(lineNet, lineTax, companyStateCode, dealerStateCode)
+                        : gstService.splitTaxAmount(lineNet, BigDecimal.ZERO, companyStateCode, dealerStateCode);
+                totalCgst = totalCgst.add(lineBreakdown.cgst());
+                totalSgst = totalSgst.add(lineBreakdown.sgst());
+                totalIgst = totalIgst.add(lineBreakdown.igst());
+
                 InvoiceLine invLine = new InvoiceLine();
                 invLine.setProductCode(fg.getProductCode());
                 invLine.setDescription(lastItem.getDescription());
@@ -2672,6 +2727,9 @@ public class SalesService {
                 invLine.setDiscountAmount(discount);
                 invLine.setTaxableAmount(lineNet);
                 invLine.setTaxAmount(lineTax);
+                invLine.setCgstAmount(lineBreakdown.cgst());
+                invLine.setSgstAmount(lineBreakdown.sgst());
+                invLine.setIgstAmount(lineBreakdown.igst());
                 invLine.setLineTotal(lineTotal);
                 invoiceLines.add(invLine);
             }
@@ -2896,7 +2954,9 @@ public class SalesService {
                     "Dispatch " + slipNumber,
                     "SALES",
                     invoiceNumber,
-                    null,
+                    taxTotal.compareTo(BigDecimal.ZERO) > 0
+                            ? new JournalCreationRequest.GstBreakdown(subtotal, totalCgst, totalSgst, totalIgst)
+                            : null,
                     arPostings.stream()
                             .map(posting -> new JournalCreationRequest.LineRequest(
                                     posting.accountId(),
@@ -2918,6 +2978,7 @@ public class SalesService {
                     revenueByAccount,
                     taxByAccount,
                     discountByAccount.isEmpty() ? null : discountByAccount,
+                    standardizedSalesRequest.gstBreakdown(),
                     totalAmount,
                     invoiceNumber
             );

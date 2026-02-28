@@ -284,14 +284,90 @@ Current runtime path mapping used by backend:
 - On period list screens, show costing method badge per row to make method transitions visible.
 - Show an inline note: “Changes affect only new movements in this period; prior periods are not revalued.”
 
+#### GST Tax Flows (India)
+
+##### Endpoint Map
+
+| Method | Path | Auth | Query | Response `data` |
+|---|---|---|---|---|
+| GET | `/api/v1/accounting/gst/return` | `ROLE_ADMIN`,`ROLE_ACCOUNTING` | `period=YYYY-MM` (optional) | `GstReturnDto` |
+| GET | `/api/v1/accounting/gst/reconciliation` | `ROLE_ADMIN`,`ROLE_ACCOUNTING` | `period=YYYY-MM` (optional) | `GstReconciliationDto` |
+
+##### Flow
+
+1. Load `gst/reconciliation` for month dashboard (component split).
+2. Load `gst/return` for filing summary (`outputTax`, `inputTax`, `netPayable`).
+3. Use same selected period (`YYYY-MM`) in both API calls.
+
+##### Data Contracts
+
+- `GstReturnDto`
+  - `period: YYYY-MM`
+  - `periodStart: date`
+  - `periodEnd: date`
+  - `outputTax: number`
+  - `inputTax: number`
+  - `netPayable: number`
+
+- `GstReconciliationDto`
+  - `period: YYYY-MM`
+  - `periodStart: date`
+  - `periodEnd: date`
+  - `collected: { cgst, sgst, igst, total }`
+  - `inputTaxCredit: { cgst, sgst, igst, total }`
+  - `netLiability: { cgst, sgst, igst, total }`
+
+##### Error Handling
+
+- `400 VALIDATION_INVALID_DATE` when `period` is in the future.
+- `400 VALIDATION_INVALID_INPUT` in non-GST mode if GST accounts are configured inconsistently.
+
+##### UI Hints
+
+- Show component cards for CGST/SGST/IGST and one total card.
+- Display negative `netLiability.total` as input credit carry-forward.
+- Default period picker to current month when period query is omitted.
+
 ### Product Catalog & Inventory
 _To be documented_
 
 ### Sales & Dealers
-_To be documented_
+
+#### GST Fields
+
+- Dealer create/update payloads support:
+  - `gstNumber` (15-char GSTIN, optional)
+  - `stateCode` (2-char Indian state code, optional)
+  - `gstRegistrationType` (`REGULAR | COMPOSITION | UNREGISTERED`, optional; defaults to `UNREGISTERED`)
+
+#### Sales Invoice GST Component Exposure
+
+- Invoice line DTO now includes component fields:
+  - `cgstAmount`
+  - `sgstAmount`
+  - `igstAmount`
+
+These values are populated during dispatch confirmation and returned in invoice APIs.
 
 ### Purchasing & Suppliers
-_To be documented_
+
+#### GST Fields
+
+- Supplier create/update payloads support:
+  - `gstNumber` (15-char GSTIN, optional)
+  - `stateCode` (2-char Indian state code, optional)
+  - `gstRegistrationType` (`REGULAR | COMPOSITION | UNREGISTERED`, optional; defaults to `UNREGISTERED`)
+
+#### Purchase GST Component Exposure
+
+- Raw material purchase line response now includes:
+  - `cgstAmount`
+  - `sgstAmount`
+  - `igstAmount`
+
+GST components are computed per line using company state vs supplier state:
+- Same state => CGST + SGST split
+- Different state => IGST
 
 ### HR & Payroll
 _To be documented_

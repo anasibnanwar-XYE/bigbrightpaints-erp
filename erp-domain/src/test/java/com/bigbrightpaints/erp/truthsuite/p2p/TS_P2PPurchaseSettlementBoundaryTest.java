@@ -46,7 +46,14 @@ class TS_P2PPurchaseSettlementBoundaryTest {
         TruthSuiteFileAssert.assertContainsInOrder(
                 PURCHASING_SERVICE,
                 "public RawMaterialPurchaseResponse createPurchase(RawMaterialPurchaseRequest request)",
-                "JournalEntryDto entry = postPurchaseEntry(request, supplier, inventoryDebits, taxAmount, totalAmount, referenceNumber);",
+                "JournalEntryDto entry = postPurchaseEntry(",
+                "request,",
+                "supplier,",
+                "inventoryDebits,",
+                "taxAmount,",
+                "totalAmount,",
+                "referenceNumber,",
+                "gstBreakdown);",
                 "purchase = purchaseRepository.save(purchase);");
 
         String source = TruthSuiteFileAssert.read(PURCHASING_SERVICE);

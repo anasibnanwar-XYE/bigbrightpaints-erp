@@ -37,6 +37,15 @@ public class InvoiceLine extends VersionedEntity {
     @Column(name = "tax_amount")
     private BigDecimal taxAmount;
 
+    @Column(name = "cgst_amount")
+    private BigDecimal cgstAmount;
+
+    @Column(name = "sgst_amount")
+    private BigDecimal sgstAmount;
+
+    @Column(name = "igst_amount")
+    private BigDecimal igstAmount;
+
     @Column(name = "discount_amount")
     private BigDecimal discountAmount;
 
@@ -60,6 +69,12 @@ public class InvoiceLine extends VersionedEntity {
     public void setTaxableAmount(BigDecimal taxableAmount) { this.taxableAmount = taxableAmount; }
     public BigDecimal getTaxAmount() { return taxAmount; }
     public void setTaxAmount(BigDecimal taxAmount) { this.taxAmount = taxAmount; }
+    public BigDecimal getCgstAmount() { return cgstAmount; }
+    public void setCgstAmount(BigDecimal cgstAmount) { this.cgstAmount = cgstAmount; }
+    public BigDecimal getSgstAmount() { return sgstAmount; }
+    public void setSgstAmount(BigDecimal sgstAmount) { this.sgstAmount = sgstAmount; }
+    public BigDecimal getIgstAmount() { return igstAmount; }
+    public void setIgstAmount(BigDecimal igstAmount) { this.igstAmount = igstAmount; }
     public BigDecimal getDiscountAmount() { return discountAmount; }
     public void setDiscountAmount(BigDecimal discountAmount) { this.discountAmount = discountAmount; }
     public BigDecimal getLineTotal() { return lineTotal; }

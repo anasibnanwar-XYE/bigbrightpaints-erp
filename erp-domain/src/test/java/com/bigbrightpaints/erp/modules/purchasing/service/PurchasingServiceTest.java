@@ -10,6 +10,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodService;
+import com.bigbrightpaints.erp.modules.accounting.service.GstService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryType;
@@ -89,6 +90,8 @@ class PurchasingServiceTest {
     @Mock
     private AccountingPeriodService accountingPeriodService;
     @Mock
+    private GstService gstService;
+    @Mock
     private PlatformTransactionManager transactionManager;
 
     private PurchasingService purchasingService;
@@ -114,6 +117,7 @@ class PurchasingServiceTest {
                 referenceNumberService,
                 companyClock,
                 accountingPeriodService,
+                gstService,
                 transactionManager
         );
 

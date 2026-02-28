@@ -4,6 +4,7 @@ import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
+import com.bigbrightpaints.erp.modules.accounting.domain.GstRegistrationType;
 import com.bigbrightpaints.erp.modules.accounting.service.SupplierLedgerService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
@@ -18,11 +19,14 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Pattern;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 @Service
 public class SupplierService {
+
+    private static final Pattern GSTIN_PATTERN = Pattern.compile("^[0-9]{2}[A-Z0-9]{13}$");
 
     private final SupplierRepository supplierRepository;
     private final CompanyContextService companyContextService;
@@ -74,6 +78,9 @@ public class SupplierService {
         supplier.setEmail(normalize(request.contactEmail()));
         supplier.setPhone(normalize(request.contactPhone()));
         supplier.setAddress(normalize(request.address()));
+        supplier.setGstNumber(normalizeGstNumber(request.gstNumber()));
+        supplier.setStateCode(normalizeStateCode(request.stateCode()));
+        supplier.setGstRegistrationType(resolveRegistrationType(request.gstRegistrationType()));
         supplier.setCreditLimit(request.creditLimit() != null ? request.creditLimit() : BigDecimal.ZERO);
         supplier = supplierRepository.save(supplier);
 
@@ -94,6 +101,9 @@ public class SupplierService {
         supplier.setEmail(normalize(request.contactEmail()));
         supplier.setPhone(normalize(request.contactPhone()));
         supplier.setAddress(normalize(request.address()));
+        supplier.setGstNumber(normalizeGstNumber(request.gstNumber()));
+        supplier.setStateCode(normalizeStateCode(request.stateCode()));
+        supplier.setGstRegistrationType(resolveRegistrationType(request.gstRegistrationType()));
         supplier.setCreditLimit(request.creditLimit() != null ? request.creditLimit() : BigDecimal.ZERO);
         return toResponse(supplier, supplierLedgerService.currentBalance(supplier.getId()));
     }
@@ -146,12 +156,41 @@ public class SupplierService {
                 supplier.getCreditLimit(),
                 outstandingBalance,
                 accountId,
-                accountCode
+                accountCode,
+                supplier.getGstNumber(),
+                supplier.getStateCode(),
+                supplier.getGstRegistrationType()
         );
     }
 
     private String normalize(String value) {
         return StringUtils.hasText(value) ? value.trim() : null;
+    }
+
+    private String normalizeGstNumber(String gstNumber) {
+        if (!StringUtils.hasText(gstNumber)) {
+            return null;
+        }
+        String normalized = gstNumber.trim().toUpperCase(Locale.ROOT);
+        if (!GSTIN_PATTERN.matcher(normalized).matches()) {
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("GST number must be a valid 15-character GSTIN");
+        }
+        return normalized;
+    }
+
+    private String normalizeStateCode(String stateCode) {
+        if (!StringUtils.hasText(stateCode)) {
+            return null;
+        }
+        String normalized = stateCode.trim().toUpperCase(Locale.ROOT);
+        if (normalized.length() != 2) {
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("State code must be exactly 2 characters");
+        }
+        return normalized;
+    }
+
+    private GstRegistrationType resolveRegistrationType(GstRegistrationType registrationType) {
+        return registrationType == null ? GstRegistrationType.UNREGISTERED : registrationType;
     }
 
     private String resolveSupplierCode(String requestedCode, String name, Company company) {
