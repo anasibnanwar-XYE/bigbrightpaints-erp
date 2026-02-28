@@ -13,6 +13,7 @@ import com.bigbrightpaints.erp.modules.accounting.dto.BankReconciliationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerBalanceView;
 import com.bigbrightpaints.erp.modules.accounting.dto.SupplierBalanceView;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReservationRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipRepository;
@@ -34,12 +35,14 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class ReconciliationServiceTest {
 
     @Mock private CompanyContextService companyContextService;
+    @Mock private CompanyRepository companyRepository;
     @Mock private AccountRepository accountRepository;
     @Mock private DealerRepository dealerRepository;
     @Mock private DealerLedgerRepository dealerLedgerRepository;
@@ -59,6 +62,7 @@ class ReconciliationServiceTest {
     void setUp() {
         reconciliationService = new ReconciliationService(
                 companyContextService,
+                companyRepository,
                 accountRepository,
                 dealerRepository,
                 dealerLedgerRepository,
@@ -73,7 +77,7 @@ class ReconciliationServiceTest {
         );
         company = new Company();
         company.setCode("ACME");
-        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        lenient().when(companyContextService.requireCurrentCompany()).thenReturn(company);
     }
 
     @Test
@@ -232,5 +236,96 @@ class ReconciliationServiceTest {
         assertThat(report.supplierReconciliation().variance()).isEqualByComparingTo("40.00");
         assertThat(report.combinedVariance()).isEqualByComparingTo("110.00");
         assertThat(report.reconciled()).isFalse();
+    }
+
+    @Test
+    void interCompanyReconcile_bidirectionalBalancesMatch_reportsMatchedItems() {
+        Company companyA = company(11L, "COMP-A", "Company A");
+        Company companyB = company(22L, "COMP-B", "Company B");
+
+        Dealer aReceivableFromB = dealer(101L, "COMP-B", "Company B Dealer", "150.00");
+        Supplier bPayableToA = supplier(201L, "COMP-A", "Company A Supplier", "150.00");
+
+        Dealer bReceivableFromA = dealer(102L, "COMP-A", "Company A Dealer", "80.00");
+        Supplier aPayableToB = supplier(202L, "COMP-B", "Company B Supplier", "80.00");
+
+        when(companyRepository.findById(11L)).thenReturn(Optional.of(companyA));
+        when(companyRepository.findById(22L)).thenReturn(Optional.of(companyB));
+
+        when(dealerRepository.findByCompanyAndCodeIgnoreCase(companyA, "COMP-B"))
+                .thenReturn(Optional.of(aReceivableFromB));
+        when(supplierRepository.findByCompanyAndCodeIgnoreCase(companyB, "COMP-A"))
+                .thenReturn(Optional.of(bPayableToA));
+        when(dealerRepository.findByCompanyAndCodeIgnoreCase(companyB, "COMP-A"))
+                .thenReturn(Optional.of(bReceivableFromA));
+        when(supplierRepository.findByCompanyAndCodeIgnoreCase(companyA, "COMP-B"))
+                .thenReturn(Optional.of(aPayableToB));
+
+        ReconciliationService.InterCompanyReconciliationReport report =
+                reconciliationService.interCompanyReconcile(11L, 22L);
+
+        assertThat(report.reconciled()).isTrue();
+        assertThat(report.matchedItems()).hasSize(2);
+        assertThat(report.unmatchedItems()).isEmpty();
+        assertThat(report.totalDiscrepancyAmount()).isEqualByComparingTo("0.00");
+    }
+
+    @Test
+    void interCompanyReconcile_mismatchAndMissingCounterparty_reportsUnmatchedItems() {
+        Company companyA = company(11L, "COMP-A", "Company A");
+        Company companyB = company(22L, "COMP-B", "Company B");
+
+        Dealer aReceivableFromB = dealer(101L, "COMP-B", "Company B Dealer", "150.00");
+        Supplier bPayableToA = supplier(201L, "COMP-A", "Company A Supplier", "120.00");
+        Supplier aPayableToB = supplier(202L, "COMP-B", "Company B Supplier", "75.00");
+
+        when(companyRepository.findById(11L)).thenReturn(Optional.of(companyA));
+        when(companyRepository.findById(22L)).thenReturn(Optional.of(companyB));
+
+        when(dealerRepository.findByCompanyAndCodeIgnoreCase(companyA, "COMP-B"))
+                .thenReturn(Optional.of(aReceivableFromB));
+        when(supplierRepository.findByCompanyAndCodeIgnoreCase(companyB, "COMP-A"))
+                .thenReturn(Optional.of(bPayableToA));
+        when(dealerRepository.findByCompanyAndCodeIgnoreCase(companyB, "COMP-A"))
+                .thenReturn(Optional.empty());
+        when(supplierRepository.findByCompanyAndCodeIgnoreCase(companyA, "COMP-B"))
+                .thenReturn(Optional.of(aPayableToB));
+
+        ReconciliationService.InterCompanyReconciliationReport report =
+                reconciliationService.interCompanyReconcile(11L, 22L);
+
+        assertThat(report.reconciled()).isFalse();
+        assertThat(report.matchedItems()).isEmpty();
+        assertThat(report.unmatchedItems()).hasSize(2);
+        assertThat(report.totalDiscrepancyAmount()).isEqualByComparingTo("105.00");
+        assertThat(report.unmatchedItems())
+                .extracting(ReconciliationService.InterCompanyReconciliationItem::counterpartyMissing)
+                .containsExactlyInAnyOrder(false, true);
+    }
+
+    private Company company(Long id, String code, String name) {
+        Company value = new Company();
+        ReflectionTestUtils.setField(value, "id", id);
+        value.setCode(code);
+        value.setName(name);
+        return value;
+    }
+
+    private Dealer dealer(Long id, String code, String name, String outstandingBalance) {
+        Dealer value = new Dealer();
+        ReflectionTestUtils.setField(value, "id", id);
+        value.setCode(code);
+        value.setName(name);
+        value.setOutstandingBalance(new BigDecimal(outstandingBalance));
+        return value;
+    }
+
+    private Supplier supplier(Long id, String code, String name, String outstandingBalance) {
+        Supplier value = new Supplier();
+        ReflectionTestUtils.setField(value, "id", id);
+        value.setCode(code);
+        value.setName(name);
+        value.setOutstandingBalance(new BigDecimal(outstandingBalance));
+        return value;
     }
 }

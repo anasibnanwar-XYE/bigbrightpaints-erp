@@ -902,6 +902,15 @@ public class AccountingController {
                 reconciliationService.reconcileSubledgerBalances()));
     }
 
+    @GetMapping("/reconciliation/inter-company")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<ReconciliationService.InterCompanyReconciliationReport>> reconcileInterCompany(
+            @RequestParam("companyA") Long companyA,
+            @RequestParam("companyB") Long companyB) {
+        return ResponseEntity.ok(ApiResponse.success(
+                reconciliationService.interCompanyReconcile(companyA, companyB)));
+    }
+
     /* Statements & Aging */
     @GetMapping("/statements/dealers/{dealerId}")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")

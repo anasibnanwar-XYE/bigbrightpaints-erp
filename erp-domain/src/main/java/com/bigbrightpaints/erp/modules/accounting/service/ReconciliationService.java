@@ -14,6 +14,7 @@ import com.bigbrightpaints.erp.modules.accounting.dto.BankReconciliationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.BankReconciliationSummaryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.SupplierBalanceView;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReservation;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReservationRepository;
@@ -52,6 +53,7 @@ public class ReconciliationService {
     private static final BigDecimal TOLERANCE = new BigDecimal("0.01");
 
     private final CompanyContextService companyContextService;
+    private final CompanyRepository companyRepository;
     private final AccountRepository accountRepository;
     private final DealerRepository dealerRepository;
     private final DealerLedgerRepository dealerLedgerRepository;
@@ -65,6 +67,7 @@ public class ReconciliationService {
     private final TemporalBalanceService temporalBalanceService;
 
     public ReconciliationService(CompanyContextService companyContextService,
+                                  CompanyRepository companyRepository,
                                   AccountRepository accountRepository,
                                   DealerRepository dealerRepository,
                                   DealerLedgerRepository dealerLedgerRepository,
@@ -77,6 +80,7 @@ public class ReconciliationService {
                                   JournalLineRepository journalLineRepository,
                                   TemporalBalanceService temporalBalanceService) {
         this.companyContextService = companyContextService;
+        this.companyRepository = companyRepository;
         this.accountRepository = accountRepository;
         this.dealerRepository = dealerRepository;
         this.dealerLedgerRepository = dealerLedgerRepository;
@@ -332,6 +336,57 @@ public class ReconciliationService {
     }
 
     @Transactional(readOnly = true)
+    public InterCompanyReconciliationReport interCompanyReconcile(Long companyAId, Long companyBId) {
+        if (companyAId == null || companyBId == null) {
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+                    "companyA and companyB are required");
+        }
+        if (Objects.equals(companyAId, companyBId)) {
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+                    "companyA and companyB must be different companies");
+        }
+
+        Company companyA = companyRepository.findById(companyAId)
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+                        "Company not found: " + companyAId));
+        Company companyB = companyRepository.findById(companyBId)
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+                        "Company not found: " + companyBId));
+
+        InterCompanyReconciliationItem aReceivableVsBPayable =
+                reconcileInterCompanyDirection(companyA, companyB);
+        InterCompanyReconciliationItem bReceivableVsAPayable =
+                reconcileInterCompanyDirection(companyB, companyA);
+
+        List<InterCompanyReconciliationItem> allItems = List.of(
+                aReceivableVsBPayable,
+                bReceivableVsAPayable
+        );
+
+        List<InterCompanyReconciliationItem> matchedItems = allItems.stream()
+                .filter(InterCompanyReconciliationItem::matched)
+                .toList();
+        List<InterCompanyReconciliationItem> unmatchedItems = allItems.stream()
+                .filter(item -> !item.matched())
+                .toList();
+
+        BigDecimal totalDiscrepancyAmount = allItems.stream()
+                .map(item -> safe(item.discrepancyAmount()).abs())
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        return new InterCompanyReconciliationReport(
+                companyA.getId(),
+                companyA.getCode(),
+                companyB.getId(),
+                companyB.getCode(),
+                matchedItems,
+                unmatchedItems,
+                totalDiscrepancyAmount,
+                unmatchedItems.isEmpty()
+        );
+    }
+
+    @Transactional(readOnly = true)
     public PeriodReconciliationResult reconcileSubledgersForPeriod(java.time.LocalDate start, java.time.LocalDate end) {
         Company company = companyContextService.requireCurrentCompany();
         if (start == null || end == null) {
@@ -405,6 +460,54 @@ public class ReconciliationService {
             }
         }
         return total;
+    }
+
+    private InterCompanyReconciliationItem reconcileInterCompanyDirection(Company receivableCompany,
+                                                                          Company payableCompany) {
+        String payableCompanyCode = normalizeCode(payableCompany.getCode());
+        String receivableCompanyCode = normalizeCode(receivableCompany.getCode());
+
+        Optional<Dealer> receivableDealer = payableCompanyCode == null
+                ? Optional.empty()
+                : dealerRepository.findByCompanyAndCodeIgnoreCase(receivableCompany, payableCompanyCode);
+        Optional<Supplier> payableSupplier = receivableCompanyCode == null
+                ? Optional.empty()
+                : supplierRepository.findByCompanyAndCodeIgnoreCase(payableCompany, receivableCompanyCode);
+
+        BigDecimal receivableAmount = receivableDealer
+                .map(Dealer::getOutstandingBalance)
+                .map(this::safe)
+                .orElse(BigDecimal.ZERO);
+        BigDecimal payableAmount = payableSupplier
+                .map(Supplier::getOutstandingBalance)
+                .map(this::safe)
+                .orElse(BigDecimal.ZERO);
+
+        BigDecimal discrepancyAmount = receivableAmount.subtract(payableAmount);
+        boolean counterpartyMissing = receivableDealer.isEmpty() || payableSupplier.isEmpty();
+        boolean matched = !counterpartyMissing
+                && discrepancyAmount.abs().compareTo(TOLERANCE) <= 0;
+
+        return new InterCompanyReconciliationItem(
+                receivableCompany.getId(),
+                normalizeCode(receivableCompany.getCode()),
+                payableCompany.getId(),
+                normalizeCode(payableCompany.getCode()),
+                receivableDealer.map(Dealer::getId).orElse(null),
+                payableSupplier.map(Supplier::getId).orElse(null),
+                receivableAmount,
+                payableAmount,
+                discrepancyAmount,
+                matched,
+                counterpartyMissing
+        );
+    }
+
+    private String normalizeCode(String code) {
+        if (code == null || code.isBlank()) {
+            return null;
+        }
+        return code.trim();
     }
 
     private List<Account> resolveReceivableAccounts(List<Account> accounts, List<Dealer> dealers) {
@@ -679,5 +782,30 @@ public class ReconciliationService {
             SupplierReconciliationResult supplierReconciliation,
             BigDecimal combinedVariance,
             boolean reconciled
+    ) {}
+
+    public record InterCompanyReconciliationReport(
+            Long companyAId,
+            String companyACode,
+            Long companyBId,
+            String companyBCode,
+            List<InterCompanyReconciliationItem> matchedItems,
+            List<InterCompanyReconciliationItem> unmatchedItems,
+            BigDecimal totalDiscrepancyAmount,
+            boolean reconciled
+    ) {}
+
+    public record InterCompanyReconciliationItem(
+            Long receivableCompanyId,
+            String receivableCompanyCode,
+            Long payableCompanyId,
+            String payableCompanyCode,
+            Long receivableDealerId,
+            Long payableSupplierId,
+            BigDecimal receivableAmount,
+            BigDecimal payableAmount,
+            BigDecimal discrepancyAmount,
+            boolean matched,
+            boolean counterpartyMissing
     ) {}
 }
