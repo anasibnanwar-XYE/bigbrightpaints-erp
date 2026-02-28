@@ -103,7 +103,7 @@ public class InventoryGlReconciliationIT extends AbstractIntegrationTest {
         Long rawMaterialId = rawMaterialService.createRawMaterial(rmRequest).id();
 
         RawMaterialBatchRequest batchRequest = new RawMaterialBatchRequest(
-                "RM-B1", new BigDecimal("20"), "KG", new BigDecimal("4.50"), supplier.getId(), "Receipt for test");
+                "RM-B1", new BigDecimal("20"), "KG", new BigDecimal("4.50"), supplier.getId(), null, null, "Receipt for test");
         Account inventoryBefore = accountRepository.findById(rmInventory.getId()).orElseThrow();
         Account payableBefore = accountRepository.findById(payable.getId()).orElseThrow();
         var receipt = rawMaterialService.recordReceipt(rawMaterialId, batchRequest, null);

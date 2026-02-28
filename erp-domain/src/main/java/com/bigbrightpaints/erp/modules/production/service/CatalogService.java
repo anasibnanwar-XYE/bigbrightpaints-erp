@@ -19,6 +19,10 @@ import com.bigbrightpaints.erp.modules.production.dto.CatalogProductCartonSizeRe
 import com.bigbrightpaints.erp.modules.production.dto.CatalogProductDto;
 import com.bigbrightpaints.erp.modules.production.dto.CatalogProductRequest;
 import com.bigbrightpaints.erp.shared.dto.PageResponse;
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.ConstraintViolationException;
+import jakarta.validation.Validation;
+import jakarta.validation.Validator;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
@@ -33,6 +37,7 @@ import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -40,6 +45,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -50,6 +56,7 @@ public class CatalogService {
     private static final int MAX_PAGE_SIZE = 100;
     private static final Pattern NON_ALPHANUM = Pattern.compile("[^A-Z0-9]");
     private static final Pattern SKU_SEQUENCE_PATTERN = Pattern.compile("-(\\d{3})$");
+    private static final Validator BULK_VALIDATOR = Validation.buildDefaultValidatorFactory().getValidator();
 
     private final CompanyContextService companyContextService;
     private final ProductionBrandRepository brandRepository;
@@ -188,9 +195,7 @@ public class CatalogService {
         for (int index = 0; index < requests.size(); index++) {
             CatalogProductBulkItemRequest item = requests.get(index);
             try {
-                if (item == null || item.product() == null) {
-                    throw ValidationUtils.invalidInput("product payload is required");
-                }
+                validateBulkItem(item);
 
                 ProductMutationOutcome outcome = upsertBulkItem(company, item);
                 results.add(new CatalogProductBulkItemResult(
@@ -213,19 +218,58 @@ public class CatalogService {
                         null));
                 failed++;
             } catch (Exception ex) {
+                String message = resolveBulkFailureMessage(ex);
                 results.add(new CatalogProductBulkItemResult(
                         index,
                         false,
                         "FAILED",
                         null,
                         normalizeOptionalText(item != null ? item.sku() : null),
-                        "Unexpected error: " + ex.getMessage(),
+                        message,
                         null));
                 failed++;
             }
         }
 
         return new CatalogProductBulkResponse(requests.size(), succeeded, failed, results);
+    }
+
+    private void validateBulkItem(CatalogProductBulkItemRequest item) {
+        if (item == null || item.product() == null) {
+            throw ValidationUtils.invalidInput("product: payload is required");
+        }
+        Set<ConstraintViolation<CatalogProductRequest>> violations = BULK_VALIDATOR.validate(item.product());
+        if (!violations.isEmpty()) {
+            throw ValidationUtils.invalidInput(formatConstraintViolations(violations));
+        }
+    }
+
+    private String resolveBulkFailureMessage(Exception ex) {
+        String validationMessage = extractValidationMessage(ex);
+        if (validationMessage != null) {
+            return validationMessage;
+        }
+        return "Unexpected error: " + ex.getMessage();
+    }
+
+    private String extractValidationMessage(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof ConstraintViolationException cve
+                    && cve.getConstraintViolations() != null
+                    && !cve.getConstraintViolations().isEmpty()) {
+                return formatConstraintViolations(cve.getConstraintViolations());
+            }
+            current = current.getCause();
+        }
+        return null;
+    }
+
+    private String formatConstraintViolations(Set<? extends ConstraintViolation<?>> violations) {
+        return violations.stream()
+                .sorted(Comparator.comparing(violation -> violation.getPropertyPath().toString()))
+                .map(violation -> violation.getPropertyPath() + ": " + violation.getMessage())
+                .collect(Collectors.joining("; "));
     }
 
     private ProductMutationOutcome upsertBulkItem(Company company, CatalogProductBulkItemRequest item) {

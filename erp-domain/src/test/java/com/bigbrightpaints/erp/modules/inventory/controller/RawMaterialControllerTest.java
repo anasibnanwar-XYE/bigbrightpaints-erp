@@ -90,6 +90,8 @@ class RawMaterialControllerTest {
                 "KG",
                 new BigDecimal("250.00"),
                 7L,
+                null,
+                null,
                 "test"
         );
     }
@@ -102,6 +104,8 @@ class RawMaterialControllerTest {
                 "KG",
                 new BigDecimal("250.00"),
                 7L,
+                null,
+                null,
                 "test"
         );
     }

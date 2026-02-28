@@ -14,9 +14,9 @@ import java.util.List;
 @Service
 public class FinishedGoodsStockService {
 
-    private final FinishedGoodsWorkflowService workflowService;
+    private final FinishedGoodsWorkflowEngineService workflowService;
 
-    public FinishedGoodsStockService(FinishedGoodsWorkflowService workflowService) {
+    public FinishedGoodsStockService(FinishedGoodsWorkflowEngineService workflowService) {
         this.workflowService = workflowService;
     }
 

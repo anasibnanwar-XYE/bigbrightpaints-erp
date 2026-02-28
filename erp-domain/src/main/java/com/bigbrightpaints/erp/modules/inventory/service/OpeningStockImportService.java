@@ -438,7 +438,11 @@ public class OpeningStockImportService {
         batch.setUnit(unit);
         batch.setCostPerUnit(unitCost);
         batch.setSupplierName(DEFAULT_BATCH_REF);
-        batch.setManufacturedAt(CompanyTime.now(company));
+        Instant manufacturedAt = row.manufacturedDate != null
+                ? row.manufacturedDate.atStartOfDay(resolveZone(company)).toInstant()
+                : CompanyTime.now(company);
+        batch.setManufacturedAt(manufacturedAt);
+        batch.setExpiryDate(row.expiryDate);
         batch.setSource(InventoryBatchSource.ADJUSTMENT);
         RawMaterialBatch savedBatch = rawMaterialBatchRepository.save(batch);
 
@@ -482,6 +486,7 @@ public class OpeningStockImportService {
         batch.setQuantityAvailable(quantity);
         batch.setUnitCost(unitCost);
         batch.setManufacturedAt(manufacturedAt != null ? manufacturedAt : CompanyTime.now(company));
+        batch.setExpiryDate(row.expiryDate);
         batch.setSource(InventoryBatchSource.ADJUSTMENT);
         FinishedGoodBatch savedBatch = finishedGoodBatchRepository.save(batch);
 
@@ -724,6 +729,7 @@ public class OpeningStockImportService {
         private final BigDecimal unitCost;
         private final MaterialType materialType;
         private final LocalDate manufacturedDate;
+        private final LocalDate expiryDate;
         private boolean createdNew;
 
         private OpeningRow(StockType type,
@@ -735,7 +741,8 @@ public class OpeningStockImportService {
                            BigDecimal quantity,
                            BigDecimal unitCost,
                            MaterialType materialType,
-                           LocalDate manufacturedDate) {
+                           LocalDate manufacturedDate,
+                           LocalDate expiryDate) {
             this.type = type;
             this.sku = sku;
             this.name = name;
@@ -746,6 +753,7 @@ public class OpeningStockImportService {
             this.unitCost = unitCost;
             this.materialType = materialType;
             this.manufacturedDate = manufacturedDate;
+            this.expiryDate = expiryDate;
         }
 
         static OpeningRow from(CSVRecord record) {
@@ -759,13 +767,14 @@ public class OpeningStockImportService {
             BigDecimal unitCost = decimal(record, "unit_cost", "cost_per_unit", "cost");
             String materialTypeRaw = readValue(record, "material_type");
             MaterialType materialType = parseMaterialType(materialTypeRaw);
-            LocalDate manufacturedDate = date(record, "manufactured_at", "batch_date");
+            LocalDate manufacturedDate = date(record, "manufactured_at", "manufacturing_date", "manufacturingDate", "batch_date");
+            LocalDate expiryDate = date(record, "expiry_date", "expiryDate", "expiry");
 
             if (!StringUtils.hasText(typeValue) && !StringUtils.hasText(sku) && !StringUtils.hasText(name)) {
                 return null;
             }
             StockType type = parseType(typeValue);
-            return new OpeningRow(type, sku, name, unit, unitType, batchCode, quantity, unitCost, materialType, manufacturedDate);
+            return new OpeningRow(type, sku, name, unit, unitType, batchCode, quantity, unitCost, materialType, manufacturedDate, expiryDate);
         }
 
         String displayKey() {

@@ -421,6 +421,8 @@ class AuditFixesIntegrationTest extends AbstractIntegrationTest {
                 "KG",
                 new BigDecimal("2.50"),
                 supplier.getId(),
+                null,
+                null,
                 null
         );
 

@@ -324,10 +324,20 @@ class PurchasingServiceGoodsReceiptTest {
     @Test
     @DisplayName("createGoodsReceipt partial receipt sets statuses and records batches")
     void createGoodsReceipt_partialReceipt_setsStatusesAndRecordsBatches() {
+        LocalDate manufacturingDate = LocalDate.of(2026, 2, 15);
+        LocalDate expiryDate = LocalDate.of(2026, 12, 31);
         GoodsReceiptRequest request = request(
                 "idem-partial",
                 LocalDate.of(2026, 2, 20),
-                List.of(new GoodsReceiptLineRequest(20L, null, new BigDecimal("4.0000"), "KG", new BigDecimal("5.00"), "line note"))
+                List.of(new GoodsReceiptLineRequest(
+                        20L,
+                        null,
+                        new BigDecimal("4.0000"),
+                        "KG",
+                        new BigDecimal("5.00"),
+                        manufacturingDate,
+                        expiryDate,
+                        "line note"))
         );
 
         when(goodsReceiptRepository.findWithLinesByCompanyAndIdempotencyKey(company, "idem-partial"))
@@ -380,6 +390,8 @@ class PurchasingServiceGoodsReceiptTest {
         assertThat(batchRequest.quantity()).isEqualByComparingTo("4.0000");
         assertThat(batchRequest.costPerUnit()).isEqualByComparingTo("5.00");
         assertThat(batchRequest.supplierId()).isEqualTo(10L);
+        assertThat(batchRequest.manufacturingDate()).isEqualTo(manufacturingDate);
+        assertThat(batchRequest.expiryDate()).isEqualTo(expiryDate);
 
         verify(accountingPeriodService).requireOpenPeriod(company, LocalDate.of(2026, 2, 20));
         verify(purchaseOrderRepository).save(purchaseOrder);
@@ -443,6 +455,8 @@ class PurchasingServiceGoodsReceiptTest {
                         .append(':').append(normalizeAmount(line.quantity()))
                         .append(':').append(normalizeToken(line.unit()))
                         .append(':').append(normalizeAmount(line.costPerUnit()))
+                        .append(':').append(line.manufacturingDate() != null ? line.manufacturingDate() : "")
+                        .append(':').append(line.expiryDate() != null ? line.expiryDate() : "")
                         .append(':').append(normalizeToken(line.notes())));
         return DigestUtils.sha256Hex(signature.toString());
     }

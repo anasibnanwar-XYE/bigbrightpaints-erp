@@ -1246,10 +1246,10 @@ Auth for report controller endpoints: `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUN
    6. Optional size conversion: `POST /api/v1/factory/pack`.
 
 3. **Dispatch flow (`reserve -> preview -> confirm`)**
-   1. Reserve inventory by confirming sales order: `POST /api/v1/sales/orders/{id}/confirm`.
+   1. Inventory reservation is created during sales order create/update flows (`POST/PUT /api/v1/sales/orders...`) via `SalesService.reserveForOrder`; there is no standalone reserve endpoint.
    2. Resolve slip: `GET /api/v1/dispatch/order/{orderId}` (or list via `/pending`).
    3. Show preview modal: `GET /api/v1/dispatch/preview/{slipId}`.
-   4. Confirm actual shipped quantities: `POST /api/v1/dispatch/confirm`.
+   4. Confirm actual shipped quantities: `POST /api/v1/dispatch/confirm` (this finalizes shipment + accounting; it does not perform initial reservation).
    5. Refresh slip and totals: `GET /api/v1/dispatch/slip/{slipId}`.
    6. If needed, cancel generated backorder slip: `POST /api/v1/dispatch/backorder/{slipId}/cancel`.
 
@@ -1260,7 +1260,7 @@ Auth for report controller endpoints: `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUN
 - `MIXED` (domain default/internal) -> `READY_TO_PACK` on `POST /api/v1/factory/production/logs`.
 - `READY_TO_PACK` -> `PARTIAL_PACKED` when `POST /api/v1/factory/packing-records` packs only part of quantity.
 - `READY_TO_PACK`/`PARTIAL_PACKED` -> `FULLY_PACKED` when packed quantity reaches mixed quantity or `POST /packing-records/{id}/complete` runs.
-- `PARTIAL_PACKED` -> `READY_TO_PACK` is possible if cumulative packed quantity returns to zero (service recalculation path).
+- No public API transition moves `PARTIAL_PACKED -> READY_TO_PACK`; frontend should treat packing progress as monotonic until completion.
 - Wastage is materialized at completion (`wastageQuantity`, `wastageReasonCode`).
 
 ##### Dispatch slip lifecycle (`PackagingSlip.status`)
@@ -1268,6 +1268,7 @@ Auth for report controller endpoints: `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUN
 Operational statuses: `PENDING`, `PENDING_STOCK`, `PENDING_PRODUCTION`, `RESERVED`, `BACKORDER`, `DISPATCHED`, `CANCELLED`.
 
 - Auto reservation path: shortages -> `PENDING_PRODUCTION`; no shortages -> `RESERVED`.
+- `PENDING_STOCK` is not an initial reservation state; it is used when dispatch confirmation results in zero shipped quantity while stock is still pending.
 - Manual status endpoint (`PATCH /dispatch/slip/{id}/status`) only allows transitions among: `PENDING`, `PENDING_STOCK`, `PENDING_PRODUCTION`, `RESERVED`.
 - `POST /dispatch/confirm`:
   - if any quantity shipped -> current slip `DISPATCHED`.

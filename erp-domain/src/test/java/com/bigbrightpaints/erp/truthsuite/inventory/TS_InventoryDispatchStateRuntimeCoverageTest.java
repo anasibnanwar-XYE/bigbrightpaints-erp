@@ -27,7 +27,7 @@ import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlip;
 import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipLine;
 import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipRepository;
 import com.bigbrightpaints.erp.modules.inventory.service.BatchNumberService;
-import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsWorkflowService;
+import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsWorkflowEngineService;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderRepository;
 import java.util.ArrayList;
@@ -79,13 +79,13 @@ class TS_InventoryDispatchStateRuntimeCoverageTest {
     @Mock
     private Environment environment;
 
-    private FinishedGoodsWorkflowService service;
+    private FinishedGoodsWorkflowEngineService service;
     private Company company;
     private Instant fixedNow;
 
     @BeforeEach
     void setUp() {
-        service = new FinishedGoodsWorkflowService(
+        service = new FinishedGoodsWorkflowEngineService(
                 companyContextService,
                 finishedGoodRepository,
                 finishedGoodBatchRepository,

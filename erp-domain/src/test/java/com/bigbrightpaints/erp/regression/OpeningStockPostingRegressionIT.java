@@ -10,14 +10,20 @@ import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryMovement;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryMovementRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReference;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovement;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
 import com.bigbrightpaints.erp.modules.inventory.service.OpeningStockImportService;
 import com.bigbrightpaints.erp.modules.reports.dto.ReconciliationSummaryDto;
 import com.bigbrightpaints.erp.modules.reports.service.ReportService;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -44,6 +50,12 @@ class OpeningStockPostingRegressionIT extends AbstractIntegrationTest {
 
     @Autowired
     private RawMaterialMovementRepository rawMaterialMovementRepository;
+
+    @Autowired
+    private RawMaterialRepository rawMaterialRepository;
+
+    @Autowired
+    private RawMaterialBatchRepository rawMaterialBatchRepository;
 
     @Autowired
     private InventoryMovementRepository inventoryMovementRepository;
@@ -89,8 +101,8 @@ class OpeningStockPostingRegressionIT extends AbstractIntegrationTest {
     @Test
     void openingStockImportCreatesJournalAndReconciles() {
         String csv = String.join("\n",
-                "type,sku,name,unit,unit_type,batch_code,quantity,unit_cost,material_type,manufactured_at",
-                "RAW_MATERIAL,RM-OPEN-1,Resin,KG,KG,RM-OPEN-B1,10,5.00,PRODUCTION,",
+                "type,sku,name,unit,unit_type,batch_code,quantity,unit_cost,material_type,manufactured_at,expiry_date",
+                "RAW_MATERIAL,RM-OPEN-1,Resin,KG,KG,RM-OPEN-B1,10,5.00,PRODUCTION,2026-01-05,2027-01-05",
                 "FINISHED_GOOD,FG-OPEN-1,Paint 1L,L,L,FG-OPEN-B1,5,12.50,,2026-01-10"
         );
         MockMultipartFile file = new MockMultipartFile(
@@ -106,6 +118,14 @@ class OpeningStockPostingRegressionIT extends AbstractIntegrationTest {
                         company, InventoryReference.OPENING_STOCK, "RM-OPEN-B1");
         assertThat(rmMovements).hasSize(1);
         assertThat(rmMovements.get(0).getJournalEntryId()).isNotNull();
+
+        RawMaterial rawMaterial = rawMaterialRepository.findByCompanyAndSku(company, "RM-OPEN-1").orElseThrow();
+        RawMaterialBatch rawBatch = rawMaterialBatchRepository.findByRawMaterial(rawMaterial).stream()
+                .filter(batch -> "RM-OPEN-B1".equals(batch.getBatchCode()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(rawBatch.getManufacturedAt()).isEqualTo(Instant.parse("2026-01-05T00:00:00Z"));
+        assertThat(rawBatch.getExpiryDate()).isEqualTo(LocalDate.of(2027, 1, 5));
 
         List<InventoryMovement> fgMovements = inventoryMovementRepository
                 .findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdOrderByCreatedAtAsc(

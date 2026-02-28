@@ -6,9 +6,9 @@ import org.springframework.stereotype.Service;
 @Service
 public class FinishedGoodsReservationService {
 
-    private final FinishedGoodsWorkflowService workflowService;
+    private final FinishedGoodsWorkflowEngineService workflowService;
 
-    public FinishedGoodsReservationService(FinishedGoodsWorkflowService workflowService) {
+    public FinishedGoodsReservationService(FinishedGoodsWorkflowEngineService workflowService) {
         this.workflowService = workflowService;
     }
 

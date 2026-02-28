@@ -10,9 +10,9 @@ import java.util.Map;
 @Service
 public class FinishedGoodsCatalogService {
 
-    private final FinishedGoodsWorkflowService workflowService;
+    private final FinishedGoodsWorkflowEngineService workflowService;
 
-    public FinishedGoodsCatalogService(FinishedGoodsWorkflowService workflowService) {
+    public FinishedGoodsCatalogService(FinishedGoodsWorkflowEngineService workflowService) {
         this.workflowService = workflowService;
     }
 

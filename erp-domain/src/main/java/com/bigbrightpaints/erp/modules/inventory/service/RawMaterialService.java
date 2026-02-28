@@ -43,6 +43,7 @@ import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -269,7 +270,8 @@ public class RawMaterialService {
         batch.setSupplierName(supplier.getName());
         batch.setSupplier(supplier);
         batch.setNotes(request.notes());
-        batch.setManufacturedAt(companyClock.now(material.getCompany()));
+        batch.setManufacturedAt(resolveManufacturedAt(material.getCompany(), request.manufacturingDate()));
+        batch.setExpiryDate(request.expiryDate());
         BigDecimal currentStock = material.getCurrentStock() == null ? BigDecimal.ZERO : material.getCurrentStock();
         material.setCurrentStock(currentStock.add(quantity));
         rawMaterialRepository.save(material);
@@ -304,6 +306,8 @@ public class RawMaterialService {
                 request.unit(),
                 request.costPerUnit(),
                 request.supplierId(),
+                request.manufacturingDate(),
+                request.expiryDate(),
                 request.notes()
         );
         return createBatch(request.rawMaterialId(), batchRequest, idempotencyKey);
@@ -597,8 +601,24 @@ public class RawMaterialService {
                 .addToken(request.unit())
                 .addAmount(request.costPerUnit())
                 .add(request.supplierId() != null ? request.supplierId() : "")
+                .add(request.manufacturingDate() != null ? request.manufacturingDate() : "")
+                .add(request.expiryDate() != null ? request.expiryDate() : "")
                 .addToken(request.notes())
                 .buildHash();
+    }
+
+    private java.time.Instant resolveManufacturedAt(Company company, LocalDate manufacturingDate) {
+        if (manufacturingDate == null) {
+            return companyClock.now(company);
+        }
+        return manufacturingDate.atStartOfDay(resolveZone(company)).toInstant();
+    }
+
+    private ZoneId resolveZone(Company company) {
+        String timezone = company != null && StringUtils.hasText(company.getTimezone())
+                ? company.getTimezone()
+                : "UTC";
+        return ZoneId.of(timezone);
     }
 
     private InventoryBatchSource resolveBatchSource(String referenceType) {

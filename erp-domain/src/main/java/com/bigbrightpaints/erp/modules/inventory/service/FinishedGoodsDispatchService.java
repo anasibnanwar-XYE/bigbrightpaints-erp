@@ -12,9 +12,9 @@ import java.util.List;
 @Service
 public class FinishedGoodsDispatchService {
 
-    private final FinishedGoodsWorkflowService workflowService;
+    private final FinishedGoodsWorkflowEngineService workflowService;
 
-    public FinishedGoodsDispatchService(FinishedGoodsWorkflowService workflowService) {
+    public FinishedGoodsDispatchService(FinishedGoodsWorkflowEngineService workflowService) {
         this.workflowService = workflowService;
     }
 

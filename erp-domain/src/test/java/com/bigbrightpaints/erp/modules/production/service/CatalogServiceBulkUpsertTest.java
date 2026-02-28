@@ -15,6 +15,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
@@ -28,6 +30,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class CatalogServiceBulkUpsertTest {
 
     @Mock private CompanyContextService companyContextService;
@@ -115,5 +118,37 @@ class CatalogServiceBulkUpsertTest {
         assertThat(response.results().get(1).success()).isFalse();
         assertThat(response.results().get(1).action()).isEqualTo("FAILED");
         assertThat(response.results().get(1).message()).contains("cartonSizes mapping is required");
+    }
+
+    @Test
+    void bulkUpsertProducts_blankOrNullRequiredFields_returnsFieldLevelValidationMessages() {
+        CatalogProductBulkItemRequest invalidCreate = new CatalogProductBulkItemRequest(
+                null,
+                null,
+                new CatalogProductRequest(
+                        null,
+                        "   ",
+                        List.of("Blue"),
+                        List.of("4L"),
+                        List.of(new CatalogProductCartonSizeRequest("4L", 12)),
+                        "   ",
+                        null,
+                        null,
+                        true
+                ));
+
+        CatalogProductBulkResponse response = service.bulkUpsertProducts(List.of(invalidCreate));
+
+        assertThat(response.total()).isEqualTo(1);
+        assertThat(response.succeeded()).isEqualTo(0);
+        assertThat(response.failed()).isEqualTo(1);
+        assertThat(response.results()).hasSize(1);
+        assertThat(response.results().getFirst().success()).isFalse();
+        assertThat(response.results().getFirst().message())
+                .contains("brandId")
+                .contains("name")
+                .contains("unitOfMeasure")
+                .contains("hsnCode")
+                .contains("gstRate");
     }
 }

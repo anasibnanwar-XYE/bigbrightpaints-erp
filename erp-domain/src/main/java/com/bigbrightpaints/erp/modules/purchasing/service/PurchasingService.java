@@ -439,14 +439,24 @@ public class PurchasingService {
             purchaseOrder.setStatus("RECEIVED");
         }
 
+        Map<Long, GoodsReceiptLineRequest> requestLinesByMaterial = new HashMap<>();
+        for (GoodsReceiptLineRequest lineRequest : request.lines()) {
+            if (lineRequest.rawMaterialId() != null) {
+                requestLinesByMaterial.put(lineRequest.rawMaterialId(), lineRequest);
+            }
+        }
+
         for (GoodsReceiptLine line : receipt.getLines()) {
             RawMaterial rawMaterial = line.getRawMaterial();
+            GoodsReceiptLineRequest lineRequest = requestLinesByMaterial.get(rawMaterial.getId());
             RawMaterialBatchRequest batchRequest = new RawMaterialBatchRequest(
                     line.getBatchCode(),
                     line.getQuantity(),
                     line.getUnit(),
                     line.getCostPerUnit(),
                     supplier.getId(),
+                    lineRequest != null ? lineRequest.manufacturingDate() : null,
+                    lineRequest != null ? lineRequest.expiryDate() : null,
                     line.getNotes()
             );
             RawMaterialService.ReceiptContext context = new RawMaterialService.ReceiptContext(
@@ -801,6 +811,8 @@ public class PurchasingService {
                         unit,
                         costPerUnit,
                         supplier.getId(),
+                        null,
+                        null,
                         lineCalc.notes()
                 );
                 RawMaterialService.ReceiptContext context = new RawMaterialService.ReceiptContext(
@@ -1697,6 +1709,8 @@ public class PurchasingService {
                             + ":" + IdempotencyUtils.normalizeAmount(line.quantity())
                             + ":" + IdempotencyUtils.normalizeToken(line.unit())
                             + ":" + IdempotencyUtils.normalizeAmount(line.costPerUnit())
+                            + ":" + (line.manufacturingDate() != null ? line.manufacturingDate() : "")
+                            + ":" + (line.expiryDate() != null ? line.expiryDate() : "")
                             + ":" + IdempotencyUtils.normalizeToken(line.notes())
             );
         }
