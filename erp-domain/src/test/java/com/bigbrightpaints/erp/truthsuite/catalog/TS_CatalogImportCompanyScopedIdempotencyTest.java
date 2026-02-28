@@ -18,7 +18,7 @@ class TS_CatalogImportCompanyScopedIdempotencyTest {
         TruthSuiteFileAssert.assertContains(
                 CATALOG_SERVICE,
                 "Company company = companyContextService.requireCurrentCompany();",
-                "String fileHash = sha256Hex(file);",
+                "String fileHash = resolveFileHash(file);",
                 "String normalizedKey = normalizeIdempotencyKey(idempotencyKey, fileHash);",
                 "catalogImportRepository.findByCompanyAndIdempotencyKey(company, normalizedKey)",
                 "assertIdempotencyMatch(existing, fileHash, normalizedKey);",

@@ -2,6 +2,8 @@ package com.bigbrightpaints.erp.modules.production.service;
 
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
+import com.bigbrightpaints.erp.core.idempotency.IdempotencyReservationService;
+import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
@@ -50,7 +52,6 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.util.Collection;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -119,6 +120,7 @@ public class ProductionCatalogService {
     private final AuditService auditService;
     private final TransactionTemplate transactionTemplate;
     private final TransactionTemplate rowTransactionTemplate;
+    private final IdempotencyReservationService idempotencyReservationService = new IdempotencyReservationService();
 
     public ProductionCatalogService(CompanyContextService companyContextService,
                                     ProductionBrandRepository brandRepository,
@@ -151,13 +153,13 @@ public class ProductionCatalogService {
     public CatalogImportResponse importCatalog(MultipartFile file, String idempotencyKey) {
         Company company = companyContextService.requireCurrentCompany();
         if (file == null || file.isEmpty()) {
-            throw new IllegalArgumentException("CSV file is required");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("CSV file is required");
         }
         if (!isSupportedCatalogContentType(file)) {
             throw new ApplicationException(ErrorCode.FILE_INVALID_TYPE,
                     "Catalog import accepts CSV files only");
         }
-        String fileHash = sha256Hex(file);
+        String fileHash = resolveFileHash(file);
         String normalizedKey = normalizeIdempotencyKey(idempotencyKey, fileHash);
 
         CatalogImport existing = catalogImportRepository.findByCompanyAndIdempotencyKey(company, normalizedKey)
@@ -171,7 +173,7 @@ public class ProductionCatalogService {
             CatalogImportResponse response = transactionTemplate.execute(status ->
                     importCatalogInternal(company, file, normalizedKey, fileHash));
             if (response == null) {
-                throw new IllegalStateException("Catalog import failed to return a response");
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Catalog import failed to return a response");
             }
             return response;
         } catch (RuntimeException ex) {
@@ -279,7 +281,7 @@ public class ProductionCatalogService {
             return new CatalogImportResponse(rows.get(), brandsCreated.get(), productsCreated.get(),
                     productsUpdated.get(), rawMaterialsSeeded.get(), errors);
         } catch (IOException ex) {
-            throw new IllegalStateException("Failed to read CSV file", ex);
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Failed to read CSV file", ex);
         }
     }
 
@@ -290,7 +292,7 @@ public class ProductionCatalogService {
                 ProcessOutcome outcome = rowTransactionTemplate.execute(status ->
                         upsertProduct(company, importRow, context));
                 if (outcome == null) {
-                    throw new IllegalStateException("Catalog import row did not return an outcome");
+                    throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Catalog import row did not return an outcome");
                 }
                 return outcome;
             } catch (RuntimeException ex) {
@@ -374,7 +376,7 @@ public class ProductionCatalogService {
     public ProductionProductDto createProduct(ProductCreateRequest request) {
         Company company = companyContextService.requireCurrentCompany();
         if (request.brandId() == null && !StringUtils.hasText(request.brandName())) {
-            throw new IllegalArgumentException("Either brandId or brandName must be provided");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Either brandId or brandName must be provided");
         }
 
         String normalizedCategory = normalizeCategory(request.category());
@@ -382,7 +384,7 @@ public class ProductionCatalogService {
         ProductionBrand brand = resolution.brand();
         String productName = request.productName().trim();
         if (!StringUtils.hasText(productName)) {
-            throw new IllegalArgumentException("Product name is required");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Product name is required");
         }
 
         String sizeLabel = resolveEffectiveSizeLabel(request.sizeLabel(), request.unitOfMeasure());
@@ -390,7 +392,7 @@ public class ProductionCatalogService {
         validateSingleVariantField("sizeLabel", sizeLabel);
         String sku = determineSku(company, brand, normalizedCategory, request.defaultColour(), sizeLabel, request.customSkuCode());
         if (productRepository.findByCompanyAndSkuCode(company, sku).isPresent()) {
-            throw new IllegalArgumentException("SKU " + sku + " already exists");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("SKU " + sku + " already exists");
         }
         assertNotReservedSemiFinishedSku(sku);
 
@@ -482,10 +484,10 @@ public class ProductionCatalogService {
         List<String> globalSizes = expandTokens(request.sizes());
 
         if (colorsByKey.isEmpty()) {
-            throw new IllegalArgumentException("At least one color is required");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("At least one color is required");
         }
         if (globalSizes.isEmpty() && colorSizeMatrix.values().stream().allMatch(entry -> entry.sizes().isEmpty())) {
-            throw new IllegalArgumentException("At least one size is required");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("At least one size is required");
         }
 
         String normalizedCategory = normalizeCategory(request.category());
@@ -507,7 +509,7 @@ public class ProductionCatalogService {
                     ? matrixEntry.sizes()
                     : globalSizes;
             if (sizes.isEmpty()) {
-                throw new IllegalArgumentException("At least one size is required for color '" + color + "'");
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("At least one size is required for color '" + color + "'");
             }
             String colorCode = requireVariantSkuFragment("color", color, 8);
             for (String size : sizes) {
@@ -589,7 +591,7 @@ public class ProductionCatalogService {
             return new VariantBrandPlan(brand.getId(), brand.getName(), brand.getCode());
         }
         if (!StringUtils.hasText(brandName)) {
-            throw new IllegalArgumentException("Brand is required");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Brand is required");
         }
         String effectiveName = brandName.trim();
         if (StringUtils.hasText(providedCode)) {
@@ -696,7 +698,7 @@ public class ProductionCatalogService {
         String source = StringUtils.hasText(requestedPrefix) ? requestedPrefix : brandCode;
         String prefix = sanitizeSkuFragment(source);
         if (!StringUtils.hasText(prefix)) {
-            throw new IllegalArgumentException(
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
                     "Bulk variant skuPrefix/brandCode must contain at least one alphanumeric SKU character");
         }
         return prefix;
@@ -706,7 +708,7 @@ public class ProductionCatalogService {
         String sanitized = sanitizeSkuFragment(rawValue);
         sanitized = maxLength > 0 ? truncate(sanitized, maxLength) : sanitized;
         if (!StringUtils.hasText(sanitized)) {
-            throw new IllegalArgumentException(
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
                     "Bulk variant " + fieldName + " must contain at least one alphanumeric SKU character");
         }
         return sanitized;
@@ -793,7 +795,7 @@ public class ProductionCatalogService {
             return;
         }
         if (MULTI_VALUE_DELIMITER.matcher(value).find()) {
-            throw new IllegalArgumentException(
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
                     "Multiple values in '" + fieldName + "' are not supported for single-product create/update. "
                             + "Use /api/v1/accounting/catalog/products/bulk-variants for color/size matrix input.");
         }
@@ -896,7 +898,7 @@ public class ProductionCatalogService {
         ProductionBrand brand = resolution.brand();
         String category = normalizeCategory(row.category());
         if (!StringUtils.hasText(row.productName())) {
-            throw new IllegalArgumentException("Product name is required");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Product name is required");
         }
         String productName = row.productName().trim();
         String sizeLabel = StringUtils.hasText(row.sizeLabel()) ? row.sizeLabel() : row.unitOfMeasure();
@@ -935,7 +937,7 @@ public class ProductionCatalogService {
             product.setSkuCode(sku);
             product.setActive(true);
         } else if (StringUtils.hasText(sanitizedSku) && !sanitizedSku.equalsIgnoreCase(product.getSkuCode())) {
-            throw new IllegalArgumentException(
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
                     "SKU cannot be changed for an existing product. Existing SKU: "
                             + product.getSkuCode() + ", provided: " + sanitizedSku);
         } else if (product.getBrand() != null && !product.getBrand().getId().equals(brand.getId())) {
@@ -965,7 +967,7 @@ public class ProductionCatalogService {
 
     private BrandResolution resolveBrandForImport(Company company, String brandName, ImportContext context) {
         if (!StringUtils.hasText(brandName)) {
-            throw new IllegalArgumentException("Brand is required");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Brand is required");
         }
         String normalizedName = normalizeKey(brandName);
         if (normalizedName != null) {
@@ -1080,7 +1082,7 @@ public class ProductionCatalogService {
             }
             ProductionProduct byName = productRepository.findByBrandAndProductNameIgnoreCase(brand, productName).orElse(null);
             if (byName != null) {
-                throw new IllegalArgumentException(
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
                         "SKU cannot be changed for existing product " + productName
                                 + ". Existing SKU: " + byName.getSkuCode()
                                 + ", provided: " + sanitizedSku);
@@ -1157,7 +1159,7 @@ public class ProductionCatalogService {
             return new BrandResolution(brand, false);
         }
         if (!StringUtils.hasText(brandName)) {
-            throw new IllegalArgumentException("Brand is required");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Brand is required");
         }
         String effectiveName = brandName.trim();
         if (StringUtils.hasText(providedCode)) {
@@ -1343,7 +1345,7 @@ public class ProductionCatalogService {
             }
             return validatedAccountId;
         } catch (IllegalArgumentException ex) {
-            throw new IllegalArgumentException(
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
                     "Raw material SKU " + sku + " references an invalid inventory account id " + accountId);
         }
     }
@@ -1369,7 +1371,7 @@ public class ProductionCatalogService {
             }
             return validatedAccountId;
         } catch (IllegalArgumentException ex) {
-            throw new IllegalArgumentException(
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
                     "Finished good SKU " + sku + " references an invalid account id " + accountId + " for " + key);
         }
     }
@@ -1380,7 +1382,7 @@ public class ProductionCatalogService {
         }
         String sku = product.getSkuCode();
         if (!StringUtils.hasText(sku)) {
-            throw new IllegalStateException("Production product SKU is required to map finished goods");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Production product SKU is required to map finished goods");
         }
         Long valuationAccountId = requiredMetadataLong(product, "fgValuationAccountId");
         Long cogsAccountId = requiredMetadataLong(product, "fgCogsAccountId");
@@ -1492,7 +1494,7 @@ public class ProductionCatalogService {
     private Long requiredMetadataLong(ProductionProduct product, String key) {
         Long value = metadataLong(product, key);
         if (value == null || value <= 0) {
-            throw new IllegalStateException(
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
                     "Product " + product.getSkuCode() + " is missing required metadata: " + key);
         }
         return value;
@@ -1530,7 +1532,7 @@ public class ProductionCatalogService {
             return;
         }
         if (sku.trim().toUpperCase(Locale.ROOT).endsWith(SEMI_FINISHED_SUFFIX)) {
-            throw new IllegalArgumentException(
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
                     "SKU suffix '" + SEMI_FINISHED_SUFFIX
                             + "' is reserved for internally generated semi-finished inventory");
         }
@@ -1590,13 +1592,13 @@ public class ProductionCatalogService {
 
     private static String sanitizeSku(String sku) {
         if (!StringUtils.hasText(sku)) {
-            throw new IllegalArgumentException("SKU cannot be empty");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("SKU cannot be empty");
         }
         String upper = sku.trim().toUpperCase();
         upper = NON_SKU_CHAR.matcher(upper).replaceAll("");
         upper = upper.replaceAll("-{2,}", "-");
         if (upper.isBlank()) {
-            throw new IllegalArgumentException("SKU cannot be empty");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("SKU cannot be empty");
         }
         return upper;
     }
@@ -1669,7 +1671,7 @@ public class ProductionCatalogService {
         // Final validation: ensure required defaults are present so postings don't mis-map
         for (String key : List.of("fgValuationAccountId", "fgCogsAccountId", "fgRevenueAccountId", "fgTaxAccountId")) {
             if (!hasLongValue(working.get(key))) {
-                throw new IllegalStateException("Default " + key + " is not configured for company " + company.getCode() +
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Default " + key + " is not configured for company " + company.getCode() +
                         ". Configure company default accounts to enable product posting.");
             }
         }
@@ -1705,34 +1707,32 @@ public class ProductionCatalogService {
         return false;
     }
 
+    private String resolveFileHash(MultipartFile file) {
+        try {
+            return IdempotencyUtils.sha256Hex(file.getBytes());
+        } catch (Exception ex) {
+            return Integer.toHexString(file.getOriginalFilename() != null ? file.getOriginalFilename().hashCode() : 0);
+        }
+    }
+
     private String normalizeIdempotencyKey(String idempotencyKey, String fileHash) {
-        String trimmed = StringUtils.hasText(idempotencyKey) ? idempotencyKey.trim() : null;
-        String resolved = StringUtils.hasText(trimmed) ? trimmed : fileHash;
-        if (!StringUtils.hasText(resolved)) {
-            throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
-                    "Idempotency key is required for catalog imports");
-        }
-        if (resolved.length() > 128) {
-            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
-                    "Idempotency key exceeds 128 characters");
-        }
-        return resolved;
+        String resolved = StringUtils.hasText(idempotencyKey)
+                ? IdempotencyUtils.normalizeKey(idempotencyKey)
+                : fileHash;
+        return idempotencyReservationService.requireKey(resolved, "catalog imports");
     }
 
     private void assertIdempotencyMatch(CatalogImport record, String expectedHash, String idempotencyKey) {
-        String storedSignature = StringUtils.hasText(record.getIdempotencyHash())
-                ? record.getIdempotencyHash()
-                : record.getFileHash();
-        if (StringUtils.hasText(storedSignature)) {
-            if (!storedSignature.equals(expectedHash)) {
-                throw new ApplicationException(ErrorCode.CONCURRENCY_CONFLICT,
-                        "Idempotency key already used with different payload")
-                        .withDetail("idempotencyKey", idempotencyKey);
-            }
-            return;
-        }
-        record.setIdempotencyHash(expectedHash);
-        catalogImportRepository.save(record);
+        idempotencyReservationService.assertAndRepairSignature(
+                record,
+                idempotencyKey,
+                expectedHash,
+                persisted -> StringUtils.hasText(persisted.getIdempotencyHash())
+                        ? persisted.getIdempotencyHash()
+                        : persisted.getFileHash(),
+                CatalogImport::setIdempotencyHash,
+                catalogImportRepository::save,
+                () -> idempotencyReservationService.payloadMismatch(idempotencyKey));
     }
 
     private CatalogImportResponse toResponse(CatalogImport record) {
@@ -1770,14 +1770,7 @@ public class ProductionCatalogService {
     }
 
     private boolean isDataIntegrityViolation(Throwable error) {
-        Throwable cursor = error;
-        while (cursor != null) {
-            if (cursor instanceof DataIntegrityViolationException) {
-                return true;
-            }
-            cursor = cursor.getCause();
-        }
-        return false;
+        return idempotencyReservationService.isDataIntegrityViolation(error);
     }
 
     private boolean isVariantDuplicateConflict(Throwable error, Company company, String sku) {
@@ -1812,17 +1805,6 @@ public class ProductionCatalogService {
             cursor = cursor.getCause();
         }
         return false;
-    }
-
-    private String sha256Hex(MultipartFile file) {
-        try {
-            byte[] bytes = file.getBytes();
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(bytes);
-            return java.util.HexFormat.of().formatHex(hash);
-        } catch (Exception ex) {
-            return Integer.toHexString(file.getOriginalFilename() != null ? file.getOriginalFilename().hashCode() : 0);
-        }
     }
 
     private boolean isSupportedCatalogContentType(MultipartFile file) {
@@ -1978,7 +1960,7 @@ public class ProductionCatalogService {
                     }
                     String trimmed = value.trim();
                     if (trimmed.length() > MAX_CATALOG_FIELD_LENGTH) {
-                        throw new IllegalArgumentException("Column '" + column + "' exceeds max length of "
+                        throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Column '" + column + "' exceeds max length of "
                                 + MAX_CATALOG_FIELD_LENGTH + " characters");
                     }
                     return trimmed;
@@ -1995,7 +1977,7 @@ public class ProductionCatalogService {
             try {
                 return new BigDecimal(value.trim());
             } catch (NumberFormatException ex) {
-                throw new IllegalArgumentException("Invalid numeric value in column '" + column + "': " + value);
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Invalid numeric value in column '" + column + "': " + value);
             }
         }
 
@@ -2007,7 +1989,7 @@ public class ProductionCatalogService {
             try {
                 return Long.parseLong(value.trim());
             } catch (NumberFormatException ex) {
-                throw new IllegalArgumentException("Invalid numeric value in column '" + column + "': " + value);
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Invalid numeric value in column '" + column + "': " + value);
             }
         }
 
@@ -2033,7 +2015,7 @@ public class ProductionCatalogService {
                 Map<String, Object> parsed = OBJECT_MAPPER.readValue(raw, MAP_TYPE);
                 return parsed == null || parsed.isEmpty() ? null : parsed;
             } catch (JsonProcessingException ex) {
-                throw new IllegalArgumentException("Invalid JSON in column '" + column + "': " + ex.getOriginalMessage());
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Invalid JSON in column '" + column + "': " + ex.getOriginalMessage());
             }
         }
 
@@ -2062,12 +2044,12 @@ public class ProductionCatalogService {
                 }
                 String[] pair = token.split(":");
                 if (pair.length != 2) {
-                    throw new IllegalArgumentException("Invalid gst_slabs entry '" + token + "'. Expected format STATE:RATE");
+                    throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Invalid gst_slabs entry '" + token + "'. Expected format STATE:RATE");
                 }
                 String state = pair[0].trim();
                 String value = pair[1].trim();
                 if (!StringUtils.hasText(state) || !StringUtils.hasText(value)) {
-                    throw new IllegalArgumentException("Invalid gst_slabs entry '" + token + "'. Expected format STATE:RATE");
+                    throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Invalid gst_slabs entry '" + token + "'. Expected format STATE:RATE");
                 }
                 slabs.put(state.toUpperCase(), coerceDecimal(value, "gst_slabs." + state));
             }
@@ -2097,7 +2079,7 @@ public class ProductionCatalogService {
 
         private static BigDecimal coerceDecimal(Object value, String column) {
             if (value == null) {
-                throw new IllegalArgumentException("Missing numeric value for " + column);
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Missing numeric value for " + column);
             }
             if (value instanceof BigDecimal bigDecimal) {
                 return bigDecimal;
@@ -2109,10 +2091,10 @@ public class ProductionCatalogService {
                 try {
                     return new BigDecimal(stringValue.trim());
                 } catch (NumberFormatException ex) {
-                    throw new IllegalArgumentException("Invalid numeric value '" + stringValue + "' in column '" + column + "'");
+                    throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Invalid numeric value '" + stringValue + "' in column '" + column + "'");
                 }
             }
-            throw new IllegalArgumentException("Invalid numeric value '" + value + "' in column '" + column + "'");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Invalid numeric value '" + value + "' in column '" + column + "'");
         }
     }
 }

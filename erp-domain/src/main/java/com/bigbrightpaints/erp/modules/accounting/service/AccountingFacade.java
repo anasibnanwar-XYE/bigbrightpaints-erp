@@ -717,10 +717,10 @@ public class AccountingFacade {
         }
 
         if (laborAmount.compareTo(BigDecimal.ZERO) > 0 && laborAppliedAccountId == null) {
-            throw new IllegalArgumentException("Labor applied account ID is required");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Labor applied account ID is required");
         }
         if (overheadAmount.compareTo(BigDecimal.ZERO) > 0 && overheadAppliedAccountId == null) {
-            throw new IllegalArgumentException("Overhead applied account ID is required");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Overhead applied account ID is required");
         }
 
         Company company = companyContextService.requireCurrentCompany();

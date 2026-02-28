@@ -328,7 +328,8 @@ public class IntegrationCoordinator {
                     SalesOrder order = salesService.getOrderWithItems(id);
                     return new AutoApprovalResult(order.getStatus(), false);
                 default:
-                    throw new IllegalArgumentException("Unsupported fulfillment status: " + requestedStatus);
+                    throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+                            "Unsupported fulfillment status: " + requestedStatus);
             }
         });
     }

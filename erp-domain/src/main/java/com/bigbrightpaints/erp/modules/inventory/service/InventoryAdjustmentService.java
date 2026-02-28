@@ -91,7 +91,7 @@ public class InventoryAdjustmentService {
             maxAttempts = 3, backoff = @Backoff(delay = 100))
     public InventoryAdjustmentDto createAdjustment(InventoryAdjustmentRequest request) {
         if (request == null || request.lines() == null || request.lines().isEmpty()) {
-            throw new IllegalArgumentException("Adjustment lines are required");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Adjustment lines are required");
         }
         List<InventoryAdjustmentRequest.LineRequest> sortedLines = request.lines().stream()
                 .sorted(Comparator.comparing(InventoryAdjustmentRequest.LineRequest::finishedGoodId))
@@ -136,7 +136,7 @@ public class InventoryAdjustmentService {
                 .map(InventoryAdjustmentRequest.LineRequest::finishedGoodId)
                 .toList();
         if (finishedGoodIds.stream().anyMatch(id -> id == null)) {
-            throw new IllegalArgumentException("Finished good not found");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Finished good not found");
         }
         List<Long> uniqueFinishedGoodIds = finishedGoodIds.stream().distinct().toList();
         List<FinishedGood> lockedFinishedGoods = finishedGoodRepository.lockByCompanyAndIdInOrderById(company, uniqueFinishedGoodIds);
@@ -145,7 +145,7 @@ public class InventoryAdjustmentService {
             finishedGoodsById.put(finishedGood.getId(), finishedGood);
         }
         if (finishedGoodsById.size() != uniqueFinishedGoodIds.size()) {
-            throw new IllegalArgumentException("Finished good not found");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Finished good not found");
         }
         InventoryAdjustmentType type = request.type() == null ? InventoryAdjustmentType.DAMAGED : request.type();
         InventoryAdjustment adjustment = new InventoryAdjustment();
@@ -162,7 +162,7 @@ public class InventoryAdjustmentService {
         for (InventoryAdjustmentRequest.LineRequest lineRequest : sortedLines) {
             FinishedGood finishedGood = finishedGoodsById.get(lineRequest.finishedGoodId());
             if (finishedGood == null) {
-                throw new IllegalArgumentException("Finished good not found");
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Finished good not found");
             }
             InventoryAdjustmentLine line = buildLine(adjustment, finishedGood, lineRequest);
             Long valuationAccountId = line.getFinishedGood().getValuationAccountId();
@@ -174,7 +174,7 @@ public class InventoryAdjustmentService {
             totalAmount = totalAmount.add(line.getAmount());
         }
         if (totalAmount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException("Adjustment amount must be greater than zero");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Adjustment amount must be greater than zero");
         }
         adjustment.setTotalAmount(totalAmount);
         InventoryAdjustment savedDraft = adjustmentRepository.save(adjustment);
@@ -191,7 +191,7 @@ public class InventoryAdjustmentService {
                 memo,
                 savedDraft.getAdjustmentDate());
         if (journalEntry == null) {
-            throw new IllegalStateException("Inventory adjustment journal was not created");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Inventory adjustment journal was not created");
         }
         savedDraft.setJournalEntryId(journalEntry.id());
         savedDraft.setStatus("POSTED");
@@ -210,7 +210,7 @@ public class InventoryAdjustmentService {
         BigDecimal reservedStock = safeQuantity(finishedGood.getReservedStock());
         BigDecimal available = currentStock.subtract(reservedStock);
         if (available.compareTo(quantity) < 0) {
-            throw new IllegalArgumentException("Insufficient available stock for " + finishedGood.getProductCode());
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Insufficient available stock for " + finishedGood.getProductCode());
         }
         InventoryAdjustmentLine line = new InventoryAdjustmentLine();
         line.setAdjustment(adjustment);
@@ -264,7 +264,7 @@ public class InventoryAdjustmentService {
             remaining = remaining.subtract(delta);
         }
         if (remaining.compareTo(BigDecimal.ZERO) > 0) {
-            throw new IllegalStateException("Insufficient batch availability for " + finishedGood.getProductCode());
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Insufficient batch availability for " + finishedGood.getProductCode());
         }
     }
 
@@ -302,7 +302,7 @@ public class InventoryAdjustmentService {
 
     private BigDecimal requirePositive(BigDecimal value, String field) {
         if (value == null || value.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException(field + " must be greater than zero");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(field + " must be greater than zero");
         }
         return value;
     }

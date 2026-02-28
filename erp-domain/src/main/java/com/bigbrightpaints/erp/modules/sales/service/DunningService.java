@@ -45,7 +45,7 @@ public class DunningService {
     public boolean evaluateDealerHold(Long dealerId, int overdueDaysThreshold, BigDecimal overdueAmountThreshold) {
         Company company = companyContextService.requireCurrentCompany();
         Dealer dealer = dealerRepository.findByCompanyAndId(company, dealerId)
-                .orElseThrow(() -> new IllegalArgumentException("Dealer not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Dealer not found"));
         AgingSummaryResponse aging = statementService.dealerAging(dealerId, companyClock.today(company), null);
         BigDecimal overdue = aging.buckets().stream()
                 .filter(b -> b.fromDays() >= overdueDaysThreshold)

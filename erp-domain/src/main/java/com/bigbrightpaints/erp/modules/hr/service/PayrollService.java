@@ -204,7 +204,7 @@ public class PayrollService {
     public PayrollRunDto calculatePayroll(Long payrollRunId) {
         Company company = companyContextService.requireCurrentCompany();
         PayrollRun run = payrollRunRepository.findByCompanyAndId(company, payrollRunId)
-            .orElseThrow(() -> new IllegalArgumentException("Payroll run not found"));
+            .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Payroll run not found"));
 
         if (run.getStatus() != PayrollRun.PayrollStatus.DRAFT) {
             throw new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE,
@@ -371,7 +371,7 @@ public class PayrollService {
     public PayrollRunDto approvePayroll(Long payrollRunId) {
         Company company = companyContextService.requireCurrentCompany();
         PayrollRun run = payrollRunRepository.findByCompanyAndId(company, payrollRunId)
-            .orElseThrow(() -> new IllegalArgumentException("Payroll run not found"));
+            .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Payroll run not found"));
 
         if (run.getStatus() != PayrollRun.PayrollStatus.CALCULATED) {
             throw new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE,
@@ -644,14 +644,14 @@ public class PayrollService {
     public PayrollRunDto getPayrollRun(Long id) {
         Company company = companyContextService.requireCurrentCompany();
         PayrollRun run = payrollRunRepository.findByCompanyAndId(company, id)
-            .orElseThrow(() -> new IllegalArgumentException("Payroll run not found"));
+            .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Payroll run not found"));
         return toDto(run);
     }
 
     public List<PayrollRunLineDto> getPayrollRunLines(Long payrollRunId) {
         Company company = companyContextService.requireCurrentCompany();
         PayrollRun run = payrollRunRepository.findByCompanyAndId(company, payrollRunId)
-            .orElseThrow(() -> new IllegalArgumentException("Payroll run not found"));
+            .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Payroll run not found"));
         return payrollRunLineRepository.findByPayrollRunWithEmployeeOrderByEmployeeFirstNameAsc(run)
             .stream().map(this::toLineDto).toList();
     }

@@ -109,7 +109,7 @@ public class RoleService {
     private RoleDto persistRole(CreateRoleRequest request) {
         String normalizedName = normalizeRoleName(request.name());
         SystemRole definition = SystemRole.fromName(normalizedName)
-                .orElseThrow(() -> new IllegalArgumentException("Unknown platform role: " + normalizedName));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Unknown platform role: " + normalizedName));
         enforceSuperAdminForSharedRoleMutation(definition.getRoleName(), "shared-role-permission-mutation");
 
         // Use pessimistic lock to prevent race condition
@@ -125,7 +125,7 @@ public class RoleService {
                 .toList();
         var permissions = permissionRepository.findByCodeIn(permissionCodes);
         if (permissions.size() != permissionCodes.size()) {
-            throw new IllegalArgumentException("One or more permission codes are invalid.");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("One or more permission codes are invalid.");
         }
 
         role.getPermissions().clear();
@@ -137,7 +137,7 @@ public class RoleService {
 
     private String normalizeRoleName(String roleName) {
         if (!StringUtils.hasText(roleName)) {
-            throw new IllegalArgumentException("Role name is required");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Role name is required");
         }
         return roleName.trim().toUpperCase(Locale.ROOT);
     }

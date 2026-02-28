@@ -46,11 +46,11 @@ public class TenantAdminProvisioningService {
     @Transactional
     public String provisionInitialAdmin(Company company, String firstAdminEmail, String firstAdminDisplayName) {
         if (company == null || company.getId() == null) {
-            throw new IllegalArgumentException("Company must be persisted before admin provisioning");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Company must be persisted before admin provisioning");
         }
         String normalizedEmail = normalizeEmail(firstAdminEmail, "firstAdminEmail");
         if (userAccountRepository.findByEmailIgnoreCase(normalizedEmail).isPresent()) {
-            throw new IllegalArgumentException("First admin email already exists: " + normalizedEmail);
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("First admin email already exists: " + normalizedEmail);
         }
         Role adminRole = roleService.ensureRoleExists("ROLE_ADMIN");
         String temporaryPassword = PasswordUtils.generateTemporaryPassword(14);
@@ -73,18 +73,18 @@ public class TenantAdminProvisioningService {
     @Transactional
     public String resetTenantAdminPassword(Company company, String adminEmail) {
         if (company == null || company.getId() == null) {
-            throw new IllegalArgumentException("Company must exist before resetting admin credentials");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Company must exist before resetting admin credentials");
         }
         String normalizedEmail = normalizeEmail(adminEmail, "adminEmail");
         UserAccount user = userAccountRepository.findByEmailIgnoreCase(normalizedEmail)
-                .orElseThrow(() -> new IllegalArgumentException("Admin user not found: " + normalizedEmail));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Admin user not found: " + normalizedEmail));
         boolean assigned = user.getCompanies().stream()
                 .anyMatch(tenant -> tenant.getId() != null && tenant.getId().equals(company.getId()));
         if (!assigned) {
-            throw new IllegalArgumentException("Admin user is not assigned to company: " + company.getCode());
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Admin user is not assigned to company: " + company.getCode());
         }
         if (!hasAnyAuthority(user, "ROLE_ADMIN", "ROLE_SUPER_ADMIN")) {
-            throw new IllegalArgumentException("Target user is not an admin for company: " + company.getCode());
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Target user is not an admin for company: " + company.getCode());
         }
         String temporaryPassword = PasswordUtils.generateTemporaryPassword(14);
         user.setPasswordHash(passwordEncoder.encode(temporaryPassword));
@@ -115,7 +115,7 @@ public class TenantAdminProvisioningService {
 
     private String normalizeEmail(String email, String fieldName) {
         if (!StringUtils.hasText(email)) {
-            throw new IllegalArgumentException(fieldName + " is required");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(fieldName + " is required");
         }
         return email.trim().toLowerCase(Locale.ROOT);
     }

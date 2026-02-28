@@ -53,7 +53,7 @@ public class AttendanceService {
         
         // Find employee by email (linked to user account)
         Employee employee = employeeRepository.findByCompanyAndEmail(company, username)
-                .orElseThrow(() -> new IllegalArgumentException("No employee record found for user: " + username));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("No employee record found for user: " + username));
         
         return markPresent(employee.getId(), Attendance.AttendanceStatus.PRESENT, null);
     }
@@ -65,7 +65,7 @@ public class AttendanceService {
     public AttendanceDto markPresent(Long employeeId, Attendance.AttendanceStatus status, String remarks) {
         Company company = companyContextService.requireCurrentCompany();
         Employee employee = employeeRepository.findByCompanyAndId(company, employeeId)
-                .orElseThrow(() -> new IllegalArgumentException("Employee not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Employee not found"));
 
         LocalDate today = companyClock.today(company);
         ZoneId zoneId = companyClock.zoneId(company);
@@ -126,7 +126,7 @@ public class AttendanceService {
     public List<AttendanceDto> getEmployeeAttendance(Long employeeId, LocalDate startDate, LocalDate endDate) {
         Company company = companyContextService.requireCurrentCompany();
         Employee employee = employeeRepository.findByCompanyAndId(company, employeeId)
-                .orElseThrow(() -> new IllegalArgumentException("Employee not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Employee not found"));
         
         return attendanceRepository.findByCompanyAndEmployeeAndAttendanceDateBetweenOrderByAttendanceDateAsc(
                 company, employee, startDate, endDate)
@@ -142,7 +142,7 @@ public class AttendanceService {
     public AttendanceSummary getAttendanceSummary(Long employeeId, LocalDate startDate, LocalDate endDate) {
         Company company = companyContextService.requireCurrentCompany();
         Employee employee = employeeRepository.findByCompanyAndId(company, employeeId)
-                .orElseThrow(() -> new IllegalArgumentException("Employee not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Employee not found"));
         
         long presentDays = attendanceRepository.countByEmployeeAndDateRangeAndStatus(
                 company, employee, startDate, endDate, Attendance.AttendanceStatus.PRESENT);

@@ -67,7 +67,7 @@ public class OrderNumberService {
         if (lastError != null) {
             throw lastError;
         }
-        throw new IllegalStateException("Failed to generate order number for company " + company.getCode());
+        throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Failed to generate order number for company " + company.getCode());
     }
 
     private OrderSequence initializeSequence(Company company, int fiscalYear) {

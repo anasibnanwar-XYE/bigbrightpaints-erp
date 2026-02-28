@@ -126,14 +126,14 @@ public class PasswordResetService {
     public void resetPassword(String tokenValue, String newPassword, String confirmPassword) {
         logTenantContextIgnoredIfPresent("reset_password", resolveCorrelationId());
         PasswordResetToken token = tokenRepository.findByToken(tokenValue)
-                .orElseThrow(() -> new IllegalArgumentException("Invalid or expired token"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Invalid or expired token"));
         Instant now = Instant.now();
         if (token.isUsed() || token.isExpired(now)) {
-            throw new IllegalArgumentException("Invalid or expired token");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Invalid or expired token");
         }
         UserAccount user = token.getUser();
         if (!user.isEnabled()) {
-            throw new IllegalArgumentException("User account is disabled");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("User account is disabled");
         }
         passwordService.resetPassword(user, newPassword, confirmPassword);
         user.setFailedLoginAttempts(0);
@@ -213,7 +213,7 @@ public class PasswordResetService {
             return token;
         });
         if (!StringUtils.hasText(tokenValue)) {
-            throw new IllegalStateException("Failed to persist super-admin password reset token");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Failed to persist super-admin password reset token");
         }
         log.info(
                 "event=password_reset.superadmin_forgot.token_issued policy={} correlationId={} email={} outcome=token_persisted",
@@ -266,7 +266,7 @@ public class PasswordResetService {
                 correlationId,
                 maskedEmail,
                 stage);
-        throw new IllegalStateException("Password reset token lifecycle operation requires an active transaction");
+        throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Password reset token lifecycle operation requires an active transaction");
     }
 
     private String classifySuperAdminDispatchFailure(RuntimeException exception, String persistedToken) {

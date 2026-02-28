@@ -122,7 +122,7 @@ public class InvoicePdfService {
             builder.run();
             return out.toByteArray();
         } catch (Exception e) {
-            throw new IllegalStateException("Failed to render invoice PDF", e);
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Failed to render invoice PDF", e);
         }
     }
 

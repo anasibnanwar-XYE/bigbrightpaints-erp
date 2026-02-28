@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.orchestrator.controller;
 
+import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
 import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.orchestrator.dto.ApproveOrderRequest;
 import com.bigbrightpaints.erp.orchestrator.dto.DispatchRequest;
@@ -11,9 +12,6 @@ import com.bigbrightpaints.erp.orchestrator.service.CorrelationIdentifierSanitiz
 import com.bigbrightpaints.erp.orchestrator.service.TraceService;
 import jakarta.validation.Valid;
 import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.security.Principal;
 import java.util.Locale;
 import java.util.Map;
@@ -216,11 +214,11 @@ public class OrchestratorController {
                 return CorrelationIdentifierSanitizer.sanitizeRequiredIdempotencyKey(requestScoped);
             }
             return CorrelationIdentifierSanitizer.sanitizeRequiredIdempotencyKey(
-                    "REQH|" + commandName + "|" + sha256Hex(requestScoped));
+                    "REQH|" + commandName + "|" + IdempotencyUtils.sha256Hex(requestScoped));
         }
         String source = commandName + "|" + canonicalText(companyCode) + "|" + canonicalText(payloadSignature);
         return CorrelationIdentifierSanitizer.sanitizeRequiredIdempotencyKey(
-                "AUTO|" + commandName + "|" + sha256Hex(source));
+                "AUTO|" + commandName + "|" + IdempotencyUtils.sha256Hex(source));
     }
 
     private static String normalizeFulfillmentStatus(String status) {
@@ -243,20 +241,6 @@ public class OrchestratorController {
 
     private static String canonicalAmount(BigDecimal amount) {
         return amount == null ? "" : amount.stripTrailingZeros().toPlainString();
-    }
-
-    private static String sha256Hex(String value) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(value.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hex = new StringBuilder(hash.length * 2);
-            for (byte b : hash) {
-                hex.append(String.format("%02x", b));
-            }
-            return hex.toString();
-        } catch (NoSuchAlgorithmException ex) {
-            throw new IllegalStateException("SHA-256 unavailable", ex);
-        }
     }
 
     @ExceptionHandler(OrchestratorFeatureDisabledException.class)

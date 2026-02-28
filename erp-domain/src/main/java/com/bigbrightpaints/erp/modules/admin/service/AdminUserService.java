@@ -157,7 +157,7 @@ public class AdminUserService {
     public UserDto updateUser(Long id, UpdateUserRequest request) {
         Company company = companyContextService.requireCurrentCompany();
         UserAccount user = userRepository.findByIdAndCompanies_Id(id, company.getId())
-                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("User not found"));
         user.setDisplayName(request.displayName());
         boolean requiresReauth = false;
         if (request.enabled() != null) {
@@ -240,11 +240,11 @@ public class AdminUserService {
 
     private void validateCompanyScope(Company company, List<Long> companyIds) {
         if (companyIds == null || companyIds.isEmpty()) {
-            throw new IllegalArgumentException("User must belong to an active company");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("User must belong to an active company");
         }
         boolean allMatch = companyIds.stream().allMatch(id -> id.equals(company.getId()));
         if (!allMatch) {
-            throw new IllegalArgumentException("User must be assigned to the active company");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("User must be assigned to the active company");
         }
     }
 
@@ -263,7 +263,7 @@ public class AdminUserService {
             return List.of(activeCompany);
         }
         if (companyIds == null || companyIds.isEmpty()) {
-            throw new IllegalArgumentException("User must belong to an active company");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("User must belong to an active company");
         }
         Set<Long> requestedCompanyIds = new LinkedHashSet<>(companyIds);
         Map<Long, Company> companiesById = companyRepository.findAllById(requestedCompanyIds).stream()
@@ -273,7 +273,7 @@ public class AdminUserService {
                     .filter(id -> !companiesById.containsKey(id))
                     .findFirst()
                     .orElse(null);
-            throw new IllegalArgumentException("Company not found: " + missingCompanyId);
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Company not found: " + missingCompanyId);
         }
         return companyIds.stream()
                 .distinct()

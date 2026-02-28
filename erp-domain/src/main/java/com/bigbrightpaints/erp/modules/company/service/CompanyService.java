@@ -142,7 +142,7 @@ public class CompanyService {
     public CompanyDto update(Long id, CompanyRequest request, Set<Company> allowedCompanies) {
         requireSuperAdminForTenantConfigurationUpdate();
         Company company = repository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Company not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Company not found"));
         assertBoundControlPlaneCompanyMatchesTarget(company.getCode());
         String normalizedCompanyCode = normalizeCompanyCode(request.code());
         ensureCompanyCodeAvailableForUpdate(id, normalizedCompanyCode);
@@ -178,7 +178,7 @@ public class CompanyService {
         Authentication authentication = requireSuperAdminForLifecycleControl(companyId, requestedState, lifecycleReason);
 
         Company company = repository.lockById(companyId)
-                .orElseThrow(() -> new IllegalArgumentException("Company not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Company not found"));
         assertBoundControlPlaneCompanyMatchesTarget(company.getCode());
 
         CompanyLifecycleState previousState = resolveLifecycleStateById(company.getId());
@@ -195,7 +195,7 @@ public class CompanyService {
 
     public Company findByCode(String code) {
         return repository.findByCodeIgnoreCase(code)
-                .orElseThrow(() -> new IllegalArgumentException("Company not found: " + code));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Company not found: " + code));
     }
 
     public boolean isRuntimeAccessAllowed(Long companyId) {
@@ -276,7 +276,7 @@ public class CompanyService {
     public CompanyTenantMetricsDto getTenantMetrics(Long companyId) {
         Authentication authentication = requireSuperAdminForTenantMetrics(companyId);
         Company company = repository.findById(companyId)
-                .orElseThrow(() -> new IllegalArgumentException("Company not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Company not found"));
         assertBoundControlPlaneCompanyMatchesTarget(company.getCode());
         auditAuthorityDecision(true, METRICS_READ_REASON, company.getCode(), authentication);
         return buildTenantMetrics(company);
@@ -319,9 +319,9 @@ public class CompanyService {
     public CompanySupportWarningDto issueTenantSupportWarning(Long companyId, TenantSupportWarningRequest request) {
         Authentication authentication = requireSuperAdminForTenantConfigurationUpdate();
         Company company = repository.findById(companyId)
-                .orElseThrow(() -> new IllegalArgumentException("Company not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Company not found"));
         if (request == null || !StringUtils.hasText(request.message())) {
-            throw new IllegalArgumentException("Support warning message is required");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Support warning message is required");
         }
         String warningId = UUID.randomUUID().toString();
         String warningCategory = normalizeWarningCategory(request.warningCategory());
@@ -364,14 +364,14 @@ public class CompanyService {
             Long companyId,
             TenantRuntimePolicyMutationRequest request) {
         if (tenantRuntimeEnforcementService == null) {
-            throw new IllegalStateException("Tenant runtime enforcement service unavailable");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Tenant runtime enforcement service unavailable");
         }
         if (!hasRuntimePolicyMutation(request)) {
-            throw new IllegalArgumentException("Runtime policy mutation payload is required");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Runtime policy mutation payload is required");
         }
         Authentication authentication = requireSuperAdminForTenantRuntimePolicyControl(companyId);
         Company company = repository.findById(companyId)
-                .orElseThrow(() -> new IllegalArgumentException("Company not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Company not found"));
         assertBoundControlPlaneCompanyMatchesTarget(company.getCode());
         TenantRuntimeEnforcementService.TenantRuntimeSnapshot snapshot = tenantRuntimeEnforcementService.updatePolicy(
                 company.getCode(),
@@ -394,7 +394,7 @@ public class CompanyService {
     public CompanyAdminCredentialResetDto resetTenantAdminPassword(Long companyId, String adminEmail, String supportReason) {
         Authentication authentication = requireSuperAdminForTenantConfigurationUpdate();
         Company company = repository.findById(companyId)
-                .orElseThrow(() -> new IllegalArgumentException("Company not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Company not found"));
         assertBoundControlPlaneCompanyMatchesTarget(company.getCode());
         requireCredentialProvisioningReady();
         String resetEmail = tenantAdminProvisioningService.resetTenantAdminPassword(company, adminEmail);
@@ -577,21 +577,21 @@ public class CompanyService {
 
     private String normalizeCompanyCode(String code) {
         if (!StringUtils.hasText(code)) {
-            throw new IllegalArgumentException("Company code is required");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Company code is required");
         }
         return code.trim().toUpperCase(Locale.ROOT);
     }
 
     private void ensureCompanyCodeAvailableForCreate(String companyCode) {
         repository.findByCodeIgnoreCase(companyCode).ifPresent(existing -> {
-            throw new IllegalArgumentException("Company code already exists: " + companyCode);
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Company code already exists: " + companyCode);
         });
     }
 
     private void ensureCompanyCodeAvailableForUpdate(Long companyId, String companyCode) {
         repository.findByCodeIgnoreCase(companyCode).ifPresent(existing -> {
             if (existing.getId() != null && !existing.getId().equals(companyId)) {
-                throw new IllegalArgumentException("Company code already exists: " + companyCode);
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Company code already exists: " + companyCode);
             }
         });
     }
@@ -612,14 +612,14 @@ public class CompanyService {
 
     private void requireCredentialProvisioningDependencies() {
         if (tenantAdminProvisioningService == null) {
-            throw new IllegalStateException("Credential provisioning dependencies are not available");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Credential provisioning dependencies are not available");
         }
     }
 
     private void requireCredentialProvisioningReady() {
         requireCredentialProvisioningDependencies();
         if (!tenantAdminProvisioningService.isCredentialEmailDeliveryEnabled()) {
-            throw new IllegalStateException(
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
                     "Credential email delivery is disabled; enable erp.mail.enabled=true and erp.mail.send-credentials=true");
         }
     }
@@ -633,7 +633,7 @@ public class CompanyService {
             case "ACTIVE" -> TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE;
             case "HOLD" -> TenantRuntimeEnforcementService.TenantRuntimeState.HOLD;
             case "BLOCKED" -> TenantRuntimeEnforcementService.TenantRuntimeState.BLOCKED;
-            default -> throw new IllegalArgumentException("Unsupported runtime holdState: " + holdState);
+            default -> throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Unsupported runtime holdState: " + holdState);
         };
     }
 
@@ -658,7 +658,7 @@ public class CompanyService {
 
     private String normalizeLifecycleReason(String reason) {
         if (!StringUtils.hasText(reason)) {
-            throw new IllegalArgumentException("Lifecycle reason is required");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Lifecycle reason is required");
         }
         return reason.trim();
     }
@@ -822,7 +822,7 @@ public class CompanyService {
         }
         String normalized = requestedLifecycleState.trim().toUpperCase(Locale.ROOT);
         if (!"HOLD".equals(normalized) && !"BLOCKED".equals(normalized)) {
-            throw new IllegalArgumentException("requestedLifecycleState must be HOLD or BLOCKED");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("requestedLifecycleState must be HOLD or BLOCKED");
         }
         return normalized;
     }
@@ -832,7 +832,7 @@ public class CompanyService {
             return 24;
         }
         if (gracePeriodHours < 1 || gracePeriodHours > 720) {
-            throw new IllegalArgumentException("gracePeriodHours must be between 1 and 720");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("gracePeriodHours must be between 1 and 720");
         }
         return gracePeriodHours;
     }

@@ -21,7 +21,7 @@ public record SupplierApprovalDecision(
         makerUserId = requireText(makerUserId, "makerUserId");
         checkerUserId = requireText(checkerUserId, "checkerUserId");
         if (makerUserId.equalsIgnoreCase(checkerUserId)) {
-            throw new IllegalArgumentException("Maker and checker must be different users");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Maker and checker must be different users");
         }
         reasonCode = Objects.requireNonNull(reasonCode, "reasonCode");
         approvedAt = Objects.requireNonNull(approvedAt, "approvedAt");
@@ -39,7 +39,7 @@ public record SupplierApprovalDecision(
             return approval;
         }
         String label = hasText(context) ? context.trim() : "Supplier";
-        throw new IllegalStateException(label + " approval is required");
+        throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(label + " approval is required");
     }
 
     public Map<String, String> immutableAuditMetadata() {
@@ -64,7 +64,7 @@ public record SupplierApprovalDecision(
 
     private static Map<String, String> normalizeCallerMetadata(Map<String, String> auditMetadata) {
         if (auditMetadata == null) {
-            throw new IllegalArgumentException("auditMetadata is required");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("auditMetadata is required");
         }
         Map<String, String> metadata = new LinkedHashMap<>();
         auditMetadata.forEach((key, value) -> {
@@ -77,12 +77,12 @@ public record SupplierApprovalDecision(
 
     private static void requireCallerAuditMetadata(Map<String, String> metadata) {
         if (!hasText(metadata.get("ticket"))) {
-            throw new IllegalArgumentException("auditMetadata.ticket is required");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("auditMetadata.ticket is required");
         }
         Set<String> sourceKeys = Set.of("approvalSource", "source", "sourceSystem", "workflowSource");
         boolean hasSource = sourceKeys.stream().anyMatch(key -> hasText(metadata.get(key)));
         if (!hasSource) {
-            throw new IllegalArgumentException("auditMetadata approval source is required");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("auditMetadata approval source is required");
         }
     }
 
@@ -90,7 +90,7 @@ public record SupplierApprovalDecision(
         if (hasText(value)) {
             return value.trim();
         }
-        throw new IllegalArgumentException(fieldName + " is required");
+        throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(fieldName + " is required");
     }
 
     private static boolean hasText(String value) {

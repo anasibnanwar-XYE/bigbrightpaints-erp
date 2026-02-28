@@ -105,7 +105,7 @@ public class FinishedGoodsService {
     public FinishedGoodDto getFinishedGood(Long id) {
         Company company = companyContextService.requireCurrentCompany();
         FinishedGood fg = finishedGoodRepository.findByCompanyAndId(company, id)
-                .orElseThrow(() -> new IllegalArgumentException("Finished good not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Finished good not found"));
         return toDto(fg);
     }
 
@@ -122,7 +122,7 @@ public class FinishedGoodsService {
     public FinishedGoodDto updateFinishedGood(Long id, FinishedGoodRequest request) {
         Company company = companyContextService.requireCurrentCompany();
         FinishedGood fg = finishedGoodRepository.lockByCompanyAndId(company, id)
-                .orElseThrow(() -> new IllegalArgumentException("Finished good not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Finished good not found"));
         if (request.name() != null) {
             fg.setName(request.name());
         }
@@ -154,7 +154,7 @@ public class FinishedGoodsService {
     public List<FinishedGoodBatchDto> listBatchesForFinishedGood(Long finishedGoodId) {
         Company company = companyContextService.requireCurrentCompany();
         FinishedGood fg = finishedGoodRepository.findByCompanyAndId(company, finishedGoodId)
-                .orElseThrow(() -> new IllegalArgumentException("Finished good not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Finished good not found"));
         return finishedGoodBatchRepository.findByFinishedGoodOrderByManufacturedAtAsc(fg)
                 .stream()
                 .map(this::toBatchDto)
@@ -219,11 +219,11 @@ public class FinishedGoodsService {
         FinishedGood finishedGood = lockFinishedGood(request.finishedGoodId());
         BigDecimal quantity = safeQuantity(request.quantity());
         if (quantity.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException("Batch quantity must be greater than zero");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Batch quantity must be greater than zero");
         }
         BigDecimal unitCost = request.unitCost() != null ? request.unitCost() : BigDecimal.ZERO;
         if (unitCost.compareTo(BigDecimal.ZERO) < 0) {
-            throw new IllegalArgumentException("Batch unit cost cannot be negative");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Batch unit cost cannot be negative");
         }
         FinishedGoodBatch batch = new FinishedGoodBatch();
         batch.setFinishedGood(finishedGood);
@@ -273,7 +273,7 @@ public class FinishedGoodsService {
     public InventoryReservationResult reserveForOrder(SalesOrder order) {
         Company company = companyContextService.requireCurrentCompany();
         SalesOrder managedOrder = salesOrderRepository.findWithItemsByCompanyAndIdForUpdate(company, order.getId())
-                .orElseThrow(() -> new IllegalArgumentException("Sales order not found: " + order.getId()));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Sales order not found: " + order.getId()));
         Optional<PackagingSlip> primarySlip = packagingSlipRepository.findAndLockPrimaryBySalesOrderId(order.getId(), company);
         if (primarySlip.isEmpty()) {
             List<PackagingSlip> backorderSlips = packagingSlipRepository
@@ -287,7 +287,7 @@ public class FinishedGoodsService {
             if (!backorderSlips.isEmpty()) {
                 PackagingSlip backorderSlip = packagingSlipRepository
                         .findAndLockByIdAndCompany(backorderSlips.getFirst().getId(), company)
-                        .orElseThrow(() -> new IllegalArgumentException("Backorder slip not found"));
+                        .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Backorder slip not found"));
                 return reserveForBackorder(managedOrder, backorderSlip);
             }
         }
@@ -498,7 +498,7 @@ public class FinishedGoodsService {
         Company company = companyContextService.requireCurrentCompany();
         List<PackagingSlip> slips = packagingSlipRepository.findAllByCompanyAndSalesOrderIdAndIsBackorderFalse(company, salesOrderId);
         if (slips.isEmpty()) {
-            throw new IllegalArgumentException("Packaging slip not found for order " + salesOrderId);
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Packaging slip not found for order " + salesOrderId);
         }
         if (slips.size() > 1) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
@@ -507,7 +507,7 @@ public class FinishedGoodsService {
         PackagingSlip selected = slips.get(0);
         Long slipId = selected.getId();
         PackagingSlip slip = packagingSlipRepository.findAndLockByIdAndCompany(slipId, company)
-                .orElseThrow(() -> new IllegalArgumentException("Packaging slip not found for order " + salesOrderId));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Packaging slip not found for order " + salesOrderId));
         return markSlipDispatched(salesOrderId, slip);
     }
 
@@ -556,7 +556,7 @@ public class FinishedGoodsService {
         if (reservations.isEmpty()) {
             reservations = rebuildReservationsFromSlip(slip, salesOrderId);
             if (reservations.isEmpty()) {
-                throw new IllegalStateException("No reservations found for order " + salesOrderId);
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("No reservations found for order " + salesOrderId);
             }
         }
 
@@ -609,7 +609,7 @@ public class FinishedGoodsService {
             }
 
             if (fg.getValuationAccountId() == null || fg.getCogsAccountId() == null) {
-                throw new IllegalStateException("Finished good " + fg.getProductCode() + " missing accounting configuration");
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Finished good " + fg.getProductCode() + " missing accounting configuration");
             }
             // Resolve cost before mutating quantities so WAC reflects pre-dispatch average.
             BigDecimal unitCost = resolveDispatchUnitCost(fg, batch);
@@ -709,10 +709,10 @@ public class FinishedGoodsService {
     public DispatchPreviewDto getDispatchPreview(Long packagingSlipId) {
         Company company = companyContextService.requireCurrentCompany();
         PackagingSlip slip = packagingSlipRepository.findByIdAndCompany(packagingSlipId, company)
-                .orElseThrow(() -> new IllegalArgumentException("Packaging slip not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Packaging slip not found"));
 
         if ("DISPATCHED".equalsIgnoreCase(slip.getStatus())) {
-            throw new IllegalStateException("Slip already dispatched");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Slip already dispatched");
         }
 
         SalesOrder order = slip.getSalesOrder();
@@ -792,7 +792,7 @@ public class FinishedGoodsService {
     public DispatchConfirmationResponse confirmDispatch(DispatchConfirmationRequest request, String username) {
         Company company = companyContextService.requireCurrentCompany();
         PackagingSlip slip = packagingSlipRepository.findAndLockByIdAndCompany(request.packagingSlipId(), company)
-                .orElseThrow(() -> new IllegalArgumentException("Packaging slip not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Packaging slip not found"));
 
         if ("DISPATCHED".equalsIgnoreCase(slip.getStatus())) {
             return buildDispatchConfirmationResponse(slip, company);
@@ -851,7 +851,7 @@ public class FinishedGoodsService {
         for (PackagingSlipLine line : slip.getLines()) {
             DispatchConfirmationRequest.LineConfirmation conf = confirmations.get(line.getId());
             if (conf == null) {
-                throw new IllegalArgumentException("Missing confirmation for line " + line.getId());
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Missing confirmation for line " + line.getId());
             }
 
             FinishedGoodBatch batch = line.getFinishedGoodBatch();
@@ -872,10 +872,10 @@ public class FinishedGoodsService {
 
             // Validate shipped quantity
             if (shipped.compareTo(BigDecimal.ZERO) < 0) {
-                throw new IllegalArgumentException("Shipped quantity cannot be negative");
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Shipped quantity cannot be negative");
             }
             if (shipped.compareTo(ordered) > 0) {
-                throw new IllegalArgumentException("Shipped quantity cannot exceed ordered quantity");
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Shipped quantity cannot exceed ordered quantity");
             }
 
             // Update line
@@ -892,7 +892,7 @@ public class FinishedGoodsService {
             if (shipped.compareTo(BigDecimal.ZERO) > 0) {
                 BigDecimal currentStock = fg.getCurrentStock() != null ? fg.getCurrentStock() : BigDecimal.ZERO;
                 if (currentStock.compareTo(shipped) < 0) {
-                    throw new IllegalStateException("Insufficient current stock for FG " + fg.getProductCode() + ": available=" + currentStock + ", requested=" + shipped);
+                    throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Insufficient current stock for FG " + fg.getProductCode() + ": available=" + currentStock + ", requested=" + shipped);
                 }
                 if (batch.getId() != null) {
                     BigDecimal batchReserved = reservedByBatch.getOrDefault(batch.getId(), BigDecimal.ZERO);
@@ -1124,7 +1124,7 @@ public class FinishedGoodsService {
     public DispatchConfirmationResponse getDispatchConfirmation(Long packagingSlipId) {
         Company company = companyContextService.requireCurrentCompany();
         PackagingSlip slip = packagingSlipRepository.findByIdAndCompany(packagingSlipId, company)
-                .orElseThrow(() -> new IllegalArgumentException("Packaging slip not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Packaging slip not found"));
         return buildDispatchConfirmationResponse(slip, company);
     }
 
@@ -1218,7 +1218,7 @@ public class FinishedGoodsService {
     public PackagingSlipDto getPackagingSlip(Long slipId) {
         Company company = companyContextService.requireCurrentCompany();
         PackagingSlip slip = packagingSlipRepository.findByIdAndCompany(slipId, company)
-                .orElseThrow(() -> new IllegalArgumentException("Packaging slip not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Packaging slip not found"));
         return toSlipDto(slip);
     }
 
@@ -1240,7 +1240,7 @@ public class FinishedGoodsService {
         PackagingSlip selected = slips.get(0);
         Long slipId = selected.getId();
         PackagingSlip slip = packagingSlipRepository.findByIdAndCompany(slipId, company)
-                .orElseThrow(() -> new IllegalArgumentException("Packaging slip not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Packaging slip not found"));
         return toSlipDto(slip);
     }
 
@@ -1253,27 +1253,27 @@ public class FinishedGoodsService {
     public PackagingSlipDto updateSlipStatus(Long slipId, String newStatus) {
         Company company = companyContextService.requireCurrentCompany();
         PackagingSlip slip = packagingSlipRepository.findByIdAndCompany(slipId, company)
-                .orElseThrow(() -> new IllegalArgumentException("Packaging slip not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Packaging slip not found"));
         
         if (slip.isBackorder()) {
-            throw new IllegalStateException("Backorder slips can only be changed via backorder workflows");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Backorder slips can only be changed via backorder workflows");
         }
         if ("DISPATCHED".equalsIgnoreCase(slip.getStatus())) {
-            throw new IllegalStateException("Cannot update status of dispatched slip");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Cannot update status of dispatched slip");
         }
         if (!StringUtils.hasText(newStatus)) {
-            throw new IllegalArgumentException("Slip status is required");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Slip status is required");
         }
         String normalized = newStatus.trim().toUpperCase();
         if ("DISPATCHED".equalsIgnoreCase(normalized)) {
-            throw new IllegalStateException("Use dispatch confirmation to mark a slip as dispatched");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Use dispatch confirmation to mark a slip as dispatched");
         }
         // Fail-closed: only allow known operational statuses. CANCELLED/BACKORDER require dedicated workflows.
         if (!List.of("PENDING", "PENDING_PRODUCTION", "RESERVED", "PENDING_STOCK").contains(normalized)) {
-            throw new IllegalArgumentException("Unsupported slip status: " + normalized);
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Unsupported slip status: " + normalized);
         }
         if (!canTransitionStatus(slip.getStatus(), normalized)) {
-            throw new IllegalStateException("Invalid slip status transition: " + slip.getStatus() + " -> " + normalized);
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Invalid slip status transition: " + slip.getStatus() + " -> " + normalized);
         }
         slip.setStatus(normalized);
         packagingSlipRepository.save(slip);
@@ -1287,9 +1287,9 @@ public class FinishedGoodsService {
     public PackagingSlipDto cancelBackorderSlip(Long slipId, String username, String reason) {
         Company company = companyContextService.requireCurrentCompany();
         PackagingSlip slip = packagingSlipRepository.findByIdAndCompany(slipId, company)
-                .orElseThrow(() -> new IllegalArgumentException("Packaging slip not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Packaging slip not found"));
         if (!slip.isBackorder() || !"BACKORDER".equalsIgnoreCase(slip.getStatus())) {
-            throw new IllegalStateException("Only BACKORDER slips can be canceled");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Only BACKORDER slips can be canceled");
         }
 
         List<InventoryReservation> reservations = inventoryReservationRepository
@@ -1549,7 +1549,7 @@ public class FinishedGoodsService {
         BigDecimal safeAvailable = safeQuantity(available);
         BigDecimal safeRequired = safeQuantity(required);
         if (safeAvailable.compareTo(safeRequired) < 0) {
-            throw new IllegalStateException(context + ": available=" + safeAvailable + ", requested=" + safeRequired);
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(context + ": available=" + safeAvailable + ", requested=" + safeRequired);
         }
     }
 
@@ -1579,7 +1579,7 @@ public class FinishedGoodsService {
 
     private List<InventoryReservation> rebuildReservationsFromSlip(PackagingSlip slip, Long salesOrderId) {
         if (slip.getLines() == null || slip.getLines().isEmpty()) {
-            throw new IllegalStateException("No packaging slip lines available to rebuild reservations for order " + salesOrderId);
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("No packaging slip lines available to rebuild reservations for order " + salesOrderId);
         }
         List<InventoryReservation> rebuilt = new ArrayList<>();
         Map<Long, FinishedGood> touchedGoods = new HashMap<>();
@@ -1587,7 +1587,7 @@ public class FinishedGoodsService {
         for (PackagingSlipLine line : slip.getLines()) {
             FinishedGoodBatch batch = line.getFinishedGoodBatch();
             if (batch == null || batch.getFinishedGood() == null) {
-                throw new IllegalStateException("Cannot rebuild reservation without a finished good batch");
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Cannot rebuild reservation without a finished good batch");
             }
             FinishedGood fg = batch.getFinishedGood();
             if (fg.getId() != null) {
@@ -1645,12 +1645,12 @@ public class FinishedGoodsService {
 
     private FinishedGood lockFinishedGood(Company company, Long id) {
         return finishedGoodRepository.lockByCompanyAndId(company, id)
-                .orElseThrow(() -> new IllegalArgumentException("Finished good not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Finished good not found"));
     }
 
     private FinishedGood lockFinishedGood(Company company, String productCode) {
         return finishedGoodRepository.lockByCompanyAndProductCode(company, productCode)
-                .orElseThrow(() -> new IllegalArgumentException("Finished good not found for product code " + productCode));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Finished good not found for product code " + productCode));
     }
 
     private void recordMovement(FinishedGood finishedGood,
@@ -1756,7 +1756,7 @@ public class FinishedGoodsService {
         BigDecimal onHand = current.max(reserved);
         if (onHand.compareTo(BigDecimal.ZERO) > 0) {
             String code = finishedGood.getProductCode() != null ? finishedGood.getProductCode() : finishedGood.getName();
-            throw new IllegalStateException("Dispatch cost is zero for FG " + code + " with on-hand stock");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Dispatch cost is zero for FG " + code + " with on-hand stock");
         }
     }
 
@@ -1906,7 +1906,7 @@ public class FinishedGoodsService {
         Map<Long, FinishedGood> locked = new HashMap<>();
         for (Long id : sortedIds) {
             FinishedGood fg = finishedGoodRepository.lockByCompanyAndId(company, id)
-                    .orElseThrow(() -> new IllegalArgumentException("Finished good not found: " + id));
+                    .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Finished good not found: " + id));
             locked.put(id, fg);
         }
         return locked;

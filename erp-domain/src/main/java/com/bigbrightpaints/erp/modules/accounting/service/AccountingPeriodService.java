@@ -469,10 +469,10 @@ public class AccountingPeriodService {
 
     private void assertChecklistComplete(Company company, AccountingPeriod period) {
         if (!period.isBankReconciled()) {
-            throw new IllegalStateException("Bank reconciliation has not been confirmed for this period");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Bank reconciliation has not been confirmed for this period");
         }
         if (!period.isInventoryCounted()) {
-            throw new IllegalStateException("Inventory count has not been confirmed for this period");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Inventory count has not been confirmed for this period");
         }
         long drafts = journalEntryRepository.countByCompanyAndEntryDateBetweenAndStatusIn(
                 company,
@@ -480,35 +480,35 @@ public class AccountingPeriodService {
                 period.getEndDate(),
                 List.of("DRAFT", "PENDING"));
         if (drafts > 0) {
-            throw new IllegalStateException("There are " + drafts + " draft entries in this period");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("There are " + drafts + " draft entries in this period");
         }
         ChecklistDiagnostics diagnostics = evaluateChecklistDiagnostics(company, period);
         List<String> unresolvedControls = diagnostics.unresolvedControlsInPolicyOrder();
         if (!unresolvedControls.isEmpty()) {
-            throw new IllegalStateException(UNRESOLVED_CONTROLS_PREFIX + formatUnresolvedControls(unresolvedControls));
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(UNRESOLVED_CONTROLS_PREFIX + formatUnresolvedControls(unresolvedControls));
         }
         if (!diagnostics.inventoryReconciled()) {
-            throw new IllegalStateException("Inventory reconciliation variance exceeds tolerance (" +
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Inventory reconciliation variance exceeds tolerance (" +
                     formatVariance(diagnostics.inventoryVariance()) + ")");
         }
         if (!diagnostics.arReconciled()) {
-            throw new IllegalStateException("AR reconciliation variance exceeds tolerance (" +
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("AR reconciliation variance exceeds tolerance (" +
                     formatVariance(diagnostics.arVariance()) + ")");
         }
         if (!diagnostics.apReconciled()) {
-            throw new IllegalStateException("AP reconciliation variance exceeds tolerance (" +
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("AP reconciliation variance exceeds tolerance (" +
                     formatVariance(diagnostics.apVariance()) + ")");
         }
         if (diagnostics.unbalancedJournals() > 0) {
-            throw new IllegalStateException("Unbalanced journals present in this period (" +
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Unbalanced journals present in this period (" +
                     diagnostics.unbalancedJournals() + ")");
         }
         if (diagnostics.unlinkedDocuments() > 0) {
-            throw new IllegalStateException("Documents missing journal links in this period (" +
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Documents missing journal links in this period (" +
                     diagnostics.unlinkedDocuments() + ")");
         }
         if (diagnostics.unpostedDocuments() > 0) {
-            throw new IllegalStateException("Unposted documents exist in this period (" +
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Unposted documents exist in this period (" +
                     diagnostics.unpostedDocuments() + ")");
         }
     }
@@ -516,7 +516,7 @@ public class AccountingPeriodService {
     private void assertNoUninvoicedReceipts(Company company, AccountingPeriod period) {
         long uninvoicedReceipts = countUninvoicedReceipts(company, period);
         if (uninvoicedReceipts > 0) {
-            throw new IllegalStateException("Un-invoiced goods receipts exist in this period (" +
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Un-invoiced goods receipts exist in this period (" +
                     uninvoicedReceipts + ")");
         }
     }

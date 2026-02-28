@@ -26,7 +26,7 @@ public class InvoiceSettlementPolicy {
 
     public void ensureIssuable(Invoice invoice) {
         if (!InvoiceStatus.DRAFT.name().equals(invoice.getStatus())) {
-            throw new IllegalStateException("Only draft invoices can be issued");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Only draft invoices can be issued");
         }
         invoice.setStatus(InvoiceStatus.ISSUED.name());
     }
@@ -44,7 +44,7 @@ public class InvoiceSettlementPolicy {
         validatePositive(amount, "payment amount");
         validateReference(reference);
         if (isVoid(invoice)) {
-            throw new IllegalStateException("Cannot pay a void invoice");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Cannot pay a void invoice");
         }
         if (invoice.getPaymentReferences().contains(reference)) {
             return; // idempotent reprocessing
@@ -52,7 +52,7 @@ public class InvoiceSettlementPolicy {
         BigDecimal currentOutstanding = invoice.getOutstandingAmount() != null 
                 ? invoice.getOutstandingAmount() : BigDecimal.ZERO;
         if (amount.compareTo(currentOutstanding) > 0) {
-            throw new IllegalArgumentException("Payment exceeds outstanding amount");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Payment exceeds outstanding amount");
         }
         invoice.getPaymentReferences().add(reference);
         BigDecimal newOutstanding = currentOutstanding.subtract(amount);
@@ -73,7 +73,7 @@ public class InvoiceSettlementPolicy {
             return;
         }
         if (isVoid(invoice)) {
-            throw new IllegalStateException("Cannot settle a void invoice");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Cannot settle a void invoice");
         }
         if (reference != null && !reference.isBlank() && invoice.getPaymentReferences().contains(reference)) {
             return; // idempotent reprocessing
@@ -81,7 +81,7 @@ public class InvoiceSettlementPolicy {
         BigDecimal currentOutstanding = invoice.getOutstandingAmount() != null 
                 ? invoice.getOutstandingAmount() : BigDecimal.ZERO;
         if (clearedAmount.compareTo(currentOutstanding) > 0) {
-            throw new IllegalArgumentException("Settlement exceeds outstanding amount");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Settlement exceeds outstanding amount");
         }
         BigDecimal newOutstanding = currentOutstanding.subtract(clearedAmount);
         invoice.setOutstandingAmount(newOutstanding);
@@ -113,7 +113,7 @@ public class InvoiceSettlementPolicy {
                 || fxAdjustment.compareTo(BigDecimal.ZERO) != 0) {
             SettlementApprovalDecision resolved = requireSettlementOverrideApproval(approval);
             if (resolved.immutableAuditMetadata().isEmpty()) {
-                throw new IllegalStateException("Settlement override approval audit metadata is required");
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Settlement override approval audit metadata is required");
             }
         }
 
@@ -124,7 +124,7 @@ public class InvoiceSettlementPolicy {
     public SettlementApprovalDecision requireSupplierExceptionApproval(SettlementApprovalDecision approval) {
         SettlementApprovalDecision resolved = SettlementApprovalDecision.requireApproved(approval, "Supplier exception");
         if (resolved.reasonCode() != SettlementApprovalReasonCode.SUPPLIER_EXCEPTION) {
-            throw new IllegalArgumentException("Supplier exception approval must use SUPPLIER_EXCEPTION reason code");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Supplier exception approval must use SUPPLIER_EXCEPTION reason code");
         }
         return resolved;
     }
@@ -132,7 +132,7 @@ public class InvoiceSettlementPolicy {
     private SettlementApprovalDecision requireSettlementOverrideApproval(SettlementApprovalDecision approval) {
         SettlementApprovalDecision resolved = SettlementApprovalDecision.requireApproved(approval, "Settlement override");
         if (resolved.reasonCode() != SettlementApprovalReasonCode.SETTLEMENT_OVERRIDE) {
-            throw new IllegalArgumentException("Settlement override approval must use SETTLEMENT_OVERRIDE reason code");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Settlement override approval must use SETTLEMENT_OVERRIDE reason code");
         }
         return resolved;
     }
@@ -167,11 +167,11 @@ public class InvoiceSettlementPolicy {
         validatePositive(amount, "reversal amount");
         validateReference(reference);
         if (!invoice.getPaymentReferences().contains(reference)) {
-            throw new IllegalArgumentException("No payment found to reverse for reference: " + reference);
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("No payment found to reverse for reference: " + reference);
         }
         BigDecimal restored = invoice.getOutstandingAmount().add(amount);
         if (restored.compareTo(invoice.getTotalAmount()) > 0) {
-            throw new IllegalArgumentException("Reversal exceeds original total");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Reversal exceeds original total");
         }
         invoice.setOutstandingAmount(restored);
         invoice.getPaymentReferences().remove(reference);
@@ -196,7 +196,7 @@ public class InvoiceSettlementPolicy {
 
     private void validatePositive(BigDecimal amount, String label) {
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException("Invalid " + label);
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Invalid " + label);
         }
     }
 
@@ -204,13 +204,13 @@ public class InvoiceSettlementPolicy {
         if (!Objects.requireNonNull(reference, "reference").trim().isEmpty()) {
             return;
         }
-        throw new IllegalArgumentException("Payment reference is required");
+        throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Payment reference is required");
     }
 
     private BigDecimal requireNonNegative(BigDecimal amount, String label) {
         BigDecimal resolved = amount != null ? amount : BigDecimal.ZERO;
         if (resolved.compareTo(BigDecimal.ZERO) < 0) {
-            throw new IllegalArgumentException("Invalid " + label);
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Invalid " + label);
         }
         return resolved;
     }

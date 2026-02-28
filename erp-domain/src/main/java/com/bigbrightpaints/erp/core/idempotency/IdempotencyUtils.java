@@ -45,6 +45,10 @@ public final class IdempotencyUtils {
         return DigestUtils.sha256Hex(value == null ? "" : value);
     }
 
+    public static String sha256Hex(byte[] value) {
+        return DigestUtils.sha256Hex(value == null ? new byte[0] : value);
+    }
+
     public static String sha256Hex(String value, int length) {
         String full = sha256Hex(value);
         return full.substring(0, Math.min(Math.max(length, 0), full.length()));

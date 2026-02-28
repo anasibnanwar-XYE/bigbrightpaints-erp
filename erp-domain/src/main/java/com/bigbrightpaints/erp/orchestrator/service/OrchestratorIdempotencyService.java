@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.orchestrator.service;
 
+import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -10,9 +11,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.util.HexFormat;
 import java.util.UUID;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
@@ -166,13 +164,7 @@ public class OrchestratorIdempotencyService {
     private String hashRequest(Long companyId, String commandName, Object requestPayload) {
         String json = serializeRequestPayload(commandName, requestPayload);
         String material = companyId + "|" + commandName + "|" + json;
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(material.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(hash);
-        } catch (Exception ex) {
-            return Integer.toHexString(material.hashCode());
-        }
+        return IdempotencyUtils.sha256Hex(material);
     }
 
     private String serializeRequestPayload(String commandName, Object requestPayload) {

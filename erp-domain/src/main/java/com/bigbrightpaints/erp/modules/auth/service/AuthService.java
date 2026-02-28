@@ -86,7 +86,7 @@ public class AuthService {
         UserAccount user = null;
         try {
             user = userAccountRepository.findByEmailIgnoreCase(request.email())
-                    .orElseThrow(() -> new IllegalArgumentException("Invalid credentials"));
+                    .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Invalid credentials"));
             enforceLock(user);
             Authentication authentication = authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(request.email(), request.password()));
@@ -147,9 +147,9 @@ public class AuthService {
 
     public Map<String, Object> resetPassword(ResetPasswordRequest request) {
         UserAccount user = userAccountRepository.findByResetToken(request.token())
-            .orElseThrow(() -> new IllegalArgumentException("Invalid or expired token"));
+            .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Invalid or expired token"));
         if (user.getResetExpiry().isBefore(Instant.now())) {
-            throw new IllegalArgumentException("Token expired");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Token expired");
         }
         passwordService.resetPassword(user, request.newPassword(), request.confirmPassword());
         user.setFailedLoginAttempts(0);
@@ -165,15 +165,15 @@ public class AuthService {
 
     public AuthResponse refresh(RefreshTokenRequest request) {
         RefreshTokenService.TokenRecord record = refreshTokenService.consume(request.refreshToken())
-                .orElseThrow(() -> new IllegalArgumentException("Invalid refresh token"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Invalid refresh token"));
         String userEmail = record.userEmail();
         if (tokenBlacklistService.isUserTokenRevoked(userEmail, record.issuedAt())) {
-            throw new IllegalArgumentException("Refresh token revoked");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Refresh token revoked");
         }
         UserAccount user = userAccountRepository.findByEmailIgnoreCase(userEmail)
-                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("User not found"));
         if (!user.isEnabled()) {
-            throw new IllegalArgumentException("User account is disabled");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("User account is disabled");
         }
         enforceLock(user);
         Company company = resolveCompanyForUser(user, request.companyCode());
@@ -191,14 +191,14 @@ public class AuthService {
 
     private Company resolveCompanyForUser(UserAccount user, String companyCode) {
         Company company = companyRepository.findByCodeIgnoreCase(companyCode)
-                .orElseThrow(() -> new IllegalArgumentException("Company not found: " + companyCode));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Company not found: " + companyCode));
         if (hasSuperAdminRole(user)) {
             return company;
         }
         boolean member = user.getCompanies().stream()
                 .anyMatch(c -> c.getCode().equalsIgnoreCase(companyCode));
         if (!member) {
-            throw new IllegalArgumentException("User not assigned to company: " + companyCode);
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("User not assigned to company: " + companyCode);
         }
         return company;
     }

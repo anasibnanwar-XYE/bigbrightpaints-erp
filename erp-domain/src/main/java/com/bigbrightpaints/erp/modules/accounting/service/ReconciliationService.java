@@ -219,10 +219,10 @@ public class ReconciliationService {
     public PeriodReconciliationResult reconcileSubledgersForPeriod(java.time.LocalDate start, java.time.LocalDate end) {
         Company company = companyContextService.requireCurrentCompany();
         if (start == null || end == null) {
-            throw new IllegalArgumentException("start and end dates are required");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("start and end dates are required");
         }
         if (start.isAfter(end)) {
-            throw new IllegalArgumentException("start date must be on or before end date");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("start date must be on or before end date");
         }
         List<Account> allAccounts = accountRepository.findByCompanyOrderByCodeAsc(company);
         List<Dealer> dealers = dealerRepository.findByCompanyOrderByNameAsc(company);

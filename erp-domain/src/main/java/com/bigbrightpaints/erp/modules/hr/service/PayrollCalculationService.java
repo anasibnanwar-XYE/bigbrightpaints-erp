@@ -348,10 +348,10 @@ public class PayrollCalculationService {
     public void recordAdvancePayment(Long employeeId, BigDecimal amount) {
         Company company = companyContextService.requireCurrentCompany();
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException("Advance amount must be positive");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Advance amount must be positive");
         }
         Employee employee = employeeRepository.findByCompanyAndId(company, employeeId)
-                .orElseThrow(() -> new IllegalArgumentException("Employee not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Employee not found"));
 
         BigDecimal currentBalance = employee.getAdvanceBalance() != null ? employee.getAdvanceBalance() : BigDecimal.ZERO;
         BigDecimal newBalance = currentBalance.add(amount);
@@ -423,7 +423,7 @@ public class PayrollCalculationService {
             line.setPayrollRun(run);
             Employee employee = employeesById.get(item.employeeId());
             if (employee == null) {
-                throw new IllegalStateException("Employee not found for payroll run line: " + item.employeeId());
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Employee not found for payroll run line: " + item.employeeId());
             }
             line.setEmployee(employee);
             line.setName(item.employeeName());
@@ -610,7 +610,7 @@ public class PayrollCalculationService {
             builder.run();
             return out.toByteArray();
         } catch (Exception e) {
-            throw new IllegalStateException("Failed to generate payroll PDF", e);
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Failed to generate payroll PDF", e);
         }
     }
 

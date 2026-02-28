@@ -34,7 +34,7 @@ public class CompanyDefaultAccountsService {
                 company.getDefaultCogsAccountId() == null ||
                 company.getDefaultRevenueAccountId() == null ||
                 company.getDefaultTaxAccountId() == null) {
-            throw new IllegalStateException("Company default accounts are not configured for " + company.getCode());
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Company default accounts are not configured for " + company.getCode());
         }
         return new DefaultAccounts(
                 company.getDefaultInventoryAccountId(),
@@ -81,7 +81,7 @@ public class CompanyDefaultAccountsService {
         if (discountAccountId != null) {
             Account account = companyEntityLookup.requireAccount(company, discountAccountId);
             if (!(AccountType.REVENUE.equals(account.getType()) || AccountType.EXPENSE.equals(account.getType()))) {
-                throw new IllegalArgumentException("Discount account must be revenue or expense");
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Discount account must be revenue or expense");
             }
             company.setDefaultDiscountAccountId(account.getId());
         }
@@ -102,7 +102,7 @@ public class CompanyDefaultAccountsService {
 
     private void requireType(Account account, AccountType expected, String purpose) {
         if (!expected.equals(account.getType())) {
-            throw new IllegalArgumentException("Account " + account.getCode() + " is not a valid " + purpose + " account (expected type " + expected + ")");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Account " + account.getCode() + " is not a valid " + purpose + " account (expected type " + expected + ")");
         }
     }
 

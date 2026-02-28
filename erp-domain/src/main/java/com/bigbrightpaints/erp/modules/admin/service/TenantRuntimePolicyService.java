@@ -137,7 +137,7 @@ public class TenantRuntimePolicyService {
         if (HOLD_STATE_ACTIVE.equals(holdState)) {
             holdReason = null;
         } else if (!StringUtils.hasText(holdReason)) {
-            throw new IllegalArgumentException("holdReason is required when holdState is HOLD or BLOCKED");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("holdReason is required when holdState is HOLD or BLOCKED");
         }
         int maxActiveUsers = request.maxActiveUsers() != null ? request.maxActiveUsers() : previous.maxActiveUsers();
         int maxRequestsPerMinute = request.maxRequestsPerMinute() != null
@@ -145,7 +145,7 @@ public class TenantRuntimePolicyService {
         int maxConcurrentRequests = request.maxConcurrentRequests() != null
                 ? request.maxConcurrentRequests() : previous.maxConcurrentRequests();
         if (maxActiveUsers < 1 || maxRequestsPerMinute < 1 || maxConcurrentRequests < 1) {
-            throw new IllegalArgumentException("Quota values must be at least 1");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Quota values must be at least 1");
         }
         return new RuntimePolicy(
                 holdState,

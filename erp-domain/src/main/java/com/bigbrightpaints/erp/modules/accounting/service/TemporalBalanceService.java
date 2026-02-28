@@ -187,7 +187,7 @@ public class TemporalBalanceService {
     public AccountActivityReport getAccountActivity(Long accountId, LocalDate startDate, LocalDate endDate) {
         Company company = companyContextService.requireCurrentCompany();
         Account account = accountRepository.findByCompanyAndId(company, accountId)
-                .orElseThrow(() -> new IllegalArgumentException("Account not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Account not found"));
         
         // Get opening balance (balance as of day before start)
         BigDecimal openingBalance = journalLineRepository.netBalanceUpTo(

@@ -134,7 +134,7 @@ public class RawMaterialService {
     public RawMaterialDto updateRawMaterial(Long id, RawMaterialRequest request) {
         Company company = companyContextService.requireCurrentCompany();
         RawMaterial material = rawMaterialRepository.lockByCompanyAndId(company, id)
-                .orElseThrow(() -> new IllegalArgumentException("Raw material not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Raw material not found"));
         material.setName(request.name());
         material.setSku(request.sku());
         material.setUnitType(request.unitType());
@@ -155,7 +155,7 @@ public class RawMaterialService {
     public void deleteRawMaterial(Long id) {
         Company company = companyContextService.requireCurrentCompany();
         RawMaterial material = rawMaterialRepository.lockByCompanyAndId(company, id)
-                .orElseThrow(() -> new IllegalArgumentException("Raw material not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Raw material not found"));
         rawMaterialRepository.delete(material);
     }
 
@@ -202,7 +202,7 @@ public class RawMaterialService {
         // (which requires an active transaction) to prevent TransactionRequiredException.
         Company company = companyContextService.requireCurrentCompany();
         RawMaterial material = rawMaterialRepository.findByCompanyAndId(company, rawMaterialId)
-                .orElseThrow(() -> new IllegalArgumentException("Raw material not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Raw material not found"));
         return batchRepository.findByRawMaterial(material).stream()
                 .sorted(Comparator.comparing(RawMaterialBatch::getReceivedAt).reversed())
                 .map(this::toBatchDto)
@@ -218,7 +218,7 @@ public class RawMaterialService {
                     .withDetail("setting", "erp.raw-material.intake.enabled");
         }
         if (request == null) {
-            throw new IllegalArgumentException("Raw material batch request is required");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Raw material batch request is required");
         }
         Company company = companyContextService.requireCurrentCompany();
         String normalizedKey = requireIdempotencyKey(idempotencyKey, "manual raw material batch creation");
@@ -234,7 +234,7 @@ public class RawMaterialService {
             RawMaterialBatchDto response = transactionTemplate.execute(status ->
                     createManualIntakeInternal(company, rawMaterialId, request, normalizedKey, signature));
             if (response == null) {
-                throw new IllegalStateException("Manual raw material intake failed to return a batch");
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Manual raw material intake failed to return a batch");
             }
             return response;
         } catch (RuntimeException ex) {
@@ -292,7 +292,7 @@ public class RawMaterialService {
                     .withDetail("setting", "erp.raw-material.intake.enabled");
         }
         if (request == null) {
-            throw new IllegalArgumentException("Raw material intake request is required");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Raw material intake request is required");
         }
         RawMaterialBatchRequest batchRequest = new RawMaterialBatchRequest(
                 request.batchCode(),
@@ -307,7 +307,7 @@ public class RawMaterialService {
 
     private BigDecimal requirePositive(BigDecimal value, String fieldName) {
         if (value == null || value.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException(fieldName + " must be positive");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(fieldName + " must be positive");
         }
         return value;
     }
@@ -316,7 +316,7 @@ public class RawMaterialService {
         // This method is used by write flows (receipts/intake/adjustments). Keep locking semantics.
         Company company = companyContextService.requireCurrentCompany();
         return rawMaterialRepository.lockByCompanyAndId(company, rawMaterialId)
-                .orElseThrow(() -> new IllegalArgumentException("Raw material not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Raw material not found"));
     }
 
     private RawMaterialDto toDto(RawMaterial material) {
@@ -471,10 +471,10 @@ public class RawMaterialService {
             material.setInventoryAccountId(material.getCompany().getDefaultInventoryAccountId());
         }
         if (material.getInventoryAccountId() == null) {
-            throw new IllegalStateException("Raw material " + material.getName() + " is missing an inventory account");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Raw material " + material.getName() + " is missing an inventory account");
         }
         if (supplier.getPayableAccount() == null) {
-            throw new IllegalStateException("Supplier " + supplier.getName() + " is missing a payable account");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Supplier " + supplier.getName() + " is missing a payable account");
         }
     }
 
@@ -492,7 +492,7 @@ public class RawMaterialService {
         int attempts = 0;
         while (batchRepository.existsByRawMaterialAndBatchCode(material, candidate)) {
             if (attempts++ > 10) {
-                throw new IllegalStateException("Unable to allocate unique batch code for raw material "
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Unable to allocate unique batch code for raw material "
                         + describeMaterial(material));
             }
             candidate = batchNumberService.nextRawMaterialBatchCode(material);
@@ -502,7 +502,7 @@ public class RawMaterialService {
 
     private void ensureBatchCodeUnique(RawMaterial material, String batchCode) {
         if (batchRepository.existsByRawMaterialAndBatchCode(material, batchCode)) {
-            throw new IllegalArgumentException("Batch code already exists for raw material "
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Batch code already exists for raw material "
                     + describeMaterial(material) + ": " + batchCode);
         }
     }
@@ -569,7 +569,7 @@ public class RawMaterialService {
                     .withDetail("idempotencyKey", idempotencyKey);
         }
         RawMaterialBatch batch = batchRepository.findById(batchId)
-                .orElseThrow(() -> new IllegalStateException("Raw material batch not found for idempotency key"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Raw material batch not found for idempotency key"));
         return toBatchDto(batch);
     }
 

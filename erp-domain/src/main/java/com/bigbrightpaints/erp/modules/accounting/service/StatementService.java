@@ -55,7 +55,7 @@ public class StatementService {
     public PartnerStatementResponse dealerStatement(Long dealerId, LocalDate from, LocalDate to) {
         Company company = companyContextService.requireCurrentCompany();
         Dealer dealer = dealerRepository.findByCompanyAndId(company, dealerId)
-                .orElseThrow(() -> new IllegalArgumentException("Dealer not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Dealer not found"));
         LocalDate today = companyClock.today(company);
         LocalDate start = from == null ? today.minusMonths(6) : from;
         LocalDate end = to == null ? today : to;
@@ -97,7 +97,7 @@ public class StatementService {
     public PartnerStatementResponse supplierStatement(Long supplierId, LocalDate from, LocalDate to) {
         Company company = companyContextService.requireCurrentCompany();
         Supplier supplier = supplierRepository.findByCompanyAndId(company, supplierId)
-                .orElseThrow(() -> new IllegalArgumentException("Supplier not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Supplier not found"));
         LocalDate today = companyClock.today(company);
         LocalDate start = from == null ? today.minusMonths(6) : from;
         LocalDate end = to == null ? today : to;
@@ -139,7 +139,7 @@ public class StatementService {
     public AgingSummaryResponse dealerAging(Long dealerId, LocalDate asOf, String bucketParam) {
         Company company = companyContextService.requireCurrentCompany();
         Dealer dealer = dealerRepository.findByCompanyAndId(company, dealerId)
-                .orElseThrow(() -> new IllegalArgumentException("Dealer not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Dealer not found"));
         LocalDate ref = asOf == null ? companyClock.today(company) : asOf;
         List<int[]> buckets = parseBuckets(bucketParam);
         List<DealerLedgerEntry> entries =
@@ -207,7 +207,7 @@ public class StatementService {
     public AgingSummaryResponse supplierAging(Long supplierId, LocalDate asOf, String bucketParam) {
         Company company = companyContextService.requireCurrentCompany();
         Supplier supplier = supplierRepository.findByCompanyAndId(company, supplierId)
-                .orElseThrow(() -> new IllegalArgumentException("Supplier not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Supplier not found"));
         LocalDate ref = asOf == null ? companyClock.today(company) : asOf;
         List<int[]> buckets = parseBuckets(bucketParam);
         List<SupplierLedgerEntry> entries =
@@ -468,7 +468,7 @@ public class StatementService {
             builder.run();
             return out.toByteArray();
         } catch (Exception ex) {
-            throw new IllegalStateException("Failed to render " + docType + " PDF", ex);
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Failed to render " + docType + " PDF", ex);
         }
     }
 

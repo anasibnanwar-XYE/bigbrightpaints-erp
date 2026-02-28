@@ -293,7 +293,7 @@ public class CostAllocationService {
     private Account requireAccount(Company company, Long accountId, AccountType expectedType) {
         Account account = companyEntityLookup.requireAccount(company, accountId);
         if (account.getType() != expectedType) {
-            throw new IllegalStateException("Account " + account.getCode() + " is not of type " + expectedType);
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Account " + account.getCode() + " is not of type " + expectedType);
         }
         return account;
     }

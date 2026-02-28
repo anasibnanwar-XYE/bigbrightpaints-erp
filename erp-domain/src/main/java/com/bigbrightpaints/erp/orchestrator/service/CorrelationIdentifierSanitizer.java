@@ -1,11 +1,8 @@
 package com.bigbrightpaints.erp.orchestrator.service;
 
+import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
 import org.springframework.util.StringUtils;
@@ -48,7 +45,7 @@ public final class CorrelationIdentifierSanitizer {
         if (normalized.length() <= MAX_REQUEST_ID_LENGTH) {
             return normalized;
         }
-        return REQUEST_ID_HASH_PREFIX + sha256Hex(normalized);
+        return REQUEST_ID_HASH_PREFIX + IdempotencyUtils.sha256Hex(normalized);
     }
 
     public static String normalizeRequestId(String requestId, String idempotencyKey) {
@@ -63,7 +60,7 @@ public final class CorrelationIdentifierSanitizer {
         if (normalizedIdempotencyKey.length() <= MAX_REQUEST_ID_LENGTH) {
             return normalizedIdempotencyKey;
         }
-        return REQUEST_ID_HASH_PREFIX + sha256Hex(normalizedIdempotencyKey);
+        return REQUEST_ID_HASH_PREFIX + IdempotencyUtils.sha256Hex(normalizedIdempotencyKey);
     }
 
     public static String sanitizeTraceIdOrFallback(String candidate, Supplier<String> fallbackSupplier) {
@@ -164,7 +161,7 @@ public final class CorrelationIdentifierSanitizer {
         if (value == null) {
             return "000000000000";
         }
-        String hex = sha256Hex(value);
+        String hex = IdempotencyUtils.sha256Hex(value);
         if (hex.length() <= LOG_FINGERPRINT_CHARACTERS) {
             return hex;
         }
@@ -178,12 +175,4 @@ public final class CorrelationIdentifierSanitizer {
         return value.substring(0, Math.max(0, maxLength));
     }
 
-    private static String sha256Hex(String value) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            return HexFormat.of().formatHex(digest.digest(value.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException ex) {
-            return Integer.toHexString(value.hashCode());
-        }
-    }
 }

@@ -155,7 +155,7 @@ public class PurchasingService {
     public PurchaseOrderResponse getPurchaseOrder(Long id) {
         Company company = companyContextService.requireCurrentCompany();
         PurchaseOrder order = purchaseOrderRepository.findByCompanyAndId(company, id)
-                .orElseThrow(() -> new IllegalArgumentException("Purchase order not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Purchase order not found"));
         return toPurchaseOrderResponse(order);
     }
 
@@ -167,7 +167,7 @@ public class PurchasingService {
         String orderNumber = request.orderNumber().trim();
         purchaseOrderRepository.lockByCompanyAndOrderNumberIgnoreCase(company, orderNumber)
                 .ifPresent(existing -> {
-                    throw new IllegalArgumentException("Order number already used for this company");
+                    throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Order number already used for this company");
                 });
 
         List<PurchaseOrderLineRequest> sortedLines = request.lines().stream()
@@ -196,7 +196,7 @@ public class PurchasingService {
         for (PurchaseOrderLineRequest lineRequest : request.lines()) {
             RawMaterial rawMaterial = lockedMaterials.get(lineRequest.rawMaterialId());
             if (rawMaterial == null) {
-                throw new IllegalArgumentException("Raw material not found");
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Raw material not found");
             }
             BigDecimal quantity = positive(lineRequest.quantity(), "quantity");
             BigDecimal costPerUnit = positive(lineRequest.costPerUnit(), "costPerUnit");
@@ -238,13 +238,13 @@ public class PurchasingService {
     public GoodsReceiptResponse getGoodsReceipt(Long id) {
         Company company = companyContextService.requireCurrentCompany();
         GoodsReceipt receipt = goodsReceiptRepository.findByCompanyAndId(company, id)
-                .orElseThrow(() -> new IllegalArgumentException("Goods receipt not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Goods receipt not found"));
         return toGoodsReceiptResponse(receipt);
     }
 
     public GoodsReceiptResponse createGoodsReceipt(GoodsReceiptRequest request) {
         if (request == null || request.lines() == null || request.lines().isEmpty()) {
-            throw new IllegalArgumentException("Goods receipt lines are required");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Goods receipt lines are required");
         }
         Company company = companyContextService.requireCurrentCompany();
         String idempotencyKey = normalizeIdempotencyKey(request.idempotencyKey());
@@ -290,13 +290,13 @@ public class PurchasingService {
                                                            String idempotencyKey,
                                                            String requestSignature) {
         PurchaseOrder purchaseOrder = purchaseOrderRepository.lockByCompanyAndId(company, request.purchaseOrderId())
-                .orElseThrow(() -> new IllegalArgumentException("Purchase order not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Purchase order not found"));
         Supplier supplier = purchaseOrder.getSupplier();
 
         String receiptNumber = request.receiptNumber().trim();
         goodsReceiptRepository.lockByCompanyAndReceiptNumberIgnoreCase(company, receiptNumber)
                 .ifPresent(existing -> {
-                    throw new IllegalArgumentException("Receipt number already used for this company");
+                    throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Receipt number already used for this company");
                 });
         if ("CLOSED".equalsIgnoreCase(purchaseOrder.getStatus())) {
             throw new ApplicationException(ErrorCode.BUSINESS_CONSTRAINT_VIOLATION,
@@ -471,14 +471,14 @@ public class PurchasingService {
         Company company = companyContextService.requireCurrentCompany();
         Supplier supplier = companyEntityLookup.requireSupplier(company, request.supplierId());
         if (supplier.getPayableAccount() == null) {
-            throw new IllegalStateException("Supplier " + supplier.getName() + " is missing a payable account");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Supplier " + supplier.getName() + " is missing a payable account");
         }
         String invoiceNumber = request.invoiceNumber().trim();
 
         // Use pessimistic lock to prevent duplicate invoice race condition
         purchaseRepository.lockByCompanyAndInvoiceNumberIgnoreCase(company, invoiceNumber)
                 .ifPresent(existing -> {
-                    throw new IllegalArgumentException("Invoice number already used for this company");
+                    throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Invoice number already used for this company");
                 });
 
         GoodsReceipt goodsReceipt = goodsReceiptRepository.lockByCompanyAndId(company, request.goodsReceiptId())
@@ -556,7 +556,7 @@ public class PurchasingService {
         for (RawMaterialPurchaseLineRequest lineRequest : request.lines()) {
             RawMaterial rawMaterial = lockedMaterials.get(lineRequest.rawMaterialId());
             if (rawMaterial == null) {
-                throw new IllegalArgumentException("Raw material not found");
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Raw material not found");
             }
             BigDecimal quantity = positive(lineRequest.quantity(), "quantity");
             BigDecimal costPerUnit = positive(lineRequest.costPerUnit(), "costPerUnit");
@@ -650,7 +650,7 @@ public class PurchasingService {
 
             Long inventoryAccountId = rawMaterial.getInventoryAccountId();
             if (inventoryAccountId == null) {
-                throw new IllegalStateException("Raw material " + rawMaterial.getName() + " is missing an inventory account");
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Raw material " + rawMaterial.getName() + " is missing an inventory account");
             }
 
             inventoryTotal = inventoryTotal.add(lineNet);
@@ -871,23 +871,23 @@ public class PurchasingService {
         Company company = companyContextService.requireCurrentCompany();
         Supplier supplier = companyEntityLookup.requireSupplier(company, request.supplierId());
         if (supplier.getPayableAccount() == null) {
-            throw new IllegalStateException("Supplier " + supplier.getName() + " is missing a payable account");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Supplier " + supplier.getName() + " is missing a payable account");
         }
         RawMaterialPurchase purchase = purchaseRepository.lockByCompanyAndId(company, request.purchaseId())
-                .orElseThrow(() -> new IllegalArgumentException("Raw material purchase not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Raw material purchase not found"));
         if (purchase.getSupplier() == null || !purchase.getSupplier().getId().equals(supplier.getId())) {
-            throw new IllegalArgumentException("Purchase does not belong to the supplier");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Purchase does not belong to the supplier");
         }
         RawMaterial material = rawMaterialRepository.lockByCompanyAndId(company, request.rawMaterialId())
-                .orElseThrow(() -> new IllegalArgumentException("Raw material not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Raw material not found"));
         boolean materialInPurchase = purchase.getLines().stream()
                 .anyMatch(line -> line.getRawMaterial() != null
                         && line.getRawMaterial().getId().equals(material.getId()));
         if (!materialInPurchase) {
-            throw new IllegalArgumentException("Purchase does not include raw material " + material.getName());
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Purchase does not include raw material " + material.getName());
         }
         if (material.getInventoryAccountId() == null) {
-            throw new IllegalStateException("Raw material " + material.getName() + " is missing an inventory account mapping");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Raw material " + material.getName() + " is missing an inventory account mapping");
         }
         BigDecimal quantity = positive(request.quantity(), "quantity");
         BigDecimal unitCost = positive(request.unitCost(), "unitCost");
@@ -942,7 +942,7 @@ public class PurchasingService {
         // Use atomic UPDATE to prevent negative stock under concurrent access
         int updated = rawMaterialRepository.deductStockIfSufficient(material.getId(), quantity);
         if (updated == 0) {
-            throw new IllegalArgumentException("Cannot return more than on-hand inventory for " + material.getName());
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Cannot return more than on-hand inventory for " + material.getName());
         }
 
         List<RawMaterialMovement> movements = issueReturnFromBatches(material, quantity, unitCost, reference, entry.id());
@@ -1057,7 +1057,7 @@ public class PurchasingService {
 
             int updated = rawMaterialBatchRepository.deductQuantityIfSufficient(batch.getId(), take);
             if (updated == 0) {
-                throw new IllegalArgumentException(
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
                         "Concurrent modification detected or insufficient quantity for batch " + batch.getBatchCode());
             }
 
@@ -1076,7 +1076,7 @@ public class PurchasingService {
         }
 
         if (remaining.compareTo(BigDecimal.ZERO) > 0) {
-            throw new IllegalArgumentException("Insufficient batch availability for " + material.getName());
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Insufficient batch availability for " + material.getName());
         }
         return movements;
     }
@@ -1262,12 +1262,12 @@ public class PurchasingService {
 
     private RawMaterial requireMaterial(Company company, Long rawMaterialId) {
         return rawMaterialRepository.lockByCompanyAndId(company, rawMaterialId)
-                .orElseThrow(() -> new IllegalArgumentException("Raw material not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Raw material not found"));
     }
 
     private BigDecimal positive(BigDecimal value, String field) {
         if (value == null || value.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException("Value for " + field + " must be greater than zero");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Value for " + field + " must be greater than zero");
         }
         return value;
     }
@@ -1357,7 +1357,7 @@ public class PurchasingService {
             return BigDecimal.ZERO;
         }
         if (value.compareTo(BigDecimal.ZERO) < 0) {
-            throw new IllegalArgumentException("Value for " + field + " must be zero or greater");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Value for " + field + " must be zero or greater");
         }
         return value;
     }
@@ -1524,11 +1524,11 @@ public class PurchasingService {
             return BigDecimal.ZERO;
         }
         if (rate.compareTo(BigDecimal.ZERO) < 0) {
-            throw new IllegalArgumentException("GST rate must be zero or positive");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("GST rate must be zero or positive");
         }
         BigDecimal sanitized = rate.setScale(2, RoundingMode.HALF_UP);
         if (sanitized.compareTo(MAX_GST_RATE) > 0) {
-            throw new IllegalArgumentException("Unsupported GST rate " + sanitized + "%. Max allowed is " + MAX_GST_RATE);
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Unsupported GST rate " + sanitized + "%. Max allowed is " + MAX_GST_RATE);
         }
         return sanitized.setScale(4, RoundingMode.HALF_UP);
     }

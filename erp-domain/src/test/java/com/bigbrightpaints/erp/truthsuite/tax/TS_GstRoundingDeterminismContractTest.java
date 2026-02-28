@@ -44,14 +44,14 @@ class TS_GstRoundingDeterminismContractTest {
                 SALES_SERVICE,
                 "if (!StringUtils.hasText(value)) {",
                 "return GstTreatment.NONE;",
-                "throw new IllegalArgumentException(\"Unknown GST treatment \" + value);");
+                "throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(\"Unknown GST treatment \" + value);");
 
         TruthSuiteFileAssert.assertContains(
                 PURCHASING_SERVICE,
                 "if (lineRequest != null && lineRequest.taxRate() != null) {",
                 "if (rawMaterial != null && rawMaterial.getGstRate() != null) {",
                 "if (company != null && company.getDefaultGstRate() != null) {",
-                "throw new IllegalArgumentException(\"GST rate must be zero or positive\");",
+                "throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(\"GST rate must be zero or positive\");",
                 "return BigDecimal.ZERO;");
 
         TruthSuiteFileAssert.assertContains(

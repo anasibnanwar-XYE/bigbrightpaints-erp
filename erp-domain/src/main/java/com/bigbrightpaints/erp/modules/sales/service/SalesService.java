@@ -478,7 +478,7 @@ public class SalesService {
                             requestPaymentMode
                     ));
             if (created == null) {
-                throw new IllegalStateException("Failed to create sales order for " + idempotencyKey);
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Failed to create sales order for " + idempotencyKey);
             }
             return created;
         } catch (DataIntegrityViolationException ex) {
@@ -523,9 +523,9 @@ public class SalesService {
         if (request.dealerId() != null) {
             // Lock dealer early to prevent concurrent credit limit races
             dealer = dealerRepository.lockByCompanyAndId(company, request.dealerId())
-                    .orElseThrow(() -> new IllegalArgumentException("Dealer not found"));
+                    .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Dealer not found"));
             if ("ON_HOLD".equalsIgnoreCase(dealer.getStatus())) {
-                throw new IllegalStateException("Dealer " + dealer.getName() + " is on hold");
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Dealer " + dealer.getName() + " is on hold");
             }
         }
         List<PricedOrderLine> items = resolveOrderItems(company, request.items(), gstTreatment, orderLevelRate);
@@ -786,7 +786,7 @@ public class SalesService {
         if (request.dealerId() != null) {
             dealer = requireDealer(request.dealerId());
             if ("ON_HOLD".equalsIgnoreCase(dealer.getStatus())) {
-                throw new IllegalStateException("Dealer " + dealer.getName() + " is on hold");
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Dealer " + dealer.getName() + " is on hold");
             }
         }
         List<PricedOrderLine> items = resolveOrderItems(order.getCompany(), request.items(), gstTreatment, orderLevelRate);
@@ -1050,7 +1050,7 @@ public class SalesService {
     public SalesOrder getOrderWithItems(Long id) {
         Company company = companyContextService.requireCurrentCompany();
         return salesOrderRepository.findWithItemsByCompanyAndId(company, id)
-                .orElseThrow(() -> new IllegalArgumentException("Order not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Order not found"));
     }
 
     @Transactional
@@ -1168,7 +1168,7 @@ public class SalesService {
         try {
             return GstTreatment.valueOf(normalized);
         } catch (IllegalArgumentException ex) {
-            throw new IllegalArgumentException("Unknown GST treatment " + value);
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Unknown GST treatment " + value);
         }
     }
 
@@ -1178,7 +1178,7 @@ public class SalesService {
         }
         BigDecimal sanitized = rate.max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
         if (sanitized.compareTo(MAX_GST_RATE) > 0) {
-            throw new IllegalArgumentException("Unsupported GST rate " + sanitized + "%. Max allowed is " + MAX_GST_RATE);
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Unsupported GST rate " + sanitized + "%. Max allowed is " + MAX_GST_RATE);
         }
         return sanitized.setScale(4, RoundingMode.HALF_UP);
     }
@@ -1398,7 +1398,7 @@ public class SalesService {
             return BigDecimal.ZERO;
         }
         ProductionProduct product = productionProductRepository.findByCompanyAndSkuCode(company, sku)
-                .orElseThrow(() -> new IllegalArgumentException("SKU " + sku + " not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("SKU " + sku + " not found"));
         return resolveMinAllowedPrice(product);
     }
 
@@ -1407,27 +1407,27 @@ public class SalesService {
                                                     GstTreatment gstTreatment,
                                                     BigDecimal orderLevelRate) {
         if (requests == null || requests.isEmpty()) {
-            throw new IllegalArgumentException("At least one order item is required");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("At least one order item is required");
         }
         List<PricedOrderLine> resolved = new ArrayList<>();
         for (SalesOrderItemRequest request : requests) {
             String sku = request.productCode() != null ? request.productCode().trim() : "";
             if (!StringUtils.hasText(sku)) {
-                throw new IllegalArgumentException("SKU is required for each order item");
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("SKU is required for each order item");
             }
             ProductionProduct product = productionProductRepository.findByCompanyAndSkuCode(company, sku)
-                    .orElseThrow(() -> new IllegalArgumentException("Unknown SKU " + sku));
+                    .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Unknown SKU " + sku));
             if (!product.isActive()) {
-                throw new IllegalStateException("SKU " + sku + " is inactive");
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("SKU " + sku + " is inactive");
             }
             FinishedGood finishedGood = finishedGoodRepository.findByCompanyAndProductCode(company, sku)
-                    .orElseThrow(() -> new IllegalStateException("Finished good not configured for SKU " + sku));
+                    .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Finished good not configured for SKU " + sku));
             requireRevenueAccount(finishedGood);
             BigDecimal quantity = normalizePositive(request.quantity(), "quantity", sku);
             BigDecimal unitPrice = request.unitPrice() != null ? request.unitPrice() : product.getBasePrice();
             BigDecimal minAllowed = resolveMinAllowedPrice(product);
             if (minAllowed.compareTo(BigDecimal.ZERO) > 0 && unitPrice.compareTo(minAllowed) < 0) {
-                throw new IllegalArgumentException(String.format(
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(String.format(
                         "Unit price %.2f for SKU %s is below the minimum allowed %.2f.",
                         unitPrice, sku, minAllowed));
             }
@@ -1444,7 +1444,7 @@ public class SalesService {
             BigDecimal normalizedRate = normalizePercent(gstRate);
             if (requiresTaxAccount(gstTreatment, orderLevelRate, normalizedRate)
                     && finishedGood.getTaxAccountId() == null) {
-                throw new IllegalStateException("Finished good " + sku + " is missing a GST liability account");
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Finished good " + sku + " is missing a GST liability account");
             }
             resolved.add(new PricedOrderLine(product, description, quantity, unitPrice, normalizedRate));
         }
@@ -1453,7 +1453,7 @@ public class SalesService {
 
     private BigDecimal normalizePositive(BigDecimal value, String field, String sku) {
         if (value == null || value.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException("Order item " + field + " must be positive for SKU " + sku);
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Order item " + field + " must be positive for SKU " + sku);
         }
         return value;
     }
@@ -1463,7 +1463,7 @@ public class SalesService {
             return;
         }
         if (!MoneyUtils.withinTolerance(provided, computed, new BigDecimal("0.01"))) {
-            throw new IllegalArgumentException(String.format(
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(String.format(
                     "Order total %.2f does not match computed total %.2f", provided, computed));
         }
     }
@@ -1473,7 +1473,7 @@ public class SalesService {
             return;
         }
         Dealer lockedDealer = dealerRepository.lockByCompanyAndId(company, dealer.getId())
-                .orElseThrow(() -> new IllegalArgumentException("Dealer not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Dealer not found"));
         BigDecimal limit = lockedDealer.getCreditLimit();
         if (limit == null || limit.compareTo(BigDecimal.ZERO) <= 0) {
             return;
@@ -1634,7 +1634,7 @@ public class SalesService {
 
     private void requireRevenueAccount(FinishedGood finishedGood) {
         if (finishedGood.getRevenueAccountId() == null) {
-            throw new IllegalStateException("Finished good " + finishedGood.getProductCode()
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Finished good " + finishedGood.getProductCode()
                     + " is missing a revenue account");
         }
     }
@@ -2054,7 +2054,7 @@ public class SalesService {
         }
         BigDecimal normalized = normalizePercent(source);
         if (normalized.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException("GST rate is required when gstTreatment is ORDER_TOTAL");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("GST rate is required when gstTreatment is ORDER_TOTAL");
         }
         return normalized;
     }

@@ -175,7 +175,7 @@ public class TenantRuntimeEnforcementService {
         }
 
         Company company = companyRepository.findByCodeIgnoreCase(normalizedCompany)
-                .orElseThrow(() -> new IllegalArgumentException("Company not found: " + normalizedCompany));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Company not found: " + normalizedCompany));
         long activeUsers = userAccountRepository.countDistinctByCompanies_IdAndEnabledTrue(company.getId());
         int maxActiveUsers = policy.effectiveMaxActiveUsers(defaultMaxActiveUsers);
         if (activeUsers > maxActiveUsers) {
@@ -217,7 +217,7 @@ public class TenantRuntimeEnforcementService {
         String normalizedCompany = requireCompanyCode(companyCode);
         // Force fail-closed for unknown company code updates.
         companyRepository.findByCodeIgnoreCase(normalizedCompany)
-                .orElseThrow(() -> new IllegalArgumentException("Company not found: " + normalizedCompany));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Company not found: " + normalizedCompany));
 
         TenantRuntimePolicy policy = policyFor(normalizedCompany);
         String normalizedReason = normalizeReason(reasonCode);
@@ -260,12 +260,12 @@ public class TenantRuntimeEnforcementService {
                                               String actor) {
         String normalizedCompany = requireCompanyCode(companyCode);
         companyRepository.findByCodeIgnoreCase(normalizedCompany)
-                .orElseThrow(() -> new IllegalArgumentException("Company not found: " + normalizedCompany));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Company not found: " + normalizedCompany));
         if (targetState == null
                 && maxConcurrentRequests == null
                 && maxRequestsPerMinute == null
                 && maxActiveUsers == null) {
-            throw new IllegalArgumentException("Runtime policy mutation payload is required");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Runtime policy mutation payload is required");
         }
         TenantRuntimePolicy policy = policyFor(normalizedCompany);
         String normalizedReason = normalizeReason(reasonCode);
@@ -340,7 +340,7 @@ public class TenantRuntimeEnforcementService {
         String normalizedCompany = requireCompanyCode(companyCode);
         // Force fail-closed for unknown company code updates.
         companyRepository.findByCodeIgnoreCase(normalizedCompany)
-                .orElseThrow(() -> new IllegalArgumentException("Company not found: " + normalizedCompany));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Company not found: " + normalizedCompany));
 
         TenantRuntimePolicy policy = policyFor(normalizedCompany);
         String normalizedReason = normalizeReason(reasonCode);
@@ -730,7 +730,7 @@ public class TenantRuntimeEnforcementService {
     private String requireCompanyCode(String companyCode) {
         String normalized = normalizeCompanyCode(companyCode);
         if (normalized == null) {
-            throw new IllegalArgumentException("Company code is required");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Company code is required");
         }
         return normalized;
     }

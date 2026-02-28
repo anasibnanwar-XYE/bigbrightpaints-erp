@@ -438,7 +438,8 @@ public class CommandDispatcher {
             return;
         }
         IllegalArgumentException ex =
-                new IllegalArgumentException("Posting amount must be greater than zero for " + operation);
+                com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+                        "Posting amount must be greater than zero for " + operation);
         idempotencyService.markFailed(command, ex);
         throw ex;
     }

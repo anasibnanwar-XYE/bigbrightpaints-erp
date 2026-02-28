@@ -17,9 +17,9 @@ public class CompanyContextService {
     public Company requireCurrentCompany() {
         String code = CompanyContextHolder.getCompanyCode();
         if (code == null) {
-            throw new IllegalStateException("No active company in context");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("No active company in context");
         }
         return companyRepository.findByCodeIgnoreCase(code)
-                .orElseThrow(() -> new IllegalArgumentException("Company not found: " + code));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Company not found: " + code));
     }
 }

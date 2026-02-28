@@ -96,7 +96,7 @@ public class InvoiceService {
         }
         SalesOrder order = requireOrderForUpdate(company, salesOrderId);
         if (order.getDealer() == null) {
-            throw new IllegalStateException("Dealer is required to issue an invoice");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Dealer is required to issue an invoice");
         }
         List<PackagingSlip> slips = findOrderSlips(company, salesOrderId, true);
         if (!slips.isEmpty()) {

@@ -37,14 +37,14 @@ public class PasswordService {
         // If forced change is required, skip current password check to avoid blocking on temp passwords
         if (!user.isMustChangePassword()) {
             if (!passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
-                throw new IllegalArgumentException("Current password is incorrect");
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Current password is incorrect");
             }
         }
         if (!request.newPassword().equals(request.confirmPassword())) {
-            throw new IllegalArgumentException("Password confirmation does not match");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Password confirmation does not match");
         }
         if (passwordEncoder.matches(request.newPassword(), user.getPasswordHash())) {
-            throw new IllegalArgumentException("New password must be different from current password");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("New password must be different from current password");
         }
         applyNewPassword(user, request.newPassword());
     }
@@ -52,7 +52,7 @@ public class PasswordService {
     @Transactional
     public void resetPassword(UserAccount user, String newPassword, String confirmPassword) {
         if (!newPassword.equals(confirmPassword)) {
-            throw new IllegalArgumentException("Password confirmation does not match");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Password confirmation does not match");
         }
         applyNewPassword(user, newPassword);
     }
@@ -60,7 +60,7 @@ public class PasswordService {
     private void applyNewPassword(UserAccount user, String newPassword) {
         List<String> violations = passwordPolicy.validate(newPassword);
         if (!violations.isEmpty()) {
-            throw new IllegalArgumentException("Password does not meet policy: " + String.join(", ", violations));
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Password does not meet policy: " + String.join(", ", violations));
         }
         ensureNotReused(user, newPassword);
         rememberCurrentPassword(user);
@@ -74,7 +74,7 @@ public class PasswordService {
         boolean reused = recent.stream()
                 .anyMatch(entry -> passwordEncoder.matches(candidate, entry.getPasswordHash()));
         if (reused) {
-            throw new IllegalArgumentException("Cannot reuse one of the last " + PASSWORD_HISTORY_LIMIT + " passwords");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Cannot reuse one of the last " + PASSWORD_HISTORY_LIMIT + " passwords");
         }
     }
 

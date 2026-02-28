@@ -91,7 +91,7 @@ public class AgingReportService {
     public DealerAgingDetail getDealerAging(Long dealerId) {
         Company company = companyContextService.requireCurrentCompany();
         Dealer dealer = dealerRepository.findByCompanyAndId(company, dealerId)
-                .orElseThrow(() -> new IllegalArgumentException("Dealer not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Dealer not found"));
         
         List<DealerLedgerEntry> unpaid = dealerLedgerRepository.findUnpaidByDealer(company, dealer);
         LocalDate today = companyClock.today(company);
@@ -112,7 +112,7 @@ public class AgingReportService {
     public DealerAgingDetailedReport getDealerAgingDetailed(Long dealerId) {
         Company company = companyContextService.requireCurrentCompany();
         Dealer dealer = dealerRepository.findByCompanyAndId(company, dealerId)
-                .orElseThrow(() -> new IllegalArgumentException("Dealer not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Dealer not found"));
         
         List<DealerLedgerEntry> unpaid = dealerLedgerRepository.findUnpaidByDealer(company, dealer);
         LocalDate today = companyClock.today(company);
@@ -150,7 +150,7 @@ public class AgingReportService {
     public DSOReport getDealerDSO(Long dealerId) {
         Company company = companyContextService.requireCurrentCompany();
         Dealer dealer = dealerRepository.findByCompanyAndId(company, dealerId)
-                .orElseThrow(() -> new IllegalArgumentException("Dealer not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Dealer not found"));
         
         Double avgDSO = dealerLedgerRepository.calculateAverageDSO(company.getId(), dealer.getId());
         List<DealerLedgerEntry> unpaid = dealerLedgerRepository.findUnpaidByDealer(company, dealer);

@@ -86,7 +86,7 @@ public class SalesJournalService {
         ProductionProduct product = null;
         if (revenueAccountId == null || taxAccountId == null || discountAccountId == null) {
             product = productionProductRepository.findByCompanyAndSkuCode(company, productCode)
-                    .orElseThrow(() -> new IllegalStateException("Product " + productCode + " missing finished good and metadata account mapping"));
+                    .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Product " + productCode + " missing finished good and metadata account mapping"));
         }
         if (revenueAccountId == null && product != null) {
             revenueAccountId = metadataLong(product, "fgRevenueAccountId");
@@ -110,7 +110,7 @@ public class SalesJournalService {
             }
         }
         if (revenueAccountId == null || taxAccountId == null) {
-            throw new IllegalStateException("Company default revenue/tax accounts are not configured for product " + productCode);
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Company default revenue/tax accounts are not configured for product " + productCode);
         }
         return new ProductAccounts(revenueAccountId, taxAccountId, discountAccountId);
     }

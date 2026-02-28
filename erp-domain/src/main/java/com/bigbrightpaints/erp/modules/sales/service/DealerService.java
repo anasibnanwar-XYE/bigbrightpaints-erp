@@ -76,7 +76,7 @@ public class DealerService {
         Company company = companyContextService.requireCurrentCompany();
         String contactEmail = request.contactEmail().trim();
         if (!dealerRepository.findAllByCompanyAndPortalUserEmailIgnoreCase(company, contactEmail).isEmpty()) {
-            throw new IllegalArgumentException("Dealer already exists for this portal user");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Dealer already exists for this portal user");
         }
 
         Dealer dealer = dealerRepository.findByCompanyAndEmailIgnoreCase(company, contactEmail)
@@ -171,7 +171,7 @@ public class DealerService {
     public DealerResponse updateDealer(Long dealerId, CreateDealerRequest request) {
         Company company = companyContextService.requireCurrentCompany();
         Dealer dealer = dealerRepository.findByCompanyAndId(company, dealerId)
-                .orElseThrow(() -> new IllegalArgumentException("Dealer not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Dealer not found"));
         
         if (request.name() != null && !request.name().isBlank()) {
             dealer.setName(request.name().trim());
@@ -206,7 +206,7 @@ public class DealerService {
     public Map<String, Object> ledgerView(Long dealerId) {
         Company company = companyContextService.requireCurrentCompany();
         Dealer dealer = dealerRepository.findByCompanyAndId(company, dealerId)
-                .orElseThrow(() -> new IllegalArgumentException("Dealer not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Dealer not found"));
         var entries = dealerLedgerService.entries(dealer);
         BigDecimal running = BigDecimal.ZERO;
         var lines = new ArrayList<Map<String, Object>>();

@@ -110,7 +110,7 @@ public class ProductionLogService {
         ProductionBrand brand = companyEntityLookup.requireProductionBrand(company, request.brandId());
         ProductionProduct product = companyEntityLookup.requireProductionProduct(company, request.productId());
         if (!product.getBrand().getId().equals(brand.getId())) {
-            throw new IllegalArgumentException("Product does not belong to brand");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Product does not belong to brand");
         }
         BigDecimal batchSize = positive(request.batchSize(), "batchSize");
         BigDecimal mixedQty = positive(request.mixedQuantity(), "mixedQuantity");
@@ -145,7 +145,7 @@ public class ProductionLogService {
         log.setOverheadCostTotal(overheadCost);
 
         if (request.materials() == null || request.materials().isEmpty()) {
-            throw new IllegalArgumentException("Materials are required");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Materials are required");
         }
 
         MaterialIssueSummary issueSummary = issueMaterials(company, log, request.materials());
@@ -529,7 +529,7 @@ public class ProductionLogService {
             int seq = Integer.parseInt(parts[parts.length - 1]);
             return prefix + "-" + String.format("%03d", seq + 1);
         } catch (Exception ex) {
-            throw new IllegalArgumentException("Invalid production code format: " + existing, ex);
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Invalid production code format: " + existing, ex);
         }
     }
 
@@ -564,7 +564,7 @@ public class ProductionLogService {
         try {
             return LocalDate.parse(producedAt).atStartOfDay(zoneId).toInstant();
         } catch (Exception ex) {
-            throw new IllegalArgumentException("Invalid producedAt format: " + producedAt, ex);
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Invalid producedAt format: " + producedAt, ex);
         }
     }
 
@@ -644,7 +644,7 @@ public class ProductionLogService {
 
     private BigDecimal positive(BigDecimal value, String field) {
         if (value == null || value.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException(field + " must be positive");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(field + " must be positive");
         }
         return value;
     }

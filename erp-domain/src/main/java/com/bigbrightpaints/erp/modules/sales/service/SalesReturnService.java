@@ -1,5 +1,7 @@
 package com.bigbrightpaints.erp.modules.sales.service;
 
+import com.bigbrightpaints.erp.core.idempotency.IdempotencySignatureBuilder;
+import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.core.util.MoneyUtils;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
@@ -27,8 +29,6 @@ import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -82,16 +82,16 @@ public class SalesReturnService {
     public JournalEntryDto processReturn(SalesReturnRequest request) {
         Company company = companyContextService.requireCurrentCompany();
         Invoice invoice = invoiceRepository.lockByCompanyAndId(company, request.invoiceId())
-                .orElseThrow(() -> new IllegalArgumentException("Invoice not found: id=" + request.invoiceId()));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Invoice not found: id=" + request.invoiceId()));
         Dealer dealer = invoice.getDealer();
         if (dealer == null || dealer.getReceivableAccount() == null) {
-            throw new IllegalStateException("Invoice is missing dealer receivable context");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Invoice is missing dealer receivable context");
         }
         boolean gstInclusive = invoice.getSalesOrder() != null && invoice.getSalesOrder().isGstInclusive();
         Map<Long, InvoiceLine> invoiceLines = invoice.getLines().stream()
                 .collect(Collectors.toMap(InvoiceLine::getId, line -> line));
         if (request.lines() == null || request.lines().isEmpty()) {
-            throw new IllegalArgumentException("Return lines are required");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Return lines are required");
         }
         String returnKey = buildReturnIdempotencyKey(invoice, request);
 
@@ -106,11 +106,11 @@ public class SalesReturnService {
         for (SalesReturnRequest.ReturnLine lineRequest : request.lines()) {
             InvoiceLine invoiceLine = invoiceLines.get(lineRequest.invoiceLineId());
             if (invoiceLine == null) {
-                throw new IllegalArgumentException("Invoice line not found: " + lineRequest.invoiceLineId());
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Invoice line not found: " + lineRequest.invoiceLineId());
             }
             BigDecimal quantity = requirePositive(lineRequest.quantity(), "lines.quantity");
             if (quantity.compareTo(invoiceLine.getQuantity()) > 0) {
-                throw new IllegalArgumentException("Return quantity exceeds invoiced amount for " + invoiceLine.getProductCode());
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Return quantity exceeds invoiced amount for " + invoiceLine.getProductCode());
             }
             requestedReturnQtyByLine.merge(invoiceLine.getId(), quantity, BigDecimal::add);
             returnProductCodes.add(invoiceLine.getProductCode());
@@ -211,7 +211,7 @@ public class SalesReturnService {
                     priorReturnedQty = priorReturnedQty.add(legacyReturnedQty);
                 }
                 if (priorReturnedQty.add(entry.getValue()).compareTo(invoicedQty) > 0) {
-                    throw new IllegalArgumentException("Return quantity exceeds remaining invoiced amount for " + invoiceLine.getProductCode());
+                    throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Return quantity exceeds remaining invoiced amount for " + invoiceLine.getProductCode());
                 }
             }
 
@@ -221,7 +221,7 @@ public class SalesReturnService {
                 if (priorReturnedQty.add(entry.getValue()).compareTo(invoicedQty) > 0) {
                     FinishedGood finishedGood = finishedGoodsById.get(entry.getKey());
                     String productCode = finishedGood != null ? finishedGood.getProductCode() : entry.getKey().toString();
-                    throw new IllegalArgumentException("Return quantity exceeds remaining invoiced amount for " + productCode);
+                    throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Return quantity exceeds remaining invoiced amount for " + productCode);
                 }
             }
         }
@@ -233,11 +233,11 @@ public class SalesReturnService {
         for (SalesReturnRequest.ReturnLine lineRequest : request.lines()) {
             InvoiceLine invoiceLine = invoiceLines.get(lineRequest.invoiceLineId());
             if (invoiceLine == null) {
-                throw new IllegalArgumentException("Invoice line not found: " + lineRequest.invoiceLineId());
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Invoice line not found: " + lineRequest.invoiceLineId());
             }
             BigDecimal quantity = requirePositive(lineRequest.quantity(), "lines.quantity");
             if (quantity.compareTo(invoiceLine.getQuantity()) > 0) {
-                throw new IllegalArgumentException("Return quantity exceeds invoiced amount for " + invoiceLine.getProductCode());
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Return quantity exceeds invoiced amount for " + invoiceLine.getProductCode());
             }
             FinishedGood finishedGood = finishedGoodsByCode.computeIfAbsent(
                     invoiceLine.getProductCode(),
@@ -281,7 +281,7 @@ public class SalesReturnService {
             restockCostByLine.put(invoiceLine.getId(), restockUnitCost);
         }
         if (receivableCredit.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException("Return amount must be greater than zero");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Return amount must be greater than zero");
         }
 
         Map<Long, BigDecimal> returnLines = buildReturnLines(request, invoiceLines, finishedGoodsByCode, company, gstInclusive);
@@ -343,7 +343,7 @@ public class SalesReturnService {
 
             Long revenueAccountId = finishedGood.getRevenueAccountId();
             if (revenueAccountId == null) {
-                throw new IllegalStateException("Finished good " + finishedGood.getProductCode()
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Finished good " + finishedGood.getProductCode()
                         + " missing revenue account for sales return");
             }
             BigDecimal baseAmount = currency(MoneyUtils.safeMultiply(perUnitBase(invoiceLine), quantity));
@@ -356,7 +356,7 @@ public class SalesReturnService {
             if (discountAmount.compareTo(BigDecimal.ZERO) > 0) {
                 Long discountAccountId = finishedGood.getDiscountAccountId();
                 if (discountAccountId == null) {
-                    throw new IllegalStateException("Discount account is required when return line has a discount for "
+                    throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Discount account is required when return line has a discount for "
                             + finishedGood.getProductCode());
                 }
                 returnLines.merge(discountAccountId, discountAmount.negate(), BigDecimal::add);
@@ -369,7 +369,7 @@ public class SalesReturnService {
                     gstOutputAccountId = companyAccountingSettingsService.requireTaxAccounts().outputTaxAccountId();
                 }
                 if (finishedGood.getTaxAccountId() != null && !finishedGood.getTaxAccountId().equals(gstOutputAccountId)) {
-                    throw new IllegalStateException("Finished good " + finishedGood.getProductCode()
+                    throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Finished good " + finishedGood.getProductCode()
                             + " tax account must match GST output account");
                 }
                 returnLines.merge(gstOutputAccountId, taxAmount, BigDecimal::add);
@@ -632,45 +632,18 @@ public class SalesReturnService {
         if (invoice == null || request == null || request.lines() == null || request.lines().isEmpty()) {
             return null;
         }
-        StringBuilder sb = new StringBuilder();
-        sb.append(normalizeToken(invoice.getInvoiceNumber()))
-                .append("|").append(invoice.getId() != null ? invoice.getId() : "null")
-                .append("|").append(normalizeToken(request.reason()));
+        IdempotencySignatureBuilder signatureBuilder = IdempotencySignatureBuilder.create()
+                .addUpperToken(invoice.getInvoiceNumber())
+                .add(invoice.getId() != null ? invoice.getId() : "null")
+                .addUpperToken(request.reason());
         List<SalesReturnRequest.ReturnLine> lines = request.lines().stream()
                 .sorted(Comparator.comparing(SalesReturnRequest.ReturnLine::invoiceLineId))
                 .toList();
         for (SalesReturnRequest.ReturnLine line : lines) {
-            sb.append("|")
-                    .append(line.invoiceLineId() != null ? line.invoiceLineId() : "null")
-                    .append("=")
-                    .append(normalizeDecimal(line.quantity()));
+            signatureBuilder.add((line.invoiceLineId() != null ? line.invoiceLineId() : "null")
+                    + "=" + IdempotencyUtils.normalizeDecimal(line.quantity()));
         }
-        return sha256Hex(sb.toString(), 12);
-    }
-
-    private String normalizeToken(String value) {
-        if (!StringUtils.hasText(value)) {
-            return "";
-        }
-        return value.trim().toUpperCase();
-    }
-
-    private String normalizeDecimal(BigDecimal value) {
-        if (value == null) {
-            return "0";
-        }
-        return value.stripTrailingZeros().toPlainString();
-    }
-
-    private String sha256Hex(String input, int length) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
-            String fullHex = java.util.HexFormat.of().formatHex(hash);
-            return fullHex.substring(0, Math.min(length, fullHex.length()));
-        } catch (Exception ex) {
-            return Integer.toHexString(input.hashCode());
-        }
+        return signatureBuilder.buildHash(12);
     }
 
     private record ReturnMovementSummary(Map<Long, BigDecimal> byInvoiceLineId,
@@ -686,7 +659,7 @@ public class SalesReturnService {
                                              InvoiceLine invoiceLine) {
         java.util.List<InventoryMovement> movements = dispatchMovements.getOrDefault(finishedGood.getId(), java.util.List.of());
         if (movements.isEmpty()) {
-            throw new IllegalArgumentException("Return requires dispatch cost layers for " + finishedGood.getProductCode());
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Return requires dispatch cost layers for " + finishedGood.getProductCode());
         }
         BigDecimal remaining = quantity;
         BigDecimal costTotal = BigDecimal.ZERO;
@@ -707,25 +680,25 @@ public class SalesReturnService {
             }
         }
         if (remaining.compareTo(BigDecimal.ZERO) > 0) {
-            throw new IllegalArgumentException("Return quantity exceeds dispatched quantity for " + finishedGood.getProductCode());
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Return quantity exceeds dispatched quantity for " + finishedGood.getProductCode());
         }
         return MoneyUtils.safeDivide(costTotal, quantity, 4, RoundingMode.HALF_UP);
     }
 
     private BigDecimal requirePositive(BigDecimal value, String field) {
         if (value == null || value.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException(field + " must be positive");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(field + " must be positive");
         }
         return value;
     }
 
     private FinishedGood lockFinishedGood(Company company, String productCode) {
         return finishedGoodRepository.lockByCompanyAndProductCode(company, productCode)
-                .orElseThrow(() -> new IllegalStateException("Finished good not found for " + productCode));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Finished good not found for " + productCode));
     }
 
     private FinishedGood lockFinishedGood(Company company, Long id) {
         return finishedGoodRepository.lockByCompanyAndId(company, id)
-                .orElseThrow(() -> new IllegalStateException("Finished good not found"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Finished good not found"));
     }
 }

@@ -66,7 +66,7 @@ public class AccountingPeriodSnapshotService {
     @Transactional
     public AccountingPeriodSnapshot captureSnapshot(Company company, AccountingPeriod period, String username) {
         if (company == null || period == null) {
-            throw new IllegalArgumentException("company and period are required");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("company and period are required");
         }
         Optional<AccountingPeriodSnapshot> existing = snapshotRepository.findByCompanyAndPeriod(company, period);
         if (existing.isPresent()) {

@@ -142,7 +142,7 @@ public class OpeningStockImportService {
     public OpeningStockImportResponse importOpeningStock(MultipartFile file, String idempotencyKey) {
         Company company = companyContextService.requireCurrentCompany();
         if (file == null || file.isEmpty()) {
-            throw new IllegalArgumentException("CSV file is required");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("CSV file is required");
         }
         assertImportAllowed();
         String fileHash = sha256Hex(file);
@@ -166,7 +166,7 @@ public class OpeningStockImportService {
             OpeningStockImportResponse response = transactionTemplate.execute(status ->
                     importOpeningStockInternal(company, file, normalizedKey, fileHash, importReference));
             if (response == null) {
-                throw new IllegalStateException("Opening stock import failed to return a response");
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Opening stock import failed to return a response");
             }
             return response;
         } catch (RuntimeException ex) {
@@ -303,7 +303,7 @@ public class OpeningStockImportService {
             );
             return new ImportResult(response, journalEntryId);
         } catch (IOException ex) {
-            throw new IllegalStateException("Failed to read CSV file", ex);
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Failed to read CSV file", ex);
         }
     }
 
@@ -425,7 +425,7 @@ public class OpeningStockImportService {
         RawMaterial material = resolveRawMaterial(company, row);
         String unit = firstNonBlank(row.unitType, row.unit, material.getUnitType());
         if (!StringUtils.hasText(unit)) {
-            throw new IllegalArgumentException("Unit is required for raw material " + row.displayKey());
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Unit is required for raw material " + row.displayKey());
         }
         BigDecimal quantity = requirePositive(row.quantity, "quantity");
         BigDecimal unitCost = requirePositive(row.unitCost, "unit_cost");
@@ -518,7 +518,7 @@ public class OpeningStockImportService {
         int attempts = 0;
         while (rawMaterialBatchRepository.existsByRawMaterialAndBatchCode(material, candidate)) {
             if (attempts++ > 10) {
-                throw new IllegalStateException("Unable to allocate unique batch code for raw material "
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Unable to allocate unique batch code for raw material "
                         + describeMaterial(material));
             }
             candidate = batchNumberService.nextRawMaterialBatchCode(material);
@@ -528,7 +528,7 @@ public class OpeningStockImportService {
 
     private void ensureRawMaterialBatchCodeUnique(RawMaterial material, String batchCode) {
         if (rawMaterialBatchRepository.existsByRawMaterialAndBatchCode(material, batchCode)) {
-            throw new IllegalArgumentException("Batch code already exists for raw material "
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Batch code already exists for raw material "
                     + describeMaterial(material) + ": " + batchCode);
         }
     }
@@ -551,11 +551,11 @@ public class OpeningStockImportService {
             }
         }
         if (!StringUtils.hasText(row.name)) {
-            throw new IllegalArgumentException("Raw material name is required when SKU is missing: " + row.displayKey());
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Raw material name is required when SKU is missing: " + row.displayKey());
         }
         String unitType = firstNonBlank(row.unitType, row.unit);
         if (!StringUtils.hasText(unitType)) {
-            throw new IllegalArgumentException("Unit type is required for raw material " + row.displayKey());
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Unit type is required for raw material " + row.displayKey());
         }
         RawMaterialRequest request = new RawMaterialRequest(
                 row.name.trim(),
@@ -569,7 +569,7 @@ public class OpeningStockImportService {
         );
         RawMaterialDto created = rawMaterialService.createRawMaterial(request);
         RawMaterial material = rawMaterialRepository.findByCompanyAndId(company, created.id())
-                .orElseThrow(() -> new IllegalStateException("Raw material creation failed"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Raw material creation failed"));
         if (row.materialType != null) {
             material.setMaterialType(row.materialType);
             rawMaterialRepository.save(material);
@@ -580,7 +580,7 @@ public class OpeningStockImportService {
 
     private FinishedGood resolveFinishedGood(Company company, OpeningRow row) {
         if (!StringUtils.hasText(row.sku)) {
-            throw new IllegalArgumentException("Finished good SKU is required");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Finished good SKU is required");
         }
         Optional<FinishedGood> existing = finishedGoodRepository.findByCompanyAndProductCode(company, row.sku.trim());
         if (existing.isPresent()) {
@@ -601,14 +601,14 @@ public class OpeningStockImportService {
         );
         FinishedGoodDto created = finishedGoodsService.createFinishedGood(request);
         FinishedGood finishedGood = finishedGoodRepository.findByCompanyAndId(company, created.id())
-                .orElseThrow(() -> new IllegalStateException("Finished good creation failed"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Finished good creation failed"));
         row.markCreated();
         return finishedGood;
     }
 
     private static BigDecimal requirePositive(BigDecimal value, String field) {
         if (value == null || value.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException(field + " must be greater than zero");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(field + " must be greater than zero");
         }
         return value;
     }
@@ -638,7 +638,7 @@ public class OpeningStockImportService {
             }
         }
         if (accountId == null) {
-            throw new IllegalStateException("Raw material " + material.getName() + " is missing an inventory account");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Raw material " + material.getName() + " is missing an inventory account");
         }
         return accountId;
     }
@@ -652,7 +652,7 @@ public class OpeningStockImportService {
             }
         }
         if (accountId == null) {
-            throw new IllegalStateException("Finished good " + finishedGood.getProductCode() + " is missing a valuation account");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Finished good " + finishedGood.getProductCode() + " is missing a valuation account");
         }
         return accountId;
     }
@@ -694,7 +694,7 @@ public class OpeningStockImportService {
         Account existing = accountRepository.findByCompanyAndCodeIgnoreCase(company, "OPEN-BAL").orElse(null);
         if (existing != null) {
             if (existing.getType() != AccountType.EQUITY) {
-                throw new IllegalStateException("Opening balance account OPEN-BAL must be an equity account");
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Opening balance account OPEN-BAL must be an equity account");
             }
             return existing;
         }
@@ -784,7 +784,7 @@ public class OpeningStockImportService {
 
         private static StockType parseType(String value) {
             if (!StringUtils.hasText(value)) {
-                throw new IllegalArgumentException("type is required (RAW_MATERIAL or FINISHED_GOOD)");
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("type is required (RAW_MATERIAL or FINISHED_GOOD)");
             }
             String normalized = value.trim().toUpperCase(Locale.ROOT);
             if (normalized.startsWith("RAW") || normalized.equals("RM") || normalized.equals("RAW_MATERIAL")) {
@@ -793,7 +793,7 @@ public class OpeningStockImportService {
             if (normalized.startsWith("FINISH") || normalized.equals("FG") || normalized.equals("FINISHED_GOOD")) {
                 return StockType.FINISHED_GOOD;
             }
-            throw new IllegalArgumentException("Unknown type: " + value);
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Unknown type: " + value);
         }
 
         private static MaterialType parseMaterialType(String value) {
@@ -804,7 +804,7 @@ public class OpeningStockImportService {
             return switch (normalized) {
                 case "PACKAGING" -> MaterialType.PACKAGING;
                 case "PRODUCTION" -> MaterialType.PRODUCTION;
-                default -> throw new IllegalArgumentException("Unknown material_type: " + value);
+                default -> throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Unknown material_type: " + value);
             };
         }
 
@@ -829,7 +829,7 @@ public class OpeningStockImportService {
             try {
                 return new BigDecimal(value.trim());
             } catch (NumberFormatException ex) {
-                throw new IllegalArgumentException("Invalid numeric value: " + value);
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Invalid numeric value: " + value);
             }
         }
 
@@ -841,7 +841,7 @@ public class OpeningStockImportService {
             try {
                 return LocalDate.parse(value.trim());
             } catch (Exception ex) {
-                throw new IllegalArgumentException("Invalid date value: " + value + " (expected YYYY-MM-DD)");
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Invalid date value: " + value + " (expected YYYY-MM-DD)");
             }
         }
     }

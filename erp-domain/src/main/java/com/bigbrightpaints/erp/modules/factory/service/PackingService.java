@@ -114,7 +114,7 @@ public class PackingService {
                     "Production log " + log.getProductionCode() + " is already fully packed");
         }
         if (request.lines() == null || request.lines().isEmpty()) {
-            throw new IllegalArgumentException("Packing lines are required");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Packing lines are required");
         }
         LocalDate packedDate = request.packedDate() != null ? request.packedDate() : resolveCurrentDate(company);
         String idempotencyKey = idempotencyReservationService.normalizeKey(request.idempotencyKey());
@@ -141,7 +141,7 @@ public class PackingService {
             lineIndex++;
             BigDecimal lineQuantity = resolveQuantity(line, lineIndex);
             if (lineQuantity.compareTo(BigDecimal.ZERO) <= 0) {
-                throw new IllegalArgumentException("Line " + lineIndex + " has zero quantity");
+                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Line " + lineIndex + " has zero quantity");
             }
             
             // Resolve pieces count for packaging material consumption
@@ -194,7 +194,7 @@ public class PackingService {
         }
 
         if (sessionQuantity.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException("Packed quantity must be greater than zero");
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Packed quantity must be greater than zero");
         }
 
         // Use atomic update to prevent lost updates under concurrent packing
@@ -446,7 +446,7 @@ public class PackingService {
                 && line.piecesPerBox() != null && line.piecesPerBox() > 0) {
             return line.boxesCount() * line.piecesPerBox();
         }
-        throw new IllegalArgumentException("Pieces count or boxes × pieces per box required for line " + lineNumber);
+        throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Pieces count or boxes × pieces per box required for line " + lineNumber);
     }
 
     private void postPackingSessionJournal(ProductionLog log,
@@ -751,7 +751,7 @@ public class PackingService {
         }
         BigDecimal pieces = resolvePieces(line);
         if (pieces == null) {
-            throw new IllegalArgumentException("Pieces or boxes must be provided for line " + lineNumber);
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Pieces or boxes must be provided for line " + lineNumber);
         }
         BigDecimal packSize = resolvePackageSize(line.packagingSize(), lineNumber);
         return MoneyUtils.safeMultiply(packSize, pieces);
@@ -770,11 +770,11 @@ public class PackingService {
 
     private BigDecimal resolvePackageSize(String size, int lineNumber) {
         if (!StringUtils.hasText(size)) {
-            throw new IllegalArgumentException("Packaging size is required for line " + lineNumber);
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Packaging size is required for line " + lineNumber);
         }
         BigDecimal parsed = PackagingSizeParser.parseSizeInLitersAllowBareNumber(size);
         if (parsed == null) {
-            throw new IllegalArgumentException("Invalid packaging size '" + size + "' on line " + lineNumber);
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Invalid packaging size '" + size + "' on line " + lineNumber);
         }
         return parsed;
     }

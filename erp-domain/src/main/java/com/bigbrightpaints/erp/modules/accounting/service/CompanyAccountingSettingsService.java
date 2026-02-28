@@ -32,7 +32,7 @@ public class CompanyAccountingSettingsService {
         Account expense = company.getPayrollExpenseAccount();
         Account cash = company.getPayrollCashAccount();
         if (expense == null || cash == null) {
-            throw new IllegalStateException("Payroll account defaults are not configured for company " + company.getCode());
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Payroll account defaults are not configured for company " + company.getCode());
         }
         return new PayrollAccountDefaults(expense.getId(), cash.getId());
     }
