@@ -1,0 +1,173 @@
+{
+  "groupId": "product-catalog-b",
+  "testedAt": "2026-02-28T19:04:43Z",
+  "credentials": {
+    "account": "ut-product-catalog-b@example.com",
+    "namespace": "ut_cat_b"
+  },
+  "toolsUsed": ["Read", "Grep", "Execute"],
+  "assertions": [
+    {
+      "id": "VAL-CAT-005",
+      "title": "Inventory batch tracking",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect traceability assertion contract and implementation test in InventoryBatchTraceabilityServiceTest",
+          "expected": "Batch traceability includes batch number, mfg/expiry, cost, quantity, and movement chain",
+          "observed": "Test constructs finished-good and raw-material batches with batchCode, manufacturedAt, expiryDate, quantity, unitCost/costPerUnit and verifies movement history via getBatchMovementHistory"
+        },
+        {
+          "action": "Run targeted test command: mvn -f erp-domain/pom.xml --settings erp-domain/.mvn/settings.xml test -Djacoco.skip=true -Dtest=InventoryBatchTraceabilityServiceTest",
+          "expected": "Traceability test passes",
+          "observed": "BUILD SUCCESS; Tests run: 2, Failures: 0, Errors: 0"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a (API/test runner flow)",
+        "network": "n/a",
+        "commands": [
+          "mvn -f /home/realnigga/Desktop/Mission-control/erp-domain/pom.xml --settings /home/realnigga/Desktop/Mission-control/erp-domain/.mvn/settings.xml test -Djacoco.skip=true -Dtest=InventoryBatchTraceabilityServiceTest"
+        ],
+        "outputs": [
+          "target/surefire-reports/com.bigbrightpaints.erp.modules.inventory.service.InventoryBatchTraceabilityServiceTest.txt => Tests run: 2, Failures: 0, Errors: 0"
+        ],
+        "codeReferences": [
+          "erp-domain/src/test/java/com/bigbrightpaints/erp/modules/inventory/service/InventoryBatchTraceabilityServiceTest.java:65",
+          "erp-domain/src/test/java/com/bigbrightpaints/erp/modules/inventory/service/InventoryBatchTraceabilityServiceTest.java:114",
+          "erp-domain/src/test/java/com/bigbrightpaints/erp/modules/inventory/service/InventoryBatchTraceabilityServiceTest.java:124",
+          "erp-domain/src/test/java/com/bigbrightpaints/erp/modules/inventory/service/InventoryBatchTraceabilityServiceTest.java:174"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CAT-006",
+      "title": "Manufacturing tracking",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Review production and wastage regression/unit evidence",
+          "expected": "Raw material consumption links to production output with full cost trail and wastage recording",
+          "observed": "ProductionLogWipPostingRegressionIT verifies material usage + labor/overhead rolled into total cost with WIP debit/credit parity; ProductionLogListDetailLazyLoadRegressionIT asserts output linkage and wastage reason PROCESS_LOSS; PackingServiceTest verifies wastage journal posting"
+        },
+        {
+          "action": "Run targeted tests with schema compatibility override for integration context",
+          "expected": "Manufacturing evidence tests pass",
+          "observed": "ProductionLogWipPostingRegressionIT and ProductionLogListDetailLazyLoadRegressionIT pass with -Dspring.jpa.hibernate.ddl-auto=update; PackingServiceTest#completePacking_postsOnlyWastageJournal passes"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a (API/test runner flow)",
+        "network": "n/a",
+        "commands": [
+          "mvn -f /home/realnigga/Desktop/Mission-control/erp-domain/pom.xml --settings /home/realnigga/Desktop/Mission-control/erp-domain/.mvn/settings.xml test -Djacoco.skip=true -Dspring.jpa.hibernate.ddl-auto=update -Dtest=ProductionLogWipPostingRegressionIT",
+          "mvn -f /home/realnigga/Desktop/Mission-control/erp-domain/pom.xml --settings /home/realnigga/Desktop/Mission-control/erp-domain/.mvn/settings.xml test -Djacoco.skip=true -Dspring.jpa.hibernate.ddl-auto=update -Dtest=ProductionLogListDetailLazyLoadRegressionIT",
+          "mvn -f /home/realnigga/Desktop/Mission-control/erp-domain/pom.xml --settings /home/realnigga/Desktop/Mission-control/erp-domain/.mvn/settings.xml test -Djacoco.skip=true -Dtest=PackingServiceTest#completePacking_postsOnlyWastageJournal"
+        ],
+        "outputs": [
+          "target/surefire-reports/com.bigbrightpaints.erp.regression.ProductionLogWipPostingRegressionIT.txt => Tests run: 1, Failures: 0, Errors: 0",
+          "target/surefire-reports/com.bigbrightpaints.erp.regression.ProductionLogListDetailLazyLoadRegressionIT.txt => Tests run: 1, Failures: 0, Errors: 0",
+          "target/surefire-reports/com.bigbrightpaints.erp.modules.factory.service.PackingServiceTest.txt => Tests run: 1, Failures: 0, Errors: 0"
+        ],
+        "codeReferences": [
+          "erp-domain/src/test/java/com/bigbrightpaints/erp/regression/ProductionLogWipPostingRegressionIT.java:90",
+          "erp-domain/src/test/java/com/bigbrightpaints/erp/regression/ProductionLogWipPostingRegressionIT.java:102",
+          "erp-domain/src/test/java/com/bigbrightpaints/erp/regression/ProductionLogWipPostingRegressionIT.java:135",
+          "erp-domain/src/test/java/com/bigbrightpaints/erp/regression/ProductionLogListDetailLazyLoadRegressionIT.java:123",
+          "erp-domain/src/test/java/com/bigbrightpaints/erp/regression/ProductionLogListDetailLazyLoadRegressionIT.java:125",
+          "erp-domain/src/test/java/com/bigbrightpaints/erp/modules/factory/service/PackingServiceTest.java:125",
+          "erp-domain/src/test/java/com/bigbrightpaints/erp/modules/factory/service/PackingServiceTest.java:222"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CAT-007",
+      "title": "Stock management",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect stock movement + low stock threshold assertion in FinishedGoodsServiceTest",
+          "expected": "Movements remain accurate across receipt/reserve/release/dispatch and low-stock alerts trigger by threshold",
+          "observed": "stockAccuracyAcrossMovements_andPerProductLowStockThreshold validates final stock (16 current, 0 reserved), movement types include RECEIPT/RESERVE/RELEASE/DISPATCH, and low-stock behavior changes with threshold"
+        },
+        {
+          "action": "Run targeted test command with schema compatibility override",
+          "expected": "Stock management test passes",
+          "observed": "BUILD SUCCESS; FinishedGoodsServiceTest selected method passed"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a (API/test runner flow)",
+        "network": "n/a",
+        "commands": [
+          "mvn -f /home/realnigga/Desktop/Mission-control/erp-domain/pom.xml --settings /home/realnigga/Desktop/Mission-control/erp-domain/.mvn/settings.xml test -Djacoco.skip=true -Dspring.jpa.hibernate.ddl-auto=update -Dtest=FinishedGoodsServiceTest#stockAccuracyAcrossMovements_andPerProductLowStockThreshold"
+        ],
+        "outputs": [
+          "target/surefire-reports/com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsServiceTest.txt => Tests run: 1, Failures: 0, Errors: 0"
+        ],
+        "codeReferences": [
+          "erp-domain/src/test/java/com/bigbrightpaints/erp/modules/inventory/service/FinishedGoodsServiceTest.java:1190",
+          "erp-domain/src/test/java/com/bigbrightpaints/erp/modules/inventory/service/FinishedGoodsServiceTest.java:1225",
+          "erp-domain/src/test/java/com/bigbrightpaints/erp/modules/inventory/service/FinishedGoodsServiceTest.java:1232",
+          "erp-domain/src/test/java/com/bigbrightpaints/erp/modules/inventory/service/FinishedGoodsServiceTest.java:1236"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DOC-004",
+      "title": "frontend-handoff catalog/inventory section completeness",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Review frontend-handoff Product Catalog & Inventory section",
+          "expected": "Section includes endpoint map, flows, state machines, error codes, and data contracts for catalog/inventory",
+          "observed": "Section contains catalog endpoint map, inventory/batch/adjustment/dispatch endpoint maps, dispatch flow, state machines, catalog+inventory error code table, and DTO contracts including traceability + adjustment payloads"
+        }
+      ],
+      "evidence": {
+        "screenshots": [],
+        "consoleErrors": "n/a (documentation verification)",
+        "network": "n/a",
+        "commands": [
+          "Read /home/realnigga/Desktop/Mission-control/.factory/library/frontend-handoff.md",
+          "Grep Product Catalog & Inventory headings and required subsections"
+        ],
+        "outputs": [
+          "frontend-handoff section found at line ~1085 with required subsections populated"
+        ],
+        "codeReferences": [
+          "/home/realnigga/Desktop/Mission-control/.factory/library/frontend-handoff.md:1085",
+          "/home/realnigga/Desktop/Mission-control/.factory/library/frontend-handoff.md:1091",
+          "/home/realnigga/Desktop/Mission-control/.factory/library/frontend-handoff.md:1111",
+          "/home/realnigga/Desktop/Mission-control/.factory/library/frontend-handoff.md:1248",
+          "/home/realnigga/Desktop/Mission-control/.factory/library/frontend-handoff.md:1256",
+          "/home/realnigga/Desktop/Mission-control/.factory/library/frontend-handoff.md:1280",
+          "/home/realnigga/Desktop/Mission-control/.factory/library/frontend-handoff.md:1312"
+        ]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Runtime API at http://localhost:8081 was unavailable (curl connection failure), so validation used assigned API-flow fallback: targeted integration/unit tests + source/contract evidence.",
+      "resolved": true,
+      "resolution": "Executed assertion-scoped Maven tests and extracted surefire outputs and code references.",
+      "affectedAssertions": ["VAL-CAT-005", "VAL-CAT-006", "VAL-CAT-007"]
+    },
+    {
+      "description": "Running multiple integration assertions in one Maven invocation caused context bootstrap failure due missing column state_code during CriticalFixtureInitializer startup.",
+      "resolved": true,
+      "resolution": "Ran integration assertions in isolated commands with -Dspring.jpa.hibernate.ddl-auto=update as documented in user-testing guidance.",
+      "affectedAssertions": ["VAL-CAT-006"]
+    }
+  ],
+  "blockers": [],
+  "summary": "Validated 4 assertions: 4 passed, 0 failed, 0 blocked. Evidence captured from targeted test executions and catalog/inventory handoff source verification; localhost runtime surface was unavailable so API-flow fallback path was used."
+}

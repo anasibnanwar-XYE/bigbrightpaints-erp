@@ -1,0 +1,175 @@
+{
+  "groupId": "product-catalog-a",
+  "testedAt": "2026-03-01T00:35:04+05:30",
+  "credentials": {
+    "account": "ut-product-catalog-a@example.com",
+    "namespace": "ut_cat_a"
+  },
+  "toolsUsed": ["curl", "mvn", "wc", "grep"],
+  "assertions": [
+    {
+      "id": "VAL-CAT-001",
+      "title": "Brand management CRUD + deactivate, required on products",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Check live API surface with curl -sS -i http://localhost:8081/actuator/health",
+          "expected": "App reachable for direct API brand CRUD checks",
+          "observed": "curl exit code 7: localhost:8081 unavailable; switched to assertion-specific Maven test evidence per flow guidance"
+        },
+        {
+          "action": "Run mvn test -Djacoco.skip=true -Dtest=CatalogServiceBrandCrudTest,CatalogServiceProductCrudTest,CatalogServiceBulkUpsertTest",
+          "expected": "Brand CRUD assertions execute and pass",
+          "observed": "CatalogServiceBrandCrudTest passed 3/3 tests (createBrand_companyScopedCrudFieldsAreStored, updateBrand_updatesNameLogoDescriptionAndActive, deactivateBrand_marksBrandInactive)"
+        },
+        {
+          "action": "Verify list + required-brand contract references via source grep/read",
+          "expected": "List endpoint exists and product payload enforces brand requirement",
+          "observed": "CatalogController exposes GET /api/v1/catalog/brands (line 43); CatalogService.listBrands(active) present (line 90); CatalogProductRequest has @NotNull(message=\"Brand is required\") on brandId (line 13); CatalogService.createProduct uses requireActiveBrand(...) (line 131)"
+        }
+      ],
+      "evidence": {
+        "commands": [
+          "curl -sS -i http://localhost:8081/actuator/health",
+          "mvn -f /home/realnigga/Desktop/Mission-control/erp-domain/pom.xml --settings /home/realnigga/Desktop/Mission-control/erp-domain/.mvn/settings.xml test -Djacoco.skip=true -Dtest=CatalogServiceBrandCrudTest,CatalogServiceProductCrudTest,CatalogServiceBulkUpsertTest",
+          "grep/read references in CatalogController.java, CatalogService.java, CatalogProductRequest.java"
+        ],
+        "observedOutput": "Maven summary: Tests run: 8, Failures: 0, Errors: 0, Skipped: 0; BUILD SUCCESS",
+        "codeRefs": [
+          "erp-domain/src/test/java/com/bigbrightpaints/erp/modules/production/service/CatalogServiceBrandCrudTest.java:43",
+          "erp-domain/src/test/java/com/bigbrightpaints/erp/modules/production/service/CatalogServiceBrandCrudTest.java:68",
+          "erp-domain/src/test/java/com/bigbrightpaints/erp/modules/production/service/CatalogServiceBrandCrudTest.java:95",
+          "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/production/controller/CatalogController.java:43",
+          "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/production/service/CatalogService.java:90",
+          "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/production/dto/CatalogProductRequest.java:13",
+          "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/production/service/CatalogService.java:131"
+        ],
+        "network": "Local health probe failed (curl: could not connect to localhost:8081); validation executed through Maven test surface"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CAT-002",
+      "title": "Product catalog attributes: name/brand/colors/sizes/carton sizes/SKU/UOM",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run catalog CRUD test suite command (same Maven command above)",
+          "expected": "Product attribute test covering full payload passes",
+          "observed": "CatalogServiceProductCrudTest passed 3/3 including createProduct_withAllAttributes_generatesSkuAndStoresMappings"
+        },
+        {
+          "action": "Inspect assertion-specific test method expectations",
+          "expected": "Test verifies name, brand, multi-color, multi-size, carton mappings, SKU generation, UOM, HSN, GST",
+          "observed": "Assertions confirm sku=BBR-EXTERIOREMUL-001, colors=[Red,Blue], sizes=[1L,4L], cartonSizes=[1L:24,4L:6], unitOfMeasure=LITER"
+        }
+      ],
+      "evidence": {
+        "commands": [
+          "mvn -f /home/realnigga/Desktop/Mission-control/erp-domain/pom.xml --settings /home/realnigga/Desktop/Mission-control/erp-domain/.mvn/settings.xml test -Djacoco.skip=true -Dtest=CatalogServiceBrandCrudTest,CatalogServiceProductCrudTest,CatalogServiceBulkUpsertTest",
+          "read erp-domain/src/test/java/com/bigbrightpaints/erp/modules/production/service/CatalogServiceProductCrudTest.java"
+        ],
+        "observedOutput": "CatalogServiceProductCrudTest: Tests run: 3, Failures: 0, Errors: 0",
+        "codeRefs": [
+          "erp-domain/src/test/java/com/bigbrightpaints/erp/modules/production/service/CatalogServiceProductCrudTest.java:64",
+          "erp-domain/src/test/java/com/bigbrightpaints/erp/modules/production/service/CatalogServiceProductCrudTest.java:108"
+        ],
+        "network": "Test surface (Maven/Surefire)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CAT-003",
+      "title": "Bulk product operations with per-item validation/error reporting",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run catalog bulk test suite command (same Maven command above)",
+          "expected": "Bulk upsert tests execute with mixed valid/invalid payload handling",
+          "observed": "CatalogServiceBulkUpsertTest passed 2/2"
+        },
+        {
+          "action": "Inspect mixed valid+invalid and field-level validation test assertions",
+          "expected": "Per-item success/failure counters and error messages are captured",
+          "observed": "Response asserts total=2, succeeded=1, failed=1; failed item action=FAILED with message containing 'cartonSizes mapping is required'; second test verifies field-level messages for brandId/name/unitOfMeasure/hsnCode/gstRate"
+        }
+      ],
+      "evidence": {
+        "commands": [
+          "mvn -f /home/realnigga/Desktop/Mission-control/erp-domain/pom.xml --settings /home/realnigga/Desktop/Mission-control/erp-domain/.mvn/settings.xml test -Djacoco.skip=true -Dtest=CatalogServiceBrandCrudTest,CatalogServiceProductCrudTest,CatalogServiceBulkUpsertTest",
+          "read erp-domain/src/test/java/com/bigbrightpaints/erp/modules/production/service/CatalogServiceBulkUpsertTest.java"
+        ],
+        "observedOutput": "CatalogServiceBulkUpsertTest: Tests run: 2, Failures: 0, Errors: 0",
+        "codeRefs": [
+          "erp-domain/src/test/java/com/bigbrightpaints/erp/modules/production/service/CatalogServiceBulkUpsertTest.java:75",
+          "erp-domain/src/test/java/com/bigbrightpaints/erp/modules/production/service/CatalogServiceBulkUpsertTest.java:124",
+          "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/production/service/CatalogService.java:186"
+        ],
+        "network": "Test surface (Maven/Surefire)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CAT-004",
+      "title": "FinishedGoodsService decomposed to focused services under 500 lines",
+      "status": "blocked",
+      "steps": [
+        {
+          "action": "Count lines for decomposed services with wc -l",
+          "expected": "FinishedGoodsCatalogService/StockService/ReservationService/DispatchService each <500 lines",
+          "observed": "Catalog=38, Stock=58, Reservation=22, Dispatch=64, Facade FinishedGoodsService=180"
+        },
+        {
+          "action": "Run focused integration evidence: FinishedGoodsServiceTest#dispatchUsesWacIncludingReserved with -Dspring.jpa.hibernate.ddl-auto=update",
+          "expected": "At least one decomposition-path integration flow passes",
+          "observed": "BUILD SUCCESS, Tests run: 1, Failures: 0, Errors: 0"
+        },
+        {
+          "action": "Attempt broader FinishedGoodsService test execution for 'all tests pass' criterion",
+          "expected": "FinishedGoodsServiceTest class runs clean",
+          "observed": "Blocked by infrastructure/test instability: (a) without ddl-auto override -> schema mismatch error (column state_code missing), (b) class-level rerun later -> ApplicationContext import error for AbstractIntegrationTest.class"
+        }
+      ],
+      "evidence": {
+        "commands": [
+          "wc -l FinishedGoodsCatalogService.java FinishedGoodsStockService.java FinishedGoodsReservationService.java FinishedGoodsDispatchService.java FinishedGoodsService.java",
+          "mvn -f /home/realnigga/Desktop/Mission-control/erp-domain/pom.xml --settings /home/realnigga/Desktop/Mission-control/erp-domain/.mvn/settings.xml test -Djacoco.skip=true -Dspring.jpa.hibernate.ddl-auto=update -Dtest=FinishedGoodsServiceTest#dispatchUsesWacIncludingReserved",
+          "mvn -f /home/realnigga/Desktop/Mission-control/erp-domain/pom.xml --settings /home/realnigga/Desktop/Mission-control/erp-domain/.mvn/settings.xml test -Djacoco.skip=true -Dspring.jpa.hibernate.ddl-auto=update -Dtest=FinishedGoodsServiceTest"
+        ],
+        "observedOutput": "Line counts satisfy <500 target for decomposed services. Focused integration test passed (1/1). Full class verification failed due context/classpath instability in this run.",
+        "codeRefs": [
+          "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/service/FinishedGoodsCatalogService.java",
+          "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/service/FinishedGoodsStockService.java",
+          "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/service/FinishedGoodsReservationService.java",
+          "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/service/FinishedGoodsDispatchService.java",
+          "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/service/FinishedGoodsService.java",
+          "erp-domain/src/test/java/com/bigbrightpaints/erp/modules/inventory/service/FinishedGoodsServiceTest.java"
+        ],
+        "network": "Testcontainers PostgreSQL started successfully for focused test; broader run unstable"
+      },
+      "issues": "Could not complete stable full-class pass proof for FinishedGoodsService tests in this environment; decomposition line-count proof is complete, but all-tests-pass criterion is blocked by test harness instability."
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Runtime API surface at http://localhost:8081 was unavailable (curl connection failure), so direct live API assertions could not be exercised.",
+      "resolved": true,
+      "resolution": "Used assertion-specific Maven tests as the permitted API/test user surface fallback from flow guidance.",
+      "affectedAssertions": ["VAL-CAT-001", "VAL-CAT-002", "VAL-CAT-003", "VAL-CAT-004"]
+    },
+    {
+      "description": "FinishedGoods integration evidence required extra runtime flag alignment and still showed non-deterministic class-level instability.",
+      "resolved": false,
+      "resolution": "Applied -Dspring.jpa.hibernate.ddl-auto=update and validated a focused test method; full class run remained unstable.",
+      "affectedAssertions": ["VAL-CAT-004"]
+    }
+  ],
+  "blockers": [
+    {
+      "description": "Cannot fully satisfy VAL-CAT-004 'all tests pass' evidence in this session due FinishedGoodsServiceTest class-level instability (schema mismatch without override; later ApplicationContext import/classpath failure on broader rerun).",
+      "affectedAssertions": ["VAL-CAT-004"],
+      "quickFixAttempted": "Retried with -Dspring.jpa.hibernate.ddl-auto=update and narrowed to focused method; focused method passed but broad class verification still failed."
+    }
+  ],
+  "summary": "Validated 4 assertions using API/test surface evidence fallback (Maven tests) because localhost:8081 was unavailable. VAL-CAT-001, VAL-CAT-002, VAL-CAT-003 passed with concrete test evidence. VAL-CAT-004 remains blocked: decomposition line-count checks pass and one focused FinishedGoods integration test passes, but full all-tests-pass proof for that surface was unstable in this environment."
+}

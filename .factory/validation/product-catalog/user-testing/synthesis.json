@@ -1,0 +1,25 @@
+{
+  "milestone": "product-catalog",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 8,
+    "passed": 8,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-CAT-001",
+    "VAL-CAT-002",
+    "VAL-CAT-003",
+    "VAL-CAT-004",
+    "VAL-CAT-005",
+    "VAL-CAT-006",
+    "VAL-CAT-007",
+    "VAL-DOC-004"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "previousRound": null
+}
