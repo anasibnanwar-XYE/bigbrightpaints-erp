@@ -11,6 +11,7 @@ import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
+import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -1198,6 +1199,37 @@ public class PurchasingService {
             taxLines = new HashMap<>();
             taxLines.put(null, taxAmount);
         }
+
+        String standardizedMemo = memo;
+        List<JournalCreationRequest.LineRequest> standardizedLines = new java.util.ArrayList<>();
+        inventoryDebits.forEach((accountId, amount) -> standardizedLines.add(
+                new JournalCreationRequest.LineRequest(accountId, amount, BigDecimal.ZERO, standardizedMemo)));
+        if (taxLines != null) {
+            taxLines.forEach((accountId, amount) -> standardizedLines.add(
+                    new JournalCreationRequest.LineRequest(accountId, amount, BigDecimal.ZERO, standardizedMemo)));
+        }
+        standardizedLines.add(new JournalCreationRequest.LineRequest(
+                supplier.getPayableAccount() != null ? supplier.getPayableAccount().getId() : null,
+                BigDecimal.ZERO,
+                totalAmount,
+                standardizedMemo
+        ));
+        JournalCreationRequest standardizedPurchaseRequest = new JournalCreationRequest(
+                totalAmount,
+                inventoryDebits.keySet().stream().findFirst().orElse(null),
+                supplier.getPayableAccount() != null ? supplier.getPayableAccount().getId() : null,
+                standardizedMemo,
+                "PURCHASING",
+                referenceNumber,
+                null,
+                standardizedLines,
+                entryDate,
+                null,
+                supplier.getId(),
+                false
+        );
+        memo = standardizedPurchaseRequest.narration();
+        entryDate = standardizedPurchaseRequest.entryDate() != null ? standardizedPurchaseRequest.entryDate() : entryDate;
 
         // Delegate to AccountingFacade for purchase journal posting
         return accountingFacade.postPurchaseJournal(

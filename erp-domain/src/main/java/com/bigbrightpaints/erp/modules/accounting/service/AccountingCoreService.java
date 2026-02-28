@@ -269,6 +269,173 @@ public class AccountingCoreService {
         return entries.stream().map(this::toDto).toList();
     }
 
+    @Transactional
+    public JournalEntryDto createStandardJournal(JournalCreationRequest request) {
+        if (request == null) {
+            throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
+                    "Journal creation request is required");
+        }
+        ValidationUtils.requirePositive(request.amount(), "amount");
+        if (!StringUtils.hasText(request.narration())) {
+            throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
+                    "Narration is required for journal creation");
+        }
+        if (!StringUtils.hasText(request.sourceModule())) {
+            throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
+                    "Source module is required for journal creation");
+        }
+        if (!StringUtils.hasText(request.sourceReference())) {
+            throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
+                    "Source reference is required for journal creation");
+        }
+
+        List<JournalEntryRequest.JournalLineRequest> resolvedLines = request.resolvedLines();
+        if (resolvedLines == null || resolvedLines.isEmpty()) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "At least one journal line is required");
+        }
+
+        BigDecimal totalDebit = BigDecimal.ZERO;
+        BigDecimal totalCredit = BigDecimal.ZERO;
+        for (JournalEntryRequest.JournalLineRequest line : resolvedLines) {
+            if (line.accountId() == null) {
+                throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
+                        "Account is required for every journal line");
+            }
+            BigDecimal debit = line.debit() == null ? BigDecimal.ZERO : line.debit();
+            BigDecimal credit = line.credit() == null ? BigDecimal.ZERO : line.credit();
+            if (debit.compareTo(BigDecimal.ZERO) < 0 || credit.compareTo(BigDecimal.ZERO) < 0) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Journal line amounts cannot be negative");
+            }
+            if (debit.compareTo(BigDecimal.ZERO) > 0 && credit.compareTo(BigDecimal.ZERO) > 0) {
+                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Debit and credit cannot both be non-zero on the same line");
+            }
+            totalDebit = totalDebit.add(debit);
+            totalCredit = totalCredit.add(credit);
+        }
+        if (totalDebit.compareTo(BigDecimal.ZERO) <= 0 || totalCredit.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Journal lines must include at least one debit and one credit");
+        }
+        if (totalDebit.subtract(totalCredit).abs().compareTo(JOURNAL_BALANCE_TOLERANCE) > 0) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Journal entry must balance")
+                    .withDetail("totalDebit", totalDebit)
+                    .withDetail("totalCredit", totalCredit);
+        }
+
+        LocalDate entryDate = request.entryDate() != null ? request.entryDate() : LocalDate.now();
+        String narration = request.narration().trim();
+        String sourceModule = request.sourceModule().trim();
+        String sourceReference = request.sourceReference().trim();
+        JournalEntryRequest journalRequest = new JournalEntryRequest(
+                sourceReference,
+                entryDate,
+                narration,
+                request.dealerId(),
+                request.supplierId(),
+                Boolean.TRUE.equals(request.adminOverride()),
+                resolvedLines,
+                null,
+                null,
+                sourceModule,
+                sourceReference,
+                JournalEntryType.AUTOMATED.name()
+        );
+        return createJournalEntry(journalRequest);
+    }
+
+    @Transactional
+    public JournalEntryDto createManualJournal(ManualJournalRequest request) {
+        if (request == null) {
+            throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
+                    "Manual journal request is required");
+        }
+        if (request.lines() == null || request.lines().isEmpty()) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Manual journal requires at least one line");
+        }
+        BigDecimal totalDebit = BigDecimal.ZERO;
+        BigDecimal totalCredit = BigDecimal.ZERO;
+        List<JournalEntryRequest.JournalLineRequest> lines = new ArrayList<>();
+        for (ManualJournalRequest.LineRequest line : request.lines()) {
+            if (line == null || line.accountId() == null) {
+                throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
+                        "Account is required for manual journal lines");
+            }
+            BigDecimal amount = ValidationUtils.requirePositive(line.amount(), "amount");
+            ManualJournalRequest.EntryType entryType = line.entryType();
+            if (entryType == null) {
+                throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
+                        "Entry type is required for manual journal lines");
+            }
+            String lineNarration = StringUtils.hasText(line.narration())
+                    ? line.narration().trim()
+                    : (StringUtils.hasText(request.narration()) ? request.narration().trim() : "Manual journal line");
+            BigDecimal debit = entryType == ManualJournalRequest.EntryType.DEBIT ? amount : BigDecimal.ZERO;
+            BigDecimal credit = entryType == ManualJournalRequest.EntryType.CREDIT ? amount : BigDecimal.ZERO;
+            totalDebit = totalDebit.add(debit);
+            totalCredit = totalCredit.add(credit);
+            lines.add(new JournalEntryRequest.JournalLineRequest(
+                    line.accountId(),
+                    lineNarration,
+                    debit,
+                    credit
+            ));
+        }
+        if (totalDebit.subtract(totalCredit).abs().compareTo(JOURNAL_BALANCE_TOLERANCE) > 0) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Manual journal entry must balance")
+                    .withDetail("totalDebit", totalDebit)
+                    .withDetail("totalCredit", totalCredit);
+        }
+
+        LocalDate entryDate = request.entryDate() != null ? request.entryDate() : LocalDate.now();
+        String narration = StringUtils.hasText(request.narration()) ? request.narration().trim() : "Manual journal entry";
+        String sourceReference = StringUtils.hasText(request.idempotencyKey()) ? request.idempotencyKey().trim() : null;
+        JournalEntryRequest journalRequest = new JournalEntryRequest(
+                null,
+                entryDate,
+                narration,
+                null,
+                null,
+                Boolean.TRUE.equals(request.adminOverride()),
+                lines,
+                null,
+                null,
+                "MANUAL",
+                sourceReference,
+                JournalEntryType.MANUAL.name()
+        );
+        return createManualJournalEntry(journalRequest, request.idempotencyKey());
+    }
+
+    @Transactional(readOnly = true)
+    public List<JournalListItemDto> listJournals(LocalDate fromDate,
+                                                 LocalDate toDate,
+                                                 String journalType,
+                                                 String sourceModule) {
+        if (fromDate != null && toDate != null && fromDate.isAfter(toDate)) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_DATE,
+                    "fromDate cannot be after toDate")
+                    .withDetail("fromDate", fromDate)
+                    .withDetail("toDate", toDate);
+        }
+        JournalEntryType typeFilter = parseJournalTypeFilter(journalType);
+        String normalizedSourceModule = normalizeSourceModule(sourceModule);
+        Company company = companyContextService.requireCurrentCompany();
+        return journalEntryRepository.findByCompanyOrderByEntryDateDesc(company).stream()
+                .filter(entry -> fromDate == null || (entry.getEntryDate() != null && !entry.getEntryDate().isBefore(fromDate)))
+                .filter(entry -> toDate == null || (entry.getEntryDate() != null && !entry.getEntryDate().isAfter(toDate)))
+                .filter(entry -> typeFilter == null || typeFilter.equals(entry.getJournalType()))
+                .filter(entry -> normalizedSourceModule == null
+                        || (entry.getSourceModule() != null && normalizedSourceModule.equalsIgnoreCase(entry.getSourceModule())))
+                .map(this::toJournalListItemDto)
+                .toList();
+    }
+
     @Retryable(
             value = DataIntegrityViolationException.class,
             maxAttempts = 3,
@@ -302,6 +469,9 @@ public class AccountingCoreService {
         entry.setCompany(company);
         entry.setCurrency(currency);
         entry.setFxRate(fxRate);
+        entry.setJournalType(resolveJournalEntryType(request.journalType()));
+        entry.setSourceModule(normalizeSourceModule(request.sourceModule()));
+        entry.setSourceReference(normalizeSourceReference(request.sourceReference()));
         entry.setReferenceNumber(resolveJournalReference(company, request.referenceNumber()));
         auditMetadata.put("referenceNumber", entry.getReferenceNumber());
 
@@ -1149,16 +1319,31 @@ public class AccountingCoreService {
         Company company = companyContextService.requireCurrentCompany();
         LocalDate entryDate = postingDate != null ? postingDate : companyClock.today(company);
         String resolvedMemo = StringUtils.hasText(memo) ? memo : "Payroll - " + runToken;
-        JournalEntryRequest request = new JournalEntryRequest(
-                "PAYROLL-" + runToken,
-                entryDate,
+        List<JournalCreationRequest.LineRequest> standardizedLines = lines == null
+                ? List.of()
+                : lines.stream()
+                .map(line -> new JournalCreationRequest.LineRequest(
+                        line.accountId(),
+                        line.debit(),
+                        line.credit(),
+                        line.description()
+                ))
+                .toList();
+        JournalCreationRequest standardizedRequest = new JournalCreationRequest(
+                totalLinesAmount(lines),
+                null,
+                null,
                 resolvedMemo,
+                "PAYROLL",
+                "PAYROLL-" + runToken,
+                null,
+                standardizedLines,
+                entryDate,
                 null,
                 null,
-                false,
-                lines
+                false
         );
-        return createJournalEntry(request);
+        return createStandardJournal(standardizedRequest);
     }
 
     @Transactional
@@ -2174,6 +2359,77 @@ public class AccountingCoreService {
      * @param debitIncreasesBalance true for asset accounts (AR), false for liability accounts (AP)
      * @return the net debit/credit effect on the ledger, or zero amounts if no matches found
      */
+    private BigDecimal totalLinesAmount(List<JournalEntryRequest.JournalLineRequest> lines) {
+        if (lines == null || lines.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal debitTotal = lines.stream()
+                .map(line -> line.debit() == null ? BigDecimal.ZERO : line.debit())
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal creditTotal = lines.stream()
+                .map(line -> line.credit() == null ? BigDecimal.ZERO : line.credit())
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal resolved = debitTotal.compareTo(BigDecimal.ZERO) > 0 ? debitTotal : creditTotal;
+        return resolved.abs();
+    }
+
+    private JournalEntryType resolveJournalEntryType(String journalType) {
+        if (!StringUtils.hasText(journalType)) {
+            return JournalEntryType.AUTOMATED;
+        }
+        try {
+            return JournalEntryType.valueOf(journalType.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ex) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Unsupported journal type")
+                    .withDetail("journalType", journalType);
+        }
+    }
+
+    private JournalEntryType parseJournalTypeFilter(String journalType) {
+        if (!StringUtils.hasText(journalType)) {
+            return null;
+        }
+        return resolveJournalEntryType(journalType);
+    }
+
+    private String normalizeSourceModule(String sourceModule) {
+        if (!StringUtils.hasText(sourceModule)) {
+            return null;
+        }
+        return sourceModule.trim().toUpperCase(Locale.ROOT);
+    }
+
+    private String normalizeSourceReference(String sourceReference) {
+        if (!StringUtils.hasText(sourceReference)) {
+            return null;
+        }
+        return sourceReference.trim();
+    }
+
+    private JournalListItemDto toJournalListItemDto(JournalEntry entry) {
+        BigDecimal totalDebit = BigDecimal.ZERO;
+        BigDecimal totalCredit = BigDecimal.ZERO;
+        if (entry.getLines() != null) {
+            for (JournalLine line : entry.getLines()) {
+                totalDebit = totalDebit.add(line.getDebit() == null ? BigDecimal.ZERO : line.getDebit());
+                totalCredit = totalCredit.add(line.getCredit() == null ? BigDecimal.ZERO : line.getCredit());
+            }
+        }
+        return new JournalListItemDto(
+                entry.getId(),
+                entry.getReferenceNumber(),
+                entry.getEntryDate(),
+                entry.getMemo(),
+                entry.getStatus(),
+                entry.getJournalType() != null ? entry.getJournalType().name() : JournalEntryType.AUTOMATED.name(),
+                entry.getSourceModule(),
+                entry.getSourceReference(),
+                totalDebit,
+                totalCredit
+        );
+    }
+
     private AccountDto toDto(Account account) {
         return new AccountDto(account.getId(), account.getPublicId(), account.getCode(), account.getName(), account.getType(), account.getBalance());
     }
@@ -2393,7 +2649,10 @@ public class AccountingCoreService {
                 request.adminOverride(),
                 request.lines(),
                 request.currency(),
-                request.fxRate()
+                request.fxRate(),
+                request.sourceModule(),
+                request.sourceReference(),
+                StringUtils.hasText(request.journalType()) ? request.journalType() : JournalEntryType.MANUAL.name()
         ));
         if (StringUtils.hasText(key) && created != null && StringUtils.hasText(created.referenceNumber())) {
             JournalReferenceMapping mapping = findLatestLegacyReferenceMapping(company, key)

@@ -17,6 +17,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLine;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
+import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
 import com.bigbrightpaints.erp.modules.accounting.service.DealerLedgerService;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyAccountingSettingsService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -2823,6 +2824,28 @@ public class SalesService {
                         acc[1], "Inventory relief for dispatch " + slip.getSlipNumber(), BigDecimal.ZERO, cost));
             }
             if (!cogsLines.isEmpty()) {
+                JournalCreationRequest standardizedCogsRequest = new JournalCreationRequest(
+                        totalCost,
+                        cogsLines.getFirst().accountId(),
+                        cogsLines.get(1).accountId(),
+                        "COGS for dispatch " + slipNumber,
+                        "SALES_DISPATCH",
+                        cogsReferenceId,
+                        null,
+                        cogsLines.stream()
+                                .map(line -> new JournalCreationRequest.LineRequest(
+                                        line.accountId(),
+                                        line.debit(),
+                                        line.credit(),
+                                        line.description()
+                                ))
+                                .toList(),
+                        dispatchedDate,
+                        dealer.getId(),
+                        null,
+                        false
+                );
+                cogsLines = standardizedCogsRequest.resolvedLines();
                 var cogsEntry = accountingFacade.postCogsJournal(
                         cogsReferenceId,
                         dealer.getId(),
@@ -2866,11 +2889,32 @@ public class SalesService {
                 arPostings.add(toPosting(company, entry.getKey(), "Tax for dispatch " + slipNumber, BigDecimal.ZERO, entry.getValue()));
             }
             String salesJournalOrderKey = resolveSalesJournalOrderKey(order, slip.getId(), slipNumber, singleSlipForOrder);
+            JournalCreationRequest standardizedSalesRequest = new JournalCreationRequest(
+                    totalAmount,
+                    dealer.getReceivableAccount().getId(),
+                    revenueByAccount.keySet().stream().findFirst().orElse(null),
+                    "Dispatch " + slipNumber,
+                    "SALES",
+                    invoiceNumber,
+                    null,
+                    arPostings.stream()
+                            .map(posting -> new JournalCreationRequest.LineRequest(
+                                    posting.accountId(),
+                                    posting.debit(),
+                                    posting.credit(),
+                                    "Dispatch " + slipNumber
+                            ))
+                            .toList(),
+                    dispatchDate,
+                    dealer.getId(),
+                    null,
+                    false
+            );
             var arEntry = accountingFacade.postSalesJournal(
                     dealer.getId(),
                     salesJournalOrderKey,
-                    dispatchDate,
-                    "Dispatch " + slipNumber,
+                    standardizedSalesRequest.entryDate(),
+                    standardizedSalesRequest.narration(),
                     revenueByAccount,
                     taxByAccount,
                     discountByAccount.isEmpty() ? null : discountByAccount,

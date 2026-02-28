@@ -19,10 +19,13 @@ import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptSplitRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DebitNoteRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.InventoryRevaluationRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryReversalRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.JournalListItemDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.LandedCostRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.ManualJournalRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementResponse;
 import com.bigbrightpaints.erp.modules.accounting.dto.SupplierPaymentRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.SupplierSettlementRequest;
@@ -44,6 +47,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @Service
@@ -236,6 +240,24 @@ public class AccountingService extends AccountingCoreService {
             return super.createJournalEntry(request);
         }
         return journalEntryService.createJournalEntry(request);
+    }
+
+    @Override
+    public JournalEntryDto createStandardJournal(JournalCreationRequest request) {
+        return super.createStandardJournal(request);
+    }
+
+    @Override
+    public JournalEntryDto createManualJournal(ManualJournalRequest request) {
+        return super.createManualJournal(request);
+    }
+
+    @Override
+    public List<JournalListItemDto> listJournals(LocalDate fromDate,
+                                                 LocalDate toDate,
+                                                 String journalType,
+                                                 String sourceModule) {
+        return super.listJournals(fromDate, toDate, journalType, sourceModule);
     }
 
     @Override

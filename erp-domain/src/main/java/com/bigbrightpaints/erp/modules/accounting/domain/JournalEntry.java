@@ -51,6 +51,16 @@ public class JournalEntry extends VersionedEntity {
     @JoinColumn(name = "accounting_period_id")
     private AccountingPeriod accountingPeriod;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "journal_type", nullable = false)
+    private JournalEntryType journalType = JournalEntryType.AUTOMATED;
+
+    @Column(name = "source_module")
+    private String sourceModule;
+
+    @Column(name = "source_reference")
+    private String sourceReference;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "reversal_of_id")
     private JournalEntry reversalOf;
@@ -141,6 +151,14 @@ public class JournalEntry extends VersionedEntity {
     public void setSupplier(Supplier supplier) { this.supplier = supplier; }
     public AccountingPeriod getAccountingPeriod() { return accountingPeriod; }
     public void setAccountingPeriod(AccountingPeriod accountingPeriod) { this.accountingPeriod = accountingPeriod; }
+    public JournalEntryType getJournalType() { return journalType; }
+    public void setJournalType(JournalEntryType journalType) {
+        this.journalType = journalType == null ? JournalEntryType.AUTOMATED : journalType;
+    }
+    public String getSourceModule() { return sourceModule; }
+    public void setSourceModule(String sourceModule) { this.sourceModule = sourceModule; }
+    public String getSourceReference() { return sourceReference; }
+    public void setSourceReference(String sourceReference) { this.sourceReference = sourceReference; }
     public JournalEntry getReversalOf() { return reversalOf; }
     public void setReversalOf(JournalEntry reversalOf) { this.reversalOf = reversalOf; }
     public JournalEntry getReversalEntry() { return reversalEntry; }

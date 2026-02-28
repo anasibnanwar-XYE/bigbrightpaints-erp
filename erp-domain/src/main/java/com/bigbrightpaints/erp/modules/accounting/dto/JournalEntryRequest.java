@@ -17,7 +17,10 @@ public record JournalEntryRequest(
         Boolean adminOverride,
         @NotEmpty List<@Valid JournalLineRequest> lines,
         String currency,
-        BigDecimal fxRate
+        BigDecimal fxRate,
+        String sourceModule,
+        String sourceReference,
+        String journalType
 ) {
     public JournalEntryRequest(String referenceNumber,
                                @NotNull LocalDate entryDate,
@@ -26,7 +29,19 @@ public record JournalEntryRequest(
                                Long supplierId,
                                Boolean adminOverride,
                                @NotEmpty List<@Valid JournalLineRequest> lines) {
-        this(referenceNumber, entryDate, memo, dealerId, supplierId, adminOverride, lines, null, null);
+        this(referenceNumber, entryDate, memo, dealerId, supplierId, adminOverride, lines, null, null, null, null, null);
+    }
+
+    public JournalEntryRequest(String referenceNumber,
+                               @NotNull LocalDate entryDate,
+                               String memo,
+                               Long dealerId,
+                               Long supplierId,
+                               Boolean adminOverride,
+                               @NotEmpty List<@Valid JournalLineRequest> lines,
+                               String currency,
+                               BigDecimal fxRate) {
+        this(referenceNumber, entryDate, memo, dealerId, supplierId, adminOverride, lines, currency, fxRate, null, null, null);
     }
 
     public record JournalLineRequest(@NotNull Long accountId,

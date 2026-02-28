@@ -9,6 +9,7 @@ import com.bigbrightpaints.erp.core.idempotency.IdempotencySignatureBuilder;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
+import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest.JournalLineRequest;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
@@ -488,6 +489,28 @@ public class PayrollService {
             run.setRunNumber(runNumber);
         }
         String memo = "Payroll - " + (runNumber != null ? runNumber : "RUN");
+        JournalCreationRequest standardizedPayrollRequest = new JournalCreationRequest(
+                totalGrossPay,
+                expenseAccount.getId(),
+                salaryPayableAccount.getId(),
+                memo,
+                "PAYROLL",
+                "PAYROLL-" + (runNumber != null ? runNumber : "RUN"),
+                null,
+                lines.stream()
+                        .map(line -> new JournalCreationRequest.LineRequest(
+                                line.accountId(),
+                                line.debit(),
+                                line.credit(),
+                                line.description()
+                        ))
+                        .toList(),
+                postingDate,
+                null,
+                null,
+                false
+        );
+        lines = standardizedPayrollRequest.resolvedLines();
         JournalEntryDto journal = accountingFacade.postPayrollRun(runNumber, run.getId(), postingDate, memo, lines);
 
         if (hasPostingJournalLink && run.getJournalEntryId() != null && !run.getJournalEntryId().equals(journal.id())) {

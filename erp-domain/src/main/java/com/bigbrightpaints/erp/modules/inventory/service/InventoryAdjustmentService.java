@@ -8,6 +8,7 @@ import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
 import com.bigbrightpaints.erp.core.validation.ValidationUtils;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CostingMethodUtils;
+import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -182,6 +183,29 @@ public class InventoryAdjustmentService {
         List<InventoryMovement> movements = applyMovements(savedDraft, null);
         boolean adminOverride = Boolean.TRUE.equals(request.adminOverride());
         String memo = memoFor(savedDraft, request.reason());
+        List<JournalCreationRequest.LineRequest> standardizedLines = new java.util.ArrayList<>();
+        standardizedLines.add(new JournalCreationRequest.LineRequest(
+                request.adjustmentAccountId(),
+                totalAmount,
+                BigDecimal.ZERO,
+                memo
+        ));
+        inventoryCredits.forEach((accountId, amount) -> standardizedLines.add(
+                new JournalCreationRequest.LineRequest(accountId, BigDecimal.ZERO, amount, memo)));
+        JournalCreationRequest standardizedAdjustmentRequest = new JournalCreationRequest(
+                totalAmount,
+                request.adjustmentAccountId(),
+                inventoryCredits.keySet().stream().findFirst().orElse(null),
+                memo,
+                "INVENTORY_ADJUSTMENT",
+                savedDraft.getReferenceNumber(),
+                null,
+                standardizedLines,
+                savedDraft.getAdjustmentDate(),
+                null,
+                null,
+                adminOverride
+        );
         JournalEntryDto journalEntry = accountingFacade.postInventoryAdjustment(
                 savedDraft.getType().name(),
                 savedDraft.getReferenceNumber(),
@@ -189,8 +213,8 @@ public class InventoryAdjustmentService {
                 Map.copyOf(inventoryCredits),
                 false,
                 adminOverride,
-                memo,
-                savedDraft.getAdjustmentDate());
+                standardizedAdjustmentRequest.narration(),
+                standardizedAdjustmentRequest.entryDate());
         if (journalEntry == null) {
             throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Inventory adjustment journal was not created");
         }

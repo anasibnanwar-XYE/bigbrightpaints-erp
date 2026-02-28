@@ -290,7 +290,7 @@ class TS_RuntimeAccountingFacadePeriodCloseBoundaryTest {
                 null,
                 null
         );
-        when(accountingService.createJournalEntry(org.mockito.ArgumentMatchers.any()))
+        when(accountingService.createStandardJournal(org.mockito.ArgumentMatchers.any()))
                 .thenReturn(created);
 
         JournalEntry saved = new JournalEntry();

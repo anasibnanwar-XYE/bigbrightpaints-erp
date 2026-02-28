@@ -7,6 +7,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMappingRepository;
+import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalLineDto;
@@ -306,8 +307,8 @@ class AccountingFacadeTest {
                 null,
                 null
         );
-        ArgumentCaptor<JournalEntryRequest> requestCaptor = ArgumentCaptor.forClass(JournalEntryRequest.class);
-        when(accountingService.createJournalEntry(requestCaptor.capture())).thenReturn(replay);
+        ArgumentCaptor<JournalCreationRequest> requestCaptor = ArgumentCaptor.forClass(JournalCreationRequest.class);
+        when(accountingService.createStandardJournal(requestCaptor.capture())).thenReturn(replay);
         when(companyEntityLookup.requireJournalEntry(eq(company), eq(777L))).thenReturn(existing);
 
         JournalEntryDto dto = accountingFacade.postSalesJournal(
@@ -323,8 +324,8 @@ class AccountingFacadeTest {
 
         assertThat(dto.id()).isEqualTo(777L);
         assertThat(dto.referenceNumber()).isEqualTo(canonicalReference);
-        assertThat(requestCaptor.getValue().referenceNumber()).isEqualTo(canonicalReference);
-        verify(accountingService).createJournalEntry(any());
+        assertThat(requestCaptor.getValue().sourceReference()).isEqualTo(canonicalReference);
+        verify(accountingService).createStandardJournal(any());
     }
 
     @Test
@@ -376,7 +377,7 @@ class AccountingFacadeTest {
                 null,
                 null
         );
-        when(accountingService.createJournalEntry(any(JournalEntryRequest.class))).thenReturn(replayWithoutId);
+        when(accountingService.createStandardJournal(any(JournalCreationRequest.class))).thenReturn(replayWithoutId);
 
         JournalEntryDto dto = accountingFacade.postSalesJournal(
                 dealerId,
@@ -390,7 +391,7 @@ class AccountingFacadeTest {
         );
 
         assertThat(dto.referenceNumber()).isEqualTo(canonicalReference);
-        verify(accountingService).createJournalEntry(any());
+        verify(accountingService).createStandardJournal(any());
         verify(companyEntityLookup, never()).requireJournalEntry(eq(company), any(Long.class));
     }
 
@@ -415,7 +416,7 @@ class AccountingFacadeTest {
         existing.setDealer(dealer);
         when(journalReferenceResolver.findExistingEntry(eq(company), eq(canonicalReference)))
                 .thenReturn(Optional.of(existing));
-        when(accountingService.createJournalEntry(any(JournalEntryRequest.class))).thenReturn(null);
+        when(accountingService.createStandardJournal(any(JournalCreationRequest.class))).thenReturn(null);
 
         JournalEntryDto replay = accountingFacade.postSalesJournal(
                 dealerId,
@@ -429,7 +430,7 @@ class AccountingFacadeTest {
         );
 
         assertThat(replay).isNull();
-        verify(accountingService).createJournalEntry(any());
+        verify(accountingService).createStandardJournal(any());
         verify(companyEntityLookup, never()).requireJournalEntry(eq(company), any(Long.class));
     }
 

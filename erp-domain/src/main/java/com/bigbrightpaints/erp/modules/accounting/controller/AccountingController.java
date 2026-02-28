@@ -450,6 +450,31 @@ public class AccountingController {
         return ResponseEntity.ok(ApiResponse.success(journalEntryService.listJournalEntries(dealerId, supplierId, page, size)));
     }
 
+    @GetMapping("/journals")
+    @Timed(value = "erp.accounting.journals.list", description = "List journals with filters")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<List<JournalListItemDto>>> listJournals(
+            @RequestParam(required = false) LocalDate fromDate,
+            @RequestParam(required = false) LocalDate toDate,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) String sourceModule) {
+        return ResponseEntity.ok(ApiResponse.success(
+                accountingService.listJournals(fromDate, toDate, type, sourceModule)));
+    }
+
+    @PostMapping("/journals/manual")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<JournalEntryDto>> createManualJournal(@Valid @RequestBody ManualJournalRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Manual journal entry posted", accountingService.createManualJournal(request)));
+    }
+
+    @PostMapping("/journals/{entryId}/reverse")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<JournalEntryDto>> reverseJournalEntryByJournalPath(@PathVariable Long entryId,
+                                                                                          @RequestBody(required = false) JournalEntryReversalRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Journal entry corrected", accountingService.reverseJournalEntry(entryId, request)));
+    }
+
     @PostMapping("/journal-entries")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
     public ResponseEntity<ApiResponse<JournalEntryDto>> createJournalEntry(@Valid @RequestBody JournalEntryRequest request) {

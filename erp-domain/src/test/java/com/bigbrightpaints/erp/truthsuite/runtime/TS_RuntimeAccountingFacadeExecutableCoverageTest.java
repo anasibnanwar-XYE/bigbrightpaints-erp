@@ -186,7 +186,7 @@ class TS_RuntimeAccountingFacadeExecutableCoverageTest {
                 null,
                 null
         );
-        when(accountingService.createJournalEntry(any())).thenReturn(replay);
+        when(accountingService.createStandardJournal(any())).thenReturn(replay);
         when(companyEntityLookup.requireJournalEntry(eq(company), eq(777L))).thenReturn(existing);
 
         JournalEntryDto dto = accountingFacade.postSalesJournal(
@@ -201,6 +201,6 @@ class TS_RuntimeAccountingFacadeExecutableCoverageTest {
         );
 
         assertThat(dto.referenceNumber()).isEqualTo(canonicalReference);
-        verify(accountingService).createJournalEntry(any());
+        verify(accountingService).createStandardJournal(any());
     }
 }

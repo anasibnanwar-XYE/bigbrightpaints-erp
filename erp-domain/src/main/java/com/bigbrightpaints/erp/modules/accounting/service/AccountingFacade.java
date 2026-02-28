@@ -13,6 +13,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMapping;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMappingRepository;
+import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.PayrollPaymentRequest;
@@ -314,18 +315,23 @@ public class AccountingFacade {
 
         LocalDate postingDate = entryDate != null ? entryDate : companyClock.today(company);
         String requestReference = existing.map(JournalEntry::getReferenceNumber).orElse(canonicalReference);
-
-        JournalEntryRequest request = new JournalEntryRequest(
-                requestReference,
-                postingDate,
+        JournalCreationRequest request = new JournalCreationRequest(
+                totalAmount.abs(),
+                dealer.getReceivableAccount().getId(),
+                resolvePrimaryCreditAccount(lines, dealer.getReceivableAccount().getId()),
                 resolvedMemo,
+                "SALES",
+                requestReference,
+                null,
+                toStandardLines(lines),
+                postingDate,
                 dealer.getId(),
                 null,
-                Boolean.FALSE,
-                lines);
+                Boolean.FALSE
+        );
 
         if (existing.isPresent()) {
-            JournalEntryDto replay = accountingService.createJournalEntry(request);
+            JournalEntryDto replay = createStandardJournal(request);
             JournalEntry mappedEntry = existing.get();
             if (replay != null && replay.id() != null) {
                 mappedEntry = companyEntityLookup.requireJournalEntry(company, replay.id());
@@ -337,7 +343,7 @@ public class AccountingFacade {
         log.info("Posting sales journal: reference={}, dealer={}, amount={}",
                 requestReference, dealer.getName(), totalAmount);
 
-        JournalEntryDto created = accountingService.createJournalEntry(request);
+        JournalEntryDto created = createStandardJournal(request);
         if (created != null && created.id() != null) {
             JournalEntry entry = companyEntityLookup.requireJournalEntry(company, created.id());
             ensureSalesJournalReferenceMapping(company, entry, canonicalReference, aliasReference);
@@ -474,20 +480,27 @@ public class AccountingFacade {
                 totalAmount.abs()));
 
         LocalDate postingDate = invoiceDate != null ? invoiceDate : companyClock.today(company);
-
-        JournalEntryRequest request = new JournalEntryRequest(
-                reference,
-                postingDate,
+        JournalCreationRequest request = new JournalCreationRequest(
+                totalAmount.abs(),
+                resolvePrimaryDebitAccount(lines, supplier.getPayableAccount().getId()),
+                supplier.getPayableAccount().getId(),
                 resolvedMemo,
+                "PURCHASING",
+                reference,
+                taxTotal.compareTo(BigDecimal.ZERO) > 0
+                        ? new JournalCreationRequest.GstBreakdown(inventoryTotal, BigDecimal.ZERO, BigDecimal.ZERO, taxTotal)
+                        : null,
+                toStandardLines(lines),
+                postingDate,
                 null,
                 supplier.getId(),
-                Boolean.FALSE,
-                lines);
+                Boolean.FALSE
+        );
 
         log.info("Posting purchase journal: reference={}, supplier={}, amount={}",
                 reference, supplier.getName(), totalAmount);
 
-        JournalEntryDto entry = accountingService.createJournalEntry(request);
+        JournalEntryDto entry = createStandardJournal(request);
         JournalEntry saved = companyEntityLookup.requireJournalEntry(company, entry.id());
         ensurePurchaseReferenceMapping(company, baseReference, saved);
         return entry;
@@ -588,19 +601,25 @@ public class AccountingFacade {
                     .withDetail("totalCredits", totalCredits);
         }
 
-        JournalEntryRequest request = new JournalEntryRequest(
-                reference,
-                postingDate,
+        JournalCreationRequest request = new JournalCreationRequest(
+                totalAmount.abs(),
+                supplier.getPayableAccount().getId(),
+                resolvePrimaryCreditAccount(lines, supplier.getPayableAccount().getId()),
                 resolvedMemo,
+                "PURCHASING_RETURN",
+                reference,
+                null,
+                toStandardLines(lines),
+                postingDate,
                 null,
                 supplier.getId(),
-                Boolean.FALSE,
-                lines);
+                Boolean.FALSE
+        );
 
         log.info("Posting purchase return journal: reference={}, supplier={}, amount={}",
                 reference, supplier.getName(), totalAmount);
 
-        return accountingService.createJournalEntry(request);
+        return createStandardJournal(request);
     }
 
     /**
@@ -1151,17 +1170,22 @@ public class AccountingFacade {
 
         LocalDate effectiveDate = entryDate != null ? entryDate : companyClock.today(company);
         String resolvedMemo = StringUtils.hasText(memo) ? memo : "COGS for " + referenceId;
-        JournalEntryRequest request = new JournalEntryRequest(
-                reference,
-                effectiveDate,
+        JournalCreationRequest request = new JournalCreationRequest(
+                totalLineAmount(lines),
+                resolvePrimaryDebitAccount(lines, null),
+                resolvePrimaryCreditAccount(lines, null),
                 resolvedMemo,
+                "SALES_DISPATCH",
+                reference,
+                null,
+                toStandardLines(lines),
+                effectiveDate,
                 dealerId,
                 null,
-                Boolean.FALSE,
-                lines
+                Boolean.FALSE
         );
         log.info("Posting consolidated COGS journal: reference={}, lines={}", reference, lines.size());
-        return accountingService.createJournalEntry(request);
+        return createStandardJournal(request);
     }
 
     public boolean hasCogsJournalFor(String referenceId) {
@@ -1411,19 +1435,25 @@ public class AccountingFacade {
         }
 
         LocalDate postingDate = entryDate != null ? entryDate : companyClock.today(company);
-        JournalEntryRequest request = new JournalEntryRequest(
-                reference,
-                postingDate,
+        JournalCreationRequest request = new JournalCreationRequest(
+                totalAmount,
+                resolvePrimaryDebitAccount(lines, varianceAcctId),
+                resolvePrimaryCreditAccount(lines, varianceAcctId),
                 resolvedMemo,
+                "INVENTORY_ADJUSTMENT",
+                reference,
+                null,
+                toStandardLines(lines),
+                postingDate,
                 null,
                 null,
-                adminOverride,
-                lines);
+                adminOverride
+        );
 
         log.info("Posting inventory adjustment journal: reference={}, type={}, amount={}, increase={}",
                 reference, adjustmentType, totalAmount, increaseInventory);
 
-        return accountingService.createJournalEntry(request);
+        return createStandardJournal(request);
     }
 
     /**
@@ -1485,6 +1515,10 @@ public class AccountingFacade {
         return accountingService.createJournalEntry(request);
     }
 
+    public JournalEntryDto createStandardJournal(JournalCreationRequest request) {
+        return accountingService.createStandardJournal(request);
+    }
+
     /**
      * Post payroll run journal via AccountingService wrapper.
      */
@@ -1534,6 +1568,57 @@ public class AccountingFacade {
     }
 
     // ===== Helper Methods =====
+
+    private List<JournalCreationRequest.LineRequest> toStandardLines(List<JournalEntryRequest.JournalLineRequest> lines) {
+        if (lines == null) {
+            return List.of();
+        }
+        return lines.stream()
+                .map(line -> new JournalCreationRequest.LineRequest(
+                        line.accountId(),
+                        line.debit(),
+                        line.credit(),
+                        line.description()
+                ))
+                .toList();
+    }
+
+    private BigDecimal totalLineAmount(List<JournalEntryRequest.JournalLineRequest> lines) {
+        if (lines == null || lines.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal debitTotal = lines.stream()
+                .map(line -> line.debit() == null ? BigDecimal.ZERO : line.debit())
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal creditTotal = lines.stream()
+                .map(line -> line.credit() == null ? BigDecimal.ZERO : line.credit())
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return (debitTotal.compareTo(BigDecimal.ZERO) > 0 ? debitTotal : creditTotal).abs();
+    }
+
+    private Long resolvePrimaryDebitAccount(List<JournalEntryRequest.JournalLineRequest> lines, Long fallback) {
+        if (lines == null) {
+            return fallback;
+        }
+        return lines.stream()
+                .filter(line -> line.debit() != null && line.debit().compareTo(BigDecimal.ZERO) > 0)
+                .map(JournalEntryRequest.JournalLineRequest::accountId)
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElse(fallback);
+    }
+
+    private Long resolvePrimaryCreditAccount(List<JournalEntryRequest.JournalLineRequest> lines, Long fallback) {
+        if (lines == null) {
+            return fallback;
+        }
+        return lines.stream()
+                .filter(line -> line.credit() != null && line.credit().compareTo(BigDecimal.ZERO) > 0)
+                .map(JournalEntryRequest.JournalLineRequest::accountId)
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElse(fallback);
+    }
 
     private void ensureSalesJournalReferenceMapping(Company company,
                                                     JournalEntry entry,
