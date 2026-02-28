@@ -29,3 +29,11 @@ Testing surface: tools, URLs, setup steps, isolation notes, known quirks.
 - 1 pre-existing test failure: `TS_RuntimeTenantPolicyControlExecutableCoverageTest`
 - Tests use H2 for unit tests, Testcontainers PostgreSQL for integration tests
 - RabbitMQ health check excluded in dev profile
+- When running Maven with `-f erp-domain/pom.xml` from outside `erp-domain`, `.mvn/settings.xml` may not resolve; run commands from `erp-domain` or pass `--settings /home/realnigga/Desktop/Mission-control/erp-domain/.mvn/settings.xml` explicitly.
+
+## Flow Validator Guidance: api
+- Surface: backend REST API + CLI test runner (`curl`, `mvn test`) for evidence collection.
+- Isolation: every flow validator must use only its assigned `namespace` prefix for any created identifiers (emails, references, trace values).
+- Shared-state safety: do **not** restart Docker/services, do **not** run destructive DB resets, and avoid editing shared config during flow execution.
+- Concurrency guard: avoid parallel Maven test execution in multiple validators; if running tests, execute assigned command set in isolation and keep scope to assertion-specific tests.
+- Evidence minimum for each assertion: executed command/request, observed status/output, and explicit pass/fail/blocked reason.

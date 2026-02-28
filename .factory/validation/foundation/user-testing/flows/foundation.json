@@ -1,0 +1,159 @@
+{
+  "groupId": "foundation",
+  "testedAt": "2026-02-28T11:21:45+05:30",
+  "credentials": {
+    "account": "ut-foundation-core-validator-1@example.com",
+    "namespace": "ut_found_core_v1"
+  },
+  "toolsUsed": [
+    "mvn test",
+    "mvn compile",
+    "grep/read inspection"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-FOUND-001",
+      "title": "Unified error handling",
+      "status": "fail",
+      "steps": [
+        {
+          "action": "Run baseline truth-lane tests: mvn --settings /home/realnigga/Desktop/Mission-control/erp-domain/.mvn/settings.xml -f /home/realnigga/Desktop/Mission-control/erp-domain/pom.xml test -Pgate-fast -Djacoco.skip=true",
+          "expected": "Baseline suite passes",
+          "observed": "BUILD SUCCESS; Tests run: 377, Failures: 0, Errors: 0, Skipped: 0"
+        },
+        {
+          "action": "Search module service classes for direct throws: pattern `throw new IllegalArgumentException(` and `throw new IllegalStateException(`",
+          "expected": "Zero business-error raw throw usage",
+          "observed": "No direct `throw new IllegalArgumentException` / `throw new IllegalStateException` matches in module service classes"
+        },
+        {
+          "action": "Inspect shared validation/error paths (`ValidationUtils` + service usage grep)",
+          "expected": "Business validations use `ApplicationException` with `ErrorCode`",
+          "observed": "`ValidationUtils.invalidInput`/`invalidState` return raw IllegalArgumentException/IllegalStateException, and these are used broadly in services (e.g., SalesService, PurchasingService, PayrollService, Accounting services)"
+        }
+      ],
+      "evidence": {
+        "terminalSnapshots": [
+          "mvn ... test -Pgate-fast -Djacoco.skip=true -> Tests run: 377, Failures: 0",
+          "grep (service classes) for direct throw new IllegalArgumentException/IllegalStateException -> no direct matches",
+          "Read ValidationUtils.java -> invalidInput/invalidState return raw IllegalArgumentException/IllegalStateException",
+          "grep ValidationUtils.invalid(Input|State) across module services -> widespread usage"
+        ],
+        "network": "N/A (CLI assertion)",
+        "consoleErrors": "N/A (CLI assertion)"
+      },
+      "issues": "Contract requires business validation errors to use structured ApplicationException/ErrorCode only. Current shared validation path throws raw IllegalArgumentException/IllegalStateException, so assertion does not satisfy contract semantics."
+    },
+    {
+      "id": "VAL-FOUND-002",
+      "title": "Shared idempotency framework",
+      "status": "fail",
+      "steps": [
+        {
+          "action": "Search for idempotency package declarations under core",
+          "expected": "Single shared idempotency framework exists",
+          "observed": "Found shared core package: com.bigbrightpaints.erp.core.idempotency (IdempotencySignatureBuilder, IdempotencyUtils, IdempotencyReservationService)"
+        },
+        {
+          "action": "Search module service imports for shared idempotency classes",
+          "expected": "Modules import/use shared idempotency components",
+          "observed": "Shared imports present in accounting, sales, purchasing, inventory, factory, production, and company modules"
+        },
+        {
+          "action": "Search modules for local hash/normalization/idempotency logic",
+          "expected": "No copy-pasted/local idempotency implementations",
+          "observed": "Local hashing/signature logic still present (e.g., PayrollService uses DigestUtils.sha256Hex for run signature; AccountingFacade has local normalizeDecimal + DigestUtils.sha256Hex; SalesOrderRequest and PackingController compute local hashes)"
+        }
+      ],
+      "evidence": {
+        "terminalSnapshots": [
+          "grep package .*idempotency -> core/idempotency package files found",
+          "grep import com.bigbrightpaints.erp.core.idempotency.* in module services -> multiple module matches",
+          "grep DigestUtils.sha256Hex/normalizeDecimal in modules -> local implementations remain"
+        ],
+        "network": "N/A (CLI assertion)",
+        "consoleErrors": "N/A (CLI assertion)"
+      },
+      "issues": "Shared framework exists and is used, but idempotency-related hashing/signature logic is still duplicated in module code paths; assertion requirement of no module-local copy-paste logic is not fully met."
+    },
+    {
+      "id": "VAL-FOUND-003",
+      "title": "Shared validation utilities",
+      "status": "fail",
+      "steps": [
+        {
+          "action": "Inspect shared validation utility implementation",
+          "expected": "Shared utility provides common checks",
+          "observed": "ValidationUtils contains requirePositive, parseEnum, validateDateRange, requireNotBlank, requireNotNull, requireEntity"
+        },
+        {
+          "action": "Search module code for usage of ValidationUtils.parseEnum / validateDateRange / requirePositive",
+          "expected": "These shared utilities are used across modules",
+          "observed": "No matches for ValidationUtils.parseEnum, ValidationUtils.validateDateRange, or ValidationUtils.requirePositive in module source"
+        },
+        {
+          "action": "Search module services for duplicated local validation helpers",
+          "expected": "No local duplicate helpers where shared utility should be used",
+          "observed": "Local requirePositive helpers remain in multiple services (AccountingService, RawMaterialService, SalesReturnService, InventoryAdjustmentService, OpeningStockImportService)"
+        }
+      ],
+      "evidence": {
+        "terminalSnapshots": [
+          "Read ValidationUtils.java -> shared helper methods defined",
+          "grep ValidationUtils.parseEnum -> no matches in modules",
+          "grep ValidationUtils.validateDateRange -> no matches in modules",
+          "grep ValidationUtils.requirePositive -> no matches in modules",
+          "grep private .*requirePositive( in module services -> multiple local helper matches"
+        ],
+        "network": "N/A (CLI assertion)",
+        "consoleErrors": "N/A (CLI assertion)"
+      },
+      "issues": "Shared utility exists but key common validation operations are not adopted broadly; duplicated per-service validation helpers indicate assertion criteria is not satisfied."
+    },
+    {
+      "id": "VAL-FOUND-004",
+      "title": "All pre-existing tests pass",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run baseline truth-lane from mission guidance",
+          "expected": "mvn test baseline completes with zero failures",
+          "observed": "BUILD SUCCESS; Tests run: 377, Failures: 0, Errors: 0, Skipped: 0"
+        },
+        {
+          "action": "Run focused runtime coverage regression subset",
+          "expected": "Runtime coverage tests pass including previously problematic paths",
+          "observed": "BUILD SUCCESS; Tests run: 7, Failures: 0, Errors: 0, Skipped: 0 (TS_RuntimeGlobalExceptionHandlerExecutableCoverageTest and TS_RuntimePayrollServiceGuardrailsTest included)"
+        },
+        {
+          "action": "Run compile sanity check",
+          "expected": "Project compiles cleanly",
+          "observed": "BUILD SUCCESS for mvn compile -DskipTests"
+        }
+      ],
+      "evidence": {
+        "terminalSnapshots": [
+          "mvn ... test -Pgate-fast -Djacoco.skip=true -> Tests run: 377, Failures: 0, Errors: 0",
+          "mvn ... test -Djacoco.skip=true -Dtest=TS_RuntimeGlobalExceptionHandlerExecutableCoverageTest,TS_RuntimePayrollServiceGuardrailsTest -> Tests run: 7, Failures: 0, Errors: 0",
+          "mvn ... compile -DskipTests -> BUILD SUCCESS"
+        ],
+        "network": "N/A (CLI assertion)",
+        "consoleErrors": "N/A (CLI assertion)"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Initial baseline test invocation failed because Maven settings path was resolved relative to current working directory (`.mvn/settings.xml` not found) when using `-f` from outside module dir.",
+      "resolved": true,
+      "resolution": "Re-ran commands with explicit settings file: --settings /home/realnigga/Desktop/Mission-control/erp-domain/.mvn/settings.xml",
+      "affectedAssertions": [
+        "VAL-FOUND-004",
+        "VAL-FOUND-001"
+      ]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 4 assertions: 1 passed (VAL-FOUND-004), 3 failed (VAL-FOUND-001/002/003). Baseline gate-fast suite passed with 377/377, but infrastructure contracts for unified error handling, full idempotency centralization, and shared validation utility adoption are not fully satisfied by current code evidence."
+}

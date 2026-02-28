@@ -1,0 +1,230 @@
+{
+  "groupId": "bugs",
+  "testedAt": "2026-02-28T11:24:01+05:30",
+  "credentials": {
+    "account": "ut-foundation-bug-validator-1@example.com",
+    "namespace": "ut_found_bug_v1"
+  },
+  "toolsUsed": [
+    "mvn test"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-BUG-001",
+      "title": "Auth JWT claim consistency",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run `cd /home/realnigga/Desktop/Mission-control/erp-domain && mvn test -Djacoco.skip=true -Dtest=AuthServiceAuditAttributionTest`",
+          "expected": "Auth service attribution tests pass, including refresh-path name-claim verification",
+          "observed": "BUILD SUCCESS; Tests run: 12, Failures: 0, Errors: 0, Skipped: 0"
+        },
+        {
+          "action": "Cross-check login vs refresh claim population in auth service path",
+          "expected": "Both login and refresh set JWT claim `name` from display name",
+          "observed": "`AuthService.login` sets `claims.put(\"name\", principal.getUser().getDisplayName())`; `AuthService.refresh` sets `Map.of(\"name\", user.getDisplayName())`; test assertion verifies refresh token generation receives `claims.get(\"name\") == user.getDisplayName()`"
+        }
+      ],
+      "evidence": {
+        "commands": [
+          "cd /home/realnigga/Desktop/Mission-control/erp-domain && mvn test -Djacoco.skip=true -Dtest=AuthServiceAuditAttributionTest"
+        ],
+        "result": "PASS",
+        "output": "Tests run: 12, Failures: 0, Errors: 0, Skipped: 0",
+        "codeRefs": [
+          "src/test/java/com/bigbrightpaints/erp/modules/auth/service/AuthServiceAuditAttributionTest.java:237-241",
+          "src/main/java/com/bigbrightpaints/erp/modules/auth/service/AuthService.java:104-105",
+          "src/main/java/com/bigbrightpaints/erp/modules/auth/service/AuthService.java:191"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-BUG-002",
+      "title": "Auth logout token derivation",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run `AuthServiceAuditAttributionTest` targeted suite",
+          "expected": "Logout flow should derive user identity from JWT subject and not caller-supplied value",
+          "observed": "Suite passed with `logoutDerivesIdentityFromTokenSubject_whenRefreshingTokenIsAbsent` covered"
+        }
+      ],
+      "evidence": {
+        "commands": [
+          "cd /home/realnigga/Desktop/Mission-control/erp-domain && mvn test -Djacoco.skip=true -Dtest=AuthServiceAuditAttributionTest"
+        ],
+        "result": "PASS",
+        "output": "Tests run: 12, Failures: 0, Errors: 0, Skipped: 0",
+        "codeRefs": [
+          "src/test/java/com/bigbrightpaints/erp/modules/auth/service/AuthServiceAuditAttributionTest.java:273-289"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-BUG-003",
+      "title": "Payroll markAsPaid uses payment reference",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run targeted runtime/payroll guardrail tests",
+          "expected": "`markAsPaid` persists provided paymentReference on payroll run",
+          "observed": "`TS_RuntimePayrollServiceGuardrailsTest` passed; `markAsPaid_persistsProvidedPaymentReferenceOnPayrollRun` included"
+        }
+      ],
+      "evidence": {
+        "commands": [
+          "cd /home/realnigga/Desktop/Mission-control/erp-domain && mvn test -Djacoco.skip=true \"-Dtest=TS_RuntimePayrollServiceGuardrailsTest,TS_RuntimeHrServiceEnumParsingCoverageTest,SalesServiceTest#createOrderIdempotentRetry_missingStoredSignatureUsesRequestPaymentMode+createOrderIdempotentRetry_acceptsStoredSignatureWithDefaultPaymentModeSegment+createOrderAutoIdempotencyRetry_acceptsLegacyDefaultCreditKeyShape,AccountingServiceTest#reverseJournalEntry_returnsDtoFromSavedEntityForStandardPath,PurchasingServiceTest#recordPurchaseReturn_amountExceedsOutstanding_throws\""
+        ],
+        "result": "PASS",
+        "output": "TS_RuntimePayrollServiceGuardrailsTest: Tests run 3, Failures 0, Errors 0",
+        "codeRefs": [
+          "src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimePayrollServiceGuardrailsTest.java:39-83"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-BUG-004",
+      "title": "Payroll divide-by-zero guard",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run targeted runtime/payroll guardrail tests",
+          "expected": "Null/zero `standardHoursPerDay` should produce proper validation error path (no arithmetic crash)",
+          "observed": "`TS_RuntimePayrollServiceGuardrailsTest` passed including null and zero standard-hours rejection cases"
+        }
+      ],
+      "evidence": {
+        "commands": [
+          "cd /home/realnigga/Desktop/Mission-control/erp-domain && mvn test -Djacoco.skip=true \"-Dtest=TS_RuntimePayrollServiceGuardrailsTest,TS_RuntimeHrServiceEnumParsingCoverageTest,SalesServiceTest#createOrderIdempotentRetry_missingStoredSignatureUsesRequestPaymentMode+createOrderIdempotentRetry_acceptsStoredSignatureWithDefaultPaymentModeSegment+createOrderAutoIdempotencyRetry_acceptsLegacyDefaultCreditKeyShape,AccountingServiceTest#reverseJournalEntry_returnsDtoFromSavedEntityForStandardPath,PurchasingServiceTest#recordPurchaseReturn_amountExceedsOutstanding_throws\""
+        ],
+        "result": "PASS",
+        "output": "TS_RuntimePayrollServiceGuardrailsTest: Tests run 3, Failures 0, Errors 0",
+        "codeRefs": [
+          "src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimePayrollServiceGuardrailsTest.java:86-133",
+          "src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimePayrollServiceGuardrailsTest.java:136-183"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-BUG-005",
+      "title": "HR enum parsing safety",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run targeted HR enum parsing coverage suite",
+          "expected": "Invalid enum values across employee type/payment schedule/attendance/leave status paths are rejected via application validation errors",
+          "observed": "`TS_RuntimeHrServiceEnumParsingCoverageTest` passed all enum-invalid-path checks"
+        }
+      ],
+      "evidence": {
+        "commands": [
+          "cd /home/realnigga/Desktop/Mission-control/erp-domain && mvn test -Djacoco.skip=true \"-Dtest=TS_RuntimePayrollServiceGuardrailsTest,TS_RuntimeHrServiceEnumParsingCoverageTest,SalesServiceTest#createOrderIdempotentRetry_missingStoredSignatureUsesRequestPaymentMode+createOrderIdempotentRetry_acceptsStoredSignatureWithDefaultPaymentModeSegment+createOrderAutoIdempotencyRetry_acceptsLegacyDefaultCreditKeyShape,AccountingServiceTest#reverseJournalEntry_returnsDtoFromSavedEntityForStandardPath,PurchasingServiceTest#recordPurchaseReturn_amountExceedsOutstanding_throws\""
+        ],
+        "result": "PASS",
+        "output": "TS_RuntimeHrServiceEnumParsingCoverageTest: Tests run 5, Failures 0, Errors 0",
+        "codeRefs": [
+          "src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimeHrServiceEnumParsingCoverageTest.java:34-77",
+          "src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimeHrServiceEnumParsingCoverageTest.java:81-124",
+          "src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimeHrServiceEnumParsingCoverageTest.java:128-168",
+          "src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimeHrServiceEnumParsingCoverageTest.java:172-203",
+          "src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimeHrServiceEnumParsingCoverageTest.java:207-235"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-BUG-006",
+      "title": "Sales signature correctness",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run targeted SalesService idempotency/payment-mode signature tests",
+          "expected": "Order signature/hash uses actual request payment mode (legacy fallback accepted only for compatibility)",
+          "observed": "Sales targeted tests passed for request-payment-mode signature path + legacy-compat replay acceptance"
+        }
+      ],
+      "evidence": {
+        "commands": [
+          "cd /home/realnigga/Desktop/Mission-control/erp-domain && mvn test -Djacoco.skip=true \"-Dtest=TS_RuntimePayrollServiceGuardrailsTest,TS_RuntimeHrServiceEnumParsingCoverageTest,SalesServiceTest#createOrderIdempotentRetry_missingStoredSignatureUsesRequestPaymentMode+createOrderIdempotentRetry_acceptsStoredSignatureWithDefaultPaymentModeSegment+createOrderAutoIdempotencyRetry_acceptsLegacyDefaultCreditKeyShape,AccountingServiceTest#reverseJournalEntry_returnsDtoFromSavedEntityForStandardPath,PurchasingServiceTest#recordPurchaseReturn_amountExceedsOutstanding_throws\""
+        ],
+        "result": "PASS",
+        "output": "SalesServiceTest: Tests run 3, Failures 0, Errors 0",
+        "codeRefs": [
+          "src/test/java/com/bigbrightpaints/erp/modules/sales/service/SalesServiceTest.java:3557-3613",
+          "src/test/java/com/bigbrightpaints/erp/modules/sales/service/SalesServiceTest.java:3618-3674",
+          "src/test/java/com/bigbrightpaints/erp/modules/sales/service/SalesServiceTest.java:3679-3731"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-BUG-007",
+      "title": "Accounting reversal DTO consistency",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run targeted accounting reversal DTO-path test",
+          "expected": "Reversal response DTO is built from saved entity consistently on standard reversal path",
+          "observed": "`reverseJournalEntry_returnsDtoFromSavedEntityForStandardPath` passed"
+        }
+      ],
+      "evidence": {
+        "commands": [
+          "cd /home/realnigga/Desktop/Mission-control/erp-domain && mvn test -Djacoco.skip=true \"-Dtest=TS_RuntimePayrollServiceGuardrailsTest,TS_RuntimeHrServiceEnumParsingCoverageTest,SalesServiceTest#createOrderIdempotentRetry_missingStoredSignatureUsesRequestPaymentMode+createOrderIdempotentRetry_acceptsStoredSignatureWithDefaultPaymentModeSegment+createOrderAutoIdempotencyRetry_acceptsLegacyDefaultCreditKeyShape,AccountingServiceTest#reverseJournalEntry_returnsDtoFromSavedEntityForStandardPath,PurchasingServiceTest#recordPurchaseReturn_amountExceedsOutstanding_throws\""
+        ],
+        "result": "PASS",
+        "output": "AccountingServiceTest: Tests run 1, Failures 0, Errors 0",
+        "codeRefs": [
+          "src/test/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingServiceTest.java:519-548"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-BUG-008",
+      "title": "Purchasing non-negative outstanding",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run targeted purchasing return outstanding-boundary test",
+          "expected": "Return request exceeding outstanding payable is rejected with proper application error",
+          "observed": "`recordPurchaseReturn_amountExceedsOutstanding_throws` passed with `ErrorCode.RETURN_EXCEEDS_OUTSTANDING` expectation"
+        }
+      ],
+      "evidence": {
+        "commands": [
+          "cd /home/realnigga/Desktop/Mission-control/erp-domain && mvn test -Djacoco.skip=true \"-Dtest=TS_RuntimePayrollServiceGuardrailsTest,TS_RuntimeHrServiceEnumParsingCoverageTest,SalesServiceTest#createOrderIdempotentRetry_missingStoredSignatureUsesRequestPaymentMode+createOrderIdempotentRetry_acceptsStoredSignatureWithDefaultPaymentModeSegment+createOrderAutoIdempotencyRetry_acceptsLegacyDefaultCreditKeyShape,AccountingServiceTest#reverseJournalEntry_returnsDtoFromSavedEntityForStandardPath,PurchasingServiceTest#recordPurchaseReturn_amountExceedsOutstanding_throws\""
+        ],
+        "result": "PASS",
+        "output": "PurchasingServiceTest: Tests run 1, Failures 0, Errors 0",
+        "codeRefs": [
+          "src/test/java/com/bigbrightpaints/erp/modules/purchasing/service/PurchasingServiceTest.java:318-368"
+        ]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Initial Maven invocation from repo root using `-f .../erp-domain/pom.xml` failed because `.mvn/maven.config` references a relative settings path (`.mvn/settings.xml`).",
+      "resolved": true,
+      "resolution": "Ran all Maven commands from `/home/realnigga/Desktop/Mission-control/erp-domain` so project-local `.mvn/settings.xml` resolves correctly.",
+      "affectedAssertions": [
+        "VAL-BUG-001",
+        "VAL-BUG-002",
+        "VAL-BUG-003",
+        "VAL-BUG-004",
+        "VAL-BUG-005",
+        "VAL-BUG-006",
+        "VAL-BUG-007",
+        "VAL-BUG-008"
+      ]
+    }
+  ],
+  "blockers": [],
+  "summary": "Tested 8 assertions: 8 passed, 0 failed, 0 blocked. Executed targeted Maven test classes/methods for auth, payroll, HR enum parsing, sales idempotency signature behavior, accounting reversal DTO consistency, and purchasing outstanding guardrails."
+}
