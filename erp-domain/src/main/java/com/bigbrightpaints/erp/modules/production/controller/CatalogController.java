@@ -1,0 +1,108 @@
+package com.bigbrightpaints.erp.modules.production.controller;
+
+import com.bigbrightpaints.erp.modules.production.dto.CatalogBrandDto;
+import com.bigbrightpaints.erp.modules.production.dto.CatalogBrandRequest;
+import com.bigbrightpaints.erp.modules.production.dto.CatalogProductBulkItemRequest;
+import com.bigbrightpaints.erp.modules.production.dto.CatalogProductBulkResponse;
+import com.bigbrightpaints.erp.modules.production.dto.CatalogProductDto;
+import com.bigbrightpaints.erp.modules.production.dto.CatalogProductRequest;
+import com.bigbrightpaints.erp.modules.production.service.CatalogService;
+import com.bigbrightpaints.erp.shared.dto.ApiResponse;
+import com.bigbrightpaints.erp.shared.dto.PageResponse;
+import jakarta.validation.Valid;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/v1/catalog")
+@PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING','ROLE_SALES','ROLE_FACTORY')")
+public class CatalogController {
+
+    private final CatalogService catalogService;
+
+    public CatalogController(CatalogService catalogService) {
+        this.catalogService = catalogService;
+    }
+
+    @PostMapping("/brands")
+    public ResponseEntity<ApiResponse<CatalogBrandDto>> createBrand(@Valid @RequestBody CatalogBrandRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Brand created", catalogService.createBrand(request)));
+    }
+
+    @GetMapping("/brands")
+    public ResponseEntity<ApiResponse<List<CatalogBrandDto>>> listBrands(
+            @RequestParam(value = "active", required = false) Boolean active) {
+        return ResponseEntity.ok(ApiResponse.success(catalogService.listBrands(active)));
+    }
+
+    @GetMapping("/brands/{brandId}")
+    public ResponseEntity<ApiResponse<CatalogBrandDto>> getBrand(@PathVariable Long brandId) {
+        return ResponseEntity.ok(ApiResponse.success(catalogService.getBrand(brandId)));
+    }
+
+    @PutMapping("/brands/{brandId}")
+    public ResponseEntity<ApiResponse<CatalogBrandDto>> updateBrand(@PathVariable Long brandId,
+                                                                     @Valid @RequestBody CatalogBrandRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Brand updated", catalogService.updateBrand(brandId, request)));
+    }
+
+    @DeleteMapping("/brands/{brandId}")
+    public ResponseEntity<ApiResponse<CatalogBrandDto>> deactivateBrand(@PathVariable Long brandId) {
+        return ResponseEntity.ok(ApiResponse.success("Brand deactivated", catalogService.deactivateBrand(brandId)));
+    }
+
+    @PostMapping("/products")
+    public ResponseEntity<ApiResponse<CatalogProductDto>> createProduct(@Valid @RequestBody CatalogProductRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Product created", catalogService.createProduct(request)));
+    }
+
+    @GetMapping("/products")
+    public ResponseEntity<ApiResponse<PageResponse<CatalogProductDto>>> searchProducts(
+            @RequestParam(value = "brandId", required = false) Long brandId,
+            @RequestParam(value = "color", required = false) String color,
+            @RequestParam(value = "size", required = false) String size,
+            @RequestParam(value = "active", required = false) Boolean active,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "pageSize", defaultValue = "20") int pageSize) {
+        return ResponseEntity.ok(ApiResponse.success(catalogService.searchProducts(
+                brandId,
+                color,
+                size,
+                active,
+                page,
+                pageSize)));
+    }
+
+    @GetMapping("/products/{productId}")
+    public ResponseEntity<ApiResponse<CatalogProductDto>> getProduct(@PathVariable Long productId) {
+        return ResponseEntity.ok(ApiResponse.success(catalogService.getProduct(productId)));
+    }
+
+    @PutMapping("/products/{productId}")
+    public ResponseEntity<ApiResponse<CatalogProductDto>> updateProduct(@PathVariable Long productId,
+                                                                        @Valid @RequestBody CatalogProductRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Product updated", catalogService.updateProduct(productId, request)));
+    }
+
+    @DeleteMapping("/products/{productId}")
+    public ResponseEntity<ApiResponse<CatalogProductDto>> deactivateProduct(@PathVariable Long productId) {
+        return ResponseEntity.ok(ApiResponse.success("Product deactivated", catalogService.deactivateProduct(productId)));
+    }
+
+    @PostMapping("/products/bulk")
+    public ResponseEntity<ApiResponse<CatalogProductBulkResponse>> bulkUpsertProducts(
+            @Valid @RequestBody List<@Valid CatalogProductBulkItemRequest> request) {
+        return ResponseEntity.ok(ApiResponse.success("Bulk product request processed", catalogService.bulkUpsertProducts(request)));
+    }
+}

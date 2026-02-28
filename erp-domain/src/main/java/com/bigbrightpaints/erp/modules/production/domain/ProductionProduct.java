@@ -8,8 +8,11 @@ import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import com.bigbrightpaints.erp.core.domain.VersionedEntity;
 
@@ -54,8 +57,27 @@ public class ProductionProduct extends VersionedEntity {
     @Column(name = "sku_code", nullable = false)
     private String skuCode;
 
+    @Column(name = "hsn_code")
+    private String hsnCode;
+
     @Column(name = "is_active", nullable = false)
     private boolean active = true;
+
+    @ElementCollection
+    @CollectionTable(name = "production_product_colors", joinColumns = @JoinColumn(name = "product_id"))
+    @Column(name = "color", nullable = false)
+    private Set<String> colors = new LinkedHashSet<>();
+
+    @ElementCollection
+    @CollectionTable(name = "production_product_sizes", joinColumns = @JoinColumn(name = "product_id"))
+    @Column(name = "size_label", nullable = false)
+    private Set<String> sizes = new LinkedHashSet<>();
+
+    @ElementCollection
+    @CollectionTable(name = "production_product_carton_sizes", joinColumns = @JoinColumn(name = "product_id"))
+    @MapKeyColumn(name = "size_label")
+    @Column(name = "pieces_per_carton", nullable = false)
+    private Map<String, Integer> cartonSizes = new LinkedHashMap<>();
 
     @Column(name = "base_price", nullable = false)
     private BigDecimal basePrice = BigDecimal.ZERO;
@@ -168,12 +190,44 @@ public class ProductionProduct extends VersionedEntity {
         this.skuCode = skuCode;
     }
 
+    public String getHsnCode() {
+        return hsnCode;
+    }
+
+    public void setHsnCode(String hsnCode) {
+        this.hsnCode = hsnCode;
+    }
+
     public boolean isActive() {
         return active;
     }
 
     public void setActive(boolean active) {
         this.active = active;
+    }
+
+    public Set<String> getColors() {
+        return colors;
+    }
+
+    public void setColors(Set<String> colors) {
+        this.colors = colors;
+    }
+
+    public Set<String> getSizes() {
+        return sizes;
+    }
+
+    public void setSizes(Set<String> sizes) {
+        this.sizes = sizes;
+    }
+
+    public Map<String, Integer> getCartonSizes() {
+        return cartonSizes;
+    }
+
+    public void setCartonSizes(Map<String, Integer> cartonSizes) {
+        this.cartonSizes = cartonSizes;
     }
 
     public BigDecimal getBasePrice() {

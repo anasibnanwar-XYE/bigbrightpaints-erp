@@ -33,8 +33,14 @@ public class ProductionBrand extends VersionedEntity {
     @Column(nullable = false)
     private String code;
 
+    @Column(name = "logo_url")
+    private String logoUrl;
+
     @Column
     private String description;
+
+    @Column(name = "is_active", nullable = false)
+    private boolean active = true;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -97,5 +103,21 @@ public class ProductionBrand extends VersionedEntity {
 
     public void setDescription(String description) {
         this.description = description;
+    }
+
+    public String getLogoUrl() {
+        return logoUrl;
+    }
+
+    public void setLogoUrl(String logoUrl) {
+        this.logoUrl = logoUrl;
+    }
+
+    public boolean isActive() {
+        return active;
+    }
+
+    public void setActive(boolean active) {
+        this.active = active;
     }
 }
