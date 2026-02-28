@@ -2,7 +2,7 @@ package com.bigbrightpaints.erp.modules.inventory.controller;
 
 import com.bigbrightpaints.erp.modules.inventory.dto.DispatchConfirmationRequest;
 import com.bigbrightpaints.erp.modules.inventory.dto.DispatchConfirmationResponse;
-import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
+import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsDispatchService;
 import com.bigbrightpaints.erp.modules.sales.dto.DispatchConfirmRequest;
 import com.bigbrightpaints.erp.modules.sales.service.SalesService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
@@ -26,14 +26,14 @@ import static org.mockito.Mockito.when;
 class DispatchControllerTest {
 
     @Mock
-    private FinishedGoodsService finishedGoodsService;
+    private FinishedGoodsDispatchService finishedGoodsDispatchService;
 
     @Mock
     private SalesService salesService;
 
     @Test
     void confirmDispatch_callsSalesOnce_andDoesNotDoubleDispatchInventory() {
-        DispatchController controller = new DispatchController(finishedGoodsService, salesService);
+        DispatchController controller = new DispatchController(finishedGoodsDispatchService, salesService);
         Principal principal = () -> "factory.user";
 
         DispatchConfirmationRequest request = new DispatchConfirmationRequest(
@@ -62,7 +62,7 @@ class DispatchControllerTest {
                 List.of(),
                 null
         );
-        when(finishedGoodsService.getDispatchConfirmation(10L)).thenReturn(expected);
+        when(finishedGoodsDispatchService.getDispatchConfirmation(10L)).thenReturn(expected);
 
         ResponseEntity<ApiResponse<DispatchConfirmationResponse>> response = controller.confirmDispatch(request, principal);
 
@@ -84,8 +84,8 @@ class DispatchControllerTest {
         assertThat(dispatchRequest.lines().get(0).shipQty()).isEqualByComparingTo("2.50");
         assertThat(dispatchRequest.lines().get(0).notes()).isEqualTo("Ship as-is");
 
-        verify(finishedGoodsService).getDispatchConfirmation(10L);
-        verifyNoMoreInteractions(salesService, finishedGoodsService);
+        verify(finishedGoodsDispatchService).getDispatchConfirmation(10L);
+        verifyNoMoreInteractions(salesService, finishedGoodsDispatchService);
     }
 }
 

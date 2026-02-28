@@ -9,7 +9,8 @@ import static org.mockito.Mockito.when;
 
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipRepository;
-import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
+import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsDispatchService;
+import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsReservationService;
 import com.bigbrightpaints.erp.modules.invoice.dto.InvoiceDto;
 import com.bigbrightpaints.erp.modules.invoice.service.InvoiceService;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
@@ -35,7 +36,9 @@ class SalesFulfillmentServiceTest {
     @Mock
     private SalesOrderRepository salesOrderRepository;
     @Mock
-    private FinishedGoodsService finishedGoodsService;
+    private FinishedGoodsReservationService finishedGoodsReservationService;
+    @Mock
+    private FinishedGoodsDispatchService finishedGoodsDispatchService;
     @Mock
     private PackagingSlipRepository packagingSlipRepository;
     @Mock
@@ -54,7 +57,8 @@ class SalesFulfillmentServiceTest {
         fulfillmentService = new SalesFulfillmentService(
                 salesService,
                 salesOrderRepository,
-                finishedGoodsService,
+                finishedGoodsReservationService,
+                finishedGoodsDispatchService,
                 packagingSlipRepository,
                 salesJournalService,
                 accountingFacade,
@@ -155,7 +159,7 @@ class SalesFulfillmentServiceTest {
         fulfillmentService.fulfillOrder(3L, options);
 
         verify(salesService).confirmDispatch(any());
-        verify(finishedGoodsService, never()).markSlipDispatched(anyLong());
+        verify(finishedGoodsDispatchService, never()).markSlipDispatched(anyLong());
         verify(accountingFacade, never()).postCogsJournal(anyString(), any(), any(), anyString(), any());
     }
 

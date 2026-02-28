@@ -10,7 +10,7 @@ import com.bigbrightpaints.erp.modules.factory.domain.*;
 import com.bigbrightpaints.erp.modules.factory.dto.*;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
 import com.bigbrightpaints.erp.modules.inventory.dto.FinishedGoodBatchRequest;
-import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
+import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsStockService;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.env.Environment;
@@ -31,7 +31,7 @@ public class FactoryService {
     private final ProductionPlanRepository planRepository;
     private final ProductionBatchRepository batchRepository;
     private final FactoryTaskRepository taskRepository;
-    private final FinishedGoodsService finishedGoodsService;
+    private final FinishedGoodsStockService finishedGoodsStockService;
     private final CompanyEntityLookup companyEntityLookup;
     private final Environment environment;
     private final boolean legacyBatchLoggingEnabled;
@@ -41,7 +41,7 @@ public class FactoryService {
                           ProductionPlanRepository planRepository,
                           ProductionBatchRepository batchRepository,
                           FactoryTaskRepository taskRepository,
-                          FinishedGoodsService finishedGoodsService,
+                          FinishedGoodsStockService finishedGoodsStockService,
                           CompanyEntityLookup companyEntityLookup,
                           Environment environment,
                           @Value("${erp.factory.legacy-batch.enabled:false}") boolean legacyBatchLoggingEnabled) {
@@ -49,7 +49,7 @@ public class FactoryService {
         this.planRepository = planRepository;
         this.batchRepository = batchRepository;
         this.taskRepository = taskRepository;
-        this.finishedGoodsService = finishedGoodsService;
+        this.finishedGoodsStockService = finishedGoodsStockService;
         this.companyEntityLookup = companyEntityLookup;
         this.environment = environment;
         this.legacyBatchLoggingEnabled = legacyBatchLoggingEnabled;
@@ -157,16 +157,16 @@ public class FactoryService {
     }
 
     private void registerFinishedGoodsBatch(ProductionPlan plan, ProductionBatch batch) {
-        FinishedGood finishedGood = finishedGoodsService.lockFinishedGoodByProductCode(plan.getProductName());
+        FinishedGood finishedGood = finishedGoodsStockService.lockFinishedGoodByProductCode(plan.getProductName());
         FinishedGoodBatchRequest batchRequest = new FinishedGoodBatchRequest(
                 finishedGood.getId(),
                 batch.getBatchNumber(),
                 BigDecimal.valueOf(batch.getQuantityProduced()),
-                finishedGoodsService.currentWeightedAverageCost(finishedGood),
+                finishedGoodsStockService.currentWeightedAverageCost(finishedGood),
                 batch.getProducedAt(),
                 null
         );
-        finishedGoodsService.registerBatch(batchRequest);
+        finishedGoodsStockService.registerBatch(batchRequest);
     }
 
     private ProductionBatchDto toDto(ProductionBatch batch) {

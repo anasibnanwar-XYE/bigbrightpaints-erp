@@ -1173,6 +1173,62 @@ All responses are wrapped in `ApiResponse<T>`.
 - **Bulk upload screen**: show row-level status from `results[]`; allow retry only for failed rows
 - **Search UX**: expose filters for brand, color, size, active status and server-side pagination controls
 
+#### Inventory & Dispatch Endpoint Map (finished goods)
+
+| Method | Path | Auth | Request | Response `data` |
+|---|---|---|---|---|
+| GET | `/api/v1/finished-goods` | `ROLE_ADMIN/ROLE_FACTORY/ROLE_SALES/ROLE_ACCOUNTING` | — | `List<FinishedGoodDto>` |
+| GET | `/api/v1/finished-goods/{id}` | `ROLE_ADMIN/ROLE_FACTORY/ROLE_SALES/ROLE_ACCOUNTING` | — | `FinishedGoodDto` |
+| POST | `/api/v1/finished-goods` | `ROLE_ADMIN/ROLE_FACTORY` | `FinishedGoodRequest` | `FinishedGoodDto` |
+| PUT | `/api/v1/finished-goods/{id}` | `ROLE_ADMIN/ROLE_FACTORY` | `FinishedGoodRequest` | `FinishedGoodDto` |
+| GET | `/api/v1/finished-goods/{id}/batches` | `ROLE_ADMIN/ROLE_FACTORY/ROLE_SALES` | — | `List<FinishedGoodBatchDto>` |
+| POST | `/api/v1/finished-goods/{id}/batches` | `ROLE_ADMIN/ROLE_FACTORY` | `FinishedGoodBatchRequest` | `FinishedGoodBatchDto` |
+| GET | `/api/v1/finished-goods/stock-summary` | `ROLE_ADMIN/ROLE_FACTORY/ROLE_SALES/ROLE_ACCOUNTING` | — | `List<StockSummaryDto>` |
+| GET | `/api/v1/finished-goods/low-stock?threshold={n}` | `ROLE_ADMIN/ROLE_FACTORY/ROLE_SALES` | query `threshold` (default `100`) | `List<FinishedGoodDto>` |
+| GET | `/api/v1/dispatch/pending` | `ROLE_ADMIN/ROLE_FACTORY/ROLE_SALES` | — | `List<PackagingSlipDto>` |
+| GET | `/api/v1/dispatch/preview/{slipId}` | `ROLE_ADMIN/ROLE_FACTORY` | — | `DispatchPreviewDto` |
+| GET | `/api/v1/dispatch/slip/{slipId}` | `ROLE_ADMIN/ROLE_FACTORY/ROLE_SALES` | — | `PackagingSlipDto` |
+| GET | `/api/v1/dispatch/order/{orderId}` | `ROLE_ADMIN/ROLE_FACTORY/ROLE_SALES` | — | `PackagingSlipDto` |
+| PATCH | `/api/v1/dispatch/slip/{slipId}/status?status={value}` | `ROLE_ADMIN/ROLE_FACTORY` | query `status` | `PackagingSlipDto` |
+| POST | `/api/v1/dispatch/backorder/{slipId}/cancel?reason={text}` | `ROLE_ADMIN/ROLE_FACTORY` | optional query `reason` | `PackagingSlipDto` |
+| POST | `/api/v1/dispatch/confirm` | `ROLE_ADMIN/ROLE_FACTORY` + `dispatch.confirm` | `DispatchConfirmationRequest` | `DispatchConfirmationResponse` |
+
+#### Inventory & Dispatch User Flows
+
+1. **Reserve → preview → confirm dispatch**
+   1. Sales confirmation reserves stock and creates/updates packaging slip.
+   2. Factory loads slips via `GET /api/v1/dispatch/pending`.
+   3. Factory opens `GET /api/v1/dispatch/preview/{slipId}` for suggested ship qty and shortages.
+   4. Factory submits shipped quantities using `POST /api/v1/dispatch/confirm`.
+   5. UI refreshes with `GET /api/v1/dispatch/slip/{slipId}` or response payload.
+
+2. **Backorder cancellation**
+   1. For a `BACKORDER` slip, call `POST /api/v1/dispatch/backorder/{slipId}/cancel`.
+   2. Backend releases reserved quantities and marks slip `CANCELLED`.
+   3. Refresh order slip state from `GET /api/v1/dispatch/order/{orderId}`.
+
+3. **Stock monitoring**
+   1. Load rollup via `GET /api/v1/finished-goods/stock-summary`.
+   2. Show warning list via `GET /api/v1/finished-goods/low-stock?threshold=...`.
+
+#### Packaging Slip State Machine
+
+- `PENDING` → `RESERVED` (inventory reserved)
+- `RESERVED` → `DISPATCHED` (dispatch confirmed)
+- `RESERVED`/`PENDING_*` → `BACKORDER` (shortage remains)
+- `BACKORDER` → `CANCELLED` (cancel backorder endpoint)
+- Terminal states: `DISPATCHED`, `CANCELLED`
+
+#### Inventory/Dispatch Error Handling Notes
+
+- `VALIDATION_INVALID_INPUT`: missing slip/line confirmation, invalid shipped qty.
+- `VALIDATION_INVALID_STATE`: invalid slip transition, dispatched slip mutation attempt, insufficient reserved stock.
+- `CONCURRENCY_CONFLICT`: duplicate/open backorder slip race; frontend should refetch slip and retry once.
+
+#### Backend Decomposition Note
+
+Backend now routes finished-goods logic through focused services: catalog, stock, reservation, and dispatch. API contracts above are backward-compatible; frontend behavior does not need endpoint changes.
+
 ### Sales & Dealers
 
 #### GST Fields
