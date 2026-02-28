@@ -708,46 +708,56 @@ _Total documented accounting endpoints: **73**._
 - **`byte[]`**
   - Primitive/raw payload type (no DTO field list).
 - **`PageResponse<AccountingAuditTrailEntryDto>`**
-  - `id`: `Long`
-  - `timestamp`: `Instant`
-  - `companyId`: `Long`
-  - `companyCode`: `String`
-  - `actorUserId`: `Long`
-  - `actorIdentifier`: `String`
-  - `actionType`: `String`
-  - `entityType`: `String`
-  - `entityId`: `String`
-  - `referenceNumber`: `String`
-  - `traceId`: `String`
-  - `ipAddress`: `String`
-  - `beforeState`: `String`
-  - `afterState`: `String`
-  - `sensitiveOperation`: `boolean`
-  - `metadata`: `Map<String, String>`
+  - `content`: `List<AccountingAuditTrailEntryDto>`
+    - `id`: `Long`
+    - `timestamp`: `Instant`
+    - `companyId`: `Long`
+    - `companyCode`: `String`
+    - `actorUserId`: `Long`
+    - `actorIdentifier`: `String`
+    - `actionType`: `String`
+    - `entityType`: `String`
+    - `entityId`: `String`
+    - `referenceNumber`: `String`
+    - `traceId`: `String`
+    - `ipAddress`: `String`
+    - `beforeState`: `String`
+    - `afterState`: `String`
+    - `sensitiveOperation`: `boolean`
+    - `metadata`: `Map<String, String>`
+  - `totalElements`: `long`
+  - `totalPages`: `int`
+  - `page`: `int` (0-based)
+  - `size`: `int`
 - **`AuditDigestResponse`**
   - `periodLabel`: `String`
   - `entries`: `List<String>`
 - **`String`**
   - Primitive/raw payload type (no DTO field list).
 - **`PageResponse<AccountingTransactionAuditListItemDto>`**
-  - `journalEntryId`: `Long`
-  - `referenceNumber`: `String`
-  - `entryDate`: `LocalDate`
-  - `status`: `String`
-  - `module`: `String`
-  - `transactionType`: `String`
-  - `memo`: `String`
-  - `dealerId`: `Long`
-  - `dealerName`: `String`
-  - `supplierId`: `Long`
-  - `supplierName`: `String`
-  - `totalDebit`: `BigDecimal`
-  - `totalCredit`: `BigDecimal`
-  - `reversalOfId`: `Long`
-  - `reversalEntryId`: `Long`
-  - `correctionType`: `String`
-  - `consistencyStatus`: `String`
-  - `postedAt`: `Instant`
+  - `content`: `List<AccountingTransactionAuditListItemDto>`
+    - `journalEntryId`: `Long`
+    - `referenceNumber`: `String`
+    - `entryDate`: `LocalDate`
+    - `status`: `String`
+    - `module`: `String`
+    - `transactionType`: `String`
+    - `memo`: `String`
+    - `dealerId`: `Long`
+    - `dealerName`: `String`
+    - `supplierId`: `Long`
+    - `supplierName`: `String`
+    - `totalDebit`: `BigDecimal`
+    - `totalCredit`: `BigDecimal`
+    - `reversalOfId`: `Long`
+    - `reversalEntryId`: `Long`
+    - `correctionType`: `String`
+    - `consistencyStatus`: `String`
+    - `postedAt`: `Instant`
+  - `totalElements`: `long`
+  - `totalPages`: `int`
+  - `page`: `int` (0-based)
+  - `size`: `int`
 - **`AccountingTransactionAuditDetailDto`**
   - `journalEntryId`: `Long`
   - `journalPublicId`: `UUID`
@@ -832,7 +842,12 @@ _Total documented accounting endpoints: **73**._
   - `wouldCreate`: `List<VariantItem>`
   - `created`: `List<VariantItem>`
 - **`ConfigurationHealthService.ConfigurationHealthReport`**
-  - _Schema source not auto-expanded; refer to OpenAPI/service DTO type._
+  - `healthy`: `boolean` (true when no issues are present)
+  - `issues`: `List<ConfigurationIssue>`
+    - `companyCode`: `String` (tenant/company code where issue was detected)
+    - `domain`: `String` (issue category, e.g. `DEFAULT_ACCOUNTS`, `TAX_ACCOUNT`, `PRODUCTION_METADATA`)
+    - `reference`: `String` (entity reference such as SKU, `BASE`, or `COMPANY_DEFAULTS`)
+    - `message`: `String` (human-readable remediation hint)
 - **`Map<String, Object>`**
   - Primitive/raw payload type (no DTO field list).
 - **`PartnerSettlementResponse`**
