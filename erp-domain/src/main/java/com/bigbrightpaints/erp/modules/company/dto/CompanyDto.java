@@ -8,4 +8,15 @@ public record CompanyDto(Long id,
                          String name,
                          String code,
                          String timezone,
-                         BigDecimal defaultGstRate) {}
+                         String stateCode,
+                         BigDecimal defaultGstRate) {
+
+    public CompanyDto(Long id,
+                      UUID publicId,
+                      String name,
+                      String code,
+                      String timezone,
+                      BigDecimal defaultGstRate) {
+        this(id, publicId, name, code, timezone, null, defaultGstRate);
+    }
+}

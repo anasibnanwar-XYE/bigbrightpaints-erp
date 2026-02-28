@@ -62,6 +62,7 @@ public class ReconciliationService {
     private final SalesOrderRepository salesOrderRepository;
     private final JournalEntryRepository journalEntryRepository;
     private final JournalLineRepository journalLineRepository;
+    private final TemporalBalanceService temporalBalanceService;
 
     public ReconciliationService(CompanyContextService companyContextService,
                                   AccountRepository accountRepository,
@@ -73,7 +74,8 @@ public class ReconciliationService {
                                   PackagingSlipRepository packagingSlipRepository,
                                   SalesOrderRepository salesOrderRepository,
                                   JournalEntryRepository journalEntryRepository,
-                                  JournalLineRepository journalLineRepository) {
+                                  JournalLineRepository journalLineRepository,
+                                  TemporalBalanceService temporalBalanceService) {
         this.companyContextService = companyContextService;
         this.accountRepository = accountRepository;
         this.dealerRepository = dealerRepository;
@@ -85,6 +87,7 @@ public class ReconciliationService {
         this.salesOrderRepository = salesOrderRepository;
         this.journalEntryRepository = journalEntryRepository;
         this.journalLineRepository = journalLineRepository;
+        this.temporalBalanceService = temporalBalanceService;
     }
 
     /**
@@ -289,7 +292,7 @@ public class ReconciliationService {
             }
         }
 
-        BigDecimal ledgerBalance = safe(account.getBalance());
+        BigDecimal ledgerBalance = safe(temporalBalanceService.getBalanceAsOfDate(account.getId(), end));
         BigDecimal statementEndingBalance = safe(request.statementEndingBalance());
         BigDecimal adjustedStatementBalance = statementEndingBalance
                 .add(outstandingDeposits)

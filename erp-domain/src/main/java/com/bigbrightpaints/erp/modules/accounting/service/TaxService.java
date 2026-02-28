@@ -195,7 +195,7 @@ public class TaxService {
                     MoneyUtils.roundCurrency(cgst),
                     MoneyUtils.roundCurrency(sgst),
                     MoneyUtils.roundCurrency(igst),
-                    gstService.resolveTaxType(company.getStateCode(), invoice.getDealer() != null ? invoice.getDealer().getStateCode() : null, false));
+                    gstService.resolveTaxType(company.getStateCode(), invoice.getDealer() != null ? invoice.getDealer().getStateCode() : null, true));
         }
         return gstService.splitTaxAmount(
                 taxableAmount(line.getTaxableAmount(), line.getLineTotal(), taxAmount),
@@ -212,22 +212,52 @@ public class TaxService {
             return new GstService.GstBreakdown(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                     GstService.TaxType.INTER_STATE);
         }
+
+        BigDecimal retainedRatio = resolveRetainedQuantityRatio(line.getQuantity(), line.getReturnedQuantity());
+        if (retainedRatio.compareTo(BigDecimal.ZERO) <= 0) {
+            return new GstService.GstBreakdown(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                    GstService.TaxType.INTER_STATE);
+        }
+
+        BigDecimal netTaxAmount = MoneyUtils.roundCurrency(taxAmount.multiply(retainedRatio));
+        BigDecimal netTaxableAmount = MoneyUtils.roundCurrency(
+                taxableAmount(null, line.getLineTotal(), taxAmount).multiply(retainedRatio));
+
         BigDecimal cgst = safe(line.getCgstAmount());
         BigDecimal sgst = safe(line.getSgstAmount());
         BigDecimal igst = safe(line.getIgstAmount());
         if (cgst.add(sgst).add(igst).compareTo(BigDecimal.ZERO) > 0) {
             return new GstService.GstBreakdown(
-                    taxableAmount(null, line.getLineTotal(), taxAmount),
-                    MoneyUtils.roundCurrency(cgst),
-                    MoneyUtils.roundCurrency(sgst),
-                    MoneyUtils.roundCurrency(igst),
-                    gstService.resolveTaxType(company.getStateCode(), purchase.getSupplier() != null ? purchase.getSupplier().getStateCode() : null, false));
+                    netTaxableAmount,
+                    MoneyUtils.roundCurrency(cgst.multiply(retainedRatio)),
+                    MoneyUtils.roundCurrency(sgst.multiply(retainedRatio)),
+                    MoneyUtils.roundCurrency(igst.multiply(retainedRatio)),
+                    gstService.resolveTaxType(company.getStateCode(), purchase.getSupplier() != null ? purchase.getSupplier().getStateCode() : null, true));
         }
         return gstService.splitTaxAmount(
-                taxableAmount(null, line.getLineTotal(), taxAmount),
-                taxAmount,
+                netTaxableAmount,
+                netTaxAmount,
                 company.getStateCode(),
                 purchase.getSupplier() != null ? purchase.getSupplier().getStateCode() : null);
+    }
+
+    private BigDecimal resolveRetainedQuantityRatio(BigDecimal quantity, BigDecimal returnedQuantity) {
+        BigDecimal totalQuantity = safe(quantity);
+        if (totalQuantity.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ONE;
+        }
+        BigDecimal returned = safe(returnedQuantity);
+        if (returned.compareTo(BigDecimal.ZERO) < 0) {
+            returned = BigDecimal.ZERO;
+        }
+        BigDecimal retained = totalQuantity.subtract(returned);
+        if (retained.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO;
+        }
+        if (retained.compareTo(totalQuantity) >= 0) {
+            return BigDecimal.ONE;
+        }
+        return retained.divide(totalQuantity, 12, java.math.RoundingMode.HALF_UP);
     }
 
     private BigDecimal taxableAmount(BigDecimal explicitTaxable, BigDecimal lineTotal, BigDecimal taxAmount) {

@@ -50,6 +50,7 @@ class ReconciliationServiceTest {
     @Mock private SalesOrderRepository salesOrderRepository;
     @Mock private JournalEntryRepository journalEntryRepository;
     @Mock private JournalLineRepository journalLineRepository;
+    @Mock private TemporalBalanceService temporalBalanceService;
 
     private ReconciliationService reconciliationService;
     private Company company;
@@ -67,7 +68,8 @@ class ReconciliationServiceTest {
                 packagingSlipRepository,
                 salesOrderRepository,
                 journalEntryRepository,
-                journalLineRepository
+                journalLineRepository,
+                temporalBalanceService
         );
         company = new Company();
         company.setCode("ACME");
@@ -119,9 +121,11 @@ class ReconciliationServiceTest {
         bank.setCode("BANK-MAIN");
         bank.setName("Main Bank");
         bank.setType(AccountType.ASSET);
-        bank.setBalance(new BigDecimal("1000.00"));
+        bank.setBalance(new BigDecimal("1300.00"));
 
         when(accountRepository.findByCompanyAndId(company, 99L)).thenReturn(Optional.of(bank));
+        when(temporalBalanceService.getBalanceAsOfDate(99L, LocalDate.of(2026, 2, 28)))
+                .thenReturn(new BigDecimal("1000.00"));
 
         JournalEntry depositEntry = new JournalEntry();
         ReflectionTestUtils.setField(depositEntry, "id", 501L);
@@ -179,6 +183,7 @@ class ReconciliationServiceTest {
 
         assertThat(result.outstandingDeposits()).isEqualByComparingTo("300.00");
         assertThat(result.outstandingChecks()).isEqualByComparingTo("200.00");
+        assertThat(result.ledgerBalance()).isEqualByComparingTo("1000.00");
         assertThat(result.difference()).isEqualByComparingTo("0.00");
         assertThat(result.balanced()).isTrue();
         assertThat(result.unclearedDeposits()).hasSize(1);

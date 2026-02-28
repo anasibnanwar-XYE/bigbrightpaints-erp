@@ -14,6 +14,7 @@ public record CompanyRequest(
         @NotBlank @Size(max = 255) String name,
         @NotBlank @Size(max = 64) String code,
         @NotBlank @Size(max = 64) String timezone,
+        @Size(min = 2, max = 2, message = "stateCode must be exactly 2 characters") String stateCode,
         @DecimalMin(value = "0.0", inclusive = true) @DecimalMax(value = "100.0", inclusive = true) BigDecimal defaultGstRate,
         @Min(value = 0, message = "quotaMaxActiveUsers must be greater than or equal to 0") Long quotaMaxActiveUsers,
         @Min(value = 0, message = "quotaMaxApiRequests must be greater than or equal to 0") Long quotaMaxApiRequests,
@@ -42,6 +43,7 @@ public record CompanyRequest(
                 name,
                 code,
                 timezone,
+                null,
                 defaultGstRate,
                 quotaMaxActiveUsers,
                 quotaMaxApiRequests,
@@ -63,11 +65,42 @@ public record CompanyRequest(
                           Long quotaMaxStorageBytes,
                           Long quotaMaxConcurrentSessions,
                           Boolean quotaSoftLimitEnabled,
+                          Boolean quotaHardLimitEnabled,
+                          String firstAdminEmail,
+                          String firstAdminDisplayName,
+                          Set<@NotBlank @Size(max = 64) String> enabledModules) {
+        this(
+                name,
+                code,
+                timezone,
+                null,
+                defaultGstRate,
+                quotaMaxActiveUsers,
+                quotaMaxApiRequests,
+                quotaMaxStorageBytes,
+                quotaMaxConcurrentSessions,
+                quotaSoftLimitEnabled,
+                quotaHardLimitEnabled,
+                firstAdminEmail,
+                firstAdminDisplayName,
+                enabledModules);
+    }
+
+    public CompanyRequest(String name,
+                          String code,
+                          String timezone,
+                          BigDecimal defaultGstRate,
+                          Long quotaMaxActiveUsers,
+                          Long quotaMaxApiRequests,
+                          Long quotaMaxStorageBytes,
+                          Long quotaMaxConcurrentSessions,
+                          Boolean quotaSoftLimitEnabled,
                           Boolean quotaHardLimitEnabled) {
         this(
                 name,
                 code,
                 timezone,
+                null,
                 defaultGstRate,
                 quotaMaxActiveUsers,
                 quotaMaxApiRequests,
@@ -84,7 +117,7 @@ public record CompanyRequest(
                           String code,
                           String timezone,
                           BigDecimal defaultGstRate) {
-        this(name, code, timezone, defaultGstRate, null, null, null, null, null, null, null, null);
+        this(name, code, timezone, null, defaultGstRate, null, null, null, null, null, null, null, null, null);
     }
 
     public CompanyRequest(String name,

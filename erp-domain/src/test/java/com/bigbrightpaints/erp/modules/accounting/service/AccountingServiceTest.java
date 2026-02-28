@@ -8041,6 +8041,61 @@ class AccountingServiceTest {
     }
 
     @Test
+    void autoSettleSupplier_generatesDeterministicReferenceAndIdempotencyForAmountOnlyRequests() {
+        AccountingService service = spy(accountingService);
+
+        Supplier supplier = new Supplier();
+        ReflectionTestUtils.setField(supplier, "id", 2L);
+        supplier.setCode("SUP-02");
+        supplier.setName("Supplier Auto");
+
+        RawMaterialPurchase oldest = new RawMaterialPurchase();
+        ReflectionTestUtils.setField(oldest, "id", 201L);
+        oldest.setOutstandingAmount(new BigDecimal("60.00"));
+        oldest.setInvoiceDate(LocalDate.of(2026, 1, 2));
+
+        RawMaterialPurchase newer = new RawMaterialPurchase();
+        ReflectionTestUtils.setField(newer, "id", 202L);
+        newer.setOutstandingAmount(new BigDecimal("75.00"));
+        newer.setInvoiceDate(LocalDate.of(2026, 1, 7));
+
+        when(supplierRepository.lockByCompanyAndId(company, 2L)).thenReturn(Optional.of(supplier));
+        when(rawMaterialPurchaseRepository.lockOpenPurchasesForSettlement(company, supplier))
+                .thenReturn(List.of(oldest, newer));
+
+        JournalEntry persistedEntry = new JournalEntry();
+        ReflectionTestUtils.setField(persistedEntry, "id", 601L);
+        when(companyEntityLookup.requireJournalEntry(company, 601L)).thenReturn(persistedEntry);
+
+        PartnerSettlementAllocation allocationOne = new PartnerSettlementAllocation();
+        allocationOne.setPurchase(oldest);
+        allocationOne.setAllocationAmount(new BigDecimal("60.00"));
+        PartnerSettlementAllocation allocationTwo = new PartnerSettlementAllocation();
+        allocationTwo.setPurchase(newer);
+        allocationTwo.setAllocationAmount(new BigDecimal("40.00"));
+        when(settlementAllocationRepository.findByCompanyAndJournalEntryOrderByCreatedAtAsc(company, persistedEntry))
+                .thenReturn(List.of(allocationOne, allocationTwo));
+
+        ArgumentCaptor<SupplierPaymentRequest> requestCaptor = ArgumentCaptor.forClass(SupplierPaymentRequest.class);
+        doReturn(stubEntry(601L)).when(service).recordSupplierPayment(requestCaptor.capture());
+
+        AutoSettlementRequest request = new AutoSettlementRequest(
+                901L,
+                new BigDecimal("100.00"),
+                null,
+                "auto-settlement supplier",
+                null
+        );
+
+        service.autoSettleSupplier(2L, request);
+
+        SupplierPaymentRequest forwarded = requestCaptor.getValue();
+        assertThat(forwarded.referenceNumber()).isNotBlank();
+        assertThat(forwarded.referenceNumber()).startsWith("SUP-SET-");
+        assertThat(forwarded.idempotencyKey()).isEqualTo(forwarded.referenceNumber());
+    }
+
+    @Test
     void partnerMismatchMessage_fallbackUsesPartnerTypeWording() {
         String dealerMessage = ReflectionTestUtils.invokeMethod(
                 accountingService,

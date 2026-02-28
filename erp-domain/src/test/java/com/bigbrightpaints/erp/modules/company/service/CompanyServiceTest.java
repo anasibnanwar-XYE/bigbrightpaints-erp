@@ -290,6 +290,52 @@ class CompanyServiceTest {
     }
 
     @Test
+    void create_andUpdate_roundTripStateCodeInDto() {
+        authenticateAs("ROLE_SUPER_ADMIN");
+        when(repository.findByCodeIgnoreCase("GST")).thenReturn(Optional.empty());
+        when(repository.save(org.mockito.ArgumentMatchers.any(Company.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0, Company.class));
+
+        CompanyDto created = companyService.create(new CompanyRequest(
+                "GST Co",
+                "gst",
+                "UTC",
+                "mh",
+                BigDecimal.TEN,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null));
+
+        assertThat(created.stateCode()).isEqualTo("MH");
+
+        Company existing = company(55L, "GST");
+        when(repository.findById(55L)).thenReturn(Optional.of(existing));
+        CompanyDto updated = companyService.update(55L, new CompanyRequest(
+                "GST Co",
+                "GST",
+                "UTC",
+                "ka",
+                BigDecimal.TEN,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null), Set.of(existing));
+
+        assertThat(updated.stateCode()).isEqualTo("KA");
+    }
+
+    @Test
     void getTenantMetrics_deniesWhenBoundContextDoesNotMatchTargetTenant() {
         authenticateAs("ROLE_SUPER_ADMIN");
         CompanyContextHolder.setCompanyCode("ROOT");

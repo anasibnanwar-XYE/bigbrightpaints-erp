@@ -194,6 +194,7 @@ public class CompanyController {
             @NotBlank @Size(max = 255) String name,
             @NotBlank @Size(max = 64) String code,
             @NotBlank @Size(max = 64) String region,
+            @Size(min = 2, max = 2, message = "stateCode must be exactly 2 characters") String stateCode,
             @Min(value = 0, message = "maxActiveUsers must be greater than or equal to 0") Long maxActiveUsers,
             @Min(value = 0, message = "maxApiRequests must be greater than or equal to 0") Long maxApiRequests,
             @Min(value = 0, message = "maxStorageBytes must be greater than or equal to 0") Long maxStorageBytes,
@@ -207,6 +208,7 @@ public class CompanyController {
                     name,
                     code,
                     region,
+                    stateCode,
                     (BigDecimal) null,
                     maxActiveUsers,
                     maxApiRequests,
@@ -215,7 +217,8 @@ public class CompanyController {
                     softLimitEnabled,
                     hardLimitEnabled,
                     firstAdminEmail,
-                    firstAdminDisplayName);
+                    firstAdminDisplayName,
+                    null);
         }
     }
 
@@ -223,6 +226,7 @@ public class CompanyController {
             @NotBlank @Size(max = 255) String name,
             @NotBlank @Size(max = 64) String code,
             @NotBlank @Size(max = 64) String region,
+            @Size(min = 2, max = 2, message = "stateCode must be exactly 2 characters") String stateCode,
             @Min(value = 0, message = "maxActiveUsers must be greater than or equal to 0") Long maxActiveUsers,
             @Min(value = 0, message = "maxApiRequests must be greater than or equal to 0") Long maxApiRequests,
             @Min(value = 0, message = "maxStorageBytes must be greater than or equal to 0") Long maxStorageBytes,
@@ -235,6 +239,7 @@ public class CompanyController {
                     name,
                     code,
                     region,
+                    stateCode,
                     (BigDecimal) null,
                     maxActiveUsers,
                     maxApiRequests,

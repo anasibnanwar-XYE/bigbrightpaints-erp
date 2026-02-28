@@ -1972,13 +1972,19 @@ public abstract class AccountingCoreEngine {
         String memo = StringUtils.hasText(request.memo())
                 ? request.memo().trim()
                 : "Auto-settlement for supplier " + supplier.getName();
+        String reference = StringUtils.hasText(request.referenceNumber())
+                ? request.referenceNumber().trim()
+                : buildSupplierAutoSettlementReference(company, supplier, cashAccountId, amount, allocations);
+        String idempotencyKey = StringUtils.hasText(request.idempotencyKey())
+                ? request.idempotencyKey().trim()
+                : reference;
         SupplierPaymentRequest paymentRequest = new SupplierPaymentRequest(
                 supplier.getId(),
                 cashAccountId,
                 amount,
-                request.referenceNumber(),
+                reference,
                 memo,
-                request.idempotencyKey(),
+                idempotencyKey,
                 allocations
         );
         JournalEntryDto journalEntry = recordSupplierPayment(paymentRequest);
@@ -4742,6 +4748,33 @@ public abstract class AccountingCoreEngine {
         }
         String hash = IdempotencyUtils.sha256Hex(fingerprint.toString(), 12);
         return "RCPT-%s-%s".formatted(dealerToken, hash);
+    }
+
+    private String buildSupplierAutoSettlementReference(Company company,
+                                                        Supplier supplier,
+                                                        Long cashAccountId,
+                                                        BigDecimal amount,
+                                                        List<SettlementAllocationRequest> allocations) {
+        String supplierToken = sanitizeToken(supplier != null ? supplier.getCode() : null);
+        StringBuilder fingerprint = new StringBuilder();
+        appendPartnerFingerprint(fingerprint, PartnerType.SUPPLIER, supplier != null ? supplier.getId() : null);
+        fingerprint.append("|cashAccountId=")
+                .append(cashAccountId != null ? cashAccountId : "null")
+                .append("|amount=")
+                .append(normalizeDecimal(amount));
+        List<SettlementAllocationRequest> ordered = allocations != null
+                ? allocations.stream()
+                .sorted(Comparator.comparing(SettlementAllocationRequest::purchaseId, Comparator.nullsLast(Long::compareTo)))
+                .toList()
+                : List.of();
+        for (SettlementAllocationRequest allocation : ordered) {
+            fingerprint.append("|pur=")
+                    .append(allocation.purchaseId() != null ? allocation.purchaseId() : "null")
+                    .append(":")
+                    .append(normalizeDecimal(allocation.appliedAmount()));
+        }
+        String hash = IdempotencyUtils.sha256Hex(fingerprint.toString(), 12);
+        return "SUP-SET-%s-%s".formatted(supplierToken, hash);
     }
 
     private String buildDealerReceiptReference(Company company, Dealer dealer, DealerReceiptSplitRequest request) {

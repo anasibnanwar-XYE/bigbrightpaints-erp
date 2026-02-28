@@ -331,6 +331,72 @@ class TaxServiceTest {
         assertThat(dto.getInputTaxCredit().getIgst()).isEqualByComparingTo("0.00");
     }
 
+    @Test
+    void generateGstReconciliation_netsPurchaseReturnQuantityFromInputTaxCredit() {
+        YearMonth period = YearMonth.of(2024, 10);
+        LocalDate start = period.atDay(1);
+        LocalDate end = period.atEndOfMonth();
+
+        RawMaterialPurchase purchase = new RawMaterialPurchase();
+        purchase.setStatus("POSTED");
+        Supplier supplier = new Supplier();
+        supplier.setStateCode("27");
+        purchase.setSupplier(supplier);
+
+        RawMaterialPurchaseLine purchaseLine = new RawMaterialPurchaseLine();
+        purchaseLine.setQuantity(new BigDecimal("10.00"));
+        purchaseLine.setReturnedQuantity(new BigDecimal("4.00"));
+        purchaseLine.setLineTotal(new BigDecimal("118.00"));
+        purchaseLine.setTaxAmount(new BigDecimal("18.00"));
+        purchaseLine.setCgstAmount(new BigDecimal("9.00"));
+        purchaseLine.setSgstAmount(new BigDecimal("9.00"));
+        purchaseLine.setIgstAmount(BigDecimal.ZERO);
+        purchase.getLines().add(purchaseLine);
+
+        when(invoiceRepository.findByCompanyAndIssueDateBetweenOrderByIssueDateAsc(company, start, end))
+                .thenReturn(List.of());
+        when(rawMaterialPurchaseRepository.findByCompanyAndInvoiceDateBetweenOrderByInvoiceDateAsc(company, start, end))
+                .thenReturn(List.of(purchase));
+
+        GstReconciliationDto dto = taxService.generateGstReconciliation(period);
+
+        assertThat(dto.getInputTaxCredit().getCgst()).isEqualByComparingTo("5.40");
+        assertThat(dto.getInputTaxCredit().getSgst()).isEqualByComparingTo("5.40");
+        assertThat(dto.getInputTaxCredit().getIgst()).isEqualByComparingTo("0.00");
+        assertThat(dto.getInputTaxCredit().getTotal()).isEqualByComparingTo("10.80");
+    }
+
+    @Test
+    void generateGstReconciliation_requiresStateCodesForTaxableFlows() {
+        YearMonth period = YearMonth.of(2024, 11);
+        LocalDate start = period.atDay(1);
+        LocalDate end = period.atEndOfMonth();
+
+        company.setStateCode(null);
+
+        RawMaterialPurchase purchase = new RawMaterialPurchase();
+        purchase.setStatus("POSTED");
+        Supplier supplier = new Supplier();
+        supplier.setStateCode("29");
+        purchase.setSupplier(supplier);
+
+        RawMaterialPurchaseLine purchaseLine = new RawMaterialPurchaseLine();
+        purchaseLine.setQuantity(new BigDecimal("5.00"));
+        purchaseLine.setLineTotal(new BigDecimal("118.00"));
+        purchaseLine.setTaxAmount(new BigDecimal("18.00"));
+        purchaseLine.setIgstAmount(new BigDecimal("18.00"));
+        purchase.getLines().add(purchaseLine);
+
+        when(invoiceRepository.findByCompanyAndIssueDateBetweenOrderByIssueDateAsc(company, start, end))
+                .thenReturn(List.of());
+        when(rawMaterialPurchaseRepository.findByCompanyAndInvoiceDateBetweenOrderByInvoiceDateAsc(company, start, end))
+                .thenReturn(List.of(purchase));
+
+        assertThatThrownBy(() -> taxService.generateGstReconciliation(period))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("State codes are required for GST decisioning");
+    }
+
     private JournalLine line(BigDecimal debit, BigDecimal credit) {
         JournalLine jl = new JournalLine();
         jl.setDebit(debit == null ? BigDecimal.ZERO : debit);

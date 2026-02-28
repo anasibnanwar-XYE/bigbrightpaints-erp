@@ -134,6 +134,7 @@ public class CompanyService {
         company.setName(request.name());
         company.setCode(normalizedCompanyCode);
         company.setTimezone(request.timezone());
+        company.setStateCode(normalizeStateCode(request.stateCode()));
         company.setDefaultGstRate(resolveDefaultGstRateForCreate(request.defaultGstRate()));
         company.setQuotaMaxActiveUsers(resolveQuotaForCreate(request.quotaMaxActiveUsers()));
         company.setQuotaMaxApiRequests(resolveQuotaForCreate(request.quotaMaxApiRequests()));
@@ -161,6 +162,9 @@ public class CompanyService {
         company.setName(request.name());
         company.setCode(normalizedCompanyCode);
         company.setTimezone(request.timezone());
+        if (request.stateCode() != null) {
+            company.setStateCode(normalizeStateCode(request.stateCode()));
+        }
         if (request.defaultGstRate() != null) {
             company.setDefaultGstRate(request.defaultGstRate());
         }
@@ -535,7 +539,19 @@ public class CompanyService {
                 company.getName(),
                 company.getCode(),
                 company.getTimezone(),
+                company.getStateCode(),
                 company.getDefaultGstRate());
+    }
+
+    private String normalizeStateCode(String stateCode) {
+        if (!StringUtils.hasText(stateCode)) {
+            return null;
+        }
+        String normalized = stateCode.trim().toUpperCase(Locale.ROOT);
+        if (normalized.length() != 2) {
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("State code must be exactly 2 characters");
+        }
+        return normalized;
     }
 
     private Authentication requireSuperAdminForLifecycleControl(Long companyId,
