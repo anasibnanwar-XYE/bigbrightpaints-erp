@@ -328,6 +328,77 @@ Current runtime path mapping used by backend:
 - Display negative `netLiability.total` as input credit carry-forward.
 - Default period picker to current month when period query is omitted.
 
+#### Hands-off Settlement, Period Close, and Reconciliation
+
+##### Endpoint Map
+
+| Method | Path | Auth | Request | Response `data` |
+|---|---|---|---|---|
+| POST | `/api/v1/accounting/dealers/{dealerId}/auto-settle` | `ROLE_ADMIN`,`ROLE_ACCOUNTING` | `AutoSettlementRequest` | `PartnerSettlementResponse` |
+| POST | `/api/v1/accounting/suppliers/{supplierId}/auto-settle` | `ROLE_ADMIN`,`ROLE_ACCOUNTING` | `AutoSettlementRequest` | `PartnerSettlementResponse` |
+| GET | `/api/v1/accounting/month-end/checklist` | `ROLE_ADMIN`,`ROLE_ACCOUNTING` | Query: `periodId?` | `MonthEndChecklistDto` |
+| POST | `/api/v1/accounting/periods/{periodId}/close` | `ROLE_ADMIN`,`ROLE_ACCOUNTING` | `AccountingPeriodCloseRequest` | `AccountingPeriodDto` |
+| POST | `/api/v1/accounting/periods/{periodId}/reopen` | `ROLE_ADMIN`,`ROLE_ACCOUNTING` | `AccountingPeriodReopenRequest` | `AccountingPeriodDto` |
+| POST | `/api/v1/accounting/reconciliation/bank` | `ROLE_ADMIN`,`ROLE_ACCOUNTING` | `BankReconciliationRequest` | `BankReconciliationSummaryDto` |
+| GET | `/api/v1/accounting/reconciliation/subledger` | `ROLE_ADMIN`,`ROLE_ACCOUNTING` | None | `SubledgerReconciliationReport` |
+
+##### User Flows
+
+1. **Dealer auto-settlement (FIFO):**
+   1. Submit `POST /dealers/{dealerId}/auto-settle` with `amount` (and optional `cashAccountId`, `referenceNumber`, `memo`, `idempotencyKey`).
+   2. Backend allocates against oldest outstanding invoices first.
+   3. Backend creates receipt journal + settlement allocation rows in one transaction.
+   4. UI receives `PartnerSettlementResponse.allocations[]` for receipt allocation breakdown.
+
+2. **Supplier auto-settlement (FIFO):**
+   1. Submit `POST /suppliers/{supplierId}/auto-settle` with settlement amount.
+   2. Backend allocates against oldest outstanding purchases first.
+   3. Backend creates supplier payment journal + allocation rows atomically.
+
+3. **Period close checklist + close/reopen:**
+   1. Load checklist via `GET /month-end/checklist?periodId={id}`.
+   2. Block close until checklist items are complete (including `trialBalanceBalanced`, reconciliation controls, and unposted/unlinked checks).
+   3. Close via `POST /periods/{periodId}/close` with reason (`note`).
+   4. Reopen via `POST /periods/{periodId}/reopen` with reason. Backend stores reopen audit fields (`reopenedAt`, `reopenedBy`, `reopenReason`).
+
+4. **Reconciliation diagnostics:**
+   1. Run `POST /reconciliation/bank` with statement info and optional cleared refs; show unmatched deposits/checks and difference.
+   2. Run `GET /reconciliation/subledger` to compare AR/AP GL totals against dealer/supplier sub-ledgers and render discrepancy rows.
+
+##### Data Contracts
+
+- `AutoSettlementRequest`
+  - `cashAccountId?: number` (optional; backend can resolve default active cash/bank account)
+  - `amount: number` (required, `>= 0.01`)
+  - `referenceNumber?: string`
+  - `memo?: string`
+  - `idempotencyKey?: string`
+
+- `MonthEndChecklistItemDto.key` now includes `trialBalanceBalanced` with pass/fail details.
+
+- `BankReconciliationSummaryDto`
+  - `ledgerBalance`, `statementEndingBalance`, `outstandingDeposits`, `outstandingChecks`, `difference`, `balanced`
+  - `unclearedDeposits[]` and `unclearedChecks[]` include reference/date/memo/debit/credit/net for UI discrepancy tables.
+
+- `SubledgerReconciliationReport`
+  - `dealerReconciliation` (AR vs dealer ledger totals + per-dealer discrepancies)
+  - `supplierReconciliation` (AP vs supplier ledger totals + per-supplier discrepancies)
+  - `combinedVariance`, `reconciled`
+
+##### Error Codes / UI Behavior
+
+- `VALIDATION_INVALID_INPUT` for over-allocation or missing open items in auto-settle.
+- `VALIDATION_MISSING_REQUIRED_FIELD` when no `cashAccountId` provided and no default active cash/bank account exists.
+- `VALIDATION_INVALID_REFERENCE` when dealer/supplier/account is not found.
+- `VALIDATION_INVALID_STATE` for close attempts when checklist controls fail (trial balance mismatch, unreconciled controls, unposted/unlinked documents).
+
+##### UI Hints
+
+- Auto-settle dialogs should show amount-first UX with optional cash-account override.
+- In settlement success toasts, include count of allocations applied.
+- Period-close screens should render checklist as strict pass/fail rows and disable close CTA until all rows pass (unless using explicit force flow).
+- Reconciliation pages should highlight discrepancy rows and show variance badges (`within tolerance` vs `exceeds tolerance`).
+
 ### Product Catalog & Inventory
 _To be documented_
 

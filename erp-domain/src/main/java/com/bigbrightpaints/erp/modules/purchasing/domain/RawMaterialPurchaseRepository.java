@@ -50,6 +50,18 @@ public interface RawMaterialPurchaseRepository extends JpaRepository<RawMaterial
     @Query("SELECT p FROM RawMaterialPurchase p WHERE p.company = :company AND LOWER(p.invoiceNumber) = LOWER(:invoiceNumber)")
     Optional<RawMaterialPurchase> lockByCompanyAndInvoiceNumberIgnoreCase(@Param("company") Company company, @Param("invoiceNumber") String invoiceNumber);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            SELECT p FROM RawMaterialPurchase p
+            WHERE p.company = :company
+              AND p.supplier = :supplier
+              AND p.outstandingAmount > 0
+              AND (p.status IS NULL OR p.status NOT IN ('VOID', 'DRAFT', 'REVERSED'))
+            ORDER BY CASE WHEN p.invoiceDate IS NULL THEN 1 ELSE 0 END, p.invoiceDate, p.id
+            """)
+    List<RawMaterialPurchase> lockOpenPurchasesForSettlement(@Param("company") Company company,
+                                                             @Param("supplier") Supplier supplier);
+
     long countByCompanyAndInvoiceDateBetweenAndStatusNot(Company company,
                                                          LocalDate start,
                                                          LocalDate end,

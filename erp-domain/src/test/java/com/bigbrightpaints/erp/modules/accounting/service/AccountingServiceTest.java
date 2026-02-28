@@ -20,6 +20,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMapping;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMappingRepository;
 import com.bigbrightpaints.erp.modules.accounting.event.AccountingEventStore;
+import com.bigbrightpaints.erp.modules.accounting.dto.AutoSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptSplitRequest;
@@ -38,6 +39,7 @@ import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunLineRepository;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunRepository;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRun;
+import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatch;
@@ -7915,6 +7917,127 @@ class AccountingServiceTest {
         assertThatThrownBy(() -> service.settleSupplierInvoices(request))
                 .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("must be an ASSET account");
+    }
+
+    @Test
+    void autoSettleDealer_allocatesOldestOutstandingInvoicesInFifoOrder() {
+        AccountingService service = spy(accountingService);
+
+        Dealer dealer = new Dealer();
+        ReflectionTestUtils.setField(dealer, "id", 1L);
+        dealer.setName("Dealer Auto");
+
+        Invoice oldest = new Invoice();
+        ReflectionTestUtils.setField(oldest, "id", 101L);
+        oldest.setOutstandingAmount(new BigDecimal("100.00"));
+        oldest.setIssueDate(LocalDate.of(2026, 1, 1));
+
+        Invoice newer = new Invoice();
+        ReflectionTestUtils.setField(newer, "id", 102L);
+        newer.setOutstandingAmount(new BigDecimal("90.00"));
+        newer.setIssueDate(LocalDate.of(2026, 1, 5));
+
+        when(dealerRepository.lockByCompanyAndId(company, 1L)).thenReturn(Optional.of(dealer));
+        when(invoiceRepository.lockOpenInvoicesForSettlement(company, dealer)).thenReturn(List.of(oldest, newer));
+
+        JournalEntry persistedEntry = new JournalEntry();
+        ReflectionTestUtils.setField(persistedEntry, "id", 501L);
+        when(companyEntityLookup.requireJournalEntry(company, 501L)).thenReturn(persistedEntry);
+
+        PartnerSettlementAllocation allocationOne = new PartnerSettlementAllocation();
+        allocationOne.setInvoice(oldest);
+        allocationOne.setAllocationAmount(new BigDecimal("100.00"));
+        PartnerSettlementAllocation allocationTwo = new PartnerSettlementAllocation();
+        allocationTwo.setInvoice(newer);
+        allocationTwo.setAllocationAmount(new BigDecimal("80.00"));
+        when(settlementAllocationRepository.findByCompanyAndJournalEntryOrderByCreatedAtAsc(company, persistedEntry))
+                .thenReturn(List.of(allocationOne, allocationTwo));
+
+        ArgumentCaptor<DealerReceiptRequest> requestCaptor = ArgumentCaptor.forClass(DealerReceiptRequest.class);
+        doReturn(stubEntry(501L)).when(service).recordDealerReceipt(requestCaptor.capture());
+
+        AutoSettlementRequest request = new AutoSettlementRequest(
+                900L,
+                new BigDecimal("180.00"),
+                "AUTO-RCPT-1",
+                "auto-settlement",
+                "IDEMP-AUTO-DEALER-1"
+        );
+
+        PartnerSettlementResponse response = service.autoSettleDealer(1L, request);
+
+        DealerReceiptRequest forwarded = requestCaptor.getValue();
+        assertThat(forwarded.dealerId()).isEqualTo(1L);
+        assertThat(forwarded.amount()).isEqualByComparingTo("180.00");
+        assertThat(forwarded.allocations()).hasSize(2);
+        assertThat(forwarded.allocations().get(0).invoiceId()).isEqualTo(101L);
+        assertThat(forwarded.allocations().get(0).appliedAmount()).isEqualByComparingTo("100.00");
+        assertThat(forwarded.allocations().get(1).invoiceId()).isEqualTo(102L);
+        assertThat(forwarded.allocations().get(1).appliedAmount()).isEqualByComparingTo("80.00");
+
+        assertThat(response.totalApplied()).isEqualByComparingTo("180.00");
+        assertThat(response.allocations()).hasSize(2);
+    }
+
+    @Test
+    void autoSettleSupplier_allocatesOldestOutstandingPurchasesInFifoOrder() {
+        AccountingService service = spy(accountingService);
+
+        Supplier supplier = new Supplier();
+        ReflectionTestUtils.setField(supplier, "id", 2L);
+        supplier.setName("Supplier Auto");
+
+        RawMaterialPurchase oldest = new RawMaterialPurchase();
+        ReflectionTestUtils.setField(oldest, "id", 201L);
+        oldest.setOutstandingAmount(new BigDecimal("60.00"));
+        oldest.setInvoiceDate(LocalDate.of(2026, 1, 2));
+
+        RawMaterialPurchase newer = new RawMaterialPurchase();
+        ReflectionTestUtils.setField(newer, "id", 202L);
+        newer.setOutstandingAmount(new BigDecimal("75.00"));
+        newer.setInvoiceDate(LocalDate.of(2026, 1, 7));
+
+        when(supplierRepository.lockByCompanyAndId(company, 2L)).thenReturn(Optional.of(supplier));
+        when(rawMaterialPurchaseRepository.lockOpenPurchasesForSettlement(company, supplier))
+                .thenReturn(List.of(oldest, newer));
+
+        JournalEntry persistedEntry = new JournalEntry();
+        ReflectionTestUtils.setField(persistedEntry, "id", 601L);
+        when(companyEntityLookup.requireJournalEntry(company, 601L)).thenReturn(persistedEntry);
+
+        PartnerSettlementAllocation allocationOne = new PartnerSettlementAllocation();
+        allocationOne.setPurchase(oldest);
+        allocationOne.setAllocationAmount(new BigDecimal("60.00"));
+        PartnerSettlementAllocation allocationTwo = new PartnerSettlementAllocation();
+        allocationTwo.setPurchase(newer);
+        allocationTwo.setAllocationAmount(new BigDecimal("40.00"));
+        when(settlementAllocationRepository.findByCompanyAndJournalEntryOrderByCreatedAtAsc(company, persistedEntry))
+                .thenReturn(List.of(allocationOne, allocationTwo));
+
+        ArgumentCaptor<SupplierPaymentRequest> requestCaptor = ArgumentCaptor.forClass(SupplierPaymentRequest.class);
+        doReturn(stubEntry(601L)).when(service).recordSupplierPayment(requestCaptor.capture());
+
+        AutoSettlementRequest request = new AutoSettlementRequest(
+                901L,
+                new BigDecimal("100.00"),
+                "AUTO-PAY-1",
+                "auto-settlement supplier",
+                "IDEMP-AUTO-SUPPLIER-1"
+        );
+
+        PartnerSettlementResponse response = service.autoSettleSupplier(2L, request);
+
+        SupplierPaymentRequest forwarded = requestCaptor.getValue();
+        assertThat(forwarded.supplierId()).isEqualTo(2L);
+        assertThat(forwarded.amount()).isEqualByComparingTo("100.00");
+        assertThat(forwarded.allocations()).hasSize(2);
+        assertThat(forwarded.allocations().get(0).purchaseId()).isEqualTo(201L);
+        assertThat(forwarded.allocations().get(0).appliedAmount()).isEqualByComparingTo("60.00");
+        assertThat(forwarded.allocations().get(1).purchaseId()).isEqualTo(202L);
+        assertThat(forwarded.allocations().get(1).appliedAmount()).isEqualByComparingTo("40.00");
+
+        assertThat(response.totalApplied()).isEqualByComparingTo("100.00");
+        assertThat(response.allocations()).hasSize(2);
     }
 
     @Test

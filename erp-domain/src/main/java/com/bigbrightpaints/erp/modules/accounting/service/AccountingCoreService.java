@@ -1305,6 +1305,37 @@ public class AccountingCoreService {
         return entryDto;
     }
 
+    @Retryable(
+            value = DataIntegrityViolationException.class,
+            maxAttempts = 3,
+            backoff = @Backoff(delay = 50, maxDelay = 250, multiplier = 2.0))
+    @Transactional
+    public PartnerSettlementResponse autoSettleDealer(Long dealerId, AutoSettlementRequest request) {
+        if (request == null) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Auto-settlement request is required");
+        }
+        Company company = companyContextService.requireCurrentCompany();
+        Dealer dealer = dealerRepository.lockByCompanyAndId(company, dealerId)
+                .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Dealer not found"));
+        BigDecimal amount = ValidationUtils.requirePositive(request.amount(), "amount");
+        Long cashAccountId = resolveAutoSettlementCashAccountId(company, request.cashAccountId(), "dealer auto-settlement");
+        List<SettlementAllocationRequest> allocations = buildDealerAutoSettlementAllocations(company, dealer, amount);
+        String memo = StringUtils.hasText(request.memo())
+                ? request.memo().trim()
+                : "Auto-settlement for dealer " + dealer.getName();
+        DealerReceiptRequest receiptRequest = new DealerReceiptRequest(
+                dealer.getId(),
+                cashAccountId,
+                amount,
+                request.referenceNumber(),
+                memo,
+                request.idempotencyKey(),
+                allocations
+        );
+        JournalEntryDto journalEntry = recordDealerReceipt(receiptRequest);
+        return buildAutoSettlementResponse(company, journalEntry);
+    }
+
     @Transactional
     public JournalEntryDto postPayrollRun(String runNumber,
                                           Long runId,
@@ -1906,6 +1937,37 @@ public class AccountingCoreService {
             rawMaterialPurchaseRepository.saveAll(touchedPurchases);
         }
         return entryDto;
+    }
+
+    @Retryable(
+            value = DataIntegrityViolationException.class,
+            maxAttempts = 3,
+            backoff = @Backoff(delay = 50, maxDelay = 250, multiplier = 2.0))
+    @Transactional
+    public PartnerSettlementResponse autoSettleSupplier(Long supplierId, AutoSettlementRequest request) {
+        if (request == null) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Auto-settlement request is required");
+        }
+        Company company = companyContextService.requireCurrentCompany();
+        Supplier supplier = supplierRepository.lockByCompanyAndId(company, supplierId)
+                .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Supplier not found"));
+        BigDecimal amount = ValidationUtils.requirePositive(request.amount(), "amount");
+        Long cashAccountId = resolveAutoSettlementCashAccountId(company, request.cashAccountId(), "supplier auto-settlement");
+        List<SettlementAllocationRequest> allocations = buildSupplierAutoSettlementAllocations(company, supplier, amount);
+        String memo = StringUtils.hasText(request.memo())
+                ? request.memo().trim()
+                : "Auto-settlement for supplier " + supplier.getName();
+        SupplierPaymentRequest paymentRequest = new SupplierPaymentRequest(
+                supplier.getId(),
+                cashAccountId,
+                amount,
+                request.referenceNumber(),
+                memo,
+                request.idempotencyKey(),
+                allocations
+        );
+        JournalEntryDto journalEntry = recordSupplierPayment(paymentRequest);
+        return buildAutoSettlementResponse(company, journalEntry);
     }
 
     @Retryable(
@@ -2542,6 +2604,146 @@ public class AccountingCoreService {
                     .withDetail("accountName", account.getName());
         }
         return account;
+    }
+
+    private Long resolveAutoSettlementCashAccountId(Company company, Long requestedCashAccountId, String operation) {
+        if (requestedCashAccountId != null) {
+            return requestedCashAccountId;
+        }
+        return accountRepository.findByCompanyOrderByCodeAsc(company).stream()
+                .filter(Account::isActive)
+                .filter(account -> account.getType() == null || account.getType() == AccountType.ASSET)
+                .filter(account -> !isReceivableAccount(account) && !isPayableAccount(account))
+                .filter(account -> {
+                    String code = account.getCode() == null ? "" : account.getCode().toUpperCase(Locale.ROOT);
+                    String name = account.getName() == null ? "" : account.getName().toUpperCase(Locale.ROOT);
+                    return code.contains("CASH") || code.contains("BANK")
+                            || name.contains("CASH") || name.contains("BANK");
+                })
+                .map(Account::getId)
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElseThrow(() -> new ApplicationException(
+                        ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
+                        "cashAccountId is required when no active default cash/bank account is configured for " + operation));
+    }
+
+    private List<SettlementAllocationRequest> buildDealerAutoSettlementAllocations(Company company,
+                                                                                    Dealer dealer,
+                                                                                    BigDecimal amount) {
+        List<Invoice> openInvoices = invoiceRepository.lockOpenInvoicesForSettlement(company, dealer);
+        if (openInvoices.isEmpty()) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "No open invoices available for auto-settlement");
+        }
+
+        BigDecimal totalOutstanding = BigDecimal.ZERO;
+        BigDecimal remaining = amount;
+        List<SettlementAllocationRequest> allocations = new ArrayList<>();
+
+        for (Invoice invoice : openInvoices) {
+            BigDecimal outstanding = MoneyUtils.zeroIfNull(invoice.getOutstandingAmount());
+            if (outstanding.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+            totalOutstanding = totalOutstanding.add(outstanding);
+            if (remaining.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+            BigDecimal applied = remaining.min(outstanding);
+            allocations.add(new SettlementAllocationRequest(
+                    invoice.getId(),
+                    null,
+                    applied,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    "Auto-settlement FIFO allocation"
+            ));
+            remaining = remaining.subtract(applied);
+        }
+
+        if (totalOutstanding.add(ALLOCATION_TOLERANCE).compareTo(amount) < 0) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Auto-settlement amount exceeds total outstanding invoices")
+                    .withDetail("outstandingTotal", totalOutstanding)
+                    .withDetail("requestedAmount", amount);
+        }
+        if (remaining.abs().compareTo(ALLOCATION_TOLERANCE) > 0) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Auto-settlement amount could not be fully allocated")
+                    .withDetail("remaining", remaining);
+        }
+        return allocations;
+    }
+
+    private List<SettlementAllocationRequest> buildSupplierAutoSettlementAllocations(Company company,
+                                                                                      Supplier supplier,
+                                                                                      BigDecimal amount) {
+        List<RawMaterialPurchase> openPurchases = rawMaterialPurchaseRepository.lockOpenPurchasesForSettlement(company, supplier);
+        if (openPurchases.isEmpty()) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "No open purchases available for auto-settlement");
+        }
+
+        BigDecimal totalOutstanding = BigDecimal.ZERO;
+        BigDecimal remaining = amount;
+        List<SettlementAllocationRequest> allocations = new ArrayList<>();
+
+        for (RawMaterialPurchase purchase : openPurchases) {
+            BigDecimal outstanding = MoneyUtils.zeroIfNull(purchase.getOutstandingAmount());
+            if (outstanding.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+            totalOutstanding = totalOutstanding.add(outstanding);
+            if (remaining.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+            BigDecimal applied = remaining.min(outstanding);
+            allocations.add(new SettlementAllocationRequest(
+                    null,
+                    purchase.getId(),
+                    applied,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    "Auto-settlement FIFO allocation"
+            ));
+            remaining = remaining.subtract(applied);
+        }
+
+        if (totalOutstanding.add(ALLOCATION_TOLERANCE).compareTo(amount) < 0) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Auto-settlement amount exceeds total outstanding purchases")
+                    .withDetail("outstandingTotal", totalOutstanding)
+                    .withDetail("requestedAmount", amount);
+        }
+        if (remaining.abs().compareTo(ALLOCATION_TOLERANCE) > 0) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Auto-settlement amount could not be fully allocated")
+                    .withDetail("remaining", remaining);
+        }
+        return allocations;
+    }
+
+    private PartnerSettlementResponse buildAutoSettlementResponse(Company company, JournalEntryDto journalEntry) {
+        JournalEntry persistedEntry = companyEntityLookup.requireJournalEntry(company, journalEntry.id());
+        List<PartnerSettlementAllocation> allocations = settlementAllocationRepository
+                .findByCompanyAndJournalEntryOrderByCreatedAtAsc(company, persistedEntry);
+        BigDecimal totalApplied = allocations.stream()
+                .map(PartnerSettlementAllocation::getAllocationAmount)
+                .map(MoneyUtils::zeroIfNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return new PartnerSettlementResponse(
+                journalEntry,
+                totalApplied,
+                totalApplied,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                toSettlementAllocationSummaries(allocations)
+        );
     }
 
     private BigDecimal normalizeNonNegative(BigDecimal value, String field) {

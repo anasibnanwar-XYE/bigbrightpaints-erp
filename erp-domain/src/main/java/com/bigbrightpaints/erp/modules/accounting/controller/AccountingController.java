@@ -310,6 +310,16 @@ public class AccountingController {
             public PartnerSettlementResponse settleSupplierInvoices(SupplierSettlementRequest request) {
                 return requireAccountingService(accountingService).settleSupplierInvoices(request);
             }
+
+            @Override
+            public PartnerSettlementResponse autoSettleDealer(Long dealerId, AutoSettlementRequest request) {
+                return requireAccountingService(accountingService).autoSettleDealer(dealerId, request);
+            }
+
+            @Override
+            public PartnerSettlementResponse autoSettleSupplier(Long supplierId, AutoSettlementRequest request) {
+                return requireAccountingService(accountingService).autoSettleSupplier(supplierId, request);
+            }
         };
     }
 
@@ -546,6 +556,19 @@ public class AccountingController {
         return ResponseEntity.ok(ApiResponse.success("Settlement recorded", settlementService.settleDealerInvoices(resolved)));
     }
 
+    @PostMapping("/dealers/{dealerId}/auto-settle")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<PartnerSettlementResponse>> autoSettleDealer(
+            @PathVariable Long dealerId,
+            @Valid @RequestBody AutoSettlementRequest request,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            @RequestHeader(value = "X-Idempotency-Key", required = false) String legacyIdempotencyKey) {
+        AutoSettlementRequest resolved = applyIdempotencyKey(request, idempotencyKey, legacyIdempotencyKey);
+        return ResponseEntity.ok(ApiResponse.success(
+                "Auto-settlement recorded",
+                settlementService.autoSettleDealer(dealerId, resolved)));
+    }
+
     @PostMapping("/payroll/payments")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
     public ResponseEntity<ApiResponse<JournalEntryDto>> recordPayrollPayment(@Valid @RequestBody PayrollPaymentRequest request) {
@@ -570,6 +593,19 @@ public class AccountingController {
             @RequestHeader(value = "X-Idempotency-Key", required = false) String legacyIdempotencyKey) {
         SupplierSettlementRequest resolved = applyIdempotencyKey(request, idempotencyKey, legacyIdempotencyKey);
         return ResponseEntity.ok(ApiResponse.success("Settlement recorded", settlementService.settleSupplierInvoices(resolved)));
+    }
+
+    @PostMapping("/suppliers/{supplierId}/auto-settle")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<PartnerSettlementResponse>> autoSettleSupplier(
+            @PathVariable Long supplierId,
+            @Valid @RequestBody AutoSettlementRequest request,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            @RequestHeader(value = "X-Idempotency-Key", required = false) String legacyIdempotencyKey) {
+        AutoSettlementRequest resolved = applyIdempotencyKey(request, idempotencyKey, legacyIdempotencyKey);
+        return ResponseEntity.ok(ApiResponse.success(
+                "Auto-settlement recorded",
+                settlementService.autoSettleSupplier(supplierId, resolved)));
     }
 
     @PostMapping("/credit-notes")
@@ -648,6 +684,23 @@ public class AccountingController {
                         resolvedRequest.adminOverride(),
                         resolvedRequest.allocations(),
                         resolvedRequest.payments()
+                ));
+    }
+
+    private AutoSettlementRequest applyIdempotencyKey(AutoSettlementRequest request,
+                                                      String idempotencyKeyHeader,
+                                                      String legacyIdempotencyKeyHeader) {
+        return applyHeaderOnlyIdempotencyKey(
+                request,
+                idempotencyKeyHeader,
+                legacyIdempotencyKeyHeader,
+                AutoSettlementRequest::idempotencyKey,
+                (resolvedRequest, resolvedKey) -> new AutoSettlementRequest(
+                        resolvedRequest.cashAccountId(),
+                        resolvedRequest.amount(),
+                        resolvedRequest.referenceNumber(),
+                        resolvedRequest.memo(),
+                        resolvedKey
                 ));
     }
 
@@ -832,6 +885,21 @@ public class AccountingController {
     public ResponseEntity<ApiResponse<MonthEndChecklistDto>> updateChecklist(@PathVariable Long periodId,
                                                                              @RequestBody MonthEndChecklistUpdateRequest request) {
         return ResponseEntity.ok(ApiResponse.success("Checklist updated", accountingPeriodService.updateMonthEndChecklist(periodId, request)));
+    }
+
+    @PostMapping("/reconciliation/bank")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<BankReconciliationSummaryDto>> reconcileBank(
+            @Valid @RequestBody BankReconciliationRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(
+                reconciliationService.reconcileBankAccount(request)));
+    }
+
+    @GetMapping("/reconciliation/subledger")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<ReconciliationService.SubledgerReconciliationReport>> reconcileSubledger() {
+        return ResponseEntity.ok(ApiResponse.success(
+                reconciliationService.reconcileSubledgerBalances()));
     }
 
     /* Statements & Aging */

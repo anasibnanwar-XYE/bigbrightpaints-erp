@@ -4,6 +4,7 @@ import com.bigbrightpaints.erp.modules.accounting.dto.DealerSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementResponse;
 import com.bigbrightpaints.erp.modules.accounting.dto.SupplierPaymentRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.SupplierSettlementRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.AutoSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import org.springframework.stereotype.Service;
 
@@ -24,7 +25,15 @@ public class SettlementService {
         return accountingIdempotencyService.settleDealerInvoices(request);
     }
 
+    public PartnerSettlementResponse autoSettleDealer(Long dealerId, AutoSettlementRequest request) {
+        return accountingIdempotencyService.autoSettleDealer(dealerId, request);
+    }
+
     public PartnerSettlementResponse settleSupplierInvoices(SupplierSettlementRequest request) {
         return accountingIdempotencyService.settleSupplierInvoices(request);
+    }
+
+    public PartnerSettlementResponse autoSettleSupplier(Long supplierId, AutoSettlementRequest request) {
+        return accountingIdempotencyService.autoSettleSupplier(supplierId, request);
     }
 }

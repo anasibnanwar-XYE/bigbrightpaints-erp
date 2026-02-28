@@ -24,6 +24,7 @@ import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.GoodsReceiptRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
 import com.bigbrightpaints.erp.modules.reports.dto.ReconciliationSummaryDto;
+import com.bigbrightpaints.erp.modules.reports.dto.TrialBalanceDto;
 import com.bigbrightpaints.erp.modules.reports.service.ReportService;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.ObjectProvider;
@@ -529,6 +530,10 @@ public class AccountingPeriodService {
         if (!unresolvedControls.isEmpty()) {
             throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(UNRESOLVED_CONTROLS_PREFIX + formatUnresolvedControls(unresolvedControls));
         }
+        if (!diagnostics.trialBalanceBalanced()) {
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
+                    "Trial balance is not balanced (difference " + formatVariance(diagnostics.trialBalanceDifference()) + ")");
+        }
         if (!diagnostics.inventoryReconciled()) {
             throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Inventory reconciliation variance exceeds tolerance (" +
                     formatVariance(diagnostics.inventoryVariance()) + ")");
@@ -620,6 +625,7 @@ public class AccountingPeriodService {
         boolean inventoryControlResolved = diagnostics.inventoryControlResolved();
         boolean arControlResolved = diagnostics.arControlResolved();
         boolean apControlResolved = diagnostics.apControlResolved();
+        boolean trialBalanceBalanced = diagnostics.trialBalanceBalanced();
         boolean inventoryReconciled = diagnostics.inventoryReconciled();
         boolean arReconciled = diagnostics.arReconciled();
         boolean apReconciled = diagnostics.apReconciled();
@@ -642,6 +648,12 @@ public class AccountingPeriodService {
                 : (apReconciled
                 ? "Variance " + formatVariance(diagnostics.apVariance()) + " within tolerance"
                 : "Variance " + formatVariance(diagnostics.apVariance()) + " exceeds tolerance");
+        String trialBalanceDetail = trialBalanceBalanced
+                ? "Debits " + formatVariance(diagnostics.trialBalanceTotalDebit())
+                + " equal credits " + formatVariance(diagnostics.trialBalanceTotalCredit())
+                : "Debits " + formatVariance(diagnostics.trialBalanceTotalDebit())
+                + " and credits " + formatVariance(diagnostics.trialBalanceTotalCredit())
+                + " differ by " + formatVariance(diagnostics.trialBalanceDifference());
         List<MonthEndChecklistItemDto> items = List.of(
                 new MonthEndChecklistItemDto(
                         "bankReconciled",
@@ -658,6 +670,11 @@ public class AccountingPeriodService {
                         "Draft entries cleared",
                         draftsCleared,
                         draftsCleared ? "All entries posted" : draftEntries + " draft entries remaining"),
+                new MonthEndChecklistItemDto(
+                        "trialBalanceBalanced",
+                        "Trial balance verified",
+                        trialBalanceBalanced,
+                        trialBalanceDetail),
                 new MonthEndChecklistItemDto(
                         "inventoryReconciled",
                         "Inventory reconciled to GL",
@@ -697,6 +714,7 @@ public class AccountingPeriodService {
         boolean ready = period.isBankReconciled()
                 && period.isInventoryCounted()
                 && draftsCleared
+                && trialBalanceBalanced
                 && inventoryReconciled
                 && arReconciled
                 && apReconciled
@@ -708,22 +726,56 @@ public class AccountingPeriodService {
     }
 
     private ChecklistDiagnostics evaluateChecklistDiagnostics(Company company, AccountingPeriod period) {
+        List<JournalEntry> periodEntries = journalEntryRepository
+                .findByCompanyAndEntryDateBetweenOrderByEntryDateAsc(company, period.getStartDate(), period.getEndDate());
         ReconciliationSummaryDto inventory = reportService.inventoryReconciliation();
         ReconciliationService.PeriodReconciliationResult periodReconciliation = reconciliationService
                 .reconcileSubledgersForPeriod(period.getStartDate(), period.getEndDate());
-        long unbalancedJournals = countUnbalancedJournals(company, period);
+        TrialBalanceDto trialBalance = resolveTrialBalanceForChecklist(period, periodEntries);
+        long unbalancedJournals = countUnbalancedJournals(periodEntries);
         long unlinkedDocuments = countUnlinkedDocuments(company, period);
         long unpostedDocuments = countUnpostedDocuments(company, period);
         long uninvoicedReceipts = countUninvoicedReceipts(company, period);
-        return new ChecklistDiagnostics(inventory, periodReconciliation, unpostedDocuments, unlinkedDocuments, unbalancedJournals, uninvoicedReceipts);
+        return new ChecklistDiagnostics(
+                inventory,
+                periodReconciliation,
+                trialBalance,
+                unpostedDocuments,
+                unlinkedDocuments,
+                unbalancedJournals,
+                uninvoicedReceipts);
     }
 
-    private long countUnbalancedJournals(Company company, AccountingPeriod period) {
-        return journalEntryRepository
-                .findByCompanyAndEntryDateBetweenOrderByEntryDateAsc(company, period.getStartDate(), period.getEndDate())
-                .stream()
+    private long countUnbalancedJournals(List<JournalEntry> periodEntries) {
+        if (periodEntries == null || periodEntries.isEmpty()) {
+            return 0;
+        }
+        return periodEntries.stream()
                 .filter(this::isUnbalanced)
                 .count();
+    }
+
+    private TrialBalanceDto resolveTrialBalanceForChecklist(AccountingPeriod period,
+                                                            List<JournalEntry> periodEntries) {
+        TrialBalanceDto reported = reportService.trialBalance(period.getEndDate());
+        if (reported != null) {
+            return reported;
+        }
+        BigDecimal totalDebit = BigDecimal.ZERO;
+        BigDecimal totalCredit = BigDecimal.ZERO;
+        if (periodEntries != null) {
+            for (JournalEntry entry : periodEntries) {
+                if (entry == null || entry.getLines() == null) {
+                    continue;
+                }
+                for (JournalLine line : entry.getLines()) {
+                    totalDebit = totalDebit.add(safe(line != null ? line.getDebit() : null));
+                    totalCredit = totalCredit.add(safe(line != null ? line.getCredit() : null));
+                }
+            }
+        }
+        boolean balanced = totalDebit.subtract(totalCredit).abs().compareTo(RECONCILIATION_TOLERANCE) <= 0;
+        return new TrialBalanceDto(List.of(), totalDebit, totalCredit, balanced, null);
     }
 
     private boolean isUnbalanced(JournalEntry entry) {
@@ -810,6 +862,7 @@ public class AccountingPeriodService {
     private record ChecklistDiagnostics(
             ReconciliationSummaryDto inventory,
             ReconciliationService.PeriodReconciliationResult periodReconciliation,
+            TrialBalanceDto trialBalance,
             long unpostedDocuments,
             long unlinkedDocuments,
             long unbalancedJournals,
@@ -865,8 +918,28 @@ public class AccountingPeriodService {
             return periodReconciliation != null ? periodReconciliation.apVariance() : BigDecimal.ZERO;
         }
 
+        boolean trialBalanceBalanced() {
+            return trialBalance != null && trialBalance.balanced();
+        }
+
+        BigDecimal trialBalanceTotalDebit() {
+            return trialBalance == null ? BigDecimal.ZERO : safe(trialBalance.totalDebit());
+        }
+
+        BigDecimal trialBalanceTotalCredit() {
+            return trialBalance == null ? BigDecimal.ZERO : safe(trialBalance.totalCredit());
+        }
+
+        BigDecimal trialBalanceDifference() {
+            return trialBalanceTotalDebit().subtract(trialBalanceTotalCredit());
+        }
+
         private boolean varianceWithinTolerance(BigDecimal variance) {
             return variance != null && variance.abs().compareTo(RECONCILIATION_TOLERANCE) <= 0;
+        }
+
+        private BigDecimal safe(BigDecimal value) {
+            return value == null ? BigDecimal.ZERO : value;
         }
     }
 

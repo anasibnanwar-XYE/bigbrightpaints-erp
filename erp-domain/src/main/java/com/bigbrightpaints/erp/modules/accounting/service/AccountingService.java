@@ -14,6 +14,7 @@ import com.bigbrightpaints.erp.modules.accounting.dto.AccrualRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.AuditDigestResponse;
 import com.bigbrightpaints.erp.modules.accounting.dto.BadDebtWriteOffRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.CreditNoteRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.AutoSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptSplitRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerSettlementRequest;
@@ -325,11 +326,27 @@ public class AccountingService extends AccountingCoreService {
     }
 
     @Override
+    public PartnerSettlementResponse autoSettleDealer(Long dealerId, AutoSettlementRequest request) {
+        if (settlementService == null) {
+            return super.autoSettleDealer(dealerId, request);
+        }
+        return settlementService.autoSettleDealer(dealerId, request);
+    }
+
+    @Override
     public PartnerSettlementResponse settleSupplierInvoices(SupplierSettlementRequest request) {
         if (settlementService == null) {
             return super.settleSupplierInvoices(request);
         }
         return settlementService.settleSupplierInvoices(request);
+    }
+
+    @Override
+    public PartnerSettlementResponse autoSettleSupplier(Long supplierId, AutoSettlementRequest request) {
+        if (settlementService == null) {
+            return super.autoSettleSupplier(supplierId, request);
+        }
+        return settlementService.autoSettleSupplier(supplierId, request);
     }
 
     @Override

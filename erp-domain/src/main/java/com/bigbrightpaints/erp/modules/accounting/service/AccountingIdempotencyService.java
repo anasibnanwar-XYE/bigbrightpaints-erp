@@ -3,6 +3,7 @@ package com.bigbrightpaints.erp.modules.accounting.service;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptSplitRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerSettlementRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.AutoSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementResponse;
@@ -39,7 +40,15 @@ public class AccountingIdempotencyService {
         return accountingCoreService.settleDealerInvoices(request);
     }
 
+    public PartnerSettlementResponse autoSettleDealer(Long dealerId, AutoSettlementRequest request) {
+        return accountingCoreService.autoSettleDealer(dealerId, request);
+    }
+
     public PartnerSettlementResponse settleSupplierInvoices(SupplierSettlementRequest request) {
         return accountingCoreService.settleSupplierInvoices(request);
+    }
+
+    public PartnerSettlementResponse autoSettleSupplier(Long supplierId, AutoSettlementRequest request) {
+        return accountingCoreService.autoSettleSupplier(supplierId, request);
     }
 }

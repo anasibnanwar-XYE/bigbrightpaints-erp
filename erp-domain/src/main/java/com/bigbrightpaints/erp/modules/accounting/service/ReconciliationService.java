@@ -10,6 +10,8 @@ import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLine;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerBalanceView;
+import com.bigbrightpaints.erp.modules.accounting.dto.BankReconciliationRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.BankReconciliationSummaryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.SupplierBalanceView;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
@@ -29,7 +31,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -216,6 +220,115 @@ public class ReconciliationService {
     }
 
     @Transactional(readOnly = true)
+    public BankReconciliationSummaryDto reconcileBankAccount(BankReconciliationRequest request) {
+        if (request == null) {
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Bank reconciliation request is required");
+        }
+        if (request.bankAccountId() == null) {
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("bankAccountId is required");
+        }
+        if (request.statementDate() == null) {
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("statementDate is required");
+        }
+        if (request.statementEndingBalance() == null) {
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("statementEndingBalance is required");
+        }
+
+        Company company = companyContextService.requireCurrentCompany();
+        Account account = accountRepository.findByCompanyAndId(company, request.bankAccountId())
+                .orElseThrow(() -> new com.bigbrightpaints.erp.core.exception.ApplicationException(
+                        com.bigbrightpaints.erp.core.exception.ErrorCode.VALIDATION_INVALID_REFERENCE,
+                        "Bank account not found"));
+
+        if (account.getType() != null && account.getType() != AccountType.ASSET) {
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Bank reconciliation account must be an ASSET account");
+        }
+
+        LocalDate start = request.startDate() != null ? request.startDate() : request.statementDate().withDayOfMonth(1);
+        LocalDate end = request.endDate() != null ? request.endDate() : request.statementDate();
+        if (start.isAfter(end)) {
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("startDate must be on or before endDate");
+        }
+
+        Set<String> clearedReferences = normalizeReferences(request.clearedReferences());
+        List<JournalLine> lines = journalLineRepository.findLinesForAccountBetween(company, account.getId(), start, end);
+        List<BankReconciliationSummaryDto.BankReconciliationItemDto> unclearedDeposits = new ArrayList<>();
+        List<BankReconciliationSummaryDto.BankReconciliationItemDto> unclearedChecks = new ArrayList<>();
+
+        BigDecimal outstandingDeposits = BigDecimal.ZERO;
+        BigDecimal outstandingChecks = BigDecimal.ZERO;
+
+        for (JournalLine line : lines) {
+            JournalEntry entry = line.getJournalEntry();
+            String reference = entry != null ? entry.getReferenceNumber() : null;
+            if (isReferenceCleared(reference, clearedReferences)) {
+                continue;
+            }
+
+            BigDecimal debit = safe(line.getDebit());
+            BigDecimal credit = safe(line.getCredit());
+            BigDecimal net = debit.subtract(credit);
+
+            BankReconciliationSummaryDto.BankReconciliationItemDto item = new BankReconciliationSummaryDto.BankReconciliationItemDto(
+                    entry != null ? entry.getId() : null,
+                    reference,
+                    entry != null ? entry.getEntryDate() : null,
+                    entry != null ? entry.getMemo() : null,
+                    debit,
+                    credit,
+                    net
+            );
+
+            if (net.compareTo(BigDecimal.ZERO) > 0) {
+                outstandingDeposits = outstandingDeposits.add(net);
+                unclearedDeposits.add(item);
+            } else if (net.compareTo(BigDecimal.ZERO) < 0) {
+                BigDecimal checkAmount = net.abs();
+                outstandingChecks = outstandingChecks.add(checkAmount);
+                unclearedChecks.add(item);
+            }
+        }
+
+        BigDecimal ledgerBalance = safe(account.getBalance());
+        BigDecimal statementEndingBalance = safe(request.statementEndingBalance());
+        BigDecimal adjustedStatementBalance = statementEndingBalance
+                .add(outstandingDeposits)
+                .subtract(outstandingChecks);
+        BigDecimal difference = ledgerBalance.subtract(adjustedStatementBalance);
+        boolean balanced = difference.abs().compareTo(TOLERANCE) <= 0;
+
+        return new BankReconciliationSummaryDto(
+                account.getId(),
+                account.getCode(),
+                account.getName(),
+                request.statementDate(),
+                ledgerBalance,
+                statementEndingBalance,
+                outstandingDeposits,
+                outstandingChecks,
+                difference,
+                balanced,
+                unclearedDeposits,
+                unclearedChecks
+        );
+    }
+
+    @Transactional(readOnly = true)
+    public SubledgerReconciliationReport reconcileSubledgerBalances() {
+        ReconciliationResult dealerReconciliation = reconcileArWithDealerLedger();
+        SupplierReconciliationResult supplierReconciliation = reconcileApWithSupplierLedger();
+        BigDecimal combinedVariance = safe(dealerReconciliation.variance())
+                .add(safe(supplierReconciliation.variance()));
+        boolean reconciled = dealerReconciliation.isReconciled() && supplierReconciliation.isReconciled();
+        return new SubledgerReconciliationReport(
+                dealerReconciliation,
+                supplierReconciliation,
+                combinedVariance,
+                reconciled
+        );
+    }
+
+    @Transactional(readOnly = true)
     public PeriodReconciliationResult reconcileSubledgersForPeriod(java.time.LocalDate start, java.time.LocalDate end) {
         Company company = companyContextService.requireCurrentCompany();
         if (start == null || end == null) {
@@ -353,6 +466,29 @@ public class ReconciliationService {
         String code = account.getCode().toUpperCase();
         String name = account.getName() == null ? "" : account.getName().toUpperCase();
         return code.contains("AP") || name.contains("ACCOUNTS PAYABLE");
+    }
+
+    private Set<String> normalizeReferences(List<String> references) {
+        if (references == null || references.isEmpty()) {
+            return Collections.emptySet();
+        }
+        return references.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(value -> !value.isEmpty())
+                .map(value -> value.toUpperCase(java.util.Locale.ROOT))
+                .collect(Collectors.toSet());
+    }
+
+    private boolean isReferenceCleared(String reference, Set<String> clearedReferences) {
+        if (clearedReferences == null || clearedReferences.isEmpty() || reference == null) {
+            return false;
+        }
+        return clearedReferences.contains(reference.trim().toUpperCase(java.util.Locale.ROOT));
+    }
+
+    private BigDecimal safe(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
     }
 
     /**
@@ -533,5 +669,12 @@ public class ReconciliationService {
             BigDecimal supplierLedgerNet,
             BigDecimal apVariance,
             boolean apReconciled
+    ) {}
+
+    public record SubledgerReconciliationReport(
+            ReconciliationResult dealerReconciliation,
+            SupplierReconciliationResult supplierReconciliation,
+            BigDecimal combinedVariance,
+            boolean reconciled
     ) {}
 }

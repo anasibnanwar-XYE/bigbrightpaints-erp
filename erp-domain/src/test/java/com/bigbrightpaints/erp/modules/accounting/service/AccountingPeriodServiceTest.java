@@ -20,10 +20,12 @@ import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodUpsertRequ
 import com.bigbrightpaints.erp.modules.accounting.dto.MonthEndChecklistUpdateRequest;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.hr.domain.PayrollRun;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunRepository;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.GoodsReceiptRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
+import com.bigbrightpaints.erp.modules.reports.dto.TrialBalanceDto;
 import com.bigbrightpaints.erp.modules.reports.service.ReportService;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -278,6 +280,134 @@ class AccountingPeriodServiceTest {
         verify(periodCloseHook).onPeriodCloseLocked(company, period);
         verify(snapshotService, never()).captureSnapshot(any(), any(), anyString());
         verify(accountingPeriodRepository, never()).save(any(AccountingPeriod.class));
+    }
+
+    @Test
+    void closePeriod_failsWhenTrialBalanceIsNotBalanced() {
+        Company company = company(1L, "ACME");
+        AccountingPeriod period = openPeriod(company, 2026, 2);
+        period.setBankReconciled(true);
+        period.setInventoryCounted(true);
+
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(accountingPeriodRepository.lockByCompanyAndId(company, 34L)).thenReturn(Optional.of(period));
+        when(goodsReceiptRepository.countByCompanyAndReceiptDateBetweenAndStatusNot(
+                company, period.getStartDate(), period.getEndDate(), "INVOICED")).thenReturn(0L);
+        when(journalEntryRepository.countByCompanyAndEntryDateBetweenAndStatusIn(
+                company, period.getStartDate(), period.getEndDate(), List.of("DRAFT", "PENDING"))).thenReturn(0L);
+        when(reportService.inventoryReconciliation()).thenReturn(new com.bigbrightpaints.erp.modules.reports.dto.ReconciliationSummaryDto(
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO));
+        when(reconciliationService.reconcileSubledgersForPeriod(period.getStartDate(), period.getEndDate()))
+                .thenReturn(new ReconciliationService.PeriodReconciliationResult(
+                        period.getStartDate(),
+                        period.getEndDate(),
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        true,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        true));
+        when(reportService.trialBalance(period.getEndDate())).thenReturn(new TrialBalanceDto(
+                List.of(),
+                new BigDecimal("150.00"),
+                new BigDecimal("100.00"),
+                false,
+                null));
+        when(journalEntryRepository.findByCompanyAndEntryDateBetweenOrderByEntryDateAsc(
+                company, period.getStartDate(), period.getEndDate())).thenReturn(List.of());
+        when(invoiceRepository.countByCompanyAndIssueDateBetweenAndStatusNotAndJournalEntryIsNull(
+                company, period.getStartDate(), period.getEndDate(), "DRAFT")).thenReturn(0L);
+        when(rawMaterialPurchaseRepository.countByCompanyAndInvoiceDateBetweenAndStatusInAndJournalEntryIsNull(
+                company, period.getStartDate(), period.getEndDate(), List.of("POSTED", "PARTIAL", "PAID"))).thenReturn(0L);
+        when(payrollRunRepository.countByCompanyAndPeriodBetweenAndStatusInAndJournalMissing(
+                company,
+                period.getStartDate(),
+                period.getEndDate(),
+                List.of(PayrollRun.PayrollStatus.POSTED, PayrollRun.PayrollStatus.PAID))).thenReturn(0L);
+        when(invoiceRepository.countByCompanyAndIssueDateBetweenAndStatusIn(
+                company, period.getStartDate(), period.getEndDate(), List.of("DRAFT"))).thenReturn(0L);
+        when(rawMaterialPurchaseRepository.countByCompanyAndInvoiceDateBetweenAndStatusNotIn(
+                company, period.getStartDate(), period.getEndDate(), List.of("POSTED", "PARTIAL", "PAID"))).thenReturn(0L);
+        when(payrollRunRepository.countByCompanyAndPeriodBetweenAndStatusIn(
+                company,
+                period.getStartDate(),
+                period.getEndDate(),
+                List.of(PayrollRun.PayrollStatus.DRAFT,
+                        PayrollRun.PayrollStatus.CALCULATED,
+                        PayrollRun.PayrollStatus.APPROVED))).thenReturn(0L);
+
+        assertThatThrownBy(() -> service.closePeriod(34L, new AccountingPeriodCloseRequest(false, "month close")))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Trial balance is not balanced");
+    }
+
+    @Test
+    void getMonthEndChecklist_includesTrialBalancePassFailItem() {
+        Company company = company(1L, "ACME");
+        AccountingPeriod period = openPeriod(company, 2026, 2);
+        period.setBankReconciled(true);
+        period.setInventoryCounted(true);
+
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(companyEntityLookup.requireAccountingPeriod(company, 99L)).thenReturn(period);
+        when(journalEntryRepository.countByCompanyAndEntryDateBetweenAndStatusIn(
+                company, period.getStartDate(), period.getEndDate(), List.of("DRAFT", "PENDING"))).thenReturn(0L);
+        when(reportService.inventoryReconciliation()).thenReturn(new com.bigbrightpaints.erp.modules.reports.dto.ReconciliationSummaryDto(
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO));
+        when(reconciliationService.reconcileSubledgersForPeriod(period.getStartDate(), period.getEndDate()))
+                .thenReturn(new ReconciliationService.PeriodReconciliationResult(
+                        period.getStartDate(),
+                        period.getEndDate(),
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        true,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        true));
+        when(reportService.trialBalance(period.getEndDate())).thenReturn(new TrialBalanceDto(
+                List.of(),
+                new BigDecimal("200.00"),
+                new BigDecimal("120.00"),
+                false,
+                null));
+        when(journalEntryRepository.findByCompanyAndEntryDateBetweenOrderByEntryDateAsc(
+                company, period.getStartDate(), period.getEndDate())).thenReturn(List.of());
+        when(invoiceRepository.countByCompanyAndIssueDateBetweenAndStatusNotAndJournalEntryIsNull(
+                company, period.getStartDate(), period.getEndDate(), "DRAFT")).thenReturn(0L);
+        when(rawMaterialPurchaseRepository.countByCompanyAndInvoiceDateBetweenAndStatusInAndJournalEntryIsNull(
+                company, period.getStartDate(), period.getEndDate(), List.of("POSTED", "PARTIAL", "PAID"))).thenReturn(0L);
+        when(payrollRunRepository.countByCompanyAndPeriodBetweenAndStatusInAndJournalMissing(
+                company,
+                period.getStartDate(),
+                period.getEndDate(),
+                List.of(PayrollRun.PayrollStatus.POSTED, PayrollRun.PayrollStatus.PAID))).thenReturn(0L);
+        when(invoiceRepository.countByCompanyAndIssueDateBetweenAndStatusIn(
+                company, period.getStartDate(), period.getEndDate(), List.of("DRAFT"))).thenReturn(0L);
+        when(rawMaterialPurchaseRepository.countByCompanyAndInvoiceDateBetweenAndStatusNotIn(
+                company, period.getStartDate(), period.getEndDate(), List.of("POSTED", "PARTIAL", "PAID"))).thenReturn(0L);
+        when(payrollRunRepository.countByCompanyAndPeriodBetweenAndStatusIn(
+                company,
+                period.getStartDate(),
+                period.getEndDate(),
+                List.of(PayrollRun.PayrollStatus.DRAFT,
+                        PayrollRun.PayrollStatus.CALCULATED,
+                        PayrollRun.PayrollStatus.APPROVED))).thenReturn(0L);
+
+        var checklist = service.getMonthEndChecklist(99L);
+        var trialBalanceItem = checklist.items().stream()
+                .filter(item -> "trialBalanceBalanced".equals(item.key()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(trialBalanceItem.completed()).isFalse();
+        assertThat(trialBalanceItem.detail()).contains("differ by");
     }
 
     @Test
