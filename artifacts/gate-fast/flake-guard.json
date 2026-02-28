@@ -1,9 +1,0 @@
-{
-  "gate": "gate-fast",
-  "lane_tags": [
-    "critical"
-  ],
-  "flaky_tag_violations": [],
-  "quarantine_lane_violations": [],
-  "passes": true
-}
