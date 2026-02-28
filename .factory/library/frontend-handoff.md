@@ -25,7 +25,95 @@ Each module section should include:
 _To be documented_
 
 ### Tenant & Admin
-_To be documented_
+
+#### Endpoint Map (SUPER_ADMIN only)
+
+| Method | Path | Auth | Request | Response `data` |
+|---|---|---|---|---|
+| GET | `/api/v1/superadmin/dashboard` | `ROLE_SUPER_ADMIN` | None | `SuperAdminDashboardDto` |
+| GET | `/api/v1/superadmin/tenants` | `ROLE_SUPER_ADMIN` | Optional query: `status=ACTIVE|SUSPENDED` | `List<SuperAdminTenantDto>` |
+| POST | `/api/v1/superadmin/tenants/{id}/suspend` | `ROLE_SUPER_ADMIN` | None | `SuperAdminTenantDto` |
+| POST | `/api/v1/superadmin/tenants/{id}/activate` | `ROLE_SUPER_ADMIN` | None | `SuperAdminTenantDto` |
+| GET | `/api/v1/superadmin/tenants/{id}/usage` | `ROLE_SUPER_ADMIN` | None | `SuperAdminTenantUsageDto` |
+
+All responses are wrapped in `ApiResponse<T>`.
+
+#### User Flows
+
+1. **Load platform dashboard**
+   1. `GET /api/v1/superadmin/dashboard`
+   2. Render cards: total tenants, active/suspended, total users, API calls, storage, recent activity.
+
+2. **Browse tenants**
+   1. `GET /api/v1/superadmin/tenants`
+   2. Optional filter: `GET /api/v1/superadmin/tenants?status=SUSPENDED`
+   3. Render each row with status + usage summary.
+
+3. **Suspend tenant**
+   1. User clicks Suspend in tenant row
+   2. `POST /api/v1/superadmin/tenants/{id}/suspend`
+   3. Update row status to `SUSPENDED`.
+
+4. **Activate tenant**
+   1. User clicks Activate in tenant row
+   2. `POST /api/v1/superadmin/tenants/{id}/activate`
+   3. Update row status to `ACTIVE`.
+
+5. **Inspect tenant usage**
+   1. `GET /api/v1/superadmin/tenants/{id}/usage`
+   2. Show API calls, active users, storage, last activity timestamp.
+
+#### State Machine (superadmin view)
+
+- `ACTIVE` -> `SUSPENDED` via `POST /api/v1/superadmin/tenants/{id}/suspend`
+- `SUSPENDED` -> `ACTIVE` via `POST /api/v1/superadmin/tenants/{id}/activate`
+
+Backend lifecycle states `HOLD`/`BLOCKED` are exposed as `SUSPENDED` in superadmin APIs.
+
+#### Error Codes / Error Handling
+
+- **403 Forbidden**: caller is not `ROLE_SUPER_ADMIN`.
+  - Frontend behavior: block page access and show “Superadmin access required”.
+- **400 Business validation error** (invalid filter/status or unknown tenant id).
+  - Frontend behavior: show inline toast with server message, keep current page state.
+
+#### Data Contracts
+
+- `SuperAdminDashboardDto`
+  - `totalTenants: number`
+  - `activeTenants: number`
+  - `suspendedTenants: number`
+  - `totalUsers: number`
+  - `totalApiCalls: number`
+  - `totalStorageBytes: number`
+  - `recentActivityAt: string | null` (ISO-8601)
+
+- `SuperAdminTenantDto`
+  - `companyId: number`
+  - `companyCode: string`
+  - `companyName: string`
+  - `status: "ACTIVE" | "SUSPENDED"`
+  - `activeUsers: number`
+  - `apiCallCount: number`
+  - `storageBytes: number`
+  - `lastActivityAt: string | null` (ISO-8601)
+
+- `SuperAdminTenantUsageDto`
+  - `companyId: number`
+  - `companyCode: string`
+  - `status: "ACTIVE" | "SUSPENDED"`
+  - `apiCallCount: number`
+  - `activeUsers: number`
+  - `storageBytes: number`
+  - `lastActivityAt: string | null` (ISO-8601)
+
+#### UI Hints
+
+- Use a status filter dropdown with only `ACTIVE` and `SUSPENDED` values.
+- Show human-readable storage units (KB/MB/GB) while keeping raw bytes for sorting.
+- For lifecycle buttons, show confirmation modals before suspend/activate.
+- Treat `lastActivityAt = null` as “No activity yet”.
+- Refresh dashboard + tenant list after lifecycle mutation to keep aggregates in sync.
 
 ### Accounting
 _To be documented_
