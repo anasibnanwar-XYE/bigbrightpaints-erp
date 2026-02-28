@@ -1,7 +1,7 @@
 {
   "milestone": "foundation",
-  "round": 1,
-  "status": "fail",
+  "round": 2,
+  "status": "pass",
   "validatorsRun": {
     "test": {
       "passed": true,
@@ -20,65 +20,21 @@
     }
   },
   "reviewsSummary": {
-    "total": 5,
-    "passed": 4,
-    "failed": 1,
-    "failedFeatures": [
-      "extract-shared-idempotency-framework"
-    ]
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "failedFeatures": []
   },
-  "blockingIssues": [
-    {
-      "featureId": "extract-shared-idempotency-framework",
-      "severity": "blocking",
-      "description": "SalesReturnService still keeps local idempotency helper implementations (`normalizeToken` and `sha256Hex`) outside `core.idempotency`, violating the feature's deduplication requirement."
-    },
-    {
-      "featureId": "extract-shared-idempotency-framework",
-      "severity": "blocking",
-      "description": "ProductionCatalogService still defines a local `sha256Hex(MultipartFile file)` helper, so hashing helper logic is not fully centralized to `core.idempotency`."
-    }
-  ],
+  "blockingIssues": [],
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
-      "target": "backend-worker skill",
-      "suggestion": "Update validator guidance to align with mission policy: use `mvn test -Pgate-fast -Djacoco.skip=true` baseline (and unit suite when needed), and remove/avoid `mvn test -T4`.",
-      "evidence": "Observed across multiple reviews (fix-critical-auth-bugs, fix-critical-payroll-hr-bugs, fix-sales-accounting-purchasing-bugs, extract-shared-idempotency-framework) that backend-worker instructions conflict with AGENTS guidance and led to procedure deviations.",
-      "isSystemic": true
-    },
-    {
-      "target": "AGENTS.md",
-      "suggestion": "Add explicit guidance that schema changes must be mirrored across both Flyway tracks (`src/main/resources/db/migration` and `src/main/resources/db/migration_v2`) when both are active in test/runtime paths.",
-      "evidence": "fix-critical-payroll-hr-bugs handoff reported first-pass failure caused by column missing in migration_v2 path after only one track was updated.",
-      "isSystemic": false
-    },
-    {
-      "target": "scrutiny-feature-reviewer skill",
-      "suggestion": "Clarify TDD evidence expectations (what qualifies as proof of a red-phase run) and how to score micro-fixes that reuse existing tests but do not add new failing tests.",
-      "evidence": "Reviews flagged inconsistent test-first evidence interpretation in fix-sales-accounting-purchasing-bugs and unify-error-handling-and-validation.",
-      "isSystemic": true
-    },
-    {
       "target": "mission feature metadata generation",
-      "suggestion": "Ensure feature descriptions are refreshed when pre-existing failure assumptions change, so workers are not told to tolerate already-fixed failures.",
-      "evidence": "fix-critical-auth-bugs feature description still references a tolerated gate-fast failure while AGENTS states that failure was already resolved and gate-fast passes 377/377.",
-      "isSystemic": false
+      "suggestion": "For helper-centralization features, replace name-only grep checks with semantic assertions (e.g., verify helper declarations outside allowed package are absent by source location and usage), so simple renames cannot satisfy validation intent.",
+      "evidence": "fix-remaining-idempotency-duplicates review observed that verification currently relies on method-name grep patterns and can be satisfied by renaming local helpers without proving true semantic centralization.",
+      "isSystemic": true
     }
   ],
-  "rejectedObservations": [
-    {
-      "observation": "Duplicate reports that backend-worker test command guidance conflicts with AGENTS",
-      "reason": "duplicate"
-    },
-    {
-      "observation": "`IdempotencyReservationService` is instantiated with `new` in some modules despite being a Spring `@Service`",
-      "reason": "ambiguous (may be deliberate utility-style usage; not enough evidence of correctness issue)"
-    },
-    {
-      "observation": "Unify-error-handling-and-validation review noted missing direct unit tests for modified MFA activate/disable invalid branches",
-      "reason": "feature-specific non-blocking quality note, not shared-state guidance"
-    }
-  ],
-  "previousRound": null
+  "rejectedObservations": [],
+  "previousRound": ".factory/validation/foundation/scrutiny/synthesis.round1.json"
 }

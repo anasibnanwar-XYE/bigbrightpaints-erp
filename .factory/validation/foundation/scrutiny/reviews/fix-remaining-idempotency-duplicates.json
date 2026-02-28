@@ -1,0 +1,21 @@
+{
+  "featureId": "fix-remaining-idempotency-duplicates",
+  "reviewedAt": "2026-02-28T05:35:41Z",
+  "commitId": "5c5c99b2eb7e612a4c028449bc03631bccdaa81a",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix resolves the prior blocking gaps from extract-shared-idempotency-framework: the previously remaining local idempotency helpers in SalesReturnService and ProductionCatalogService are absent at the reviewed commit, and helper usage is routed through core.idempotency utilities.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Feature-level verification for idempotency deduplication is name-based (`private.*sha256Hex|normalizeToken|normalizeAmount`), which allows semantically similar local helpers to be retained under renamed methods instead of proving full semantic centralization.",
+      "evidence": "features.json (fix-remaining-idempotency-duplicates.verificationSteps) uses grep on method names; handoff whatWasImplemented explicitly lists helper renames (e.g., normalizeAmount->roundedAmount/absoluteAmount, normalizeToken->normalizeUpperToken) to satisfy duplicate checks."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/foundation/scrutiny/reviews/extract-shared-idempotency-framework.json",
+  "summary": "Pass: compared with the original failing commit (a687a068), this fix state eliminates the blocking remnants (SalesReturnService local normalizeToken/sha256Hex and ProductionCatalogService local sha256Hex(MultipartFile)). At commit 5c5c99b2, SalesReturnService builds return keys via IdempotencySignatureBuilder + IdempotencyUtils, ProductionCatalogService uses IdempotencyUtils.sha256Hex(file.getBytes()), and commit-level grep finds no remaining private sha256Hex/normalizeToken/normalizeAmount declarations outside core.idempotency."
+}
