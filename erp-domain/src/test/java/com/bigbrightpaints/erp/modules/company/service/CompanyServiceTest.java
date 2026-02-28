@@ -67,17 +67,21 @@ class CompanyServiceTest {
     @Mock
     private TenantAdminProvisioningService tenantAdminProvisioningService;
 
+    private TenantLifecycleService tenantLifecycleService;
+
     private CompanyService companyService;
 
     @BeforeEach
     void setUp() {
+        tenantLifecycleService = new TenantLifecycleService(auditService);
         companyService = new CompanyService(
                 repository,
                 auditService,
                 userAccountRepository,
                 auditLogRepository,
                 tenantRuntimeEnforcementService,
-                tenantAdminProvisioningService);
+                tenantAdminProvisioningService,
+                tenantLifecycleService);
     }
 
     @AfterEach
@@ -431,7 +435,7 @@ class CompanyServiceTest {
     void getTenantMetrics_returnsMetricsForSuperAdmin() {
         authenticateAs("ROLE_SUPER_ADMIN");
         Company company = company(1L, "ACME");
-        company.setLifecycleState(CompanyLifecycleState.HOLD);
+        company.setLifecycleState(CompanyLifecycleState.SUSPENDED);
         company.setLifecycleReason("compliance-review");
         when(repository.findById(1L)).thenReturn(Optional.of(company));
         when(userAccountRepository.countDistinctByCompanies_IdAndEnabledTrue(1L)).thenReturn(3L);
@@ -444,7 +448,7 @@ class CompanyServiceTest {
 
         assertThat(metrics.companyId()).isEqualTo(1L);
         assertThat(metrics.companyCode()).isEqualTo("ACME");
-        assertThat(metrics.lifecycleState()).isEqualTo("HOLD");
+        assertThat(metrics.lifecycleState()).isEqualTo("SUSPENDED");
         assertThat(metrics.lifecycleReason()).isEqualTo("compliance-review");
         assertThat(metrics.activeUserCount()).isEqualTo(3L);
         assertThat(metrics.apiActivityCount()).isEqualTo(20L);
@@ -541,15 +545,14 @@ class CompanyServiceTest {
         Company company = company(1L, "ACME");
         company.setLifecycleState(CompanyLifecycleState.ACTIVE);
         when(repository.lockById(1L)).thenReturn(Optional.of(company));
-        when(repository.findById(1L)).thenReturn(Optional.of(company));
 
         CompanyLifecycleStateDto response =
-                companyService.updateLifecycleState(1L, new CompanyLifecycleStateRequest("HOLD", "  compliance-review  "));
+                companyService.updateLifecycleState(1L, new CompanyLifecycleStateRequest("SUSPENDED", "  compliance-review  "));
 
         assertThat(response.previousLifecycleState()).isEqualTo("ACTIVE");
-        assertThat(response.lifecycleState()).isEqualTo("HOLD");
+        assertThat(response.lifecycleState()).isEqualTo("SUSPENDED");
         assertThat(response.reason()).isEqualTo("compliance-review");
-        assertThat(company.getLifecycleState()).isEqualTo(CompanyLifecycleState.HOLD);
+        assertThat(company.getLifecycleState()).isEqualTo(CompanyLifecycleState.SUSPENDED);
         assertThat(company.getLifecycleReason()).isEqualTo("compliance-review");
         verify(auditService).logAuthSuccess(
                 eq(AuditEvent.CONFIGURATION_CHANGED),
@@ -566,7 +569,7 @@ class CompanyServiceTest {
 
         assertThatThrownBy(() -> companyService.updateLifecycleState(
                 1L,
-                new CompanyLifecycleStateRequest("BLOCKED", "fraud-investigation")))
+                new CompanyLifecycleStateRequest("DEACTIVATED", "fraud-investigation")))
                 .isInstanceOf(AccessDeniedException.class)
                 .hasMessageContaining("SUPER_ADMIN authority required for tenant lifecycle control");
 
@@ -581,7 +584,7 @@ class CompanyServiceTest {
     @Test
     void isRuntimeAccessAllowed_deniesWhenLifecycleStateIsNotActive() {
         Company company = company(1L, "ACME");
-        company.setLifecycleState(CompanyLifecycleState.HOLD);
+        company.setLifecycleState(CompanyLifecycleState.SUSPENDED);
         when(repository.findById(1L)).thenReturn(Optional.of(company));
 
         assertThat(companyService.isRuntimeAccessAllowed(1L)).isFalse();
@@ -635,10 +638,10 @@ class CompanyServiceTest {
         when(repository.findByCodeIgnoreCase("NOPE")).thenReturn(Optional.empty());
         when(repository.findById(1L)).thenReturn(Optional.of(company));
 
-        assertThat(companyService.resolveLifecycleStateByCode("   ")).isEqualTo(CompanyLifecycleState.BLOCKED);
-        assertThat(companyService.resolveLifecycleStateByCode("NOPE")).isEqualTo(CompanyLifecycleState.BLOCKED);
+        assertThat(companyService.resolveLifecycleStateByCode("   ")).isEqualTo(CompanyLifecycleState.DEACTIVATED);
+        assertThat(companyService.resolveLifecycleStateByCode("NOPE")).isEqualTo(CompanyLifecycleState.DEACTIVATED);
         assertThat(companyService.resolveLifecycleStateByCode(" ACME ")).isEqualTo(CompanyLifecycleState.ACTIVE);
-        assertThat(companyService.resolveLifecycleStateById(null)).isEqualTo(CompanyLifecycleState.BLOCKED);
+        assertThat(companyService.resolveLifecycleStateById(null)).isEqualTo(CompanyLifecycleState.DEACTIVATED);
     }
 
     @Test
@@ -790,7 +793,7 @@ class CompanyServiceTest {
         beta.setQuotaMaxStorageBytes(900L);
         beta.setQuotaMaxConcurrentSessions(7L);
         beta.setQuotaMaxApiRequests(200L);
-        beta.setLifecycleState(CompanyLifecycleState.HOLD);
+        beta.setLifecycleState(CompanyLifecycleState.SUSPENDED);
         when(repository.findAll()).thenReturn(List.of(alpha, beta));
         when(userAccountRepository.countDistinctByCompanies_IdAndEnabledTrue(10L)).thenReturn(8L);
         when(userAccountRepository.countDistinctByCompanies_IdAndEnabledTrue(11L)).thenReturn(12L);
@@ -825,12 +828,12 @@ class CompanyServiceTest {
                 new CompanyService.TenantSupportWarningRequest(
                         "quota",
                         "Approaching storage limit",
-                        "HOLD",
+                        "SUSPENDED",
                         48));
 
         assertThat(warning.companyCode()).isEqualTo("SKE");
         assertThat(warning.warningCategory()).isEqualTo("QUOTA");
-        assertThat(warning.requestedLifecycleState()).isEqualTo("HOLD");
+        assertThat(warning.requestedLifecycleState()).isEqualTo("SUSPENDED");
         assertThat(warning.gracePeriodHours()).isEqualTo(48);
         assertThat(warning.warningId()).isNotBlank();
     }

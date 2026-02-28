@@ -139,7 +139,7 @@ public class CompanyControllerIT extends AbstractIntegrationTest {
                 new HttpEntity<>(Map.of(
                         "warningCategory", "quota",
                         "message", "Storage usage crossed 85% of plan",
-                        "requestedLifecycleState", "HOLD",
+                        "requestedLifecycleState", "SUSPENDED",
                         "gracePeriodHours", 24
                 ), headers),
                 Map.class);
@@ -150,7 +150,7 @@ public class CompanyControllerIT extends AbstractIntegrationTest {
         Map<String, Object> data = (Map<String, Object>) response.getBody().get("data");
         assertThat(data.get("companyCode").toString().toUpperCase(Locale.ROOT)).isEqualTo(COMPANY_CODE);
         assertThat(data.get("warningId")).isNotNull();
-        assertThat(data.get("requestedLifecycleState")).isEqualTo("HOLD");
+        assertThat(data.get("requestedLifecycleState")).isEqualTo("SUSPENDED");
     }
 
     @Test

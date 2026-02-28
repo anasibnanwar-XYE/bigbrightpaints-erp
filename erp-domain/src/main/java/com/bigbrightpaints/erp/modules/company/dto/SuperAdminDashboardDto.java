@@ -6,6 +6,7 @@ public record SuperAdminDashboardDto(
         long totalTenants,
         long activeTenants,
         long suspendedTenants,
+        long deactivatedTenants,
         long totalUsers,
         long totalApiCalls,
         long totalStorageBytes,

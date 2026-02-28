@@ -5,6 +5,8 @@ import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyLifecycleState;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
+import com.bigbrightpaints.erp.modules.company.dto.CompanyLifecycleStateDto;
+import com.bigbrightpaints.erp.modules.company.dto.CompanyLifecycleStateRequest;
 import com.bigbrightpaints.erp.modules.company.dto.SuperAdminDashboardDto;
 import com.bigbrightpaints.erp.modules.company.dto.SuperAdminTenantDto;
 import com.bigbrightpaints.erp.modules.company.dto.SuperAdminTenantUsageDto;
@@ -12,6 +14,7 @@ import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -21,20 +24,24 @@ public class SuperAdminService {
 
     private static final String STATUS_ACTIVE = "ACTIVE";
     private static final String STATUS_SUSPENDED = "SUSPENDED";
+    private static final String STATUS_DEACTIVATED = "DEACTIVATED";
 
     private final CompanyRepository companyRepository;
     private final UserAccountRepository userAccountRepository;
     private final AuditLogRepository auditLogRepository;
     private final TenantUsageMetricsService tenantUsageMetricsService;
+    private final TenantLifecycleService tenantLifecycleService;
 
     public SuperAdminService(CompanyRepository companyRepository,
                              UserAccountRepository userAccountRepository,
                              AuditLogRepository auditLogRepository,
-                             TenantUsageMetricsService tenantUsageMetricsService) {
+                             TenantUsageMetricsService tenantUsageMetricsService,
+                             TenantLifecycleService tenantLifecycleService) {
         this.companyRepository = companyRepository;
         this.userAccountRepository = userAccountRepository;
         this.auditLogRepository = auditLogRepository;
         this.tenantUsageMetricsService = tenantUsageMetricsService;
+        this.tenantLifecycleService = tenantLifecycleService;
     }
 
     @Transactional(readOnly = true)
@@ -43,6 +50,7 @@ public class SuperAdminService {
         long totalTenants = tenants.size();
         long activeTenants = tenants.stream().filter(tenant -> STATUS_ACTIVE.equals(tenant.status())).count();
         long suspendedTenants = tenants.stream().filter(tenant -> STATUS_SUSPENDED.equals(tenant.status())).count();
+        long deactivatedTenants = tenants.stream().filter(tenant -> STATUS_DEACTIVATED.equals(tenant.status())).count();
         long totalUsers = tenants.stream().mapToLong(SuperAdminTenantDto::activeUsers).sum();
         long totalApiCalls = tenants.stream().mapToLong(SuperAdminTenantDto::apiCallCount).sum();
         long totalStorageBytes = tenants.stream().mapToLong(SuperAdminTenantDto::storageBytes).sum();
@@ -56,6 +64,7 @@ public class SuperAdminService {
                 totalTenants,
                 activeTenants,
                 suspendedTenants,
+                deactivatedTenants,
                 totalUsers,
                 totalApiCalls,
                 totalStorageBytes,
@@ -75,17 +84,44 @@ public class SuperAdminService {
     @Transactional
     public SuperAdminTenantDto suspendTenant(Long companyId) {
         Company company = requireCompany(companyId);
-        company.setLifecycleState(CompanyLifecycleState.HOLD);
-        company.setLifecycleReason("suspended-by-superadmin");
+        tenantLifecycleService.transition(
+                company,
+                CompanyLifecycleState.SUSPENDED,
+                "suspended-by-superadmin",
+                SecurityContextHolder.getContext().getAuthentication());
         return toTenantDto(company);
     }
 
     @Transactional
     public SuperAdminTenantDto activateTenant(Long companyId) {
         Company company = requireCompany(companyId);
-        company.setLifecycleState(CompanyLifecycleState.ACTIVE);
-        company.setLifecycleReason("activated-by-superadmin");
+        tenantLifecycleService.transition(
+                company,
+                CompanyLifecycleState.ACTIVE,
+                "activated-by-superadmin",
+                SecurityContextHolder.getContext().getAuthentication());
         return toTenantDto(company);
+    }
+
+    @Transactional
+    public SuperAdminTenantDto deactivateTenant(Long companyId) {
+        Company company = requireCompany(companyId);
+        tenantLifecycleService.transition(
+                company,
+                CompanyLifecycleState.DEACTIVATED,
+                "deactivated-by-superadmin",
+                SecurityContextHolder.getContext().getAuthentication());
+        return toTenantDto(company);
+    }
+
+    @Transactional
+    public CompanyLifecycleStateDto updateLifecycleState(Long companyId, CompanyLifecycleStateRequest request) {
+        Company company = requireCompany(companyId);
+        return tenantLifecycleService.transition(
+                company,
+                CompanyLifecycleState.fromRequestValue(request.state()),
+                request.reason(),
+                SecurityContextHolder.getContext().getAuthentication());
     }
 
     @Transactional(readOnly = true)
@@ -126,7 +162,11 @@ public class SuperAdminService {
         CompanyLifecycleState lifecycleState = company.getLifecycleState() == null
                 ? CompanyLifecycleState.ACTIVE
                 : company.getLifecycleState();
-        return lifecycleState == CompanyLifecycleState.ACTIVE ? STATUS_ACTIVE : STATUS_SUSPENDED;
+        return switch (lifecycleState) {
+            case ACTIVE -> STATUS_ACTIVE;
+            case SUSPENDED -> STATUS_SUSPENDED;
+            case DEACTIVATED -> STATUS_DEACTIVATED;
+        };
     }
 
     private String normalizeStatusFilter(String statusFilter) {
@@ -134,10 +174,12 @@ public class SuperAdminService {
             return null;
         }
         String normalized = statusFilter.trim().toUpperCase(Locale.ROOT);
-        if (STATUS_ACTIVE.equals(normalized) || STATUS_SUSPENDED.equals(normalized)) {
+        if (STATUS_ACTIVE.equals(normalized)
+                || STATUS_SUSPENDED.equals(normalized)
+                || STATUS_DEACTIVATED.equals(normalized)) {
             return normalized;
         }
         throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
-                "status filter must be ACTIVE or SUSPENDED");
+                "status filter must be ACTIVE, SUSPENDED, or DEACTIVATED");
     }
 }

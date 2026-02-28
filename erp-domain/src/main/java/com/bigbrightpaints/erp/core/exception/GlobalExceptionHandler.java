@@ -165,6 +165,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         if (errorCode == null) return HttpStatus.INTERNAL_SERVER_ERROR;
         if (errorCode == ErrorCode.BUSINESS_ENTITY_NOT_FOUND || errorCode == ErrorCode.FILE_NOT_FOUND) return HttpStatus.NOT_FOUND;
         if (errorCode == ErrorCode.AUTH_MFA_REQUIRED) return HttpStatus.PRECONDITION_REQUIRED;
+        if (errorCode == ErrorCode.MODULE_DISABLED) return HttpStatus.FORBIDDEN;
         if (errorCode == ErrorCode.SYSTEM_RATE_LIMIT_EXCEEDED) return HttpStatus.TOO_MANY_REQUESTS;
         String prefix = errorCode.getCode().split("_")[0];
         return switch (prefix) {

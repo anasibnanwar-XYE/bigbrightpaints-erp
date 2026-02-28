@@ -85,7 +85,7 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
                 Map.class);
         assertThat(suspendResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         Company suspended = companyRepository.findById(tenant.getId()).orElseThrow();
-        assertThat(suspended.getLifecycleState()).isEqualTo(CompanyLifecycleState.HOLD);
+        assertThat(suspended.getLifecycleState()).isEqualTo(CompanyLifecycleState.SUSPENDED);
 
         ResponseEntity<Map> tenantsResponse = rest.exchange(
                 "/api/v1/superadmin/tenants?status=SUSPENDED",
@@ -118,6 +118,15 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
         assertThat(activateResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         Company activated = companyRepository.findById(tenant.getId()).orElseThrow();
         assertThat(activated.getLifecycleState()).isEqualTo(CompanyLifecycleState.ACTIVE);
+
+        ResponseEntity<Map> deactivateResponse = rest.exchange(
+                "/api/v1/superadmin/tenants/" + tenant.getId() + "/deactivate",
+                HttpMethod.POST,
+                new HttpEntity<>(superAdminHeaders),
+                Map.class);
+        assertThat(deactivateResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Company deactivated = companyRepository.findById(tenant.getId()).orElseThrow();
+        assertThat(deactivated.getLifecycleState()).isEqualTo(CompanyLifecycleState.DEACTIVATED);
     }
 
     private HttpHeaders headers(String token, String companyCode) {

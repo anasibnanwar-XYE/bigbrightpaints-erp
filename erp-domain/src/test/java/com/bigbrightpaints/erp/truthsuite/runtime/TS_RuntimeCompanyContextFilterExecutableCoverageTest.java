@@ -132,7 +132,7 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
     void doFilter_allowsSuperAdminLifecycleControlBypassForNonActiveTenant() throws ServletException, IOException {
         authenticate("ops@bbp.com", Set.of("ROLE_SUPER_ADMIN"), Set.of());
         when(companyService.resolveCompanyCodeById(42L)).thenReturn("ACME");
-        when(companyService.resolveLifecycleStateByCode("ACME")).thenReturn(CompanyLifecycleState.BLOCKED);
+        when(companyService.resolveLifecycleStateByCode("ACME")).thenReturn(CompanyLifecycleState.DEACTIVATED);
         when(tenantRuntimeEnforcementService.beginRequest(
                 eq("ACME"),
                 eq("/api/v1/companies/42/lifecycle-state"),
@@ -179,7 +179,7 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
     @Test
     void doFilter_rejectsNonActiveTenantForNonLifecycleRequests() throws ServletException, IOException {
         authenticate("admin@bbp.com", Set.of("ROLE_ADMIN"), Set.of("ACME"));
-        when(companyService.resolveLifecycleStateByCode("ACME")).thenReturn(CompanyLifecycleState.BLOCKED);
+        when(companyService.resolveLifecycleStateByCode("ACME")).thenReturn(CompanyLifecycleState.DEACTIVATED);
 
         MockHttpServletRequest request = request("GET", "/api/v1/private");
         request.setAttribute("jwtClaims", claimsFor("ACME"));
@@ -188,7 +188,7 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
         filter.doFilter(request, response, filterChain);
 
         assertThat(response.getStatus()).isEqualTo(403);
-        assertThat(response.getErrorMessage()).isEqualTo("Tenant lifecycle state does not allow access");
+        assertThat(response.getErrorMessage()).isEqualTo("Tenant is deactivated");
         verify(tenantRuntimeEnforcementService, never()).beginRequest(anyString(), anyString(), anyString(), anyString(), anyBoolean());
     }
 
@@ -196,7 +196,7 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
     void doFilter_rejectsLifecycleControlMutationForNonSuperAdminOnBlockedTenant() throws ServletException, IOException {
         authenticate("admin@bbp.com", Set.of("ROLE_ADMIN"), Set.of("ACME"));
         when(companyService.resolveCompanyCodeById(42L)).thenReturn("ACME");
-        when(companyService.resolveLifecycleStateByCode("ACME")).thenReturn(CompanyLifecycleState.BLOCKED);
+        when(companyService.resolveLifecycleStateByCode("ACME")).thenReturn(CompanyLifecycleState.DEACTIVATED);
 
         MockHttpServletRequest request = request("POST", "/api/v1/companies/42/lifecycle-state");
         request.setAttribute("jwtClaims", claimsFor("ACME"));
@@ -205,7 +205,7 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
         filter.doFilter(request, response, filterChain);
 
         assertThat(response.getStatus()).isEqualTo(403);
-        assertThat(response.getErrorMessage()).isEqualTo("Tenant lifecycle state does not allow access");
+        assertThat(response.getErrorMessage()).isEqualTo("Tenant is deactivated");
         verify(tenantRuntimeEnforcementService, never()).beginRequest(anyString(), anyString(), anyString(), anyString(), anyBoolean());
     }
 

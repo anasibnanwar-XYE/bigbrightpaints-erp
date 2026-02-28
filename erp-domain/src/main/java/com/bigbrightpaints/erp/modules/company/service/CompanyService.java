@@ -64,16 +64,17 @@ public class CompanyService {
     private final AuditLogRepository auditLogRepository;
     private final TenantRuntimeEnforcementService tenantRuntimeEnforcementService;
     private final TenantAdminProvisioningService tenantAdminProvisioningService;
+    private final TenantLifecycleService tenantLifecycleService;
 
     public CompanyService(CompanyRepository repository) {
-        this(repository, null, null, null, null, null);
+        this(repository, null, null, null, null, null, null);
     }
 
     public CompanyService(CompanyRepository repository,
                           AuditService auditService,
                           UserAccountRepository userAccountRepository,
                           AuditLogRepository auditLogRepository) {
-        this(repository, auditService, userAccountRepository, auditLogRepository, null, null);
+        this(repository, auditService, userAccountRepository, auditLogRepository, null, null, null);
     }
 
     public CompanyService(CompanyRepository repository,
@@ -87,6 +88,7 @@ public class CompanyService {
                 userAccountRepository,
                 auditLogRepository,
                 tenantRuntimeEnforcementService,
+                null,
                 null);
     }
 
@@ -96,13 +98,15 @@ public class CompanyService {
                           UserAccountRepository userAccountRepository,
                           AuditLogRepository auditLogRepository,
                           TenantRuntimeEnforcementService tenantRuntimeEnforcementService,
-                          TenantAdminProvisioningService tenantAdminProvisioningService) {
+                          TenantAdminProvisioningService tenantAdminProvisioningService,
+                          TenantLifecycleService tenantLifecycleService) {
         this.repository = repository;
         this.auditService = auditService;
         this.userAccountRepository = userAccountRepository;
         this.auditLogRepository = auditLogRepository;
         this.tenantRuntimeEnforcementService = tenantRuntimeEnforcementService;
         this.tenantAdminProvisioningService = tenantAdminProvisioningService;
+        this.tenantLifecycleService = tenantLifecycleService;
     }
 
     public List<CompanyDto> findAll() {
@@ -181,6 +185,10 @@ public class CompanyService {
                 .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Company not found"));
         assertBoundControlPlaneCompanyMatchesTarget(company.getCode());
 
+        if (tenantLifecycleService != null) {
+            return tenantLifecycleService.transition(company, requestedState, lifecycleReason, authentication);
+        }
+
         CompanyLifecycleState previousState = resolveLifecycleStateById(company.getId());
         company.setLifecycleState(requestedState);
         company.setLifecycleReason(lifecycleReason);
@@ -245,21 +253,21 @@ public class CompanyService {
 
     public CompanyLifecycleState resolveLifecycleStateByCode(String companyCode) {
         if (!StringUtils.hasText(companyCode)) {
-            return CompanyLifecycleState.BLOCKED;
+            return CompanyLifecycleState.DEACTIVATED;
         }
         return repository.findByCodeIgnoreCase(companyCode.trim())
                 .map(Company::getId)
                 .map(this::resolveLifecycleStateById)
-                .orElse(CompanyLifecycleState.BLOCKED);
+                .orElse(CompanyLifecycleState.DEACTIVATED);
     }
 
     public CompanyLifecycleState resolveLifecycleStateById(Long companyId) {
         if (companyId == null) {
-            return CompanyLifecycleState.BLOCKED;
+            return CompanyLifecycleState.DEACTIVATED;
         }
         return repository.findById(companyId)
                 .map(company -> company.getLifecycleState() == null ? CompanyLifecycleState.ACTIVE : company.getLifecycleState())
-                .orElse(CompanyLifecycleState.BLOCKED);
+                .orElse(CompanyLifecycleState.DEACTIVATED);
     }
 
     public String resolveCompanyCodeById(Long companyId) {
@@ -291,8 +299,8 @@ public class CompanyService {
 
         long totalTenants = tenantOverview.size();
         long activeTenants = tenantOverview.stream().filter(tenant -> "ACTIVE".equalsIgnoreCase(tenant.lifecycleState())).count();
-        long holdTenants = tenantOverview.stream().filter(tenant -> "HOLD".equalsIgnoreCase(tenant.lifecycleState())).count();
-        long blockedTenants = tenantOverview.stream().filter(tenant -> "BLOCKED".equalsIgnoreCase(tenant.lifecycleState())).count();
+        long holdTenants = tenantOverview.stream().filter(tenant -> "SUSPENDED".equalsIgnoreCase(tenant.lifecycleState())).count();
+        long blockedTenants = tenantOverview.stream().filter(tenant -> "DEACTIVATED".equalsIgnoreCase(tenant.lifecycleState())).count();
         long totalActiveUsers = tenantOverview.stream().mapToLong(CompanySuperAdminDashboardDto.TenantOverview::activeUsers).sum();
         long totalActiveUserQuota = tenantOverview.stream().mapToLong(CompanySuperAdminDashboardDto.TenantOverview::activeUserQuota).sum();
         long totalStorageBytes = tenantOverview.stream().mapToLong(CompanySuperAdminDashboardDto.TenantOverview::storageBytesUsed).sum();
@@ -818,13 +826,20 @@ public class CompanyService {
 
     private String normalizeWarningLifecycleState(String requestedLifecycleState) {
         if (!StringUtils.hasText(requestedLifecycleState)) {
-            return "HOLD";
+            return "SUSPENDED";
         }
         String normalized = requestedLifecycleState.trim().toUpperCase(Locale.ROOT);
-        if (!"HOLD".equals(normalized) && !"BLOCKED".equals(normalized)) {
-            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("requestedLifecycleState must be HOLD or BLOCKED");
+        if ("HOLD".equals(normalized)) {
+            return "SUSPENDED";
         }
-        return normalized;
+        if ("BLOCKED".equals(normalized)) {
+            return "DEACTIVATED";
+        }
+        if ("SUSPENDED".equals(normalized) || "DEACTIVATED".equals(normalized)) {
+            return normalized;
+        }
+        throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+                "requestedLifecycleState must be SUSPENDED or DEACTIVATED");
     }
 
     private int resolveGracePeriodHours(Integer gracePeriodHours) {

@@ -39,21 +39,25 @@ class SuperAdminServiceTest {
     @Mock
     private TenantUsageMetricsService tenantUsageMetricsService;
 
+    private TenantLifecycleService tenantLifecycleService;
+
     private SuperAdminService superAdminService;
 
     @BeforeEach
     void setUp() {
+        tenantLifecycleService = new TenantLifecycleService(null);
         superAdminService = new SuperAdminService(
                 companyRepository,
                 userAccountRepository,
                 auditLogRepository,
-                tenantUsageMetricsService);
+                tenantUsageMetricsService,
+                tenantLifecycleService);
     }
 
     @Test
     void getDashboard_aggregatesTenantMetrics() {
         Company active = company(1L, "ALPHA", CompanyLifecycleState.ACTIVE);
-        Company suspended = company(2L, "BETA", CompanyLifecycleState.HOLD);
+        Company suspended = company(2L, "BETA", CompanyLifecycleState.SUSPENDED);
         when(companyRepository.findAll()).thenReturn(List.of(suspended, active));
 
         when(userAccountRepository.countDistinctByCompanies_IdAndEnabledTrue(1L)).thenReturn(4L);
@@ -73,6 +77,7 @@ class SuperAdminServiceTest {
         assertThat(dashboard.totalTenants()).isEqualTo(2L);
         assertThat(dashboard.activeTenants()).isEqualTo(1L);
         assertThat(dashboard.suspendedTenants()).isEqualTo(1L);
+        assertThat(dashboard.deactivatedTenants()).isEqualTo(0L);
         assertThat(dashboard.totalUsers()).isEqualTo(6L);
         assertThat(dashboard.totalApiCalls()).isEqualTo(15L);
         assertThat(dashboard.totalStorageBytes()).isEqualTo(500L);
@@ -82,20 +87,20 @@ class SuperAdminServiceTest {
     @Test
     void listTenants_filtersByStatus() {
         Company active = company(1L, "ALPHA", CompanyLifecycleState.ACTIVE);
-        Company suspended = company(2L, "BETA", CompanyLifecycleState.BLOCKED);
-        when(companyRepository.findAll()).thenReturn(List.of(active, suspended));
+        Company deactivated = company(2L, "BETA", CompanyLifecycleState.DEACTIVATED);
+        when(companyRepository.findAll()).thenReturn(List.of(active, deactivated));
         when(userAccountRepository.countDistinctByCompanies_IdAndEnabledTrue(1L)).thenReturn(1L);
         when(userAccountRepository.countDistinctByCompanies_IdAndEnabledTrue(2L)).thenReturn(1L);
 
         List<SuperAdminTenantDto> activeOnly = superAdminService.listTenants("ACTIVE");
-        List<SuperAdminTenantDto> suspendedOnly = superAdminService.listTenants("SUSPENDED");
+        List<SuperAdminTenantDto> deactivatedOnly = superAdminService.listTenants("DEACTIVATED");
 
         assertThat(activeOnly).extracting(SuperAdminTenantDto::companyCode).containsExactly("ALPHA");
-        assertThat(suspendedOnly).extracting(SuperAdminTenantDto::companyCode).containsExactly("BETA");
+        assertThat(deactivatedOnly).extracting(SuperAdminTenantDto::companyCode).containsExactly("BETA");
 
         assertThatThrownBy(() -> superAdminService.listTenants("paused"))
                 .isInstanceOf(ApplicationException.class)
-                .hasMessageContaining("status filter must be ACTIVE or SUSPENDED");
+                .hasMessageContaining("status filter must be ACTIVE, SUSPENDED, or DEACTIVATED");
     }
 
     @Test
@@ -114,7 +119,7 @@ class SuperAdminServiceTest {
 
     @Test
     void getTenantUsage_returnsUsageMetrics() {
-        Company company = company(8L, "TEN", CompanyLifecycleState.HOLD);
+        Company company = company(8L, "TEN", CompanyLifecycleState.SUSPENDED);
         when(companyRepository.findById(8L)).thenReturn(Optional.of(company));
         when(tenantUsageMetricsService.getApiCallCount(8L)).thenReturn(12L);
         when(userAccountRepository.countDistinctByCompanies_IdAndEnabledTrue(8L)).thenReturn(7L);

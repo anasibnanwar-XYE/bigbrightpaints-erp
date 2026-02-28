@@ -143,9 +143,9 @@ public class CompanyContextFilter extends OncePerRequestFilter {
                     response.sendError(HttpServletResponse.SC_FORBIDDEN, "Access denied to company: " + companyCode);
                     return;
                 }
-                if (lifecycleState != CompanyLifecycleState.ACTIVE && !lifecycleControlBypass) {
+                if (!lifecycleControlBypass && shouldDenyTenantRequestByLifecycle(lifecycleState, request.getMethod())) {
                     response.sendError(HttpServletResponse.SC_FORBIDDEN,
-                            "Tenant lifecycle state does not allow access");
+                            lifecycleDeniedMessage(lifecycleState, request.getMethod()));
                     return;
                 }
                 admission = tenantRuntimeEnforcementService.beginRequest(
@@ -405,5 +405,37 @@ public class CompanyContextFilter extends OncePerRequestFilter {
             normalizedPath = normalizedPath.substring(0, normalizedPath.length() - 1);
         }
         return normalizedPath;
+    }
+
+    private boolean shouldDenyTenantRequestByLifecycle(CompanyLifecycleState lifecycleState, String method) {
+        CompanyLifecycleState resolvedState = lifecycleState == null
+                ? CompanyLifecycleState.ACTIVE
+                : lifecycleState;
+        return switch (resolvedState) {
+            case ACTIVE -> false;
+            case SUSPENDED -> isMutatingMethod(method);
+            case DEACTIVATED -> true;
+        };
+    }
+
+    private String lifecycleDeniedMessage(CompanyLifecycleState lifecycleState, String method) {
+        CompanyLifecycleState resolvedState = lifecycleState == null
+                ? CompanyLifecycleState.ACTIVE
+                : lifecycleState;
+        return switch (resolvedState) {
+            case ACTIVE -> "Tenant lifecycle state allows access";
+            case SUSPENDED -> isMutatingMethod(method)
+                    ? "Suspended tenants are read-only"
+                    : "Tenant lifecycle state allows access";
+            case DEACTIVATED -> "Tenant is deactivated";
+        };
+    }
+
+    private boolean isMutatingMethod(String method) {
+        if (!StringUtils.hasText(method)) {
+            return true;
+        }
+        String normalized = method.trim().toUpperCase();
+        return !"GET".equals(normalized) && !"HEAD".equals(normalized) && !"OPTIONS".equals(normalized);
     }
 }

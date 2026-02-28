@@ -7,10 +7,14 @@ import jakarta.persistence.*;
 import com.bigbrightpaints.erp.core.domain.VersionedEntity;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.LinkedHashSet;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import org.hibernate.Hibernate;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.proxy.HibernateProxy;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "companies")
@@ -81,6 +85,10 @@ public class Company extends VersionedEntity {
     @Column(name = "lifecycle_reason")
     private String lifecycleReason;
 
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "enabled_modules", nullable = false, columnDefinition = "jsonb")
+    private Set<String> enabledModules = new LinkedHashSet<>(CompanyModule.defaultEnabledGatableModuleNames());
+
     @Column(name = "quota_max_active_users", nullable = false)
     private Long quotaMaxActiveUsers = 0L;
 
@@ -113,11 +121,13 @@ public class Company extends VersionedEntity {
         if (lifecycleState == null) {
             lifecycleState = CompanyLifecycleState.ACTIVE;
         }
+        enabledModules = CompanyModule.normalizeEnabledGatableModuleNames(enabledModules);
         initializeQuotaDefaults();
     }
 
     @PreUpdate
     public void preUpdate() {
+        enabledModules = CompanyModule.normalizeEnabledGatableModuleNames(enabledModules);
         initializeQuotaDefaults();
     }
 
@@ -282,6 +292,16 @@ public class Company extends VersionedEntity {
             return;
         }
         this.lifecycleReason = lifecycleReason.trim();
+    }
+
+    public Set<String> getEnabledModules() {
+        return enabledModules == null
+                ? new LinkedHashSet<>(CompanyModule.defaultEnabledGatableModuleNames())
+                : new LinkedHashSet<>(enabledModules);
+    }
+
+    public void setEnabledModules(Set<String> enabledModules) {
+        this.enabledModules = CompanyModule.normalizeEnabledGatableModuleNames(enabledModules);
     }
 
     public long getQuotaMaxActiveUsers() {

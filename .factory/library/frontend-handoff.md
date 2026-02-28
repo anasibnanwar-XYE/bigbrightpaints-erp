@@ -31,14 +31,32 @@ _To be documented_
 | Method | Path | Auth | Request | Response `data` |
 |---|---|---|---|---|
 | GET | `/api/v1/superadmin/dashboard` | `ROLE_SUPER_ADMIN` | None | `SuperAdminDashboardDto` |
-| GET | `/api/v1/superadmin/tenants` | `ROLE_SUPER_ADMIN` | Optional query: `status=ACTIVE|SUSPENDED` | `List<SuperAdminTenantDto>` |
+| GET | `/api/v1/superadmin/tenants` | `ROLE_SUPER_ADMIN` | Optional query: `status=ACTIVE|SUSPENDED|DEACTIVATED` | `List<SuperAdminTenantDto>` |
 | POST | `/api/v1/superadmin/tenants/{id}/suspend` | `ROLE_SUPER_ADMIN` | None | `SuperAdminTenantDto` |
 | POST | `/api/v1/superadmin/tenants/{id}/activate` | `ROLE_SUPER_ADMIN` | None | `SuperAdminTenantDto` |
+| POST | `/api/v1/superadmin/tenants/{id}/deactivate` | `ROLE_SUPER_ADMIN` | None | `SuperAdminTenantDto` |
+| POST | `/api/v1/superadmin/tenants/{id}/lifecycle-state` | `ROLE_SUPER_ADMIN` | `CompanyLifecycleStateRequest` | `CompanyLifecycleStateDto` |
 | GET | `/api/v1/superadmin/tenants/{id}/usage` | `ROLE_SUPER_ADMIN` | None | `SuperAdminTenantUsageDto` |
 | GET | `/api/v1/superadmin/tenants/coa-templates` | `ROLE_SUPER_ADMIN` | None | `List<CoATemplateDto>` |
 | POST | `/api/v1/superadmin/tenants/onboard` | `ROLE_SUPER_ADMIN` | `TenantOnboardingRequest` | `TenantOnboardingResponse` |
 
 All responses are wrapped in `ApiResponse<T>`.
+
+#### Module Feature Gating (tenant runtime behavior)
+
+Module access is enforced per-tenant using `companies.enabled_modules` (JSON array of module keys).
+
+- **Gatable modules**: `MANUFACTURING`, `HR_PAYROLL`, `PURCHASING`, `PORTAL`, `REPORTS_ADVANCED`
+- **Core modules (always enabled, cannot be disabled)**: `AUTH`, `ACCOUNTING`, `SALES`, `INVENTORY`
+
+If a request hits a disabled gatable module, backend returns **403** with `ErrorCode.MODULE_DISABLED` (`BUS_010`).
+
+Current runtime path mapping used by backend:
+- `MANUFACTURING`: `/api/v1/factory/**`, `/api/v1/production/**`
+- `HR_PAYROLL`: `/api/v1/hr/**`, `/api/v1/payroll/**`
+- `PURCHASING`: `/api/v1/purchasing/**`, `/api/v1/suppliers/**`
+- `PORTAL`: `/api/v1/portal/**`, `/api/v1/dealer-portal/**`
+- `REPORTS_ADVANCED`: `/api/v1/reports/**`, `/api/v1/accounting/reports/**`
 
 #### User Flows
 
@@ -61,27 +79,46 @@ All responses are wrapped in `ApiResponse<T>`.
    2. `POST /api/v1/superadmin/tenants/{id}/activate`
    3. Update row status to `ACTIVE`.
 
-5. **Inspect tenant usage**
+5. **Deactivate tenant**
+   1. User clicks Deactivate in tenant row
+   2. `POST /api/v1/superadmin/tenants/{id}/deactivate`
+   3. Update row status to `DEACTIVATED`.
+
+6. **Set lifecycle state explicitly (with reason)**
+   1. `POST /api/v1/superadmin/tenants/{id}/lifecycle-state` with `{ state, reason }`
+   2. Use for auditable transition requests from superadmin console.
+
+7. **Inspect tenant usage**
    1. `GET /api/v1/superadmin/tenants/{id}/usage`
    2. Show API calls, active users, storage, last activity timestamp.
 
-6. **Tenant onboarding (single-call bootstrap)**
+8. **Tenant onboarding (single-call bootstrap)**
    1. `GET /api/v1/superadmin/tenants/coa-templates` to populate template dropdown (Generic / Indian Standard / Manufacturing).
    2. Submit onboarding form once via `POST /api/v1/superadmin/tenants/onboard`.
    3. Backend creates tenant company, admin user, full chart of accounts from selected template, default accounting period, and baseline system settings.
    4. Frontend stores/display one-time `adminTemporaryPassword` immediately after success.
 
+9. **Tenant runtime lifecycle enforcement expectations**
+   - `ACTIVE`: read/write allowed.
+   - `SUSPENDED`: **read-only** (write methods return 403).
+   - `DEACTIVATED`: all requests blocked with 403.
+
 #### State Machine (superadmin view)
 
 - `ACTIVE` -> `SUSPENDED` via `POST /api/v1/superadmin/tenants/{id}/suspend`
 - `SUSPENDED` -> `ACTIVE` via `POST /api/v1/superadmin/tenants/{id}/activate`
-
-Backend lifecycle states `HOLD`/`BLOCKED` are exposed as `SUSPENDED` in superadmin APIs.
+- `ACTIVE` -> `DEACTIVATED` via `POST /api/v1/superadmin/tenants/{id}/deactivate`
+- `SUSPENDED` -> `DEACTIVATED` via `POST /api/v1/superadmin/tenants/{id}/deactivate`
+- `DEACTIVATED` is terminal (no activation path from this state)
 
 #### Error Codes / Error Handling
 
 - **403 Forbidden**: caller is not `ROLE_SUPER_ADMIN`.
   - Frontend behavior: block page access and show “Superadmin access required”.
+- **403 + `BUS_010` (`MODULE_DISABLED`)**: tenant module is disabled.
+  - Frontend behavior: show contextual “Module disabled for this tenant” empty/error state and hide write actions for that module.
+- **403** (tenant lifecycle runtime guard): suspended write or deactivated access.
+  - Frontend behavior: show non-retryable state banner (“Tenant suspended: read-only” or “Tenant deactivated”).
 - **400 Business validation error** (invalid filter/status or unknown tenant id).
   - Frontend behavior: show inline toast with server message, keep current page state.
 
@@ -91,6 +128,7 @@ Backend lifecycle states `HOLD`/`BLOCKED` are exposed as `SUSPENDED` in superadm
   - `totalTenants: number`
   - `activeTenants: number`
   - `suspendedTenants: number`
+  - `deactivatedTenants: number`
   - `totalUsers: number`
   - `totalApiCalls: number`
   - `totalStorageBytes: number`
@@ -100,7 +138,7 @@ Backend lifecycle states `HOLD`/`BLOCKED` are exposed as `SUSPENDED` in superadm
   - `companyId: number`
   - `companyCode: string`
   - `companyName: string`
-  - `status: "ACTIVE" | "SUSPENDED"`
+  - `status: "ACTIVE" | "SUSPENDED" | "DEACTIVATED"`
   - `activeUsers: number`
   - `apiCallCount: number`
   - `storageBytes: number`
@@ -109,11 +147,22 @@ Backend lifecycle states `HOLD`/`BLOCKED` are exposed as `SUSPENDED` in superadm
 - `SuperAdminTenantUsageDto`
   - `companyId: number`
   - `companyCode: string`
-  - `status: "ACTIVE" | "SUSPENDED"`
+  - `status: "ACTIVE" | "SUSPENDED" | "DEACTIVATED"`
   - `apiCallCount: number`
   - `activeUsers: number`
   - `storageBytes: number`
   - `lastActivityAt: string | null` (ISO-8601)
+
+- `CompanyLifecycleStateRequest`
+  - `state: "ACTIVE" | "SUSPENDED" | "DEACTIVATED"` (required)
+  - `reason: string` (required, max 1024)
+
+- `CompanyLifecycleStateDto`
+  - `companyId: number`
+  - `companyCode: string`
+  - `previousLifecycleState: "ACTIVE" | "SUSPENDED" | "DEACTIVATED"`
+  - `lifecycleState: "ACTIVE" | "SUSPENDED" | "DEACTIVATED"`
+  - `reason: string`
 
 - `CoATemplateDto`
   - `code: "GENERIC" | "INDIAN_STANDARD" | "MANUFACTURING"`
@@ -149,9 +198,9 @@ Backend lifecycle states `HOLD`/`BLOCKED` are exposed as `SUSPENDED` in superadm
 
 #### UI Hints
 
-- Use a status filter dropdown with only `ACTIVE` and `SUSPENDED` values.
+- Use a status filter dropdown with `ACTIVE`, `SUSPENDED`, and `DEACTIVATED`.
 - Show human-readable storage units (KB/MB/GB) while keeping raw bytes for sorting.
-- For lifecycle buttons, show confirmation modals before suspend/activate.
+- For lifecycle buttons, show confirmation modals before suspend/activate/deactivate.
 - Treat `lastActivityAt = null` as “No activity yet”.
 - Refresh dashboard + tenant list after lifecycle mutation to keep aggregates in sync.
 - For onboarding, fetch templates first and show `name + description + accountCount` in template picker.

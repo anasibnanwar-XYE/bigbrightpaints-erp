@@ -17,25 +17,25 @@ class CompanyDtoDeterministicContractTest {
                 42L,
                 "BBP_MAIN",
                 "ACTIVE",
-                "HOLD",
+                "SUSPENDED",
                 "quota soft limit reached");
         CompanyLifecycleStateDto same = new CompanyLifecycleStateDto(
                 42L,
                 "BBP_MAIN",
                 "ACTIVE",
-                "HOLD",
+                "SUSPENDED",
                 "quota soft limit reached");
         CompanyLifecycleStateDto different = new CompanyLifecycleStateDto(
                 42L,
                 "BBP_MAIN",
                 "ACTIVE",
-                "BLOCKED",
+                "DEACTIVATED",
                 "quota hard limit reached");
 
         assertThat(dto.companyId()).isEqualTo(42L);
         assertThat(dto.companyCode()).isEqualTo("BBP_MAIN");
         assertThat(dto.previousLifecycleState()).isEqualTo("ACTIVE");
-        assertThat(dto.lifecycleState()).isEqualTo("HOLD");
+        assertThat(dto.lifecycleState()).isEqualTo("SUSPENDED");
         assertThat(dto.reason()).isEqualTo("quota soft limit reached");
         assertThat(dto).isEqualTo(same);
         assertThat(dto.hashCode()).isEqualTo(same.hashCode());
@@ -44,11 +44,11 @@ class CompanyDtoDeterministicContractTest {
 
     @Test
     void companyLifecycleStateRequest_accessorsAndValueSemantics_areDeterministic() {
-        CompanyLifecycleStateRequest request = new CompanyLifecycleStateRequest("BLOCKED", "manual review");
-        CompanyLifecycleStateRequest same = new CompanyLifecycleStateRequest("BLOCKED", "manual review");
-        CompanyLifecycleStateRequest different = new CompanyLifecycleStateRequest("HOLD", "manual review");
+        CompanyLifecycleStateRequest request = new CompanyLifecycleStateRequest("DEACTIVATED", "manual review");
+        CompanyLifecycleStateRequest same = new CompanyLifecycleStateRequest("DEACTIVATED", "manual review");
+        CompanyLifecycleStateRequest different = new CompanyLifecycleStateRequest("SUSPENDED", "manual review");
 
-        assertThat(request.state()).isEqualTo("BLOCKED");
+        assertThat(request.state()).isEqualTo("DEACTIVATED");
         assertThat(request.reason()).isEqualTo("manual review");
         assertThat(request).isEqualTo(same);
         assertThat(request.hashCode()).isEqualTo(same.hashCode());

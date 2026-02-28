@@ -131,9 +131,9 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
     }
 
     @Test
-    void rejectsWhenTenantLifecycleIsNotActive_beforeRuntimeAdmission() throws Exception {
+    void rejectsMutatingRequestWhenTenantLifecycleIsSuspended_beforeRuntimeAdmission() throws Exception {
         authenticateForCompany("actor@bbp.com", "ACME");
-        when(companyService.resolveLifecycleStateByCode("ACME")).thenReturn(CompanyLifecycleState.HOLD);
+        when(companyService.resolveLifecycleStateByCode("ACME")).thenReturn(CompanyLifecycleState.SUSPENDED);
 
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/private");
         request.setAttribute("jwtClaims", claims("ACME", null));
@@ -147,10 +147,42 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
     }
 
     @Test
+    void allowsReadRequestWhenTenantLifecycleIsSuspended() throws Exception {
+        authenticateForCompany("actor@bbp.com", "ACME");
+        when(companyService.resolveLifecycleStateByCode("ACME")).thenReturn(CompanyLifecycleState.SUSPENDED);
+        TenantRuntimeEnforcementService.TenantRequestAdmission admittedAdmission =
+                admission(true, "ACME", 200, null);
+        when(tenantRuntimeEnforcementService.beginRequest(
+                "ACME",
+                "/api/v1/private",
+                "GET",
+                "actor@bbp.com",
+                false))
+                .thenReturn(admittedAdmission);
+
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/private");
+        request.setAttribute("jwtClaims", claims("ACME", null));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+
+        filter.doFilter(request, response, chain);
+
+        assertThat(chain.getRequest()).isNotNull();
+        verify(companyService).resolveLifecycleStateByCode("ACME");
+        verify(tenantRuntimeEnforcementService).beginRequest(
+                "ACME",
+                "/api/v1/private",
+                "GET",
+                "actor@bbp.com",
+                false);
+        verify(tenantRuntimeEnforcementService).completeRequest(eq(admittedAdmission), eq(200));
+    }
+
+    @Test
     void allowsSuperAdminLifecycleControlWhenTenantIsNotActive() throws Exception {
         authenticateSuperAdminForCompany("super-admin@bbp.com", "ACME");
         when(companyService.resolveCompanyCodeById(1L)).thenReturn("ACME");
-        when(companyService.resolveLifecycleStateByCode("ACME")).thenReturn(CompanyLifecycleState.HOLD);
+        when(companyService.resolveLifecycleStateByCode("ACME")).thenReturn(CompanyLifecycleState.DEACTIVATED);
         TenantRuntimeEnforcementService.TenantRequestAdmission admittedAdmission =
                 admission(true, "ACME", 200, null);
         when(tenantRuntimeEnforcementService.beginRequest(
@@ -183,7 +215,7 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
     void allowsSuperAdminLifecycleControlWithoutTenantMembershipWhenTenantIsNotActive() throws Exception {
         authenticateSuperAdminWithoutCompany("super-admin@bbp.com");
         when(companyService.resolveCompanyCodeById(1L)).thenReturn("ACME");
-        when(companyService.resolveLifecycleStateByCode("ACME")).thenReturn(CompanyLifecycleState.HOLD);
+        when(companyService.resolveLifecycleStateByCode("ACME")).thenReturn(CompanyLifecycleState.DEACTIVATED);
         TenantRuntimeEnforcementService.TenantRequestAdmission admittedAdmission =
                 admission(true, "ACME", 200, null);
         when(tenantRuntimeEnforcementService.beginRequest(
@@ -216,7 +248,7 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
     void allowsSuperAdminLifecycleControlWhenTenantIsNotActive_withContextPath() throws Exception {
         authenticateSuperAdminForCompany("super-admin@bbp.com", "ACME");
         when(companyService.resolveCompanyCodeById(1L)).thenReturn("ACME");
-        when(companyService.resolveLifecycleStateByCode("ACME")).thenReturn(CompanyLifecycleState.HOLD);
+        when(companyService.resolveLifecycleStateByCode("ACME")).thenReturn(CompanyLifecycleState.DEACTIVATED);
         TenantRuntimeEnforcementService.TenantRequestAdmission admittedAdmission =
                 admission(true, "ACME", 200, null);
         when(tenantRuntimeEnforcementService.beginRequest(
@@ -251,7 +283,7 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
     void allowsSuperAdminLifecycleControlWhenTenantIsNotActive_withContextPathAndEmptyServletPath() throws Exception {
         authenticateSuperAdminForCompany("super-admin@bbp.com", "ACME");
         when(companyService.resolveCompanyCodeById(1L)).thenReturn("ACME");
-        when(companyService.resolveLifecycleStateByCode("ACME")).thenReturn(CompanyLifecycleState.HOLD);
+        when(companyService.resolveLifecycleStateByCode("ACME")).thenReturn(CompanyLifecycleState.DEACTIVATED);
         TenantRuntimeEnforcementService.TenantRequestAdmission admittedAdmission =
                 admission(true, "ACME", 200, null);
         when(tenantRuntimeEnforcementService.beginRequest(
@@ -286,7 +318,7 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
     void allowsSuperAdminTenantMetricsReadWhenTenantIsNotActive_withContextPathAndEmptyServletPath() throws Exception {
         authenticateSuperAdminForCompany("super-admin@bbp.com", "ACME");
         when(companyService.resolveCompanyCodeById(1L)).thenReturn("ACME");
-        when(companyService.resolveLifecycleStateByCode("ACME")).thenReturn(CompanyLifecycleState.HOLD);
+        when(companyService.resolveLifecycleStateByCode("ACME")).thenReturn(CompanyLifecycleState.DEACTIVATED);
         TenantRuntimeEnforcementService.TenantRequestAdmission admittedAdmission =
                 admission(true, "ACME", 200, null);
         when(tenantRuntimeEnforcementService.beginRequest(
@@ -438,7 +470,7 @@ class TS_RuntimeTenantRuntimeEnforcementTest {
     void lifecycleControlBypass_allowsSuperAdminOutsideTenantMembership_forInactiveTenant() throws Exception {
         authenticateForCompanyWithAuthorities("super-admin@bbp.com", "ROOT", "ROLE_SUPER_ADMIN");
         when(companyService.resolveCompanyCodeById(42L)).thenReturn("ACME");
-        when(companyService.resolveLifecycleStateByCode("ACME")).thenReturn(CompanyLifecycleState.HOLD);
+        when(companyService.resolveLifecycleStateByCode("ACME")).thenReturn(CompanyLifecycleState.DEACTIVATED);
 
         TenantRuntimeEnforcementService.TenantRequestAdmission admittedAdmission =
                 admission(true, "ACME", 200, null);
