@@ -228,7 +228,8 @@ public class CompanyController {
             @Min(value = 0, message = "maxStorageBytes must be greater than or equal to 0") Long maxStorageBytes,
             @Min(value = 0, message = "maxConcurrentUsers must be greater than or equal to 0") Long maxConcurrentUsers,
             Boolean softLimitEnabled,
-            Boolean hardLimitEnabled) {
+            Boolean hardLimitEnabled,
+            Set<@NotBlank @Size(max = 64) String> enabledModules) {
         private CompanyRequest toCompanyRequest() {
             return new CompanyRequest(
                     name,
@@ -240,7 +241,10 @@ public class CompanyController {
                     maxStorageBytes,
                     maxConcurrentUsers,
                     softLimitEnabled,
-                    hardLimitEnabled);
+                    hardLimitEnabled,
+                    null,
+                    null,
+                    enabledModules);
         }
     }
 

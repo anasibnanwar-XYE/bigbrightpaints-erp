@@ -225,7 +225,6 @@ public class TenantOnboardingService {
         boolean changed = false;
         changed |= saveSystemSettingIfMissing("auto-approval.enabled", "true");
         changed |= saveSystemSettingIfMissing("period-lock.enforced", "true");
-        changed |= saveSystemSettingIfMissing("cors.allowed-origins", "http://localhost:3002");
         return changed;
     }
 

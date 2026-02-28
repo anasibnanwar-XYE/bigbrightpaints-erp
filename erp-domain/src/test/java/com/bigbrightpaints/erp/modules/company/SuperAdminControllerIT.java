@@ -129,6 +129,31 @@ class SuperAdminControllerIT extends AbstractIntegrationTest {
         assertThat(deactivated.getLifecycleState()).isEqualTo(CompanyLifecycleState.DEACTIVATED);
     }
 
+    @Test
+    void superAdmin_canConfigureTenantModules() {
+        Company tenant = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
+        String superAdminToken = loginToken(SUPER_ADMIN_EMAIL, ROOT_COMPANY_CODE);
+        HttpHeaders superAdminHeaders = headers(superAdminToken, ROOT_COMPANY_CODE);
+
+        ResponseEntity<Map> response = rest.exchange(
+                "/api/v1/superadmin/tenants/" + tenant.getId() + "/modules",
+                HttpMethod.PUT,
+                new HttpEntity<>(Map.of("enabledModules", List.of("PORTAL")), superAdminHeaders),
+                Map.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) response.getBody().get("data");
+        assertThat(((Number) data.get("companyId")).longValue()).isEqualTo(tenant.getId());
+        assertThat(data.get("companyCode")).isEqualTo(COMPANY_CODE);
+        @SuppressWarnings("unchecked")
+        List<String> enabledModules = (List<String>) data.get("enabledModules");
+        assertThat(enabledModules).containsExactly("PORTAL");
+
+        Company updated = companyRepository.findById(tenant.getId()).orElseThrow();
+        assertThat(updated.getEnabledModules()).containsExactly("PORTAL");
+    }
+
     private HttpHeaders headers(String token, String companyCode) {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token);

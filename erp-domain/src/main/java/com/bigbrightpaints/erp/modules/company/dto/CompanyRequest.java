@@ -8,6 +8,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
 import java.math.BigDecimal;
+import java.util.Set;
 
 public record CompanyRequest(
         @NotBlank @Size(max = 255) String name,
@@ -21,8 +22,37 @@ public record CompanyRequest(
         Boolean quotaSoftLimitEnabled,
         Boolean quotaHardLimitEnabled,
         @Email @Size(max = 255) String firstAdminEmail,
-        @Size(max = 255) String firstAdminDisplayName
+        @Size(max = 255) String firstAdminDisplayName,
+        Set<@NotBlank @Size(max = 64) String> enabledModules
 ) {
+
+    public CompanyRequest(String name,
+                          String code,
+                          String timezone,
+                          BigDecimal defaultGstRate,
+                          Long quotaMaxActiveUsers,
+                          Long quotaMaxApiRequests,
+                          Long quotaMaxStorageBytes,
+                          Long quotaMaxConcurrentSessions,
+                          Boolean quotaSoftLimitEnabled,
+                          Boolean quotaHardLimitEnabled,
+                          String firstAdminEmail,
+                          String firstAdminDisplayName) {
+        this(
+                name,
+                code,
+                timezone,
+                defaultGstRate,
+                quotaMaxActiveUsers,
+                quotaMaxApiRequests,
+                quotaMaxStorageBytes,
+                quotaMaxConcurrentSessions,
+                quotaSoftLimitEnabled,
+                quotaHardLimitEnabled,
+                firstAdminEmail,
+                firstAdminDisplayName,
+                null);
+    }
 
     public CompanyRequest(String name,
                           String code,
@@ -45,6 +75,7 @@ public record CompanyRequest(
                 quotaMaxConcurrentSessions,
                 quotaSoftLimitEnabled,
                 quotaHardLimitEnabled,
+                null,
                 null,
                 null);
     }

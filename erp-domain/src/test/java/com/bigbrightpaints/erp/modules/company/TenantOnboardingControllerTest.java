@@ -123,7 +123,7 @@ class TenantOnboardingControllerTest extends AbstractIntegrationTest {
 
         assertThat(systemSettingsRepository.findById("auto-approval.enabled")).isPresent();
         assertThat(systemSettingsRepository.findById("period-lock.enforced")).isPresent();
-        assertThat(systemSettingsRepository.findById("cors.allowed-origins")).isPresent();
+        assertThat(systemSettingsRepository.findById("cors.allowed-origins")).isNotPresent();
     }
 
     private String uniqueCode(String prefix) {

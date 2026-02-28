@@ -38,8 +38,7 @@ public class TenantUsageMetricsService {
         if (companyId == null) {
             return;
         }
-        long currentCount = getApiCallCount(companyId);
-        persistSetting(apiCallCountKey(companyId), Long.toString(currentCount + 1L));
+        systemSettingsRepository.incrementLongSetting(apiCallCountKey(companyId));
         persistSetting(lastActivityAtKey(companyId), CompanyTime.now().toString());
     }
 

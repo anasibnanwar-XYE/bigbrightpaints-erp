@@ -23,6 +23,7 @@ import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyLifecycleState;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.company.dto.CompanyDto;
+import com.bigbrightpaints.erp.modules.company.dto.CompanyEnabledModulesDto;
 import com.bigbrightpaints.erp.modules.company.dto.CompanyLifecycleStateDto;
 import com.bigbrightpaints.erp.modules.company.dto.CompanyLifecycleStateRequest;
 import com.bigbrightpaints.erp.modules.company.dto.CompanyRequest;
@@ -165,6 +166,82 @@ class CompanyServiceTest {
         CompanyDto dto = companyService.update(2L, request, Set.of(target));
 
         assertThat(dto.defaultGstRate()).isEqualByComparingTo("18.00");
+    }
+
+    @Test
+    void update_appliesEnabledModulesWhenPayloadIncludesGatableModules() {
+        authenticateAs("ROLE_SUPER_ADMIN");
+        Company target = company(2L, "ACME");
+        CompanyRequest request = new CompanyRequest(
+                "New Name",
+                "NEW",
+                "UTC",
+                BigDecimal.TEN,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                Set.of("portal", "PURCHASING"));
+        when(repository.findById(2L)).thenReturn(Optional.of(target));
+
+        CompanyDto dto = companyService.update(2L, request, Set.of(target));
+
+        assertThat(dto.code()).isEqualTo("NEW");
+        assertThat(target.getEnabledModules()).containsExactlyInAnyOrder("PORTAL", "PURCHASING");
+    }
+
+    @Test
+    void update_rejectsUnknownEnabledModules() {
+        authenticateAs("ROLE_SUPER_ADMIN");
+        Company target = company(2L, "ACME");
+        CompanyRequest request = new CompanyRequest(
+                "New Name",
+                "NEW",
+                "UTC",
+                BigDecimal.TEN,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                Set.of("NO_SUCH_MODULE"));
+        when(repository.findById(2L)).thenReturn(Optional.of(target));
+
+        assertThatThrownBy(() -> companyService.update(2L, request, Set.of(target)))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("enabledModules contains unknown modules");
+    }
+
+    @Test
+    void update_rejectsCoreEnabledModules() {
+        authenticateAs("ROLE_SUPER_ADMIN");
+        Company target = company(2L, "ACME");
+        CompanyRequest request = new CompanyRequest(
+                "New Name",
+                "NEW",
+                "UTC",
+                BigDecimal.TEN,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                Set.of("AUTH"));
+        when(repository.findById(2L)).thenReturn(Optional.of(target));
+
+        assertThatThrownBy(() -> companyService.update(2L, request, Set.of(target)))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("enabledModules can only include gatable modules");
     }
 
     @Test
@@ -418,6 +495,43 @@ class CompanyServiceTest {
 
         assertThat(request.firstAdminEmail()).isNull();
         assertThat(request.firstAdminDisplayName()).isNull();
+        assertThat(request.enabledModules()).isNull();
+    }
+
+    @Test
+    void updateEnabledModules_updatesTenantModulesForSuperAdmin() {
+        authenticateAs("ROLE_SUPER_ADMIN");
+        Company target = company(3L, "ACME");
+        when(repository.findById(3L)).thenReturn(Optional.of(target));
+
+        CompanyEnabledModulesDto response = companyService.updateEnabledModules(3L, Set.of("PORTAL"));
+
+        assertThat(response.companyId()).isEqualTo(3L);
+        assertThat(response.companyCode()).isEqualTo("ACME");
+        assertThat(response.enabledModules()).containsExactly("PORTAL");
+        assertThat(target.getEnabledModules()).containsExactly("PORTAL");
+    }
+
+    @Test
+    void updateEnabledModules_rejectsMissingPayload() {
+        authenticateAs("ROLE_SUPER_ADMIN");
+
+        assertThatThrownBy(() -> companyService.updateEnabledModules(3L, null))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("enabledModules is required");
+
+        verify(repository, never()).findById(anyLong());
+    }
+
+    @Test
+    void updateEnabledModules_deniesNonSuperAdmin() {
+        authenticateAs("ROLE_ADMIN");
+
+        assertThatThrownBy(() -> companyService.updateEnabledModules(3L, Set.of("PORTAL")))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("SUPER_ADMIN authority required for tenant configuration updates");
+
+        verify(repository, never()).findById(anyLong());
     }
 
     @Test

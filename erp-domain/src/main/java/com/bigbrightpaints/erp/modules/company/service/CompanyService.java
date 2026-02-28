@@ -10,8 +10,10 @@ import com.bigbrightpaints.erp.modules.auth.service.TenantAdminProvisioningServi
 import com.bigbrightpaints.erp.modules.company.dto.CompanyAdminCredentialResetDto;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyLifecycleState;
+import com.bigbrightpaints.erp.modules.company.domain.CompanyModule;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.company.dto.CompanyDto;
+import com.bigbrightpaints.erp.modules.company.dto.CompanyEnabledModulesDto;
 import com.bigbrightpaints.erp.modules.company.dto.CompanyLifecycleStateDto;
 import com.bigbrightpaints.erp.modules.company.dto.CompanyLifecycleStateRequest;
 import com.bigbrightpaints.erp.modules.company.dto.CompanyRequest;
@@ -20,8 +22,10 @@ import com.bigbrightpaints.erp.modules.company.dto.CompanySupportWarningDto;
 import com.bigbrightpaints.erp.modules.company.dto.CompanyTenantMetricsDto;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -53,6 +57,7 @@ public class CompanyService {
     private static final String RUNTIME_POLICY_SUPER_ADMIN_REQUIRED_REASON =
             "super-admin-required-for-tenant-runtime-policy-control";
     private static final String RUNTIME_POLICY_UPDATED_REASON = "tenant-runtime-policy-updated";
+    private static final String TENANT_MODULES_UPDATED_REASON = "tenant-enabled-modules-updated";
     private static final String SUPERADMIN_DASHBOARD_READ_REASON = "superadmin-dashboard-read";
     private static final String TENANT_SUPPORT_WARNING_ISSUED_REASON = "tenant-support-warning-issued";
     private static final long ERROR_RATE_BASIS_POINTS_SCALE = 10_000L;
@@ -136,6 +141,9 @@ public class CompanyService {
         company.setQuotaMaxConcurrentSessions(resolveQuotaForCreate(request.quotaMaxConcurrentSessions()));
         company.setQuotaSoftLimitEnabled(resolveQuotaFlagForCreate(request.quotaSoftLimitEnabled(), false));
         company.setQuotaHardLimitEnabled(resolveQuotaFlagForCreate(request.quotaHardLimitEnabled(), true));
+        if (request.enabledModules() != null) {
+            company.setEnabledModules(validateAndNormalizeEnabledModules(request.enabledModules()));
+        }
         Company saved = repository.save(company);
         provisionInitialAdminIfRequested(saved, request.firstAdminEmail(), request.firstAdminDisplayName());
         auditAuthorityDecision(true, "tenant-bootstrap-created", normalizedCompanyCode, authentication);
@@ -162,7 +170,23 @@ public class CompanyService {
         company.setQuotaMaxConcurrentSessions(resolveQuotaForUpdate(request.quotaMaxConcurrentSessions(), company.getQuotaMaxConcurrentSessions()));
         company.setQuotaSoftLimitEnabled(resolveQuotaFlagForUpdate(request.quotaSoftLimitEnabled(), company.isQuotaSoftLimitEnabled()));
         company.setQuotaHardLimitEnabled(resolveQuotaFlagForUpdate(request.quotaHardLimitEnabled(), company.isQuotaHardLimitEnabled()));
+        if (request.enabledModules() != null) {
+            company.setEnabledModules(validateAndNormalizeEnabledModules(request.enabledModules()));
+        }
         return toDto(company);
+    }
+
+    @Transactional
+    public CompanyEnabledModulesDto updateEnabledModules(Long id, Set<String> enabledModules) {
+        Authentication authentication = requireSuperAdminForTenantConfigurationUpdate();
+        if (enabledModules == null) {
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("enabledModules is required");
+        }
+        Company company = repository.findById(id)
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Company not found"));
+        company.setEnabledModules(validateAndNormalizeEnabledModules(enabledModules));
+        auditAuthorityDecision(true, TENANT_MODULES_UPDATED_REASON, company.getCode(), authentication);
+        return new CompanyEnabledModulesDto(company.getId(), company.getCode(), company.getEnabledModules());
     }
 
     public void delete(Long id, Set<Company> allowedCompanies) {
@@ -858,6 +882,39 @@ public class CompanyService {
 
     private long resolveQuotaForUpdate(Long requestedQuota, long existingQuota) {
         return requestedQuota == null ? existingQuota : requestedQuota;
+    }
+
+    private Set<String> validateAndNormalizeEnabledModules(Set<String> requestedModules) {
+        LinkedHashSet<String> normalized = new LinkedHashSet<>();
+        List<String> unknownModules = new ArrayList<>();
+        List<String> coreModules = new ArrayList<>();
+        for (String requestedModule : requestedModules) {
+            if (!StringUtils.hasText(requestedModule)) {
+                unknownModules.add(String.valueOf(requestedModule));
+                continue;
+            }
+            CompanyModule module = CompanyModule.fromValue(requestedModule)
+                    .orElse(null);
+            if (module == null) {
+                unknownModules.add(requestedModule.trim());
+                continue;
+            }
+            if (module.isCore()) {
+                coreModules.add(module.name());
+                continue;
+            }
+            normalized.add(module.name());
+        }
+
+        if (!unknownModules.isEmpty()) {
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+                    "enabledModules contains unknown modules: " + unknownModules);
+        }
+        if (!coreModules.isEmpty()) {
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+                    "enabledModules can only include gatable modules: " + coreModules);
+        }
+        return normalized;
     }
 
     private boolean resolveQuotaFlagForCreate(Boolean requestedFlag, boolean defaultValue) {
