@@ -88,20 +88,25 @@ public class PasswordResetService {
         this.tokenCleanupTransactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
-    @Transactional
     public void requestReset(String email) {
         logTenantContextIgnoredIfPresent("forgot_password", resolveCorrelationId());
         // GLOBAL_IDENTITY policy: one user identity spans all company memberships.
         userAccountRepository.findByEmailIgnoreCase(email)
                 .filter(UserAccount::isEnabled)
                 .ifPresent(user -> {
-                    tokenRepository.deleteByUser(user);
-                    String token = generateToken();
-                    Instant now = Instant.now();
-                    Instant expiresAt = now.plusSeconds(RESET_TOKEN_TTL_SECONDS);
-                    PasswordResetToken resetToken = new PasswordResetToken(user, token, expiresAt);
-                    tokenRepository.save(resetToken);
-                    emailService.sendPasswordResetEmail(user.getEmail(), user.getDisplayName(), token);
+                    String persistedToken = tokenLifecycleTransactionTemplate.execute(status -> {
+                        tokenRepository.deleteByUser(user);
+                        String token = generateToken();
+                        Instant now = Instant.now();
+                        Instant expiresAt = now.plusSeconds(RESET_TOKEN_TTL_SECONDS);
+                        PasswordResetToken resetToken = new PasswordResetToken(user, token, expiresAt);
+                        tokenRepository.save(resetToken);
+                        return token;
+                    });
+                    if (!StringUtils.hasText(persistedToken)) {
+                        throw new IllegalStateException("Failed to persist password reset token");
+                    }
+                    emailService.sendPasswordResetEmail(user.getEmail(), user.getDisplayName(), persistedToken);
                 });
     }
 
@@ -205,10 +210,11 @@ public class PasswordResetService {
     private String issueSuperAdminResetToken(UserAccount user, String correlationId, String maskedEmail) {
         String tokenValue = tokenLifecycleTransactionTemplate.execute(status -> {
             assertTokenLifecycleTransactionActive("issue", correlationId, maskedEmail);
-            tokenRepository.deleteByUser(user);
+            UserAccount eligibleUser = requireEligibleSuperAdminForReset(user);
+            tokenRepository.deleteByUser(eligibleUser);
             String token = generateToken();
             Instant expiresAt = Instant.now().plusSeconds(RESET_TOKEN_TTL_SECONDS);
-            PasswordResetToken resetToken = new PasswordResetToken(user, token, expiresAt);
+            PasswordResetToken resetToken = new PasswordResetToken(eligibleUser, token, expiresAt);
             tokenRepository.saveAndFlush(resetToken);
             return token;
         });
@@ -221,6 +227,16 @@ public class PasswordResetService {
                 correlationId,
                 maskedEmail);
         return tokenValue;
+    }
+
+    private UserAccount requireEligibleSuperAdminForReset(UserAccount candidate) {
+        if (candidate == null || !StringUtils.hasText(candidate.getEmail())) {
+            throw new IllegalStateException("Super-admin account is unavailable for reset");
+        }
+        return userAccountRepository.findByEmailIgnoreCase(candidate.getEmail())
+                .filter(UserAccount::isEnabled)
+                .filter(this::hasSuperAdminRole)
+                .orElseThrow(() -> new IllegalStateException("Super-admin reset eligibility changed"));
     }
 
     private void cleanupFailedSuperAdminResetToken(UserAccount user, String tokenValue, String correlationId) {

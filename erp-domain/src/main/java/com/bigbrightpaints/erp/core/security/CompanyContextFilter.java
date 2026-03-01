@@ -20,6 +20,8 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.text.Normalizer;
+import java.util.Locale;
 import java.util.Set;
 
 @Component
@@ -53,48 +55,69 @@ public class CompanyContextFilter extends OncePerRequestFilter {
                 TenantRuntimeEnforcementService.TenantRequestAdmission.notTracked();
         try {
             String runtimePath = resolveApplicationPath(request);
-            if (isPublicPasswordResetRequest(runtimePath, request.getMethod())) {
+            boolean publicPasswordResetRequest = isPublicPasswordResetRequest(runtimePath, request.getMethod());
+            boolean lifecycleControlRequest = isLifecycleControlRequest(runtimePath, request.getMethod());
+            if (publicPasswordResetRequest) {
                 filterChain.doFilter(request, response);
                 return;
             }
-            boolean lifecycleControlRequest = isLifecycleControlRequest(runtimePath, request.getMethod());
             if (lifecycleControlRequest && !hasAuthenticatedPrincipal()) {
                 denyControlPlaneRequest(response);
                 return;
             }
             String headerCompanyCode = request.getHeader("X-Company-Code");
             String legacyHeaderCompanyId = request.getHeader("X-Company-Id");
-            if (StringUtils.hasText(headerCompanyCode) && StringUtils.hasText(legacyHeaderCompanyId)
-                    && !headerCompanyCode.trim().equalsIgnoreCase(legacyHeaderCompanyId.trim())) {
+            String normalizedHeaderCompanyCode = normalizeCompanyCodeForComparison(headerCompanyCode);
+            String normalizedLegacyHeaderCompanyId = normalizeCompanyCodeForComparison(legacyHeaderCompanyId);
+            if (StringUtils.hasText(headerCompanyCode) && !StringUtils.hasText(normalizedHeaderCompanyCode)) {
+                response.sendError(HttpServletResponse.SC_FORBIDDEN, "Invalid company header");
+                return;
+            }
+            if (StringUtils.hasText(legacyHeaderCompanyId) && !StringUtils.hasText(normalizedLegacyHeaderCompanyId)) {
+                response.sendError(HttpServletResponse.SC_FORBIDDEN, "Invalid company header");
+                return;
+            }
+            if (StringUtils.hasText(normalizedHeaderCompanyCode) && StringUtils.hasText(normalizedLegacyHeaderCompanyId)
+                    && !normalizedHeaderCompanyCode.equals(normalizedLegacyHeaderCompanyId)) {
                 log.warn("Rejecting mismatched company headers. X-Company-Code={}, X-Company-Id={}, path={}",
                         headerCompanyCode, legacyHeaderCompanyId, request.getRequestURI());
                 response.sendError(HttpServletResponse.SC_FORBIDDEN, "Company headers do not match");
                 return;
             }
-            String requestedCompany = StringUtils.hasText(headerCompanyCode)
-                    ? headerCompanyCode
-                    : legacyHeaderCompanyId;
+            String requestedCompany = StringUtils.hasText(normalizedHeaderCompanyCode)
+                    ? normalizedHeaderCompanyCode
+                    : normalizedLegacyHeaderCompanyId;
             Object claimsAttr = request.getAttribute("jwtClaims");
             if (claimsAttr instanceof Claims claims) {
                 String tokenCompanyCode = claims.get("companyCode", String.class);
                 String legacyTokenCompanyId = claims.get("cid", String.class);
-                if (StringUtils.hasText(tokenCompanyCode) && StringUtils.hasText(legacyTokenCompanyId)
-                        && !tokenCompanyCode.trim().equalsIgnoreCase(legacyTokenCompanyId.trim())) {
+                String normalizedTokenCompanyCode = normalizeCompanyCodeForComparison(tokenCompanyCode);
+                String normalizedLegacyTokenCompanyId = normalizeCompanyCodeForComparison(legacyTokenCompanyId);
+                if (StringUtils.hasText(tokenCompanyCode) && !StringUtils.hasText(normalizedTokenCompanyCode)) {
+                    response.sendError(HttpServletResponse.SC_FORBIDDEN, "Invalid company claim");
+                    return;
+                }
+                if (StringUtils.hasText(legacyTokenCompanyId) && !StringUtils.hasText(normalizedLegacyTokenCompanyId)) {
+                    response.sendError(HttpServletResponse.SC_FORBIDDEN, "Invalid company claim");
+                    return;
+                }
+                if (StringUtils.hasText(normalizedTokenCompanyCode) && StringUtils.hasText(normalizedLegacyTokenCompanyId)
+                        && !normalizedTokenCompanyCode.equals(normalizedLegacyTokenCompanyId)) {
                     log.warn("Rejecting mismatched token company claims. companyCode={}, cid={}, path={}",
                             tokenCompanyCode, legacyTokenCompanyId, request.getRequestURI());
                     response.sendError(HttpServletResponse.SC_FORBIDDEN, "Token company claims do not match");
                     return;
                 }
-                String resolvedTokenCompany = StringUtils.hasText(tokenCompanyCode)
-                        ? tokenCompanyCode
-                        : legacyTokenCompanyId;
+                String resolvedTokenCompany = StringUtils.hasText(normalizedTokenCompanyCode)
+                        ? normalizedTokenCompanyCode
+                        : normalizedLegacyTokenCompanyId;
                 if (!StringUtils.hasText(resolvedTokenCompany)) {
                     log.warn("Rejecting authenticated request without company claim. path={}", request.getRequestURI());
                     response.sendError(HttpServletResponse.SC_FORBIDDEN, "Authenticated token missing company context");
                     return;
                 }
                 if (StringUtils.hasText(requestedCompany)
-                        && !resolvedTokenCompany.trim().equalsIgnoreCase(requestedCompany.trim())) {
+                        && !resolvedTokenCompany.equals(requestedCompany)) {
                     log.warn("Rejecting company header mismatch. tokenCompanyCode={}, headerCompanyCode={}, path={}",
                             resolvedTokenCompany, requestedCompany, request.getRequestURI());
                     response.sendError(HttpServletResponse.SC_FORBIDDEN, "Company header does not match authenticated company context");
@@ -110,7 +133,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
                 }
                 requestedCompany = null;
             }
-            String companyCode = StringUtils.hasText(requestedCompany) ? requestedCompany.trim() : null;
+            String companyCode = StringUtils.hasText(requestedCompany) ? requestedCompany : null;
             boolean lifecycleControlBypass = false;
             if (lifecycleControlRequest) {
                 Long lifecycleControlCompanyId = extractCompanyIdFromLifecycleControlPath(runtimePath);
@@ -118,20 +141,21 @@ public class CompanyContextFilter extends OncePerRequestFilter {
                     denyControlPlaneRequest(response);
                     return;
                 }
-                String pathTargetCompanyCode = companyService.resolveCompanyCodeById(lifecycleControlCompanyId);
+                String pathTargetCompanyCode = normalizeCompanyCodeForComparison(
+                        companyService.resolveCompanyCodeById(lifecycleControlCompanyId));
                 if (!StringUtils.hasText(pathTargetCompanyCode)) {
                     denyControlPlaneRequest(response);
                     return;
                 }
                 if (hasSuperAdminAuthority()) {
-                    companyCode = pathTargetCompanyCode.trim();
+                    companyCode = pathTargetCompanyCode;
                     lifecycleControlBypass = true;
                 } else if (!StringUtils.hasText(companyCode)
-                        || !companyCode.trim().equalsIgnoreCase(pathTargetCompanyCode.trim())) {
+                        || !companyCode.equals(pathTargetCompanyCode)) {
                     denyControlPlaneRequest(response);
                     return;
                 } else {
-                    companyCode = pathTargetCompanyCode.trim();
+                    companyCode = pathTargetCompanyCode;
                 }
             }
             if (companyCode != null) {
@@ -383,7 +407,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = resolveApplicationPath(request);
         if (!StringUtils.hasText(path)) {
-            return false;
+            return true;
         }
         return path.startsWith("/actuator") || path.startsWith("/swagger") || path.startsWith("/v3");
     }
@@ -405,5 +429,27 @@ public class CompanyContextFilter extends OncePerRequestFilter {
             normalizedPath = normalizedPath.substring(0, normalizedPath.length() - 1);
         }
         return normalizedPath;
+    }
+
+    private String normalizeCompanyCodeForComparison(String rawCompanyCode) {
+        if (!StringUtils.hasText(rawCompanyCode)) {
+            return null;
+        }
+        String normalized = Normalizer.normalize(rawCompanyCode, Normalizer.Form.NFKC).strip();
+        if (!StringUtils.hasText(normalized)) {
+            return null;
+        }
+        for (int i = 0; i < normalized.length(); i++) {
+            char ch = normalized.charAt(i);
+            int type = Character.getType(ch);
+            if (Character.isISOControl(ch)
+                    || type == Character.FORMAT
+                    || type == Character.PRIVATE_USE
+                    || type == Character.SURROGATE
+                    || type == Character.UNASSIGNED) {
+                return null;
+            }
+        }
+        return normalized.toUpperCase(Locale.ROOT);
     }
 }

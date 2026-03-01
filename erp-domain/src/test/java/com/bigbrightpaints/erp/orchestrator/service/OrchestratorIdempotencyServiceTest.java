@@ -7,6 +7,7 @@ import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.orchestrator.repository.OrchestratorCommand;
 import com.bigbrightpaints.erp.orchestrator.repository.OrchestratorCommandRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
@@ -189,6 +190,71 @@ class OrchestratorIdempotencyServiceTest {
         assertThat(existing.getStatus()).isEqualTo(OrchestratorCommand.Status.IN_PROGRESS);
         assertThat(existing.getLastError()).isNull();
         verify(commandRepository).save(existing);
+    }
+
+    @Test
+    void startDoesNotRetryStaleInProgressReservation() {
+        Map<String, Object> payload = Map.of("orderId", "101", "amount", "5000");
+        String requestHash = ReflectionTestUtils.invokeMethod(
+                service,
+                "hashRequest",
+                7L,
+                "ORCH.ORDER.APPROVE",
+                payload);
+
+        OrchestratorCommand existing = new OrchestratorCommand(
+                7L,
+                "ORCH.ORDER.APPROVE",
+                "idem-stale",
+                requestHash,
+                "trace-stale");
+        ReflectionTestUtils.setField(existing, "updatedAt", Instant.now().minusSeconds(3600));
+
+        when(commandRepository.reserveScope(7L, "ORCH.ORDER.APPROVE", "idem-stale", requestHash, "trace-seed"))
+                .thenReturn(0);
+        when(commandRepository.lockByScope(7L, "ORCH.ORDER.APPROVE", "idem-stale"))
+                .thenReturn(Optional.of(existing));
+
+        OrchestratorIdempotencyService.CommandLease lease = service.start(
+                "ORCH.ORDER.APPROVE",
+                "idem-stale",
+                payload,
+                () -> "trace-seed");
+
+        assertThat(lease.shouldExecute()).isFalse();
+        verify(commandRepository, never()).save(existing);
+    }
+
+    @Test
+    void startDoesNotRetryFreshInProgressReservation() {
+        Map<String, Object> payload = Map.of("orderId", "101", "amount", "5000");
+        String requestHash = ReflectionTestUtils.invokeMethod(
+                service,
+                "hashRequest",
+                7L,
+                "ORCH.ORDER.APPROVE",
+                payload);
+
+        OrchestratorCommand existing = new OrchestratorCommand(
+                7L,
+                "ORCH.ORDER.APPROVE",
+                "idem-in-progress",
+                requestHash,
+                "trace-fresh");
+
+        when(commandRepository.reserveScope(7L, "ORCH.ORDER.APPROVE", "idem-in-progress", requestHash, "trace-seed"))
+                .thenReturn(0);
+        when(commandRepository.lockByScope(7L, "ORCH.ORDER.APPROVE", "idem-in-progress"))
+                .thenReturn(Optional.of(existing));
+
+        OrchestratorIdempotencyService.CommandLease lease = service.start(
+                "ORCH.ORDER.APPROVE",
+                "idem-in-progress",
+                payload,
+                () -> "trace-seed");
+
+        assertThat(lease.shouldExecute()).isFalse();
+        verify(commandRepository, never()).save(existing);
     }
 
     @Test

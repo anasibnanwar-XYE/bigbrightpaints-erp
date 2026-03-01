@@ -87,6 +87,7 @@ public class IntegrationCoordinator {
     private final Long dispatchCreditAccountId;
     private final TransactionTemplate txTemplate;
     private static final AtomicBoolean dispatchAccountWarningLogged = new AtomicBoolean(false);
+    private static final ThreadLocal<Integer> contextDepth = ThreadLocal.withInitial(() -> 0);
 
     public IntegrationCoordinator(SalesService salesService,
                                   FactoryService factoryService,
@@ -455,12 +456,15 @@ public class IntegrationCoordinator {
 
     @Transactional(readOnly = true)
     public Map<String, Object> health() {
-        Map<String, Object> health = new HashMap<>();
-        health.put("orders", salesService.listOrders(null).size());
-        health.put("plans", factoryService.listPlans().size());
-        health.put("accounts", accountingService.listAccounts().size());
-        health.put("employees", hrService.listEmployees().size());
-        return health;
+        String companyId = companyContextService.requireCurrentCompany().getCode();
+        return withCompanyContext(companyId, () -> {
+            Map<String, Object> health = new HashMap<>();
+            health.put("orders", salesService.listOrders(null).size());
+            health.put("plans", factoryService.listPlans().size());
+            health.put("accounts", accountingService.listAccounts().size());
+            health.put("employees", hrService.listEmployees().size());
+            return health;
+        });
     }
 
     @Transactional(readOnly = true)
@@ -591,16 +595,20 @@ public class IntegrationCoordinator {
     }
 
     private OrderAutoApprovalState lockAutoApprovalState(String companyId, Long orderId) {
-        return txTemplate.execute(status -> orderAutoApprovalStateRepository.findByCompanyCodeAndOrderId(companyId, orderId)
-                .orElseGet(() -> {
-                    try {
-                        orderAutoApprovalStateRepository.save(new OrderAutoApprovalState(companyId, orderId));
-                    } catch (DataIntegrityViolationException ex) {
-                        log.warn("Auto-approval state already exists for order {} in company {}; retrying fetch", orderId, companyId);
-                    }
-                    return orderAutoApprovalStateRepository.findByCompanyCodeAndOrderId(companyId, orderId)
-                            .orElseThrow(() -> new IllegalStateException("Unable to initialize auto-approval state"));
-                }));
+        Optional<OrderAutoApprovalState> existing =
+                orderAutoApprovalStateRepository.findByCompanyCodeAndOrderId(companyId, orderId);
+        if (existing.isPresent()) {
+            return existing.get();
+        }
+        txTemplate.executeWithoutResult(status -> {
+            try {
+                orderAutoApprovalStateRepository.saveAndFlush(new OrderAutoApprovalState(companyId, orderId));
+            } catch (DataIntegrityViolationException ex) {
+                log.warn("Auto-approval state already exists for order {} in company {}; retrying fetch", orderId, companyId);
+            }
+        });
+        return orderAutoApprovalStateRepository.findByCompanyCodeAndOrderId(companyId, orderId)
+                .orElseThrow(() -> new IllegalStateException("Unable to initialize auto-approval state"));
     }
 
     private void runWithCompanyContext(String companyId, Runnable action) {
@@ -612,16 +620,25 @@ public class IntegrationCoordinator {
 
     private <T> T withCompanyContext(String companyId, Supplier<T> callback) {
         String normalizedCompanyId = normalizeCompanyId(companyId);
+        int currentDepth = contextDepth.get();
+        contextDepth.set(currentDepth + 1);
         String previousCompany = CompanyContextHolder.getCompanyCode();
         boolean changed = normalizedCompanyId != null && !Objects.equals(previousCompany, normalizedCompanyId);
+        boolean restorePreviousOnExit = currentDepth > 0;
         if (changed) {
             CompanyContextHolder.setCompanyCode(normalizedCompanyId);
         }
         try {
             return callback.get();
         } finally {
+            int nextDepth = contextDepth.get() - 1;
+            if (nextDepth <= 0) {
+                contextDepth.remove();
+            } else {
+                contextDepth.set(nextDepth);
+            }
             if (changed) {
-                if (previousCompany != null) {
+                if (restorePreviousOnExit && previousCompany != null) {
                     CompanyContextHolder.setCompanyCode(previousCompany);
                 } else {
                     CompanyContextHolder.clear();

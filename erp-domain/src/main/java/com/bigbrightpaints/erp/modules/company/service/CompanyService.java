@@ -16,7 +16,6 @@ import com.bigbrightpaints.erp.modules.company.dto.CompanyLifecycleStateDto;
 import com.bigbrightpaints.erp.modules.company.dto.CompanyLifecycleStateRequest;
 import com.bigbrightpaints.erp.modules.company.dto.CompanyRequest;
 import com.bigbrightpaints.erp.modules.company.dto.CompanyTenantMetricsDto;
-import jakarta.transaction.Transactional;
 import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.List;
@@ -28,6 +27,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.util.Set;
@@ -114,6 +114,9 @@ public class CompanyService {
         String normalizedCompanyCode = normalizeCompanyCode(request.code());
         Authentication authentication = requireSuperAdminForTenantBootstrap(normalizedCompanyCode);
         ensureCompanyCodeAvailableForCreate(normalizedCompanyCode);
+        if (StringUtils.hasText(request.firstAdminEmail())) {
+            requireCredentialProvisioningReady();
+        }
         Company company = new Company();
         company.setName(request.name());
         company.setCode(normalizedCompanyCode);
@@ -474,7 +477,6 @@ public class CompanyService {
         if (!StringUtils.hasText(firstAdminEmail)) {
             return;
         }
-        requireCredentialProvisioningReady();
         tenantAdminProvisioningService.provisionInitialAdmin(company, firstAdminEmail, firstAdminDisplayName);
     }
 

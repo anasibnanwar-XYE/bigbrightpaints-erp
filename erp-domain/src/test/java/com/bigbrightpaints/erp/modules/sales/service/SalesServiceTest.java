@@ -1015,6 +1015,41 @@ class SalesServiceTest {
     }
 
     @Test
+    void confirmDispatchRejectsCancelledPackingSlip() {
+        SalesOrder order = new SalesOrder();
+        setField(order, "id", 10L);
+
+        PackagingSlip cancelledSlip = new PackagingSlip();
+        cancelledSlip.setCompany(company);
+        cancelledSlip.setSalesOrder(order);
+        cancelledSlip.setStatus("CANCELLED");
+        setField(cancelledSlip, "id", 55L);
+
+        when(packagingSlipRepository.findAndLockByIdAndCompany(55L, company)).thenReturn(Optional.of(cancelledSlip));
+        when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, 10L))
+                .thenReturn(List.of(cancelledSlip));
+        when(companyEntityLookup.requireSalesOrder(company, 10L)).thenReturn(order);
+
+        DispatchConfirmRequest request = new DispatchConfirmRequest(55L, null, List.of(), null, null, false, null, null);
+
+        ApplicationException ex = assertThrows(ApplicationException.class, () -> salesService.confirmDispatch(request));
+        assertEquals(ErrorCode.VALIDATION_INVALID_INPUT, ex.getErrorCode());
+        assertTrue(ex.getMessage().contains("Cannot dispatch packing slip with status: CANCELLED"));
+        verifyNoInteractions(dealerRepository, finishedGoodsService);
+    }
+
+    @Test
+    void confirmDispatchTreatsNullLockResultAsMissingSlip() {
+        when(packagingSlipRepository.findAndLockByIdAndCompany(55L, company)).thenReturn(null);
+
+        DispatchConfirmRequest request = new DispatchConfirmRequest(55L, null, List.of(), null, null, false, null, null);
+
+        ApplicationException ex = assertThrows(ApplicationException.class, () -> salesService.confirmDispatch(request));
+        assertEquals(ErrorCode.VALIDATION_INVALID_REFERENCE, ex.getErrorCode());
+        assertTrue(ex.getMessage().contains("Packing slip not found"));
+    }
+
+    @Test
     void confirmDispatchRequiresPackingSlipIdWhenMultipleSlipsExist() {
         SalesOrder order = new SalesOrder();
         setField(order, "id", 10L);
@@ -1037,6 +1072,135 @@ class SalesServiceTest {
         DispatchConfirmRequest request = new DispatchConfirmRequest(null, 10L, List.of(), null, null, false, null, null);
 
         assertThrows(ApplicationException.class, () -> salesService.confirmDispatch(request));
+    }
+
+    @Test
+    void confirmDispatchFailsWhenOnlyCancelledSlipExistsWithoutPackingSlipId() {
+        SalesOrder order = new SalesOrder();
+        setField(order, "id", 10L);
+        order.setStatus("READY_TO_SHIP");
+
+        PackagingSlip cancelledSlip = new PackagingSlip();
+        cancelledSlip.setCompany(company);
+        cancelledSlip.setSalesOrder(order);
+        cancelledSlip.setStatus("CANCELLED");
+        setField(cancelledSlip, "id", 55L);
+
+        when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, 10L))
+                .thenReturn(List.of(cancelledSlip));
+        when(companyEntityLookup.requireSalesOrder(company, 10L)).thenReturn(order);
+
+        DispatchConfirmRequest request = new DispatchConfirmRequest(null, 10L, List.of(), null, null, false, null, null);
+
+        ApplicationException ex = assertThrows(ApplicationException.class, () -> salesService.confirmDispatch(request));
+        assertEquals(ErrorCode.VALIDATION_INVALID_REFERENCE, ex.getErrorCode());
+        assertTrue(ex.getMessage().contains("No active packing slip found for order 10"));
+    }
+
+    @Test
+    void confirmDispatchFailsWhenOnlyDispatchedSlipExistsWithoutPackingSlipId() {
+        SalesOrder order = new SalesOrder();
+        setField(order, "id", 10L);
+        order.setStatus("READY_TO_SHIP");
+
+        PackagingSlip dispatchedSlip = new PackagingSlip();
+        dispatchedSlip.setCompany(company);
+        dispatchedSlip.setSalesOrder(order);
+        dispatchedSlip.setStatus("DISPATCHED");
+        setField(dispatchedSlip, "id", 55L);
+
+        when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, 10L))
+                .thenReturn(List.of(dispatchedSlip));
+        when(companyEntityLookup.requireSalesOrder(company, 10L)).thenReturn(order);
+
+        DispatchConfirmRequest request = new DispatchConfirmRequest(null, 10L, List.of(), null, null, false, null, null);
+
+        ApplicationException ex = assertThrows(ApplicationException.class, () -> salesService.confirmDispatch(request));
+        assertEquals(ErrorCode.VALIDATION_INVALID_REFERENCE, ex.getErrorCode());
+        assertTrue(ex.getMessage().contains("No active packing slip found for order 10"));
+    }
+
+    @Test
+    void confirmDispatchOrderIdOnlyWithCancelledAndBackorderSkipsCancelledSelection() {
+        SalesOrder order = new SalesOrder();
+        setField(order, "id", 10L);
+        order.setStatus("READY_TO_SHIP");
+
+        PackagingSlip cancelledSlip = new PackagingSlip();
+        cancelledSlip.setCompany(company);
+        cancelledSlip.setSalesOrder(order);
+        cancelledSlip.setStatus("CANCELLED");
+        setField(cancelledSlip, "id", 55L);
+
+        PackagingSlip backorderSlip = new PackagingSlip();
+        backorderSlip.setCompany(company);
+        backorderSlip.setSalesOrder(order);
+        backorderSlip.setStatus("BACKORDER");
+        setField(backorderSlip, "id", 56L);
+
+        when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, 10L))
+                .thenReturn(List.of(cancelledSlip, backorderSlip));
+        when(companyEntityLookup.requireSalesOrder(company, 10L)).thenReturn(order);
+
+        DispatchConfirmRequest request = new DispatchConfirmRequest(null, 10L, List.of(), null, null, false, null, null);
+
+        ApplicationException ex = assertThrows(ApplicationException.class, () -> salesService.confirmDispatch(request));
+        assertTrue(ex.getMessage().contains("Dealer with receivable account is required for dispatch"));
+    }
+
+    @Test
+    void confirmDispatchOrderIdOnlyWithDispatchedAndPendingSkipsDispatchedSelection() {
+        SalesOrder order = new SalesOrder();
+        setField(order, "id", 10L);
+        order.setStatus("READY_TO_SHIP");
+
+        PackagingSlip dispatchedSlip = new PackagingSlip();
+        dispatchedSlip.setCompany(company);
+        dispatchedSlip.setSalesOrder(order);
+        dispatchedSlip.setStatus("DISPATCHED");
+        setField(dispatchedSlip, "id", 55L);
+
+        PackagingSlip pendingSlip = new PackagingSlip();
+        pendingSlip.setCompany(company);
+        pendingSlip.setSalesOrder(order);
+        pendingSlip.setStatus("PENDING");
+        setField(pendingSlip, "id", 56L);
+
+        when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, 10L))
+                .thenReturn(List.of(dispatchedSlip, pendingSlip));
+        when(companyEntityLookup.requireSalesOrder(company, 10L)).thenReturn(order);
+
+        DispatchConfirmRequest request = new DispatchConfirmRequest(null, 10L, List.of(), null, null, false, null, null);
+
+        ApplicationException ex = assertThrows(ApplicationException.class, () -> salesService.confirmDispatch(request));
+        assertFalse(ex.getMessage().contains("Multiple packing slips found for order 10; provide packingSlipId"));
+        assertTrue(ex.getMessage().contains("Dealer with receivable account is required for dispatch"));
+    }
+
+    @Test
+    void confirmDispatchRejectsWhenSlipOrderLinkageChanges() {
+        SalesOrder lockedOrder = new SalesOrder();
+        setField(lockedOrder, "id", 10L);
+        lockedOrder.setStatus("READY_TO_SHIP");
+
+        SalesOrder linkedOrder = new SalesOrder();
+        setField(linkedOrder, "id", 20L);
+
+        PackagingSlip slip = new PackagingSlip();
+        slip.setCompany(company);
+        slip.setSalesOrder(linkedOrder);
+        slip.setStatus("PENDING");
+        setField(slip, "id", 55L);
+
+        when(packagingSlipRepository.findAndLockByIdAndCompany(55L, company)).thenReturn(Optional.of(slip));
+        when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, 20L)).thenReturn(List.of(slip));
+        when(companyEntityLookup.requireSalesOrder(company, 20L)).thenReturn(lockedOrder);
+
+        DispatchConfirmRequest request = new DispatchConfirmRequest(55L, null, List.of(), null, null, false, null, null);
+
+        ApplicationException ex = assertThrows(ApplicationException.class, () -> salesService.confirmDispatch(request));
+        assertEquals(ErrorCode.CONCURRENCY_CONFLICT, ex.getErrorCode());
+        assertTrue(ex.getMessage().contains("Packing slip order linkage changed"));
     }
 
     @Test
@@ -3685,16 +3849,17 @@ class SalesServiceTest {
     }
 
     @Test
-    void confirmOrderIsIdempotentWhenAlreadyConfirmed() {
+    void confirmOrderIsIdempotentWhenAlreadyConfirmedAndCanonicalizesStoredStatus() {
         SalesOrder order = new SalesOrder();
         order.setCompany(company);
-        order.setStatus("CONFIRMED");
+        order.setStatus(" confirmed ");
         setField(order, "id", 499L);
         when(companyEntityLookup.requireSalesOrder(company, 499L)).thenReturn(order);
 
         SalesOrderDto dto = salesService.confirmOrder(499L);
 
         assertEquals("CONFIRMED", dto.status());
+        assertEquals("CONFIRMED", order.getStatus());
     }
 
     @Test

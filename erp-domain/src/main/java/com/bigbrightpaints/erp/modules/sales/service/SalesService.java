@@ -744,6 +744,7 @@ public class SalesService {
         SalesOrder order = requireOrder(id);
         String currentStatus = normalizeStatusToken(order.getStatus());
         if ("CONFIRMED".equals(currentStatus)) {
+            order.setStatus("CONFIRMED");
             return toDto(order);
         }
         if (!CONFIRMABLE_ORDER_STATUSES.contains(currentStatus)) {
@@ -911,6 +912,45 @@ public class SalesService {
                 .filter(slip -> !("CANCELLED".equalsIgnoreCase(slip.getStatus())))
                 .findFirst()
                 .orElse(null);
+    }
+
+    private long dispatchSelectableSlipCount(List<PackagingSlip> slips) {
+        if (slips == null || slips.isEmpty()) {
+            return 0;
+        }
+        return slips.stream()
+                .filter(this::isDispatchPendingSlip)
+                .count();
+    }
+
+    private PackagingSlip findSingleDispatchSelectableSlip(List<PackagingSlip> slips) {
+        if (dispatchSelectableSlipCount(slips) != 1) {
+            return null;
+        }
+        return slips.stream()
+                .filter(this::isDispatchPendingSlip)
+                .findFirst()
+                .orElse(null);
+    }
+
+    private boolean isDispatchPendingSlip(PackagingSlip slip) {
+        if (slip == null) {
+            return false;
+        }
+        String status = slip.getStatus();
+        return !"CANCELLED".equalsIgnoreCase(status)
+                && !"DISPATCHED".equalsIgnoreCase(status);
+    }
+
+    private void assertSlipDispatchable(PackagingSlip slip) {
+        String status = slip.getStatus();
+        if ("CANCELLED".equalsIgnoreCase(status)) {
+            throw new ApplicationException(
+                    ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Cannot dispatch packing slip with status: " + status)
+                    .withDetail("packingSlipId", slip.getId())
+                    .withDetail("status", status);
+        }
     }
 
     private void assertOrderMutable(SalesOrder order, String action) {
@@ -2001,17 +2041,18 @@ public class SalesService {
                     .findFirst()
                     .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Packing slip not found"));
         } else {
-            long activeSlips = activeSlipCount(orderSlips);
+            long activeSlips = dispatchSelectableSlipCount(orderSlips);
             if (activeSlips > 1) {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
                         "Multiple packing slips found for order " + salesOrderId + "; provide packingSlipId");
             }
-            slip = findSingleActiveSlip(orderSlips);
+            slip = findSingleDispatchSelectableSlip(orderSlips);
             if (slip == null) {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
                         "No active packing slip found for order " + salesOrderId);
             }
         }
+        assertSlipDispatchable(slip);
         Long lockedOrderId = order.getId();
         Long slipOrderId = slip.getSalesOrder() != null ? slip.getSalesOrder().getId() : null;
         if (lockedOrderId != null && slipOrderId != null && !lockedOrderId.equals(slipOrderId)) {
