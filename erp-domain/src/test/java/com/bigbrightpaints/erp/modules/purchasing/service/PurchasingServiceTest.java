@@ -170,7 +170,7 @@ class PurchasingServiceTest {
         );
 
         assertThatThrownBy(() -> purchasingService.createPurchase(request))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Invoice number already used");
 
         verify(purchaseRepository).lockByCompanyAndInvoiceNumberIgnoreCase(company, "INV-001");
@@ -195,7 +195,7 @@ class PurchasingServiceTest {
         when(purchaseRepository.lockByCompanyAndId(company, 30L)).thenReturn(Optional.of(purchase));
         when(rawMaterialRepository.lockByCompanyAndId(company, 20L)).thenReturn(Optional.of(rawMaterial));
         when(companyClock.today(company)).thenReturn(LocalDate.now());
-        when(accountingFacade.postPurchaseReturn(any(), any(), any(), any(), any(), any(), any()))
+        when(accountingFacade.postPurchaseReturn(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(dummyJournal("REF-001"));
 
         // Atomic deduction returns 0 (no rows updated = insufficient stock)
@@ -213,7 +213,7 @@ class PurchasingServiceTest {
         );
 
         assertThatThrownBy(() -> purchasingService.recordPurchaseReturn(request))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Cannot return more than on-hand inventory");
 
         verify(rawMaterialRepository).deductStockIfSufficient(eq(20L), eq(BigDecimal.valueOf(150)));
@@ -239,7 +239,7 @@ class PurchasingServiceTest {
         when(companyClock.today(company)).thenReturn(LocalDate.now());
 
         JournalEntryDto journalDto = dummyJournal("PRN-SUP001-ABC123");
-        when(accountingFacade.postPurchaseReturn(any(), any(), any(), any(), any(), any(), any()))
+        when(accountingFacade.postPurchaseReturn(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(journalDto);
 
         RawMaterialBatch batch = new RawMaterialBatch();
@@ -314,7 +314,7 @@ class PurchasingServiceTest {
                 .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("remaining returnable quantity");
 
-        verify(accountingFacade, never()).postPurchaseReturn(any(), any(), any(), any(), any(), any(), any());
+        verify(accountingFacade, never()).postPurchaseReturn(any(), any(), any(), any(), any(), any(), any(), any());
         verify(rawMaterialRepository, never()).deductStockIfSufficient(any(), any());
     }
 
@@ -338,7 +338,7 @@ class PurchasingServiceTest {
         when(companyClock.today(company)).thenReturn(LocalDate.now());
         when(movementRepository.findByRawMaterialCompanyAndReferenceTypeAndReferenceId(
                 company, "PURCHASE_RETURN", "PRN-TEST-0001")).thenReturn(List.of());
-        when(accountingFacade.postPurchaseReturn(any(), any(), any(), any(), any(), any(), any()))
+        when(accountingFacade.postPurchaseReturn(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(dummyJournal("PRN-TEST-0001"));
 
         RawMaterialBatch batch = new RawMaterialBatch();
@@ -394,7 +394,7 @@ class PurchasingServiceTest {
                 company, "PURCHASE_RETURN", "PRN-TEST-0001")).thenReturn(List.of());
 
         JournalEntryDto journalDto = dummyJournal("PRN-TEST-0001");
-        when(accountingFacade.postPurchaseReturn(any(), any(), any(), any(), any(), any(), any()))
+        when(accountingFacade.postPurchaseReturn(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(journalDto);
 
         RawMaterialBatch batch = new RawMaterialBatch();
@@ -429,6 +429,7 @@ class PurchasingServiceTest {
                 any(),
                 any(),
                 any(),
+                any(),
                 returnAmountCaptor.capture());
         assertThat(returnAmountCaptor.getValue()).isEqualByComparingTo(new BigDecimal("10.00"));
         assertThat(purchase.getOutstandingAmount()).isEqualByComparingTo(new BigDecimal("0.00"));
@@ -449,7 +450,7 @@ class PurchasingServiceTest {
         ReflectionTestUtils.setField(journalEntry, "id", 999L);
 
         JournalEntryDto journalDto = dummyJournal("RMP-SUP001-INV002", 999L);
-        when(accountingFacade.postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any()))
+        when(accountingFacade.postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(journalDto);
         when(companyEntityLookup.requireJournalEntry(company, 999L)).thenReturn(journalEntry);
 
@@ -475,7 +476,7 @@ class PurchasingServiceTest {
 
         // Verify order: journal posted, then purchase saved with link
         var inOrder = inOrder(accountingFacade, purchaseRepository);
-        inOrder.verify(accountingFacade).postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any());
+        inOrder.verify(accountingFacade).postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any(), any());
         inOrder.verify(purchaseRepository).save(any());
     }
 
@@ -490,7 +491,7 @@ class PurchasingServiceTest {
         GoodsReceipt goodsReceipt = stubGoodsReceipt(301L, 201L, BigDecimal.TEN, BigDecimal.valueOf(5));
 
         JournalEntryDto journalDto = dummyJournal("RMP-SUP001-INV003", 999L);
-        when(accountingFacade.postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any()))
+        when(accountingFacade.postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(journalDto);
 
         when(purchaseRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -518,6 +519,7 @@ class PurchasingServiceTest {
                 any(),
                 any(),
                 taxLinesCaptor.capture(),
+                any(),
                 totalAmountCaptor.capture(),
                 any());
 
@@ -554,7 +556,7 @@ class PurchasingServiceTest {
                 .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("taxAmount cannot be combined with line-level taxRate or taxInclusive");
 
-        verify(accountingFacade, never()).postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any());
+        verify(accountingFacade, never()).postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -586,7 +588,7 @@ class PurchasingServiceTest {
                 .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Tax-inclusive purchase line requires a positive GST rate");
 
-        verify(accountingFacade, never()).postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any());
+        verify(accountingFacade, never()).postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -600,7 +602,7 @@ class PurchasingServiceTest {
         GoodsReceipt goodsReceipt = stubGoodsReceipt(302L, 202L, new BigDecimal("10"), new BigDecimal("5.00"));
 
         JournalEntryDto journalDto = dummyJournal("RMP-SUP001-INV004", 1001L);
-        when(accountingFacade.postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any()))
+        when(accountingFacade.postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(journalDto);
         when(purchaseRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -629,6 +631,7 @@ class PurchasingServiceTest {
                 any(),
                 inventoryCaptor.capture(),
                 taxLinesCaptor.capture(),
+                any(),
                 totalAmountCaptor.capture(),
                 any());
 
@@ -650,7 +653,7 @@ class PurchasingServiceTest {
         stubGoodsReceipt(305L, 205L, new BigDecimal("10"), new BigDecimal("5.00"));
 
         JournalEntryDto journalDto = dummyJournal("RMP-SUP001-INV004A", 1004L);
-        when(accountingFacade.postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any()))
+        when(accountingFacade.postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(journalDto);
         when(purchaseRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -679,6 +682,7 @@ class PurchasingServiceTest {
                 any(),
                 inventoryCaptor.capture(),
                 taxLinesCaptor.capture(),
+                any(),
                 totalAmountCaptor.capture(),
                 any());
 
@@ -712,9 +716,9 @@ class PurchasingServiceTest {
         );
 
         assertThatThrownBy(() -> purchasingService.createPurchase(request))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("GST rate must be zero or positive");
-        verify(accountingFacade, never()).postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any());
+        verify(accountingFacade, never()).postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any(), any());
         verify(purchaseRepository, never()).save(any());
     }
 
@@ -742,9 +746,9 @@ class PurchasingServiceTest {
         );
 
         assertThatThrownBy(() -> purchasingService.createPurchase(request))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Unsupported GST rate 30.00%. Max allowed is 28.00");
-        verify(accountingFacade, never()).postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any());
+        verify(accountingFacade, never()).postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any(), any());
         verify(purchaseRepository, never()).save(any());
     }
 
@@ -759,7 +763,7 @@ class PurchasingServiceTest {
         GoodsReceipt goodsReceipt = stubGoodsReceipt(303L, 203L, new BigDecimal("10"), new BigDecimal("5.90"));
 
         JournalEntryDto journalDto = dummyJournal("RMP-SUP001-INV005", 1002L);
-        when(accountingFacade.postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any()))
+        when(accountingFacade.postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(journalDto);
         when(purchaseRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -788,6 +792,7 @@ class PurchasingServiceTest {
                 any(),
                 inventoryCaptor.capture(),
                 taxLinesCaptor.capture(),
+                any(),
                 totalAmountCaptor.capture(),
                 any());
 
@@ -809,7 +814,7 @@ class PurchasingServiceTest {
         GoodsReceipt goodsReceipt = stubGoodsReceipt(304L, 204L, new BigDecimal("3"), new BigDecimal("1.99"));
 
         JournalEntryDto journalDto = dummyJournal("RMP-SUP001-INV006", 1003L);
-        when(accountingFacade.postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any()))
+        when(accountingFacade.postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(journalDto);
         when(purchaseRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -837,6 +842,7 @@ class PurchasingServiceTest {
                 any(),
                 any(),
                 taxLinesCaptor.capture(),
+                any(),
                 totalAmountCaptor.capture(),
                 any());
 
@@ -873,7 +879,7 @@ class PurchasingServiceTest {
                 .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Non-GST purchase invoice cannot carry GST tax amount");
 
-        verify(accountingFacade, never()).postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any());
+        verify(accountingFacade, never()).postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any(), any());
         verify(purchaseRepository, never()).save(any());
         assertThat(goodsReceipt.getStatus()).isEqualTo("RECEIVED");
     }
@@ -905,7 +911,7 @@ class PurchasingServiceTest {
                 .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("requires non-zero taxAmount or tax auto-computation");
 
-        verify(accountingFacade, never()).postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any());
+        verify(accountingFacade, never()).postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any(), any());
         verify(purchaseRepository, never()).save(any());
         assertThat(goodsReceipt.getStatus()).isEqualTo("RECEIVED");
     }
@@ -974,7 +980,7 @@ class PurchasingServiceTest {
                 .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("cannot mix GST and non-GST materials");
 
-        verify(accountingFacade, never()).postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any());
+        verify(accountingFacade, never()).postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any(), any());
         verify(purchaseRepository, never()).save(any());
         assertThat(receipt.getStatus()).isEqualTo("RECEIVED");
     }
