@@ -24,6 +24,7 @@ import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.PromotionRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderRepository;
+import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderStatusHistoryRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesTargetRepository;
 import com.bigbrightpaints.erp.modules.sales.dto.CreditRequestDto;
 import com.bigbrightpaints.erp.modules.sales.dto.CreditRequestRequest;
@@ -37,8 +38,11 @@ import com.bigbrightpaints.erp.modules.sales.dto.PromotionRequest;
 import com.bigbrightpaints.erp.modules.sales.dto.SalesDashboardDto;
 import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderDto;
 import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderRequest;
+import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderSearchFilters;
+import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderStatusHistoryDto;
 import com.bigbrightpaints.erp.modules.sales.dto.SalesTargetDto;
 import com.bigbrightpaints.erp.modules.sales.dto.SalesTargetRequest;
+import com.bigbrightpaints.erp.shared.dto.PageResponse;
 import com.bigbrightpaints.erp.modules.sales.util.SalesOrderReference;
 import java.util.List;
 import java.util.Locale;
@@ -76,6 +80,7 @@ public class SalesService {
     public SalesService(CompanyContextService companyContextService,
                         DealerRepository dealerRepository,
                         SalesOrderRepository salesOrderRepository,
+                        SalesOrderStatusHistoryRepository salesOrderStatusHistoryRepository,
                         PromotionRepository promotionRepository,
                         SalesTargetRepository salesTargetRepository,
                         CreditRequestRepository creditRequestRepository,
@@ -105,6 +110,7 @@ public class SalesService {
                 companyContextService,
                 dealerRepository,
                 salesOrderRepository,
+                salesOrderStatusHistoryRepository,
                 promotionRepository,
                 salesTargetRepository,
                 creditRequestRepository,
@@ -182,6 +188,14 @@ public class SalesService {
 
     public SalesOrderDto updateOrder(Long id, SalesOrderRequest request) {
         return salesOrderCrudService.updateOrder(id, request);
+    }
+
+    public PageResponse<SalesOrderDto> searchOrders(SalesOrderSearchFilters filters) {
+        return salesCoreEngine.searchOrders(filters);
+    }
+
+    public List<SalesOrderStatusHistoryDto> orderTimeline(Long id) {
+        return salesOrderLifecycleService.orderTimeline(id);
     }
 
     public void deleteOrder(Long id) {

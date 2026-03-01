@@ -21,4 +21,5 @@ public record SalesOrderDto(Long id,
                             String dealerName,
                             String traceId,
                             Instant createdAt,
-                            List<SalesOrderItemDto> items) {}
+                            List<SalesOrderItemDto> items,
+                            List<SalesOrderStatusHistoryDto> timeline) {}

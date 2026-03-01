@@ -13,6 +13,7 @@ import org.springframework.data.jpa.repository.QueryHints;
 import org.springframework.data.repository.query.Param;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -71,6 +72,31 @@ public interface SalesOrderRepository extends JpaRepository<SalesOrder, Long> {
                                                                             @Param("dealer") Dealer dealer,
                                                                             @Param("status") String status,
                                                                             Pageable pageable);
+
+    @Query("""
+            select o.id
+            from SalesOrder o
+            where o.company = :company
+              and (
+                    :status is null
+                    or upper(trim(o.status)) = :status
+                    or (:status = 'DRAFT' and upper(trim(o.status)) = 'BOOKED')
+                    or (:status = 'DISPATCHED' and upper(trim(o.status)) in ('SHIPPED', 'FULFILLED'))
+                    or (:status = 'SETTLED' and upper(trim(o.status)) = 'COMPLETED')
+              )
+              and (:dealer is null or o.dealer = :dealer)
+              and (:orderNumber is null or lower(o.orderNumber) like lower(concat('%', :orderNumber, '%')))
+              and (:fromDate is null or o.createdAt >= :fromDate)
+              and (:toDate is null or o.createdAt <= :toDate)
+            order by o.createdAt desc, o.id desc
+            """)
+    Page<Long> searchIdsByCompany(@Param("company") Company company,
+                                  @Param("status") String status,
+                                  @Param("dealer") Dealer dealer,
+                                  @Param("orderNumber") String orderNumber,
+                                  @Param("fromDate") Instant fromDate,
+                                  @Param("toDate") Instant toDate,
+                                  Pageable pageable);
 
     @EntityGraph(attributePaths = {"items", "dealer"})
     @Query("select o from SalesOrder o where o.company = :company and o.id in :ids order by o.createdAt desc, o.id desc")

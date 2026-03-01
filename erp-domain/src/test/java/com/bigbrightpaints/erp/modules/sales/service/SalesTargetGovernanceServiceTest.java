@@ -26,6 +26,7 @@ import com.bigbrightpaints.erp.modules.sales.domain.CreditRequestRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.PromotionRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderRepository;
+import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderStatusHistoryRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesTarget;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesTargetRepository;
 import com.bigbrightpaints.erp.modules.sales.dto.SalesTargetRequest;
@@ -72,6 +73,8 @@ class SalesTargetGovernanceServiceTest {
     private DealerRepository dealerRepository;
     @Mock
     private SalesOrderRepository salesOrderRepository;
+    @Mock
+    private SalesOrderStatusHistoryRepository salesOrderStatusHistoryRepository;
     @Mock
     private PromotionRepository promotionRepository;
     @Mock
@@ -132,6 +135,7 @@ class SalesTargetGovernanceServiceTest {
                 companyContextService,
                 dealerRepository,
                 salesOrderRepository,
+                salesOrderStatusHistoryRepository,
                 promotionRepository,
                 salesTargetRepository,
                 creditRequestRepository,

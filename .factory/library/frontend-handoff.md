@@ -1387,6 +1387,129 @@ Operational statuses: `PENDING`, `PENDING_STOCK`, `PENDING_PRODUCTION`, `RESERVE
 
 ### Sales & Dealers
 
+#### Endpoint Map (sales-order lifecycle + search + timeline)
+
+| Method | Path | Auth | Request | Response `data` |
+|---|---|---|---|---|
+| `GET` | `/api/v1/sales/orders` | `ROLE_ADMIN`/`ROLE_SALES`/`ROLE_FACTORY`/`ROLE_ACCOUNTING` | Query: `status?`, `dealerId?`, `page=0..`, `size=1..200` | `List<SalesOrderDto>` |
+| `GET` | `/api/v1/sales/orders/search` | `ROLE_ADMIN`/`ROLE_SALES`/`ROLE_FACTORY`/`ROLE_ACCOUNTING` | Query: `status?`, `dealerId?`, `orderNumber?`, `fromDate?`, `toDate?`, `page=0..`, `size=1..200` (dates are ISO-8601 instants) | `PageResponse<SalesOrderDto>` |
+| `POST` | `/api/v1/sales/orders` | `ROLE_SALES`/`ROLE_ADMIN` | `SalesOrderRequest` (+ optional `Idempotency-Key`/`X-Idempotency-Key`) | `SalesOrderDto` |
+| `PUT` | `/api/v1/sales/orders/{id}` | `ROLE_SALES`/`ROLE_ADMIN` | `SalesOrderRequest` | `SalesOrderDto` |
+| `DELETE` | `/api/v1/sales/orders/{id}` | `ROLE_SALES`/`ROLE_ADMIN` | — | `204 No Content` |
+| `POST` | `/api/v1/sales/orders/{id}/confirm` | `ROLE_SALES`/`ROLE_ADMIN` | — | `SalesOrderDto` |
+| `POST` | `/api/v1/sales/orders/{id}/cancel` | `ROLE_SALES`/`ROLE_ADMIN` | `CancelRequest { reasonCode, reason }` (`reasonCode` required by business rule) | `SalesOrderDto` |
+| `PATCH` | `/api/v1/sales/orders/{id}/status` | `ROLE_SALES`/`ROLE_ADMIN` | `StatusRequest { status }` (manual statuses only) | `SalesOrderDto` |
+| `GET` | `/api/v1/sales/orders/{id}/timeline` | `ROLE_ADMIN`/`ROLE_SALES`/`ROLE_FACTORY`/`ROLE_ACCOUNTING` | — | `List<SalesOrderStatusHistoryDto>` |
+
+#### User Flows
+
+1. **Create + reserve order**
+   1. `POST /api/v1/sales/orders` with line items and totals.
+   2. Backend creates order in `DRAFT`, attempts reservation, then transitions to:
+      - `RESERVED` when reservation has no shortages, or
+      - `PENDING_PRODUCTION` when shortages exist.
+   3. UI should refresh with `GET /api/v1/sales/orders/search` and show resulting status.
+
+2. **Confirm order (credit + stock checks)**
+   1. `POST /api/v1/sales/orders/{id}/confirm`.
+   2. Backend enforces credit limit and requires at least partial reserved stock.
+   3. Success transitions to `CONFIRMED`; timeline records reason code `ORDER_CONFIRMED`.
+
+3. **Cancel order with reason code**
+   1. UI collects structured reason code + optional free-text reason.
+   2. `POST /api/v1/sales/orders/{id}/cancel` with `{ reasonCode, reason }`.
+   3. Backend allows cancellation only from `DRAFT`/`CONFIRMED` and records timeline entry with supplied reason code.
+
+4. **Track lifecycle timeline**
+   1. `GET /api/v1/sales/orders/{id}/timeline`.
+   2. Render chronological transition history (`fromStatus`, `toStatus`, `reasonCode`, `reason`, `changedBy`, `changedAt`).
+
+5. **Search/filter orders**
+   1. `GET /api/v1/sales/orders/search` with any combination of `status`, `dealerId`, `orderNumber`, date range, page/size.
+   2. Use `PageResponse.totalElements/totalPages/page/size` for pagination controls.
+
+#### Sales Order State Machine
+
+Canonical order lifecycle exposed to frontend:
+
+- `DRAFT` -> `RESERVED` (auto, stock fully reserved on create)
+- `DRAFT` -> `PENDING_PRODUCTION` (auto, shortage on create)
+- `DRAFT`/`RESERVED`/`PENDING_PRODUCTION`/`PENDING_INVENTORY`/`READY_TO_SHIP`/`PROCESSING` -> `CONFIRMED` (confirm endpoint)
+- `CONFIRMED`/`PROCESSING`/`RESERVED`/`PENDING_PRODUCTION`/`PENDING_INVENTORY`/`READY_TO_SHIP` -> `DISPATCHED` (dispatch progression)
+- `DISPATCHED` -> `INVOICED` (invoice marker present after dispatch)
+- `INVOICED` -> `SETTLED` -> `CLOSED` (downstream finance lifecycle)
+- `DRAFT`/`CONFIRMED` -> `CANCELLED` (cancel endpoint, reason code required)
+
+Legacy compatibility mapping still accepted in responses/queries:
+- `BOOKED` => `DRAFT`
+- `SHIPPED`/`FULFILLED` => `DISPATCHED`
+- `COMPLETED` => `SETTLED`
+- `PENDING` => `DRAFT`
+- `APPROVED` => `CONFIRMED`
+
+#### Error Codes (sales lifecycle/search relevant)
+
+- `VAL_001` (`VALIDATION_INVALID_INPUT`)
+  - Invalid search date format, unknown/unsupported status inputs, invalid manual transition requests.
+- `VAL_002` (`VALIDATION_MISSING_REQUIRED_FIELD`)
+  - Missing cancellation reason code for cancel request.
+- `BUS_001` (`BUSINESS_INVALID_STATE`)
+  - Invalid transition (e.g., cancel from dispatched/invoiced states, illegal lifecycle jumps).
+- `VAL_007` (`VALIDATION_INVALID_STATE`)
+  - Operation blocked due to immutable/posting-locked order state.
+
+Frontend behavior: treat these as non-retryable user/action-state errors; surface message inline and refresh entity state.
+
+#### Data Contracts
+
+- `SalesOrderSearchFilters` (query-model used by backend)
+  - `status?: string` (canonicalized on backend)
+  - `dealerId?: number`
+  - `orderNumber?: string` (contains search)
+  - `fromDate?: string` (ISO-8601 instant)
+  - `toDate?: string` (ISO-8601 instant)
+  - `page: number` (>=0)
+  - `size: number` (1..200)
+
+- `SalesOrderDto`
+  - `id: number`
+  - `publicId: uuid`
+  - `orderNumber: string`
+  - `status: string` (canonical lifecycle state)
+  - `totalAmount: decimal`
+  - `subtotalAmount: decimal`
+  - `gstTotal: decimal`
+  - `gstRate: decimal`
+  - `gstTreatment: string`
+  - `gstInclusive: boolean`
+  - `gstRoundingAdjustment: decimal`
+  - `currency: string`
+  - `dealerName?: string`
+  - `traceId?: string`
+  - `createdAt: instant`
+  - `items: SalesOrderItemDto[]`
+  - `timeline: SalesOrderStatusHistoryDto[]` (currently empty on list/detail payloads; use timeline endpoint for canonical history)
+
+- `SalesOrderStatusHistoryDto`
+  - `id: number`
+  - `fromStatus?: string`
+  - `toStatus: string`
+  - `reasonCode?: string`
+  - `reason?: string`
+  - `changedBy: string`
+  - `changedAt: instant`
+
+- `CancelRequest`
+  - `reasonCode?: string` (**required by business logic**)
+  - `reason?: string`
+
+#### UI Hints
+
+- Use a dedicated cancel-reason-code dropdown (e.g., `CUSTOMER_REQUEST`, `CREDIT_BLOCK`, `PRICING_ISSUE`, etc.) + optional free-text details.
+- Always call `/sales/orders/{id}/timeline` when opening an order detail drawer/page; do not rely on `SalesOrderDto.timeline` from list API.
+- For search date filters, submit UTC ISO instants (`2026-01-01T00:00:00Z` format) to avoid timezone ambiguity.
+- Treat `RESERVED`, `PENDING_PRODUCTION`, `PENDING_INVENTORY`, `READY_TO_SHIP`, and `PROCESSING` as in-progress operational states in UI badges.
+
 #### GST Fields
 
 - Dealer create/update payloads support:

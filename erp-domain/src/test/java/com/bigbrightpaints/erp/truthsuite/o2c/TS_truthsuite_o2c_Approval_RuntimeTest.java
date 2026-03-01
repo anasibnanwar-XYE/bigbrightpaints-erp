@@ -47,6 +47,7 @@ import com.bigbrightpaints.erp.modules.sales.domain.PromotionRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderItem;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderRepository;
+import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderStatusHistoryRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesTargetRepository;
 import com.bigbrightpaints.erp.modules.sales.dto.DispatchConfirmRequest;
 import com.bigbrightpaints.erp.modules.sales.dto.DispatchConfirmResponse;
@@ -88,6 +89,8 @@ class TS_truthsuite_o2c_Approval_RuntimeTest {
     private DealerRepository dealerRepository;
     @Mock
     private SalesOrderRepository salesOrderRepository;
+    @Mock
+    private SalesOrderStatusHistoryRepository salesOrderStatusHistoryRepository;
     @Mock
     private PromotionRepository promotionRepository;
     @Mock
@@ -148,6 +151,7 @@ class TS_truthsuite_o2c_Approval_RuntimeTest {
                 companyContextService,
                 dealerRepository,
                 salesOrderRepository,
+                salesOrderStatusHistoryRepository,
                 promotionRepository,
                 salesTargetRepository,
                 creditRequestRepository,

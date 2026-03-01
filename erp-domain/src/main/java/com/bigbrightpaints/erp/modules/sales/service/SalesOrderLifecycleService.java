@@ -1,6 +1,8 @@
 package com.bigbrightpaints.erp.modules.sales.service;
 
 import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderDto;
+import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderStatusHistoryDto;
+import java.util.List;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -38,5 +40,9 @@ public class SalesOrderLifecycleService {
 
     public void attachTraceId(Long id, String traceId) {
         salesCoreEngine.attachTraceId(id, traceId);
+    }
+
+    public List<SalesOrderStatusHistoryDto> orderTimeline(Long id) {
+        return salesCoreEngine.orderTimeline(id);
     }
 }

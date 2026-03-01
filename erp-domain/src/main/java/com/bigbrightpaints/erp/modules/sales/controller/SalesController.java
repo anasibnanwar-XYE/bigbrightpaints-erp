@@ -12,6 +12,7 @@ import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.IdempotencyHeaderUtils;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
+import com.bigbrightpaints.erp.shared.dto.PageResponse;
 import io.micrometer.core.annotation.Timed;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -73,6 +74,27 @@ public class SalesController {
         return ResponseEntity.ok(ApiResponse.success(salesOrderCrudService.listOrders(status, dealerId, page, size)));
     }
 
+    @GetMapping("/sales/orders/search")
+    @Timed(value = "erp.sales.orders.search", description = "Search sales orders")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_SALES','ROLE_FACTORY','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<PageResponse<SalesOrderDto>>> searchOrders(@RequestParam(required = false) String status,
+                                                                                  @RequestParam(required = false) Long dealerId,
+                                                                                  @RequestParam(required = false) String orderNumber,
+                                                                                  @RequestParam(required = false) String fromDate,
+                                                                                  @RequestParam(required = false) String toDate,
+                                                                                  @RequestParam(defaultValue = "0") int page,
+                                                                                  @RequestParam(defaultValue = "50") int size) {
+        SalesOrderSearchFilters filters = new SalesOrderSearchFilters(
+                status,
+                dealerId,
+                orderNumber,
+                parseInstant(fromDate, "fromDate"),
+                parseInstant(toDate, "toDate"),
+                page,
+                size);
+        return ResponseEntity.ok(ApiResponse.success(salesService.searchOrders(filters)));
+    }
+
     @GetMapping("/sales/dashboard")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_SALES','ROLE_FACTORY','ROLE_ACCOUNTING')")
     public ResponseEntity<ApiResponse<SalesDashboardDto>> dashboard() {
@@ -114,7 +136,8 @@ public class SalesController {
     public ResponseEntity<ApiResponse<SalesOrderDto>> cancelOrder(@PathVariable Long id,
                                                                    @RequestBody(required = false) CancelRequest request) {
         String reason = request == null ? null : request.reason();
-        return ResponseEntity.ok(ApiResponse.success("Order cancelled", salesOrderLifecycleService.cancelOrder(id, reason)));
+        String reasonCode = request == null ? null : request.reasonCode();
+        return ResponseEntity.ok(ApiResponse.success("Order cancelled", salesOrderLifecycleService.cancelOrder(id, combineCancellationReason(reasonCode, reason))));
     }
 
     @PatchMapping("/sales/orders/{id}/status")
@@ -124,7 +147,13 @@ public class SalesController {
         return ResponseEntity.ok(ApiResponse.success("Status updated", salesOrderLifecycleService.updateStatus(id, request.status())));
     }
 
-    public record CancelRequest(String reason) {}
+    @GetMapping("/sales/orders/{id}/timeline")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_SALES','ROLE_FACTORY','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<List<SalesOrderStatusHistoryDto>>> orderTimeline(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success(salesOrderLifecycleService.orderTimeline(id)));
+    }
+
+    public record CancelRequest(String reasonCode, String reason) {}
     public record StatusRequest(String status) {}
 
     private SalesOrderRequest applyOrderIdempotencyKey(SalesOrderRequest request,
@@ -169,6 +198,36 @@ public class SalesController {
             return null;
         }
         return headerValue.trim();
+    }
+
+    private String combineCancellationReason(String reasonCode, String reason) {
+        String normalizedCode = StringUtils.hasText(reasonCode) ? reasonCode.trim() : null;
+        String normalizedReason = StringUtils.hasText(reason) ? reason.trim() : null;
+        if (!StringUtils.hasText(normalizedCode) && !StringUtils.hasText(normalizedReason)) {
+            return null;
+        }
+        if (!StringUtils.hasText(normalizedCode)) {
+            return normalizedReason;
+        }
+        if (!StringUtils.hasText(normalizedReason)) {
+            return normalizedCode;
+        }
+        return normalizedCode + "|" + normalizedReason;
+    }
+
+    private java.time.Instant parseInstant(String raw, String fieldName) {
+        if (!StringUtils.hasText(raw)) {
+            return null;
+        }
+        try {
+            return java.time.Instant.parse(raw.trim());
+        } catch (java.time.format.DateTimeParseException ex) {
+            throw new ApplicationException(
+                    ErrorCode.VALIDATION_INVALID_INPUT,
+                    fieldName + " must be an ISO-8601 instant"
+            ).withDetail("field", fieldName)
+                    .withDetail("value", raw);
+        }
     }
 
     /* Promotions */

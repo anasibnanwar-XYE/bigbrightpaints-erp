@@ -41,10 +41,13 @@ import com.bigbrightpaints.erp.modules.production.domain.ProductionProductReposi
 import com.bigbrightpaints.erp.modules.sales.domain.*;
 import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderItemRequest;
 import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderRequest;
+import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderSearchFilters;
+import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderStatusHistoryDto;
 import com.bigbrightpaints.erp.modules.sales.dto.DispatchConfirmRequest;
 import com.bigbrightpaints.erp.modules.sales.dto.DispatchConfirmResponse;
 import com.bigbrightpaints.erp.modules.sales.dto.DispatchMarkerReconciliationResponse;
 import com.bigbrightpaints.erp.modules.sales.dto.SalesDashboardDto;
+import com.bigbrightpaints.erp.shared.dto.PageResponse;
 import com.bigbrightpaints.erp.modules.sales.event.SalesOrderCreatedEvent;
 import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlip;
 import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipLine;
@@ -94,6 +97,8 @@ class SalesServiceTest {
     private DealerRepository dealerRepository;
     @Mock
     private SalesOrderRepository salesOrderRepository;
+    @Mock
+    private SalesOrderStatusHistoryRepository salesOrderStatusHistoryRepository;
     @Mock
     private PromotionRepository promotionRepository;
     @Mock
@@ -153,6 +158,7 @@ class SalesServiceTest {
                 companyContextService,
                 dealerRepository,
                 salesOrderRepository,
+                salesOrderStatusHistoryRepository,
                 promotionRepository,
                 salesTargetRepository,
                 creditRequestRepository,
@@ -1218,7 +1224,8 @@ class SalesServiceTest {
                 null,
                 null);
 
-        assertThrows(IllegalStateException.class, () -> salesService.createOrder(request));
+        ApplicationException ex = assertThrows(ApplicationException.class, () -> salesService.createOrder(request));
+        assertEquals(ErrorCode.VALIDATION_INVALID_STATE, ex.getErrorCode());
     }
 
     @Test
@@ -1241,7 +1248,8 @@ class SalesServiceTest {
                 null,
                 null);
 
-        assertThrows(IllegalStateException.class, () -> salesService.createOrder(request));
+        ApplicationException ex = assertThrows(ApplicationException.class, () -> salesService.createOrder(request));
+        assertEquals(ErrorCode.VALIDATION_INVALID_STATE, ex.getErrorCode());
     }
 
     @Test
@@ -4107,28 +4115,116 @@ class SalesServiceTest {
     void cancelOrderReleasesReservations() {
         SalesOrder order = new SalesOrder();
         order.setCompany(company);
-        order.setStatus("RESERVED");
+        order.setStatus("CONFIRMED");
         setField(order, "id", 42L);
         when(companyEntityLookup.requireSalesOrder(company, 42L)).thenReturn(order);
 
-        SalesOrderDto dto = salesService.cancelOrder(42L, "Customer cancelled");
+        SalesOrderDto dto = salesService.cancelOrder(42L, "CUSTOMER_REQUEST|Customer cancelled");
 
         assertEquals("CANCELLED", dto.status());
         verify(finishedGoodsService).releaseReservationsForOrder(42L);
     }
 
     @Test
-    void cancelOrderSkipsReleaseWhenAlreadyDispatched() {
+    void cancelOrderRejectsWhenAlreadyDispatched() {
         SalesOrder order = new SalesOrder();
         order.setCompany(company);
         order.setStatus("DISPATCHED");
         setField(order, "id", 43L);
         when(companyEntityLookup.requireSalesOrder(company, 43L)).thenReturn(order);
 
-        SalesOrderDto dto = salesService.cancelOrder(43L, "Too late");
+        ApplicationException ex = assertThrows(ApplicationException.class,
+                () -> salesService.cancelOrder(43L, "CUSTOMER_REQUEST|Too late"));
 
-        assertEquals("CANCELLED", dto.status());
+        assertEquals(ErrorCode.BUSINESS_INVALID_STATE, ex.getErrorCode());
         verify(finishedGoodsService, never()).releaseReservationsForOrder(anyLong());
+    }
+
+    @Test
+    void searchOrdersAppliesFiltersAndReturnsPaginatedResult() {
+        Dealer dealer = new Dealer();
+        dealer.setCompany(company);
+        dealer.setName("Dealer Search");
+        setField(dealer, "id", 777L);
+
+        SalesOrder order = new SalesOrder();
+        order.setCompany(company);
+        order.setDealer(dealer);
+        order.setOrderNumber("SO-SEARCH-1");
+        order.setStatus("BOOKED");
+        setField(order, "id", 778L);
+
+        SalesOrderSearchFilters filters = new SalesOrderSearchFilters(
+                "draft",
+                777L,
+                "SO-SEARCH",
+                java.time.Instant.parse("2026-01-01T00:00:00Z"),
+                java.time.Instant.parse("2026-01-31T23:59:59Z"),
+                1,
+                10);
+
+        when(companyEntityLookup.requireDealer(company, 777L)).thenReturn(dealer);
+        when(salesOrderRepository.searchIdsByCompany(
+                eq(company),
+                eq("DRAFT"),
+                eq(dealer),
+                eq("SO-SEARCH"),
+                eq(java.time.Instant.parse("2026-01-01T00:00:00Z")),
+                eq(java.time.Instant.parse("2026-01-31T23:59:59Z")),
+                any(PageRequest.class)))
+                .thenReturn(new PageImpl<>(List.of(778L), PageRequest.of(1, 10), 1));
+        when(salesOrderRepository.findByCompanyAndIdInOrderByCreatedAtDescIdDesc(company, List.of(778L)))
+                .thenReturn(List.of(order));
+
+        PageResponse<SalesOrderDto> response = salesService.searchOrders(filters);
+
+        assertEquals(1, response.content().size());
+        assertEquals("DRAFT", response.content().getFirst().status());
+        assertEquals(1, response.page());
+        assertEquals(10, response.size());
+        assertEquals(2, response.totalPages());
+        assertEquals(11L, response.totalElements());
+    }
+
+    @Test
+    void orderTimelineReturnsChronologicalHistory() {
+        SalesOrder order = new SalesOrder();
+        order.setCompany(company);
+        order.setStatus("CONFIRMED");
+        setField(order, "id", 911L);
+
+        SalesOrderStatusHistory created = new SalesOrderStatusHistory();
+        created.setCompany(company);
+        created.setSalesOrder(order);
+        created.setFromStatus(null);
+        created.setToStatus("DRAFT");
+        created.setReasonCode("ORDER_CREATED");
+        created.setReason("Order created");
+        created.setChangedBy("alice");
+        created.setChangedAt(java.time.Instant.parse("2026-01-01T10:00:00Z"));
+        setField(created, "id", 1L);
+
+        SalesOrderStatusHistory confirmed = new SalesOrderStatusHistory();
+        confirmed.setCompany(company);
+        confirmed.setSalesOrder(order);
+        confirmed.setFromStatus("DRAFT");
+        confirmed.setToStatus("CONFIRMED");
+        confirmed.setReasonCode("ORDER_CONFIRMED");
+        confirmed.setReason("Order confirmed");
+        confirmed.setChangedBy("bob");
+        confirmed.setChangedAt(java.time.Instant.parse("2026-01-01T10:05:00Z"));
+        setField(confirmed, "id", 2L);
+
+        when(companyEntityLookup.requireSalesOrder(company, 911L)).thenReturn(order);
+        when(salesOrderStatusHistoryRepository.findTimeline(company, order)).thenReturn(List.of(created, confirmed));
+
+        List<SalesOrderStatusHistoryDto> timeline = salesService.orderTimeline(911L);
+
+        assertEquals(2, timeline.size());
+        assertEquals("DRAFT", timeline.get(0).toStatus());
+        assertEquals("CONFIRMED", timeline.get(1).toStatus());
+        assertEquals("ORDER_CONFIRMED", timeline.get(1).reasonCode());
+        assertEquals("bob", timeline.get(1).changedBy());
     }
 
     @Test
