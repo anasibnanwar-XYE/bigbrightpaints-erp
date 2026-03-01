@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 class TS_CrossModuleLinkageContractTest {
 
     private static final String SALES_SERVICE =
-            "src/main/java/com/bigbrightpaints/erp/modules/sales/service/SalesService.java";
+            "src/main/java/com/bigbrightpaints/erp/modules/sales/service/SalesCoreEngine.java";
     private static final String PURCHASING_SERVICE =
             "src/main/java/com/bigbrightpaints/erp/modules/purchasing/service/PurchasingService.java";
     private static final String PAYROLL_SERVICE =

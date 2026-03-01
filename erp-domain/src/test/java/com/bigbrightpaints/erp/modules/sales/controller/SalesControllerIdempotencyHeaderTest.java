@@ -4,6 +4,11 @@ import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderItemRequest;
 import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderRequest;
 import com.bigbrightpaints.erp.modules.sales.service.DealerService;
+import com.bigbrightpaints.erp.modules.sales.service.SalesDashboardService;
+import com.bigbrightpaints.erp.modules.sales.service.SalesDealerCrudService;
+import com.bigbrightpaints.erp.modules.sales.service.SalesDispatchReconciliationService;
+import com.bigbrightpaints.erp.modules.sales.service.SalesOrderCrudService;
+import com.bigbrightpaints.erp.modules.sales.service.SalesOrderLifecycleService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -29,34 +34,65 @@ class SalesControllerIdempotencyHeaderTest {
 
     @Mock
     private DealerService dealerService;
+    @Mock
+    private SalesOrderCrudService salesOrderCrudService;
+    @Mock
+    private SalesOrderLifecycleService salesOrderLifecycleService;
+    @Mock
+    private SalesDealerCrudService salesDealerCrudService;
+    @Mock
+    private SalesDispatchReconciliationService salesDispatchReconciliationService;
+    @Mock
+    private SalesDashboardService salesDashboardService;
 
     @Test
     void createOrder_appliesPrimaryHeaderIdempotencyKeyWhenBodyMissing() {
-        SalesController controller = new SalesController(salesService, dealerService);
-        when(salesService.createOrder(any())).thenReturn(null);
+        SalesController controller = new SalesController(
+                salesService,
+                salesOrderCrudService,
+                salesOrderLifecycleService,
+                salesDealerCrudService,
+                salesDispatchReconciliationService,
+                salesDashboardService,
+                dealerService);
+        when(salesOrderCrudService.createOrder(any())).thenReturn(null);
 
         controller.createOrder("hdr-001", null, requestWithoutIdempotencyKey());
 
         ArgumentCaptor<SalesOrderRequest> captor = ArgumentCaptor.forClass(SalesOrderRequest.class);
-        verify(salesService).createOrder(captor.capture());
+        verify(salesOrderCrudService).createOrder(captor.capture());
         assertThat(captor.getValue().idempotencyKey()).isEqualTo("hdr-001");
     }
 
     @Test
     void createOrder_appliesLegacyHeaderIdempotencyKeyWhenPrimaryMissing() {
-        SalesController controller = new SalesController(salesService, dealerService);
-        when(salesService.createOrder(any())).thenReturn(null);
+        SalesController controller = new SalesController(
+                salesService,
+                salesOrderCrudService,
+                salesOrderLifecycleService,
+                salesDealerCrudService,
+                salesDispatchReconciliationService,
+                salesDashboardService,
+                dealerService);
+        when(salesOrderCrudService.createOrder(any())).thenReturn(null);
 
         controller.createOrder(null, "legacy-001", requestWithoutIdempotencyKey());
 
         ArgumentCaptor<SalesOrderRequest> captor = ArgumentCaptor.forClass(SalesOrderRequest.class);
-        verify(salesService).createOrder(captor.capture());
+        verify(salesOrderCrudService).createOrder(captor.capture());
         assertThat(captor.getValue().idempotencyKey()).isEqualTo("legacy-001");
     }
 
     @Test
     void createOrder_rejectsHeaderBodyMismatch() {
-        SalesController controller = new SalesController(salesService, dealerService);
+        SalesController controller = new SalesController(
+                salesService,
+                salesOrderCrudService,
+                salesOrderLifecycleService,
+                salesDealerCrudService,
+                salesDispatchReconciliationService,
+                salesDashboardService,
+                dealerService);
 
         assertThatThrownBy(() -> controller.createOrder("hdr-001", null, requestWithIdempotencyKey("body-001")))
                 .isInstanceOf(ApplicationException.class)
@@ -65,12 +101,19 @@ class SalesControllerIdempotencyHeaderTest {
 
     @Test
     void createOrder_rejectsWhenPrimaryLegacyHeadersMismatch() {
-        SalesController controller = new SalesController(salesService, dealerService);
+        SalesController controller = new SalesController(
+                salesService,
+                salesOrderCrudService,
+                salesOrderLifecycleService,
+                salesDealerCrudService,
+                salesDispatchReconciliationService,
+                salesDashboardService,
+                dealerService);
 
         assertThatThrownBy(() -> controller.createOrder("hdr-001", "legacy-001", requestWithoutIdempotencyKey()))
                 .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Idempotency key mismatch between Idempotency-Key and X-Idempotency-Key headers");
-        verifyNoInteractions(salesService);
+        verifyNoInteractions(salesOrderCrudService);
     }
 
     private SalesOrderRequest requestWithoutIdempotencyKey() {

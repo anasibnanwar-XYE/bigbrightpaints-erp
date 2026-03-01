@@ -2,6 +2,11 @@ package com.bigbrightpaints.erp.modules.sales.controller;
 
 import com.bigbrightpaints.erp.modules.sales.dto.*;
 import com.bigbrightpaints.erp.modules.sales.service.DealerService;
+import com.bigbrightpaints.erp.modules.sales.service.SalesDashboardService;
+import com.bigbrightpaints.erp.modules.sales.service.SalesDealerCrudService;
+import com.bigbrightpaints.erp.modules.sales.service.SalesDispatchReconciliationService;
+import com.bigbrightpaints.erp.modules.sales.service.SalesOrderCrudService;
+import com.bigbrightpaints.erp.modules.sales.service.SalesOrderLifecycleService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
@@ -21,10 +26,26 @@ import java.util.List;
 public class SalesController {
 
     private final SalesService salesService;
+    private final SalesOrderCrudService salesOrderCrudService;
+    private final SalesOrderLifecycleService salesOrderLifecycleService;
+    private final SalesDealerCrudService salesDealerCrudService;
+    private final SalesDispatchReconciliationService salesDispatchReconciliationService;
+    private final SalesDashboardService salesDashboardService;
     private final DealerService dealerService;
 
-    public SalesController(SalesService salesService, DealerService dealerService) {
+    public SalesController(SalesService salesService,
+                           SalesOrderCrudService salesOrderCrudService,
+                           SalesOrderLifecycleService salesOrderLifecycleService,
+                           SalesDealerCrudService salesDealerCrudService,
+                           SalesDispatchReconciliationService salesDispatchReconciliationService,
+                           SalesDashboardService salesDashboardService,
+                           DealerService dealerService) {
         this.salesService = salesService;
+        this.salesOrderCrudService = salesOrderCrudService;
+        this.salesOrderLifecycleService = salesOrderLifecycleService;
+        this.salesDealerCrudService = salesDealerCrudService;
+        this.salesDispatchReconciliationService = salesDispatchReconciliationService;
+        this.salesDashboardService = salesDashboardService;
         this.dealerService = dealerService;
     }
 
@@ -49,13 +70,13 @@ public class SalesController {
                                                                    @RequestParam(required = false) Long dealerId,
                                                                    @RequestParam(defaultValue = "0") int page,
                                                                    @RequestParam(defaultValue = "100") int size) {
-        return ResponseEntity.ok(ApiResponse.success(salesService.listOrders(status, dealerId, page, size)));
+        return ResponseEntity.ok(ApiResponse.success(salesOrderCrudService.listOrders(status, dealerId, page, size)));
     }
 
     @GetMapping("/sales/dashboard")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_SALES','ROLE_FACTORY','ROLE_ACCOUNTING')")
     public ResponseEntity<ApiResponse<SalesDashboardDto>> dashboard() {
-        return ResponseEntity.ok(ApiResponse.success("Sales dashboard", salesService.getDashboard()));
+        return ResponseEntity.ok(ApiResponse.success("Sales dashboard", salesDashboardService.getDashboard()));
     }
 
     @PostMapping("/sales/orders")
@@ -65,27 +86,27 @@ public class SalesController {
             @RequestHeader(value = "X-Idempotency-Key", required = false) String legacyIdempotencyKey,
             @Valid @RequestBody SalesOrderRequest request) {
         SalesOrderRequest resolved = applyOrderIdempotencyKey(request, idempotencyKey, legacyIdempotencyKey);
-        return ResponseEntity.ok(ApiResponse.success("Order created", salesService.createOrder(resolved)));
+        return ResponseEntity.ok(ApiResponse.success("Order created", salesOrderCrudService.createOrder(resolved)));
     }
 
     @PutMapping("/sales/orders/{id}")
     @PreAuthorize("hasAnyAuthority('ROLE_SALES','ROLE_ADMIN')")
     public ResponseEntity<ApiResponse<SalesOrderDto>> updateOrder(@PathVariable Long id,
                                                                    @Valid @RequestBody SalesOrderRequest request) {
-        return ResponseEntity.ok(ApiResponse.success("Order updated", salesService.updateOrder(id, request)));
+        return ResponseEntity.ok(ApiResponse.success("Order updated", salesOrderCrudService.updateOrder(id, request)));
     }
 
     @DeleteMapping("/sales/orders/{id}")
     @PreAuthorize("hasAnyAuthority('ROLE_SALES','ROLE_ADMIN')")
     public ResponseEntity<Void> deleteOrder(@PathVariable Long id) {
-        salesService.deleteOrder(id);
+        salesOrderCrudService.deleteOrder(id);
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/sales/orders/{id}/confirm")
     @PreAuthorize("hasAnyAuthority('ROLE_SALES','ROLE_ADMIN')")
     public ResponseEntity<ApiResponse<SalesOrderDto>> confirmOrder(@PathVariable Long id) {
-        return ResponseEntity.ok(ApiResponse.success("Order confirmed", salesService.confirmOrder(id)));
+        return ResponseEntity.ok(ApiResponse.success("Order confirmed", salesOrderLifecycleService.confirmOrder(id)));
     }
 
     @PostMapping("/sales/orders/{id}/cancel")
@@ -93,14 +114,14 @@ public class SalesController {
     public ResponseEntity<ApiResponse<SalesOrderDto>> cancelOrder(@PathVariable Long id,
                                                                    @RequestBody(required = false) CancelRequest request) {
         String reason = request == null ? null : request.reason();
-        return ResponseEntity.ok(ApiResponse.success("Order cancelled", salesService.cancelOrder(id, reason)));
+        return ResponseEntity.ok(ApiResponse.success("Order cancelled", salesOrderLifecycleService.cancelOrder(id, reason)));
     }
 
     @PatchMapping("/sales/orders/{id}/status")
     @PreAuthorize("hasAnyAuthority('ROLE_SALES','ROLE_ADMIN')")
     public ResponseEntity<ApiResponse<SalesOrderDto>> updateStatus(@PathVariable Long id,
                                                                     @RequestBody StatusRequest request) {
-        return ResponseEntity.ok(ApiResponse.success("Status updated", salesService.updateStatus(id, request.status())));
+        return ResponseEntity.ok(ApiResponse.success("Status updated", salesOrderLifecycleService.updateStatus(id, request.status())));
     }
 
     public record CancelRequest(String reason) {}
@@ -209,20 +230,20 @@ public class SalesController {
     @GetMapping("/sales/credit-requests")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_SALES')")
     public ResponseEntity<ApiResponse<List<CreditRequestDto>>> creditRequests() {
-        return ResponseEntity.ok(ApiResponse.success(salesService.listCreditRequests()));
+        return ResponseEntity.ok(ApiResponse.success(salesDealerCrudService.listCreditRequests()));
     }
 
     @PostMapping("/sales/credit-requests")
     @PreAuthorize("hasAnyAuthority('ROLE_SALES','ROLE_ADMIN')")
     public ResponseEntity<ApiResponse<CreditRequestDto>> createCreditRequest(@Valid @RequestBody CreditRequestRequest request) {
-        return ResponseEntity.ok(ApiResponse.success("Credit request created", salesService.createCreditRequest(request)));
+        return ResponseEntity.ok(ApiResponse.success("Credit request created", salesDealerCrudService.createCreditRequest(request)));
     }
 
     @PutMapping("/sales/credit-requests/{id}")
     @PreAuthorize("hasAnyAuthority('ROLE_SALES','ROLE_ADMIN')")
     public ResponseEntity<ApiResponse<CreditRequestDto>> updateCreditRequest(@PathVariable Long id,
                                                                               @Valid @RequestBody CreditRequestRequest request) {
-        return ResponseEntity.ok(ApiResponse.success("Credit request updated", salesService.updateCreditRequest(id, request)));
+        return ResponseEntity.ok(ApiResponse.success("Credit request updated", salesDealerCrudService.updateCreditRequest(id, request)));
     }
 
     @PostMapping("/sales/credit-requests/{id}/approve")
@@ -230,7 +251,7 @@ public class SalesController {
     public ResponseEntity<ApiResponse<CreditRequestDto>> approveCreditRequest(@PathVariable Long id,
                                                                               @Valid @RequestBody CreditRequestDecisionRequest request) {
         return ResponseEntity.ok(ApiResponse.success("Credit request approved",
-                salesService.approveCreditRequest(id, request.reason())));
+                salesDealerCrudService.approveCreditRequest(id, request.reason())));
     }
 
     @PostMapping("/sales/credit-requests/{id}/reject")
@@ -238,14 +259,14 @@ public class SalesController {
     public ResponseEntity<ApiResponse<CreditRequestDto>> rejectCreditRequest(@PathVariable Long id,
                                                                              @Valid @RequestBody CreditRequestDecisionRequest request) {
         return ResponseEntity.ok(ApiResponse.success("Credit request rejected",
-                salesService.rejectCreditRequest(id, request.reason())));
+                salesDealerCrudService.rejectCreditRequest(id, request.reason())));
     }
 
     /* Dispatch confirmation (final invoice + AR at shipment) */
     @PostMapping("/sales/dispatch/confirm")
     @PreAuthorize("hasAnyAuthority('ROLE_FACTORY','ROLE_ADMIN') and hasAuthority('dispatch.confirm')")
     public ResponseEntity<ApiResponse<DispatchConfirmResponse>> confirmDispatch(@Valid @RequestBody DispatchConfirmRequest request) {
-        return ResponseEntity.ok(ApiResponse.success("Dispatch confirmed", salesService.confirmDispatch(request)));
+        return ResponseEntity.ok(ApiResponse.success("Dispatch confirmed", salesDispatchReconciliationService.confirmDispatch(request)));
     }
 
     @PostMapping("/sales/dispatch/reconcile-order-markers")
@@ -254,6 +275,6 @@ public class SalesController {
             @RequestParam(defaultValue = "200") int limit) {
         return ResponseEntity.ok(ApiResponse.success(
                 "Order-level dispatch markers reconciled",
-                salesService.reconcileStaleOrderLevelMarkers(limit)));
+                salesDispatchReconciliationService.reconcileStaleOrderLevelMarkers(limit)));
     }
 }

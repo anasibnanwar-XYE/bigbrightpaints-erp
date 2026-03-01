@@ -7,7 +7,7 @@ import com.bigbrightpaints.erp.modules.sales.dto.CreditRequestDto;
 import com.bigbrightpaints.erp.modules.sales.dto.CreditRequestRequest;
 import com.bigbrightpaints.erp.modules.sales.dto.DealerPortalCreditRequestCreateRequest;
 import com.bigbrightpaints.erp.modules.sales.service.DealerPortalService;
-import com.bigbrightpaints.erp.modules.sales.service.SalesService;
+import com.bigbrightpaints.erp.modules.sales.service.SalesDealerCrudService;
 import com.bigbrightpaints.erp.modules.invoice.service.InvoicePdfService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -37,14 +37,14 @@ import org.springframework.web.bind.annotation.RestController;
 public class DealerPortalController {
 
     private final DealerPortalService dealerPortalService;
-    private final SalesService salesService;
+    private final SalesDealerCrudService salesDealerCrudService;
     private final AuditService auditService;
 
     public DealerPortalController(DealerPortalService dealerPortalService,
-                                  SalesService salesService,
+                                  SalesDealerCrudService salesDealerCrudService,
                                   AuditService auditService) {
         this.dealerPortalService = dealerPortalService;
-        this.salesService = salesService;
+        this.salesDealerCrudService = salesDealerCrudService;
         this.auditService = auditService;
     }
 
@@ -100,7 +100,7 @@ public class DealerPortalController {
     public ResponseEntity<ApiResponse<CreditRequestDto>> createCreditRequest(
             @Valid @RequestBody DealerPortalCreditRequestCreateRequest request) {
         Dealer dealer = dealerPortalService.getCurrentDealer();
-        CreditRequestDto response = salesService.createCreditRequest(new CreditRequestRequest(
+        CreditRequestDto response = salesDealerCrudService.createCreditRequest(new CreditRequestRequest(
                 dealer.getId(),
                 request.amountRequested(),
                 request.reason(),

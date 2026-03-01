@@ -17,8 +17,9 @@ import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderRepository;
 import com.bigbrightpaints.erp.modules.sales.dto.DispatchConfirmRequest;
 import com.bigbrightpaints.erp.modules.sales.dto.DispatchConfirmResponse;
+import com.bigbrightpaints.erp.modules.sales.service.SalesDispatchReconciliationService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesJournalService;
-import com.bigbrightpaints.erp.modules.sales.service.SalesService;
+import com.bigbrightpaints.erp.modules.sales.service.SalesOrderCrudService;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
@@ -45,7 +46,9 @@ class InvoiceServiceTest {
     @Mock
     private InvoiceRepository invoiceRepository;
     @Mock
-    private SalesService salesService;
+    private SalesOrderCrudService salesOrderCrudService;
+    @Mock
+    private SalesDispatchReconciliationService salesDispatchReconciliationService;
     @Mock
     private SalesOrderRepository salesOrderRepository;
     @Mock
@@ -71,7 +74,8 @@ class InvoiceServiceTest {
         invoiceService = new InvoiceService(
                 companyContextService,
                 invoiceRepository,
-                salesService,
+                salesOrderCrudService,
+                salesDispatchReconciliationService,
                 salesOrderRepository,
                 invoiceNumberService,
                 salesJournalService,
@@ -98,7 +102,7 @@ class InvoiceServiceTest {
         order.setOrderNumber("SO-44");
         order.setCurrency("INR");
 
-        when(salesService.getOrderWithItems(orderId)).thenReturn(order);
+        when(salesOrderCrudService.getOrderWithItems(orderId)).thenReturn(order);
         when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, orderId)).thenReturn(List.of());
 
         assertThrows(ApplicationException.class, () -> invoiceService.issueInvoiceForOrder(orderId));
@@ -125,7 +129,7 @@ class InvoiceServiceTest {
         order.setCurrency("INR");
         ReflectionTestUtils.setField(order, "id", orderId);
 
-        when(salesService.getOrderWithItems(orderId)).thenReturn(order);
+        when(salesOrderCrudService.getOrderWithItems(orderId)).thenReturn(order);
         PackagingSlip slip = new PackagingSlip();
         ReflectionTestUtils.setField(slip, "id", 99L);
         when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, orderId)).thenReturn(List.of(slip));
@@ -155,7 +159,7 @@ class InvoiceServiceTest {
         order.setCurrency("INR");
         ReflectionTestUtils.setField(order, "id", orderId);
 
-        when(salesService.getOrderWithItems(orderId)).thenReturn(order);
+        when(salesOrderCrudService.getOrderWithItems(orderId)).thenReturn(order);
         PackagingSlip slip = new PackagingSlip();
         ReflectionTestUtils.setField(slip, "id", 99L);
         PackagingSlip otherSlip = new PackagingSlip();
@@ -189,7 +193,7 @@ class InvoiceServiceTest {
         order.setFulfillmentInvoiceId(999L);
         ReflectionTestUtils.setField(order, "id", orderId);
 
-        when(salesService.getOrderWithItems(orderId)).thenReturn(order);
+        when(salesOrderCrudService.getOrderWithItems(orderId)).thenReturn(order);
         PackagingSlip slip = new PackagingSlip();
         ReflectionTestUtils.setField(slip, "id", 99L);
         PackagingSlip otherSlip = new PackagingSlip();
@@ -222,7 +226,7 @@ class InvoiceServiceTest {
         order.setCurrency("INR");
         ReflectionTestUtils.setField(order, "id", orderId);
 
-        when(salesService.getOrderWithItems(orderId)).thenReturn(order);
+        when(salesOrderCrudService.getOrderWithItems(orderId)).thenReturn(order);
         PackagingSlip slip = new PackagingSlip();
         ReflectionTestUtils.setField(slip, "id", 99L);
         PackagingSlip cancelledSlip = new PackagingSlip();
@@ -253,7 +257,7 @@ class InvoiceServiceTest {
         order.setCurrency("INR");
         ReflectionTestUtils.setField(order, "id", orderId);
 
-        when(salesService.getOrderWithItems(orderId)).thenReturn(order);
+        when(salesOrderCrudService.getOrderWithItems(orderId)).thenReturn(order);
 
         PackagingSlip activeSlip = new PackagingSlip();
         ReflectionTestUtils.setField(activeSlip, "id", 199L);
@@ -272,7 +276,7 @@ class InvoiceServiceTest {
                 true,
                 List.of()
         );
-        when(salesService.confirmDispatch(any())).thenReturn(response);
+        when(salesDispatchReconciliationService.confirmDispatch(any())).thenReturn(response);
 
         Invoice invoice = new Invoice();
         ReflectionTestUtils.setField(invoice, "id", 223L);
@@ -283,7 +287,7 @@ class InvoiceServiceTest {
         InvoiceDto dto = invoiceService.issueInvoiceForOrder(orderId);
 
         ArgumentCaptor<DispatchConfirmRequest> requestCaptor = ArgumentCaptor.forClass(DispatchConfirmRequest.class);
-        verify(salesService).confirmDispatch(requestCaptor.capture());
+        verify(salesDispatchReconciliationService).confirmDispatch(requestCaptor.capture());
         assertThat(requestCaptor.getValue().packingSlipId()).isEqualTo(199L);
         assertThat(dto.id()).isEqualTo(223L);
     }
@@ -301,7 +305,7 @@ class InvoiceServiceTest {
         order.setOrderNumber("SO-77");
         order.setCurrency("INR");
 
-        when(salesService.getOrderWithItems(orderId)).thenReturn(order);
+        when(salesOrderCrudService.getOrderWithItems(orderId)).thenReturn(order);
 
         PackagingSlip slip = new PackagingSlip();
         ReflectionTestUtils.setField(slip, "id", 99L);
@@ -316,7 +320,7 @@ class InvoiceServiceTest {
                 true,
                 List.of()
         );
-        when(salesService.confirmDispatch(any())).thenReturn(response);
+        when(salesDispatchReconciliationService.confirmDispatch(any())).thenReturn(response);
 
         Invoice invoice = new Invoice();
         ReflectionTestUtils.setField(invoice, "id", 123L);
@@ -327,7 +331,7 @@ class InvoiceServiceTest {
         InvoiceDto dto = invoiceService.issueInvoiceForOrder(orderId);
 
         ArgumentCaptor<DispatchConfirmRequest> requestCaptor = ArgumentCaptor.forClass(DispatchConfirmRequest.class);
-        verify(salesService).confirmDispatch(requestCaptor.capture());
+        verify(salesDispatchReconciliationService).confirmDispatch(requestCaptor.capture());
         assertThat(requestCaptor.getValue().packingSlipId()).isEqualTo(99L);
         assertThat(dto.id()).isEqualTo(123L);
 

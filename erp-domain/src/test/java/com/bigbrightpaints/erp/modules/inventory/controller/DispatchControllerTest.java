@@ -4,7 +4,7 @@ import com.bigbrightpaints.erp.modules.inventory.dto.DispatchConfirmationRequest
 import com.bigbrightpaints.erp.modules.inventory.dto.DispatchConfirmationResponse;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsDispatchService;
 import com.bigbrightpaints.erp.modules.sales.dto.DispatchConfirmRequest;
-import com.bigbrightpaints.erp.modules.sales.service.SalesService;
+import com.bigbrightpaints.erp.modules.sales.service.SalesDispatchReconciliationService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import java.math.BigDecimal;
 import java.security.Principal;
@@ -29,11 +29,11 @@ class DispatchControllerTest {
     private FinishedGoodsDispatchService finishedGoodsDispatchService;
 
     @Mock
-    private SalesService salesService;
+    private SalesDispatchReconciliationService salesDispatchReconciliationService;
 
     @Test
     void confirmDispatch_callsSalesOnce_andDoesNotDoubleDispatchInventory() {
-        DispatchController controller = new DispatchController(finishedGoodsDispatchService, salesService);
+        DispatchController controller = new DispatchController(finishedGoodsDispatchService, salesDispatchReconciliationService);
         Principal principal = () -> "factory.user";
 
         DispatchConfirmationRequest request = new DispatchConfirmationRequest(
@@ -72,7 +72,7 @@ class DispatchControllerTest {
         assertThat(response.getBody().data()).isSameAs(expected);
 
         ArgumentCaptor<DispatchConfirmRequest> dispatchCaptor = ArgumentCaptor.forClass(DispatchConfirmRequest.class);
-        verify(salesService).confirmDispatch(dispatchCaptor.capture());
+        verify(salesDispatchReconciliationService).confirmDispatch(dispatchCaptor.capture());
 
         DispatchConfirmRequest dispatchRequest = dispatchCaptor.getValue();
         assertThat(dispatchRequest.packingSlipId()).isEqualTo(10L);
@@ -85,7 +85,7 @@ class DispatchControllerTest {
         assertThat(dispatchRequest.lines().get(0).notes()).isEqualTo("Ship as-is");
 
         verify(finishedGoodsDispatchService).getDispatchConfirmation(10L);
-        verifyNoMoreInteractions(salesService, finishedGoodsDispatchService);
+        verifyNoMoreInteractions(salesDispatchReconciliationService, finishedGoodsDispatchService);
     }
 }
 

@@ -4,7 +4,7 @@ import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import com.bigbrightpaints.erp.modules.inventory.dto.*;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsDispatchService;
 import com.bigbrightpaints.erp.modules.sales.dto.DispatchConfirmRequest;
-import com.bigbrightpaints.erp.modules.sales.service.SalesService;
+import com.bigbrightpaints.erp.modules.sales.service.SalesDispatchReconciliationService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -22,12 +22,12 @@ import java.util.List;
 public class DispatchController {
 
     private final FinishedGoodsDispatchService finishedGoodsDispatchService;
-    private final SalesService salesService;
+    private final SalesDispatchReconciliationService salesDispatchReconciliationService;
 
     public DispatchController(FinishedGoodsDispatchService finishedGoodsDispatchService,
-                              SalesService salesService) {
+                              SalesDispatchReconciliationService salesDispatchReconciliationService) {
         this.finishedGoodsDispatchService = finishedGoodsDispatchService;
-        this.salesService = salesService;
+        this.salesDispatchReconciliationService = salesDispatchReconciliationService;
     }
 
     /**
@@ -117,7 +117,7 @@ public class DispatchController {
                 null,
                 request.overrideRequestId()
         );
-        salesService.confirmDispatch(accountingRequest);
+        salesDispatchReconciliationService.confirmDispatch(accountingRequest);
         DispatchConfirmationResponse response = finishedGoodsDispatchService.getDispatchConfirmation(request.packagingSlipId());
         return ResponseEntity.ok(ApiResponse.success(response));
     }

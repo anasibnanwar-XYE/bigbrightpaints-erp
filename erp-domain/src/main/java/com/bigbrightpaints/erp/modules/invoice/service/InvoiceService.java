@@ -22,8 +22,9 @@ import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderRepository;
 import com.bigbrightpaints.erp.modules.sales.dto.DispatchConfirmRequest;
 import com.bigbrightpaints.erp.modules.sales.dto.DispatchConfirmResponse;
+import com.bigbrightpaints.erp.modules.sales.service.SalesDispatchReconciliationService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesJournalService;
-import com.bigbrightpaints.erp.modules.sales.service.SalesService;
+import com.bigbrightpaints.erp.modules.sales.service.SalesOrderCrudService;
 import com.bigbrightpaints.erp.modules.sales.util.SalesOrderReference;
 import jakarta.transaction.Transactional;
 import org.springframework.data.domain.Page;
@@ -41,7 +42,8 @@ public class InvoiceService {
 
     private final CompanyContextService companyContextService;
     private final InvoiceRepository invoiceRepository;
-    private final SalesService salesService;
+    private final SalesOrderCrudService salesOrderCrudService;
+    private final SalesDispatchReconciliationService salesDispatchReconciliationService;
     private final SalesOrderRepository salesOrderRepository;
     private final InvoiceNumberService invoiceNumberService;
     private final SalesJournalService salesJournalService;
@@ -53,7 +55,8 @@ public class InvoiceService {
 
     public InvoiceService(CompanyContextService companyContextService,
                           InvoiceRepository invoiceRepository,
-                          SalesService salesService,
+                          SalesOrderCrudService salesOrderCrudService,
+                          SalesDispatchReconciliationService salesDispatchReconciliationService,
                           SalesOrderRepository salesOrderRepository,
                           InvoiceNumberService invoiceNumberService,
                           SalesJournalService salesJournalService,
@@ -64,7 +67,8 @@ public class InvoiceService {
                           CompanyClock companyClock) {
         this.companyContextService = companyContextService;
         this.invoiceRepository = invoiceRepository;
-        this.salesService = salesService;
+        this.salesOrderCrudService = salesOrderCrudService;
+        this.salesDispatchReconciliationService = salesDispatchReconciliationService;
         this.salesOrderRepository = salesOrderRepository;
         this.invoiceNumberService = invoiceNumberService;
         this.salesJournalService = salesJournalService;
@@ -110,7 +114,7 @@ public class InvoiceService {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
                         "Packing slip is required before issuing an invoice; issue invoices per dispatch");
             }
-            DispatchConfirmResponse response = salesService.confirmDispatch(new DispatchConfirmRequest(
+            DispatchConfirmResponse response = salesDispatchReconciliationService.confirmDispatch(new DispatchConfirmRequest(
                     slip.getId(),
                     null,
                     null,
@@ -153,7 +157,7 @@ public class InvoiceService {
         if (lockedOrder != null && lockedOrder.isPresent()) {
             return lockedOrder.get();
         }
-        return salesService.getOrderWithItems(salesOrderId);
+        return salesOrderCrudService.getOrderWithItems(salesOrderId);
     }
 
     private List<PackagingSlip> findOrderSlips(Company company, Long salesOrderId, boolean forUpdate) {

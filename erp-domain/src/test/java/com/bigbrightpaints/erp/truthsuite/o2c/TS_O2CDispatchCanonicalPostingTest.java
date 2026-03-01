@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 class TS_O2CDispatchCanonicalPostingTest {
 
     private static final String SALES_SERVICE =
-            "src/main/java/com/bigbrightpaints/erp/modules/sales/service/SalesService.java";
+            "src/main/java/com/bigbrightpaints/erp/modules/sales/service/SalesCoreEngine.java";
 
     @Test
     void confirmDispatchUsesLockingAndCanonicalFacadePosting() {
