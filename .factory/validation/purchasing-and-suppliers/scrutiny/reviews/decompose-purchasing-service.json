@@ -1,0 +1,21 @@
+{
+  "featureId": "decompose-purchasing-service",
+  "reviewedAt": "2026-03-02T02:53:44+05:30",
+  "commitId": "8f039de52e1ff4a987b463d04f1ca6c51e7576b5",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The feature achieves the requested decomposition of PurchasingService into focused services and keeps PurchasingService as a compatibility facade. PurchaseOrderService, GoodsReceiptService, and PurchaseReturnService contain real domain logic and stay under the 500-line threshold, with purchasing callers still routed through the facade controllers. The decomposition preserves key behaviors: GRN idempotency/quantity validation, return outstanding non-negative guard (RETURN_EXCEEDS_OUTSTANDING), and purchase/GRN status updates tied to receiving/invoicing flows.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "Scrutiny review subagent spawning is currently brittle when mission model settings use an unavailable custom worker model, causing Task-based reviewer launches to fail before review execution.",
+      "evidence": "Current mission model settings file sets workerModel to custom:CLIProxyAPI-5.3-codex-xhigh-pro (/home/realnigga/.factory/missions/9cf481ca-5e0f-423d-8241-8364a13a7137/model-settings.json), while Task calls failed with 'Invalid model: custom:CLIProxyAPI-5.3-codex-xhigh-pro' and listed only '5.3 codex ...' custom aliases as valid."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Pass. Purchasing decomposition is materially implemented (not wrapper-only), facade compatibility is preserved, and the targeted purchasing invariants remain enforced."
+}
