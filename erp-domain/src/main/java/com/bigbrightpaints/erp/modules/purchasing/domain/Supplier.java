@@ -1,14 +1,15 @@
 package com.bigbrightpaints.erp.modules.purchasing.domain;
 
+import com.bigbrightpaints.erp.core.domain.VersionedEntity;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.GstRegistrationType;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.PositiveOrZero;
+
 import java.math.BigDecimal;
 import java.time.Instant;
-import com.bigbrightpaints.erp.core.domain.VersionedEntity;
 import java.util.UUID;
 
 @Entity
@@ -32,8 +33,9 @@ public class Supplier extends VersionedEntity {
     @Column(nullable = false)
     private String name;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private String status = "ACTIVE";
+    private SupplierStatus status = SupplierStatus.PENDING;
 
     private String email;
     private String phone;
@@ -48,6 +50,22 @@ public class Supplier extends VersionedEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "gst_registration_type", nullable = false)
     private GstRegistrationType gstRegistrationType = GstRegistrationType.UNREGISTERED;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "payment_terms", nullable = false)
+    private SupplierPaymentTerms paymentTerms = SupplierPaymentTerms.NET_30;
+
+    @Column(name = "bank_account_name_encrypted")
+    private String bankAccountNameEncrypted;
+
+    @Column(name = "bank_account_number_encrypted")
+    private String bankAccountNumberEncrypted;
+
+    @Column(name = "bank_ifsc_encrypted")
+    private String bankIfscEncrypted;
+
+    @Column(name = "bank_branch_encrypted")
+    private String bankBranchEncrypted;
 
     @Column(name = "credit_limit", nullable = false)
     @PositiveOrZero
@@ -106,11 +124,32 @@ public class Supplier extends VersionedEntity {
     }
 
     public String getStatus() {
+        return status.name();
+    }
+
+    public SupplierStatus getStatusEnum() {
         return status;
     }
 
+    public void setStatus(SupplierStatus status) {
+        this.status = status == null ? SupplierStatus.PENDING : status;
+    }
+
+    public String getStatusValue() {
+        return status.name();
+    }
+
     public void setStatus(String status) {
-        this.status = status;
+        if (!org.springframework.util.StringUtils.hasText(status)) {
+            this.status = SupplierStatus.PENDING;
+            return;
+        }
+        String normalized = status.trim().toUpperCase(java.util.Locale.ROOT);
+        this.status = switch (normalized) {
+            case "INACTIVE", "DISABLED" -> SupplierStatus.SUSPENDED;
+            case "NEW" -> SupplierStatus.PENDING;
+            default -> SupplierStatus.valueOf(normalized);
+        };
     }
 
     public String getEmail() {
@@ -159,6 +198,46 @@ public class Supplier extends VersionedEntity {
 
     public void setGstRegistrationType(GstRegistrationType gstRegistrationType) {
         this.gstRegistrationType = gstRegistrationType == null ? GstRegistrationType.UNREGISTERED : gstRegistrationType;
+    }
+
+    public SupplierPaymentTerms getPaymentTerms() {
+        return paymentTerms;
+    }
+
+    public void setPaymentTerms(SupplierPaymentTerms paymentTerms) {
+        this.paymentTerms = paymentTerms == null ? SupplierPaymentTerms.NET_30 : paymentTerms;
+    }
+
+    public String getBankAccountNameEncrypted() {
+        return bankAccountNameEncrypted;
+    }
+
+    public void setBankAccountNameEncrypted(String bankAccountNameEncrypted) {
+        this.bankAccountNameEncrypted = bankAccountNameEncrypted;
+    }
+
+    public String getBankAccountNumberEncrypted() {
+        return bankAccountNumberEncrypted;
+    }
+
+    public void setBankAccountNumberEncrypted(String bankAccountNumberEncrypted) {
+        this.bankAccountNumberEncrypted = bankAccountNumberEncrypted;
+    }
+
+    public String getBankIfscEncrypted() {
+        return bankIfscEncrypted;
+    }
+
+    public void setBankIfscEncrypted(String bankIfscEncrypted) {
+        this.bankIfscEncrypted = bankIfscEncrypted;
+    }
+
+    public String getBankBranchEncrypted() {
+        return bankBranchEncrypted;
+    }
+
+    public void setBankBranchEncrypted(String bankBranchEncrypted) {
+        this.bankBranchEncrypted = bankBranchEncrypted;
     }
 
     public BigDecimal getCreditLimit() {

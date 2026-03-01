@@ -129,6 +129,7 @@ public class PurchasingService {
                 companyEntityLookup,
                 accountingPeriodService,
                 responseMapper,
+                event -> {},
                 transactionManager
         );
         this.purchaseInvoiceService = new PurchaseInvoiceService(

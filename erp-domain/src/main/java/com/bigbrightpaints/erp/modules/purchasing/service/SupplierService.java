@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.purchasing.service;
 
+import com.bigbrightpaints.erp.core.security.CryptoService;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
@@ -9,10 +10,15 @@ import com.bigbrightpaints.erp.modules.accounting.service.SupplierLedgerService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
+import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierPaymentTerms;
 import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
+import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierStatus;
 import com.bigbrightpaints.erp.modules.purchasing.dto.SupplierRequest;
 import com.bigbrightpaints.erp.modules.purchasing.dto.SupplierResponse;
 import jakarta.transaction.Transactional;
+import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
+
 import java.math.BigDecimal;
 import java.text.Normalizer;
 import java.util.List;
@@ -20,8 +26,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
-import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
 
 @Service
 public class SupplierService {
@@ -33,24 +37,26 @@ public class SupplierService {
     private final AccountRepository accountRepository;
     private final SupplierLedgerService supplierLedgerService;
     private final CompanyEntityLookup companyEntityLookup;
+    private final CryptoService cryptoService;
 
     public SupplierService(SupplierRepository supplierRepository,
                            CompanyContextService companyContextService,
                            AccountRepository accountRepository,
                            SupplierLedgerService supplierLedgerService,
-                            CompanyEntityLookup companyEntityLookup) {
+                           CompanyEntityLookup companyEntityLookup,
+                           CryptoService cryptoService) {
         this.supplierRepository = supplierRepository;
         this.companyContextService = companyContextService;
         this.accountRepository = accountRepository;
         this.supplierLedgerService = supplierLedgerService;
         this.companyEntityLookup = companyEntityLookup;
+        this.cryptoService = cryptoService;
     }
 
     @Transactional
     public List<SupplierResponse> listSuppliers() {
         Company company = companyContextService.requireCurrentCompany();
         List<Supplier> suppliers = supplierRepository.findByCompanyWithPayableAccountOrderByNameAsc(company);
-        // Always use ledger as source of truth - never fall back to stale denormalized field
         Map<Long, BigDecimal> balances = supplierLedgerService.currentBalances(
                 suppliers.stream().map(Supplier::getId).toList());
         return suppliers.stream()
@@ -63,7 +69,6 @@ public class SupplierService {
     public SupplierResponse getSupplier(Long id) {
         Company company = companyContextService.requireCurrentCompany();
         Supplier supplier = requireSupplier(company, id);
-        // Use ledger balance as source of truth instead of denormalized field
         BigDecimal ledgerBalance = supplierLedgerService.currentBalance(id);
         return toResponse(supplier, ledgerBalance);
     }
@@ -81,7 +86,10 @@ public class SupplierService {
         supplier.setGstNumber(normalizeGstNumber(request.gstNumber()));
         supplier.setStateCode(normalizeStateCode(request.stateCode()));
         supplier.setGstRegistrationType(resolveRegistrationType(request.gstRegistrationType()));
+        supplier.setPaymentTerms(resolvePaymentTerms(request.paymentTerms()));
+        supplier.setStatus(SupplierStatus.PENDING);
         supplier.setCreditLimit(request.creditLimit() != null ? request.creditLimit() : BigDecimal.ZERO);
+        applyBankDetails(supplier, request);
         supplier = supplierRepository.save(supplier);
 
         Account payableAccount = createPayableAccount(company, supplier);
@@ -104,7 +112,45 @@ public class SupplierService {
         supplier.setGstNumber(normalizeGstNumber(request.gstNumber()));
         supplier.setStateCode(normalizeStateCode(request.stateCode()));
         supplier.setGstRegistrationType(resolveRegistrationType(request.gstRegistrationType()));
+        supplier.setPaymentTerms(resolvePaymentTerms(request.paymentTerms()));
         supplier.setCreditLimit(request.creditLimit() != null ? request.creditLimit() : BigDecimal.ZERO);
+        applyBankDetails(supplier, request);
+        return toResponse(supplier, supplierLedgerService.currentBalance(supplier.getId()));
+    }
+
+    @Transactional
+    public SupplierResponse approveSupplier(Long id) {
+        Company company = companyContextService.requireCurrentCompany();
+        Supplier supplier = requireSupplier(company, id);
+        if (supplier.getStatusEnum() != SupplierStatus.PENDING) {
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
+                    "Supplier can only be approved from PENDING state");
+        }
+        supplier.setStatus(SupplierStatus.APPROVED);
+        return toResponse(supplier, supplierLedgerService.currentBalance(supplier.getId()));
+    }
+
+    @Transactional
+    public SupplierResponse activateSupplier(Long id) {
+        Company company = companyContextService.requireCurrentCompany();
+        Supplier supplier = requireSupplier(company, id);
+        if (supplier.getStatusEnum() != SupplierStatus.APPROVED && supplier.getStatusEnum() != SupplierStatus.SUSPENDED) {
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
+                    "Supplier can only be activated from APPROVED or SUSPENDED state");
+        }
+        supplier.setStatus(SupplierStatus.ACTIVE);
+        return toResponse(supplier, supplierLedgerService.currentBalance(supplier.getId()));
+    }
+
+    @Transactional
+    public SupplierResponse suspendSupplier(Long id) {
+        Company company = companyContextService.requireCurrentCompany();
+        Supplier supplier = requireSupplier(company, id);
+        if (supplier.getStatusEnum() != SupplierStatus.ACTIVE) {
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
+                    "Supplier can only be suspended from ACTIVE state");
+        }
+        supplier.setStatus(SupplierStatus.SUSPENDED);
         return toResponse(supplier, supplierLedgerService.currentBalance(supplier.getId()));
     }
 
@@ -149,7 +195,7 @@ public class SupplierService {
                 supplier.getPublicId(),
                 supplier.getCode(),
                 supplier.getName(),
-                supplier.getStatus(),
+                supplier.getStatusEnum(),
                 supplier.getEmail(),
                 supplier.getPhone(),
                 supplier.getAddress(),
@@ -159,8 +205,38 @@ public class SupplierService {
                 accountCode,
                 supplier.getGstNumber(),
                 supplier.getStateCode(),
-                supplier.getGstRegistrationType()
+                supplier.getGstRegistrationType(),
+                supplier.getPaymentTerms(),
+                decryptIfPresent(supplier.getBankAccountNameEncrypted()),
+                decryptIfPresent(supplier.getBankAccountNumberEncrypted()),
+                decryptIfPresent(supplier.getBankIfscEncrypted()),
+                decryptIfPresent(supplier.getBankBranchEncrypted())
         );
+    }
+
+    private void applyBankDetails(Supplier supplier, SupplierRequest request) {
+        supplier.setBankAccountNameEncrypted(encryptOrNull(request.bankAccountName()));
+        supplier.setBankAccountNumberEncrypted(encryptOrNull(request.bankAccountNumber()));
+        supplier.setBankIfscEncrypted(encryptOrNull(request.bankIfsc()));
+        supplier.setBankBranchEncrypted(encryptOrNull(request.bankBranch()));
+    }
+
+    private String encryptOrNull(String value) {
+        String normalized = normalize(value);
+        if (!StringUtils.hasText(normalized)) {
+            return null;
+        }
+        return cryptoService.encrypt(normalized);
+    }
+
+    private String decryptIfPresent(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        if (!cryptoService.isEncrypted(value)) {
+            return value;
+        }
+        return cryptoService.decrypt(value);
     }
 
     private String normalize(String value) {
@@ -191,6 +267,10 @@ public class SupplierService {
 
     private GstRegistrationType resolveRegistrationType(GstRegistrationType registrationType) {
         return registrationType == null ? GstRegistrationType.UNREGISTERED : registrationType;
+    }
+
+    private SupplierPaymentTerms resolvePaymentTerms(SupplierPaymentTerms paymentTerms) {
+        return paymentTerms == null ? SupplierPaymentTerms.NET_30 : paymentTerms;
     }
 
     private String resolveSupplierCode(String requestedCode, String name, Company company) {

@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.purchasing.service;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -20,7 +21,7 @@ class SupplierApprovalPolicyPurchasingTest {
 
     @Test
     void supplierExceptionApprovalFailsClosedWhenMissing() {
-        assertThrows(IllegalStateException.class, () -> policy.requireSupplierExceptionApproval(null));
+        assertThrows(ApplicationException.class, () -> policy.requireSupplierExceptionApproval(null));
     }
 
     @Test
@@ -33,17 +34,17 @@ class SupplierApprovalPolicyPurchasingTest {
                 Instant.parse("2026-02-20T00:00:00Z"),
                 Map.of("ticket", "TKT-ERP-STAGE-095", "approvalSource", "workflow"));
 
-        assertThrows(IllegalArgumentException.class, () -> policy.requireSettlementOverrideApproval(decision));
+        assertThrows(ApplicationException.class, () -> policy.requireSettlementOverrideApproval(decision));
     }
 
     @Test
     void settlementOverrideApprovalFailsClosedWhenMissing() {
-        assertThrows(IllegalStateException.class, () -> policy.requireSettlementOverrideApproval(null));
+        assertThrows(ApplicationException.class, () -> policy.requireSettlementOverrideApproval(null));
     }
 
     @Test
     void supplierApprovalDecisionEnforcesMakerCheckerCaseInsensitive() {
-        assertThrows(IllegalArgumentException.class, () -> new SupplierApprovalDecision(
+        assertThrows(ApplicationException.class, () -> new SupplierApprovalDecision(
                 "APP-2",
                 "maker-user",
                 "MAKER-USER",
@@ -69,7 +70,7 @@ class SupplierApprovalPolicyPurchasingTest {
 
     @Test
     void supplierApprovalMetadataRequiresTicket() {
-        assertThrows(IllegalArgumentException.class, () -> new SupplierApprovalDecision(
+        assertThrows(ApplicationException.class, () -> new SupplierApprovalDecision(
                 "APP-4",
                 "maker-user",
                 "checker-user",

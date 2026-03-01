@@ -1,7 +1,7 @@
 package com.bigbrightpaints.erp.modules.purchasing.domain;
 
-import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.core.domain.VersionedEntity;
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import jakarta.persistence.*;
 
@@ -47,8 +47,9 @@ public class GoodsReceipt extends VersionedEntity {
     @Column(name = "idempotency_hash", length = 64)
     private String idempotencyHash;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private String status = "RECEIVED";
+    private GoodsReceiptStatus status = GoodsReceiptStatus.RECEIVED;
 
     @Column(name = "memo")
     private String memo;
@@ -95,12 +96,31 @@ public class GoodsReceipt extends VersionedEntity {
     public void setIdempotencyKey(String idempotencyKey) { this.idempotencyKey = idempotencyKey; }
     public String getIdempotencyHash() { return idempotencyHash; }
     public void setIdempotencyHash(String idempotencyHash) { this.idempotencyHash = idempotencyHash; }
-    public String getStatus() { return status; }
-    public void setStatus(String status) { this.status = status; }
+    public String getStatus() { return status.name(); }
+    public GoodsReceiptStatus getStatusEnum() { return status; }
+    public void setStatus(GoodsReceiptStatus status) {
+        this.status = status == null ? GoodsReceiptStatus.RECEIVED : status;
+    }
     public String getMemo() { return memo; }
     public void setMemo(String memo) { this.memo = memo; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
     public List<GoodsReceiptLine> getLines() { return lines; }
     public void setLines(List<GoodsReceiptLine> lines) { this.lines = lines; }
+
+    public String getStatusValue() {
+        return status.name();
+    }
+
+    public void setStatus(String status) {
+        if (!org.springframework.util.StringUtils.hasText(status)) {
+            this.status = GoodsReceiptStatus.RECEIVED;
+            return;
+        }
+        String normalized = status.trim().toUpperCase(java.util.Locale.ROOT);
+        this.status = switch (normalized) {
+            case "PARTIALLY_RECEIVED" -> GoodsReceiptStatus.PARTIAL;
+            default -> GoodsReceiptStatus.valueOf(normalized);
+        };
+    }
 }

@@ -24,8 +24,10 @@ import com.bigbrightpaints.erp.modules.inventory.service.RawMaterialService;
 import com.bigbrightpaints.erp.modules.purchasing.domain.GoodsReceipt;
 import com.bigbrightpaints.erp.modules.purchasing.domain.GoodsReceiptLine;
 import com.bigbrightpaints.erp.modules.purchasing.domain.GoodsReceiptRepository;
+import com.bigbrightpaints.erp.modules.purchasing.domain.GoodsReceiptStatus;
 import com.bigbrightpaints.erp.modules.purchasing.domain.PurchaseOrder;
 import com.bigbrightpaints.erp.modules.purchasing.domain.PurchaseOrderRepository;
+import com.bigbrightpaints.erp.modules.purchasing.domain.PurchaseOrderStatus;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchase;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseLine;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
@@ -142,7 +144,7 @@ public class PurchaseInvoiceEngine {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
                     "Goods receipt does not belong to the supplier");
         }
-        if ("INVOICED".equalsIgnoreCase(goodsReceipt.getStatus())) {
+        if (goodsReceipt.getStatusEnum() == GoodsReceiptStatus.INVOICED) {
             throw new ApplicationException(ErrorCode.BUSINESS_CONSTRAINT_VIOLATION,
                     "Goods receipt is already invoiced");
         }
@@ -505,13 +507,17 @@ public class PurchaseInvoiceEngine {
                     });
             linkGoodsReceiptMovementsToJournal(company, goodsReceipt.getReceiptNumber(), entryId);
         }
-        goodsReceipt.setStatus("INVOICED");
+        goodsReceipt.setStatus(GoodsReceiptStatus.INVOICED);
         goodsReceiptRepository.save(goodsReceipt);
-        if ("RECEIVED".equalsIgnoreCase(purchaseOrder.getStatus())) {
+        if (purchaseOrder.getStatusEnum() == PurchaseOrderStatus.FULLY_RECEIVED
+                || purchaseOrder.getStatusEnum() == PurchaseOrderStatus.PARTIALLY_RECEIVED) {
             boolean allInvoiced = goodsReceiptRepository.findByPurchaseOrder(purchaseOrder).stream()
-                    .allMatch(gr -> "INVOICED".equalsIgnoreCase(gr.getStatus()));
+                    .allMatch(gr -> gr.getStatusEnum() == GoodsReceiptStatus.INVOICED);
             if (allInvoiced) {
-                purchaseOrder.setStatus("CLOSED");
+                purchaseOrder.setStatus(PurchaseOrderStatus.CLOSED);
+                purchaseOrderRepository.save(purchaseOrder);
+            } else {
+                purchaseOrder.setStatus(PurchaseOrderStatus.INVOICED);
                 purchaseOrderRepository.save(purchaseOrder);
             }
         }
@@ -570,7 +576,7 @@ public class PurchaseInvoiceEngine {
         List<RawMaterialMovement> movements = movementRepository
                 .findByRawMaterialCompanyAndReferenceTypeAndReferenceId(
                         company,
-                        InventoryReference.RAW_MATERIAL_PURCHASE,
+                        InventoryReference.GOODS_RECEIPT,
                         receiptNumber);
         return movements != null ? movements : List.of();
     }
@@ -617,37 +623,6 @@ public class PurchaseInvoiceEngine {
             taxLines.put(null, taxAmount);
         }
 
-        String standardizedMemo = memo;
-        List<JournalCreationRequest.LineRequest> standardizedLines = new ArrayList<>();
-        inventoryDebits.forEach((accountId, amount) -> standardizedLines.add(
-                new JournalCreationRequest.LineRequest(accountId, amount, BigDecimal.ZERO, standardizedMemo)));
-        if (taxLines != null) {
-            taxLines.forEach((accountId, amount) -> standardizedLines.add(
-                    new JournalCreationRequest.LineRequest(accountId, amount, BigDecimal.ZERO, standardizedMemo)));
-        }
-        standardizedLines.add(new JournalCreationRequest.LineRequest(
-                supplier.getPayableAccount() != null ? supplier.getPayableAccount().getId() : null,
-                BigDecimal.ZERO,
-                totalAmount,
-                standardizedMemo
-        ));
-        JournalCreationRequest standardizedPurchaseRequest = new JournalCreationRequest(
-                totalAmount,
-                inventoryDebits.keySet().stream().findFirst().orElse(null),
-                supplier.getPayableAccount() != null ? supplier.getPayableAccount().getId() : null,
-                standardizedMemo,
-                "PURCHASING",
-                referenceNumber,
-                gstBreakdown,
-                standardizedLines,
-                entryDate,
-                null,
-                supplier.getId(),
-                false
-        );
-        memo = standardizedPurchaseRequest.narration();
-        entryDate = standardizedPurchaseRequest.entryDate() != null ? standardizedPurchaseRequest.entryDate() : entryDate;
-
         return accountingFacade.postPurchaseJournal(
                 supplier.getId(),
                 request.invoiceNumber(),
@@ -655,7 +630,7 @@ public class PurchaseInvoiceEngine {
                 memo,
                 inventoryDebits,
                 taxLines,
-                standardizedPurchaseRequest.gstBreakdown(),
+                gstBreakdown,
                 totalAmount,
                 referenceNumber
         );

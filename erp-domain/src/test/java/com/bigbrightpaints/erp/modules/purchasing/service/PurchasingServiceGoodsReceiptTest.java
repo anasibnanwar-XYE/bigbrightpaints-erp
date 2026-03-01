@@ -381,7 +381,7 @@ class PurchasingServiceGoodsReceiptTest {
         assertThat(savedReceipt.getLines().get(0).getRawMaterialBatch()).isEqualTo(recordedBatch);
         assertThat(savedReceipt.getLines().get(0).getBatchCode()).isEqualTo("RM-20-LOT-001");
         assertThat(savedReceipt.getLines().get(0).getLineTotal()).isEqualByComparingTo("20.00");
-        assertThat(purchaseOrder.getStatus()).isEqualTo("PARTIAL");
+        assertThat(purchaseOrder.getStatus()).isEqualTo("PARTIALLY_RECEIVED");
 
         ArgumentCaptor<RawMaterialBatchRequest> batchRequestCaptor = ArgumentCaptor.forClass(RawMaterialBatchRequest.class);
         verify(rawMaterialService).recordReceipt(eq(20L), batchRequestCaptor.capture(), any(RawMaterialService.ReceiptContext.class));

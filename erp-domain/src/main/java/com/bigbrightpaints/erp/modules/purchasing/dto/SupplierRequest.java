@@ -1,11 +1,13 @@
 package com.bigbrightpaints.erp.modules.purchasing.dto;
 
 import com.bigbrightpaints.erp.modules.accounting.domain.GstRegistrationType;
+import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierPaymentTerms;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+
 import java.math.BigDecimal;
 
 public record SupplierRequest(
@@ -19,7 +21,13 @@ public record SupplierRequest(
         String gstNumber,
         @Pattern(regexp = "^$|[A-Za-z0-9]{2}$", message = "State code must be exactly 2 characters")
         String stateCode,
-        GstRegistrationType gstRegistrationType) {
+        GstRegistrationType gstRegistrationType,
+        SupplierPaymentTerms paymentTerms,
+        @Size(max = 128) String bankAccountName,
+        @Size(max = 64) String bankAccountNumber,
+        @Size(max = 32) String bankIfsc,
+        @Size(max = 128) String bankBranch
+) {
 
     public SupplierRequest(String name,
                            String code,
@@ -27,6 +35,7 @@ public record SupplierRequest(
                            String contactPhone,
                            String address,
                            BigDecimal creditLimit) {
-        this(name, code, contactEmail, contactPhone, address, creditLimit, null, null, null);
+        this(name, code, contactEmail, contactPhone, address, creditLimit,
+                null, null, null, null, null, null, null, null);
     }
 }

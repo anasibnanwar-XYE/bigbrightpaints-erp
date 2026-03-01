@@ -1621,6 +1621,118 @@ These values are populated during dispatch confirmation and returned in invoice 
 
 ### Purchasing & Suppliers
 
+#### Endpoint Map
+
+| Method | Path | Auth | Request | Response `data` |
+|---|---|---|---|---|
+| `GET` | `/api/v1/suppliers` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` or `ROLE_FACTORY` | none | `List<SupplierResponse>` |
+| `GET` | `/api/v1/suppliers/{id}` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` or `ROLE_FACTORY` | path `id` | `SupplierResponse` |
+| `POST` | `/api/v1/suppliers` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | `SupplierRequest` | `SupplierResponse` |
+| `PUT` | `/api/v1/suppliers/{id}` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | path `id` + `SupplierRequest` | `SupplierResponse` |
+| `POST` | `/api/v1/suppliers/{id}/approve` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | path `id` | `SupplierResponse` |
+| `POST` | `/api/v1/suppliers/{id}/activate` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | path `id` | `SupplierResponse` |
+| `POST` | `/api/v1/suppliers/{id}/suspend` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | path `id` | `SupplierResponse` |
+| `GET` | `/api/v1/purchasing/purchase-orders?supplierId={id?}` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | optional query `supplierId` | `List<PurchaseOrderResponse>` |
+| `GET` | `/api/v1/purchasing/purchase-orders/{id}` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | path `id` | `PurchaseOrderResponse` |
+| `POST` | `/api/v1/purchasing/purchase-orders` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | `PurchaseOrderRequest` | `PurchaseOrderResponse` |
+| `GET` | `/api/v1/purchasing/goods-receipts?supplierId={id?}` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | optional query `supplierId` | `List<GoodsReceiptResponse>` |
+| `GET` | `/api/v1/purchasing/goods-receipts/{id}` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | path `id` | `GoodsReceiptResponse` |
+| `POST` | `/api/v1/purchasing/goods-receipts` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | `GoodsReceiptRequest` + `Idempotency-Key` header | `GoodsReceiptResponse` |
+
+All responses use `ApiResponse<T>` envelopes.
+
+#### User Flows
+
+1. **Supplier onboarding + approval lifecycle**
+   1. `POST /api/v1/suppliers` (creates `PENDING` supplier with payable account and optional GST/payment/bank data)
+   2. `POST /api/v1/suppliers/{id}/approve` (transitions `PENDING -> APPROVED`)
+   3. `POST /api/v1/suppliers/{id}/activate` (transitions `APPROVED -> ACTIVE`)
+   4. Use `GET /api/v1/suppliers` to refresh list and show decrypted bank fields returned by backend.
+
+2. **Supplier suspension / reactivation**
+   1. `POST /api/v1/suppliers/{id}/suspend` (only when current status is `ACTIVE`)
+   2. `POST /api/v1/suppliers/{id}/activate` (allowed from `SUSPENDED`)
+
+3. **Create purchase order (only active suppliers)**
+   1. Select supplier from `GET /api/v1/suppliers`
+   2. Create PO via `POST /api/v1/purchasing/purchase-orders`
+   3. If supplier is not `ACTIVE`, backend returns business invalid state error.
+
+4. **Goods receipt with strict quantity tracking**
+   1. Create GRN via `POST /api/v1/purchasing/goods-receipts` with `Idempotency-Key` header/body key
+   2. Backend validates line quantities <= remaining PO quantity; rejects over-receipt.
+   3. Backend records raw material inventory movement events per GRN line.
+
+5. **PO closure after invoice posting**
+   1. Purchase invoice creation (existing purchasing purchase-invoice API) marks GRN `INVOICED`
+   2. If all GRNs under PO are invoiced, PO becomes `CLOSED`; otherwise PO becomes `INVOICED`.
+
+#### State Machines
+
+- **Supplier**
+  - `PENDING -> APPROVED` via `POST /api/v1/suppliers/{id}/approve`
+  - `APPROVED -> ACTIVE` via `POST /api/v1/suppliers/{id}/activate`
+  - `ACTIVE -> SUSPENDED` via `POST /api/v1/suppliers/{id}/suspend`
+  - `SUSPENDED -> ACTIVE` via `POST /api/v1/suppliers/{id}/activate`
+
+- **Purchase Order**
+  - `APPROVED -> PARTIALLY_RECEIVED` when GRN receives subset of remaining quantity
+  - `APPROVED/PARTIALLY_RECEIVED -> FULLY_RECEIVED` when all ordered quantities are received
+  - `FULLY_RECEIVED/PARTIALLY_RECEIVED -> INVOICED` when one or more GRNs invoiced but at least one remains uninvoiced
+  - `FULLY_RECEIVED/PARTIALLY_RECEIVED -> CLOSED` when all GRNs under PO are invoiced
+  - `VOID` is non-receivable terminal state for GRN creation
+
+- **Goods Receipt**
+  - `RECEIVED` for full receipt against remaining PO quantities
+  - `PARTIAL` for partial receipt against remaining PO quantities
+  - `INVOICED` after linked purchase invoice is successfully posted
+
+#### Error Codes / Frontend Handling
+
+- `VALIDATION_MISSING_REQUIRED_FIELD`
+  - Missing GRN idempotency key or missing receipt date.
+  - UX: block submit, show inline required-field message.
+- `VALIDATION_INVALID_INPUT`
+  - Duplicate raw material lines, unit mismatch, over-receipt, tax mode conflict.
+  - UX: highlight offending rows from error details (`rawMaterialId`, quantities, units).
+- `BUSINESS_INVALID_STATE`
+  - Creating PO for non-`ACTIVE` supplier.
+  - UX: disable PO action unless supplier status is `ACTIVE`.
+- `BUSINESS_CONSTRAINT_VIOLATION`
+  - GRN already invoiced, PO already fully received, PO non-receivable state, journal-link conflicts.
+  - UX: show non-retryable toast and force refresh of PO/GRN timeline.
+- `CONCURRENCY_CONFLICT`
+  - Idempotency key replay with mismatched payload or duplicate GRN/purchase linking race.
+  - UX: reload latest resource and prevent automatic blind retry.
+
+#### Data Contracts
+
+- `SupplierRequest`
+  - `name` *(required)*
+  - `code`, `contactEmail`, `contactPhone`, `address`, `creditLimit`
+  - `gstNumber`, `stateCode`, `gstRegistrationType`
+  - `paymentTerms`: `NET_30 | NET_60 | NET_90`
+  - `bankAccountName`, `bankAccountNumber`, `bankIfsc`, `bankBranch` (sent plaintext; stored encrypted at rest)
+
+- `SupplierResponse`
+  - Core identity/account fields + `status` enum (`PENDING|APPROVED|ACTIVE|SUSPENDED`)
+  - GST fields + `paymentTerms`
+  - `bankAccountName`, `bankAccountNumber`, `bankIfsc`, `bankBranch` are returned decrypted for UI display/edit.
+
+- `PurchaseOrderResponse.status`
+  - String status values: `DRAFT`, `APPROVED`, `PARTIALLY_RECEIVED`, `FULLY_RECEIVED`, `INVOICED`, `CLOSED`, `VOID`
+
+- `GoodsReceiptResponse.status`
+  - String status values: `PARTIAL`, `RECEIVED`, `INVOICED`
+
+#### UI Hints
+
+- Supplier list should surface status and payment terms columns; only show **Create PO** action for `ACTIVE` suppliers.
+- Add explicit approval action buttons (`Approve`, `Activate`, `Suspend`) with state-aware enable/disable rules from transitions above.
+- Mask bank account number in list views; reveal full value only in supplier details/edit forms.
+- For GRN forms, keep per-line remaining quantity visible (ordered - received) and hard-block entry above remaining.
+- Always send `Idempotency-Key` header for GRN creation; do not use `X-Idempotency-Key` legacy header.
+
 #### GST Fields
 
 - Supplier create/update payloads support:

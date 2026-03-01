@@ -13,17 +13,22 @@ import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReference;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
 import com.bigbrightpaints.erp.modules.inventory.dto.RawMaterialBatchRequest;
+import com.bigbrightpaints.erp.modules.inventory.event.InventoryMovementEvent;
+import com.bigbrightpaints.erp.modules.inventory.event.InventoryValuationChangedEvent;
 import com.bigbrightpaints.erp.modules.inventory.service.RawMaterialService;
 import com.bigbrightpaints.erp.modules.purchasing.domain.GoodsReceipt;
 import com.bigbrightpaints.erp.modules.purchasing.domain.GoodsReceiptLine;
 import com.bigbrightpaints.erp.modules.purchasing.domain.GoodsReceiptRepository;
+import com.bigbrightpaints.erp.modules.purchasing.domain.GoodsReceiptStatus;
 import com.bigbrightpaints.erp.modules.purchasing.domain.PurchaseOrder;
 import com.bigbrightpaints.erp.modules.purchasing.domain.PurchaseOrderLine;
 import com.bigbrightpaints.erp.modules.purchasing.domain.PurchaseOrderRepository;
+import com.bigbrightpaints.erp.modules.purchasing.domain.PurchaseOrderStatus;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
 import com.bigbrightpaints.erp.modules.purchasing.dto.GoodsReceiptLineRequest;
-import com.bigbrightpaints.erp.modules.purchasing.dto.GoodsReceiptResponse;
 import com.bigbrightpaints.erp.modules.purchasing.dto.GoodsReceiptRequest;
+import com.bigbrightpaints.erp.modules.purchasing.dto.GoodsReceiptResponse;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -48,6 +53,7 @@ public class GoodsReceiptService {
     private final CompanyEntityLookup companyEntityLookup;
     private final AccountingPeriodService accountingPeriodService;
     private final PurchaseResponseMapper responseMapper;
+    private final ApplicationEventPublisher applicationEventPublisher;
     private final IdempotencyReservationService idempotencyReservationService = new IdempotencyReservationService();
     private final TransactionTemplate transactionTemplate;
 
@@ -59,6 +65,7 @@ public class GoodsReceiptService {
                                CompanyEntityLookup companyEntityLookup,
                                AccountingPeriodService accountingPeriodService,
                                PurchaseResponseMapper responseMapper,
+                               ApplicationEventPublisher applicationEventPublisher,
                                PlatformTransactionManager transactionManager) {
         this.companyContextService = companyContextService;
         this.purchaseOrderRepository = purchaseOrderRepository;
@@ -68,6 +75,7 @@ public class GoodsReceiptService {
         this.companyEntityLookup = companyEntityLookup;
         this.accountingPeriodService = accountingPeriodService;
         this.responseMapper = responseMapper;
+        this.applicationEventPublisher = applicationEventPublisher;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
     }
 
@@ -148,10 +156,12 @@ public class GoodsReceiptService {
                 .ifPresent(existing -> {
                     throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Receipt number already used for this company");
                 });
-        if ("CLOSED".equalsIgnoreCase(purchaseOrder.getStatus())) {
+        if (purchaseOrder.getStatusEnum() == PurchaseOrderStatus.CLOSED
+                || purchaseOrder.getStatusEnum() == PurchaseOrderStatus.VOID) {
             throw new ApplicationException(ErrorCode.BUSINESS_CONSTRAINT_VIOLATION,
-                    "Purchase order is already closed")
-                    .withDetail("purchaseOrderId", purchaseOrder.getId());
+                    "Purchase order is not receivable")
+                    .withDetail("purchaseOrderId", purchaseOrder.getId())
+                    .withDetail("purchaseOrderStatus", purchaseOrder.getStatus());
         }
 
         Map<Long, PurchaseOrderLine> orderLinesByMaterial = new HashMap<>();
@@ -278,10 +288,11 @@ public class GoodsReceiptService {
         }
 
         if (!fullyReceived) {
-            receipt.setStatus("PARTIAL");
-            purchaseOrder.setStatus("PARTIAL");
+            receipt.setStatus(GoodsReceiptStatus.PARTIAL);
+            purchaseOrder.setStatus(PurchaseOrderStatus.PARTIALLY_RECEIVED);
         } else {
-            purchaseOrder.setStatus("RECEIVED");
+            receipt.setStatus(GoodsReceiptStatus.RECEIVED);
+            purchaseOrder.setStatus(PurchaseOrderStatus.FULLY_RECEIVED);
         }
 
         Map<Long, GoodsReceiptLineRequest> requestLinesByMaterial = new HashMap<>();
@@ -305,7 +316,7 @@ public class GoodsReceiptService {
                     line.getNotes()
             );
             RawMaterialService.ReceiptContext context = new RawMaterialService.ReceiptContext(
-                    InventoryReference.RAW_MATERIAL_PURCHASE,
+                    InventoryReference.GOODS_RECEIPT,
                     receiptNumber,
                     "Goods receipt " + receiptNumber,
                     false
@@ -313,11 +324,54 @@ public class GoodsReceiptService {
             RawMaterialService.ReceiptResult receiptResult = rawMaterialService.recordReceipt(rawMaterial.getId(), batchRequest, context);
             line.setRawMaterialBatch(receiptResult.batch());
             line.setBatchCode(receiptResult.batch().getBatchCode());
+            publishInventoryEvents(company, supplier, rawMaterial, line, receiptResult, receiptNumber);
         }
 
         GoodsReceipt savedReceipt = goodsReceiptRepository.saveAndFlush(receipt);
         purchaseOrderRepository.save(purchaseOrder);
+
         return responseMapper.toGoodsReceiptResponse(savedReceipt);
+    }
+
+    private void publishInventoryEvents(Company company,
+                                        Supplier supplier,
+                                        RawMaterial rawMaterial,
+                                        GoodsReceiptLine line,
+                                        RawMaterialService.ReceiptResult receiptResult,
+                                        String receiptNumber) {
+        if (receiptResult == null || receiptResult.movement() == null) {
+            return;
+        }
+        BigDecimal totalCost = currency(MoneyUtils.safeMultiply(line.getQuantity(), line.getCostPerUnit()));
+        if (totalCost.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+
+        Long movementId = receiptResult.movement().getId();
+        Long destinationAccountId = rawMaterial.getInventoryAccountId();
+        Long sourceAccountId = supplier.getPayableAccount() != null ? supplier.getPayableAccount().getId() : null;
+
+        if (sourceAccountId != null && destinationAccountId != null) {
+            applicationEventPublisher.publishEvent(InventoryMovementEvent.builder()
+                    .companyId(company.getId())
+                    .movementType(InventoryMovementEvent.MovementType.RECEIPT)
+                    .inventoryType(InventoryValuationChangedEvent.InventoryType.RAW_MATERIAL)
+                    .itemId(rawMaterial.getId())
+                    .itemCode(rawMaterial.getSku())
+                    .itemName(rawMaterial.getName())
+                    .quantity(line.getQuantity())
+                    .unitCost(line.getCostPerUnit())
+                    .totalCost(totalCost)
+                    .sourceAccountId(sourceAccountId)
+                    .destinationAccountId(destinationAccountId)
+                    .movementId(movementId)
+                    .referenceNumber(receiptNumber)
+                    .movementDate(line.getGoodsReceipt().getReceiptDate())
+                    .memo("Goods receipt " + receiptNumber)
+                    .relatedEntityId(line.getGoodsReceipt().getId())
+                    .relatedEntityType("GOODS_RECEIPT")
+                    .build());
+        }
     }
 
     private RawMaterial requireMaterial(Company company, Long rawMaterialId) {

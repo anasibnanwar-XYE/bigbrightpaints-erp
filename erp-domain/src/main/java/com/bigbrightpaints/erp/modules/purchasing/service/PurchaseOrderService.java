@@ -11,10 +11,12 @@ import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.PurchaseOrder;
 import com.bigbrightpaints.erp.modules.purchasing.domain.PurchaseOrderLine;
 import com.bigbrightpaints.erp.modules.purchasing.domain.PurchaseOrderRepository;
+import com.bigbrightpaints.erp.modules.purchasing.domain.PurchaseOrderStatus;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
+import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierStatus;
 import com.bigbrightpaints.erp.modules.purchasing.dto.PurchaseOrderLineRequest;
-import com.bigbrightpaints.erp.modules.purchasing.dto.PurchaseOrderResponse;
 import com.bigbrightpaints.erp.modules.purchasing.dto.PurchaseOrderRequest;
+import com.bigbrightpaints.erp.modules.purchasing.dto.PurchaseOrderResponse;
 import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -73,6 +75,12 @@ public class PurchaseOrderService {
     public PurchaseOrderResponse createPurchaseOrder(PurchaseOrderRequest request) {
         Company company = companyContextService.requireCurrentCompany();
         Supplier supplier = companyEntityLookup.requireSupplier(company, request.supplierId());
+        if (supplier.getStatusEnum() != SupplierStatus.ACTIVE) {
+            throw new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE,
+                    "Supplier must be ACTIVE to create purchase order")
+                    .withDetail("supplierId", supplier.getId())
+                    .withDetail("supplierStatus", supplier.getStatus());
+        }
 
         String orderNumber = request.orderNumber().trim();
         purchaseOrderRepository.lockByCompanyAndOrderNumberIgnoreCase(company, orderNumber)
@@ -102,6 +110,7 @@ public class PurchaseOrderService {
         purchaseOrder.setOrderNumber(orderNumber);
         purchaseOrder.setOrderDate(request.orderDate());
         purchaseOrder.setMemo(clean(request.memo()));
+        purchaseOrder.setStatus(PurchaseOrderStatus.APPROVED);
 
         for (PurchaseOrderLineRequest lineRequest : request.lines()) {
             RawMaterial rawMaterial = lockedMaterials.get(lineRequest.rawMaterialId());

@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.purchasing.service;
 
+import com.bigbrightpaints.erp.core.security.CryptoService;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
@@ -41,6 +42,8 @@ class SupplierServiceTest {
     private SupplierLedgerService supplierLedgerService;
     @Mock
     private CompanyEntityLookup companyEntityLookup;
+    @Mock
+    private CryptoService cryptoService;
 
     private SupplierService supplierService;
     private Company company;
@@ -52,7 +55,8 @@ class SupplierServiceTest {
                 companyContextService,
                 accountRepository,
                 supplierLedgerService,
-                companyEntityLookup
+                companyEntityLookup,
+                cryptoService
         );
 
         company = new Company();

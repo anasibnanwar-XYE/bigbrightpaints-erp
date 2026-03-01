@@ -1,7 +1,7 @@
 package com.bigbrightpaints.erp.modules.purchasing.domain;
 
-import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.core.domain.VersionedEntity;
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import jakarta.persistence.*;
 
@@ -37,8 +37,9 @@ public class PurchaseOrder extends VersionedEntity {
     @Column(name = "order_date", nullable = false)
     private LocalDate orderDate;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private String status = "OPEN";
+    private PurchaseOrderStatus status = PurchaseOrderStatus.DRAFT;
 
     @Column(name = "memo")
     private String memo;
@@ -79,12 +80,34 @@ public class PurchaseOrder extends VersionedEntity {
     public void setOrderNumber(String orderNumber) { this.orderNumber = orderNumber; }
     public LocalDate getOrderDate() { return orderDate; }
     public void setOrderDate(LocalDate orderDate) { this.orderDate = orderDate; }
-    public String getStatus() { return status; }
-    public void setStatus(String status) { this.status = status; }
+    public String getStatus() { return status.name(); }
+    public PurchaseOrderStatus getStatusEnum() { return status; }
+    public void setStatus(PurchaseOrderStatus status) {
+        this.status = status == null ? PurchaseOrderStatus.DRAFT : status;
+    }
     public String getMemo() { return memo; }
     public void setMemo(String memo) { this.memo = memo; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
     public List<PurchaseOrderLine> getLines() { return lines; }
     public void setLines(List<PurchaseOrderLine> lines) { this.lines = lines; }
+
+    public String getStatusValue() {
+        return status.name();
+    }
+
+    public void setStatus(String status) {
+        if (!org.springframework.util.StringUtils.hasText(status)) {
+            this.status = PurchaseOrderStatus.DRAFT;
+            return;
+        }
+        String normalized = status.trim().toUpperCase(java.util.Locale.ROOT);
+        this.status = switch (normalized) {
+            case "OPEN" -> PurchaseOrderStatus.APPROVED;
+            case "PARTIAL" -> PurchaseOrderStatus.PARTIALLY_RECEIVED;
+            case "RECEIVED" -> PurchaseOrderStatus.FULLY_RECEIVED;
+            case "CANCELLED", "CANCELED" -> PurchaseOrderStatus.VOID;
+            default -> PurchaseOrderStatus.valueOf(normalized);
+        };
+    }
 }
