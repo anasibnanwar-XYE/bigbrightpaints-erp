@@ -128,19 +128,19 @@ class ProductionCatalogServiceBulkVariantRaceTest {
 
     @Test
     void createVariants_rethrowsValidationErrorsThatAreNotDuplicateConflicts() {
-        doThrow(new IllegalArgumentException("Invalid GST rate"))
+        doThrow(new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Invalid GST rate"))
                 .when(service)
                 .createProduct(any());
 
         assertThatThrownBy(() -> service.createVariants(variantRequest()))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Invalid GST rate");
     }
 
     @Test
     void createVariants_rejectsColorWithoutSkuSafeCharacters() {
         assertThatThrownBy(() -> service.createVariants(variantRequest("Primer", List.of("###"), List.of("20L"), null)))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("color")
                 .hasMessageContaining("SKU character");
     }
@@ -148,7 +148,7 @@ class ProductionCatalogServiceBulkVariantRaceTest {
     @Test
     void createVariants_rejectsBaseProductNameWithoutSkuSafeCharacters() {
         assertThatThrownBy(() -> service.createVariants(variantRequest("%%%", List.of("Red"), List.of("20L"), null)))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("baseProductName")
                 .hasMessageContaining("SKU character");
     }
@@ -156,7 +156,7 @@ class ProductionCatalogServiceBulkVariantRaceTest {
     @Test
     void createVariants_rejectsEmptySkuPrefixAfterNormalization() {
         assertThatThrownBy(() -> service.createVariants(variantRequest("Primer", List.of("Red"), List.of("20L"), "***")))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("skuPrefix/brandCode")
                 .hasMessageContaining("SKU character");
     }

@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.admin.service;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.notification.EmailService;
 import com.bigbrightpaints.erp.core.security.TokenBlacklistService;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
@@ -190,7 +191,7 @@ class AdminUserServiceTest {
                 "Scope User",
                 List.of(2L),
                 List.of("ROLE_SALES")
-        ))).isInstanceOf(IllegalArgumentException.class)
+        ))).isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("User must be assigned to the active company");
     }
 
@@ -207,7 +208,7 @@ class AdminUserServiceTest {
                     "Missing Company",
                     List.of(),
                     List.of("ROLE_SALES")
-            ))).isInstanceOf(IllegalArgumentException.class)
+            ))).isInstanceOf(ApplicationException.class)
                     .hasMessageContaining("User must belong to an active company");
         } finally {
             SecurityContextHolder.clearContext();
@@ -228,7 +229,7 @@ class AdminUserServiceTest {
                     "Unknown Company",
                     List.of(99L),
                     List.of("ROLE_SALES")
-            ))).isInstanceOf(IllegalArgumentException.class)
+            ))).isInstanceOf(ApplicationException.class)
                     .hasMessageContaining("Company not found: 99");
         } finally {
             SecurityContextHolder.clearContext();

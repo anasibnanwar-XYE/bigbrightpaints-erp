@@ -159,7 +159,7 @@ class TenantRuntimePolicyServiceTest {
         );
 
         assertThatThrownBy(() -> service.updatePolicy(request))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessage("holdReason is required when holdState is HOLD or BLOCKED");
         verify(systemSettingsRepository, never()).save(any(SystemSetting.class));
         verifyNoInteractions(auditService);
@@ -177,7 +177,7 @@ class TenantRuntimePolicyServiceTest {
         );
 
         assertThatThrownBy(() -> service.updatePolicy(request))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessage("Quota values must be at least 1");
         verify(systemSettingsRepository, never()).save(any(SystemSetting.class));
         verifyNoInteractions(auditService);

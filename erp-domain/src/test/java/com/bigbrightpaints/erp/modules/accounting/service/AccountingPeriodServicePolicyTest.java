@@ -192,7 +192,7 @@ class AccountingPeriodServicePolicyTest {
                         PayrollRun.PayrollStatus.APPROVED))).thenReturn(0L);
 
         assertThatThrownBy(() -> service.closePeriod(10L, new AccountingPeriodCloseRequest(false, "period close")))
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Checklist controls unresolved for this period")
                 .hasMessageContaining("inventoryReconciled");
     }
@@ -249,7 +249,7 @@ class AccountingPeriodServicePolicyTest {
                         PayrollRun.PayrollStatus.APPROVED))).thenReturn(0L);
 
         assertThatThrownBy(() -> service.closePeriod(11L, new AccountingPeriodCloseRequest(false, "period close")))
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessage("Checklist controls unresolved for this period: "
                         + "inventoryReconciled [inventory reconciliation result unavailable; run inventory reconciliation before close], "
                         + "arReconciled [AR subledger reconciliation result unavailable; reconcile dealer ledger before close], "

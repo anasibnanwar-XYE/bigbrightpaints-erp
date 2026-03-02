@@ -106,7 +106,7 @@ class PasswordResetServiceTest {
         PasswordResetToken expired = new PasswordResetToken(user, "token", Instant.now().minusSeconds(10));
         when(tokenRepository.findByToken("token")).thenReturn(Optional.of(expired));
 
-        assertThrows(IllegalArgumentException.class,
+        assertThrows(ApplicationException.class,
                 () -> passwordResetService.resetPassword("token", "NewPass123", "NewPass123"));
 
         verify(passwordService, never()).resetPassword(any(), any(), any());

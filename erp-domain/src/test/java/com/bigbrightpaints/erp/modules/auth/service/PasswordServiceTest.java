@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.auth.service;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPasswordHistory;
@@ -55,7 +56,7 @@ class PasswordServiceTest {
 
         ChangePasswordRequest request = new ChangePasswordRequest("CurrentPass1!", "PriorPass1!", "PriorPass1!");
 
-        assertThrows(IllegalArgumentException.class, () -> passwordService.changePassword(user, request));
+        assertThrows(ApplicationException.class, () -> passwordService.changePassword(user, request));
         verify(passwordHistoryRepository, never()).save(any());
         verifyNoInteractions(userAccountRepository);
     }
@@ -65,7 +66,7 @@ class PasswordServiceTest {
         UserAccount user = userWithPassword("CurrentPass1!");
         ChangePasswordRequest request = new ChangePasswordRequest("CurrentPass1!", "weak", "weak");
 
-        assertThrows(IllegalArgumentException.class, () -> passwordService.changePassword(user, request));
+        assertThrows(ApplicationException.class, () -> passwordService.changePassword(user, request));
         verify(passwordHistoryRepository, never()).save(any());
         verifyNoInteractions(userAccountRepository);
     }

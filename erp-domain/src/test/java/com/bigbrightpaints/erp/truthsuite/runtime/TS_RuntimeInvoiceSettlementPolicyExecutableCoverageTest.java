@@ -3,6 +3,7 @@ package com.bigbrightpaints.erp.truthsuite.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
 import com.bigbrightpaints.erp.modules.invoice.service.InvoiceSettlementPolicy;
 import java.math.BigDecimal;
@@ -24,7 +25,7 @@ class TS_RuntimeInvoiceSettlementPolicyExecutableCoverageTest {
 
         Invoice alreadyIssued = invoice("ISSUED", "100.00", "100.00");
         assertThatThrownBy(() -> policy.ensureIssuable(alreadyIssued))
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Only draft invoices can be issued");
     }
 
@@ -50,11 +51,11 @@ class TS_RuntimeInvoiceSettlementPolicyExecutableCoverageTest {
         assertThat(invoice.getOutstandingAmount()).isEqualByComparingTo("50.00");
 
         assertThatThrownBy(() -> policy.applyPayment(invoice, new BigDecimal("60.00"), "PAY-OVER"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Payment exceeds outstanding amount");
 
         assertThatThrownBy(() -> policy.applySettlement(invoice, new BigDecimal("60.00"), "SET-OVER"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Settlement exceeds outstanding amount");
     }
 
@@ -85,21 +86,21 @@ class TS_RuntimeInvoiceSettlementPolicyExecutableCoverageTest {
         assertThat(reversible.getPaymentReferences()).doesNotContain("REF-1");
 
         assertThatThrownBy(() -> policy.reversePayment(reversible, new BigDecimal("10.00"), "UNKNOWN"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("No payment found");
 
         Invoice overflow = invoice("PARTIAL", "100.00", "95.00");
         overflow.getPaymentReferences().add("REF-2");
         assertThatThrownBy(() -> policy.reversePayment(overflow, new BigDecimal("10.00"), "REF-2"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Reversal exceeds original total");
 
         Invoice payable = invoice("ISSUED", "10.00", "10.00");
         assertThatThrownBy(() -> policy.applyPayment(payable, BigDecimal.ZERO, "X"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Invalid payment amount");
         assertThatThrownBy(() -> policy.applyPayment(payable, new BigDecimal("1.00"), " "))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Payment reference is required");
 
         policy.voidInvoice(payable);
@@ -107,10 +108,10 @@ class TS_RuntimeInvoiceSettlementPolicyExecutableCoverageTest {
         assertThat(payable.getOutstandingAmount()).isEqualByComparingTo("0.00");
 
         assertThatThrownBy(() -> policy.applySettlement(payable, new BigDecimal("1.00"), "SET-VOID"))
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Cannot settle a void invoice");
         assertThatThrownBy(() -> policy.applyPayment(payable, new BigDecimal("1.00"), "PAY-VOID"))
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Cannot pay a void invoice");
     }
 
@@ -134,7 +135,7 @@ class TS_RuntimeInvoiceSettlementPolicyExecutableCoverageTest {
         Invoice nullOutstanding = invoice("ISSUED", "100.00", "100.00");
         nullOutstanding.setOutstandingAmount(null);
         assertThatThrownBy(() -> policy.applySettlement(nullOutstanding, new BigDecimal("5.00"), "SET-NULL"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Settlement exceeds outstanding amount");
 
         Invoice nonTrackedReference = invoice("ISSUED", "100.00", "100.00");
@@ -149,10 +150,10 @@ class TS_RuntimeInvoiceSettlementPolicyExecutableCoverageTest {
 
         Invoice reversed = invoice("REVERSED", "100.00", "100.00");
         assertThatThrownBy(() -> policy.applyPayment(reversed, new BigDecimal("1.00"), "PAY-REV"))
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Cannot pay a void invoice");
         assertThatThrownBy(() -> policy.applySettlement(reversed, new BigDecimal("1.00"), "SET-REV"))
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Cannot settle a void invoice");
 
         Invoice nullTotal = invoice("PARTIAL", "100.00", "40.00");
@@ -173,7 +174,7 @@ class TS_RuntimeInvoiceSettlementPolicyExecutableCoverageTest {
                 .isInstanceOf(NullPointerException.class)
                 .hasMessageContaining("reference");
         assertThatThrownBy(() -> policy.reversePayment(creditTarget, null, "CREDIT-1"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Invalid reversal amount");
     }
 

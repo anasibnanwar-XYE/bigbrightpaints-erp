@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.invoice.service;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -56,7 +57,7 @@ class InvoiceSettlementPolicyTest {
 
         assertEquals(BigDecimal.ZERO, invoice.getOutstandingAmount());
         assertEquals(InvoiceSettlementPolicy.InvoiceStatus.VOID.name(), invoice.getStatus());
-        assertThrows(IllegalStateException.class, () ->
+        assertThrows(ApplicationException.class, () ->
                 policy.applyPayment(invoice, BigDecimal.TEN, "PAY-VOID"));
     }
 
@@ -68,7 +69,7 @@ class InvoiceSettlementPolicyTest {
 
         assertEquals(BigDecimal.valueOf(70), invoice.getOutstandingAmount());
         assertEquals(InvoiceSettlementPolicy.InvoiceStatus.PARTIAL.name(), invoice.getStatus());
-        assertThrows(IllegalArgumentException.class, () ->
+        assertThrows(ApplicationException.class, () ->
                 policy.reversePayment(invoice, BigDecimal.valueOf(80), "PAY-1"));
     }
 
@@ -82,7 +83,7 @@ class InvoiceSettlementPolicyTest {
     void settlementOverrideFailsClosedWhenApprovalIsMissing() {
         policy.ensureIssuable(invoice);
 
-        assertThrows(IllegalStateException.class, () ->
+        assertThrows(ApplicationException.class, () ->
                 policy.applySettlementWithOverride(
                         invoice,
                         BigDecimal.valueOf(40),
@@ -105,7 +106,7 @@ class InvoiceSettlementPolicyTest {
                 Instant.parse("2026-02-20T00:00:00Z"),
                 Map.of("ticket", "TKT-ERP-STAGE-095", "approvalSource", "workflow"));
 
-        assertThrows(IllegalArgumentException.class, () ->
+        assertThrows(ApplicationException.class, () ->
                 policy.applySettlementWithOverride(
                         invoice,
                         BigDecimal.valueOf(40),
@@ -167,7 +168,7 @@ class InvoiceSettlementPolicyTest {
                 Instant.parse("2026-02-20T00:00:00Z"),
                 Map.of("ticket", "TKT-ERP-STAGE-095", "approvalSource", "workflow"));
 
-        assertThrows(IllegalArgumentException.class, () ->
+        assertThrows(ApplicationException.class, () ->
                 policy.applySettlementWithOverride(
                         invoice,
                         BigDecimal.valueOf(40),
@@ -180,7 +181,7 @@ class InvoiceSettlementPolicyTest {
 
     @Test
     void settlementApprovalMetadataRequiresSourceKey() {
-        assertThrows(IllegalArgumentException.class, () -> new SettlementApprovalDecision(
+        assertThrows(ApplicationException.class, () -> new SettlementApprovalDecision(
                 "APP-5",
                 "maker-user",
                 "checker-user",

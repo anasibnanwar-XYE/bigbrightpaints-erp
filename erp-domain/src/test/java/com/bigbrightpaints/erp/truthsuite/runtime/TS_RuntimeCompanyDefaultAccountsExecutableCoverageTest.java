@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
@@ -78,23 +79,23 @@ class TS_RuntimeCompanyDefaultAccountsExecutableCoverageTest {
                 new CompanyDefaultAccountsService(companyContextService, companyEntityLookup, companyRepository);
 
         assertThatThrownBy(() -> service.updateDefaults(10L, null, null, null, null))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("valid inventory account");
 
         assertThatThrownBy(() -> service.updateDefaults(null, 11L, null, null, null))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("valid COGS account");
 
         assertThatThrownBy(() -> service.updateDefaults(null, null, 12L, null, null))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("valid revenue account");
 
         assertThatThrownBy(() -> service.updateDefaults(null, null, null, 13L, null))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Discount account must be revenue or expense");
 
         assertThatThrownBy(() -> service.updateDefaults(null, null, null, null, 14L))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("expected type LIABILITY");
     }
 
@@ -113,7 +114,7 @@ class TS_RuntimeCompanyDefaultAccountsExecutableCoverageTest {
                 new CompanyDefaultAccountsService(companyContextService, mock(CompanyEntityLookup.class), mock(CompanyRepository.class));
 
         assertThatThrownBy(service::requireDefaults)
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("default accounts are not configured");
 
         Company inventoryMissing = company(301L, "DEF4");
@@ -123,7 +124,7 @@ class TS_RuntimeCompanyDefaultAccountsExecutableCoverageTest {
         inventoryMissing.setDefaultTaxAccountId(4L);
         when(companyContextService.requireCurrentCompany()).thenReturn(inventoryMissing);
         assertThatThrownBy(service::requireDefaults)
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("default accounts are not configured");
     }
 

@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.sales.service;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.SalesReturnRequest;
@@ -282,7 +283,7 @@ class SalesReturnServiceTest {
         );
 
         assertThatThrownBy(() -> salesReturnService.processReturn(request))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("remaining invoiced amount");
     }
 
@@ -347,7 +348,7 @@ class SalesReturnServiceTest {
         );
 
         assertThatThrownBy(() -> salesReturnService.processReturn(request))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("remaining invoiced amount");
     }
 
@@ -412,7 +413,7 @@ class SalesReturnServiceTest {
         );
 
         assertThatThrownBy(() -> salesReturnService.processReturn(request))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("remaining invoiced amount");
     }
 
@@ -470,7 +471,7 @@ class SalesReturnServiceTest {
         );
 
         assertThatThrownBy(() -> salesReturnService.processReturn(request))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("dispatch cost layers");
     }
 

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
@@ -41,7 +42,7 @@ class CompanyDefaultAccountsServiceTest {
         company.setDefaultRevenueAccountId(3L);
         company.setDefaultTaxAccountId(4L);
         assertThatThrownBy(() -> service.requireDefaults())
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("BBP");
     }
 
@@ -51,7 +52,7 @@ class CompanyDefaultAccountsServiceTest {
         company.setDefaultRevenueAccountId(3L);
         company.setDefaultTaxAccountId(4L);
         assertThatThrownBy(() -> service.requireDefaults())
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("BBP");
     }
 
@@ -61,7 +62,7 @@ class CompanyDefaultAccountsServiceTest {
         company.setDefaultCogsAccountId(2L);
         company.setDefaultTaxAccountId(4L);
         assertThatThrownBy(() -> service.requireDefaults())
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("BBP");
     }
 
@@ -71,7 +72,7 @@ class CompanyDefaultAccountsServiceTest {
         company.setDefaultCogsAccountId(2L);
         company.setDefaultRevenueAccountId(3L);
         assertThatThrownBy(() -> service.requireDefaults())
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("BBP");
     }
 
@@ -119,7 +120,7 @@ class CompanyDefaultAccountsServiceTest {
         Account inventory = account(12L, AccountType.REVENUE, "REV");
         when(companyEntityLookup.requireAccount(company, 12L)).thenReturn(inventory);
         assertThatThrownBy(() -> service.updateDefaults(12L, null, null, null, null))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("inventory");
     }
 
@@ -137,7 +138,7 @@ class CompanyDefaultAccountsServiceTest {
         Account cogs = account(22L, AccountType.ASSET, "INV");
         when(companyEntityLookup.requireAccount(company, 22L)).thenReturn(cogs);
         assertThatThrownBy(() -> service.updateDefaults(null, 22L, null, null, null))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("COGS");
     }
 
@@ -155,7 +156,7 @@ class CompanyDefaultAccountsServiceTest {
         Account revenue = account(32L, AccountType.COGS, "COGS");
         when(companyEntityLookup.requireAccount(company, 32L)).thenReturn(revenue);
         assertThatThrownBy(() -> service.updateDefaults(null, null, 32L, null, null))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("revenue");
     }
 
@@ -182,7 +183,7 @@ class CompanyDefaultAccountsServiceTest {
         Account discount = account(43L, AccountType.ASSET, "INV");
         when(companyEntityLookup.requireAccount(company, 43L)).thenReturn(discount);
         assertThatThrownBy(() -> service.updateDefaults(null, null, null, 43L, null))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Discount");
     }
 
@@ -200,7 +201,7 @@ class CompanyDefaultAccountsServiceTest {
         Account tax = account(52L, AccountType.ASSET, "INV");
         when(companyEntityLookup.requireAccount(company, 52L)).thenReturn(tax);
         assertThatThrownBy(() -> service.updateDefaults(null, null, null, null, 52L))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("tax");
     }
 

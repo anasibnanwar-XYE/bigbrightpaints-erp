@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.auth.service;
 
 import ch.qos.logback.classic.Level;
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
@@ -153,12 +154,12 @@ class AuthServiceAuditAttributionTest {
         when(userAccountRepository.findByEmailIgnoreCase("user@example.com")).thenReturn(Optional.of(user));
         when(authenticationManager.authenticate(any())).thenReturn(authentication);
         when(companyRepository.findByCodeIgnoreCase("ACME")).thenReturn(Optional.of(company("ACME")));
-        doThrow(new IllegalStateException("Tenant runtime hold"))
+        doThrow(com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Tenant runtime hold"))
                 .when(tenantRuntimeEnforcementService)
                 .enforceAuthOperationAllowed("ACME", "user@example.com", "LOGIN");
 
         assertThatThrownBy(() -> authService.login(request))
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessage("Tenant runtime hold");
 
         assertThat(user.getFailedLoginAttempts()).isZero();
@@ -216,7 +217,7 @@ class AuthServiceAuditAttributionTest {
         when(companyRepository.findByCodeIgnoreCase("TARGET")).thenReturn(Optional.of(company("TARGET")));
 
         assertThatThrownBy(() -> authService.login(request))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("User not assigned to company: TARGET");
     }
 
@@ -265,7 +266,7 @@ class AuthServiceAuditAttributionTest {
         when(tokenBlacklistService.isUserTokenRevoked("user@example.com", issuedAt)).thenReturn(true);
 
         assertThatThrownBy(() -> authService.refresh(new RefreshTokenRequest("refresh-old", "ACME")))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessage("Refresh token revoked");
     }
 
@@ -356,7 +357,7 @@ class AuthServiceAuditAttributionTest {
 
         assertThatThrownBy(() -> authService.resetPassword(
                 new ResetPasswordRequest("expired-token", "NextPass!1", "NextPass!1")))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ApplicationException.class)
                 .hasMessage("Token expired");
     }
 
