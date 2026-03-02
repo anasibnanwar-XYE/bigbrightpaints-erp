@@ -1,0 +1,34 @@
+{
+  "featureId": "reports-frontend-handoff-doc",
+  "reviewedAt": "2026-03-02T16:15:00.000Z",
+  "commitId": "ccbb46300f5d7cb0cc1446051c6a9755883ddd13",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Documentation-only feature. The commit adds 132 lines to .factory/library/frontend-handoff.md, expanding the Reports section with: (1) a complete endpoint inventory table covering all 15 ReportController endpoints with accurate parameters, response schemas, and pagination status — all verified against the actual ReportController.java; (2) an envelope/pagination contract note; (3) an export support matrix for 6 key financial reports with correct indicator fields matching ReportMetadata and ExportHints DTOs; (4) inventory valuation and GST return visualization hints with field references verified against InventoryValuationDto/InventoryValuationItemDto and GstReturnReportDto; (5) four cross-module flow playbooks (O2C, P2P, manufacturing-to-stock, payroll-to-accounting) with complete API call sequences and report refresh choreography. All DTO field references in the documentation match the actual Java record definitions. The feature satisfies VAL-DOC-008 requirements.",
+    "issues": [
+      {
+        "file": ".factory/library/frontend-handoff.md",
+        "line": 2559,
+        "severity": "non_blocking",
+        "description": "Export support matrix omits CashFlowDto even though it carries ReportMetadata with pdfReady/csvReady fields. A frontend developer may miss that cash-flow also advertises export readiness through metadata."
+      },
+      {
+        "file": ".factory/library/frontend-handoff.md",
+        "line": 2475,
+        "severity": "non_blocking",
+        "description": "Data contracts section details field structures for 8 core DTOs but does not expand the field structures of CashFlowDto (5 fields), AccountStatementEntryDto (7 fields), ReconciliationSummaryDto (3 fields), BalanceWarningDto (6 fields), ReconciliationDashboardDto (9 fields), WastageReportDto, CostBreakdownDto, or MonthlyProductionCostDto. The endpoint inventory table references these by name but a frontend developer would need to inspect backend code to understand their fields."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "Documentation-only feature with no code changes, so no coding convention violations. Worker correctly limited changes to .factory/library/frontend-handoff.md and ran baseline validation (380/380 tests pass).",
+      "evidence": "git show ccbb4630 --stat shows only .factory/library/frontend-handoff.md modified (132 insertions). Handoff verification confirms mvn test -Pgate-fast passes 380/380."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The reports frontend handoff documentation is comprehensive and accurate. All 15 ReportController endpoints are documented with correct parameters and response types verified against source code. Visualization hints cover all required report types (trial balance, P&L, balance sheet, aged debtors, inventory valuation, GST return). Export support matrix correctly maps metadata/exportHints fields for 6 key financial reports. Four cross-module flow playbooks (O2C, P2P, manufacturing, payroll) provide complete API call sequences with report refresh choreography. Two non-blocking gaps: CashFlowDto is omitted from the export matrix despite having export metadata, and 8 secondary report DTOs lack expanded field definitions in the data contracts section."
+}

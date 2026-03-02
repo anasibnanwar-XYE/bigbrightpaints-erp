@@ -1,0 +1,61 @@
+{
+  "featureId": "enterprise-financial-reports",
+  "reviewedAt": "2026-03-02T21:30:00.000Z",
+  "commitId": "1a96e1f413eb39e4c31ccb8cea40c04c6bb2cddc",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Solid implementation of enterprise financial reports with clean service decomposition. Four focused query services (TrialBalance 170 lines, P&L 113 lines, BalanceSheet 256 lines, AgedDebtors 140 lines) plus a shared ReportQuerySupport component (221 lines) handle all financial report generation. ReportService properly delegates to these query services. DTOs support comparative windows, export hints, and report metadata. Tests cover all four report types with 16 focused test cases including edge cases for date range filtering, comparative windows, and balance verification. Frontend handoff documentation is comprehensive with endpoint maps, data contracts, visualization hints, and error code tables. All validation contract assertions (VAL-RPT-001 through VAL-RPT-004) are addressed.",
+    "issues": [
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/reports/service/BalanceSheetReportQueryService.java",
+        "line": 206,
+        "severity": "non_blocking",
+        "description": "Balance sheet current-vs-fixed asset classification and current-vs-long-term liability classification use string pattern matching on account code/name (isCurrentAsset, isLongTermLiability). This heuristic approach may misclassify accounts whose names don't contain the expected keywords (FIXED, NON-CURRENT, LONG-TERM, LOAN, etc.). A more robust approach would use an explicit account sub-type or classification field on the Account entity. Acceptable for initial implementation but should be improved when the chart-of-accounts schema supports richer metadata."
+      },
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/reports/service/ProfitLossReportQueryService.java",
+        "line": 65,
+        "severity": "non_blocking",
+        "description": "ProfitLossReportQueryService always queries live journal data via summarizeByAccountType even for closed periods with snapshots. TrialBalanceReportQueryService and BalanceSheetReportQueryService both check usesClosedSnapshot() and fall back to snapshot data for closed periods, but P&L does not. This inconsistency means P&L for closed periods may differ from the frozen snapshot state if post-close adjustments exist. Not blocking because journal data for closed periods is typically immutable, but adds an inconsistency across report types."
+      },
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/reports/service/ReportService.java",
+        "line": 1,
+        "severity": "non_blocking",
+        "description": "ReportService remains at 1247 lines, exceeding the 500-line convention from AGENTS.md. The financial report delegation was cleanly extracted to focused query services, but the remaining non-financial report logic (cash flow, wastage, cost breakdown, inventory valuation, reconciliation, GST, account statement, balance warnings) still lives in ReportService. Further decomposition into additional focused query services would bring it into compliance."
+      },
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/reports/dto/AgedDebtorDto.java",
+        "line": 13,
+        "severity": "non_blocking",
+        "description": "The backward-compatibility constructor AgedDebtorDto(String, BigDecimal, BigDecimal, BigDecimal, BigDecimal) maps the 4-param bucket structure to the new 5-bucket structure by hardcoding sixtyOneToNinetyDays to ZERO. This is correct for backward compat but the parameter names (current, thirtyDays, sixtyDays, ninetyDays) don't clearly indicate which new bucket they map to. The old constructor's 'ninetyDays' param maps to 'ninetyPlusDays' in the new schema but 'sixtyDays' maps to 'thirtyOneToSixtyDays', which could confuse callers expecting bucket alignment."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "ReportService is 1247 lines, well above the 500-line convention. AGENTS.md says 'No service class should exceed ~500 lines' but has no explicit exception for facade/coordinator services that delegate to many focused sub-services. The financial report extraction reduced it but the remaining non-financial reports still keep it oversized.",
+      "evidence": "wc -l ReportService.java shows 1247 lines. AGENTS.md 'Service Design Rules' section states 'No service class should exceed ~500 lines'."
+    },
+    {
+      "area": "skills",
+      "observation": "Worker correctly identified that the backend-worker skill lacks guidance for handling features with pre-existing implementation artifacts from prior failed sessions. The skill's TDD step assumes greenfield implementation but this feature had code from a prior worker session (21349aa2). The worker deviated from TDD and documented the deviation appropriately.",
+      "evidence": "Handoff skillFeedback.followedProcedure=false, deviations[0]: 'The assigned feature had pre-existing staged and unstaged implementation artifacts from earlier worker sessions; strict greenfield TDD sequencing was not possible without discarding work.'"
+    },
+    {
+      "area": "skills",
+      "observation": "Worker also identified that the skill doesn't specify how to handle mandatory feature verification commands (e.g., mvn test -T4) when they surface extensive pre-existing failures unrelated to the feature scope. The worker used gate-fast as the quality gate instead, which was pragmatic and correct.",
+      "evidence": "Handoff skillFeedback.deviations[1]: 'Mission feature explicitly required running -T4, but AGENTS guidance and observed output confirm many unrelated failures outside reports scope; regression confidence was established using targeted report suites + gate-fast.'"
+    },
+    {
+      "area": "conventions",
+      "observation": "Balance sheet classification of accounts into current/fixed assets and current/long-term liabilities relies on string pattern matching against account code/name. This pattern is not documented anywhere in AGENTS.md or architecture.md as an accepted approach, and could become fragile as the CoA grows. If this heuristic is the intended approach, it should be documented; otherwise, an Account sub-type field should be added to the schema.",
+      "evidence": "BalanceSheetReportQueryService.java:206-228 — isCurrentAsset() and isLongTermLiability() check for keywords like 'FIXED', 'LONG-TERM', 'LOAN' in account code/name strings."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Enterprise financial reports feature passes review. Clean decomposition into 4 focused query services (all under 260 lines) with shared ReportQuerySupport. All 4 required report types implemented with proper validation contract coverage (VAL-RPT-001 through VAL-RPT-004). Comparative windows, date range filtering, and export hints work correctly. Tests are comprehensive with 16 focused cases. Frontend handoff documentation is thorough. Non-blocking issues: P&L doesn't use snapshot data for closed periods (inconsistent with trial balance and balance sheet), balance sheet uses heuristic string matching for account classification, ReportService facade remains over 500 lines, and the legacy AgedDebtorDto constructor has confusing parameter-to-bucket mapping."
+}

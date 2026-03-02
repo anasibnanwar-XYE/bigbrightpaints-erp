@@ -1,0 +1,39 @@
+{
+  "featureId": "auth-tenant-admin-frontend-handoff-doc",
+  "reviewedAt": "2026-03-02T16:10:00.000Z",
+  "commitId": "4de3bae00d65f1d7bcc2829cde451a256abf3129",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The worker replaced the auth placeholder and significantly expanded the tenant/admin section in .factory/library/frontend-handoff.md (337 insertions, 125 deletions). The documentation comprehensively covers all auth endpoints (AuthController, MfaController, UserProfileController), all superadmin tenant management endpoints (SuperAdminController, SuperAdminTenantOnboardingController), admin user management (AdminUserController), role management (RoleController), multi-company switching (MultiCompanyController), and the companies listing (CompanyController). Auth flows (login with/without MFA, password reset, token refresh, MFA enrollment), JWT handling, error codes, DTOs, state machines, and UI hints are all thoroughly documented. The feature requirements (VAL-DOC-001, VAL-DOC-002) are fulfilled. One non-blocking gap: the AdminSettingsController endpoints (/api/v1/admin/settings, /tenant-runtime/metrics, /tenant-runtime/policy, /notify, /approvals) and several CompanyController support endpoints (admin-password-reset, support/warnings, tenant-metrics, tenant-runtime/policy at company-level) are not documented. These are secondary admin/support endpoints not explicitly listed in the feature description but a frontend developer building a full admin panel would need them.",
+    "issues": [
+      {
+        "file": ".factory/library/frontend-handoff.md",
+        "line": 0,
+        "severity": "non_blocking",
+        "description": "AdminSettingsController endpoints are undocumented: GET /api/v1/admin/settings, PUT /api/v1/admin/settings (SystemSettingsDto), GET /api/v1/admin/tenant-runtime/metrics, PUT /api/v1/admin/tenant-runtime/policy, POST /api/v1/admin/notify, GET /api/v1/admin/approvals. These admin panel endpoints would be needed by a frontend building the full admin experience."
+      },
+      {
+        "file": ".factory/library/frontend-handoff.md",
+        "line": 0,
+        "severity": "non_blocking",
+        "description": "CompanyController has additional superadmin-level endpoints not documented in the handoff: GET /api/v1/companies/superadmin/dashboard (CompanySuperAdminDashboardDto), POST /api/v1/companies/superadmin/tenants, PUT /api/v1/companies/superadmin/tenants/{id}, POST /api/v1/companies/{id}/lifecycle-state, GET /api/v1/companies/{id}/tenant-metrics, PUT /api/v1/companies/{id}/tenant-runtime/policy, POST /api/v1/companies/{id}/support/admin-password-reset, POST /api/v1/companies/{id}/support/warnings. Some overlap with SuperAdminController paths but these are distinct endpoints."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "conventions",
+      "observation": "There are duplicate/overlapping endpoint paths for tenant management: SuperAdminController at /api/v1/superadmin/tenants/* AND CompanyController at /api/v1/companies/superadmin/tenants/* and /api/v1/companies/{id}/lifecycle-state. Both expose similar tenant lifecycle and creation functionality. This dual-path pattern is not documented in AGENTS.md and could confuse frontend developers. The handoff only documents the /api/v1/superadmin/* paths.",
+      "evidence": "CompanyController.java lines 56-84 (superadmin/dashboard, superadmin/tenants, /{id}/lifecycle-state) vs SuperAdminController.java lines 47-87 (dashboard, tenants, suspend/activate/deactivate, lifecycle-state)"
+    },
+    {
+      "area": "knowledge",
+      "observation": "The AdminSettingsController exposes system settings, tenant runtime metrics/policy, notification, and approval endpoints under /api/v1/admin/* that are part of the admin module but were not included in the frontend handoff. A future documentation pass should cover these for full admin panel frontend coverage.",
+      "evidence": "AdminSettingsController.java: GET/PUT /settings, GET /tenant-runtime/metrics, PUT /tenant-runtime/policy, POST /notify, GET /approvals"
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "Pass. The auth and tenant/admin frontend handoff documentation is comprehensive and fulfills VAL-DOC-001 and VAL-DOC-002. All primary auth endpoints (login, logout, refresh, MFA, password management, profile), tenant management endpoints (superadmin dashboard, onboarding, lifecycle, module gating), and admin user/role management endpoints are documented with complete flows, DTOs, error codes, state machines, and UI hints. Two non-blocking gaps noted: AdminSettingsController endpoints and some CompanyController support endpoints are not documented, but these fall outside the explicit feature scope."
+}
