@@ -1,0 +1,297 @@
+{
+  "groupId": "group-inventory-gst-docs",
+  "testedAt": "2026-03-02T16:03:00Z",
+  "credentials": {
+    "account": "ut-reports-b@example.com",
+    "namespace": "ut_reports_b"
+  },
+  "toolsUsed": ["mvn test", "file inspection"],
+  "assertions": [
+    {
+      "id": "VAL-RPT-005",
+      "title": "Inventory valuation report with FIFO/LIFO/WA costing methods",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run mvn test -Dtest=InventoryValuationServiceTest,ReportServiceInventoryAndGstTest,TS_RuntimeInventoryValuationExecutableCoverageTest -pl .",
+          "expected": "All inventory valuation tests pass with 0 failures",
+          "observed": "InventoryValuationServiceTest: 7 tests passed, ReportServiceInventoryAndGstTest: 3 tests passed (1 inventory + 2 GST), TS_RuntimeInventoryValuationExecutableCoverageTest: 1 test passed. BUILD SUCCESS."
+        },
+        {
+          "action": "Verify FIFO costing test (currentSnapshot_fifoUsesAvailableBatchQuantityWhenAvailableIsLower)",
+          "expected": "FIFO uses oldest available batches first, depleted batches skipped, totalValue=150.00",
+          "observed": "Test passes: depleted batch (qty available=0, cost=5) skipped, remaining batch (qty=15, cost=10) used. Total value asserted as 150.00."
+        },
+        {
+          "action": "Verify LIFO costing test (currentSnapshot_lifoUsesNewestBatchesFirst)",
+          "expected": "LIFO uses newest batches first, totalValue=200.00",
+          "observed": "Test passes: newer batch (cost=10) prioritized over older (cost=5). Total value asserted as 200.00 for 20 units."
+        },
+        {
+          "action": "Verify Weighted Average costing test (currentSnapshot_usesAccountingPeriodCostingMethodWhenPeriodExists)",
+          "expected": "Period-level WEIGHTED_AVERAGE overrides item-level FIFO; value computed as weighted average",
+          "observed": "Test passes: accounting period with CostingMethod.WEIGHTED_AVERAGE overrides item FIFO. costingMethod='WEIGHTED_AVERAGE', totalValue=80.00."
+        },
+        {
+          "action": "Verify raw material WAC path (currentSnapshot_rawMaterialWacUsesWeightedAveragePath)",
+          "expected": "Raw material uses weighted average cost from batch repository",
+          "observed": "Test passes: calculateWeightedAverageCost returns 3, stock=5, totalValue=15.00. findByRawMaterial never called."
+        },
+        {
+          "action": "Verify as-of snapshot with movement adjustments (snapshotAsOf_appliesMovementAdjustmentsToStockAndValuation)",
+          "expected": "Historical snapshot adjusts stock by reversing post-date movements",
+          "observed": "Test passes: 2 receipt units reversed from current stock 10, yielding adjusted stock 8 and value 110.00, lowStockItems=1."
+        },
+        {
+          "action": "Verify ReportService inventory valuation maps items and grouping from snapshot",
+          "expected": "inventoryValuation() correctly maps raw materials and finished goods with groupByCategory and groupByBrand",
+          "observed": "Test passes: 2 items (RAW_MATERIAL + FINISHED_GOOD), totalValue=180.00, category groups with correct values, brand groups with correct lowStockItems."
+        }
+      ],
+      "evidence": {
+        "testCommand": "cd erp-domain && mvn test -Djacoco.skip=true '-Dtest=InventoryValuationServiceTest,ReportServiceInventoryAndGstTest,TS_RuntimeInventoryValuationExecutableCoverageTest' -pl .",
+        "testResult": "Tests run: 11, Failures: 0, Errors: 0, Skipped: 0 — BUILD SUCCESS",
+        "testFiles": [
+          "erp-domain/src/test/java/com/bigbrightpaints/erp/modules/reports/service/InventoryValuationServiceTest.java (7 tests: FIFO, LIFO, reserved stock, raw material WAC, WAC null fallback, period costing override, as-of snapshot)",
+          "erp-domain/src/test/java/com/bigbrightpaints/erp/modules/reports/service/ReportServiceInventoryAndGstTest.java (1 inventory test: inventoryValuation_mapsItemsAndGroupingFromSnapshot)",
+          "erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimeInventoryValuationExecutableCoverageTest.java (1 runtime coverage delegation)"
+        ],
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-RPT-006",
+      "title": "GST returns report with CGST/SGST/IGST aggregation",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run mvn test -Dtest=GstServiceTest,ReportServiceInventoryAndGstTest -pl .",
+          "expected": "All GST-related tests pass with 0 failures",
+          "observed": "GstServiceTest: 3 tests passed, ReportServiceInventoryAndGstTest: 2 GST tests passed. BUILD SUCCESS."
+        },
+        {
+          "action": "Verify intra-state GST calculation (calculateGst_intraState_splitsToCgstAndSgst)",
+          "expected": "Same-state (27->27) yields CGST=90, SGST=90, IGST=0 for 1000@18%",
+          "observed": "Test passes: taxType=INTRA_STATE, cgst=90.00, sgst=90.00, igst=0.00, totalTax=180.00."
+        },
+        {
+          "action": "Verify inter-state GST calculation (calculateGst_interState_assignsIgstOnly)",
+          "expected": "Cross-state (27->29) yields CGST=0, SGST=0, IGST=180 for 1000@18%",
+          "observed": "Test passes: taxType=INTER_STATE, cgst=0.00, sgst=0.00, igst=180.00, totalTax=180.00."
+        },
+        {
+          "action": "Verify GST state code validation (splitTaxAmount_requiresStateCodesWhenTaxable)",
+          "expected": "Missing source state throws ApplicationException",
+          "observed": "Test passes: ApplicationException thrown with message containing 'State codes are required'."
+        },
+        {
+          "action": "Verify GST return report aggregation (gstReturn_aggregatesRateSummaryComponentsAndTransactionDetails)",
+          "expected": "Report aggregates output tax from invoices and input tax credit from purchases, computes net liability, groups by rate, lists transaction details",
+          "observed": "Test passes: outputTax.total=18.00, inputTaxCredit.total=14.40 (purchase return adjusted: 18*(1-2/10)=14.40), netLiability.total=3.60. rateSummaries has 1 entry at 18% rate. transactionDetails has 2 entries (OUTPUT, INPUT)."
+        },
+        {
+          "action": "Verify GST return fallback to current period (gstReturn_withoutPeriodIdFallsBackToCurrentMonthPeriod)",
+          "expected": "When periodId is null, report uses current month period",
+          "observed": "Test passes: periodId=31 from current month lookup. Empty invoices/purchases yield zeros. rateSummaries empty, netLiability.total=0.00."
+        }
+      ],
+      "evidence": {
+        "testCommand": "cd erp-domain && mvn test -Djacoco.skip=true '-Dtest=GstServiceTest,ReportServiceInventoryAndGstTest' -pl .",
+        "testResult": "Tests run: 6, Failures: 0, Errors: 0, Skipped: 0 — BUILD SUCCESS",
+        "testFiles": [
+          "erp-domain/src/test/java/com/bigbrightpaints/erp/modules/accounting/service/GstServiceTest.java (3 tests: intra-state split, inter-state IGST, state code validation)",
+          "erp-domain/src/test/java/com/bigbrightpaints/erp/modules/reports/service/ReportServiceInventoryAndGstTest.java (2 GST tests: full aggregation with rate summaries + transaction details, period fallback)"
+        ],
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DOC-008",
+      "title": "Reports module documented in frontend-handoff.md",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect .factory/library/frontend-handoff.md Reports section",
+          "expected": "Complete documentation: all available reports, parameters, response formats, chart/visualization hints",
+          "observed": "Reports section found (lines ~2370-2894). Contains all required documentation elements."
+        },
+        {
+          "action": "Verify endpoint map completeness",
+          "expected": "All report endpoints documented with HTTP method, path, query params, response schema",
+          "observed": "15 endpoints documented in complete endpoint inventory table: trial-balance, profit-loss, balance-sheet, aged-debtors (canonical + legacy), inventory-valuation, gst-return, cash-flow, account-statement, inventory-reconciliation, balance-warnings, reconciliation-dashboard, wastage, cost-breakdown, monthly-production-costs."
+        },
+        {
+          "action": "Verify user flows documented",
+          "expected": "Step-by-step API call sequences for each report type",
+          "observed": "6 user flows documented: Trial Balance (period/range with comparative), Profit & Loss (comparative view), Balance Sheet (sectioned + equation check), Aged Debtors (bucket analysis), Inventory Valuation (costing method aware), GST Return (period filing worksheet)."
+        },
+        {
+          "action": "Verify response data contracts documented",
+          "expected": "Key request/response DTOs with field descriptions",
+          "observed": "Complete data contracts for: FinancialReportQueryRequest, ReportMetadata, TrialBalanceDto, ProfitLossDto, BalanceSheetDto, AgedDebtorDto, InventoryValuationDto, InventoryValuationItemDto, InventoryValuationGroupDto, GstReturnReportDto, GstComponentSummary, GstRateSummary, GstTransactionDetail."
+        },
+        {
+          "action": "Verify error codes documented",
+          "expected": "Module-specific error codes with frontend handling guidance",
+          "observed": "4 error codes documented: VAL_001, VAL_005, BUS_003, BUS_004, AUTH_004 with specific triggers and frontend behavior guidance."
+        },
+        {
+          "action": "Verify visualization/chart hints documented",
+          "expected": "UI hints for chart/visualization rendering",
+          "observed": "Comprehensive visualization hints section covers: Trial Balance (sortable grid), P&L (hierarchical statement tree), Balance Sheet (T-account layout), Aged Debtors (stacked bar chart), Inventory Valuation (sortable table + grouped panels), GST Return (section-wise filing cards + rate table + annexure)."
+        },
+        {
+          "action": "Verify export support documented",
+          "expected": "Export format support documented",
+          "observed": "Export support matrix table documents PDF/CSV readiness per endpoint with metadata-driven approach."
+        },
+        {
+          "action": "Verify cross-module flow playbooks",
+          "expected": "Report refresh sequences tied to business operations",
+          "observed": "4 cross-module flow playbooks documented: O2C->reports, P2P->reports, Manufacturing->reports, Payroll->reports. Each includes which reports to refresh after operations."
+        }
+      ],
+      "evidence": {
+        "file": ".factory/library/frontend-handoff.md",
+        "sectionLocation": "### Reports (lines ~2370-2894)",
+        "subsections": [
+          "Endpoint map (6 primary report endpoints with full params)",
+          "Complete endpoint inventory (15 endpoints with params, response schema, pagination info)",
+          "User flows (6 flows)",
+          "State/range resolution model",
+          "Error codes and frontend handling (5 codes)",
+          "Data contracts (13 DTOs with field-level detail)",
+          "Export support matrix (6 endpoints)",
+          "UI hints",
+          "Cross-module flow playbooks (4 playbooks)",
+          "Visualization hints (6 report types)"
+        ],
+        "consoleErrors": "n/a (file inspection)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DOC-001",
+      "title": "Auth module documented in frontend-handoff.md",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect .factory/library/frontend-handoff.md Auth section",
+          "expected": "Complete auth documentation: endpoint map, login/logout/MFA/password-reset flows, JWT handling, error codes, data contracts",
+          "observed": "Auth section found (lines ~17-230). Contains all required documentation elements."
+        },
+        {
+          "action": "Verify endpoint map",
+          "expected": "All auth endpoints with HTTP method, path, auth requirement, request/response types",
+          "observed": "13 endpoints documented: login, refresh-token, logout, me, password/change, password/forgot, password/forgot/superadmin, password/reset, profile (GET/PUT), mfa/setup, mfa/activate, mfa/disable."
+        },
+        {
+          "action": "Verify user flows",
+          "expected": "Login, logout, MFA, password reset flows documented",
+          "observed": "5 flows documented: Login without MFA, Login with MFA challenge (428 Precondition Required), MFA enrollment, Password reset, Token refresh."
+        },
+        {
+          "action": "Verify JWT token handling",
+          "expected": "Token handling details documented",
+          "observed": "JWT Token Handling section covers: access token claims, refresh token rotation, logout behavior (single token vs all tokens), token/company consistency, X-Company-Code enforcement, storage strategy, expiry handling."
+        },
+        {
+          "action": "Verify error codes",
+          "expected": "Auth error codes with frontend behavior",
+          "observed": "10 error codes documented: AUTH_001, AUTH_003, AUTH_004, AUTH_005, AUTH_007, AUTH_008, VAL_001, VAL_002, VAL_007 with specific frontend behavior guidance."
+        },
+        {
+          "action": "Verify data contracts",
+          "expected": "Request/response DTOs with field descriptions and validation rules",
+          "observed": "12 DTOs documented with field types, required/optional flags, and validation rules: LoginRequest, AuthResponse, RefreshTokenRequest, ChangePasswordRequest, ForgotPasswordRequest, ResetPasswordRequest, MeResponse, ProfileResponse, UpdateProfileRequest, MfaSetupResponse, MfaActivateRequest, MfaDisableRequest."
+        },
+        {
+          "action": "Verify UI hints",
+          "expected": "Frontend implementation guidance",
+          "observed": "UI hints cover: password strength indicator, confirm password validation, mustChangePassword redirect, MFA QR code rendering, recovery codes display, generic forgot-password UX, tenant selector input."
+        }
+      ],
+      "evidence": {
+        "file": ".factory/library/frontend-handoff.md",
+        "sectionLocation": "### Auth (lines ~17-230)",
+        "subsections": [
+          "Endpoint Map (13 endpoints)",
+          "Auth Flows (5 flows)",
+          "JWT Token Handling",
+          "Error Codes / Error Handling (10 codes)",
+          "Data Contracts (12 DTOs)",
+          "UI Hints (7 items)"
+        ],
+        "consoleErrors": "n/a (file inspection)"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DOC-002",
+      "title": "Tenant and admin module documented in frontend-handoff.md",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Inspect .factory/library/frontend-handoff.md Tenant & Admin section",
+          "expected": "Complete tenant/admin documentation: superadmin dashboard, tenant onboarding, module gating, user management, state machines, error codes",
+          "observed": "Tenant & Admin section found (lines ~231-450). Contains all required documentation elements."
+        },
+        {
+          "action": "Verify endpoint map",
+          "expected": "All tenant/admin endpoints documented",
+          "observed": "3 endpoint categories documented: (A) Superadmin tenant control (10 endpoints), (B) Tenant admin user management (10 endpoints), (C) Tenant-selection context (2 endpoints). Total: 22 endpoints."
+        },
+        {
+          "action": "Verify module feature gating",
+          "expected": "Gatable modules, enforcement behavior, path mapping",
+          "observed": "Module Feature Gating section covers: gatable modules (MANUFACTURING, HR_PAYROLL, PURCHASING, PORTAL, REPORTS_ADVANCED), core modules (AUTH, ACCOUNTING, SALES, INVENTORY), 403+BUS_010 error for disabled modules, runtime path mapping for each module."
+        },
+        {
+          "action": "Verify user flows",
+          "expected": "Key tenant/admin flows documented",
+          "observed": "4 flows documented: Platform login->tenant selection->module access, Superadmin tenant creation with CoA template, User creation with role assignment, Tenant lifecycle operations."
+        },
+        {
+          "action": "Verify state machines",
+          "expected": "Tenant and user lifecycle state machines",
+          "observed": "2 state machines documented: Tenant lifecycle (ACTIVE->SUSPENDED->DEACTIVATED with transitions), Admin user lifecycle (ENABLED->SUSPENDED->DELETED, MFA states)."
+        },
+        {
+          "action": "Verify error codes",
+          "expected": "Tenant/admin error codes",
+          "observed": "6 error codes/conditions documented: AUTH_004, BUS_010, VAL_001, VAL_007, 403 suspended, 403 deactivated, 401."
+        },
+        {
+          "action": "Verify data contracts",
+          "expected": "All DTOs documented",
+          "observed": "17 DTOs documented: SuperAdminDashboardDto, SuperAdminTenantDto, SuperAdminTenantUsageDto, CompanyLifecycleStateRequest/Dto, TenantModulesUpdateRequest, CompanyEnabledModulesDto, CoATemplateDto, TenantOnboardingRequest/Response, CreateUserRequest, UpdateUserRequest, UserDto, CreateRoleRequest, RoleDto, PermissionDto, SwitchCompanyRequest, CompanyDto."
+        },
+        {
+          "action": "Verify UI hints",
+          "expected": "Frontend guidance for tenant/admin screens",
+          "observed": "UI hints cover: tenant selector dropdown, module configuration checkboxes, user creation form, CoA template cards, onboarding password handling, lifecycle mutation confirmations."
+        }
+      ],
+      "evidence": {
+        "file": ".factory/library/frontend-handoff.md",
+        "sectionLocation": "### Tenant & Admin (lines ~231-450)",
+        "subsections": [
+          "Endpoint Map (22 endpoints in 3 categories)",
+          "Module Feature Gating",
+          "User Flows (4 flows)",
+          "State Machines (2 state machines)",
+          "Error Codes / Error Handling (7 conditions)",
+          "Data Contracts (17 DTOs)",
+          "UI Hints (6 items)"
+        ],
+        "consoleErrors": "n/a (file inspection)"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 5 assertions: all 5 passed. VAL-RPT-005 (Inventory Valuation) validated via 11 unit tests covering FIFO/LIFO/WA costing, reserved stock, raw materials, period overrides, and as-of snapshots. VAL-RPT-006 (GST Returns) validated via 6 unit tests covering intra/inter-state tax splitting, aggregation with rate summaries, transaction details, and period fallback. VAL-DOC-008 (Reports docs) validated via inspection confirming complete endpoint map (15 endpoints), 6 user flows, 13 DTOs, visualization hints, export matrix, and cross-module playbooks. VAL-DOC-001 (Auth docs) validated via inspection confirming 13 endpoints, 5 flows, JWT handling, 10 error codes, 12 DTOs, and UI hints. VAL-DOC-002 (Tenant/Admin docs) validated via inspection confirming 22 endpoints, 4 flows, 2 state machines, 17 DTOs, module gating, and UI hints."
+}

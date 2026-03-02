@@ -1,0 +1,120 @@
+{
+  "groupId": "group-financial-reports",
+  "testedAt": "2026-03-02T21:32:43+05:30",
+  "credentials": {
+    "account": "ut-reports-a@example.com",
+    "namespace": "ut_reports_a"
+  },
+  "toolsUsed": ["mvn test"],
+  "assertions": [
+    {
+      "id": "VAL-RPT-001",
+      "title": "Trial balance report correctly aggregates all account balances for a period. Debit total equals credit total.",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run TrialBalanceReportQueryServiceTest (2 tests: basic aggregation + comparative snapshot)",
+          "expected": "Tests pass, confirming trial balance aggregates debits/credits correctly and balanced=true",
+          "observed": "Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.011 s"
+        },
+        {
+          "action": "Verify test generate_forDateRangeAggregatesDebitsCreditsAndBalanceCheck",
+          "expected": "totalDebit=150.00, totalCredit=150.00, balanced=true, 2 rows, correct metadata with PDF export",
+          "observed": "All assertions passed: totalDebit=150.00, totalCredit=150.00, balanced=true, rows=2, metadata.startDate/endDate correct, exportFormat=PDF, pdfReady=true, csvReady=true"
+        },
+        {
+          "action": "Verify test generate_withComparativeRangeReturnsSideBySideComparativeSnapshot",
+          "expected": "Primary: totalDebit=200.00, totalCredit=200.00; Comparative: totalDebit=120.00, totalCredit=120.00; CSV export format",
+          "observed": "All assertions passed: primary and comparative trial balance data correct, CSV export format verified"
+        }
+      ],
+      "evidence": {
+        "command": "cd erp-domain && mvn test -Djacoco.skip=true '-Dtest=TrialBalanceReportQueryServiceTest' -pl .",
+        "testResult": "Tests run: 2, Failures: 0, Errors: 0, Skipped: 0",
+        "buildResult": "BUILD SUCCESS",
+        "coverageNotes": "Tests verify: debit/credit aggregation, balanced flag, row count, metadata (dates, export format), comparative period support"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-RPT-002",
+      "title": "P&L report correctly shows: revenue, COGS, gross profit, operating expenses, net profit for a period.",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run ProfitLossReportQueryServiceTest (1 test: revenue/COGS/expense computation with comparative)",
+          "expected": "Test passes, confirming P&L figures are correctly computed from journal line summaries",
+          "observed": "Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.025 s"
+        },
+        {
+          "action": "Verify test generate_computesRevenueCogsAndCategorizedExpensesWithComparative",
+          "expected": "Primary: revenue=1050.00 (1000 REVENUE + 50 OTHER_INCOME), COGS=400.00, grossProfit=650.00, opExpenses=240.00 (200 EXPENSE + 40 OTHER_EXPENSE), netIncome=410.00; Comparative: revenue=800.00, COGS=350.00, grossProfit=450.00, opExpenses=170.00, netIncome=280.00",
+          "observed": "All assertions passed: primary revenue=1050.00, cogs=400.00, grossProfit=650.00, opExpenses=240.00 (2 categories: OPERATING=200.00, OTHER=40.00), netIncome=410.00; comparative revenue=800.00, cogs=350.00, grossProfit=450.00, opExpenses=170.00, netIncome=280.00"
+        }
+      ],
+      "evidence": {
+        "command": "cd erp-domain && mvn test -Djacoco.skip=true '-Dtest=ProfitLossReportQueryServiceTest' -pl .",
+        "testResult": "Tests run: 1, Failures: 0, Errors: 0, Skipped: 0",
+        "buildResult": "BUILD SUCCESS",
+        "coverageNotes": "Tests verify: revenue aggregation (REVENUE + OTHER_INCOME), COGS, gross profit, categorized operating expenses (OPERATING vs OTHER), net income, comparative period support"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-RPT-003",
+      "title": "Balance sheet correctly shows: assets, liabilities, equity. Assets = Liabilities + Equity.",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run BalanceSheetReportQueryServiceTest (1 test: current/long-term grouping + equation validation)",
+          "expected": "Test passes, confirming balance sheet equation holds and sections are correctly grouped",
+          "observed": "Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.675 s"
+        },
+        {
+          "action": "Verify test generate_groupsCurrentAndLongTermSectionsAndValidatesEquation",
+          "expected": "totalAssets=2000.00 (cash 1200 + fixedAssets 800), totalLiabilities=800.00 (AP 300 + longTerm 500), totalEquity=1200.00, balanced=true; sections: currentAssets=[CASH], fixedAssets=[FIXED-ASSETS], currentLiabilities=[AP], longTermLiabilities=[LONG-TERM-BORROWINGS], equityLines=[RETAINED-EARNINGS]",
+          "observed": "All assertions passed: totalAssets=2000.00, totalLiabilities=800.00, totalEquity=1200.00, balanced=true (2000 = 800 + 1200), all section groupings verified with correct account codes"
+        }
+      ],
+      "evidence": {
+        "command": "cd erp-domain && mvn test -Djacoco.skip=true '-Dtest=BalanceSheetReportQueryServiceTest' -pl .",
+        "testResult": "Tests run: 1, Failures: 0, Errors: 0, Skipped: 0",
+        "buildResult": "BUILD SUCCESS",
+        "coverageNotes": "Tests verify: total assets/liabilities/equity, balance sheet equation (Assets = Liabilities + Equity), section grouping (current/fixed assets, current/long-term liabilities, equity), account code assignment to correct sections"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-RPT-004",
+      "title": "Aged debtors report shows outstanding dealer invoices grouped by aging buckets (current, 30, 60, 90+ days).",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run AgedDebtorsReportQueryServiceTest (2 tests: full aging buckets + date range filtering)",
+          "expected": "Tests pass, confirming aging bucket allocation and date range filtering work correctly",
+          "observed": "Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.037 s"
+        },
+        {
+          "action": "Verify test generate_groupsOutstandingByAllAgingBucketsAndIncludesMetadataHints",
+          "expected": "Dealer 81: current=100.00, 1-30days=200.00, 31-60days=300.00, 61-90days=400.00, 90+days=500.00, total=1500.00; metadata with PDF export, pdfReady/csvReady hints",
+          "observed": "All assertions passed: dealerId=81, dealerCode=DLR-81, dealerName=Dealer 81, current=100.00, oneToThirtyDays=200.00, thirtyOneToSixtyDays=300.00, sixtyOneToNinetyDays=400.00, ninetyPlusDays=500.00, totalOutstanding=1500.00, metadata and export hints verified"
+        },
+        {
+          "action": "Verify test generate_withExplicitDateRangeFiltersEntriesOutsideWindow",
+          "expected": "Only entries within date range included: filtered to oneToThirtyDays=120.00 (50+70), all other buckets=0.00, total=120.00",
+          "observed": "All assertions passed: current=0.00, oneToThirtyDays=120.00, thirtyOneToSixtyDays=0.00, sixtyOneToNinetyDays=0.00, ninetyPlusDays=0.00, totalOutstanding=120.00"
+        }
+      ],
+      "evidence": {
+        "command": "cd erp-domain && mvn test -Djacoco.skip=true '-Dtest=AgedDebtorsReportQueryServiceTest' -pl .",
+        "testResult": "Tests run: 2, Failures: 0, Errors: 0, Skipped: 0",
+        "buildResult": "BUILD SUCCESS",
+        "coverageNotes": "Tests verify: 5 aging buckets (current, 1-30, 31-60, 61-90, 90+), total outstanding, dealer identification, metadata/export hints, date range filtering excluding out-of-window entries"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 4 assertions: 4 passed, 0 failed. All 6 unit tests across 4 report query service test classes passed successfully (BUILD SUCCESS). VAL-RPT-001 (Trial Balance): 2 tests verify debit/credit aggregation, balanced flag, and comparative period support. VAL-RPT-002 (P&L): 1 test verifies revenue/COGS/gross profit/categorized expenses/net income with comparative. VAL-RPT-003 (Balance Sheet): 1 test verifies assets=liabilities+equity equation with section grouping. VAL-RPT-004 (Aged Debtors): 2 tests verify aging bucket allocation and date range filtering."
+}

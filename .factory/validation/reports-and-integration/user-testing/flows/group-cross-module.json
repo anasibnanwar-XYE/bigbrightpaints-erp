@@ -1,0 +1,205 @@
+{
+  "groupId": "group-cross-module",
+  "testedAt": "2026-03-02T16:03:00Z",
+  "credentials": {
+    "account": "ut-reports-c@example.com",
+    "namespace": "ut_reports_c"
+  },
+  "toolsUsed": ["mvn test (ErpInvariantsSuiteIT)"],
+  "assertions": [
+    {
+      "id": "VAL-RPT-007",
+      "title": "Cross-module journal integrity",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run ErpInvariantsSuiteIT integration test suite",
+          "expected": "All 11 tests pass — every cross-module flow creates balanced journal entries with correct reference linking",
+          "observed": "Tests run: 11, Failures: 0, Errors: 0, Skipped: 0. BUILD SUCCESS."
+        },
+        {
+          "action": "Verify assertJournalBalanced() called for dispatch (AR + COGS), purchase, payroll, settlement, manual journal, reversal, credit note, and tenant onboarding journals",
+          "expected": "Every journal entry has total debits == total credits (within 0.01 tolerance)",
+          "observed": "All assertJournalBalanced() calls passed across O2C, P2P, production, payroll, R2R, and tenant onboarding tests."
+        },
+        {
+          "action": "Verify assertJournalLinkedTo() called for INVOICE, PURCHASE, PAYROLL_RUN, PACKAGING_SLIP source types",
+          "expected": "Each cross-module artifact (invoice, purchase, payroll run, packaging slip) links to a journal entry with matching company ID",
+          "observed": "All assertJournalLinkedTo() calls passed for all source types: INVOICE, PURCHASE, PAYROLL_RUN, PACKAGING_SLIP."
+        }
+      ],
+      "evidence": {
+        "command": "cd erp-domain && mvn test -Djacoco.skip=true -Dtest=ErpInvariantsSuiteIT -pl .",
+        "output": "Tests run: 11, Failures: 0, Errors: 0, Skipped: 0. BUILD SUCCESS (29s)",
+        "testMethods": [
+          "orderToCash_goldenPath",
+          "orderToCash_salesReturnRestocksInventory",
+          "orderToCash_creditNoteReversesInvoice",
+          "procureToPay_goldenPath",
+          "procureToPay_purchaseReturn_reducesStock",
+          "produceToStock_goldenPath",
+          "hireToPay_goldenPath",
+          "hireToPay_reversal",
+          "recordToReport_manualJournalReversal",
+          "crossModule_tenantOnboardingFirstSaleProducesBalancedLinkedArtifacts",
+          "reports_asOfInventoryValuationUsesPeriodSpecificCostingMethod"
+        ],
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-001",
+      "title": "Order to cash flow",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "orderToCash_goldenPath: Create dealer, create order, confirm, dispatch, invoice, settle",
+          "expected": "Complete O2C cycle with balanced accounting entries, idempotent replay, inventory movements, dealer ledger updates, and subledger reconciliation",
+          "observed": "Test passed. Order created and idempotent replay returned same ID. Dispatch created invoice, AR journal (balanced), COGS journal (balanced), packaging slip, and inventory movements. Settlement posted balanced journal, dealer ledger updated to PAID, settlement replay returned same ID. Subledger reconciled to AR control account."
+        },
+        {
+          "action": "orderToCash_salesReturnRestocksInventory: sales return restocks inventory and posts reversals",
+          "expected": "Returned quantity increases stock; CRN and COGS reversal journals created",
+          "observed": "Test passed. Stock increased by 1 after return. Sales return journal (CRN-*) and COGS reversal journal created. Inventory return movement recorded with quantity=1."
+        },
+        {
+          "action": "orderToCash_creditNoteReversesInvoice: credit note reverses invoice journal",
+          "expected": "Credit note links to invoice journal as reversal, invoice outstanding set to zero, invoice status=VOID",
+          "observed": "Test passed. Credit note journal balanced, links to original invoice journal as reversalOf. Invoice outstanding=0, status=VOID."
+        }
+      ],
+      "evidence": {
+        "command": "cd erp-domain && mvn test -Djacoco.skip=true -Dtest=ErpInvariantsSuiteIT -pl .",
+        "testMethods": [
+          "orderToCash_goldenPath",
+          "orderToCash_salesReturnRestocksInventory",
+          "orderToCash_creditNoteReversesInvoice"
+        ],
+        "output": "All 3 O2C tests passed. assertJournalBalanced, assertJournalLinkedTo(INVOICE), assertJournalLinkedTo(PACKAGING_SLIP), assertSubledgerReconciles(AR), assertNoNegativeStock all verified.",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-002",
+      "title": "Procure to pay flow",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "procureToPay_goldenPath: Create supplier, create PO, approve PO, create GRN, create purchase invoice, settle",
+          "expected": "Complete P2P cycle with balanced journal entries, raw material stock updated, batch tracking, inventory movements, and subledger reconciliation",
+          "observed": "Test passed. Purchase order created, approved, GRN created. Raw material stock=10. Batch created with qty=10. Movement recorded (RECEIPT, qty=10, with journal link). Purchase journal balanced (Inventory debit=150, AP credit=150). Supplier settlement balanced; idempotent replay returned same journal ID. Single allocation created. Subledger reconciled to AP control account. No negative stock."
+        },
+        {
+          "action": "procureToPay_purchaseReturn_reducesStock: purchase return reduces stock and records movement",
+          "expected": "Return of 4 units reduces stock from 10 to 6; return journal balanced (AP debit=60, INV credit=60)",
+          "observed": "Test passed. Stock reduced from 10 to 6. Return movement recorded (RETURN, qty=4, with journal link). Return journal balanced (AP debit=60, INV credit=60)."
+        }
+      ],
+      "evidence": {
+        "command": "cd erp-domain && mvn test -Djacoco.skip=true -Dtest=ErpInvariantsSuiteIT -pl .",
+        "testMethods": [
+          "procureToPay_goldenPath",
+          "procureToPay_purchaseReturn_reducesStock"
+        ],
+        "output": "Both P2P tests passed. assertJournalBalanced, assertJournalLinkedTo(PURCHASE), assertSubledgerReconciles(AP), assertNoNegativeStock all verified.",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-003",
+      "title": "Manufacturing to stock flow",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "produceToStock_goldenPath: Create raw materials with batches, create production log with material consumption, pack production, verify finished goods",
+          "expected": "Production log created with materials. Packing creates finished goods stock. Inventory movements recorded. No negative stock.",
+          "observed": "Test passed. Production log created (id, productionCode). Packing record created. Finished good stock > 0. Inventory movements created for PRODUCTION_LOG reference. assertNoNegativeStock verified. Production log persisted."
+        }
+      ],
+      "evidence": {
+        "command": "cd erp-domain && mvn test -Djacoco.skip=true -Dtest=ErpInvariantsSuiteIT -pl .",
+        "testMethods": [
+          "produceToStock_goldenPath"
+        ],
+        "output": "M2S test passed. Production log -> packing -> finished goods stock verified. Inventory movements and no-negative-stock confirmed.",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-004",
+      "title": "Payroll to accounting flow",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "hireToPay_goldenPath: Create employee, mark attendance, create payroll run, calculate, approve, post, verify journal, mark paid",
+          "expected": "Complete payroll cycle. Journal entries match payroll totals: salary expense debit=grossPay, salary payable credit=netPay, employee advance credit=advances. Payroll run status=PAID.",
+          "observed": "Test passed. Employee created with salary=26000, advance=500. Attendance marked. Payroll run created, calculated, approved, posted. Journal balanced. Expense debit=totalGrossPay, payable credit=totalNetPay, advance credit=totalAdvances. Payment posted, run marked PAID. Employee advance balance reduced from 500 to 300."
+        },
+        {
+          "action": "hireToPay_reversal: payroll journal reversal creates balanced inverse",
+          "expected": "Reversal journal is balanced and exactly inverts all account-level net amounts from original payroll journal",
+          "observed": "Test passed. assertReversalCreatesBalancedInverse confirmed reversal journal is balanced and each account net is negated."
+        }
+      ],
+      "evidence": {
+        "command": "cd erp-domain && mvn test -Djacoco.skip=true -Dtest=ErpInvariantsSuiteIT -pl .",
+        "testMethods": [
+          "hireToPay_goldenPath",
+          "hireToPay_reversal"
+        ],
+        "output": "Both payroll tests passed. assertJournalBalanced, assertJournalLinkedTo(PAYROLL_RUN), assertReversalCreatesBalancedInverse all verified.",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-005",
+      "title": "Tenant onboarding to operations",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "crossModule_tenantOnboardingFirstSaleProducesBalancedLinkedArtifacts: Superadmin onboards tenant with MANUFACTURING template, creates ops user, executes full O2C (order -> confirm -> dispatch -> settle) on new tenant",
+          "expected": "Tenant created with MANUFACTURING CoA template including all required modules. First sale completes with balanced journals, idempotent replays, packaging slip links, inventory movements, settlement, subledger reconciliation, audit events, and unique AR journal references.",
+          "observed": "Test passed. Tenant onboarded with code matching. Enabled modules include MANUFACTURING, PURCHASING, HR_PAYROLL, PORTAL, REPORTS_ADVANCED. Order created with idempotent replay. Dispatch created invoice + AR journal (balanced) + COGS journal (balanced). Packaging slip linked to invoice and journals. Inventory movements created, no negative stock. Settlement balanced, idempotent replay returns same journal. Subledger reconciled to AR. Audit events (AccountingEvent) recorded for invoice journal. AR journal reference unique within tenant."
+        }
+      ],
+      "evidence": {
+        "command": "cd erp-domain && mvn test -Djacoco.skip=true -Dtest=ErpInvariantsSuiteIT -pl .",
+        "testMethods": [
+          "crossModule_tenantOnboardingFirstSaleProducesBalancedLinkedArtifacts"
+        ],
+        "output": "Tenant onboarding + first sale test passed. All invariants verified: journal balance, journal linking (INVOICE, PACKAGING_SLIP), no negative stock, subledger reconciliation, audit trail, reference uniqueness.",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-CROSS-006",
+      "title": "Inventory costing across periods",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "reports_asOfInventoryValuationUsesPeriodSpecificCostingMethod: Set accounting period costing method to LIFO, query inventory valuation as-of that period date",
+          "expected": "Inventory valuation report uses period-specific costing method (LIFO), source=AS_OF, asOfDate matches, and finished good included in results",
+          "observed": "Test passed. Accounting period set to LIFO for 2030-06. Inventory valuation returned costingMethod=LIFO, source=AS_OF, asOfDate=2030-06-20. Fixture finished good present in valuation items."
+        }
+      ],
+      "evidence": {
+        "command": "cd erp-domain && mvn test -Djacoco.skip=true -Dtest=ErpInvariantsSuiteIT -pl .",
+        "testMethods": [
+          "reports_asOfInventoryValuationUsesPeriodSpecificCostingMethod"
+        ],
+        "output": "Period-specific costing test passed. LIFO method enforced per period. ReportService.inventoryValuationAsOf() returns correct costing context.",
+        "consoleErrors": "none"
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 7 assertions: 7 passed, 0 failed, 0 blocked. All cross-module integration invariants verified via ErpInvariantsSuiteIT (11/11 tests passed, 0 failures, 29s). Evidence covers O2C, P2P, M2S, payroll-to-accounting, tenant onboarding, and period-specific costing flows. All journal entries balanced, all cross-module links verified, subledger reconciliation confirmed, idempotency replays stable."
+}
