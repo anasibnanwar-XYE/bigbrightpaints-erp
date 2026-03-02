@@ -1,31 +1,47 @@
 package com.bigbrightpaints.erp.modules.hr.service;
 
-import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
-import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
-import com.bigbrightpaints.erp.modules.hr.domain.*;
-import com.bigbrightpaints.erp.modules.hr.dto.*;
+import com.bigbrightpaints.erp.modules.hr.domain.AttendanceRepository;
+import com.bigbrightpaints.erp.modules.hr.domain.EmployeeRepository;
+import com.bigbrightpaints.erp.modules.hr.domain.LeaveRequestRepository;
+import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunRepository;
+import com.bigbrightpaints.erp.modules.hr.dto.AttendanceDto;
+import com.bigbrightpaints.erp.modules.hr.dto.AttendanceSummaryDto;
+import com.bigbrightpaints.erp.modules.hr.dto.BulkMarkAttendanceRequest;
+import com.bigbrightpaints.erp.modules.hr.dto.EmployeeDto;
+import com.bigbrightpaints.erp.modules.hr.dto.EmployeeRequest;
+import com.bigbrightpaints.erp.modules.hr.dto.LeaveRequestDto;
+import com.bigbrightpaints.erp.modules.hr.dto.LeaveRequestRequest;
+import com.bigbrightpaints.erp.modules.hr.dto.MarkAttendanceRequest;
+import com.bigbrightpaints.erp.modules.hr.dto.PayrollRunDto;
+import com.bigbrightpaints.erp.modules.hr.dto.PayrollRunRequest;
+import java.time.LocalDate;
+import java.util.List;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.math.BigDecimal;
-import java.util.List;
 
 @Service
 public class HrService {
 
-    private final CompanyContextService companyContextService;
-    private final EmployeeRepository employeeRepository;
-    private final LeaveRequestRepository leaveRequestRepository;
-    private final PayrollRunRepository payrollRunRepository;
-    private final AttendanceRepository attendanceRepository;
-    private final CompanyEntityLookup companyEntityLookup;
-    private final CompanyClock companyClock;
+    private final EmployeeService employeeService;
+    private final LeaveService leaveService;
+    private final AttendanceService attendanceService;
 
+    @Autowired
+    public HrService(EmployeeService employeeService,
+                     LeaveService leaveService,
+                     AttendanceService attendanceService) {
+        this.employeeService = employeeService;
+        this.leaveService = leaveService;
+        this.attendanceService = attendanceService;
+    }
+
+    @SuppressWarnings("unused")
     public HrService(CompanyContextService companyContextService,
                      EmployeeRepository employeeRepository,
                      LeaveRequestRepository leaveRequestRepository,
@@ -33,163 +49,44 @@ public class HrService {
                      AttendanceRepository attendanceRepository,
                      CompanyEntityLookup companyEntityLookup,
                      CompanyClock companyClock) {
-        this.companyContextService = companyContextService;
-        this.employeeRepository = employeeRepository;
-        this.leaveRequestRepository = leaveRequestRepository;
-        this.payrollRunRepository = payrollRunRepository;
-        this.attendanceRepository = attendanceRepository;
-        this.companyEntityLookup = companyEntityLookup;
-        this.companyClock = companyClock;
+        this(
+                new EmployeeService(companyContextService, employeeRepository, companyEntityLookup),
+                new LeaveService(companyContextService, employeeRepository, leaveRequestRepository, companyEntityLookup),
+                new AttendanceService(companyContextService, attendanceRepository, employeeRepository, companyEntityLookup, companyClock)
+        );
     }
 
-    /* Employees */
     public List<EmployeeDto> listEmployees() {
-        Company company = companyContextService.requireCurrentCompany();
-        return employeeRepository.findByCompanyOrderByFirstNameAsc(company).stream().map(this::toDto).toList();
+        return employeeService.listEmployees();
     }
 
     @Transactional
     public EmployeeDto createEmployee(EmployeeRequest request) {
-        Company company = companyContextService.requireCurrentCompany();
-        Employee employee = new Employee();
-        employee.setCompany(company);
-        employee.setFirstName(request.firstName());
-        employee.setLastName(request.lastName());
-        employee.setEmail(request.email());
-        employee.setRole(request.role());
-        employee.setHiredDate(request.hiredDate());
-        
-        // Payroll fields
-        if (request.phone() != null) employee.setPhone(request.phone());
-        if (request.employeeType() != null) {
-            employee.setEmployeeType(parseEmployeeType(request.employeeType()));
-        }
-        if (request.paymentSchedule() != null) {
-            employee.setPaymentSchedule(parsePaymentSchedule(request.paymentSchedule()));
-        }
-        if (request.monthlySalary() != null) employee.setMonthlySalary(request.monthlySalary());
-        if (request.dailyWage() != null) employee.setDailyWage(request.dailyWage());
-        if (request.workingDaysPerMonth() != null) employee.setWorkingDaysPerMonth(request.workingDaysPerMonth());
-        if (request.weeklyOffDays() != null) employee.setWeeklyOffDays(request.weeklyOffDays());
-        if (request.standardHoursPerDay() != null) employee.setStandardHoursPerDay(request.standardHoursPerDay());
-        if (request.overtimeRateMultiplier() != null) employee.setOvertimeRateMultiplier(request.overtimeRateMultiplier());
-        if (request.doubleOtRateMultiplier() != null) employee.setDoubleOtRateMultiplier(request.doubleOtRateMultiplier());
-        
-        // Bank details
-        if (request.bankAccountNumber() != null) employee.setBankAccountNumber(request.bankAccountNumber());
-        if (request.bankName() != null) employee.setBankName(request.bankName());
-        if (request.ifscCode() != null) employee.setIfscCode(request.ifscCode());
-        
-        return toDto(employeeRepository.save(employee));
+        return employeeService.createEmployee(request);
     }
 
     @Transactional
     public EmployeeDto updateEmployee(Long id, EmployeeRequest request) {
-        Company company = companyContextService.requireCurrentCompany();
-        Employee employee = employeeRepository.lockByCompanyAndId(company, id)
-                .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Employee not found"));
-        employee.setFirstName(request.firstName());
-        employee.setLastName(request.lastName());
-        employee.setEmail(request.email());
-        employee.setRole(request.role());
-        employee.setHiredDate(request.hiredDate());
-        
-        // Payroll fields
-        if (request.phone() != null) employee.setPhone(request.phone());
-        if (request.employeeType() != null) {
-            employee.setEmployeeType(parseEmployeeType(request.employeeType()));
-        }
-        if (request.paymentSchedule() != null) {
-            employee.setPaymentSchedule(parsePaymentSchedule(request.paymentSchedule()));
-        }
-        if (request.monthlySalary() != null) employee.setMonthlySalary(request.monthlySalary());
-        if (request.dailyWage() != null) employee.setDailyWage(request.dailyWage());
-        if (request.workingDaysPerMonth() != null) employee.setWorkingDaysPerMonth(request.workingDaysPerMonth());
-        if (request.weeklyOffDays() != null) employee.setWeeklyOffDays(request.weeklyOffDays());
-        if (request.standardHoursPerDay() != null) employee.setStandardHoursPerDay(request.standardHoursPerDay());
-        if (request.overtimeRateMultiplier() != null) employee.setOvertimeRateMultiplier(request.overtimeRateMultiplier());
-        if (request.doubleOtRateMultiplier() != null) employee.setDoubleOtRateMultiplier(request.doubleOtRateMultiplier());
-        
-        // Bank details
-        if (request.bankAccountNumber() != null) employee.setBankAccountNumber(request.bankAccountNumber());
-        if (request.bankName() != null) employee.setBankName(request.bankName());
-        if (request.ifscCode() != null) employee.setIfscCode(request.ifscCode());
-        
-        return toDto(employeeRepository.save(employee));
+        return employeeService.updateEmployee(id, request);
     }
 
+    @Transactional
     public void deleteEmployee(Long id) {
-        employeeRepository.delete(requireEmployee(id));
+        employeeService.deleteEmployee(id);
     }
 
-    private Employee requireEmployee(Long id) {
-        Company company = companyContextService.requireCurrentCompany();
-        return companyEntityLookup.requireEmployee(company, id);
-    }
-
-    private EmployeeDto toDto(Employee employee) {
-        return new EmployeeDto(employee.getId(), employee.getPublicId(), employee.getFirstName(), employee.getLastName(),
-                employee.getEmail(), employee.getRole(), employee.getStatus(), employee.getHiredDate());
-    }
-
-    /* Leave Requests */
     public List<LeaveRequestDto> listLeaveRequests() {
-        Company company = companyContextService.requireCurrentCompany();
-        return leaveRequestRepository.findByCompanyOrderByCreatedAtDesc(company).stream()
-                .map(this::toDto)
-                .toList();
+        return leaveService.listLeaveRequests();
     }
 
     @Transactional
     public LeaveRequestDto createLeaveRequest(LeaveRequestRequest request) {
-        Company company = companyContextService.requireCurrentCompany();
-        if (request.employeeId() == null) {
-            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Employee is required for leave request");
-        }
-        Employee employee = employeeRepository.lockByCompanyAndId(company, request.employeeId())
-                .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Employee not found"));
-        if (leaveRequestRepository.existsOverlappingByEmployeeIdAndDates(request.employeeId(), request.startDate(), request.endDate())) {
-            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Overlapping leave request exists for employee");
-        }
-        LeaveRequest leaveRequest = new LeaveRequest();
-        leaveRequest.setCompany(company);
-        leaveRequest.setEmployee(employee);
-        leaveRequest.setLeaveType(request.leaveType());
-        leaveRequest.setStartDate(request.startDate());
-        leaveRequest.setEndDate(request.endDate());
-        leaveRequest.setReason(request.reason());
-        if (request.status() != null) {
-            leaveRequest.setStatus(parseLeaveStatus(request.status()));
-        }
-        return toDto(leaveRequestRepository.save(leaveRequest));
+        return leaveService.createLeaveRequest(request);
     }
 
     @Transactional
     public LeaveRequestDto updateLeaveStatus(Long id, String status) {
-        LeaveRequest leaveRequest = requireLeaveRequest(id);
-        leaveRequest.setStatus(parseLeaveStatus(status));
-        return toDto(leaveRequest);
-    }
-
-    private LeaveRequest requireLeaveRequest(Long id) {
-        Company company = companyContextService.requireCurrentCompany();
-        return companyEntityLookup.requireLeaveRequest(company, id);
-    }
-
-    private LeaveRequestDto toDto(LeaveRequest leaveRequest) {
-        String employeeName = leaveRequest.getEmployee() != null
-                ? leaveRequest.getEmployee().getFirstName() + " " + leaveRequest.getEmployee().getLastName()
-                : null;
-        Long employeeId = leaveRequest.getEmployee() != null ? leaveRequest.getEmployee().getId() : null;
-        return new LeaveRequestDto(leaveRequest.getId(), leaveRequest.getPublicId(), employeeId, employeeName,
-                leaveRequest.getLeaveType(), leaveRequest.getStartDate(), leaveRequest.getEndDate(),
-                leaveRequest.getStatus(), leaveRequest.getReason(), leaveRequest.getCreatedAt());
-    }
-
-    /* Payroll */
-    public List<PayrollRunDto> listPayrollRuns() {
-        Company company = companyContextService.requireCurrentCompany();
-        return payrollRunRepository.findByCompanyOrderByRunDateDesc(company).stream().map(this::toDto).toList();
+        return leaveService.updateLeaveStatus(id, status);
     }
 
     @Deprecated
@@ -200,208 +97,27 @@ public class HrService {
                 .withDetail("canonicalPath", "/api/v1/payroll/runs");
     }
 
-    private PayrollRunDto toDto(PayrollRun run) {
-        Long journalEntryId = run.getJournalEntry() != null
-                ? run.getJournalEntry().getId()
-                : run.getJournalEntryId();
-        return new PayrollRunDto(
-                run.getId(),
-                run.getPublicId(),
-                run.getRunDate(),
-                run.getStatusString(),
-                run.getProcessedBy(),
-                run.getNotes(),
-                run.getTotalAmount(),
-                journalEntryId,
-                run.getIdempotencyKey());
+    public List<AttendanceDto> listAttendanceByDate(LocalDate date) {
+        return attendanceService.listAttendanceByDate(date);
     }
 
-    /* ===== Attendance Management ===== */
-
-    /**
-     * List attendance for a specific date.
-     */
-    public List<AttendanceDto> listAttendanceByDate(java.time.LocalDate date) {
-        Company company = companyContextService.requireCurrentCompany();
-        return attendanceRepository.findByCompanyAndAttendanceDateOrderByEmployeeFirstNameAsc(company, date)
-                .stream()
-                .map(this::toAttendanceDto)
-                .toList();
+    public List<AttendanceDto> listEmployeeAttendance(Long employeeId,
+                                                      LocalDate startDate,
+                                                      LocalDate endDate) {
+        return attendanceService.listEmployeeAttendance(employeeId, startDate, endDate);
     }
 
-    /**
-     * List attendance for an employee in a date range.
-     */
-    public List<AttendanceDto> listEmployeeAttendance(Long employeeId, java.time.LocalDate startDate, java.time.LocalDate endDate) {
-        Company company = companyContextService.requireCurrentCompany();
-        Employee employee = companyEntityLookup.requireEmployee(company, employeeId);
-        return attendanceRepository.findByCompanyAndEmployeeAndAttendanceDateBetweenOrderByAttendanceDateAsc(
-                company, employee, startDate, endDate)
-                .stream()
-                .map(this::toAttendanceDto)
-                .toList();
-    }
-
-    /**
-     * Mark attendance for a single employee.
-     */
     @Transactional
     public AttendanceDto markAttendance(Long employeeId, MarkAttendanceRequest request) {
-        Company company = companyContextService.requireCurrentCompany();
-        Employee employee = companyEntityLookup.requireEmployee(company, employeeId);
-        java.time.LocalDate date = request.date() != null ? request.date() : companyClock.today(company);
-        
-        // Check if already marked, update if exists
-        Attendance attendance = attendanceRepository.findByCompanyAndEmployeeAndAttendanceDate(company, employee, date)
-                .orElseGet(() -> {
-                    Attendance a = new Attendance();
-                    a.setCompany(company);
-                    a.setEmployee(employee);
-                    a.setAttendanceDate(date);
-                    return a;
-                });
-        
-        attendance.setStatus(parseAttendanceStatus(request.status()));
-        if (request.checkInTime() != null) attendance.setCheckInTime(request.checkInTime());
-        if (request.checkOutTime() != null) attendance.setCheckOutTime(request.checkOutTime());
-        if (request.regularHours() != null) attendance.setRegularHours(request.regularHours());
-        if (request.overtimeHours() != null) attendance.setOvertimeHours(request.overtimeHours());
-        if (request.doubleOvertimeHours() != null) attendance.setDoubleOvertimeHours(request.doubleOvertimeHours());
-        attendance.setHoliday(request.holiday());
-        attendance.setWeekend(request.weekend());
-        if (request.remarks() != null) attendance.setRemarks(request.remarks());
-        attendance.setMarkedBy(getCurrentUser());
-        attendance.setMarkedAt(CompanyTime.now(company));
-        
-        return toAttendanceDto(attendanceRepository.save(attendance));
+        return attendanceService.markAttendance(employeeId, request);
     }
 
-    /**
-     * Bulk mark attendance for multiple employees.
-     */
     @Transactional
     public List<AttendanceDto> bulkMarkAttendance(BulkMarkAttendanceRequest request) {
-        Company company = companyContextService.requireCurrentCompany();
-        String markedBy = getCurrentUser();
-        java.time.Instant markedAt = CompanyTime.now(company);
-        
-        return request.employeeIds().stream()
-                .map(employeeId -> {
-                    Employee employee = companyEntityLookup.requireEmployee(company, employeeId);
-                    
-                    Attendance attendance = attendanceRepository.findByCompanyAndEmployeeAndAttendanceDate(
-                            company, employee, request.date())
-                            .orElseGet(() -> {
-                                Attendance a = new Attendance();
-                                a.setCompany(company);
-                                a.setEmployee(employee);
-                                a.setAttendanceDate(request.date());
-                                return a;
-                            });
-                    
-                    attendance.setStatus(parseAttendanceStatus(request.status()));
-                    if (request.checkInTime() != null) attendance.setCheckInTime(request.checkInTime());
-                    if (request.checkOutTime() != null) attendance.setCheckOutTime(request.checkOutTime());
-                    if (request.regularHours() != null) attendance.setRegularHours(request.regularHours());
-                    if (request.overtimeHours() != null) attendance.setOvertimeHours(request.overtimeHours());
-                    if (request.remarks() != null) attendance.setRemarks(request.remarks());
-                    attendance.setMarkedBy(markedBy);
-                    attendance.setMarkedAt(markedAt);
-                    
-                    return toAttendanceDto(attendanceRepository.save(attendance));
-                })
-                .toList();
+        return attendanceService.bulkMarkAttendance(request);
     }
 
-    /**
-     * Get today's attendance summary.
-     */
     public AttendanceSummaryDto getTodayAttendanceSummary() {
-        Company company = companyContextService.requireCurrentCompany();
-        java.time.LocalDate today = companyClock.today(company);
-        
-        List<Attendance> attendances = attendanceRepository.findByCompanyAndAttendanceDateOrderByEmployeeFirstNameAsc(company, today);
-        long totalEmployees = employeeRepository.countByCompanyAndStatus(company, "ACTIVE");
-        long present = attendances.stream().filter(a -> a.getStatus() == Attendance.AttendanceStatus.PRESENT).count();
-        long absent = attendances.stream().filter(a -> a.getStatus() == Attendance.AttendanceStatus.ABSENT).count();
-        long halfDay = attendances.stream().filter(a -> a.getStatus() == Attendance.AttendanceStatus.HALF_DAY).count();
-        long leave = attendances.stream().filter(a -> a.getStatus() == Attendance.AttendanceStatus.LEAVE).count();
-        long notMarked = totalEmployees - attendances.size();
-        
-        return new AttendanceSummaryDto(today, totalEmployees, present, absent, halfDay, leave, notMarked);
-    }
-
-    private Employee.EmployeeType parseEmployeeType(String rawEmployeeType) {
-        try {
-            return Employee.EmployeeType.valueOf(rawEmployeeType);
-        } catch (RuntimeException ex) {
-            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
-                    "Invalid employeeType. Allowed values: " + java.util.Arrays.toString(Employee.EmployeeType.values()))
-                    .withDetail("employeeType", rawEmployeeType);
-        }
-    }
-
-    private Employee.PaymentSchedule parsePaymentSchedule(String rawPaymentSchedule) {
-        try {
-            return Employee.PaymentSchedule.valueOf(rawPaymentSchedule);
-        } catch (RuntimeException ex) {
-            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
-                    "Invalid paymentSchedule. Allowed values: " + java.util.Arrays.toString(Employee.PaymentSchedule.values()))
-                    .withDetail("paymentSchedule", rawPaymentSchedule);
-        }
-    }
-
-    private Attendance.AttendanceStatus parseAttendanceStatus(String rawAttendanceStatus) {
-        try {
-            return Attendance.AttendanceStatus.valueOf(rawAttendanceStatus);
-        } catch (RuntimeException ex) {
-            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
-                    "Invalid attendance status. Allowed values: " + java.util.Arrays.toString(Attendance.AttendanceStatus.values()))
-                    .withDetail("attendanceStatus", rawAttendanceStatus);
-        }
-    }
-
-    private String parseLeaveStatus(String rawLeaveStatus) {
-        try {
-            return LeaveStatus.valueOf(rawLeaveStatus).name();
-        } catch (RuntimeException ex) {
-            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
-                    "Invalid leave status. Allowed values: " + java.util.Arrays.toString(LeaveStatus.values()))
-                    .withDetail("leaveStatus", rawLeaveStatus);
-        }
-    }
-
-    private AttendanceDto toAttendanceDto(Attendance a) {
-        Employee emp = a.getEmployee();
-        return new AttendanceDto(
-                a.getId(),
-                emp.getId(),
-                emp.getFirstName() + " " + emp.getLastName(),
-                emp.getEmployeeType() != null ? emp.getEmployeeType().name() : null,
-                a.getAttendanceDate(),
-                a.getStatus().name(),
-                a.getCheckInTime(),
-                a.getCheckOutTime(),
-                a.getRegularHours(),
-                a.getOvertimeHours(),
-                a.getDoubleOvertimeHours(),
-                a.isHoliday(),
-                a.isWeekend(),
-                a.getRemarks(),
-                a.getMarkedBy(),
-                a.getMarkedAt()
-        );
-    }
-
-    private String getCurrentUser() {
-        var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
-        return auth != null ? auth.getName() : "SYSTEM";
-    }
-
-    private enum LeaveStatus {
-        PENDING,
-        APPROVED,
-        REJECTED,
-        CANCELLED
+        return attendanceService.getTodayAttendanceSummary();
     }
 }

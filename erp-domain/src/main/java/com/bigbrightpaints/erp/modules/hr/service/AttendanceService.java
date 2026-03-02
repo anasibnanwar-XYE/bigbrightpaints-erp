@@ -1,271 +1,248 @@
 package com.bigbrightpaints.erp.modules.hr.service;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
+import com.bigbrightpaints.erp.core.util.CompanyClock;
+import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
-import com.bigbrightpaints.erp.modules.hr.domain.*;
-import com.bigbrightpaints.erp.core.util.CompanyClock;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.security.core.Authentication;
+import com.bigbrightpaints.erp.modules.hr.domain.Attendance;
+import com.bigbrightpaints.erp.modules.hr.domain.AttendanceRepository;
+import com.bigbrightpaints.erp.modules.hr.domain.Employee;
+import com.bigbrightpaints.erp.modules.hr.domain.EmployeeRepository;
+import com.bigbrightpaints.erp.modules.hr.dto.AttendanceDto;
+import com.bigbrightpaints.erp.modules.hr.dto.AttendanceSummaryDto;
+import com.bigbrightpaints.erp.modules.hr.dto.BulkMarkAttendanceRequest;
+import com.bigbrightpaints.erp.modules.hr.dto.MarkAttendanceRequest;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.DayOfWeek;
-import java.time.LocalDate;
-import java.time.LocalTime;
-import java.time.ZoneId;
-import java.util.List;
-import java.util.Optional;
-
-/**
- * Service for managing attendance.
- * - Staff marks their own attendance
- * - Factory portal marks labourers' attendance
- */
 @Service
 public class AttendanceService {
 
-    private static final Logger log = LoggerFactory.getLogger(AttendanceService.class);
-
+    private final CompanyContextService companyContextService;
     private final AttendanceRepository attendanceRepository;
     private final EmployeeRepository employeeRepository;
-    private final CompanyContextService companyContextService;
+    private final CompanyEntityLookup companyEntityLookup;
     private final CompanyClock companyClock;
 
-    public AttendanceService(AttendanceRepository attendanceRepository,
-                            EmployeeRepository employeeRepository,
-                            CompanyContextService companyContextService,
-                            CompanyClock companyClock) {
+    public AttendanceService(CompanyContextService companyContextService,
+                             AttendanceRepository attendanceRepository,
+                             EmployeeRepository employeeRepository,
+                             CompanyEntityLookup companyEntityLookup,
+                             CompanyClock companyClock) {
+        this.companyContextService = companyContextService;
         this.attendanceRepository = attendanceRepository;
         this.employeeRepository = employeeRepository;
-        this.companyContextService = companyContextService;
+        this.companyEntityLookup = companyEntityLookup;
         this.companyClock = companyClock;
     }
 
-    /**
-     * Staff marks their own attendance (self check-in)
-     */
-    @Transactional
-    public AttendanceDto markSelfPresent() {
+    public List<AttendanceDto> listAttendanceByDate(LocalDate date) {
         Company company = companyContextService.requireCurrentCompany();
-        String username = getCurrentUsername();
-        
-        // Find employee by email (linked to user account)
-        Employee employee = employeeRepository.findByCompanyAndEmail(company, username)
-                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("No employee record found for user: " + username));
-        
-        return markPresent(employee.getId(), Attendance.AttendanceStatus.PRESENT, null);
-    }
-
-    /**
-     * Mark an employee/labourer as present (for Factory portal to mark labourers)
-     */
-    @Transactional
-    public AttendanceDto markPresent(Long employeeId, Attendance.AttendanceStatus status, String remarks) {
-        Company company = companyContextService.requireCurrentCompany();
-        Employee employee = employeeRepository.findByCompanyAndId(company, employeeId)
-                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Employee not found"));
-
-        LocalDate today = companyClock.today(company);
-        ZoneId zoneId = companyClock.zoneId(company);
-        
-        // Check if already marked
-        Optional<Attendance> existing = attendanceRepository.findByCompanyAndEmployeeAndAttendanceDate(
-                company, employee, today);
-        
-        Attendance attendance;
-        if (existing.isPresent()) {
-            attendance = existing.get();
-            attendance.setStatus(status);
-            attendance.setRemarks(remarks);
-            log.info("Updated attendance for {} to {}", employee.getFullName(), status);
-        } else {
-            attendance = new Attendance();
-            attendance.setCompany(company);
-            attendance.setEmployee(employee);
-            attendance.setAttendanceDate(today);
-            attendance.setStatus(status);
-            attendance.setCheckInTime(LocalTime.ofInstant(companyClock.now(company), zoneId));
-            attendance.setRemarks(remarks);
-            attendance.setWeekend(isWeekend(today));
-            log.info("Marked {} as {} for {}", employee.getFullName(), status, today);
-        }
-        
-        attendance.setMarkedBy(getCurrentUsername());
-        attendanceRepository.save(attendance);
-        
-        return toDto(attendance);
-    }
-
-    /**
-     * Mark half day attendance
-     */
-    @Transactional
-    public AttendanceDto markHalfDay(Long employeeId, String remarks) {
-        return markPresent(employeeId, Attendance.AttendanceStatus.HALF_DAY, remarks);
-    }
-
-    /**
-     * Get today's attendance for all employees
-     */
-    @Transactional(readOnly = true)
-    public List<AttendanceDto> getTodayAttendance() {
-        Company company = companyContextService.requireCurrentCompany();
-        LocalDate today = companyClock.today(company);
-        return attendanceRepository.findByCompanyAndAttendanceDateOrderByEmployeeFirstNameAsc(company, today)
+        return attendanceRepository.findByCompanyAndAttendanceDateOrderByEmployeeFirstNameAsc(company, date)
                 .stream()
-                .map(this::toDto)
+                .map(this::toAttendanceDto)
                 .toList();
     }
 
-    /**
-     * Get attendance for a specific employee in date range
-     */
-    @Transactional(readOnly = true)
-    public List<AttendanceDto> getEmployeeAttendance(Long employeeId, LocalDate startDate, LocalDate endDate) {
+    public List<AttendanceDto> listEmployeeAttendance(Long employeeId,
+                                                      LocalDate startDate,
+                                                      LocalDate endDate) {
         Company company = companyContextService.requireCurrentCompany();
-        Employee employee = employeeRepository.findByCompanyAndId(company, employeeId)
-                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Employee not found"));
-        
+        Employee employee = companyEntityLookup.requireEmployee(company, employeeId);
         return attendanceRepository.findByCompanyAndEmployeeAndAttendanceDateBetweenOrderByAttendanceDateAsc(
-                company, employee, startDate, endDate)
+                        company,
+                        employee,
+                        startDate,
+                        endDate)
                 .stream()
-                .map(this::toDto)
+                .map(this::toAttendanceDto)
                 .toList();
     }
 
-    /**
-     * Get attendance summary for payroll calculation
-     */
-    @Transactional(readOnly = true)
-    public AttendanceSummary getAttendanceSummary(Long employeeId, LocalDate startDate, LocalDate endDate) {
-        Company company = companyContextService.requireCurrentCompany();
-        Employee employee = employeeRepository.findByCompanyAndId(company, employeeId)
-                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Employee not found"));
-        
-        long presentDays = attendanceRepository.countByEmployeeAndDateRangeAndStatus(
-                company, employee, startDate, endDate, Attendance.AttendanceStatus.PRESENT);
-        long halfDays = attendanceRepository.countByEmployeeAndDateRangeAndStatus(
-                company, employee, startDate, endDate, Attendance.AttendanceStatus.HALF_DAY);
-        long absentDays = attendanceRepository.countByEmployeeAndDateRangeAndStatus(
-                company, employee, startDate, endDate, Attendance.AttendanceStatus.ABSENT);
-        long leaveDays = attendanceRepository.countByEmployeeAndDateRangeAndStatus(
-                company, employee, startDate, endDate, Attendance.AttendanceStatus.LEAVE);
-        
-        return new AttendanceSummary(
-                employeeId,
-                employee.getFullName(),
-                startDate,
-                endDate,
-                (int) presentDays,
-                (int) halfDays,
-                (int) absentDays,
-                (int) leaveDays
-        );
-    }
-
-    /**
-     * Search labourers by name (for Factory portal)
-     */
-    @Transactional(readOnly = true)
-    public List<EmployeeSearchResult> searchLabourers(String query) {
-        Company company = companyContextService.requireCurrentCompany();
-        return employeeRepository.findByCompanyAndEmployeeTypeAndStatus(
-                company, Employee.EmployeeType.LABOUR, "ACTIVE")
-                .stream()
-                .filter(e -> e.getFullName().toLowerCase().contains(query.toLowerCase()))
-                .map(e -> new EmployeeSearchResult(
-                        e.getId(),
-                        e.getFullName(),
-                        e.getDailyWage(),
-                        isMarkedToday(company, e)
-                ))
-                .toList();
-    }
-
-    /**
-     * Bulk mark attendance for multiple labourers (Factory portal)
-     */
     @Transactional
-    public int bulkMarkPresent(List<Long> employeeIds, Attendance.AttendanceStatus status) {
-        int count = 0;
-        for (Long id : employeeIds) {
-            try {
-                markPresent(id, status, "Bulk marked");
-                count++;
-            } catch (Exception e) {
-                log.warn("Failed to mark attendance for employee {}: {}", id, e.getMessage());
-            }
+    public AttendanceDto markAttendance(Long employeeId, MarkAttendanceRequest request) {
+        Company company = companyContextService.requireCurrentCompany();
+        Employee employee = companyEntityLookup.requireEmployee(company, employeeId);
+        LocalDate date = request.date() != null ? request.date() : companyClock.today(company);
+
+        Attendance attendance = attendanceRepository.findByCompanyAndEmployeeAndAttendanceDate(
+                        company,
+                        employee,
+                        date)
+                .orElseGet(() -> newAttendance(company, employee, date));
+
+        applyAttendanceRequest(attendance, request.status(), request.checkInTime(), request.checkOutTime(),
+                request.regularHours(), request.overtimeHours(), request.doubleOvertimeHours(),
+                request.holiday(), request.weekend(), request.remarks(), company);
+
+        return toAttendanceDto(attendanceRepository.save(attendance));
+    }
+
+    @Transactional
+    public List<AttendanceDto> bulkMarkAttendance(BulkMarkAttendanceRequest request) {
+        Company company = companyContextService.requireCurrentCompany();
+        List<Long> employeeIds = request.employeeIds();
+        if (employeeIds == null || employeeIds.isEmpty()) {
+            return List.of();
         }
-        return count;
+
+        // Validate status upfront so invalid status consistently surfaces as invalid input.
+        parseAttendanceStatus(request.status());
+
+        List<Employee> employees = employeeRepository.findAllById(employeeIds).stream()
+                .filter(employee -> employee.getCompany() != null
+                        && company.getId() != null
+                        && company.getId().equals(employee.getCompany().getId()))
+                .toList();
+
+        if (employees.size() != employeeIds.size()) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                    "One or more employees were not found for the current company");
+        }
+
+        List<Attendance> existingRows = attendanceRepository.findByCompanyAndEmployeeIdsAndDateRange(
+                company,
+                employeeIds,
+                request.date(),
+                request.date());
+
+        Map<Long, Attendance> existingByEmployeeId = existingRows.stream()
+                .collect(Collectors.toMap(row -> row.getEmployee().getId(), Function.identity()));
+
+        String status = request.status();
+        List<Attendance> toPersist = new ArrayList<>();
+        for (Employee employee : employees) {
+            Attendance attendance = existingByEmployeeId.get(employee.getId());
+            if (attendance == null) {
+                attendance = newAttendance(company, employee, request.date());
+            }
+            applyAttendanceRequest(attendance, status, request.checkInTime(), request.checkOutTime(),
+                    request.regularHours(), request.overtimeHours(), null,
+                    false, false, request.remarks(), company);
+            toPersist.add(attendance);
+        }
+
+        return attendanceRepository.saveAll(toPersist)
+                .stream()
+                .map(this::toAttendanceDto)
+                .toList();
     }
 
-    private boolean isMarkedToday(Company company, Employee employee) {
-        return attendanceRepository.existsByCompanyAndEmployeeAndAttendanceDate(
-                company, employee, companyClock.today(company));
+    public AttendanceSummaryDto getTodayAttendanceSummary() {
+        Company company = companyContextService.requireCurrentCompany();
+        LocalDate today = companyClock.today(company);
+
+        List<Attendance> attendances = attendanceRepository.findByCompanyAndAttendanceDateOrderByEmployeeFirstNameAsc(
+                company,
+                today);
+        long totalEmployees = employeeRepository.countByCompanyAndStatus(company, "ACTIVE");
+        long present = attendances.stream()
+                .filter(attendance -> attendance.getStatus() == Attendance.AttendanceStatus.PRESENT)
+                .count();
+        long absent = attendances.stream()
+                .filter(attendance -> attendance.getStatus() == Attendance.AttendanceStatus.ABSENT)
+                .count();
+        long halfDay = attendances.stream()
+                .filter(attendance -> attendance.getStatus() == Attendance.AttendanceStatus.HALF_DAY)
+                .count();
+        long leave = attendances.stream()
+                .filter(attendance -> attendance.getStatus() == Attendance.AttendanceStatus.LEAVE)
+                .count();
+        long notMarked = totalEmployees - attendances.size();
+
+        return new AttendanceSummaryDto(today, totalEmployees, present, absent, halfDay, leave, notMarked);
     }
 
-    private boolean isWeekend(LocalDate date) {
-        DayOfWeek day = date.getDayOfWeek();
-        return day == DayOfWeek.SATURDAY || day == DayOfWeek.SUNDAY;
+    private Attendance newAttendance(Company company, Employee employee, LocalDate date) {
+        Attendance attendance = new Attendance();
+        attendance.setCompany(company);
+        attendance.setEmployee(employee);
+        attendance.setAttendanceDate(date);
+        return attendance;
     }
 
-    private String getCurrentUsername() {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        return auth != null ? auth.getName() : "system";
+    private void applyAttendanceRequest(Attendance attendance,
+                                        String rawStatus,
+                                        java.time.LocalTime checkInTime,
+                                        java.time.LocalTime checkOutTime,
+                                        java.math.BigDecimal regularHours,
+                                        java.math.BigDecimal overtimeHours,
+                                        java.math.BigDecimal doubleOvertimeHours,
+                                        boolean holiday,
+                                        boolean weekend,
+                                        String remarks,
+                                        Company company) {
+        attendance.setStatus(parseAttendanceStatus(rawStatus));
+        if (checkInTime != null) {
+            attendance.setCheckInTime(checkInTime);
+        }
+        if (checkOutTime != null) {
+            attendance.setCheckOutTime(checkOutTime);
+        }
+        if (regularHours != null) {
+            attendance.setRegularHours(regularHours);
+        }
+        if (overtimeHours != null) {
+            attendance.setOvertimeHours(overtimeHours);
+        }
+        if (doubleOvertimeHours != null) {
+            attendance.setDoubleOvertimeHours(doubleOvertimeHours);
+        }
+        attendance.setHoliday(holiday);
+        attendance.setWeekend(weekend);
+        if (remarks != null) {
+            attendance.setRemarks(remarks);
+        }
+        attendance.setMarkedBy(getCurrentUser());
+        attendance.setMarkedAt(CompanyTime.now(company));
     }
 
-    private AttendanceDto toDto(Attendance attendance) {
+    private Attendance.AttendanceStatus parseAttendanceStatus(String rawAttendanceStatus) {
+        try {
+            return Attendance.AttendanceStatus.valueOf(rawAttendanceStatus.trim().toUpperCase(Locale.ROOT));
+        } catch (RuntimeException ex) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Invalid attendance status. Allowed values: "
+                            + Arrays.toString(Attendance.AttendanceStatus.values()))
+                    .withDetail("attendanceStatus", rawAttendanceStatus);
+        }
+    }
+
+    private AttendanceDto toAttendanceDto(Attendance attendance) {
+        Employee employee = attendance.getEmployee();
         return new AttendanceDto(
                 attendance.getId(),
-                attendance.getEmployee().getId(),
-                attendance.getEmployee().getFullName(),
-                attendance.getEmployee().getEmployeeType().name(),
+                employee.getId(),
+                employee.getFirstName() + " " + employee.getLastName(),
+                employee.getEmployeeType() != null ? employee.getEmployeeType().name() : null,
                 attendance.getAttendanceDate(),
                 attendance.getStatus().name(),
                 attendance.getCheckInTime(),
                 attendance.getCheckOutTime(),
-                attendance.getMarkedBy(),
+                attendance.getRegularHours(),
+                attendance.getOvertimeHours(),
+                attendance.getDoubleOvertimeHours(),
+                attendance.isHoliday(),
+                attendance.isWeekend(),
                 attendance.getRemarks(),
-                attendance.isWeekend()
-        );
+                attendance.getMarkedBy(),
+                attendance.getMarkedAt());
     }
 
-    // DTOs
-    public record AttendanceDto(
-            Long id,
-            Long employeeId,
-            String employeeName,
-            String employeeType,
-            LocalDate date,
-            String status,
-            LocalTime checkInTime,
-            LocalTime checkOutTime,
-            String markedBy,
-            String remarks,
-            boolean weekend
-    ) {}
-
-    public record AttendanceSummary(
-            Long employeeId,
-            String employeeName,
-            LocalDate startDate,
-            LocalDate endDate,
-            int presentDays,
-            int halfDays,
-            int absentDays,
-            int leaveDays
-    ) {
-        public double getEffectiveDays() {
-            return presentDays + (halfDays * 0.5);
-        }
+    private String getCurrentUser() {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication != null ? authentication.getName() : "SYSTEM";
     }
-
-    public record EmployeeSearchResult(
-            Long id,
-            String name,
-            java.math.BigDecimal dailyWage,
-            boolean markedToday
-    ) {}
 }

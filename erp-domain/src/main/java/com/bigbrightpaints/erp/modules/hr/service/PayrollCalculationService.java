@@ -1,245 +1,342 @@
 package com.bigbrightpaints.erp.modules.hr.service;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
+import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
-import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.modules.hr.domain.*;
-import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.MimeMessageHelper;
-import org.springframework.mail.javamail.MimeMessagePreparator;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.thymeleaf.TemplateEngine;
-import org.thymeleaf.context.Context;
-
-import java.io.ByteArrayOutputStream;
+import com.bigbrightpaints.erp.modules.hr.domain.Attendance;
+import com.bigbrightpaints.erp.modules.hr.domain.AttendanceRepository;
+import com.bigbrightpaints.erp.modules.hr.domain.Employee;
+import com.bigbrightpaints.erp.modules.hr.domain.EmployeeRepository;
+import com.bigbrightpaints.erp.modules.hr.domain.PayrollRun;
+import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunLine;
+import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunLineRepository;
+import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunRepository;
+import com.bigbrightpaints.erp.modules.hr.service.PayrollService.EmployeeMonthlyPayDto;
+import com.bigbrightpaints.erp.modules.hr.service.PayrollService.EmployeeWeeklyPayDto;
+import com.bigbrightpaints.erp.modules.hr.service.PayrollService.MonthlyPaySummaryDto;
+import com.bigbrightpaints.erp.modules.hr.service.PayrollService.PayrollRunDto;
+import com.bigbrightpaints.erp.modules.hr.service.PayrollService.WeeklyPaySummaryDto;
+import jakarta.transaction.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.time.temporal.TemporalAdjusters;
-import java.util.*;
-import java.util.stream.Collectors;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Service;
 
-/**
- * Auto-calculates payroll based on attendance.
- * 
- * Business Rules:
- * - Staff (MONTHLY): Salary / working days * present days
- * - Labour (WEEKLY): Daily wage * present days
- * - Half day = 0.5 day pay
- * - Weekends excluded from calculations
- * - Advance payments deducted from final amount
- * 
- * Scheduled: Every Saturday at 3:00 PM IST
- */
 @Service
 public class PayrollCalculationService {
 
-    private static final Logger log = LoggerFactory.getLogger(PayrollCalculationService.class);
     private static final BigDecimal ADVANCE_DEDUCTION_CAP = new BigDecimal("0.20");
 
-    private final EmployeeRepository employeeRepository;
-    private final AttendanceRepository attendanceRepository;
     private final PayrollRunRepository payrollRunRepository;
     private final PayrollRunLineRepository payrollRunLineRepository;
+    private final EmployeeRepository employeeRepository;
+    private final AttendanceRepository attendanceRepository;
     private final CompanyContextService companyContextService;
     private final CompanyClock companyClock;
-    private final JavaMailSender mailSender;
-    private final TemplateEngine templateEngine;
 
-    @Value("${erp.payroll.notification-email:alerts@localhost}")
-    private String payrollNotificationEmail;
-
-    @Value("${erp.mail.from-address:bigbrightpaints@gmail.com}")
-    private String fromAddress;
-
-    public PayrollCalculationService(EmployeeRepository employeeRepository,
-                                     AttendanceRepository attendanceRepository,
-                                     PayrollRunRepository payrollRunRepository,
+    public PayrollCalculationService(PayrollRunRepository payrollRunRepository,
                                      PayrollRunLineRepository payrollRunLineRepository,
+                                     EmployeeRepository employeeRepository,
+                                     AttendanceRepository attendanceRepository,
                                      CompanyContextService companyContextService,
-                                     CompanyClock companyClock,
-                                     JavaMailSender mailSender,
-                                     TemplateEngine templateEngine) {
-        this.employeeRepository = employeeRepository;
-        this.attendanceRepository = attendanceRepository;
+                                     CompanyClock companyClock) {
         this.payrollRunRepository = payrollRunRepository;
         this.payrollRunLineRepository = payrollRunLineRepository;
+        this.employeeRepository = employeeRepository;
+        this.attendanceRepository = attendanceRepository;
         this.companyContextService = companyContextService;
         this.companyClock = companyClock;
-        this.mailSender = mailSender;
-        this.templateEngine = templateEngine;
     }
 
-    /**
-     * Calculate weekly payroll for labourers (runs every Saturday)
-     */
     @Transactional
-    public PayrollSummary calculateWeeklyPayroll() {
+    public PayrollRunDto calculatePayroll(Long payrollRunId) {
         Company company = companyContextService.requireCurrentCompany();
-        LocalDate today = companyClock.today(company);
-        
-        // Get the week range (Monday to Saturday of the latest completed week)
-        LocalDate weekEnd = today.getDayOfWeek() == DayOfWeek.SATURDAY
-                ? today
-                : today.with(TemporalAdjusters.previousOrSame(DayOfWeek.SATURDAY));
-        LocalDate weekStart = weekEnd.minusDays(5); // Monday
+        PayrollRun run = payrollRunRepository.findByCompanyAndId(company, payrollRunId)
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils
+                        .invalidInput("Payroll run not found"));
 
-        String reference = "WEEKLY-" + weekEnd.format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-        String idempotencyKey = PayrollService.buildIdempotencyKey(PayrollRun.RunType.WEEKLY, weekStart, weekEnd);
-        Optional<PayrollRun> existing = payrollRunRepository.findByCompanyAndRunTypeAndPeriodStartAndPeriodEnd(
-                company, PayrollRun.RunType.WEEKLY, weekStart, weekEnd);
-        if (existing.isPresent()) {
-            return buildSummaryFromRun(ensureIdempotencyMetadata(existing.get(), idempotencyKey));
+        if (run.getStatus() != PayrollRun.PayrollStatus.DRAFT) {
+            throw new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE,
+                    "Can only calculate payroll in DRAFT status")
+                    .withDetail("payrollRunId", payrollRunId)
+                    .withDetail("currentStatus", run.getStatus().name());
         }
-        Optional<PayrollRun> existingByKey = payrollRunRepository.findByCompanyAndIdempotencyKey(company, idempotencyKey);
-        if (existingByKey.isPresent()) {
-            return buildSummaryFromRun(ensureIdempotencyMetadata(existingByKey.get(), idempotencyKey));
+
+        payrollRunLineRepository.deleteByPayrollRun(run);
+
+        List<Employee> employees = run.getRunType() == PayrollRun.RunType.WEEKLY
+                ? employeeRepository.findByCompanyAndEmployeeTypeAndStatus(
+                        company,
+                        Employee.EmployeeType.LABOUR,
+                        "ACTIVE")
+                : employeeRepository.findByCompanyAndEmployeeTypeAndStatus(
+                        company,
+                        Employee.EmployeeType.STAFF,
+                        "ACTIVE");
+
+        BigDecimal totalBasePay = BigDecimal.ZERO;
+        BigDecimal totalOvertimePay = BigDecimal.ZERO;
+        BigDecimal totalDeductions = BigDecimal.ZERO;
+        BigDecimal totalNetPay = BigDecimal.ZERO;
+        BigDecimal totalPresentDays = BigDecimal.ZERO;
+        BigDecimal totalOtHours = BigDecimal.ZERO;
+
+        for (Employee employee : employees) {
+            PayrollRunLine line = calculateEmployeePay(run, employee);
+            payrollRunLineRepository.save(line);
+
+            totalBasePay = totalBasePay.add(line.getBasePay());
+            totalOvertimePay = totalOvertimePay.add(line.getOvertimePay());
+            totalDeductions = totalDeductions.add(line.getTotalDeductions());
+            totalNetPay = totalNetPay.add(line.getNetPay());
+            totalPresentDays = totalPresentDays.add(line.getPresentDays());
+            totalOtHours = totalOtHours.add(line.getOvertimeHours()).add(line.getDoubleOtHours());
         }
-        
-        log.info("Calculating weekly payroll for {} to {}", weekStart, weekEnd);
-        
-        // Get all active labourers
-        List<Employee> labourers = employeeRepository.findByCompanyAndPaymentScheduleAndStatus(
-                company, Employee.PaymentSchedule.WEEKLY, "ACTIVE");
-        Map<Long, List<Attendance>> attendanceByEmployeeId = loadAttendanceByEmployeeId(company, labourers, weekStart, weekEnd);
-        
-        List<PayrollLineItem> lineItems = new ArrayList<>();
-        BigDecimal totalGross = BigDecimal.ZERO;
-        BigDecimal totalAdvances = BigDecimal.ZERO;
-        BigDecimal totalNet = BigDecimal.ZERO;
-        
-        for (Employee labourer : labourers) {
-            PayrollLineItem item = calculateEmployeePay(labourer, attendanceByEmployeeId.get(labourer.getId()));
-            if (item.netPay().compareTo(BigDecimal.ZERO) <= 0) {
-                continue;
+
+        run.setTotalEmployees(employees.size());
+        run.setTotalBasePay(totalBasePay);
+        run.setTotalOvertimePay(totalOvertimePay);
+        run.setTotalDeductions(totalDeductions);
+        run.setTotalNetPay(totalNetPay);
+        run.setTotalPresentDays(totalPresentDays);
+        run.setTotalOvertimeHours(totalOtHours);
+        run.setTotalAmount(totalNetPay);
+        if (run.getRunDate() == null) {
+            LocalDate runDate = run.getPeriodEnd() != null ? run.getPeriodEnd() : run.getPeriodStart();
+            run.setRunDate(runDate != null ? runDate : companyClock.today(company));
+        }
+        run.setProcessedBy(getCurrentUser());
+        run.setStatus(PayrollRun.PayrollStatus.CALCULATED);
+
+        payrollRunRepository.save(run);
+        return PayrollService.toDto(run);
+    }
+
+    public WeeklyPaySummaryDto getWeeklyPaySummary(LocalDate weekEndingDate) {
+        Company company = companyContextService.requireCurrentCompany();
+        LocalDate weekStart = weekEndingDate.with(DayOfWeek.MONDAY);
+        LocalDate weekEnd = weekEndingDate.with(DayOfWeek.SATURDAY);
+
+        List<Employee> labourers = employeeRepository.findByCompanyAndEmployeeTypeAndStatus(
+                company,
+                Employee.EmployeeType.LABOUR,
+                "ACTIVE");
+        List<Attendance> attendance = attendanceRepository.findByEmployeeTypeAndStatusAndDateRange(
+                company,
+                Employee.EmployeeType.LABOUR,
+                "ACTIVE",
+                weekStart,
+                weekEnd);
+
+        List<EmployeeWeeklyPayDto> employeePay = new ArrayList<>();
+        BigDecimal totalBasePay = BigDecimal.ZERO;
+        BigDecimal totalOtPay = BigDecimal.ZERO;
+        BigDecimal totalNetPay = BigDecimal.ZERO;
+
+        Map<Long, BigDecimal> presentDaysByEmployee = new HashMap<>();
+        Map<Long, BigDecimal> holidayDaysByEmployee = new HashMap<>();
+        Map<Long, BigDecimal> overtimeHoursByEmployee = new HashMap<>();
+        Map<Long, BigDecimal> doubleOtHoursByEmployee = new HashMap<>();
+
+        for (Attendance att : attendance) {
+            Long employeeId = att.getEmployee().getId();
+            if (att.getStatus() == Attendance.AttendanceStatus.PRESENT) {
+                presentDaysByEmployee.merge(employeeId, BigDecimal.ONE, BigDecimal::add);
+            } else if (att.getStatus() == Attendance.AttendanceStatus.HALF_DAY) {
+                presentDaysByEmployee.merge(employeeId, new BigDecimal("0.5"), BigDecimal::add);
+            } else if (att.getStatus() == Attendance.AttendanceStatus.HOLIDAY) {
+                holidayDaysByEmployee.merge(employeeId, BigDecimal.ONE, BigDecimal::add);
             }
-            lineItems.add(item);
-            totalGross = totalGross.add(item.grossPay());
-            totalAdvances = totalAdvances.add(item.advanceDeduction());
-            totalNet = totalNet.add(item.netPay());
+            if (att.getOvertimeHours() != null) {
+                overtimeHoursByEmployee.merge(employeeId, att.getOvertimeHours(), BigDecimal::add);
+            }
+            if (att.getDoubleOvertimeHours() != null) {
+                doubleOtHoursByEmployee.merge(employeeId, att.getDoubleOvertimeHours(), BigDecimal::add);
+            }
         }
-        
-        // Create payroll run
-        Map<Long, Employee> employeesById = labourers.stream()
-                .collect(Collectors.toMap(Employee::getId, employee -> employee));
-        PayrollRun run = createPayrollRun(company, reference, PayrollRun.RunType.WEEKLY,
-                weekStart, weekEnd, today, totalGross, totalAdvances, totalNet, lineItems, employeesById);
-        
-        PayrollSummary summary = new PayrollSummary(
-                run.getId(),
-                reference,
-                "WEEKLY",
+
+        for (Employee employee : labourers) {
+            BigDecimal presentDays = presentDaysByEmployee.getOrDefault(employee.getId(), BigDecimal.ZERO);
+            BigDecimal otHours = overtimeHoursByEmployee.getOrDefault(employee.getId(), BigDecimal.ZERO);
+            BigDecimal doubleOtHours = doubleOtHoursByEmployee.getOrDefault(employee.getId(), BigDecimal.ZERO);
+            BigDecimal holidayDays = holidayDaysByEmployee.getOrDefault(employee.getId(), BigDecimal.ZERO);
+
+            BigDecimal baseDays = presentDays.add(holidayDays);
+            BigDecimal basePay = employee.getDailyRate().multiply(baseDays);
+            BigDecimal standardHoursPerDay = requireValidStandardHoursPerDay(employee);
+            BigDecimal hourlyRate = employee.getDailyRate().divide(standardHoursPerDay, 2, RoundingMode.HALF_UP);
+            BigDecimal otPay = hourlyRate.multiply(employee.getOvertimeRateMultiplier()).multiply(otHours);
+            BigDecimal doubleOtPay = hourlyRate.multiply(employee.getDoubleOtRateMultiplier()).multiply(doubleOtHours);
+            BigDecimal netPay = basePay.add(otPay).add(doubleOtPay);
+
+            BigDecimal daysWorkedExact = presentDays;
+            int daysWorked = daysWorkedExact.setScale(0, RoundingMode.HALF_UP).intValue();
+            employeePay.add(new EmployeeWeeklyPayDto(
+                    employee.getId(),
+                    employee.getFullName(),
+                    employee.getDailyRate(),
+                    daysWorked,
+                    daysWorkedExact,
+                    otHours,
+                    basePay,
+                    otPay,
+                    netPay));
+
+            totalBasePay = totalBasePay.add(basePay);
+            totalOtPay = totalOtPay.add(otPay).add(doubleOtPay);
+            totalNetPay = totalNetPay.add(netPay);
+        }
+
+        return new WeeklyPaySummaryDto(
                 weekStart,
                 weekEnd,
-                lineItems,
-                totalNet,
-                nowLocal(company)
-        );
-        
-        // Send notification email
-        sendPayrollNotification(summary);
-        
-        return summary;
+                labourers.size(),
+                totalBasePay,
+                totalOtPay,
+                totalNetPay,
+                employeePay);
     }
 
-    /**
-     * Calculate monthly payroll for staff (runs end of month)
-     */
-    @Transactional
-    public PayrollSummary calculateMonthlyPayroll() {
+    public MonthlyPaySummaryDto getMonthlyPaySummary(int year, int month) {
         Company company = companyContextService.requireCurrentCompany();
-        LocalDate today = companyClock.today(company);
-        
-        // Get the month range
-        LocalDate monthStart = today.withDayOfMonth(1);
-        LocalDate monthEnd = today.with(TemporalAdjusters.lastDayOfMonth());
+        LocalDate monthStart = LocalDate.of(year, month, 1);
+        LocalDate monthEnd = monthStart.with(TemporalAdjusters.lastDayOfMonth());
 
-        String reference = "MONTHLY-" + monthEnd.format(DateTimeFormatter.ofPattern("yyyyMM"));
-        String idempotencyKey = PayrollService.buildIdempotencyKey(PayrollRun.RunType.MONTHLY, monthStart, monthEnd);
-        Optional<PayrollRun> existing = payrollRunRepository.findByCompanyAndRunTypeAndPeriodStartAndPeriodEnd(
-                company, PayrollRun.RunType.MONTHLY, monthStart, monthEnd);
-        if (existing.isPresent()) {
-            return buildSummaryFromRun(ensureIdempotencyMetadata(existing.get(), idempotencyKey));
-        }
-        Optional<PayrollRun> existingByKey = payrollRunRepository.findByCompanyAndIdempotencyKey(company, idempotencyKey);
-        if (existingByKey.isPresent()) {
-            return buildSummaryFromRun(ensureIdempotencyMetadata(existingByKey.get(), idempotencyKey));
-        }
-        
-        log.info("Calculating monthly payroll for {} to {}", monthStart, monthEnd);
-        
-        // Get all active staff
-        List<Employee> staff = employeeRepository.findByCompanyAndPaymentScheduleAndStatus(
-                company, Employee.PaymentSchedule.MONTHLY, "ACTIVE");
-        Map<Long, List<Attendance>> attendanceByEmployeeId = loadAttendanceByEmployeeId(company, staff, monthStart, monthEnd);
-        
-        List<PayrollLineItem> lineItems = new ArrayList<>();
-        BigDecimal totalGross = BigDecimal.ZERO;
-        BigDecimal totalAdvances = BigDecimal.ZERO;
-        BigDecimal totalNet = BigDecimal.ZERO;
-        
-        for (Employee employee : staff) {
-            PayrollLineItem item = calculateEmployeePay(employee, attendanceByEmployeeId.get(employee.getId()));
-            if (item.netPay().compareTo(BigDecimal.ZERO) <= 0) {
-                continue;
-            }
-            lineItems.add(item);
-            totalGross = totalGross.add(item.grossPay());
-            totalAdvances = totalAdvances.add(item.advanceDeduction());
-            totalNet = totalNet.add(item.netPay());
-        }
-        
-        // Create payroll run
-        Map<Long, Employee> employeesById = staff.stream()
-                .collect(Collectors.toMap(Employee::getId, employee -> employee));
-        PayrollRun run = createPayrollRun(company, reference, PayrollRun.RunType.MONTHLY,
-                monthStart, monthEnd, today, totalGross, totalAdvances, totalNet, lineItems, employeesById);
-        
-        PayrollSummary summary = new PayrollSummary(
-                run.getId(),
-                reference,
-                "MONTHLY",
+        List<Employee> staff = employeeRepository.findByCompanyAndEmployeeTypeAndStatus(
+                company,
+                Employee.EmployeeType.STAFF,
+                "ACTIVE");
+        List<Attendance> attendance = attendanceRepository.findByEmployeeTypeAndStatusAndDateRange(
+                company,
+                Employee.EmployeeType.STAFF,
+                "ACTIVE",
                 monthStart,
-                monthEnd,
-                lineItems,
+                monthEnd);
+
+        List<EmployeeMonthlyPayDto> employeePay = new ArrayList<>();
+        BigDecimal totalGross = BigDecimal.ZERO;
+        BigDecimal totalDeductions = BigDecimal.ZERO;
+        BigDecimal totalNet = BigDecimal.ZERO;
+
+        Map<Long, BigDecimal> presentDaysByEmployee = new HashMap<>();
+        Map<Long, BigDecimal> halfDaysByEmployee = new HashMap<>();
+        Map<Long, BigDecimal> absentDaysByEmployee = new HashMap<>();
+        Map<Long, BigDecimal> holidayDaysByEmployee = new HashMap<>();
+
+        for (Attendance att : attendance) {
+            Long employeeId = att.getEmployee().getId();
+            switch (att.getStatus()) {
+                case PRESENT -> presentDaysByEmployee.merge(employeeId, BigDecimal.ONE, BigDecimal::add);
+                case HALF_DAY -> presentDaysByEmployee.merge(employeeId, new BigDecimal("0.5"), BigDecimal::add);
+                case ABSENT -> absentDaysByEmployee.merge(employeeId, BigDecimal.ONE, BigDecimal::add);
+                case HOLIDAY -> holidayDaysByEmployee.merge(employeeId, BigDecimal.ONE, BigDecimal::add);
+                case LEAVE, WEEKEND -> {
+                }
+            }
+            if (att.getStatus() == Attendance.AttendanceStatus.HALF_DAY) {
+                halfDaysByEmployee.merge(employeeId, BigDecimal.ONE, BigDecimal::add);
+            }
+        }
+
+        for (Employee employee : staff) {
+            BigDecimal presentDays = presentDaysByEmployee.getOrDefault(employee.getId(), BigDecimal.ZERO);
+            BigDecimal halfDays = halfDaysByEmployee.getOrDefault(employee.getId(), BigDecimal.ZERO);
+            BigDecimal absentDays = absentDaysByEmployee.getOrDefault(employee.getId(), BigDecimal.ZERO);
+            BigDecimal holidayDays = holidayDaysByEmployee.getOrDefault(employee.getId(), BigDecimal.ZERO);
+
+            BigDecimal dailyRate = employee.getDailyRate();
+            BigDecimal monthlySalary = employee.getMonthlySalary();
+            BigDecimal grossPay;
+            if (monthlySalary != null && monthlySalary.compareTo(BigDecimal.ZERO) > 0) {
+                BigDecimal deductionDays = absentDays;
+                if (halfDays.compareTo(BigDecimal.ZERO) > 0) {
+                    deductionDays = deductionDays.add(halfDays.multiply(new BigDecimal("0.5")));
+                }
+                BigDecimal absenceDeduction = dailyRate.multiply(deductionDays);
+                grossPay = monthlySalary.subtract(absenceDeduction);
+                if (grossPay.compareTo(BigDecimal.ZERO) < 0) {
+                    grossPay = BigDecimal.ZERO;
+                }
+            } else {
+                BigDecimal baseDays = presentDays;
+                BigDecimal basePay = dailyRate.multiply(baseDays);
+                BigDecimal holidayPay = dailyRate.multiply(holidayDays);
+                grossPay = basePay.add(holidayPay);
+            }
+
+            BigDecimal pfDeduction = BigDecimal.ZERO;
+            BigDecimal totalDed = BigDecimal.ZERO;
+            BigDecimal netPay = grossPay;
+
+            employeePay.add(new EmployeeMonthlyPayDto(
+                    employee.getId(),
+                    employee.getFullName(),
+                    employee.getMonthlySalary(),
+                    presentDays.setScale(0, RoundingMode.HALF_UP).intValue(),
+                    absentDays.setScale(0, RoundingMode.HALF_UP).intValue(),
+                    presentDays,
+                    halfDays,
+                    absentDays,
+                    grossPay,
+                    pfDeduction,
+                    netPay));
+
+            totalGross = totalGross.add(grossPay);
+            totalDeductions = totalDeductions.add(totalDed);
+            totalNet = totalNet.add(netPay);
+        }
+
+        return new MonthlyPaySummaryDto(
+                year,
+                month,
+                staff.size(),
+                totalGross,
+                totalDeductions,
                 totalNet,
-                nowLocal(company)
-        );
-        
-        // Send notification email
-        sendPayrollNotification(summary);
-        
-        return summary;
+                employeePay);
     }
 
-    /**
-     * Calculate pay for a single employee based on attendance
-     */
-    private PayrollLineItem calculateEmployeePay(Employee employee, List<Attendance> attendance) {
-        List<Attendance> attendanceRecords = attendance != null ? attendance : List.of();
+    private PayrollRunLine calculateEmployeePay(PayrollRun run, Employee employee) {
+        PayrollRunLine line = new PayrollRunLine();
+        line.setPayrollRun(run);
+        line.setEmployee(employee);
+        line.setName(employee.getFullName());
+
+        List<Attendance> attendance = attendanceRepository.findByEmployeeAndAttendanceDateBetween(
+                employee,
+                run.getPeriodStart(),
+                run.getPeriodEnd());
 
         BigDecimal presentDays = BigDecimal.ZERO;
         BigDecimal halfDays = BigDecimal.ZERO;
+        BigDecimal absentDays = BigDecimal.ZERO;
         BigDecimal leaveDays = BigDecimal.ZERO;
         BigDecimal holidayDays = BigDecimal.ZERO;
+        BigDecimal regularHours = BigDecimal.ZERO;
         BigDecimal overtimeHours = BigDecimal.ZERO;
         BigDecimal doubleOtHours = BigDecimal.ZERO;
 
-        for (Attendance att : attendanceRecords) {
+        for (Attendance att : attendance) {
             switch (att.getStatus()) {
                 case PRESENT -> presentDays = presentDays.add(BigDecimal.ONE);
                 case HALF_DAY -> halfDays = halfDays.add(BigDecimal.ONE);
+                case ABSENT -> absentDays = absentDays.add(BigDecimal.ONE);
                 case LEAVE -> leaveDays = leaveDays.add(BigDecimal.ONE);
                 case HOLIDAY -> holidayDays = holidayDays.add(BigDecimal.ONE);
-                case ABSENT, WEEKEND -> {}
+                case WEEKEND -> {
+                }
+            }
+            if (att.getRegularHours() != null) {
+                regularHours = regularHours.add(att.getRegularHours());
             }
             if (att.getOvertimeHours() != null) {
                 overtimeHours = overtimeHours.add(att.getOvertimeHours());
@@ -249,398 +346,84 @@ public class PayrollCalculationService {
             }
         }
 
-        BigDecimal dailyRate = employee.getDailyRate() != null ? employee.getDailyRate() : BigDecimal.ZERO;
-        BigDecimal hourlyRate = dailyRate.divide(employee.getStandardHoursPerDay(), 2, RoundingMode.HALF_UP);
+        line.setPresentDays(presentDays);
+        line.setHalfDays(halfDays);
+        line.setAbsentDays(absentDays);
+        line.setLeaveDays(leaveDays);
+        line.setHolidayDays(holidayDays);
+        line.setRegularHours(regularHours);
+        line.setOvertimeHours(overtimeHours);
+        line.setDoubleOtHours(doubleOtHours);
+
+        BigDecimal dailyRate = employee.getDailyRate();
+        if (dailyRate == null) {
+            dailyRate = BigDecimal.ZERO;
+        }
+        BigDecimal dailyWage = employee.getDailyWage() != null ? employee.getDailyWage() : dailyRate;
+        BigDecimal standardHoursPerDay = requireValidStandardHoursPerDay(employee);
+        BigDecimal hourlyRate = dailyRate.divide(standardHoursPerDay, 2, RoundingMode.HALF_UP);
+        line.setDailyWage(dailyWage);
+        line.setDailyRate(dailyRate);
+        line.setHourlyRate(hourlyRate);
+        line.setOtRateMultiplier(employee.getOvertimeRateMultiplier());
+        line.setDoubleOtMultiplier(employee.getDoubleOtRateMultiplier());
 
         BigDecimal effectiveDays = presentDays.add(halfDays.multiply(new BigDecimal("0.5")));
+        line.setDaysWorked(effectiveDays.setScale(0, RoundingMode.HALF_UP).intValue());
         BigDecimal basePay = dailyRate.multiply(effectiveDays);
+        line.setBasePay(basePay);
 
         BigDecimal otRate = hourlyRate.multiply(employee.getOvertimeRateMultiplier());
         BigDecimal doubleOtRate = hourlyRate.multiply(employee.getDoubleOtRateMultiplier());
         BigDecimal overtimePay = otRate.multiply(overtimeHours).add(doubleOtRate.multiply(doubleOtHours));
+        line.setOvertimePay(overtimePay);
 
         BigDecimal holidayPay = dailyRate.multiply(holidayDays);
-        BigDecimal grossPay = basePay.add(overtimePay).add(holidayPay);
+        line.setHolidayPay(holidayPay);
 
-        BigDecimal balance = Optional.ofNullable(employee.getAdvanceBalance()).orElse(BigDecimal.ZERO);
-        BigDecimal advanceDeduction = balance.compareTo(BigDecimal.ZERO) > 0
-                ? balance.min(grossPay.multiply(ADVANCE_DEDUCTION_CAP).setScale(2, RoundingMode.HALF_UP))
-                : BigDecimal.ZERO;
+        BigDecimal grossPay = basePay.add(overtimePay).add(holidayPay);
+        line.setGrossPay(grossPay);
+
+        BigDecimal advanceDeduction = calculateAdvanceDeduction(grossPay, employee);
+        line.setAdvanceDeduction(advanceDeduction);
+        line.setAdvances(advanceDeduction);
+        line.setPfDeduction(BigDecimal.ZERO);
 
         BigDecimal totalDeductions = advanceDeduction;
+        line.setTotalDeductions(totalDeductions);
+
         BigDecimal netPay = grossPay.subtract(totalDeductions);
+        line.setNetPay(netPay);
+        line.setLineTotal(netPay);
 
-        return new PayrollLineItem(
-                employee.getId(),
-                employee.getFullName(),
-                employee.getEmployeeType().name(),
-                dailyRate,
-                presentDays,
-                halfDays,
-                overtimeHours,
-                doubleOtHours,
-                basePay,
-                overtimePay,
-                holidayPay,
-                grossPay,
-                advanceDeduction,
-                totalDeductions,
-                netPay
-        );
+        return line;
     }
 
-    /**
-     * Preview payroll without creating a run
-     */
-    @Transactional(readOnly = true)
-    public PayrollSummary previewPayroll(Employee.PaymentSchedule schedule) {
-        Company company = companyContextService.requireCurrentCompany();
-        LocalDate today = companyClock.today(company);
-        
-        LocalDate startDate, endDate;
-        String type;
-        
-        if (schedule == Employee.PaymentSchedule.WEEKLY) {
-            endDate = today.getDayOfWeek() == DayOfWeek.SATURDAY
-                    ? today
-                    : today.with(TemporalAdjusters.previousOrSame(DayOfWeek.SATURDAY));
-            startDate = endDate.minusDays(5);
-            type = "WEEKLY";
-        } else {
-            startDate = today.withDayOfMonth(1);
-            endDate = today.with(TemporalAdjusters.lastDayOfMonth());
-            type = "MONTHLY";
+    private BigDecimal calculateAdvanceDeduction(BigDecimal grossPay, Employee employee) {
+        if (employee == null) {
+            return BigDecimal.ZERO;
         }
-        
-        List<Employee> employees = employeeRepository.findByCompanyAndPaymentScheduleAndStatus(
-                company, schedule, "ACTIVE");
-        
-        List<PayrollLineItem> lineItems = new ArrayList<>();
-        BigDecimal totalGross = BigDecimal.ZERO;
-        BigDecimal totalAdvances = BigDecimal.ZERO;
-        BigDecimal totalNet = BigDecimal.ZERO;
-        
-        Map<Long, List<Attendance>> attendanceByEmployeeId = loadAttendanceByEmployeeId(company, employees, startDate, endDate);
-        for (Employee employee : employees) {
-            PayrollLineItem item = calculateEmployeePay(employee, attendanceByEmployeeId.get(employee.getId()));
-            lineItems.add(item);
-            totalGross = totalGross.add(item.grossPay());
-            totalAdvances = totalAdvances.add(item.advanceDeduction());
-            totalNet = totalNet.add(item.netPay());
+        BigDecimal balance = employee.getAdvanceBalance();
+        if (balance == null || balance.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO;
         }
-        
-        return new PayrollSummary(
-                null, // Not saved yet
-                "PREVIEW-" + type,
-                type,
-                startDate,
-                endDate,
-                lineItems,
-                totalNet,
-                nowLocal(company)
-        );
+        BigDecimal cap = grossPay.multiply(ADVANCE_DEDUCTION_CAP).setScale(2, RoundingMode.HALF_UP);
+        return balance.min(cap);
     }
 
-    /**
-     * Record an advance payment to an employee
-     */
-    @Transactional
-    public void recordAdvancePayment(Long employeeId, BigDecimal amount) {
-        Company company = companyContextService.requireCurrentCompany();
-        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Advance amount must be positive");
+    private BigDecimal requireValidStandardHoursPerDay(Employee employee) {
+        BigDecimal configuredStandardHours = employee != null ? employee.getConfiguredStandardHoursPerDay() : null;
+        if (configuredStandardHours == null || configuredStandardHours.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Employee standardHoursPerDay must be greater than zero for payroll calculation")
+                    .withDetail("employeeId", employee != null ? employee.getId() : null)
+                    .withDetail("configuredStandardHoursPerDay", configuredStandardHours);
         }
-        Employee employee = employeeRepository.findByCompanyAndId(company, employeeId)
-                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Employee not found"));
-
-        BigDecimal currentBalance = employee.getAdvanceBalance() != null ? employee.getAdvanceBalance() : BigDecimal.ZERO;
-        BigDecimal newBalance = currentBalance.add(amount);
-        employee.setAdvanceBalance(newBalance);
-        employeeRepository.save(employee);
-        
-        log.info("Recorded advance payment of {} for {}. New balance: {}",
-                amount, employee.getFullName(), newBalance);
+        return configuredStandardHours;
     }
 
-    private Map<Long, List<Attendance>> loadAttendanceByEmployeeId(Company company,
-                                                                   List<Employee> employees,
-                                                                   LocalDate startDate,
-                                                                   LocalDate endDate) {
-        if (employees == null || employees.isEmpty()) {
-            return Map.of();
-        }
-        List<Long> employeeIds = employees.stream()
-                .map(Employee::getId)
-                .filter(Objects::nonNull)
-                .toList();
-        if (employeeIds.isEmpty()) {
-            return Map.of();
-        }
-        List<Attendance> attendance = attendanceRepository.findByCompanyAndEmployeeIdsAndDateRange(
-                company, employeeIds, startDate, endDate);
-        return attendance.stream()
-                .collect(Collectors.groupingBy(record -> record.getEmployee().getId()));
+    private String getCurrentUser() {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        return auth != null ? auth.getName() : "SYSTEM";
     }
-
-    private PayrollRun createPayrollRun(Company company, String reference, PayrollRun.RunType runType,
-                                        LocalDate periodStart, LocalDate periodEnd, LocalDate runDate,
-                                        BigDecimal totalGross, BigDecimal totalAdvances, BigDecimal totalNet,
-                                        List<PayrollLineItem> lineItems,
-                                        Map<Long, Employee> employeesById) {
-        String idempotencyKey = PayrollService.buildIdempotencyKey(runType, periodStart, periodEnd);
-        Optional<PayrollRun> existing = payrollRunRepository.findByCompanyAndRunTypeAndPeriodStartAndPeriodEnd(
-                company, runType, periodStart, periodEnd);
-        if (existing.isPresent()) {
-            return ensureIdempotencyMetadata(existing.get(), idempotencyKey);
-        }
-        Optional<PayrollRun> existingByKey = payrollRunRepository.findByCompanyAndIdempotencyKey(company, idempotencyKey);
-        if (existingByKey.isPresent()) {
-            return ensureIdempotencyMetadata(existingByKey.get(), idempotencyKey);
-        }
-        PayrollRun run = new PayrollRun();
-        run.setCompany(company);
-        run.setRunType(runType);
-        run.setPeriodStart(periodStart);
-        run.setPeriodEnd(periodEnd);
-        run.setRunDate(runDate);
-        run.setRunNumber(reference);
-        run.setTotalAmount(totalNet);
-        run.setTotalNetPay(totalNet);
-        run.setTotalDeductions(totalAdvances);
-        run.setStatus(PayrollRun.PayrollStatus.DRAFT);
-        run.setIdempotencyKey(idempotencyKey);
-        run.setNotes("Auto-calculated from attendance");
-        run.setIdempotencyHash(PayrollService.buildRunSignature(runType, periodStart, periodEnd, run.getNotes()));
-        run.setTotalEmployees(lineItems.size());
-        run.setApprovedBy(null);
-        run.setApprovedAt(null);
-        payrollRunRepository.save(run);
-
-        // Create line items
-        List<PayrollRunLine> lines = new ArrayList<>();
-        for (PayrollLineItem item : lineItems) {
-            PayrollRunLine line = new PayrollRunLine();
-            line.setPayrollRun(run);
-            Employee employee = employeesById.get(item.employeeId());
-            if (employee == null) {
-                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Employee not found for payroll run line: " + item.employeeId());
-            }
-            line.setEmployee(employee);
-            line.setName(item.employeeName());
-            BigDecimal effectiveDays = item.presentDays().add(item.halfDays().multiply(new BigDecimal("0.5")));
-            line.setDaysWorked(effectiveDays.setScale(0, RoundingMode.HALF_UP).intValue());
-            line.setPresentDays(item.presentDays());
-            line.setHalfDays(item.halfDays());
-            line.setOvertimeHours(item.overtimeHours());
-            line.setDoubleOtHours(item.doubleOtHours());
-            line.setDailyWage(item.dailyRate());
-            line.setBasePay(item.basePay());
-            line.setOvertimePay(item.overtimePay());
-            line.setHolidayPay(item.holidayPay());
-            line.setGrossPay(item.grossPay());
-            line.setAdvanceDeduction(item.advanceDeduction());
-            line.setAdvances(item.advanceDeduction());
-            line.setTotalDeductions(item.totalDeductions());
-            line.setNetPay(item.netPay());
-            line.setLineTotal(item.netPay());
-            line.setNotes(item.employeeType() + " - " + item.presentDays() + " full + " + item.halfDays() + " half days");
-            lines.add(line);
-        }
-        payrollRunLineRepository.saveAll(lines);
-
-        return run;
-    }
-
-    private PayrollRun ensureIdempotencyMetadata(PayrollRun run, String idempotencyKey) {
-        boolean changed = false;
-        if (run.getIdempotencyKey() == null) {
-            run.setIdempotencyKey(idempotencyKey);
-            changed = true;
-        }
-        if (run.getIdempotencyHash() == null) {
-            String signature = PayrollService.buildRunSignature(run);
-            if (signature != null) {
-                run.setIdempotencyHash(signature);
-                changed = true;
-            }
-        }
-        if (changed) {
-            payrollRunRepository.save(run);
-        }
-        return run;
-    }
-
-    private PayrollSummary buildSummaryFromRun(PayrollRun run) {
-        Company company = run.getCompany();
-        List<PayrollRunLine> lines = payrollRunLineRepository.findByPayrollRunWithEmployeeOrderByEmployeeFirstNameAsc(run);
-        List<PayrollLineItem> lineItems = lines.stream()
-                .map(this::toLineItem)
-                .toList();
-        BigDecimal totalNet = lineItems.stream()
-                .map(PayrollLineItem::netPay)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        LocalDateTime calculatedAt = run.getCreatedAt() != null
-                ? LocalDateTime.ofInstant(run.getCreatedAt(), companyClock.zoneId(company))
-                : nowLocal(company);
-        return new PayrollSummary(
-                run.getId(),
-                run.getRunNumber(),
-                run.getRunType() != null ? run.getRunType().name() : "UNKNOWN",
-                run.getPeriodStart(),
-                run.getPeriodEnd(),
-                lineItems,
-                totalNet,
-                calculatedAt
-        );
-    }
-
-    private PayrollLineItem toLineItem(PayrollRunLine line) {
-        Employee employee = line.getEmployee();
-        String name = line.getName() != null ? line.getName() : (employee != null ? employee.getFullName() : "Unknown");
-        String type = employee != null && employee.getEmployeeType() != null
-                ? employee.getEmployeeType().name()
-                : "UNKNOWN";
-        return new PayrollLineItem(
-                employee != null ? employee.getId() : null,
-                name,
-                type,
-                safe(line.getDailyRate()),
-                safe(line.getPresentDays()),
-                safe(line.getHalfDays()),
-                safe(line.getOvertimeHours()),
-                safe(line.getDoubleOtHours()),
-                safe(line.getBasePay()),
-                safe(line.getOvertimePay()),
-                safe(line.getHolidayPay()),
-                safe(line.getGrossPay()),
-                safe(line.getAdvanceDeduction()),
-                safe(line.getTotalDeductions()),
-                safe(line.getNetPay())
-        );
-    }
-
-    private LocalDateTime nowLocal(Company company) {
-        return LocalDateTime.ofInstant(companyClock.now(company), companyClock.zoneId(company));
-    }
-
-    private BigDecimal safe(BigDecimal value) {
-        return value == null ? BigDecimal.ZERO : value;
-    }
-
-    private void sendPayrollNotification(PayrollSummary summary) {
-        Company company = companyContextService.requireCurrentCompany();
-        try {
-            // Generate PDF
-            byte[] pdfContent = generatePayrollPdf(company, summary);
-            
-            String subject = String.format("Payroll Payment Sheet: %s - Total ₹%,.2f", 
-                    summary.reference(), summary.totalAmount());
-            
-            String emailBody = String.format("""
-                Dear Admin,
-                
-                Please find attached the %s Payroll Payment Sheet for the period %s to %s.
-                
-                SUMMARY:
-                - Total Employees: %d
-                - Total Gross: ₹%,.2f
-                - Total Advance Deductions: ₹%,.2f
-                - CASH TO WITHDRAW: ₹%,.2f
-                
-                Please print the attached PDF, withdraw the cash, and distribute payments.
-                Each employee should sign against their name upon receiving payment.
-                
-                Generated: %s
-                
-                Regards,
-                Big Bright Paints ERP System
-                """,
-                    summary.type(),
-                    summary.startDate().format(DateTimeFormatter.ofPattern("dd-MMM-yyyy")),
-                    summary.endDate().format(DateTimeFormatter.ofPattern("dd-MMM-yyyy")),
-                    summary.lineItems().size(),
-                    summary.lineItems().stream().map(PayrollLineItem::grossPay).reduce(BigDecimal.ZERO, BigDecimal::add),
-                    summary.lineItems().stream().map(PayrollLineItem::advanceDeduction).reduce(BigDecimal.ZERO, BigDecimal::add),
-                    summary.totalAmount(),
-                    summary.calculatedAt().format(DateTimeFormatter.ofPattern("dd-MMM-yyyy HH:mm"))
-            );
-            
-            String fileName = String.format("Payroll-%s.pdf", summary.reference());
-            
-            MimeMessagePreparator preparator = mimeMessage -> {
-                MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
-                helper.setTo(payrollNotificationEmail);
-                helper.setFrom(fromAddress);
-                helper.setSubject(subject);
-                helper.setText(emailBody);
-                helper.addAttachment(fileName, () -> new java.io.ByteArrayInputStream(pdfContent), "application/pdf");
-            };
-            
-            mailSender.send(preparator);
-            log.info("Sent payroll PDF notification to {}", payrollNotificationEmail);
-        } catch (Exception e) {
-            log.error("Failed to send payroll notification: {}", e.getMessage(), e);
-        }
-    }
-
-    private byte[] generatePayrollPdf(Company company, PayrollSummary summary) {
-        Context context = new Context();
-        context.setVariable("companyName", company.getName());
-        context.setVariable("payrollType", summary.type());
-        context.setVariable("reference", summary.reference());
-        context.setVariable("startDate", summary.startDate().format(DateTimeFormatter.ofPattern("dd-MMM-yyyy")));
-        context.setVariable("endDate", summary.endDate().format(DateTimeFormatter.ofPattern("dd-MMM-yyyy")));
-        context.setVariable("generatedAt", summary.calculatedAt().format(DateTimeFormatter.ofPattern("dd-MMM-yyyy HH:mm")));
-        context.setVariable("lineItems", summary.lineItems());
-        context.setVariable("totalGross", summary.lineItems().stream()
-                .map(PayrollLineItem::grossPay)
-                .reduce(BigDecimal.ZERO, BigDecimal::add));
-        context.setVariable("totalAdvance", summary.lineItems().stream()
-                .map(PayrollLineItem::advanceDeduction)
-                .reduce(BigDecimal.ZERO, BigDecimal::add));
-        context.setVariable("totalAmount", summary.totalAmount());
-        
-        String html = templateEngine.process("payroll-sheet", context);
-        
-        try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-            PdfRendererBuilder builder = new PdfRendererBuilder();
-            builder.useFastMode();
-            builder.withHtmlContent(html, "");
-            builder.toStream(out);
-            builder.run();
-            return out.toByteArray();
-        } catch (Exception e) {
-            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Failed to generate payroll PDF", e);
-        }
-    }
-
-    // DTOs
-    public record PayrollLineItem(
-            Long employeeId,
-            String employeeName,
-            String employeeType,
-            BigDecimal dailyRate,
-            BigDecimal presentDays,
-            BigDecimal halfDays,
-            BigDecimal overtimeHours,
-            BigDecimal doubleOtHours,
-            BigDecimal basePay,
-            BigDecimal overtimePay,
-            BigDecimal holidayPay,
-            BigDecimal grossPay,
-            BigDecimal advanceDeduction,
-            BigDecimal totalDeductions,
-            BigDecimal netPay
-    ) {}
-
-    public record PayrollSummary(
-            Long payrollRunId,
-            String reference,
-            String type,
-            LocalDate startDate,
-            LocalDate endDate,
-            List<PayrollLineItem> lineItems,
-            BigDecimal totalAmount,
-            LocalDateTime calculatedAt
-    ) {}
 }
