@@ -1,21 +1,11 @@
 package com.bigbrightpaints.erp.truthsuite.payroll;
 
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
-import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
-import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
-import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalLineDto;
-import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
-import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
-import com.bigbrightpaints.erp.modules.hr.domain.AttendanceRepository;
-import com.bigbrightpaints.erp.modules.hr.domain.EmployeeRepository;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRun;
-import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunLineRepository;
-import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunRepository;
 import com.bigbrightpaints.erp.modules.hr.service.PayrollService;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -25,7 +15,6 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -37,22 +26,6 @@ import static org.mockito.Mockito.mock;
 @Tag("critical")
 class TS_PayrollPostedAuditMetadataExecutableCoverageTest {
 
-    private PayrollService payrollService;
-
-    @BeforeEach
-    void setUp() {
-        payrollService = new PayrollService(
-                mock(PayrollRunRepository.class),
-                mock(PayrollRunLineRepository.class),
-                mock(EmployeeRepository.class),
-                mock(AttendanceRepository.class),
-                mock(AccountingFacade.class),
-                mock(AccountRepository.class),
-                mock(CompanyContextService.class),
-                mock(CompanyEntityLookup.class),
-                mock(CompanyClock.class),
-                mock(AuditService.class));
-    }
 
     @Test
     void requiredPayrollPostedAuditMetadataBuildsCanonicalPayload() {
@@ -145,7 +118,7 @@ class TS_PayrollPostedAuditMetadataExecutableCoverageTest {
             method.setAccessible(true);
             @SuppressWarnings("unchecked")
             Map<String, String> metadata = (Map<String, String>) method.invoke(
-                    payrollService,
+                    null,
                     run,
                     journal,
                     postingDate,

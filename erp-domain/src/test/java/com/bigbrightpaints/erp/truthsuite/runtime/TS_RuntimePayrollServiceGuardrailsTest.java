@@ -2,7 +2,9 @@ package com.bigbrightpaints.erp.truthsuite.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.bigbrightpaints.erp.core.audit.AuditService;
@@ -28,6 +30,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -80,6 +83,60 @@ class TS_RuntimePayrollServiceGuardrailsTest {
 
         assertThat(ReflectionTestUtils.getField(run, "paymentReference"))
                 .isEqualTo("ext-ref-001");
+    }
+
+    @Test
+    void markAsPaid_usesLoanDeductionWhenAdvancesMirrorFieldIsMissing() {
+        PayrollRunRepository payrollRunRepository = mock(PayrollRunRepository.class);
+        PayrollRunLineRepository payrollRunLineRepository = mock(PayrollRunLineRepository.class);
+        EmployeeRepository employeeRepository = mock(EmployeeRepository.class);
+        AttendanceRepository attendanceRepository = mock(AttendanceRepository.class);
+        AccountingFacade accountingFacade = mock(AccountingFacade.class);
+        AccountRepository accountRepository = mock(AccountRepository.class);
+        CompanyContextService companyContextService = mock(CompanyContextService.class);
+        CompanyEntityLookup companyEntityLookup = mock(CompanyEntityLookup.class);
+        CompanyClock companyClock = mock(CompanyClock.class);
+        AuditService auditService = mock(AuditService.class);
+
+        PayrollService service = new PayrollService(
+                payrollRunRepository,
+                payrollRunLineRepository,
+                employeeRepository,
+                attendanceRepository,
+                accountingFacade,
+                accountRepository,
+                companyContextService,
+                companyEntityLookup,
+                companyClock,
+                auditService);
+
+        Company company = new Company();
+        PayrollRun run = new PayrollRun();
+        run.setRunType(PayrollRun.RunType.MONTHLY);
+        run.setStatus(PayrollRun.PayrollStatus.POSTED);
+        run.setPaymentJournalEntryId(811L);
+
+        Employee employee = new Employee();
+        employee.setAdvanceBalance(new BigDecimal("500"));
+
+        PayrollRunLine line = new PayrollRunLine();
+        line.setEmployee(employee);
+        line.setLoanDeduction(new BigDecimal("100"));
+        line.setAdvances(null);
+
+        JournalEntry paymentJournal = new JournalEntry();
+        paymentJournal.setReferenceNumber("PAY-811");
+
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(companyEntityLookup.lockPayrollRun(company, 191L)).thenReturn(run);
+        when(companyEntityLookup.requireJournalEntry(company, 811L)).thenReturn(paymentJournal);
+        when(payrollRunLineRepository.findByPayrollRun(run)).thenReturn(List.of(line));
+
+        service.markAsPaid(191L, null);
+
+        ArgumentCaptor<Employee> employeeCaptor = ArgumentCaptor.forClass(Employee.class);
+        verify(employeeRepository).save(employeeCaptor.capture());
+        assertThat(employeeCaptor.getValue().getAdvanceBalance()).isEqualByComparingTo("400");
     }
 
     @Test

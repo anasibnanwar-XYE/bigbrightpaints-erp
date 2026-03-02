@@ -28,11 +28,11 @@ import com.bigbrightpaints.erp.modules.hr.service.PayrollService.PayrollRunDto;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Function;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,17 +44,25 @@ public class PayrollPostingService {
     private static final String PAYROLL_ACCOUNTS_CANONICAL_PATH = "/api/v1/accounting/accounts";
     private static final String PAYROLL_PAYMENTS_CANONICAL_PATH = "/api/v1/accounting/payroll/payments";
     private static final String PAYROLL_MIGRATION_SET = "v2";
-    private static final Map<String, AccountType> REQUIRED_PAYROLL_ACCOUNT_TYPES = Map.of(
-            "SALARY-EXP", AccountType.EXPENSE,
-            "WAGE-EXP", AccountType.EXPENSE,
-            "SALARY-PAYABLE", AccountType.LIABILITY,
-            "EMP-ADV", AccountType.ASSET
+    private static final Map<String, AccountType> REQUIRED_PAYROLL_ACCOUNT_TYPES = Map.ofEntries(
+            Map.entry("SALARY-EXP", AccountType.EXPENSE),
+            Map.entry("WAGE-EXP", AccountType.EXPENSE),
+            Map.entry("SALARY-PAYABLE", AccountType.LIABILITY),
+            Map.entry("EMP-ADV", AccountType.ASSET),
+            Map.entry("PF-PAYABLE", AccountType.LIABILITY),
+            Map.entry("ESI-PAYABLE", AccountType.LIABILITY),
+            Map.entry("TDS-PAYABLE", AccountType.LIABILITY),
+            Map.entry("PROFESSIONAL-TAX-PAYABLE", AccountType.LIABILITY)
     );
     private static final List<String> REQUIRED_PAYROLL_ACCOUNTS = List.of(
             "SALARY-EXP",
             "WAGE-EXP",
             "SALARY-PAYABLE",
-            "EMP-ADV"
+            "EMP-ADV",
+            "PF-PAYABLE",
+            "ESI-PAYABLE",
+            "TDS-PAYABLE",
+            "PROFESSIONAL-TAX-PAYABLE"
     );
 
     private final PayrollRunRepository payrollRunRepository;
@@ -143,6 +151,10 @@ public class PayrollPostingService {
         Account salaryExpenseAccount = findAccountByCode(company, "SALARY-EXP");
         Account wageExpenseAccount = findAccountByCode(company, "WAGE-EXP");
         Account salaryPayableAccount = findAccountByCode(company, "SALARY-PAYABLE");
+        Account pfPayableAccount = findAccountByCode(company, "PF-PAYABLE");
+        Account esiPayableAccount = findAccountByCode(company, "ESI-PAYABLE");
+        Account tdsPayableAccount = findAccountByCode(company, "TDS-PAYABLE");
+        Account professionalTaxPayableAccount = findAccountByCode(company, "PROFESSIONAL-TAX-PAYABLE");
 
         List<PayrollRunLine> runLines = payrollRunLineRepository.findByPayrollRun(run);
         if (runLines.isEmpty()) {
@@ -151,34 +163,47 @@ public class PayrollPostingService {
                     .withDetail("payrollRunId", payrollRunId);
         }
 
-        boolean hasUnsupportedDeductions = runLines.stream().anyMatch(line ->
-                hasPositive(line.getPfDeduction())
-                        || hasPositive(line.getTaxDeduction())
-                        || hasPositive(line.getOtherDeductions()));
-        if (hasUnsupportedDeductions) {
-            throw new ApplicationException(ErrorCode.BUSINESS_CONSTRAINT_VIOLATION,
-                    "Payroll statutory deductions (PF/tax/other) are not supported in runs. "
-                            + "Only advance deductions are applied; use accounting payroll payments for statutory withholdings.");
-        }
-
-        BigDecimal totalGrossPay = runLines.stream()
-                .map(PayrollRunLine::getGrossPay)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal totalGrossPay = sum(runLines, PayrollRunLine::getGrossPay);
         if (totalGrossPay.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE,
                     "Payroll run total gross pay is zero; nothing to post")
                     .withDetail("payrollRunId", payrollRunId);
         }
 
-        BigDecimal totalAdvances = runLines.stream()
-                .map(PayrollRunLine::getAdvanceDeduction)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        Account advanceAccount = null;
-        if (totalAdvances.compareTo(BigDecimal.ZERO) > 0) {
-            advanceAccount = findAccountByCode(company, "EMP-ADV");
+        BigDecimal totalLoans = sum(runLines,
+                line -> firstPositive(line.getLoanDeduction(), line.getAdvanceDeduction(), line.getAdvances()));
+        BigDecimal totalPf = sum(runLines, PayrollRunLine::getPfDeduction);
+        BigDecimal totalEsi = sum(runLines, PayrollRunLine::getEsiDeduction);
+        BigDecimal totalTds = sum(runLines, PayrollRunLine::getTaxDeduction);
+        BigDecimal totalProfessionalTax = sum(runLines, PayrollRunLine::getProfessionalTaxDeduction);
+        BigDecimal totalOtherDeductions = sum(runLines, PayrollRunLine::getOtherDeductions);
+        if (totalOtherDeductions.compareTo(BigDecimal.ZERO) > 0) {
+            throw new ApplicationException(ErrorCode.BUSINESS_CONSTRAINT_VIOLATION,
+                    "Payroll other deductions must be classified before posting")
+                    .withDetail("payrollRunId", payrollRunId)
+                    .withDetail("totalOtherDeductions", totalOtherDeductions);
         }
 
-        BigDecimal salaryPayableAmount = totalGrossPay.subtract(totalAdvances);
+        Account loanAccount = null;
+        if (totalLoans.compareTo(BigDecimal.ZERO) > 0) {
+            loanAccount = findAccountByCode(company, "EMP-ADV");
+        }
+
+        BigDecimal salaryPayableAmount = totalGrossPay
+                .subtract(totalLoans)
+                .subtract(totalPf)
+                .subtract(totalEsi)
+                .subtract(totalTds)
+                .subtract(totalProfessionalTax);
+
+        if (salaryPayableAmount.compareTo(BigDecimal.ZERO) < 0) {
+            throw new ApplicationException(ErrorCode.BUSINESS_CONSTRAINT_VIOLATION,
+                    "Total deductions cannot exceed gross payroll")
+                    .withDetail("payrollRunId", payrollRunId)
+                    .withDetail("totalGrossPay", totalGrossPay)
+                    .withDetail("totalDeductions",
+                            totalLoans.add(totalPf).add(totalEsi).add(totalTds).add(totalProfessionalTax));
+        }
 
         List<JournalLineRequest> lines = new ArrayList<>();
         Account expenseAccount = run.getRunType() == PayrollRun.RunType.MONTHLY
@@ -186,17 +211,13 @@ public class PayrollPostingService {
                 : wageExpenseAccount;
         lines.add(new JournalLineRequest(expenseAccount.getId(), "Payroll expense", totalGrossPay, BigDecimal.ZERO));
 
-        lines.add(new JournalLineRequest(
-                salaryPayableAccount.getId(),
-                "Payroll payable",
-                BigDecimal.ZERO,
-                salaryPayableAmount));
-        if (advanceAccount != null) {
-            lines.add(new JournalLineRequest(
-                    advanceAccount.getId(),
-                    "Advance recovery",
-                    BigDecimal.ZERO,
-                    totalAdvances));
+        addLiabilityLine(lines, salaryPayableAccount, "Payroll payable", salaryPayableAmount);
+        addLiabilityLine(lines, pfPayableAccount, "PF payable", totalPf);
+        addLiabilityLine(lines, esiPayableAccount, "ESI payable", totalEsi);
+        addLiabilityLine(lines, tdsPayableAccount, "TDS payable", totalTds);
+        addLiabilityLine(lines, professionalTaxPayableAccount, "Professional tax payable", totalProfessionalTax);
+        if (loanAccount != null) {
+            addLiabilityLine(lines, loanAccount, "Loan/advance recovery", totalLoans);
         }
 
         LocalDate postingDate = run.getPeriodEnd();
@@ -293,13 +314,17 @@ public class PayrollPostingService {
         }
 
         if (!statusPosted) {
-            Map<String, String> auditMetadata = requiredPayrollPostedAuditMetadata(
+            Map<String, String> auditMetadata = PayrollService.requiredPayrollPostedAuditMetadata(
                     run,
                     journal,
                     postingDate,
                     totalGrossPay,
-                    totalAdvances,
+                    totalLoans,
                     salaryPayableAmount);
+            auditMetadata.put("totalPf", totalPf.toPlainString());
+            auditMetadata.put("totalEsi", totalEsi.toPlainString());
+            auditMetadata.put("totalTds", totalTds.toPlainString());
+            auditMetadata.put("totalProfessionalTax", totalProfessionalTax.toPlainString());
             auditService.logSuccess(AuditEvent.PAYROLL_POSTED, auditMetadata);
         }
 
@@ -346,7 +371,7 @@ public class PayrollPostingService {
             line.setPaymentReference(canonicalPaymentReference);
             dirtyLines.add(line);
 
-            BigDecimal advances = line.getAdvances() != null ? line.getAdvances() : BigDecimal.ZERO;
+            BigDecimal advances = firstPositive(line.getLoanDeduction(), line.getAdvanceDeduction(), line.getAdvances());
             if (advances.compareTo(BigDecimal.ZERO) > 0) {
                 Employee employee = line.getEmployee();
                 BigDecimal currentBalance = employee.getAdvanceBalance() != null
@@ -376,51 +401,18 @@ public class PayrollPostingService {
             run.setPaymentReference(persistedPaymentReference);
             payrollRunDirty = true;
         }
+        LocalDate paymentDate = paymentJournal.getEntryDate() != null
+                ? paymentJournal.getEntryDate()
+                : companyClock.today(company);
+        if (!Objects.equals(run.getPaymentDate(), paymentDate)) {
+            run.setPaymentDate(paymentDate);
+            payrollRunDirty = true;
+        }
         if (payrollRunDirty) {
             payrollRunRepository.save(run);
         }
 
         return PayrollService.toDto(run);
-    }
-
-    static Map<String, String> requiredPayrollPostedAuditMetadata(PayrollRun run,
-                                                                   JournalEntryDto journal,
-                                                                   LocalDate postingDate,
-                                                                   BigDecimal totalGrossPay,
-                                                                   BigDecimal totalAdvances,
-                                                                   BigDecimal salaryPayableAmount) {
-        Map<String, String> metadata = new HashMap<>();
-        metadata.put("payrollRunId", requiredAuditMetadataValue("payrollRunId", run.getId()));
-        metadata.put("runNumber", requiredAuditMetadataValue("runNumber", run.getRunNumber()));
-        metadata.put("runType", requiredAuditMetadataValue("runType", run.getRunType()));
-        metadata.put("periodStart", requiredAuditMetadataValue("periodStart", run.getPeriodStart()));
-        metadata.put("periodEnd", requiredAuditMetadataValue("periodEnd", run.getPeriodEnd()));
-        metadata.put("journalEntryId", requiredAuditMetadataValue("journalEntryId", journal.id()));
-        metadata.put("postingDate", requiredAuditMetadataValue("postingDate", postingDate));
-        metadata.put("totalGrossPay", requiredAuditMetadataValue("totalGrossPay", totalGrossPay));
-        metadata.put("totalAdvances", requiredAuditMetadataValue("totalAdvances", totalAdvances));
-        metadata.put("netPayable", requiredAuditMetadataValue("netPayable", salaryPayableAmount));
-        return metadata;
-    }
-
-    private static String requiredAuditMetadataValue(String key, Object value) {
-        if (value == null) {
-            throw missingPayrollPostedMetadataException(key);
-        }
-        String normalized = value instanceof BigDecimal decimal
-                ? decimal.toPlainString()
-                : value.toString();
-        if (!StringUtils.hasText(normalized)) {
-            throw missingPayrollPostedMetadataException(key);
-        }
-        return normalized;
-    }
-
-    private static ApplicationException missingPayrollPostedMetadataException(String key) {
-        return new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE,
-                "Payroll posting audit metadata is missing required key: " + key)
-                .withDetail("auditEvent", AuditEvent.PAYROLL_POSTED.name())
-                .withDetail("metadataKey", key);
     }
 
     private boolean hasPostingJournalLink(PayrollRun run) {
@@ -433,8 +425,36 @@ public class PayrollPostingService {
         return run.getJournalEntry() != null && run.getJournalEntry().getId() != null;
     }
 
-    private boolean hasPositive(BigDecimal value) {
-        return value != null && value.compareTo(BigDecimal.ZERO) > 0;
+    private BigDecimal sum(List<PayrollRunLine> lines, Function<PayrollRunLine, BigDecimal> selector) {
+        if (lines == null || lines.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        return lines.stream()
+                .map(selector)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private void addLiabilityLine(List<JournalLineRequest> lines,
+                                  Account account,
+                                  String description,
+                                  BigDecimal amount) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+        lines.add(new JournalLineRequest(account.getId(), description, BigDecimal.ZERO, amount));
+    }
+
+    private BigDecimal firstPositive(BigDecimal... values) {
+        if (values == null) {
+            return BigDecimal.ZERO;
+        }
+        for (BigDecimal value : values) {
+            if (value != null && value.compareTo(BigDecimal.ZERO) > 0) {
+                return value;
+            }
+        }
+        return BigDecimal.ZERO;
     }
 
     private Account findAccountByCode(Company company, String code) {

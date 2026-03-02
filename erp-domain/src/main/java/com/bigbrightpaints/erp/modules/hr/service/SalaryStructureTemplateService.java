@@ -89,6 +89,8 @@ public class SalaryStructureTemplateService {
         template.setSpecialAllowance(safeMoney(request.specialAllowance()));
         template.setEmployeePfRate(safeRate(request.employeePfRate(), new BigDecimal("12.00")));
         template.setEmployeeEsiRate(safeRate(request.employeeEsiRate(), new BigDecimal("0.75")));
+        template.setEsiEligibilityThreshold(safeMoney(request.esiEligibilityThreshold(), new BigDecimal("21000.00")));
+        template.setProfessionalTax(safeMoney(request.professionalTax(), new BigDecimal("200.00")));
         if (request.active() != null) {
             template.setActive(request.active());
         }
@@ -101,8 +103,12 @@ public class SalaryStructureTemplateService {
     }
 
     private BigDecimal safeMoney(BigDecimal value) {
+        return safeMoney(value, BigDecimal.ZERO);
+    }
+
+    private BigDecimal safeMoney(BigDecimal value, BigDecimal defaultValue) {
         if (value == null) {
-            return BigDecimal.ZERO;
+            return defaultValue;
         }
         if (value.compareTo(BigDecimal.ZERO) < 0) {
             throw new ApplicationException(ErrorCode.VALIDATION_OUT_OF_RANGE,
@@ -138,6 +144,8 @@ public class SalaryStructureTemplateService {
                 template.totalEarnings(),
                 template.getEmployeePfRate(),
                 template.getEmployeeEsiRate(),
+                template.getEsiEligibilityThreshold(),
+                template.getProfessionalTax(),
                 template.isActive(),
                 template.getCreatedAt());
     }

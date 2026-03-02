@@ -37,6 +37,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -133,7 +134,7 @@ class CR_PayrollIdempotencyConcurrencyTest extends AbstractIntegrationTest {
         PayrollRun run = payrollRunRepository.findByCompanyAndId(company, runDto.id()).orElseThrow();
         run.setStatus(PayrollRun.PayrollStatus.APPROVED);
         payrollRunRepository.save(run);
-        seedMinimalPayrollLines(company, run, BigDecimal.valueOf(1000), BigDecimal.valueOf(100));
+        seedMinimalPayrollLines(company, run, BigDecimal.valueOf(1000), BigDecimal.valueOf(100), null);
 
         CompanyContextHolder.setCompanyId(companyCode);
         var posted = payrollService.postPayrollToAccounting(run.getId());
@@ -169,6 +170,46 @@ class CR_PayrollIdempotencyConcurrencyTest extends AbstractIntegrationTest {
             assertThat(line.getAccount().getCode()).isEqualTo("EMP-ADV");
             assertThat(line.getCredit()).isEqualByComparingTo("200.00");
         });
+
+        CompanyContextHolder.setCompanyId(companyCode);
+        var runWithStatutoryDto = payrollService.createPayrollRun(new PayrollService.CreatePayrollRunRequest(
+                PayrollRun.RunType.MONTHLY,
+                start.minusMonths(1),
+                end.minusMonths(1),
+                "CODE-RED monthly payroll statutory"
+        ));
+        CompanyContextHolder.clear();
+
+        PayrollRun runWithStatutory = payrollRunRepository.findByCompanyAndId(company, runWithStatutoryDto.id()).orElseThrow();
+        runWithStatutory.setStatus(PayrollRun.PayrollStatus.APPROVED);
+        payrollRunRepository.save(runWithStatutory);
+        seedMinimalPayrollLines(company, runWithStatutory, BigDecimal.valueOf(1000), BigDecimal.ZERO, line -> {
+            line.setPfDeduction(new BigDecimal("120.00"));
+            line.setTaxDeduction(new BigDecimal("35.00"));
+            line.setProfessionalTaxDeduction(new BigDecimal("200.00"));
+            line.setTotalDeductions(line.getTotalDeductions().add(new BigDecimal("355.00")));
+            line.setNetPay(line.getNetPay().subtract(new BigDecimal("355.00")));
+            line.setLineTotal(line.getNetPay());
+        });
+
+        CompanyContextHolder.setCompanyId(companyCode);
+        var postedWithStatutory = payrollService.postPayrollToAccounting(runWithStatutory.getId());
+        CompanyContextHolder.clear();
+
+        PayrollRun postedRunWithStatutory = payrollRunRepository.findByCompanyAndId(company, postedWithStatutory.id()).orElseThrow();
+        JournalEntry statutoryJournal = journalEntryRepository.findById(postedRunWithStatutory.getJournalEntryId()).orElseThrow();
+        assertThat(statutoryJournal.getLines()).anySatisfy(line -> {
+            assertThat(line.getAccount().getCode()).isEqualTo("PF-PAYABLE");
+            assertThat(line.getCredit()).isEqualByComparingTo("240.00");
+        });
+        assertThat(statutoryJournal.getLines()).anySatisfy(line -> {
+            assertThat(line.getAccount().getCode()).isEqualTo("TDS-PAYABLE");
+            assertThat(line.getCredit()).isEqualByComparingTo("70.00");
+        });
+        assertThat(statutoryJournal.getLines()).anySatisfy(line -> {
+            assertThat(line.getAccount().getCode()).isEqualTo("PROFESSIONAL-TAX-PAYABLE");
+            assertThat(line.getCredit()).isEqualByComparingTo("400.00");
+        });
     }
 
     @Test
@@ -196,7 +237,7 @@ class CR_PayrollIdempotencyConcurrencyTest extends AbstractIntegrationTest {
         PayrollRun run = payrollRunRepository.findByCompanyAndId(company, runDto.id()).orElseThrow();
         run.setStatus(PayrollRun.PayrollStatus.APPROVED);
         payrollRunRepository.save(run);
-        seedMinimalPayrollLines(company, run, BigDecimal.valueOf(1000));
+        seedMinimalPayrollLines(company, run, BigDecimal.valueOf(1000), BigDecimal.ZERO, null);
 
         CompanyContextHolder.setCompanyId(companyCode);
         try {
@@ -217,7 +258,15 @@ class CR_PayrollIdempotencyConcurrencyTest extends AbstractIntegrationTest {
                         assertThat(details).containsKey("requiredPayrollAccounts");
                         @SuppressWarnings("unchecked")
                         List<Object> requiredAccounts = (List<Object>) details.get("requiredPayrollAccounts");
-                        assertThat(requiredAccounts).contains("SALARY-EXP", "WAGE-EXP", "SALARY-PAYABLE", "EMP-ADV");
+                        assertThat(requiredAccounts).contains(
+                                "SALARY-EXP",
+                                "WAGE-EXP",
+                                "SALARY-PAYABLE",
+                                "EMP-ADV",
+                                "PF-PAYABLE",
+                                "ESI-PAYABLE",
+                                "TDS-PAYABLE",
+                                "PROFESSIONAL-TAX-PAYABLE");
                     });
         } finally {
             CompanyContextHolder.clear();
@@ -249,7 +298,7 @@ class CR_PayrollIdempotencyConcurrencyTest extends AbstractIntegrationTest {
         PayrollRun run = payrollRunRepository.findByCompanyAndId(company, runDto.id()).orElseThrow();
         run.setStatus(PayrollRun.PayrollStatus.APPROVED);
         payrollRunRepository.save(run);
-        seedMinimalPayrollLines(company, run, BigDecimal.valueOf(1000), BigDecimal.valueOf(100));
+        seedMinimalPayrollLines(company, run, BigDecimal.valueOf(1000), BigDecimal.valueOf(100), null);
 
         CompanyContextHolder.setCompanyId(companyCode);
         try {
@@ -293,7 +342,7 @@ class CR_PayrollIdempotencyConcurrencyTest extends AbstractIntegrationTest {
         PayrollRun run = payrollRunRepository.findByCompanyAndId(company, runDto.id()).orElseThrow();
         run.setStatus(PayrollRun.PayrollStatus.APPROVED);
         payrollRunRepository.save(run);
-        seedMinimalPayrollLines(company, run, BigDecimal.valueOf(1000));
+        seedMinimalPayrollLines(company, run, BigDecimal.valueOf(1000), BigDecimal.ZERO, null);
 
         CompanyContextHolder.setCompanyId(companyCode);
         payrollService.postPayrollToAccounting(run.getId());
@@ -328,7 +377,7 @@ class CR_PayrollIdempotencyConcurrencyTest extends AbstractIntegrationTest {
         run.setRunNumber(""); // legacy blank-but-not-null
         run.setStatus(PayrollRun.PayrollStatus.APPROVED);
         PayrollRun saved = payrollRunRepository.save(run);
-        seedMinimalPayrollLines(company, saved, BigDecimal.valueOf(500));
+        seedMinimalPayrollLines(company, saved, BigDecimal.valueOf(500), BigDecimal.ZERO, null);
 
         CompanyContextHolder.setCompanyId(companyCode);
         var posted = payrollService.postPayrollToAccounting(saved.getId());
@@ -366,7 +415,7 @@ class CR_PayrollIdempotencyConcurrencyTest extends AbstractIntegrationTest {
         PayrollRun run = payrollRunRepository.findByCompanyAndId(company, runDto.id()).orElseThrow();
         run.setStatus(PayrollRun.PayrollStatus.APPROVED);
         payrollRunRepository.save(run);
-        seedMinimalPayrollLines(company, run, BigDecimal.valueOf(1000));
+        seedMinimalPayrollLines(company, run, BigDecimal.valueOf(1000), BigDecimal.ZERO, null);
 
         CompanyContextHolder.setCompanyId(companyCode);
         var postedDto = payrollService.postPayrollToAccounting(run.getId());
@@ -459,7 +508,7 @@ class CR_PayrollIdempotencyConcurrencyTest extends AbstractIntegrationTest {
         PayrollRun run = payrollRunRepository.findByCompanyAndId(company, runDto.id()).orElseThrow();
         run.setStatus(PayrollRun.PayrollStatus.APPROVED);
         payrollRunRepository.save(run);
-        seedMinimalPayrollLines(company, run, BigDecimal.valueOf(1000));
+        seedMinimalPayrollLines(company, run, BigDecimal.valueOf(1000), BigDecimal.ZERO, null);
 
         CompanyContextHolder.setCompanyId(companyCode);
         payrollService.postPayrollToAccounting(run.getId());
@@ -527,7 +576,7 @@ class CR_PayrollIdempotencyConcurrencyTest extends AbstractIntegrationTest {
         PayrollRun run = payrollRunRepository.findByCompanyAndId(company, runDto.id()).orElseThrow();
         run.setStatus(PayrollRun.PayrollStatus.APPROVED);
         payrollRunRepository.save(run);
-        seedMinimalPayrollLines(company, run, BigDecimal.valueOf(1000));
+        seedMinimalPayrollLines(company, run, BigDecimal.valueOf(1000), BigDecimal.ZERO, null);
 
         CompanyContextHolder.setCompanyId(companyCode);
         payrollService.postPayrollToAccounting(run.getId());
@@ -580,7 +629,7 @@ class CR_PayrollIdempotencyConcurrencyTest extends AbstractIntegrationTest {
         PayrollRun run = payrollRunRepository.findByCompanyAndId(company, runDto.id()).orElseThrow();
         run.setStatus(PayrollRun.PayrollStatus.APPROVED);
         payrollRunRepository.save(run);
-        seedMinimalPayrollLines(company, run, BigDecimal.valueOf(1000), BigDecimal.valueOf(100));
+        seedMinimalPayrollLines(company, run, BigDecimal.valueOf(1000), BigDecimal.valueOf(100), null);
 
         payrollRunLineRepository.findByPayrollRunWithEmployeeOrderByEmployeeFirstNameAsc(run).forEach(line -> {
             Employee employee = line.getEmployee();
@@ -630,6 +679,10 @@ class CR_PayrollIdempotencyConcurrencyTest extends AbstractIntegrationTest {
         ensureAccount(company, "WAGE-EXP", "Wage Expense", AccountType.EXPENSE);
         ensureAccount(company, "SALARY-PAYABLE", "Salary Payable", AccountType.LIABILITY);
         ensureAccount(company, "EMP-ADV", "Employee Advances", AccountType.ASSET);
+        ensureAccount(company, "PF-PAYABLE", "Provident Fund Payable", AccountType.LIABILITY);
+        ensureAccount(company, "ESI-PAYABLE", "ESI Payable", AccountType.LIABILITY);
+        ensureAccount(company, "TDS-PAYABLE", "TDS Payable", AccountType.LIABILITY);
+        ensureAccount(company, "PROFESSIONAL-TAX-PAYABLE", "Professional Tax Payable", AccountType.LIABILITY);
     }
 
     private Account ensureAccount(Company company, String code, String name, AccountType type) {
@@ -647,10 +700,21 @@ class CR_PayrollIdempotencyConcurrencyTest extends AbstractIntegrationTest {
     }
 
     private void seedMinimalPayrollLines(Company company, PayrollRun run, BigDecimal perEmployeeGross) {
-        seedMinimalPayrollLines(company, run, perEmployeeGross, BigDecimal.ZERO);
+        seedMinimalPayrollLines(company, run, perEmployeeGross, BigDecimal.ZERO, null);
     }
 
-    private void seedMinimalPayrollLines(Company company, PayrollRun run, BigDecimal perEmployeeGross, BigDecimal advanceDeduction) {
+    private void seedMinimalPayrollLines(Company company,
+                                         PayrollRun run,
+                                         BigDecimal perEmployeeGross,
+                                         BigDecimal advanceDeduction) {
+        seedMinimalPayrollLines(company, run, perEmployeeGross, advanceDeduction, null);
+    }
+
+    private void seedMinimalPayrollLines(Company company,
+                                         PayrollRun run,
+                                         BigDecimal perEmployeeGross,
+                                         BigDecimal advanceDeduction,
+                                         Consumer<PayrollRunLine> lineCustomizer) {
         Employee a = ensureEmployee(company, "A", perEmployeeGross);
         Employee b = ensureEmployee(company, "B", perEmployeeGross);
 
@@ -661,6 +725,7 @@ class CR_PayrollIdempotencyConcurrencyTest extends AbstractIntegrationTest {
         lineA.setEmployee(a);
         lineA.setGrossPay(perEmployeeGross);
         lineA.setAdvanceDeduction(advanceDeduction);
+        lineA.setLoanDeduction(advanceDeduction);
         lineA.setTotalDeductions(advanceDeduction);
         lineA.setNetPay(netPay);
         lineA.setLineTotal(netPay);
@@ -674,6 +739,7 @@ class CR_PayrollIdempotencyConcurrencyTest extends AbstractIntegrationTest {
         lineB.setEmployee(b);
         lineB.setGrossPay(perEmployeeGross);
         lineB.setAdvanceDeduction(advanceDeduction);
+        lineB.setLoanDeduction(advanceDeduction);
         lineB.setTotalDeductions(advanceDeduction);
         lineB.setNetPay(netPay);
         lineB.setLineTotal(netPay);
@@ -681,6 +747,11 @@ class CR_PayrollIdempotencyConcurrencyTest extends AbstractIntegrationTest {
         lineB.setDaysWorked(1);
         lineB.setDailyWage(BigDecimal.ZERO);
         lineB.setAdvances(advanceDeduction);
+
+        if (lineCustomizer != null) {
+            lineCustomizer.accept(lineA);
+            lineCustomizer.accept(lineB);
+        }
 
         payrollRunLineRepository.saveAll(List.of(lineA, lineB));
     }

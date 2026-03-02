@@ -21,6 +21,7 @@ import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunLine;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunLineRepository;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunRepository;
 import com.bigbrightpaints.erp.modules.hr.service.PayrollService;
+import java.time.LocalDate;
 import java.util.List;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -150,6 +151,7 @@ class TS_RuntimePayrollMarkPaidExecutableCoverageTest {
         PayrollRunLine line = new PayrollRunLine();
         JournalEntry paymentJournal = new JournalEntry();
         paymentJournal.setReferenceNumber(" PAYROLL-PAY-2026-001 ");
+        paymentJournal.setEntryDate(LocalDate.of(2026, 2, 21));
 
         when(companyContextService.requireCurrentCompany()).thenReturn(company);
         when(companyEntityLookup.lockPayrollRun(company, 77L)).thenReturn(run);
@@ -162,8 +164,58 @@ class TS_RuntimePayrollMarkPaidExecutableCoverageTest {
         assertThat(line.getPaymentStatus()).isEqualTo(PayrollRunLine.PaymentStatus.PAID);
         assertThat(line.getPaymentReference()).isEqualTo("PAYROLL-PAY-2026-001");
         assertThat(run.getStatus()).isEqualTo(PayrollRun.PayrollStatus.PAID);
+        assertThat(run.getPaymentDate()).isEqualTo(LocalDate.of(2026, 2, 21));
 
         verify(payrollRunLineRepository).saveAll(any(List.class));
         verify(payrollRunRepository).save(run);
+    }
+
+    @Test
+    void markAsPaid_setsPaymentDateToCompanyTodayWhenJournalDateMissing() {
+        PayrollRunRepository payrollRunRepository = mock(PayrollRunRepository.class);
+        PayrollRunLineRepository payrollRunLineRepository = mock(PayrollRunLineRepository.class);
+        EmployeeRepository employeeRepository = mock(EmployeeRepository.class);
+        AttendanceRepository attendanceRepository = mock(AttendanceRepository.class);
+        AccountingFacade accountingFacade = mock(AccountingFacade.class);
+        com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository accountRepository =
+                mock(com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository.class);
+        CompanyContextService companyContextService = mock(CompanyContextService.class);
+        CompanyEntityLookup companyEntityLookup = mock(CompanyEntityLookup.class);
+        CompanyClock companyClock = mock(CompanyClock.class);
+        com.bigbrightpaints.erp.core.audit.AuditService auditService =
+                mock(com.bigbrightpaints.erp.core.audit.AuditService.class);
+
+        PayrollService service = new PayrollService(
+                payrollRunRepository,
+                payrollRunLineRepository,
+                employeeRepository,
+                attendanceRepository,
+                accountingFacade,
+                accountRepository,
+                companyContextService,
+                companyEntityLookup,
+                companyClock,
+                auditService
+        );
+
+        Company company = new Company();
+        PayrollRun run = new PayrollRun();
+        run.setRunType(PayrollRun.RunType.WEEKLY);
+        run.setStatus(PayrollRun.PayrollStatus.POSTED);
+        run.setPaymentJournalEntryId(111L);
+
+        PayrollRunLine line = new PayrollRunLine();
+        JournalEntry paymentJournal = new JournalEntry();
+        paymentJournal.setReferenceNumber(" PAY-REF-101 ");
+
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(companyEntityLookup.lockPayrollRun(company, 13L)).thenReturn(run);
+        when(companyEntityLookup.requireJournalEntry(company, 111L)).thenReturn(paymentJournal);
+        when(companyClock.today(company)).thenReturn(LocalDate.of(2026, 3, 1));
+        when(payrollRunLineRepository.findByPayrollRun(run)).thenReturn(List.of(line));
+
+        service.markAsPaid(13L, null);
+
+        assertThat(run.getPaymentDate()).isEqualTo(LocalDate.of(2026, 3, 1));
     }
 }

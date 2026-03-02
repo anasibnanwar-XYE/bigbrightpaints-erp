@@ -1,9 +1,6 @@
 package com.bigbrightpaints.erp.modules.hr.service;
 
-import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
-import com.bigbrightpaints.erp.core.exception.ApplicationException;
-import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
@@ -11,9 +8,9 @@ import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.hr.domain.AttendanceRepository;
 import com.bigbrightpaints.erp.modules.hr.domain.Employee;
 import com.bigbrightpaints.erp.modules.hr.domain.EmployeeRepository;
-import com.bigbrightpaints.erp.modules.hr.domain.AttendanceRepository;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRun;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunLine;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunLineRepository;
@@ -22,10 +19,12 @@ import jakarta.transaction.Transactional;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 @Service
 public class PayrollService {
@@ -204,29 +203,45 @@ public class PayrollService {
         return PayrollRunService.buildRunSignature(run);
     }
 
-    private Map<String, String> requiredPayrollPostedAuditMetadata(PayrollRun run,
-                                                                    JournalEntryDto journal,
-                                                                    LocalDate postingDate,
-                                                                    BigDecimal totalGrossPay,
-                                                                    BigDecimal totalAdvances,
-                                                                    BigDecimal salaryPayableAmount) {
-        return PayrollPostingService.requiredPayrollPostedAuditMetadata(
-                run,
-                journal,
-                postingDate,
-                totalGrossPay,
-                totalAdvances,
-                salaryPayableAmount);
+    static Map<String, String> requiredPayrollPostedAuditMetadata(PayrollRun run,
+                                                                   JournalEntryDto journal,
+                                                                   LocalDate postingDate,
+                                                                   BigDecimal totalGrossPay,
+                                                                   BigDecimal totalAdvances,
+                                                                   BigDecimal salaryPayableAmount) {
+        Map<String, String> metadata = new HashMap<>();
+        metadata.put("payrollRunId", requiredAuditMetadataValue("payrollRunId", run.getId()));
+        metadata.put("runNumber", requiredAuditMetadataValue("runNumber", run.getRunNumber()));
+        metadata.put("runType", requiredAuditMetadataValue("runType", run.getRunType()));
+        metadata.put("periodStart", requiredAuditMetadataValue("periodStart", run.getPeriodStart()));
+        metadata.put("periodEnd", requiredAuditMetadataValue("periodEnd", run.getPeriodEnd()));
+        metadata.put("journalEntryId", requiredAuditMetadataValue("journalEntryId", journal.id()));
+        metadata.put("postingDate", requiredAuditMetadataValue("postingDate", postingDate));
+        metadata.put("totalGrossPay", requiredAuditMetadataValue("totalGrossPay", totalGrossPay));
+        metadata.put("totalAdvances", requiredAuditMetadataValue("totalAdvances", totalAdvances));
+        metadata.put("netPayable", requiredAuditMetadataValue("netPayable", salaryPayableAmount));
+        return metadata;
     }
 
-    private String requiredAuditMetadataValue(String key, Object value) {
-        return value == null ? null : value.toString();
+    private static String requiredAuditMetadataValue(String key, Object value) {
+        if (value == null) {
+            throw missingPayrollPostedMetadataException(key);
+        }
+        String normalized = value instanceof BigDecimal decimal
+                ? decimal.toPlainString()
+                : value.toString();
+        if (!StringUtils.hasText(normalized)) {
+            throw missingPayrollPostedMetadataException(key);
+        }
+        return normalized;
     }
 
-    private boolean hasPostingJournalLink(PayrollRun run) {
-        return run != null
-                && (run.getJournalEntryId() != null
-                || (run.getJournalEntry() != null && run.getJournalEntry().getId() != null));
+    private static com.bigbrightpaints.erp.core.exception.ApplicationException missingPayrollPostedMetadataException(String key) {
+        return new com.bigbrightpaints.erp.core.exception.ApplicationException(
+                com.bigbrightpaints.erp.core.exception.ErrorCode.BUSINESS_INVALID_STATE,
+                "Payroll posting audit metadata is missing required key: " + key)
+                .withDetail("auditEvent", com.bigbrightpaints.erp.core.audit.AuditEvent.PAYROLL_POSTED.name())
+                .withDetail("metadataKey", key);
     }
 
     static PayrollRunDto toDto(PayrollRun run) {
@@ -246,6 +261,8 @@ public class PayrollService {
                 run.getTotalDeductions(),
                 run.getTotalNetPay(),
                 run.getJournalEntryId(),
+                run.getPaymentReference(),
+                run.getPaymentDate(),
                 run.getCreatedBy(),
                 run.getCreatedAt(),
                 run.getApprovedBy(),
@@ -276,8 +293,18 @@ public class PayrollService {
                 line.getOvertimePay(),
                 line.getHolidayPay(),
                 line.getGrossPay(),
+                line.getBasicSalaryComponent(),
+                line.getHraComponent(),
+                line.getDaComponent(),
+                line.getSpecialAllowanceComponent(),
                 line.getAdvanceDeduction(),
+                line.getLoanDeduction(),
                 line.getPfDeduction(),
+                line.getEsiDeduction(),
+                line.getTaxDeduction(),
+                line.getProfessionalTaxDeduction(),
+                line.getLeaveWithoutPayDeduction(),
+                line.getOtherDeductions(),
                 line.getTotalDeductions(),
                 line.getNetPay(),
                 line.getPaymentStatus().name(),
@@ -307,6 +334,8 @@ public class PayrollService {
             BigDecimal totalDeductions,
             BigDecimal totalNetPay,
             Long journalEntryId,
+            String paymentReference,
+            LocalDate paymentDate,
             String createdBy,
             Instant createdAt,
             String approvedBy,
@@ -335,8 +364,18 @@ public class PayrollService {
             BigDecimal overtimePay,
             BigDecimal holidayPay,
             BigDecimal grossPay,
+            BigDecimal basicSalaryComponent,
+            BigDecimal hraComponent,
+            BigDecimal daComponent,
+            BigDecimal specialAllowanceComponent,
             BigDecimal advanceDeduction,
+            BigDecimal loanDeduction,
             BigDecimal pfDeduction,
+            BigDecimal esiDeduction,
+            BigDecimal taxDeduction,
+            BigDecimal professionalTaxDeduction,
+            BigDecimal leaveWithoutPayDeduction,
+            BigDecimal otherDeductions,
             BigDecimal totalDeductions,
             BigDecimal netPay,
             String paymentStatus,

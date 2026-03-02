@@ -86,6 +86,9 @@ public class PayrollRun {
     @Column(name = "payment_reference")
     private String paymentReference;
 
+    @Column(name = "payment_date")
+    private LocalDate paymentDate;
+
     // Backward compatibility fields from old PayrollRun
     @Column(name = "run_date")
     private java.time.LocalDate runDate;
@@ -179,6 +182,8 @@ public class PayrollRun {
     public void setPaymentJournalEntryId(Long paymentJournalEntryId) { this.paymentJournalEntryId = paymentJournalEntryId; }
     public String getPaymentReference() { return paymentReference; }
     public void setPaymentReference(String paymentReference) { this.paymentReference = paymentReference; }
+    public LocalDate getPaymentDate() { return paymentDate; }
+    public void setPaymentDate(LocalDate paymentDate) { this.paymentDate = paymentDate; }
     public String getCreatedBy() { return createdBy; }
     public void setCreatedBy(String createdBy) { this.createdBy = createdBy; }
     public Instant getCreatedAt() { return createdAt; }

@@ -59,6 +59,8 @@ class SalaryStructureTemplateServiceTest {
                 new BigDecimal("2000"),
                 null,
                 null,
+                null,
+                null,
                 null);
 
         when(salaryStructureTemplateRepository.findByCompanyAndCodeIgnoreCase(company, "STAFF_STD"))
@@ -77,6 +79,8 @@ class SalaryStructureTemplateServiceTest {
         assertThat(dto.totalEarnings()).isEqualByComparingTo("24000");
         assertThat(dto.employeePfRate()).isEqualByComparingTo("12.00");
         assertThat(dto.employeeEsiRate()).isEqualByComparingTo("0.75");
+        assertThat(dto.esiEligibilityThreshold()).isEqualByComparingTo("21000.00");
+        assertThat(dto.professionalTax()).isEqualByComparingTo("200.00");
         assertThat(dto.active()).isTrue();
 
         ArgumentCaptor<SalaryStructureTemplate> captor = ArgumentCaptor.forClass(SalaryStructureTemplate.class);
@@ -98,6 +102,8 @@ class SalaryStructureTemplateServiceTest {
                 BigDecimal.ZERO,
                 new BigDecimal("12.00"),
                 new BigDecimal("0.75"),
+                null,
+                null,
                 true);
 
         when(salaryStructureTemplateRepository.findByCompanyAndCodeIgnoreCase(company, "STAFF_STD"))
@@ -121,6 +127,8 @@ class SalaryStructureTemplateServiceTest {
                 BigDecimal.ZERO,
                 new BigDecimal("12.00"),
                 new BigDecimal("0.75"),
+                null,
+                null,
                 true);
 
         when(salaryStructureTemplateRepository.findByCompanyAndCodeIgnoreCase(company, "STAFF_STD"))

@@ -13,6 +13,7 @@ import com.bigbrightpaints.erp.modules.hr.domain.PayrollRun;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunLine;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunLineRepository;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunRepository;
+import com.bigbrightpaints.erp.modules.hr.domain.SalaryStructureTemplate;
 import com.bigbrightpaints.erp.modules.hr.service.PayrollService.EmployeeMonthlyPayDto;
 import com.bigbrightpaints.erp.modules.hr.service.PayrollService.EmployeeWeeklyPayDto;
 import com.bigbrightpaints.erp.modules.hr.service.PayrollService.MonthlyPaySummaryDto;
@@ -35,6 +36,8 @@ import org.springframework.stereotype.Service;
 public class PayrollCalculationService {
 
     private static final BigDecimal ADVANCE_DEDUCTION_CAP = new BigDecimal("0.20");
+    private static final BigDecimal HALF_DAY_FACTOR = new BigDecimal("0.5");
+    private static final BigDecimal DEFAULT_ESI_THRESHOLD = new BigDecimal("21000.00");
 
     private final PayrollRunRepository payrollRunRepository;
     private final PayrollRunLineRepository payrollRunLineRepository;
@@ -176,7 +179,19 @@ public class PayrollCalculationService {
             BigDecimal hourlyRate = employee.getDailyRate().divide(standardHoursPerDay, 2, RoundingMode.HALF_UP);
             BigDecimal otPay = hourlyRate.multiply(employee.getOvertimeRateMultiplier()).multiply(otHours);
             BigDecimal doubleOtPay = hourlyRate.multiply(employee.getDoubleOtRateMultiplier()).multiply(doubleOtHours);
-            BigDecimal netPay = basePay.add(otPay).add(doubleOtPay);
+            BigDecimal grossPay = basePay.add(otPay).add(doubleOtPay);
+            BigDecimal basicComponentForSummary = employee.getSalaryStructureTemplate() != null
+                    ? nonNull(employee.getSalaryStructureTemplate().getBasicPay())
+                    : basePay;
+            BigDecimal pfDeduction = calculatePfDeduction(basicComponentForSummary, employee);
+            BigDecimal esiDeduction = calculateEsiDeduction(grossPay, employee);
+            BigDecimal professionalTaxDeduction = BigDecimal.ZERO;
+            BigDecimal loanDeduction = calculateLoanDeduction(grossPay, employee);
+            BigDecimal totalDeductionsForSummary = pfDeduction
+                    .add(esiDeduction)
+                    .add(professionalTaxDeduction)
+                    .add(loanDeduction);
+            BigDecimal netPay = grossPay.subtract(totalDeductionsForSummary);
 
             BigDecimal daysWorkedExact = presentDays;
             int daysWorked = daysWorkedExact.setScale(0, RoundingMode.HALF_UP).intValue();
@@ -253,29 +268,57 @@ public class PayrollCalculationService {
             BigDecimal absentDays = absentDaysByEmployee.getOrDefault(employee.getId(), BigDecimal.ZERO);
             BigDecimal holidayDays = holidayDaysByEmployee.getOrDefault(employee.getId(), BigDecimal.ZERO);
 
-            BigDecimal dailyRate = employee.getDailyRate();
-            BigDecimal monthlySalary = employee.getMonthlySalary();
+            BigDecimal dailyRate = nonNull(employee.getDailyRate());
+            BigDecimal monthlySalary = nonNull(employee.getMonthlySalary());
+            SalaryStructureTemplate template = employee.getSalaryStructureTemplate();
             BigDecimal grossPay;
-            if (monthlySalary != null && monthlySalary.compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal basicComponentForPf;
+
+            if (template != null) {
+                BigDecimal workingDays = BigDecimal.valueOf(Math.max(1, employee.getWorkingDaysPerMonth()));
+                BigDecimal leaveWithoutPayDays = absentDays.add(halfDays.multiply(HALF_DAY_FACTOR));
+                BigDecimal payableRatio = BigDecimal.ONE.subtract(
+                        leaveWithoutPayDays.divide(workingDays, 6, RoundingMode.HALF_UP));
+                if (payableRatio.compareTo(BigDecimal.ZERO) < 0) {
+                    payableRatio = BigDecimal.ZERO;
+                }
+                BigDecimal basicComponent = money(nonNull(template.getBasicPay()).multiply(payableRatio));
+                BigDecimal hraComponent = money(nonNull(template.getHra()).multiply(payableRatio));
+                BigDecimal daComponent = money(nonNull(template.getDa()).multiply(payableRatio));
+                BigDecimal specialComponent = money(nonNull(template.getSpecialAllowance()).multiply(payableRatio));
+                grossPay = money(basicComponent.add(hraComponent).add(daComponent).add(specialComponent));
+                basicComponentForPf = basicComponent;
+            } else if (monthlySalary.compareTo(BigDecimal.ZERO) > 0) {
                 BigDecimal deductionDays = absentDays;
                 if (halfDays.compareTo(BigDecimal.ZERO) > 0) {
-                    deductionDays = deductionDays.add(halfDays.multiply(new BigDecimal("0.5")));
+                    deductionDays = deductionDays.add(halfDays.multiply(HALF_DAY_FACTOR));
                 }
-                BigDecimal absenceDeduction = dailyRate.multiply(deductionDays);
-                grossPay = monthlySalary.subtract(absenceDeduction);
+                BigDecimal absenceDeduction = money(dailyRate.multiply(deductionDays));
+                grossPay = money(monthlySalary.subtract(absenceDeduction));
                 if (grossPay.compareTo(BigDecimal.ZERO) < 0) {
                     grossPay = BigDecimal.ZERO;
                 }
+                basicComponentForPf = grossPay;
             } else {
                 BigDecimal baseDays = presentDays;
-                BigDecimal basePay = dailyRate.multiply(baseDays);
-                BigDecimal holidayPay = dailyRate.multiply(holidayDays);
-                grossPay = basePay.add(holidayPay);
+                BigDecimal basePay = money(dailyRate.multiply(baseDays));
+                BigDecimal holidayPay = money(dailyRate.multiply(holidayDays));
+                grossPay = money(basePay.add(holidayPay));
+                basicComponentForPf = grossPay;
             }
 
-            BigDecimal pfDeduction = BigDecimal.ZERO;
-            BigDecimal totalDed = BigDecimal.ZERO;
-            BigDecimal netPay = grossPay;
+            BigDecimal pfDeduction = calculatePfDeduction(basicComponentForPf, employee);
+            BigDecimal esiDeduction = calculateEsiDeduction(grossPay, employee);
+            BigDecimal professionalTaxDeduction = calculateProfessionalTaxDeduction(employee, null);
+            BigDecimal loanDeduction = calculateLoanDeduction(grossPay, employee);
+            BigDecimal totalDed = money(pfDeduction
+                    .add(esiDeduction)
+                    .add(professionalTaxDeduction)
+                    .add(loanDeduction));
+            BigDecimal netPay = money(grossPay.subtract(totalDed));
+            if (netPay.compareTo(BigDecimal.ZERO) < 0) {
+                netPay = BigDecimal.ZERO;
+            }
 
             employeePay.add(new EmployeeMonthlyPayDto(
                     employee.getId(),
@@ -361,45 +404,103 @@ public class PayrollCalculationService {
         }
         BigDecimal dailyWage = employee.getDailyWage() != null ? employee.getDailyWage() : dailyRate;
         BigDecimal standardHoursPerDay = requireValidStandardHoursPerDay(employee);
-        BigDecimal hourlyRate = dailyRate.divide(standardHoursPerDay, 2, RoundingMode.HALF_UP);
+        BigDecimal hourlyRate = dailyRate.compareTo(BigDecimal.ZERO) > 0
+                ? money(dailyRate.divide(standardHoursPerDay, 6, RoundingMode.HALF_UP))
+                : BigDecimal.ZERO;
         line.setDailyWage(dailyWage);
         line.setDailyRate(dailyRate);
         line.setHourlyRate(hourlyRate);
         line.setOtRateMultiplier(employee.getOvertimeRateMultiplier());
         line.setDoubleOtMultiplier(employee.getDoubleOtRateMultiplier());
 
-        BigDecimal effectiveDays = presentDays.add(halfDays.multiply(new BigDecimal("0.5")));
+        BigDecimal effectiveDays = presentDays.add(halfDays.multiply(HALF_DAY_FACTOR));
         line.setDaysWorked(effectiveDays.setScale(0, RoundingMode.HALF_UP).intValue());
-        BigDecimal basePay = dailyRate.multiply(effectiveDays);
-        line.setBasePay(basePay);
 
         BigDecimal otRate = hourlyRate.multiply(employee.getOvertimeRateMultiplier());
         BigDecimal doubleOtRate = hourlyRate.multiply(employee.getDoubleOtRateMultiplier());
-        BigDecimal overtimePay = otRate.multiply(overtimeHours).add(doubleOtRate.multiply(doubleOtHours));
+        BigDecimal overtimePay = money(otRate.multiply(overtimeHours).add(doubleOtRate.multiply(doubleOtHours)));
         line.setOvertimePay(overtimePay);
 
-        BigDecimal holidayPay = dailyRate.multiply(holidayDays);
+        BigDecimal holidayPay = money(dailyRate.multiply(holidayDays));
         line.setHolidayPay(holidayPay);
 
-        BigDecimal grossPay = basePay.add(overtimePay).add(holidayPay);
+        SalaryStructureTemplate template = employee.getSalaryStructureTemplate();
+        BigDecimal basicComponent;
+        BigDecimal hraComponent;
+        BigDecimal daComponent;
+        BigDecimal specialAllowanceComponent;
+        BigDecimal basePay;
+        BigDecimal leaveWithoutPayDeduction;
+
+        if (template != null && run.getRunType() == PayrollRun.RunType.MONTHLY) {
+            BigDecimal workingDays = BigDecimal.valueOf(Math.max(1, employee.getWorkingDaysPerMonth()));
+            BigDecimal leaveWithoutPayDays = absentDays.add(leaveDays).add(halfDays.multiply(HALF_DAY_FACTOR));
+            BigDecimal payableRatio = BigDecimal.ONE.subtract(
+                    leaveWithoutPayDays.divide(workingDays, 6, RoundingMode.HALF_UP));
+            if (payableRatio.compareTo(BigDecimal.ZERO) < 0) {
+                payableRatio = BigDecimal.ZERO;
+            }
+            basicComponent = money(nonNull(template.getBasicPay()).multiply(payableRatio));
+            hraComponent = money(nonNull(template.getHra()).multiply(payableRatio));
+            daComponent = money(nonNull(template.getDa()).multiply(payableRatio));
+            specialAllowanceComponent = money(nonNull(template.getSpecialAllowance()).multiply(payableRatio));
+            basePay = basicComponent.add(hraComponent).add(daComponent).add(specialAllowanceComponent);
+            leaveWithoutPayDeduction = money(nonNull(template.totalEarnings()).subtract(basePay));
+        } else {
+            basicComponent = money(dailyRate.multiply(effectiveDays));
+            hraComponent = BigDecimal.ZERO;
+            daComponent = BigDecimal.ZERO;
+            specialAllowanceComponent = BigDecimal.ZERO;
+            basePay = basicComponent;
+            BigDecimal leaveWithoutPayDays = absentDays.add(leaveDays).add(halfDays.multiply(HALF_DAY_FACTOR));
+            leaveWithoutPayDeduction = money(dailyRate.multiply(leaveWithoutPayDays));
+        }
+
+        line.setBasicSalaryComponent(basicComponent);
+        line.setHraComponent(hraComponent);
+        line.setDaComponent(daComponent);
+        line.setSpecialAllowanceComponent(specialAllowanceComponent);
+        line.setBasePay(basePay);
+
+        BigDecimal grossPay = money(basePay.add(overtimePay).add(holidayPay));
         line.setGrossPay(grossPay);
 
-        BigDecimal advanceDeduction = calculateAdvanceDeduction(grossPay, employee);
-        line.setAdvanceDeduction(advanceDeduction);
-        line.setAdvances(advanceDeduction);
-        line.setPfDeduction(BigDecimal.ZERO);
+        BigDecimal loanDeduction = calculateLoanDeduction(grossPay, employee);
+        BigDecimal pfDeduction = calculatePfDeduction(basicComponent, employee);
+        BigDecimal esiDeduction = calculateEsiDeduction(grossPay, employee);
+        BigDecimal tdsDeduction = calculateTdsDeduction(grossPay, run, employee);
+        BigDecimal professionalTaxDeduction = calculateProfessionalTaxDeduction(employee, run);
+        BigDecimal otherDeductions = BigDecimal.ZERO;
 
-        BigDecimal totalDeductions = advanceDeduction;
+        BigDecimal totalDeductions = money(loanDeduction
+                .add(pfDeduction)
+                .add(esiDeduction)
+                .add(tdsDeduction)
+                .add(professionalTaxDeduction)
+                .add(otherDeductions));
+
+        BigDecimal netPay = money(grossPay.subtract(totalDeductions));
+        if (netPay.compareTo(BigDecimal.ZERO) < 0) {
+            netPay = BigDecimal.ZERO;
+        }
+
+        line.setAdvanceDeduction(loanDeduction);
+        line.setLoanDeduction(loanDeduction);
+        line.setAdvances(loanDeduction);
+        line.setPfDeduction(pfDeduction);
+        line.setEsiDeduction(esiDeduction);
+        line.setTaxDeduction(tdsDeduction);
+        line.setProfessionalTaxDeduction(professionalTaxDeduction);
+        line.setLeaveWithoutPayDeduction(leaveWithoutPayDeduction);
+        line.setOtherDeductions(otherDeductions);
         line.setTotalDeductions(totalDeductions);
-
-        BigDecimal netPay = grossPay.subtract(totalDeductions);
         line.setNetPay(netPay);
         line.setLineTotal(netPay);
 
         return line;
     }
 
-    private BigDecimal calculateAdvanceDeduction(BigDecimal grossPay, Employee employee) {
+    private BigDecimal calculateLoanDeduction(BigDecimal grossPay, Employee employee) {
         if (employee == null) {
             return BigDecimal.ZERO;
         }
@@ -408,7 +509,82 @@ public class PayrollCalculationService {
             return BigDecimal.ZERO;
         }
         BigDecimal cap = grossPay.multiply(ADVANCE_DEDUCTION_CAP).setScale(2, RoundingMode.HALF_UP);
-        return balance.min(cap);
+        return money(balance.min(cap));
+    }
+
+    private BigDecimal calculatePfDeduction(BigDecimal basicComponent, Employee employee) {
+        if (basicComponent == null || basicComponent.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO;
+        }
+        SalaryStructureTemplate template = employee.getSalaryStructureTemplate();
+        BigDecimal pfRate = template != null && template.getEmployeePfRate() != null
+                ? template.getEmployeePfRate()
+                : new BigDecimal("12.00");
+        if (pfRate.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO;
+        }
+        return money(basicComponent.multiply(pfRate)
+                .divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP));
+    }
+
+    private BigDecimal calculateEsiDeduction(BigDecimal grossPay, Employee employee) {
+        if (grossPay == null || grossPay.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO;
+        }
+        SalaryStructureTemplate template = employee.getSalaryStructureTemplate();
+        BigDecimal esiRate = template != null && template.getEmployeeEsiRate() != null
+                ? template.getEmployeeEsiRate()
+                : new BigDecimal("0.75");
+        if (esiRate.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal threshold = template != null && template.getEsiEligibilityThreshold() != null
+                ? template.getEsiEligibilityThreshold()
+                : DEFAULT_ESI_THRESHOLD;
+        if (grossPay.compareTo(threshold) > 0) {
+            return BigDecimal.ZERO;
+        }
+        return money(grossPay.multiply(esiRate)
+                .divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP));
+    }
+
+    private BigDecimal calculateTdsDeduction(BigDecimal grossPay, PayrollRun run, Employee employee) {
+        if (grossPay == null || grossPay.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO;
+        }
+        int periodsPerYear = run.getRunType() == PayrollRun.RunType.WEEKLY ? 52 : 12;
+        BigDecimal projectedAnnualGross = grossPay.multiply(BigDecimal.valueOf(periodsPerYear));
+        Employee.TaxRegime regime = employee != null && employee.getTaxRegime() != null
+                ? employee.getTaxRegime()
+                : Employee.TaxRegime.NEW;
+        BigDecimal annualExemption = regime == Employee.TaxRegime.OLD
+                ? new BigDecimal("250000")
+                : new BigDecimal("300000");
+        BigDecimal taxableAnnual = projectedAnnualGross.subtract(annualExemption);
+        if (taxableAnnual.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal annualTax = taxableAnnual.multiply(new BigDecimal("0.10"));
+        return money(annualTax.divide(BigDecimal.valueOf(periodsPerYear), 6, RoundingMode.HALF_UP));
+    }
+
+    private BigDecimal calculateProfessionalTaxDeduction(Employee employee, PayrollRun run) {
+        if (run != null && run.getRunType() != PayrollRun.RunType.MONTHLY) {
+            return BigDecimal.ZERO;
+        }
+        SalaryStructureTemplate template = employee.getSalaryStructureTemplate();
+        if (template == null || template.getProfessionalTax() == null) {
+            return BigDecimal.ZERO;
+        }
+        return money(template.getProfessionalTax());
+    }
+
+    private BigDecimal nonNull(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
+    }
+
+    private BigDecimal money(BigDecimal value) {
+        return nonNull(value).setScale(2, RoundingMode.HALF_UP);
     }
 
     private BigDecimal requireValidStandardHoursPerDay(Employee employee) {

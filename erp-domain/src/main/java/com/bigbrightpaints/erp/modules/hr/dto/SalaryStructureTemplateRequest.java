@@ -15,6 +15,8 @@ public record SalaryStructureTemplateRequest(
         @DecimalMin(value = "0.00") BigDecimal specialAllowance,
         @DecimalMin(value = "0.00") BigDecimal employeePfRate,
         @DecimalMin(value = "0.00") BigDecimal employeeEsiRate,
+        @DecimalMin(value = "0.00") BigDecimal esiEligibilityThreshold,
+        @DecimalMin(value = "0.00") BigDecimal professionalTax,
         Boolean active
 ) {
 }

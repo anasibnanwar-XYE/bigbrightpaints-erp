@@ -79,6 +79,18 @@ public class PayrollRunLine {
     @Column(name = "gross_pay", precision = 19, scale = 2)
     private BigDecimal grossPay = BigDecimal.ZERO;
 
+    @Column(name = "basic_salary_component", precision = 19, scale = 2)
+    private BigDecimal basicSalaryComponent = BigDecimal.ZERO;
+
+    @Column(name = "hra_component", precision = 19, scale = 2)
+    private BigDecimal hraComponent = BigDecimal.ZERO;
+
+    @Column(name = "da_component", precision = 19, scale = 2)
+    private BigDecimal daComponent = BigDecimal.ZERO;
+
+    @Column(name = "special_allowance_component", precision = 19, scale = 2)
+    private BigDecimal specialAllowanceComponent = BigDecimal.ZERO;
+
     // Deductions
     @Column(name = "advance_deduction", precision = 19, scale = 2)
     private BigDecimal advanceDeduction = BigDecimal.ZERO;
@@ -88,6 +100,18 @@ public class PayrollRunLine {
 
     @Column(name = "tax_deduction", precision = 19, scale = 2)
     private BigDecimal taxDeduction = BigDecimal.ZERO;
+
+    @Column(name = "esi_deduction", precision = 19, scale = 2)
+    private BigDecimal esiDeduction = BigDecimal.ZERO;
+
+    @Column(name = "professional_tax_deduction", precision = 19, scale = 2)
+    private BigDecimal professionalTaxDeduction = BigDecimal.ZERO;
+
+    @Column(name = "loan_deduction", precision = 19, scale = 2)
+    private BigDecimal loanDeduction = BigDecimal.ZERO;
+
+    @Column(name = "leave_without_pay_deduction", precision = 19, scale = 2)
+    private BigDecimal leaveWithoutPayDeduction = BigDecimal.ZERO;
 
     @Column(name = "other_deductions", precision = 19, scale = 2)
     private BigDecimal otherDeductions = BigDecimal.ZERO;
@@ -166,12 +190,32 @@ public class PayrollRunLine {
     public void setHolidayPay(BigDecimal holidayPay) { this.holidayPay = holidayPay; }
     public BigDecimal getGrossPay() { return grossPay; }
     public void setGrossPay(BigDecimal grossPay) { this.grossPay = grossPay; }
+    public BigDecimal getBasicSalaryComponent() { return basicSalaryComponent; }
+    public void setBasicSalaryComponent(BigDecimal basicSalaryComponent) { this.basicSalaryComponent = basicSalaryComponent; }
+    public BigDecimal getHraComponent() { return hraComponent; }
+    public void setHraComponent(BigDecimal hraComponent) { this.hraComponent = hraComponent; }
+    public BigDecimal getDaComponent() { return daComponent; }
+    public void setDaComponent(BigDecimal daComponent) { this.daComponent = daComponent; }
+    public BigDecimal getSpecialAllowanceComponent() { return specialAllowanceComponent; }
+    public void setSpecialAllowanceComponent(BigDecimal specialAllowanceComponent) { this.specialAllowanceComponent = specialAllowanceComponent; }
     public BigDecimal getAdvanceDeduction() { return advanceDeduction; }
     public void setAdvanceDeduction(BigDecimal advanceDeduction) { this.advanceDeduction = advanceDeduction; }
     public BigDecimal getPfDeduction() { return pfDeduction; }
     public void setPfDeduction(BigDecimal pfDeduction) { this.pfDeduction = pfDeduction; }
     public BigDecimal getTaxDeduction() { return taxDeduction; }
     public void setTaxDeduction(BigDecimal taxDeduction) { this.taxDeduction = taxDeduction; }
+    public BigDecimal getEsiDeduction() { return esiDeduction; }
+    public void setEsiDeduction(BigDecimal esiDeduction) { this.esiDeduction = esiDeduction; }
+    public BigDecimal getProfessionalTaxDeduction() { return professionalTaxDeduction; }
+    public void setProfessionalTaxDeduction(BigDecimal professionalTaxDeduction) {
+        this.professionalTaxDeduction = professionalTaxDeduction;
+    }
+    public BigDecimal getLoanDeduction() { return loanDeduction; }
+    public void setLoanDeduction(BigDecimal loanDeduction) { this.loanDeduction = loanDeduction; }
+    public BigDecimal getLeaveWithoutPayDeduction() { return leaveWithoutPayDeduction; }
+    public void setLeaveWithoutPayDeduction(BigDecimal leaveWithoutPayDeduction) {
+        this.leaveWithoutPayDeduction = leaveWithoutPayDeduction;
+    }
     public BigDecimal getOtherDeductions() { return otherDeductions; }
     public void setOtherDeductions(BigDecimal otherDeductions) { this.otherDeductions = otherDeductions; }
     public BigDecimal getTotalDeductions() { return totalDeductions; }

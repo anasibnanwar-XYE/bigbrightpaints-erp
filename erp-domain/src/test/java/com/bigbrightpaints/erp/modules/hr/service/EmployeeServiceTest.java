@@ -70,6 +70,8 @@ class EmployeeServiceTest {
         template.setName("Staff Standard");
         template.setBasicPay(new BigDecimal("20000"));
         template.setHra(new BigDecimal("10000"));
+        template.setEsiEligibilityThreshold(new BigDecimal("21000"));
+        template.setProfessionalTax(new BigDecimal("200"));
 
         EmployeeRequest request = new EmployeeRequest(
                 "Priya",
@@ -125,6 +127,8 @@ class EmployeeServiceTest {
 
         assertThat(dto.id()).isEqualTo(111L);
         assertThat(dto.salaryStructureTemplateId()).isEqualTo(501L);
+        assertThat(dto.esiEligibilityThreshold()).isEqualByComparingTo("21000");
+        assertThat(dto.professionalTax()).isEqualByComparingTo("200");
         assertThat(dto.monthlySalary()).isEqualByComparingTo("30000");
         assertThat(dto.employeeType()).isEqualTo("STAFF");
         assertThat(dto.paymentSchedule()).isEqualTo("MONTHLY");

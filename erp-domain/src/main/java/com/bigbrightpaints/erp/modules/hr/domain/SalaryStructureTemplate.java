@@ -60,6 +60,12 @@ public class SalaryStructureTemplate extends VersionedEntity {
     @Column(name = "employee_esi_rate", precision = 5, scale = 2, nullable = false)
     private BigDecimal employeeEsiRate = new BigDecimal("0.75");
 
+    @Column(name = "esi_eligibility_threshold", precision = 19, scale = 2, nullable = false)
+    private BigDecimal esiEligibilityThreshold = new BigDecimal("21000.00");
+
+    @Column(name = "professional_tax", precision = 19, scale = 2, nullable = false)
+    private BigDecimal professionalTax = new BigDecimal("200.00");
+
     @Column(nullable = false)
     private boolean active = true;
 
@@ -162,6 +168,22 @@ public class SalaryStructureTemplate extends VersionedEntity {
 
     public void setEmployeeEsiRate(BigDecimal employeeEsiRate) {
         this.employeeEsiRate = employeeEsiRate;
+    }
+
+    public BigDecimal getEsiEligibilityThreshold() {
+        return esiEligibilityThreshold;
+    }
+
+    public void setEsiEligibilityThreshold(BigDecimal esiEligibilityThreshold) {
+        this.esiEligibilityThreshold = esiEligibilityThreshold;
+    }
+
+    public BigDecimal getProfessionalTax() {
+        return professionalTax;
+    }
+
+    public void setProfessionalTax(BigDecimal professionalTax) {
+        this.professionalTax = professionalTax;
     }
 
     public boolean isActive() {

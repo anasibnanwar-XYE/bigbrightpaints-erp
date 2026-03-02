@@ -17,6 +17,8 @@ public record SalaryStructureTemplateDto(
         BigDecimal totalEarnings,
         BigDecimal employeePfRate,
         BigDecimal employeeEsiRate,
+        BigDecimal esiEligibilityThreshold,
+        BigDecimal professionalTax,
         boolean active,
         Instant createdAt
 ) {

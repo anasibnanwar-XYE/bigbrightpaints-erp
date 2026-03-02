@@ -350,6 +350,8 @@ public class EmployeeService {
                 template != null ? template.getHra() : null,
                 template != null ? template.getDa() : null,
                 template != null ? template.getSpecialAllowance() : null,
+                template != null ? template.getEsiEligibilityThreshold() : null,
+                template != null ? template.getProfessionalTax() : null,
                 employee.getMonthlySalary(),
                 employee.getDailyWage(),
                 employee.getPfNumber(),
