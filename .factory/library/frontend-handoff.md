@@ -2001,257 +2001,319 @@ Return response:
     - same-state supplier/company -> CGST + SGST
     - cross-state -> IGST
 
-#### Payroll Run Redesign Addendum (Indian payroll components + posting)
-
-This addendum captures the redesigned `/api/v1/payroll/**` run lifecycle and contracts so UI can implement payroll calculation, approval, posting, payment, and payslip details.
-
-**Endpoint map additions/clarifications**
-
-| Method | Path | Auth | Request | Response `data` |
-|---|---|---|---|---|
-| GET | `/api/v1/payroll/runs` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | None | `List<PayrollRunDto>` |
-| GET | `/api/v1/payroll/runs/weekly` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | None | `List<PayrollRunDto>` |
-| GET | `/api/v1/payroll/runs/monthly` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | None | `List<PayrollRunDto>` |
-| GET | `/api/v1/payroll/runs/{id}` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | Path `id` | `PayrollRunDto` |
-| GET | `/api/v1/payroll/runs/{id}/lines` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | Path `id` | `List<PayrollRunLineDto>` |
-| POST | `/api/v1/payroll/runs` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | `CreatePayrollRunRequest` | `PayrollRunDto` |
-| POST | `/api/v1/payroll/runs/weekly` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | Query `weekEndingDate` (`yyyy-MM-dd`) | `PayrollRunDto` |
-| POST | `/api/v1/payroll/runs/monthly` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | Query `year`, `month` | `PayrollRunDto` |
-| POST | `/api/v1/payroll/runs/{id}/calculate` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | None | `PayrollRunDto` |
-| POST | `/api/v1/payroll/runs/{id}/approve` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | None | `PayrollRunDto` |
-| POST | `/api/v1/payroll/runs/{id}/post` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | None | `PayrollRunDto` |
-| POST | `/api/v1/payroll/runs/{id}/mark-paid` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | `{ "paymentReference": "..." }` (optional override) | `PayrollRunDto` |
-| GET | `/api/v1/payroll/summary/weekly` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | Query `weekEndingDate` | `WeeklyPaySummaryDto` |
-| GET | `/api/v1/payroll/summary/monthly` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | Query `year`, `month` | `MonthlyPaySummaryDto` |
-| GET | `/api/v1/payroll/summary/current-week` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | None | `WeeklyPaySummaryDto` |
-| GET | `/api/v1/payroll/summary/current-month` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | None | `MonthlyPaySummaryDto` |
-
-**Payroll run lifecycle state machine**
-
-- `DRAFT` -> `CALCULATED` via `POST /api/v1/payroll/runs/{id}/calculate`
-- `CALCULATED` -> `APPROVED` via `POST /api/v1/payroll/runs/{id}/approve`
-- `APPROVED` -> `POSTED` via `POST /api/v1/payroll/runs/{id}/post`
-- `POSTED` -> `PAID` via `POST /api/v1/payroll/runs/{id}/mark-paid`
-- `POSTED` -> `POSTED` idempotent replay allowed for post call when same journal linkage is present
-- `PAID` -> `PAID` idempotent replay allowed for mark-paid (no double advance/loan deduction)
-
-**User flow (recommended UI sequence)**
-
-1. Create run (`/runs`, `/runs/weekly`, or `/runs/monthly`).
-2. Open run details and preview line-level breakdown (`/runs/{id}/lines`).
-3. Trigger calculate; refresh details.
-4. Trigger approve.
-5. Trigger post (creates accounting journal with liabilities).
-6. Record payroll payment using accounting payroll payment endpoint (module: accounting).
-7. Trigger mark-paid to set payroll run + line payment status, payment reference, and payment date.
-
-**Indian payroll line contract (`PayrollRunLineDto`)**
-
-- Earnings/components:
-  - `basePay`, `overtimePay`, `holidayPay`, `grossPay`
-  - `basicSalaryComponent`, `hraComponent`, `daComponent`, `specialAllowanceComponent`
-- Deductions:
-  - `advanceDeduction`, `loanDeduction`, `pfDeduction`, `esiDeduction`, `taxDeduction`, `professionalTaxDeduction`, `leaveWithoutPayDeduction`, `otherDeductions`, `totalDeductions`
-- Payment metadata:
-  - `paymentStatus`, `paymentReference`
-
-**Payroll run contract (`PayrollRunDto`) additions**
-
-- `paymentReference` (persisted from payment journal reference by default; optional explicit override from mark-paid request)
-- `paymentDate` (derived from payment journal entry date; falls back to company today)
-
-**Posting behavior UI expectations**
-
-- Posting produces balanced journal entries using:
-  - Dr `SALARY-EXP`/`WAGE-EXP` for gross
-  - Cr `SALARY-PAYABLE` for residual net payable
-  - Cr `PF-PAYABLE`, `ESI-PAYABLE`, `TDS-PAYABLE`, `PROFESSIONAL-TAX-PAYABLE` for statutory deductions
-  - Cr `EMP-ADV` for loan/advance recovery
-- If `otherDeductions > 0`, posting is rejected until deduction classification is explicit.
-
-**Error handling hints (payroll redesign specific)**
-
-- `BUS_001` (`BUSINESS_INVALID_STATE`)
-  - Invalid lifecycle transition (e.g., approve before calculate, post before approve, mark-paid before payment journal link)
-  - UI: disable buttons based on run `status`; show non-retryable state error toast.
-- `BUS_004` (`BUSINESS_CONSTRAINT_VIOLATION`)
-  - Total deductions exceed gross OR uncategorized other deductions present
-  - UI: show blocking modal with deduction breakdown and require correction before post.
-- `VAL_006` (`VALIDATION_INVALID_REFERENCE`)
-  - Missing required payroll GL account (e.g., `PF-PAYABLE`)
-  - UI: show provisioning guidance; route accounting admins to chart-of-accounts setup.
-- `CON_001` (`CONCURRENCY_CONFLICT`)
-  - Re-post attempt linked to different journal entry
-  - UI: refresh run and show immutable posting conflict warning.
-
 ### HR & Payroll
 
-Comprehensive frontend handoff for HR employee + leave redesign (employee payroll profile, salary templates, leave policies/balances/workflow, and attendance bulk + summaries).
+Comprehensive frontend handoff for the HR + payroll redesign. This section covers employee CRUD/search + salary assignment, leave workflow, attendance workflow, payroll lifecycle (create -> calculate -> approve -> post -> pay), and payslip data contracts.
 
 All responses are wrapped in `ApiResponse<T>` with payload in `data`.
 
 #### Endpoint Map
 
-| Method | Path | Auth | Request | Response `data` |
-|---|---|---|---|---|
-| GET | `/api/v1/hr/employees` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | None | `List<EmployeeDto>` |
-| POST | `/api/v1/hr/employees` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | `EmployeeRequest` | `EmployeeDto` |
-| PUT | `/api/v1/hr/employees/{id}` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | `EmployeeRequest` | `EmployeeDto` |
-| DELETE | `/api/v1/hr/employees/{id}` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | None | empty body (`204`) |
-| GET | `/api/v1/hr/salary-structures` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | None | `List<SalaryStructureTemplateDto>` |
-| POST | `/api/v1/hr/salary-structures` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | `SalaryStructureTemplateRequest` | `SalaryStructureTemplateDto` |
-| PUT | `/api/v1/hr/salary-structures/{id}` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | `SalaryStructureTemplateRequest` | `SalaryStructureTemplateDto` |
-| GET | `/api/v1/hr/leave-types` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | None | `List<LeaveTypePolicyDto>` |
-| GET | `/api/v1/hr/employees/{employeeId}/leave-balances` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | Query: `year?` | `List<LeaveBalanceDto>` |
-| GET | `/api/v1/hr/leave-requests` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | None | `List<LeaveRequestDto>` |
-| POST | `/api/v1/hr/leave-requests` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | `LeaveRequestRequest` | `LeaveRequestDto` |
-| PATCH | `/api/v1/hr/leave-requests/{id}/status` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | `LeaveStatusUpdateRequest` | `LeaveRequestDto` |
-| GET | `/api/v1/hr/attendance/date/{date}` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | Path `date` (`yyyy-MM-dd`) | `List<AttendanceDto>` |
-| GET | `/api/v1/hr/attendance/today` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | None | `List<AttendanceDto>` |
-| GET | `/api/v1/hr/attendance/summary` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | None | `AttendanceSummaryDto` |
-| GET | `/api/v1/hr/attendance/summary/monthly` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | Query: `year`, `month` | `List<MonthlyAttendanceSummaryDto>` |
-| GET | `/api/v1/hr/attendance/employee/{employeeId}` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | Query: `startDate`, `endDate` | `List<AttendanceDto>` |
-| POST | `/api/v1/hr/attendance/mark/{employeeId}` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | `MarkAttendanceRequest` | `AttendanceDto` |
-| POST | `/api/v1/hr/attendance/bulk-mark` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | `BulkMarkAttendanceRequest` | `List<AttendanceDto>` |
-| POST | `/api/v1/hr/attendance/bulk-import` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | `AttendanceBulkImportRequest` | `List<AttendanceDto>` |
-| GET | `/api/v1/hr/payroll-runs` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | None | deprecated response (`410`-style via `GONE`) |
-| POST | `/api/v1/hr/payroll-runs` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | ignored | deprecated response (`GONE`) |
+##### Employee management, search, and salary structure assignment
 
-Legacy note: `/api/v1/hr/payroll-runs` is intentionally deprecated and returns canonical path details pointing to `/api/v1/payroll/runs`.
+| Method | Path | Auth | Request | Response `data` | Frontend notes |
+|---|---|---|---|---|---|
+| GET | `/api/v1/hr/employees` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | None | `List<EmployeeDto>` | Canonical employee list + search source. Backend currently returns full list; do client-side/server-proxy filtering by `firstName`, `lastName`, `email`, `department`, `designation`, `status`, `employeeType`. |
+| POST | `/api/v1/hr/employees` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | `EmployeeRequest` | `EmployeeDto` | Employee create. Can include payroll fields in same request. |
+| PUT | `/api/v1/hr/employees/{id}` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | `EmployeeRequest` | `EmployeeDto` | Employee update, including salary template assignment (`salaryStructureTemplateId`) and tax regime (`taxRegime`). |
+| DELETE | `/api/v1/hr/employees/{id}` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | None | empty body (`204`) | Hard delete in current API. Confirm before delete. |
+| GET | `/api/v1/hr/salary-structures` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | None | `List<SalaryStructureTemplateDto>` | Salary structure picker source. |
+| POST | `/api/v1/hr/salary-structures` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | `SalaryStructureTemplateRequest` | `SalaryStructureTemplateDto` | Create reusable Indian salary template. |
+| PUT | `/api/v1/hr/salary-structures/{id}` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | `SalaryStructureTemplateRequest` | `SalaryStructureTemplateDto` | Edit template components/rates/active flag. |
 
-#### User Flows
+##### Leave endpoints
 
-1. **Create employee with Indian payroll profile**
-   1. Optionally load salary templates: `GET /api/v1/hr/salary-structures`
-   2. Submit employee form: `POST /api/v1/hr/employees`
-   3. Refresh employee grid: `GET /api/v1/hr/employees`
+| Method | Path | Auth | Request | Response `data` | Frontend notes |
+|---|---|---|---|---|---|
+| GET | `/api/v1/hr/leave-types` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | None | `List<LeaveTypePolicyDto>` | Drives leave-type dropdown + entitlement tooltips. |
+| GET | `/api/v1/hr/employees/{employeeId}/leave-balances` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | Query: `year?` | `List<LeaveBalanceDto>` | Balance panel; default year is current year when omitted. |
+| GET | `/api/v1/hr/leave-requests` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | None | `List<LeaveRequestDto>` | Request inbox/history. |
+| POST | `/api/v1/hr/leave-requests` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | `LeaveRequestRequest` | `LeaveRequestDto` | Leave request create. |
+| PATCH | `/api/v1/hr/leave-requests/{id}/status` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | `LeaveStatusUpdateRequest` | `LeaveRequestDto` | Approve/reject/cancel transition endpoint. |
 
-2. **Edit employee profile/compensation**
-   1. Load list/grid: `GET /api/v1/hr/employees`
-   2. Submit update: `PUT /api/v1/hr/employees/{id}`
-   3. Refresh row from response payload
+##### Attendance endpoints
 
-3. **Salary template lifecycle**
-   1. List: `GET /api/v1/hr/salary-structures`
-   2. Create: `POST /api/v1/hr/salary-structures`
-   3. Update active/components: `PUT /api/v1/hr/salary-structures/{id}`
+| Method | Path | Auth | Request | Response `data` | Frontend notes |
+|---|---|---|---|---|---|
+| GET | `/api/v1/hr/attendance/date/{date}` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | Path `date` (`yyyy-MM-dd`) | `List<AttendanceDto>` | Daily register view. |
+| GET | `/api/v1/hr/attendance/today` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | None | `List<AttendanceDto>` | Quick current-day register (company timezone aware). |
+| GET | `/api/v1/hr/attendance/summary` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | None | `AttendanceSummaryDto` | Dashboard card counters for today. |
+| GET | `/api/v1/hr/attendance/summary/monthly` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | Query: `year`, `month` | `List<MonthlyAttendanceSummaryDto>` | Monthly employee-level aggregates. |
+| GET | `/api/v1/hr/attendance/employee/{employeeId}` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | Query: `startDate`, `endDate` | `List<AttendanceDto>` | Employee-specific timeline. |
+| POST | `/api/v1/hr/attendance/mark/{employeeId}` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | `MarkAttendanceRequest` | `AttendanceDto` | Single-employee marking/upsert for date. |
+| POST | `/api/v1/hr/attendance/bulk-mark` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | `BulkMarkAttendanceRequest` | `List<AttendanceDto>` | Team/day bulk mark. |
+| POST | `/api/v1/hr/attendance/bulk-import` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | `AttendanceBulkImportRequest` | `List<AttendanceDto>` | Multi-record import (batch of bulk requests). |
 
-4. **Leave request and approval workflow**
-   1. Load allowed leave types/policies: `GET /api/v1/hr/leave-types`
-   2. Load current balances for employee/year: `GET /api/v1/hr/employees/{id}/leave-balances?year=YYYY`
-   3. Create request: `POST /api/v1/hr/leave-requests`
-   4. Approve/reject/cancel: `PATCH /api/v1/hr/leave-requests/{id}/status`
-   5. Refresh requests + balances
+##### Payroll endpoints (run lifecycle, payment, payslip)
 
-5. **Attendance operations**
-   1. Single mark: `POST /api/v1/hr/attendance/mark/{employeeId}`
-   2. Team/day bulk mark: `POST /api/v1/hr/attendance/bulk-mark`
-   3. CSV-like import batches: `POST /api/v1/hr/attendance/bulk-import`
-   4. Load daily summary: `GET /api/v1/hr/attendance/summary`
-   5. Load monthly employee-level aggregates: `GET /api/v1/hr/attendance/summary/monthly?year=YYYY&month=M`
+| Method | Path | Auth | Request | Response `data` | Frontend notes |
+|---|---|---|---|---|---|
+| GET | `/api/v1/payroll/runs` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | None | `List<PayrollRunDto>` | All runs, latest first. |
+| GET | `/api/v1/payroll/runs/weekly` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | None | `List<PayrollRunDto>` | Weekly labour runs only. |
+| GET | `/api/v1/payroll/runs/monthly` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | None | `List<PayrollRunDto>` | Monthly staff runs only. |
+| GET | `/api/v1/payroll/runs/{id}` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | Path `id` | `PayrollRunDto` | Run header (status, totals, posting/payment refs). |
+| GET | `/api/v1/payroll/runs/{id}/lines` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | Path `id` | `List<PayrollRunLineDto>` | Line-level breakup used for review and payslip rendering. |
+| POST | `/api/v1/payroll/runs` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | `CreatePayrollRunRequest` | `PayrollRunDto` | Generic run create (`runType`, `periodStart`, `periodEnd`). |
+| POST | `/api/v1/payroll/runs/weekly` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | Query `weekEndingDate` (`yyyy-MM-dd`) | `PayrollRunDto` | Convenience weekly create. |
+| POST | `/api/v1/payroll/runs/monthly` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | Query `year`, `month` | `PayrollRunDto` | Convenience monthly create. |
+| POST | `/api/v1/payroll/runs/{id}/calculate` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | None | `PayrollRunDto` | Moves `DRAFT -> CALCULATED`. |
+| POST | `/api/v1/payroll/runs/{id}/approve` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | None | `PayrollRunDto` | Moves `CALCULATED -> APPROVED`. |
+| POST | `/api/v1/payroll/runs/{id}/post` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | None | `PayrollRunDto` | Posts accounting journal and moves `APPROVED -> POSTED`. |
+| POST | `/api/v1/accounting/payroll/payments` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | `PayrollPaymentRequest` | `JournalEntryDto` | Single payroll payment journal (liability clearing). |
+| POST | `/api/v1/accounting/payroll/payments/batch` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | `PayrollBatchPaymentRequest` | `PayrollBatchPaymentResponse` | Batch payment with withholding/contribution breakdown. |
+| POST | `/api/v1/payroll/runs/{id}/mark-paid` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | `{ "paymentReference": "..." }` (optional override) | `PayrollRunDto` | Requires payment journal link; marks lines + run paid. |
+| GET | `/api/v1/payroll/summary/weekly` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | Query `weekEndingDate` | `WeeklyPaySummaryDto` | Weekly payout preview. |
+| GET | `/api/v1/payroll/summary/monthly` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | Query `year`, `month` | `MonthlyPaySummaryDto` | Monthly payout preview. |
+| GET | `/api/v1/payroll/summary/current-week` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | None | `WeeklyPaySummaryDto` | Current week shortcut. |
+| GET | `/api/v1/payroll/summary/current-month` | `ROLE_ADMIN` or `ROLE_ACCOUNTING` | None | `MonthlyPaySummaryDto` | Current month shortcut. |
+
+**Payslip note:** There is no dedicated `/payslips` endpoint yet. Build payslip UI from `GET /api/v1/payroll/runs/{id}` (header) + `GET /api/v1/payroll/runs/{id}/lines` (employee line), then filter by `employeeId`.
+
+Legacy aliases:
+- `GET /api/v1/hr/payroll-runs` and `POST /api/v1/hr/payroll-runs` return `410/GONE` payload with canonical path `/api/v1/payroll/runs`.
+
+#### User Flows (API call sequences)
+
+1. **Employee onboarding (create -> assign salary structure -> set tax regime)**
+   1. `GET /api/v1/hr/salary-structures` (optional, for template picker).
+   2. `POST /api/v1/hr/employees` with minimum identity + employment fields.
+   3. `PUT /api/v1/hr/employees/{id}` with `salaryStructureTemplateId` (assignment step).
+   4. `PUT /api/v1/hr/employees/{id}` with `taxRegime` (`OLD` or `NEW`) and statutory/bank details.
+   5. `GET /api/v1/hr/employees` and run UI search filter to confirm onboarding record.
+
+2. **Monthly payroll flow (create run -> calculate -> review -> approve -> post -> pay)**
+   1. `POST /api/v1/payroll/runs/monthly?year=YYYY&month=MM`.
+   2. `POST /api/v1/payroll/runs/{id}/calculate`.
+   3. Review run: `GET /api/v1/payroll/runs/{id}` + `GET /api/v1/payroll/runs/{id}/lines`.
+   4. `POST /api/v1/payroll/runs/{id}/approve`.
+   5. `POST /api/v1/payroll/runs/{id}/post` (creates accounting posting journal).
+   6. Pay liabilities:
+      - Single: `POST /api/v1/accounting/payroll/payments`, or
+      - Batch: `POST /api/v1/accounting/payroll/payments/batch`.
+   7. `POST /api/v1/payroll/runs/{id}/mark-paid`.
+   8. Payslip render/export: `GET /api/v1/payroll/runs/{id}` + `GET /api/v1/payroll/runs/{id}/lines` and filter target employee.
+
+3. **Leave request and approval flow**
+   1. `GET /api/v1/hr/leave-types`.
+   2. `GET /api/v1/hr/employees/{employeeId}/leave-balances?year=YYYY`.
+   3. `POST /api/v1/hr/leave-requests`.
+   4. Approver inbox refresh: `GET /api/v1/hr/leave-requests`.
+   5. Approve/reject/cancel: `PATCH /api/v1/hr/leave-requests/{id}/status`.
+   6. Re-read balances: `GET /api/v1/hr/employees/{employeeId}/leave-balances?year=YYYY`.
 
 #### State Machines
 
-1. **Employee status (read-only in current APIs)**
-   - Current API supports create/update/delete profile data, while `status` is returned from backend and remains lifecycle-managed by backend defaults/policies.
+##### Payroll run lifecycle
 
-2. **Leave request status**
-   - `PENDING` -> `APPROVED` (`PATCH /leave-requests/{id}/status` with `status=APPROVED`)
-   - `PENDING` -> `REJECTED` (`status=REJECTED`)
-   - `PENDING` -> `CANCELLED` (`status=CANCELLED`)
-   - `APPROVED` -> `REJECTED`/`CANCELLED` (balance reverts)
-   - `APPROVED` -> `PENDING` is not allowed (`BUS_001`)
+| From | To | Endpoint | Guard |
+|---|---|---|---|
+| `DRAFT` | `CALCULATED` | `POST /api/v1/payroll/runs/{id}/calculate` | Run exists, valid period + employees. |
+| `CALCULATED` | `APPROVED` | `POST /api/v1/payroll/runs/{id}/approve` | Calculated lines must exist. |
+| `APPROVED` | `POSTED` | `POST /api/v1/payroll/runs/{id}/post` | Required payroll GL accounts available, posting journal can be created. |
+| `POSTED` | `PAID` | `POST /api/v1/payroll/runs/{id}/mark-paid` | Payment journal must already be linked (`paymentJournalEntryId`). |
+| `POSTED` | `POSTED` | `POST /api/v1/payroll/runs/{id}/post` | Idempotent replay allowed only when same journal linkage exists. |
+| `PAID` | `PAID` | `POST /api/v1/payroll/runs/{id}/mark-paid` | Idempotent replay allowed; no duplicate recovery deduction. |
 
-3. **Attendance record status per date**
-   - `PRESENT | HALF_DAY | ABSENT | LEAVE | HOLIDAY | WEEKEND`
-   - Re-marking same employee/date overwrites status/hours via mark or bulk-mark endpoints.
+##### Leave request lifecycle
 
-#### Error Codes / Frontend Handling
+| From | To | Endpoint | Rule |
+|---|---|---|---|
+| `PENDING` | `APPROVED` | `PATCH /api/v1/hr/leave-requests/{id}/status` | Balance check enforced before approval. |
+| `PENDING` | `REJECTED` | same | Decision metadata stored. |
+| `PENDING` | `CANCELLED` | same | Cancellation allowed. |
+| `APPROVED` | `REJECTED` / `CANCELLED` | same | Used balance is reverted. |
+| `APPROVED` | `PENDING` | same | Not allowed (`BUS_001`). |
 
-- `VAL_001` (`VALIDATION_INVALID_INPUT`)
-  - Examples: invalid enum text (`employeeType`, `paymentSchedule`, leave status, attendance status), missing leave type
-  - UI: show inline validation and keep form editable
-- `VAL_002` (`VALIDATION_MISSING_REQUIRED_FIELD`)
-  - Examples: missing body, missing import records, missing leave date range
-  - UI: block submit and focus missing controls
-- `VAL_003` (`VALIDATION_INVALID_FORMAT`)
-  - Example: PAN not matching `AAAAA9999A`
-  - UI: field-level format error
-- `VAL_004` (`VALIDATION_OUT_OF_RANGE`)
-  - Example: negative salary component/rate
-  - UI: range validation message
-- `VAL_005` (`VALIDATION_INVALID_DATE`)
-  - Example: leave end date before start date; joining before DOB
-  - UI: date-range error near date controls
-- `VAL_006` (`VALIDATION_INVALID_REFERENCE`)
-  - Example: unknown employee/template IDs in scoped company
-  - UI: refresh dropdown/list and prompt re-selection
-- `BUS_002` (`BUSINESS_DUPLICATE_ENTRY`)
-  - Example: duplicate salary template code
-  - UI: show duplicate warning and keep code editable
-- `BUS_001` (`BUSINESS_INVALID_STATE`)
-  - Example: invalid leave transition approved -> pending
-  - UI: show non-retryable transition error
-- `BUS_006` (`BUSINESS_LIMIT_EXCEEDED`)
-  - Example: insufficient leave balance on approval
-  - UI: show available vs requested balance details and prevent approval
-- `BUS_004` (`BUSINESS_CONSTRAINT_VIOLATION`)
-  - Example: legacy payroll run create through `/api/v1/hr/payroll-runs`
-  - UI: redirect user to `/api/v1/payroll/runs` flow
+#### DTO Contracts, Validation Rules, and Indian Payroll Field Semantics
 
-#### Data Contracts
+##### Employee + salary structure DTOs
 
 - **`EmployeeRequest`**
-  - Required: `firstName`, `lastName`, `email`
-  - Personal/HR: `phone?`, `role?`, `hiredDate?`, `dateOfBirth?`, `gender?`, `emergencyContactName?`, `emergencyContactPhone?`, `department?`, `designation?`, `dateOfJoining?`, `employmentType?`
-  - Payroll: `employeeType?` (`STAFF|LABOUR`), `paymentSchedule?` (`MONTHLY|WEEKLY`), `salaryStructureTemplateId?`, `monthlySalary?`, `dailyWage?`, `workingDaysPerMonth?`, `weeklyOffDays?`, `standardHoursPerDay?`, `overtimeRateMultiplier?`, `doubleOtRateMultiplier?`
-  - Statutory/bank: `pfNumber?`, `esiNumber?`, `panNumber?`, `taxRegime?` (`OLD|NEW`), `bankAccountNumber?`, `bankName?`, `ifscCode?`, `bankBranch?`
+  - Bean validation: `firstName` required, `lastName` required, `email` required + valid email.
+  - Payroll fields:
+    - `employeeType`: `STAFF|LABOUR`
+    - `paymentSchedule`: `MONTHLY|WEEKLY`
+    - `salaryStructureTemplateId`: assignment hook for reusable salary breakup
+    - `monthlySalary` (staff), `dailyWage` (labour), `workingDaysPerMonth`, `standardHoursPerDay`, OT multipliers
+    - statutory: `pfNumber`, `esiNumber`, `panNumber`, `taxRegime`
+    - bank: account/name/IFSC/branch (persisted encrypted server-side)
+  - Service-level validation:
+    - STAFF requires either positive `monthlySalary` or `salaryStructureTemplateId`.
+    - LABOUR requires positive `dailyWage`.
+    - `panNumber` must match `^[A-Z]{5}[0-9]{4}[A-Z]$`.
+    - `dateOfJoining` cannot be before `dateOfBirth`.
 
 - **`EmployeeDto`**
-  - Includes profile + payroll + template projection + statutory + bank fields + multipliers (`advanceBalance`, hours multipliers, etc.)
-  - New template-projected payroll fields for the employee profile pane:
-    - `esiEligibilityThreshold: decimal`
-    - `professionalTax: decimal`
+  - Returns personal + employment + payroll projection in one payload.
+  - Salary-template projection fields: `salaryStructureTemplateCode`, `basicPay`, `hra`, `da`, `specialAllowance`, `esiEligibilityThreshold`, `professionalTax`.
+  - Returned enums are upper-case string values (`employeeType`, `paymentSchedule`, `taxRegime`, etc.).
 
 - **`SalaryStructureTemplateRequest`**
-  - Required: `code`, `name`
-  - Optional: `description`, `basicPay`, `hra`, `da`, `specialAllowance`, `employeePfRate`, `employeeEsiRate`, `esiEligibilityThreshold`, `professionalTax`, `active`
+  - Bean validation: `code` required, `name` required, all numeric components `>= 0`.
+  - Service-level validation:
+    - `code` unique per company (`BUS_002` on duplicate).
+    - `basicPay + hra + da + specialAllowance > 0`.
 
 - **`SalaryStructureTemplateDto`**
-  - `id`, `publicId`, `code`, `name`, `description`, component amounts, `totalEarnings`, PF/ESI rates, `esiEligibilityThreshold`, `professionalTax`, `active`, `createdAt`
+  - Includes Indian payroll template fields: component values, `employeePfRate`, `employeeEsiRate`, `esiEligibilityThreshold`, `professionalTax`, `totalEarnings`, `active`.
+
+##### Leave DTOs
 
 - **`LeaveRequestRequest`**
-  - Required: `leaveType`, `startDate`, `endDate`
-  - Optional: `employeeId`, `reason`, `status`, `decisionReason`
+  - Bean validation: `leaveType`, `startDate`, `endDate` required.
+  - Service-level validation: `employeeId` required, no overlapping leave range, `endDate >= startDate`.
 
 - **`LeaveStatusUpdateRequest`**
-  - Required: `status`
-  - Optional: `decisionReason`
+  - Bean validation: `status` required; optional `decisionReason`.
 
 - **`LeaveRequestDto`**
-  - Includes employee projection, leave span, `totalDays`, `status`, `reason`, decision metadata (`decisionReason`, `approvedBy/At`, `rejectedBy/At`)
+  - Includes `totalDays`, `status`, `decisionReason`, approver/rejector metadata (`approvedBy/approvedAt`, `rejectedBy/rejectedAt`).
 
 - **`LeaveTypePolicyDto`**
-  - `id`, `publicId`, `leaveType`, `displayName`, `annualEntitlement`, `carryForwardLimit`, `active`
+  - Policy contract: `leaveType`, `annualEntitlement`, `carryForwardLimit`, `active`.
 
 - **`LeaveBalanceDto`**
-  - `employeeId`, `leaveType`, `year`, `openingBalance`, `accrued`, `used`, `remaining`, `carryForwardApplied`
+  - Year-wise ledger fields: `openingBalance`, `accrued`, `used`, `remaining`, `carryForwardApplied`.
+
+##### Attendance DTOs
+
+- **`MarkAttendanceRequest`**
+  - Bean validation: `status` required.
+  - Optional: `date` (defaults to company today), check-in/out, regular/OT hours, holiday/weekend flags, remarks.
+
+- **`BulkMarkAttendanceRequest`**
+  - Bean validation: `employeeIds` non-empty, `date` required, `status` required.
 
 - **`AttendanceBulkImportRequest`**
-  - `records: BulkMarkAttendanceRequest[]` (required, non-empty)
+  - Bean validation: `records` non-empty and each record validated.
 
-- **`MonthlyAttendanceSummaryDto`**
-  - `employeeId`, `employeeName`, `department`, `designation`, `presentDays`, `halfDays`, `absentDays`, `leaveDays`, `holidayDays`, `overtimeHours`, `doubleOvertimeHours`
+- **`AttendanceDto`**
+  - Returns per-day status, worked hours (`regularHours`, `overtimeHours`, `doubleOvertimeHours`), flags, and marker audit fields.
+
+- **`AttendanceSummaryDto` / `MonthlyAttendanceSummaryDto`**
+  - Daily counters and monthly per-employee aggregates used for payroll preview and HR dashboards.
+
+##### Payroll run + summary DTOs
+
+- **`CreatePayrollRunRequest`**
+  - Required logically by service: `runType`, `periodStart`, `periodEnd`.
+  - Validation: `periodEnd` cannot be before `periodStart`.
+
+- **`PayrollRunDto`**
+  - Header/lifecycle contract: `runNumber`, `runType`, `periodStart`, `periodEnd`, `status`, totals (`totalBasePay`, `totalOvertimePay`, `totalDeductions`, `totalNetPay`), posting/payment references (`journalEntryId`, `paymentReference`, `paymentDate`), audit (`createdBy/approvedBy/postedBy`, timestamps).
+
+- **`PayrollRunLineDto`**
+  - Earnings fields: `basePay`, `overtimePay`, `holidayPay`, `grossPay`, component breakup (`basicSalaryComponent`, `hraComponent`, `daComponent`, `specialAllowanceComponent`).
+  - Deduction fields: `loanDeduction`, `pfDeduction`, `esiDeduction`, `taxDeduction`, `professionalTaxDeduction`, `leaveWithoutPayDeduction`, `otherDeductions`, `totalDeductions`.
+  - Attendance + rate fields: `presentDays`, `halfDays`, `absentDays`, `leaveDays`, `holidayDays`, `regularHours`, `overtimeHours`, `doubleOtHours`, `dailyRate`, `hourlyRate`.
+  - Payment fields: `paymentStatus`, `paymentReference`.
+
+- **`WeeklyPaySummaryDto` / `EmployeeWeeklyPayDto`**
+  - Weekly labour payout snapshot (`weekStart/weekEnd`, totals, employee-level daily-rate math).
+
+- **`MonthlyPaySummaryDto` / `EmployeeMonthlyPayDto`**
+  - Monthly staff payout snapshot (`totalGrossPay`, `totalDeductions`, `totalNetPay`, employee-level gross/PF/net).
+
+##### Payroll payment DTOs (accounting module used by payroll flow)
+
+- **`PayrollPaymentRequest`** (`POST /api/v1/accounting/payroll/payments`)
+  - Bean validation: `payrollRunId`, `cashAccountId`, `expenseAccountId`, `amount` required; `amount >= 0.01`.
+  - Server invariant: `amount` must match salary-payable amount from posted payroll journal.
+
+- **`PayrollBatchPaymentRequest`** (`POST /api/v1/accounting/payroll/payments/batch`)
+  - Bean validation: `runDate`, `cashAccountId`, `expenseAccountId`, `lines` required; rates/amounts `>= 0`.
+  - `PayrollLine`: required `name`, `days`, `dailyWage`; optional per-line withholdings/advances/notes.
+
+- **`PayrollBatchPaymentResponse`**
+  - Aggregates gross, withholdings, net pay, employer contribution, and created journal IDs.
+
+#### Indian Payroll Calculation Formulas (implemented backend rules)
+
+These formulas are what the backend computes today. UI previews should mirror these to avoid approval surprises.
+
+1. **Daily rate (staff)**
+   - `dailyRate = monthlySalary / workingDaysPerMonth`
+
+2. **Effective workdays**
+   - `effectiveDays = presentDays + (halfDays * 0.5)`
+
+3. **Hourly rate / overtime**
+   - `hourlyRate = dailyRate / standardHoursPerDay`
+   - `overtimePay = (hourlyRate * overtimeRateMultiplier * overtimeHours) + (hourlyRate * doubleOtRateMultiplier * doubleOtHours)`
+
+4. **Monthly template prorating (staff with salary template)**
+   - `leaveWithoutPayDays = absentDays + leaveDays + (halfDays * 0.5)`
+   - `payableRatio = max(0, 1 - (leaveWithoutPayDays / workingDaysPerMonth))`
+   - `basicSalaryComponent = template.basicPay * payableRatio`
+   - `hraComponent = template.hra * payableRatio`
+   - `daComponent = template.da * payableRatio`
+   - `specialAllowanceComponent = template.specialAllowance * payableRatio`
+   - `basePay = basic + hra + da + specialAllowance`
+
+5. **Gross pay**
+   - `grossPay = basePay + overtimePay + holidayPay`
+
+6. **Advance/loan recovery cap**
+   - `loanDeduction = min(advanceBalance, grossPay * 0.20)`
+
+7. **PF deduction (employee side)**
+   - `pfDeduction = basicSalaryComponent * (employeePfRate / 100)`
+   - Default `employeePfRate = 12%` when template rate is missing.
+
+8. **ESI deduction (employee side)**
+   - `esiDeduction = grossPay * (employeeEsiRate / 100)` only when `grossPay <= esiEligibilityThreshold`
+   - Defaults: `employeeEsiRate = 0.75%`, `esiEligibilityThreshold = 21000`.
+
+9. **TDS deduction (simplified projected tax model in current implementation)**
+   - `periodsPerYear = 12 (monthly) or 52 (weekly)`
+   - `projectedAnnualGross = grossPay * periodsPerYear`
+   - `annualExemption = 250000 (OLD regime) or 300000 (NEW regime)`
+   - `taxableAnnual = max(0, projectedAnnualGross - annualExemption)`
+   - `annualTax = taxableAnnual * 10%`
+   - `taxDeduction = annualTax / periodsPerYear`
+
+10. **Professional tax**
+   - Applied only for monthly runs: `professionalTaxDeduction = template.professionalTax`.
+
+11. **Total deductions and net pay**
+   - `totalDeductions = loan + pf + esi + tds + professionalTax + otherDeductions`
+   - `netPay = max(0, grossPay - totalDeductions)`
+
+12. **Posting equation (accounting)**
+   - `salaryPayable = grossPay - loan - pf - esi - tds - professionalTax`
+   - Posting journal pattern:
+     - Dr `SALARY-EXP` / `WAGE-EXP` (gross)
+     - Cr `SALARY-PAYABLE`
+     - Cr `PF-PAYABLE`, `ESI-PAYABLE`, `TDS-PAYABLE`, `PROFESSIONAL-TAX-PAYABLE`
+     - Cr `EMP-ADV` (if loan recovery exists)
+
+#### Error Codes and Frontend Handling
+
+| Code | Enum | Typical trigger | Frontend behavior |
+|---|---|---|---|
+| `VAL_001` | `VALIDATION_INVALID_INPUT` | Invalid enum text (`employeeType`, `paymentSchedule`, leave/attendance status), invalid compensation combinations | Show inline validation and keep form editable. |
+| `VAL_002` | `VALIDATION_MISSING_REQUIRED_FIELD` | Missing required payload fields/body/import records | Block submit and focus missing controls. |
+| `VAL_003` | `VALIDATION_INVALID_FORMAT` | PAN format mismatch (`AAAAA9999A`) | Show field-level format helper/error. |
+| `VAL_004` | `VALIDATION_OUT_OF_RANGE` | Negative salary component/rate | Range validation message near numeric control. |
+| `VAL_005` | `VALIDATION_INVALID_DATE` | Invalid date ranges (leave end < start, joining < DOB) | Show date-range error and prevent submit. |
+| `VAL_006` | `VALIDATION_INVALID_REFERENCE` | Unknown employee/template/account references | Refresh dropdowns/options and require re-selection. |
+| `BUS_001` | `BUSINESS_INVALID_STATE` | Invalid lifecycle transition (payroll or leave) | Disable forbidden actions by state; show non-retryable toast. |
+| `BUS_002` | `BUSINESS_DUPLICATE_ENTRY` | Duplicate salary template code | Keep form open; highlight duplicate field. |
+| `BUS_004` | `BUSINESS_CONSTRAINT_VIOLATION` | Deductions exceed gross, uncategorized deductions, legacy endpoint usage | Show blocking modal and remediation hint. |
+| `BUS_006` | `BUSINESS_LIMIT_EXCEEDED` | Insufficient leave balance on approval | Show available vs requested leave and block action. |
+| `SYS_005` | `SYSTEM_CONFIGURATION_ERROR` | Missing required payroll GL account (e.g., `SALARY-PAYABLE`) | Route accounting admin to CoA provisioning screen. |
+| `CONC_001` | `CONCURRENCY_CONFLICT` | Idempotency mismatch / already linked to different journal | Refresh run, show immutable conflict warning, avoid blind retry. |
 
 #### UI Hints
 
-- Provide enum dropdowns (do not free-type):
-  - `employeeType`, `paymentSchedule`, `gender`, `employmentType`, `taxRegime`, leave status, attendance status.
-- Leave screen should show balances side-by-side with request form; refresh balances after any status change.
-- For staff employees, allow either direct `monthlySalary` input or template selection; if template selected and salary omitted, backend auto-derives from template total.
-- Attendance import UI can stage multiple bulk records and submit once through `bulk-import`.
-- Monthly summary page should support `year/month` selectors and render overtime columns with decimal precision.
-- Hide legacy `/api/v1/hr/payroll-runs` in UI navigation; route payroll run actions to `/api/v1/payroll/runs`.
+- **Employee search UX:** Use `GET /api/v1/hr/employees` as the search source and filter client-side by name/email/department/designation/status. Persist search chips in URL for deep links.
+- **Salary assignment UX:** Keep salary template selector and tax-regime selector in the onboarding wizard; both write through `PUT /api/v1/hr/employees/{id}`.
+- **Enum controls:** Use dropdowns (no free text) for `employeeType`, `paymentSchedule`, `gender`, `employmentType`, `taxRegime`, leave status, and attendance status.
+- **Leave screen:** Always show live leave balances beside request/approval actions and refresh balances after status updates.
+- **Attendance UX:** `bulk-mark` for same-day team operations; `bulk-import` for staged multi-day/multi-team uploads.
+- **Payroll action gating:** Enable buttons strictly by state (`DRAFT`, `CALCULATED`, `APPROVED`, `POSTED`, `PAID`).
+- **Payslip generation:** Build payslip previews from run header + run lines; no dedicated payslip endpoint currently.
+- **Legacy endpoint handling:** Hide `/api/v1/hr/payroll-runs` from navigation; route all payroll run actions to `/api/v1/payroll/runs`.
 
 ### Reports
 _To be documented_
