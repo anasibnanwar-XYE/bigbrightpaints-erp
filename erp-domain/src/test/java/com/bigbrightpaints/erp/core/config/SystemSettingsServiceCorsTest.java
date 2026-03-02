@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mock.env.MockEnvironment;
 import org.springframework.web.cors.CorsConfiguration;
 
 import java.util.List;
@@ -19,6 +20,9 @@ class SystemSettingsServiceCorsTest {
     @Mock
     private SystemSettingsRepository settingsRepository;
 
+    private final MockEnvironment nonProdEnvironment = new MockEnvironment();
+    private final MockEnvironment prodEnvironment = new MockEnvironment().withProperty("spring.profiles.active", "prod");
+
     @BeforeEach
     void setup() {
         when(settingsRepository.findAll()).thenReturn(List.of());
@@ -27,7 +31,7 @@ class SystemSettingsServiceCorsTest {
     @Test
     void rejectsWildcardOriginWhenCredentialsEnabled() {
         assertThatThrownBy(() ->
-                new SystemSettingsService(new EmailProperties(), settingsRepository, "*", true, true, true))
+                new SystemSettingsService(new EmailProperties(), settingsRepository, nonProdEnvironment, "*", true, true, true))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("*");
     }
@@ -35,7 +39,7 @@ class SystemSettingsServiceCorsTest {
     @Test
     void rejectsPublicHttpOriginsWhenValidationDisabled() {
         assertThatThrownBy(() ->
-                new SystemSettingsService(new EmailProperties(), settingsRepository, "http://example.com", false, true, true))
+                new SystemSettingsService(new EmailProperties(), settingsRepository, nonProdEnvironment, "http://example.com", false, true, true))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("https");
     }
@@ -45,6 +49,7 @@ class SystemSettingsServiceCorsTest {
         SystemSettingsService service = new SystemSettingsService(
                 new EmailProperties(),
                 settingsRepository,
+                nonProdEnvironment,
                 "HTTP://LOCALHOST:3002/",
                 true,
                 true,
@@ -61,6 +66,7 @@ class SystemSettingsServiceCorsTest {
         SystemSettingsService service = new SystemSettingsService(
                 new EmailProperties(),
                 settingsRepository,
+                nonProdEnvironment,
                 "http://192.168.29.187:3002/",
                 false,
                 true,
@@ -78,6 +84,7 @@ class SystemSettingsServiceCorsTest {
                 new SystemSettingsService(
                         new EmailProperties(),
                         settingsRepository,
+                        nonProdEnvironment,
                         "http://192.168.29.187:3002",
                         true,
                         true,
@@ -85,5 +92,21 @@ class SystemSettingsServiceCorsTest {
                 ))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("localhost");
+    }
+
+    @Test
+    void prodRejectsLocalHttpOriginsEvenWhenValidationDisabled() {
+        assertThatThrownBy(() ->
+                new SystemSettingsService(
+                        new EmailProperties(),
+                        settingsRepository,
+                        prodEnvironment,
+                        "http://localhost:3002",
+                        false,
+                        true,
+                        true
+                ))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("prod profile");
     }
 }

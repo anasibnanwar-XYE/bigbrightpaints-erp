@@ -35,6 +35,7 @@ import com.bigbrightpaints.erp.modules.accounting.dto.SettlementPaymentRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.SupplierPaymentRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.SupplierSettlementRequest;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
+import org.springframework.mock.env.MockEnvironment;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunLineRepository;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunRepository;
@@ -156,6 +157,7 @@ class AccountingServiceTest {
 
     private AccountingService accountingService;
     private Company company;
+    private MockEnvironment environment;
 
     @BeforeEach
     void setup() {
@@ -188,6 +190,8 @@ class AccountingServiceTest {
                 auditService,
                 accountingEventStore
         );
+        environment = new MockEnvironment();
+        ReflectionTestUtils.setField(accountingService, "environment", environment);
         company = new Company();
         company.setBaseCurrency("INR");
         lenient().when(companyContextService.requireCurrentCompany()).thenReturn(company);
@@ -316,6 +320,28 @@ class AccountingServiceTest {
 
         JournalEntryRequest request = new JournalEntryRequest(
                 "OLD-REF",
+                today.minusDays(31),
+                "Old period posting",
+                null,
+                null,
+                Boolean.FALSE,
+                List.of(new JournalEntryRequest.JournalLineRequest(1L, "Old", new BigDecimal("10.00"), BigDecimal.ZERO))
+        );
+
+        assertThatThrownBy(() -> accountingService.createJournalEntry(request))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Entry date cannot be more than 30 days old");
+    }
+
+    @Test
+    void createJournalEntry_prodIgnoresBenchmarkDateValidationBypass() {
+        LocalDate today = LocalDate.of(2024, 1, 31);
+        when(companyClock.today(company)).thenReturn(today);
+        environment.setActiveProfiles("prod");
+        ReflectionTestUtils.setField(accountingService, "skipDateValidation", true);
+
+        JournalEntryRequest request = new JournalEntryRequest(
+                "OLD-PROD-REF",
                 today.minusDays(31),
                 "Old period posting",
                 null,

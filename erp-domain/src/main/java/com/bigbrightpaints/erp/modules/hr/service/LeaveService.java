@@ -2,6 +2,7 @@ package com.bigbrightpaints.erp.modules.hr.service;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
+import com.bigbrightpaints.erp.core.security.SecurityActorResolver;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.core.validation.ValidationUtils;
@@ -380,8 +381,7 @@ public class LeaveService {
     }
 
     private String currentUsername() {
-        var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
-        return auth != null ? auth.getName() : "SYSTEM";
+        return SecurityActorResolver.resolveActorWithSystemProcessFallback();
     }
 
     private enum LeaveStatus {

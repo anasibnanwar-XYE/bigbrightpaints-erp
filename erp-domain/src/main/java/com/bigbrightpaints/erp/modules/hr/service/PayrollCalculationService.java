@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.hr.service;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
+import com.bigbrightpaints.erp.core.security.SecurityActorResolver;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
@@ -28,7 +29,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 @Service
 public class PayrollCalculationService {
@@ -456,7 +456,6 @@ public class PayrollCalculationService {
         return nonNull(value).setScale(2, RoundingMode.HALF_UP);
     }
     private String getCurrentUser() {
-        var auth = SecurityContextHolder.getContext().getAuthentication();
-        return auth != null ? auth.getName() : "SYSTEM";
+        return SecurityActorResolver.resolveActorWithSystemProcessFallback();
     }
 }

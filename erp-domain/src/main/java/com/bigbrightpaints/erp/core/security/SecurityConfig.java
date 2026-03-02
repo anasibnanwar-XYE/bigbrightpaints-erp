@@ -1,43 +1,60 @@
 package com.bigbrightpaints.erp.core.security;
 
 import com.bigbrightpaints.erp.modules.auth.service.UserAccountDetailsService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.access.expression.method.DefaultMethodSecurityExpressionHandler;
 import org.springframework.security.access.expression.method.MethodSecurityExpressionHandler;
 import org.springframework.security.access.hierarchicalroles.RoleHierarchy;
 import org.springframework.security.access.hierarchicalroles.RoleHierarchyImpl;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.security.config.Customizer;
-import org.springframework.beans.factory.annotation.Value;
 
 @Configuration
 @EnableMethodSecurity
 public class SecurityConfig {
 
+    private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
+
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final CompanyContextFilter companyContextFilter;
     private final UserAccountDetailsService userDetailsService;
+    private final Environment environment;
     private final boolean swaggerPublic;
 
     public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter,
                           CompanyContextFilter companyContextFilter,
                           UserAccountDetailsService userDetailsService,
+                          @Autowired(required = false) Environment environment,
                           @Value("${erp.security.swagger-public:false}") boolean swaggerPublic) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.companyContextFilter = companyContextFilter;
         this.userDetailsService = userDetailsService;
+        this.environment = environment;
         this.swaggerPublic = swaggerPublic;
+    }
+
+    SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter,
+                   CompanyContextFilter companyContextFilter,
+                   UserAccountDetailsService userDetailsService,
+                   boolean swaggerPublic) {
+        this(jwtAuthenticationFilter, companyContextFilter, userDetailsService, null, swaggerPublic);
     }
 
     /**
@@ -66,7 +83,7 @@ public class SecurityConfig {
                                 "/api/v1/auth/password/forgot/superadmin",
                                 "/api/v1/auth/password/reset"
                         ).permitAll();
-                if (swaggerPublic) {
+                if (isSwaggerAllowed()) {
                     registry.requestMatchers(
                             "/swagger-ui/**",
                             "/v3/api-docs/**",
@@ -85,6 +102,18 @@ public class SecurityConfig {
     @Bean
     public static PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
+    }
+
+    private boolean isSwaggerAllowed() {
+        if (!swaggerPublic) {
+            return false;
+        }
+        boolean productionProfileActive = environment != null && environment.acceptsProfiles(Profiles.of("prod"));
+        if (productionProfileActive) {
+            log.warn("Ignoring erp.security.swagger-public=true because prod profile is active; Swagger/OpenAPI endpoints remain secured");
+            return false;
+        }
+        return true;
     }
 
     @Bean

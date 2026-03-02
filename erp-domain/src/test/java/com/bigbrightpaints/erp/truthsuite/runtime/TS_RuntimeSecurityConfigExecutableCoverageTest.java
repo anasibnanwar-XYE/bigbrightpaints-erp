@@ -26,6 +26,7 @@ class TS_RuntimeSecurityConfigExecutableCoverageTest {
                 mock(JwtAuthenticationFilter.class),
                 mock(CompanyContextFilter.class),
                 mock(UserAccountDetailsService.class),
+                null,
                 false);
 
         RoleHierarchy roleHierarchy = securityConfig.roleHierarchy();

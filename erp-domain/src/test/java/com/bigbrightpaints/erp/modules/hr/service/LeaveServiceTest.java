@@ -26,6 +26,7 @@ import com.bigbrightpaints.erp.modules.hr.dto.LeaveStatusUpdateRequest;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Optional;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -33,6 +34,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
@@ -58,6 +60,7 @@ class LeaveServiceTest {
 
     @BeforeEach
     void setUp() {
+        SecurityContextHolder.clearContext();
         leaveService = new LeaveService(
                 companyContextService,
                 employeeRepository,
@@ -206,6 +209,11 @@ class LeaveServiceTest {
         verify(leaveBalanceRepository).save(any(LeaveBalance.class));
         assertThat(balance.getUsed()).isEqualByComparingTo("2.00");
         assertThat(balance.getRemaining()).isEqualByComparingTo("10.00");
+    }
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
     }
 
     @Test

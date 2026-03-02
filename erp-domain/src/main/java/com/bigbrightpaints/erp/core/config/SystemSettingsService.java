@@ -1,6 +1,8 @@
 package com.bigbrightpaints.erp.core.config;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.stereotype.Service;
 import org.springframework.web.cors.CorsConfiguration;
 
@@ -27,6 +29,7 @@ public class SystemSettingsService {
 
     private final EmailProperties emailProperties;
     private final SystemSettingsRepository settingsRepository;
+    private final Environment environment;
     private final CopyOnWriteArrayList<String> allowedOrigins = new CopyOnWriteArrayList<>();
     private final boolean environmentValidationEnabled;
     private volatile boolean autoApprovalEnabled;
@@ -44,12 +47,14 @@ public class SystemSettingsService {
 
     public SystemSettingsService(EmailProperties emailProperties,
                                  SystemSettingsRepository settingsRepository,
+                                 Environment environment,
                                  @Value("${erp.cors.allowed-origins:http://localhost:3002}") String corsOrigins,
                                  @Value("${erp.environment.validation.enabled:false}") boolean environmentValidationEnabled,
                                  @Value("${erp.auto-approval.enabled:true}") boolean autoApprovalEnabled,
                                  @Value("${erp.period-lock.enforced:true}") boolean periodLockEnforced) {
         this.emailProperties = emailProperties;
         this.settingsRepository = settingsRepository;
+        this.environment = environment;
         this.environmentValidationEnabled = environmentValidationEnabled;
         // Load persisted values (if any), else fall back to config defaults
         Map<String, String> persisted = settingsRepository.findAll().stream()
@@ -177,6 +182,12 @@ public class SystemSettingsService {
         if (origins == null || origins.isEmpty()) {
             return List.of();
         }
+        if (isProdProfileActive()) {
+            if (origins.stream().anyMatch(this::isLocalOrPrivateHttpOrigin)) {
+                throw new IllegalArgumentException(
+                        "Invalid CORS origins for prod profile (only explicit https origins are allowed): " + origins);
+            }
+        }
         List<String> invalidOrigins = new ArrayList<>();
         Set<String> normalizedOrigins = new LinkedHashSet<>();
         for (String rawOrigin : origins) {
@@ -263,5 +274,28 @@ public class SystemSettingsService {
 
     private boolean parseBool(String value) {
         return value != null && Boolean.parseBoolean(value.trim());
+    }
+
+    private boolean isProdProfileActive() {
+        return environment != null && environment.acceptsProfiles(Profiles.of("prod"));
+    }
+
+    private boolean isLocalOrPrivateHttpOrigin(String origin) {
+        if (origin == null || origin.isBlank()) {
+            return false;
+        }
+        URI uri;
+        try {
+            uri = URI.create(origin.trim());
+        } catch (IllegalArgumentException ex) {
+            return false;
+        }
+        String scheme = uri.getScheme();
+        String host = uri.getHost();
+        if (scheme == null || host == null || !"http".equalsIgnoreCase(scheme)) {
+            return false;
+        }
+        String normalizedHost = host.toLowerCase(Locale.ROOT);
+        return LOOPBACK_HOSTS.contains(normalizedHost) || isPrivateNetworkIpv4Literal(normalizedHost);
     }
 }

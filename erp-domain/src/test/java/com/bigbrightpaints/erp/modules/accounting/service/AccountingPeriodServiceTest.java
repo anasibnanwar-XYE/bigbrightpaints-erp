@@ -37,6 +37,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -70,9 +72,15 @@ class AccountingPeriodServiceTest {
 
     private AccountingPeriodService service;
 
+    private static final String SYSTEM_PROCESS_ACTOR = "SYSTEM_PROCESS";
+
     @BeforeEach
     void setUp() {
         SecurityContextHolder.clearContext();
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+                SYSTEM_PROCESS_ACTOR,
+                "N/A",
+                List.of(new SimpleGrantedAuthority("ROLE_SYSTEM"))));
         service = new AccountingPeriodService(
                 accountingPeriodRepository,
                 companyContextService,
@@ -140,7 +148,7 @@ class AccountingPeriodServiceTest {
         assertThat(service.lockPeriod(13L, new AccountingPeriodLockRequest("  lock for audit  ")).status())
                 .isEqualTo("LOCKED");
         assertThat(period.getLockReason()).isEqualTo("lock for audit");
-        assertThat(period.getLockedBy()).isEqualTo("system");
+        assertThat(period.getLockedBy()).isEqualTo(SYSTEM_PROCESS_ACTOR);
     }
 
     @Test
@@ -238,7 +246,7 @@ class AccountingPeriodServiceTest {
         assertThat(period.getLockReason()).isEqualTo("month close");
         assertThat(period.getClosingJournalEntryId()).isNull();
         verify(periodCloseHook).onPeriodCloseLocked(company, period);
-        verify(snapshotService).captureSnapshot(company, period, "system");
+        verify(snapshotService).captureSnapshot(company, period, SYSTEM_PROCESS_ACTOR);
         verify(journalEntryRepository, never()).findByCompanyAndReferenceNumber(any(), anyString());
     }
 
@@ -262,7 +270,7 @@ class AccountingPeriodServiceTest {
         assertThat(service.closePeriod(32L, new AccountingPeriodCloseRequest(true, "close for month")).status())
                 .isEqualTo("CLOSED");
         assertThat(period.getClosingJournalEntryId()).isEqualTo(444L);
-        verify(snapshotService).captureSnapshot(company, period, "system");
+        verify(snapshotService).captureSnapshot(company, period, SYSTEM_PROCESS_ACTOR);
     }
 
     @Test
@@ -421,7 +429,7 @@ class AccountingPeriodServiceTest {
         assertThat(service.confirmBankReconciliation(40L, null, "  bank done  ").bankReconciled())
                 .isTrue();
         assertThat(period.getChecklistNotes()).isEqualTo("bank done");
-        assertThat(period.getBankReconciledBy()).isEqualTo("system");
+        assertThat(period.getBankReconciledBy()).isEqualTo(SYSTEM_PROCESS_ACTOR);
     }
 
     @Test
@@ -435,7 +443,7 @@ class AccountingPeriodServiceTest {
         assertThat(service.confirmInventoryCount(41L, null, "  counted  ").inventoryCounted())
                 .isTrue();
         assertThat(period.getChecklistNotes()).isEqualTo("counted");
-        assertThat(period.getInventoryCountedBy()).isEqualTo("system");
+        assertThat(period.getInventoryCountedBy()).isEqualTo(SYSTEM_PROCESS_ACTOR);
     }
 
     @Test

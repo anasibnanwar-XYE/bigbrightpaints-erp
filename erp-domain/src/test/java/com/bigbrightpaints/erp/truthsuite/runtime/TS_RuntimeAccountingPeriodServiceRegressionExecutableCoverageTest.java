@@ -109,7 +109,7 @@ class TS_RuntimeAccountingPeriodServiceRegressionExecutableCoverageTest {
         assertThat(period.getReopenReason()).isEqualTo("reopen month");
 
         verify(periodCloseHook).onPeriodCloseLocked(company, period);
-        verify(snapshotService).captureSnapshot(company, period, "system");
+        verify(snapshotService).captureSnapshot(company, period, "UNKNOWN_AUTH_ACTOR");
         verify(snapshotService).deleteSnapshotForPeriod(company, period);
     }
 

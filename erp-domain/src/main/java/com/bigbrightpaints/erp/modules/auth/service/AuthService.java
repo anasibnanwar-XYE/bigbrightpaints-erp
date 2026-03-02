@@ -3,8 +3,10 @@ package com.bigbrightpaints.erp.modules.auth.service;
 import com.bigbrightpaints.erp.core.notification.EmailService;
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
+import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
 import com.bigbrightpaints.erp.core.security.JwtProperties;
 import com.bigbrightpaints.erp.core.security.JwtTokenService;
+import com.bigbrightpaints.erp.core.security.SecurityActorResolver;
 import com.bigbrightpaints.erp.core.security.TokenBlacklistService;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
@@ -263,17 +265,25 @@ public class AuthService {
             return;
         }
 
+        String tokenId = claims.getId();
+        if (tokenId == null || claims.getExpiration() == null) {
+            return;
+        }
+        Instant expiration = claims.getExpiration().toInstant();
+
         try {
-            if (claims.getId() == null || claims.getExpiration() == null) {
-                return;
-            }
             tokenBlacklistService.blacklistToken(
-                    claims.getId(),
-                    claims.getExpiration().toInstant(),
+                    tokenId,
+                    expiration,
                     userEmail,
                     "logout");
         } catch (Exception ex) {
-            log.warn("Failed to blacklist access token during logout", ex);
+            String actor = SecurityActorResolver.resolveActorWithSystemProcessFallback();
+            log.warn("Failed to blacklist access token during logout (actor={}, tokenHash={}, expiresAt={})",
+                    actor,
+                    IdempotencyUtils.sha256Hex(tokenId, 12),
+                    expiration,
+                    ex);
         }
     }
 

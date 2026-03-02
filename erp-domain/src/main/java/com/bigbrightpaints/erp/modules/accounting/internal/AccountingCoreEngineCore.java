@@ -3,6 +3,7 @@ package com.bigbrightpaints.erp.modules.accounting.service;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
+import com.bigbrightpaints.erp.core.security.SecurityActorResolver;
 import com.bigbrightpaints.erp.core.audit.IntegrationFailureMetadataSchema;
 import com.bigbrightpaints.erp.core.config.SystemSettingsService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
@@ -45,6 +46,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.retry.annotation.Backoff;
@@ -131,6 +134,8 @@ public abstract class AccountingCoreEngineCore {
     private final SystemSettingsService systemSettingsService;
     private final AuditService auditService;
     private final AccountingEventStore accountingEventStore;
+    @Autowired(required = false)
+    private Environment environment;
     private final IdempotencyReservationService idempotencyReservationService = new IdempotencyReservationService();
 
     @Autowired(required = false)
@@ -141,7 +146,7 @@ public abstract class AccountingCoreEngineCore {
      * This allows posting entries with any date regardless of past/future constraints.
      */
     @Value("${erp.benchmark.skip-date-validation:false}")
-    private boolean skipDateValidation;
+    protected boolean skipDateValidation;
 
     /**
      * When true, journal posting/reversal fails if event-trail persistence fails.
@@ -4123,8 +4128,8 @@ public abstract class AccountingCoreEngineCore {
         if (entryDate == null) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Entry date is required");
         }
-        // Skip date validation in benchmark mode
-        if (skipDateValidation) {
+        // Benchmark bypass must never apply when prod profile is active.
+        if (skipDateValidation && !isProductionProfileActive()) {
             return;
         }
         LocalDate today = currentDate(company);
@@ -4180,6 +4185,10 @@ public abstract class AccountingCoreEngineCore {
 
     private LocalDate currentDate(Company company) {
         return companyClock.today(company);
+    }
+
+    private boolean isProductionProfileActive() {
+        return environment != null && environment.acceptsProfiles(Profiles.of("prod"));
     }
 
     private void logAuditSuccessAfterCommit(AuditEvent event, Map<String, String> metadata) {
@@ -4348,11 +4357,7 @@ public abstract class AccountingCoreEngineCore {
     }
 
     private String resolveCurrentUsername() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null) {
-            return "system";
-        }
-        return authentication.getName();
+        return SecurityActorResolver.resolveActorWithSystemProcessFallback();
     }
 
     private void publishAccountCacheInvalidated(Long companyId) {
