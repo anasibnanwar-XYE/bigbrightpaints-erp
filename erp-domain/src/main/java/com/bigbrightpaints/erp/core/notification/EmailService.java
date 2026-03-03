@@ -123,6 +123,14 @@ public class EmailService {
         sendHtmlEmail(to, subject, "mail/password-reset-confirmed", context);
     }
 
+    public void sendTemplatedEmail(String to, String subject, String templateName, Context context) {
+        sendHtmlEmail(to, subject, templateName, context);
+    }
+
+    public void sendTemplatedEmailRequired(String to, String subject, String templateName, Context context) {
+        sendHtmlEmailRequired(to, subject, templateName, context);
+    }
+
     public void sendUserSuspendedEmail(String to, String displayName) {
         String subject = "Your BigBright ERP account has been suspended";
         Context context = new Context();

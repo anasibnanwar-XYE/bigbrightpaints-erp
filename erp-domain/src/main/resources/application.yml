@@ -157,6 +157,11 @@ erp:
     accounting:
       events:
         enabled: true
+  github:
+    enabled: ${ERP_GITHUB_ENABLED:false}
+    token: ${ERP_GITHUB_TOKEN:}
+    repo-owner: ${ERP_GITHUB_REPO_OWNER:}
+    repo-name: ${ERP_GITHUB_REPO_NAME:}
 
 logging:
   level:

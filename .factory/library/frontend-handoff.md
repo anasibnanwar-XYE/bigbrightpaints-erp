@@ -514,6 +514,101 @@ Disabled module requests return `403` with `BUS_010` (`MODULE_DISABLED`). Runtim
 - For “What’s New”, cache latest-highlighted response briefly and dismiss banner per user preference in frontend state.
 - Admin table should include soft-delete action and highlight toggle (via update payload).
 
+#### Support tickets + GitHub integration (VAL-ADMIN-006, VAL-ADMIN-007)
+
+##### Endpoint map
+
+| Method | Path | Auth | Request | Response `data` |
+|---|---|---|---|---|
+| `POST` | `/api/v1/support/tickets` | `isAuthenticated()` | `SupportTicketCreateRequest` | `SupportTicketResponse` |
+| `GET` | `/api/v1/support/tickets` | `isAuthenticated()` | none | `SupportTicketListResponse` |
+| `GET` | `/api/v1/support/tickets/{ticketId}` | `isAuthenticated()` | none | `SupportTicketResponse` |
+
+All endpoints return `ApiResponse<T>` envelopes.
+
+##### User flows
+
+1. **Create support ticket (any authenticated user)**
+   1. Submit `POST /api/v1/support/tickets` with category, subject, description.
+   2. Backend persists ticket locally as `OPEN` and returns ticket payload immediately.
+   3. Backend asynchronously attempts GitHub issue creation (`erp.github.*` driven).
+   4. If GitHub integration is disabled/misconfigured/down, local ticket remains visible and carries `githubLastError`.
+
+2. **List support tickets (role-scoped visibility)**
+   1. Call `GET /api/v1/support/tickets`.
+   2. Visibility rules:
+      - `ROLE_SUPER_ADMIN`: all tickets across tenants.
+      - `ROLE_ADMIN` or `ROLE_ACCOUNTING`: all tickets in active tenant.
+      - Other authenticated roles: only self-created tickets (`userId` match).
+
+3. **Get ticket details**
+   1. Call `GET /api/v1/support/tickets/{ticketId}`.
+   2. Same visibility scope rules apply as list endpoint.
+   3. Out-of-scope tickets return `BUS_003` (not found) to avoid cross-tenant/user leakage.
+
+4. **Background sync + resolution notification**
+   1. Scheduler runs every 5 minutes and polls GitHub state for open/in-progress tickets with linked issue numbers.
+   2. When GitHub issue state becomes `closed`, backend transitions local ticket to `RESOLVED`, stamps `resolvedAt`, and emails requester via `mail/ticket-resolved` (one-shot tracked by `resolvedNotificationSentAt`).
+   3. If issue reopens, local status transitions back to `IN_PROGRESS` and resolution markers are cleared.
+
+##### State machine
+
+- Initial: `OPEN` (on local creation)
+- `OPEN` -> `IN_PROGRESS` when GitHub sync sees `OPEN` state after linkage
+- `OPEN|IN_PROGRESS` -> `RESOLVED` when GitHub issue state becomes `CLOSED`
+- `RESOLVED|CLOSED` -> `IN_PROGRESS` when GitHub issue reopens (`OPEN`)
+- `CLOSED` is supported in data model for future terminal/manual workflows; current automated flow uses `RESOLVED` on GitHub closure.
+
+##### Error codes / handling
+
+| Error code / status | Meaning | Suggested frontend behavior |
+|---|---|---|
+| `VAL_002` / 400 | Missing required field (category/subject/description) | Inline field errors; keep form editable. |
+| `VAL_001` / 400 | Invalid category value | Show dropdown validation and block submit. |
+| `VAL_004` / 400 | Field length exceeded | Show max-length helper and prevent submit. |
+| `AUTH_004` / 401/403 | Unauthenticated or unauthorized context | Redirect to login / show access denied state. |
+| `BUS_003` / 404 | Ticket not found or out of visibility scope | Show “Ticket not found” page and return to list. |
+
+##### Data contracts
+
+- `SupportTicketCreateRequest`
+  - `category: string` (required, max 32; enum: `BUG`, `FEATURE_REQUEST`, `SUPPORT`)
+  - `subject: string` (required, max 255)
+  - `description: string` (required, max 4000)
+
+- `SupportTicketResponse`
+  - `id: number`
+  - `publicId: string (UUID)`
+  - `companyCode: string`
+  - `userId: number`
+  - `requesterEmail: string | null`
+  - `category: "BUG" | "FEATURE_REQUEST" | "SUPPORT"`
+  - `subject: string`
+  - `description: string`
+  - `status: "OPEN" | "IN_PROGRESS" | "RESOLVED" | "CLOSED"`
+  - `githubIssueNumber: number | null`
+  - `githubIssueUrl: string | null`
+  - `githubIssueState: string | null`
+  - `githubSyncedAt: string (ISO-8601 instant) | null`
+  - `githubLastError: string | null`
+  - `resolvedAt: string (ISO-8601 instant) | null`
+  - `resolvedNotificationSentAt: string (ISO-8601 instant) | null`
+  - `createdAt: string (ISO-8601 instant)`
+  - `updatedAt: string (ISO-8601 instant)`
+
+- `SupportTicketListResponse`
+  - `tickets: SupportTicketResponse[]`
+
+##### UI hints
+
+- Category should be a fixed dropdown (`BUG`, `FEATURE_REQUEST`, `SUPPORT`) to avoid invalid enum submissions.
+- In ticket list/detail, show GitHub sync chip states:
+  - `Linked #<number>` when `githubIssueNumber` exists,
+  - warning badge when `githubLastError` non-null,
+  - resolved indicator when `status == RESOLVED` with `resolvedAt`.
+- `requesterEmail` is nullable for privacy/fallback contexts; UI should handle missing value gracefully.
+- For non-admin users, hide team/global filters because backend already enforces self-scope.
+
 ### Accounting
 
 Comprehensive frontend handoff for `VAL-DOC-003` (chart of accounts, journals, settlement, period controls, reconciliation, GST, audit, catalog bridge, and temporal/reporting endpoints).

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      th:replace="~{mail/layout :: layout(~{::content})}">
+<body>
+<div th:fragment="content">
+
+  <h1 class="body-font hero-text"
+      style="margin: 0 0 22px 0; color: #001F3F; font-size: 26px; font-weight: 600; line-height: 1.3;">
+    Support ticket resolved
+  </h1>
+
+  <p class="body-font" style="margin: 0 0 18px 0; font-size: 15px; line-height: 1.7; color: #475569;">
+    Hello <span th:text="${displayName}">there</span>,
+  </p>
+
+  <p class="body-font" style="margin: 0 0 20px 0; font-size: 15px; line-height: 1.7; color: #475569;">
+    Your support ticket <strong th:text="' #' + ${ticketId}">#0</strong> has been marked as
+    <strong th:text="${ticketStatus}">RESOLVED</strong>.
+  </p>
+
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0"
+         style="margin: 0 0 20px 0; border: 1px solid #E2E8F0; border-radius: 6px;">
+    <tr>
+      <td class="body-font" style="padding: 12px 14px; font-size: 14px; color: #334155;">
+        <div><strong>Subject:</strong> <span th:text="${ticketSubject}">Ticket subject</span></div>
+        <div><strong>Category:</strong> <span th:text="${ticketCategory}">SUPPORT</span></div>
+        <div><strong>Resolved at:</strong> <span th:text="${resolvedAt}">2026-01-01T00:00:00Z</span></div>
+        <div th:if="${githubIssueNumber != null}">
+          <strong>GitHub Issue:</strong>
+          <a th:if="${githubIssueUrl != null}" th:href="${githubIssueUrl}" th:text="' #' + ${githubIssueNumber}">#123</a>
+          <span th:if="${githubIssueUrl == null}" th:text="' #' + ${githubIssueNumber}">#123</span>
+        </div>
+      </td>
+    </tr>
+  </table>
+
+  <p class="body-font" style="margin: 0; font-size: 14px; line-height: 1.7; color: #64748B;">
+    If you still need help, please create a new support ticket from the ERP support screen.
+  </p>
+
+</div>
+</body>
+</html>

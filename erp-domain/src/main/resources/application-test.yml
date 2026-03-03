@@ -20,3 +20,8 @@ erp:
     enabled: false
   export:
     require-approval: false
+  github:
+    enabled: false
+    token: ""
+    repo-owner: ""
+    repo-name: ""
