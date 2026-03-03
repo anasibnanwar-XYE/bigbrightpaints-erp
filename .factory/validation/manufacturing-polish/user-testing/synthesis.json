@@ -1,0 +1,21 @@
+{
+  "milestone": "manufacturing-polish",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 4,
+    "passed": 4,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-MFG-001",
+    "VAL-MFG-002",
+    "VAL-MFG-003",
+    "VAL-MFG-004"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "previousRound": null
+}

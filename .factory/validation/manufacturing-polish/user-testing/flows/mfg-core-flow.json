@@ -1,0 +1,184 @@
+{
+  "groupId": "mfg-core-flow",
+  "testedAt": "2026-03-03T17:25:16Z",
+  "credentials": {
+    "account": "ut-mfg-a@example.com",
+    "namespace": "ut_mfg_a"
+  },
+  "toolsUsed": ["mvn test (unit)", "mvn test (integration/Testcontainers)", "mvn test -Pgate-fast"],
+  "assertions": [
+    {
+      "id": "VAL-MFG-001",
+      "title": "Production batch creation with raw material consumption",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run FactoryPackagingCostingIT (Testcontainers integration test)",
+          "expected": "Production log creation consumes raw materials via FIFO batch selection and creates FG batch with correct cost",
+          "observed": "Test passed: RM stock decreased from 200 to 145 (55 units consumed at 100/unit = 5500 material cost). FG batch created with unitCost=57.5000 (5500 RM + 250 packaging over 100L). Journal entries RM→WIP (5500 debit WIP, 5500 credit INV-RM) and WIP→FG (5500 debit INV-FG, 5500 credit WIP) both balanced."
+        },
+        {
+          "action": "Verify raw material movement traceability",
+          "expected": "RawMaterialMovement records linked to production log with journal entry IDs",
+          "observed": "rmMovements linked to RM journal (referenceType=PRODUCTION_LOG, referenceId=productionCode). All movements have correct journalEntryId."
+        },
+        {
+          "action": "Verify inventory movement for semi-finished goods receipt",
+          "expected": "InventoryMovement RECEIPT records with correct unitCost linked to journal",
+          "observed": "Semi-finished movements found with movementType=RECEIPT, correct unitCost matching log.unitCost, and semiFinishedJournal.id linkage."
+        }
+      ],
+      "evidence": {
+        "command": "cd erp-domain && mvn test -Djacoco.skip=true -Dtest=FactoryPackagingCostingIT -pl .",
+        "result": "Tests run: 1, Failures: 0, Errors: 0, Skipped: 0",
+        "keyObservations": [
+          "RM base stock: 200 → 145 (55 units consumed at 100/unit = 5500 total)",
+          "FG batch created with unitCost=57.5000 (material 55.00 + packaging 2.50 per liter)",
+          "Journal RM→WIP: balanced, WIP debit 5500, INV-RM credit 5500",
+          "Journal WIP→FG: balanced, INV-FG debit 5500, WIP credit 5500",
+          "RM movements linked to production log with correct journal entry ID"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-MFG-002",
+      "title": "Packaging into sized SKUs",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run FactoryPackagingCostingIT packing step (single-size packing: 5×20L from 100L bulk)",
+          "expected": "Packing deducts from parent batch, creates child FG batch, consumes packaging materials (buckets), allocates cost proportionally",
+          "observed": "Test passed: 5 buckets consumed (stock 10→5), packaging cost 5×50=250. FG batch unitCost=57.5000 (5500 production + 250 packaging / 100L). Packing journal balanced with FG-INV debit 5750, FG-INV credit 5500, WIP credit 250."
+        },
+        {
+          "action": "Run BulkPackingBomCostingIT (multi-size BOM packing: 10×5L + 4×10L from 200L bulk)",
+          "expected": "Multi-component BOM per size: cans + labels consumed per size, child batches created with correct per-unit cost",
+          "observed": "Test passed: CAN-5L stock 50→40 (10 consumed), CAN-10L stock 50→46 (4 consumed), LABEL stock 50→36 (14 consumed: 10 for 5L + 4 for 10L). Child batch 5L unitCost=75.0000 (5L×10/unit + can@20 + label@5 = 50+20+5=75). Child batch 10L unitCost=140.0000 (10L×10/unit + can@35 + label@5 = 100+35+5=140). Packing journal balanced, packaging inventory credit 410.00."
+        },
+        {
+          "action": "Verify packaging material movement records",
+          "expected": "RawMaterialMovement ISSUE records for packaging materials linked to packing reference with journal IDs",
+          "observed": "Packaging movements found with referenceType=PACKING_RECORD, all linked to packaging journal entry."
+        }
+      ],
+      "evidence": {
+        "commands": [
+          "cd erp-domain && mvn test -Djacoco.skip=true -Dtest=FactoryPackagingCostingIT -pl .",
+          "cd erp-domain && mvn test -Djacoco.skip=true -Dtest=BulkPackingBomCostingIT -pl ."
+        ],
+        "results": [
+          "FactoryPackagingCostingIT: Tests run: 1, Failures: 0, Errors: 0, Skipped: 0",
+          "BulkPackingBomCostingIT: Tests run: 1, Failures: 0, Errors: 0, Skipped: 0"
+        ],
+        "keyObservations": [
+          "Single-size packing: 5×20L buckets consumed from 10→5 stock, packaging cost 250",
+          "Multi-size BOM packing: CAN-5L 50→40, CAN-10L 50→46, LABEL 50→36",
+          "Child batch 5L unitCost=75.0000, child batch 10L unitCost=140.0000",
+          "Cost allocation correct: RM cost per liter + packaging materials per unit",
+          "All packing journals balanced, packaging inventory credited 410.00"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-MFG-003",
+      "title": "Carton/size mapping on products",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run CatalogServiceProductCrudTest#createProduct_withAllAttributes_generatesSkuAndStoresMappings",
+          "expected": "Product created with size variants (1L, 4L), carton mappings (1L:24, 4L:6), colors, HSN code, GST rate. SKU auto-generated from brand code.",
+          "observed": "Test passed: Product created with id=501, sku=BBR-EXTERIOREMUL-001, colors=[Red,Blue], sizes=[1L,4L], cartonSizes=[1L:24, 4L:6], unitOfMeasure=LITER, hsnCode=320910, gstRate=18.00, active=true."
+        },
+        {
+          "action": "Run CatalogServiceProductCrudTest#updateProduct_updatesFullCatalogAttributes",
+          "expected": "Product update changes all catalog attributes including sizes and carton mappings",
+          "observed": "Test passed: Product updated with sizes=[10L], cartonSizes=[10L:2], hsnCode=320990, gstRate=12.00. SKU preserved (BBR-OLDNAME-001). Active set to false."
+        },
+        {
+          "action": "Run CatalogServiceProductCrudTest#searchProducts_returnsPaginatedFilteredResponse",
+          "expected": "Products searchable/filterable by brand, color, size with pagination",
+          "observed": "Test passed: Paginated response with page=1, size=5, totalElements=11. Product returned with correct sizes and cartonSizes mappings. Sort by productName confirmed."
+        },
+        {
+          "action": "Run CatalogServiceBulkUpsertTest#bulkUpsertProducts_mixedValidAndInvalidItems_returnsPerItemResults",
+          "expected": "Bulk upsert validates cartonSizes are required; valid items succeed, invalid items fail with descriptive error",
+          "observed": "Test passed: 2 items submitted, 1 succeeded (CREATED with BBR- SKU), 1 failed with message 'cartonSizes mapping is required'. Per-item results returned."
+        },
+        {
+          "action": "Run CatalogServiceBulkUpsertTest#bulkUpsertProducts_blankOrNullRequiredFields_returnsFieldLevelValidationMessages",
+          "expected": "Field-level validation for brandId, name, unitOfMeasure, hsnCode, gstRate",
+          "observed": "Test passed: All 5 required fields (brandId, name, unitOfMeasure, hsnCode, gstRate) reported in validation error message."
+        }
+      ],
+      "evidence": {
+        "commands": [
+          "cd erp-domain && mvn test -Djacoco.skip=true -Dtest=CatalogServiceProductCrudTest -pl .",
+          "cd erp-domain && mvn test -Djacoco.skip=true -Dtest=CatalogServiceBulkUpsertTest -pl ."
+        ],
+        "results": [
+          "CatalogServiceProductCrudTest: Tests run: 3, Failures: 0, Errors: 0, Skipped: 0",
+          "CatalogServiceBulkUpsertTest: Tests run: 2, Failures: 0, Errors: 0, Skipped: 0"
+        ],
+        "keyObservations": [
+          "Products support size variants with carton mappings (e.g., 1L:24, 4L:6)",
+          "Carton-size mappings are configurable per product via CatalogProductCartonSizeRequest",
+          "Bulk upsert enforces cartonSizes requirement with per-item validation",
+          "Search/filter supports brandId, color, size, active status with pagination",
+          "SKU auto-generated from brand code + sanitized product name + sequence number"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-MFG-004",
+      "title": "Manufacturing cost traceability",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Run ReportServiceCostBreakdownTest#costBreakdown_sumsMaterialLaborAndOverheadCosts",
+          "expected": "Cost breakdown endpoint returns material, labor, overhead costs and total/unit cost from production log",
+          "observed": "Test passed: materialCostTotal=120.00, laborCostTotal=30.00, overheadCostTotal=25.00, totalCost=175.00, unitCost=17.50. ProductionLogId and productionCode correctly returned."
+        },
+        {
+          "action": "Run ReportServiceCostBreakdownTest#costBreakdown_includesPackedBatchAndRawMaterialTraceability",
+          "expected": "Cost breakdown includes packed batch details (FG batch, size, value, journal link) and raw material trace (RM movement, cost, journal link)",
+          "observed": "Test passed: totalCost=160.00, costComponents.packagingCost=25.00, costComponents.packedQuantity=5, costComponents.blendedUnitCost=32.0000. packedBatches[0]: packingRecordId=100, finishedGoodBatchId=300, finishedGoodCode=FG-WHITE-1L, sizeLabel=1L, totalValue=72.5000, journalEntryId=901. rawMaterialTrace[0]: referenceType=PACKING_RECORD, referenceId=PROD-77-PACK-100, totalCost=25.00, journalEntryId=900."
+        },
+        {
+          "action": "Run ReportServiceCostBreakdownTest#costBreakdown_handlesNullComponentsAndMissingProductName",
+          "expected": "Graceful null handling for missing cost components and product name",
+          "observed": "Test passed: productName='Unknown' when product is null, materialCostTotal=null accepted, totalCost=7.00 (only laborCostTotal counted), empty packedBatches and rawMaterialTrace arrays."
+        },
+        {
+          "action": "Run FactoryPackagingCostingIT end-to-end for full production→pack→dispatch cost chain",
+          "expected": "Full traceability: production log → RM consumption → FG batch with cost → packing → dispatch with COGS at batch cost",
+          "observed": "Test passed: Production log links to RM movements (journalEntryId), packing creates child FG batch with unitCost=57.5000, dispatch posts COGS journal at batch cost. All journal entries balanced. Complete chain: RM-BASE(100/unit)→ProductionLog(5500)→PackingRecord(+250 packaging)→FG batch(57.50/L)→Dispatch(COGS at 57.50/L)."
+        }
+      ],
+      "evidence": {
+        "commands": [
+          "cd erp-domain && mvn test -Djacoco.skip=true -Dtest=ReportServiceCostBreakdownTest -pl .",
+          "cd erp-domain && mvn test -Djacoco.skip=true -Dtest=FactoryPackagingCostingIT -pl ."
+        ],
+        "results": [
+          "ReportServiceCostBreakdownTest: Tests run: 3, Failures: 0, Errors: 0, Skipped: 0",
+          "FactoryPackagingCostingIT: Tests run: 1, Failures: 0, Errors: 0, Skipped: 0"
+        ],
+        "keyObservations": [
+          "CostBreakdownDto includes: productionLogId, productionCode, productName, materialCostTotal, laborCostTotal, overheadCostTotal, totalCost, unitCost",
+          "costComponents provides: packagingCost, packedQuantity, blendedUnitCost",
+          "packedBatches trace: packingRecordId→finishedGoodBatchId→finishedGoodCode→sizeLabel→totalValue→journalEntryId",
+          "rawMaterialTrace trace: referenceType→referenceId→totalCost→journalEntryId",
+          "Full chain verified: RM batches → ProductionLog → PackingRecord → FG batch → Dispatch COGS",
+          "All journal entries balanced at every step of the chain"
+        ]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [],
+  "blockers": [],
+  "summary": "Tested 4 assertions: 4 passed, 0 failed, 0 blocked. All manufacturing-polish assertions validated through targeted test execution. VAL-MFG-001 confirmed via FactoryPackagingCostingIT (RM consumption with FIFO, FG batch creation with calculated cost). VAL-MFG-002 confirmed via FactoryPackagingCostingIT + BulkPackingBomCostingIT (multi-size packing with BOM packaging material consumption and proportional cost allocation). VAL-MFG-003 confirmed via CatalogServiceProductCrudTest + CatalogServiceBulkUpsertTest (size variants with carton mappings, CRUD, bulk operations, validation). VAL-MFG-004 confirmed via ReportServiceCostBreakdownTest + FactoryPackagingCostingIT (full cost traceability from RM through production to packed SKUs with cost breakdown endpoint). Gate-fast baseline also passes: 380/380 tests, 0 failures."
+}
