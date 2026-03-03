@@ -30,6 +30,7 @@ import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderStatusHistoryRepos
 import com.bigbrightpaints.erp.modules.sales.domain.SalesTarget;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesTargetRepository;
 import com.bigbrightpaints.erp.modules.sales.dto.SalesTargetRequest;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -125,6 +126,7 @@ class SalesTargetGovernanceServiceTest {
     private CompanyClock companyClock;
 
     private final PlatformTransactionManager transactionManager = new NoopTransactionManager();
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
 
     private SalesService salesService;
     private Company company;
@@ -160,7 +162,8 @@ class SalesTargetGovernanceServiceTest {
                 creditLimitOverrideService,
                 auditService,
                 companyClock,
-                transactionManager);
+                transactionManager,
+                meterRegistry);
 
         company = new Company();
         company.setCode("COMP");

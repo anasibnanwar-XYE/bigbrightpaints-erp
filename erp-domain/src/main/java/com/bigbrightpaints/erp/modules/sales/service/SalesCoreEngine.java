@@ -3,6 +3,8 @@ package com.bigbrightpaints.erp.modules.sales.service;
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Counter;
 import com.bigbrightpaints.erp.core.exception.CreditLimitExceededException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.idempotency.IdempotencyReservationService;
@@ -217,6 +219,8 @@ public class SalesCoreEngine {
     private final GstService gstService;
     private final CreditLimitOverrideService creditLimitOverrideService;
     private final AuditService auditService;
+    private final MeterRegistry meterRegistry;
+    private final Counter ordersProcessedCounter;
     private final IdempotencyReservationService idempotencyReservationService = new IdempotencyReservationService();
     private final TransactionTemplate transactionTemplate;
 
@@ -251,7 +255,8 @@ public class SalesCoreEngine {
                         CreditLimitOverrideService creditLimitOverrideService,
                         AuditService auditService,
                         CompanyClock companyClock,
-                        PlatformTransactionManager transactionManager) {
+                        PlatformTransactionManager transactionManager,
+                        @Autowired(required = false) MeterRegistry meterRegistry) {
         this.companyContextService = companyContextService;
         this.dealerRepository = dealerRepository;
         this.salesOrderRepository = salesOrderRepository;
@@ -280,6 +285,12 @@ public class SalesCoreEngine {
         this.creditLimitOverrideService = creditLimitOverrideService;
         this.auditService = auditService;
         this.companyClock = companyClock;
+        this.meterRegistry = meterRegistry;
+        this.ordersProcessedCounter = meterRegistry == null
+                ? null
+                : Counter.builder("erp.business.orders.processed")
+                .description("Number of sales orders created")
+                .register(meterRegistry);
         TransactionTemplate template = new TransactionTemplate(transactionManager);
         template.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRED);
         template.setIsolationLevel(TransactionDefinition.ISOLATION_REPEATABLE_READ);
@@ -698,6 +709,7 @@ public class SalesCoreEngine {
         salesOrderRepository.save(saved);
 
         eventPublisher.publishEvent(new SalesOrderCreatedEvent(saved.getId(), company.getCode(), saved.getTotalAmount()));
+        incrementOrdersProcessedMetric(saved.getCompany());
         return toDto(saved);
     }
 
@@ -1749,6 +1761,17 @@ public class SalesCoreEngine {
         if (includeDefaultPaymentModeToken || !DEFAULT_ORDER_PAYMENT_MODE.equals(normalizedPaymentMode)) {
             signature.add(normalizedPaymentMode);
         }
+    }
+
+    private void incrementOrdersProcessedMetric(Company company) {
+        if (ordersProcessedCounter == null || meterRegistry == null) {
+            return;
+        }
+        String companyTag = company != null && StringUtils.hasText(company.getCode())
+                ? company.getCode().trim().toUpperCase(Locale.ROOT)
+                : "UNKNOWN";
+        ordersProcessedCounter.increment();
+        meterRegistry.counter("erp.business.orders.processed.by_company", "company", companyTag).increment();
     }
 
     /**

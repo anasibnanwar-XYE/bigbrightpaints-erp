@@ -44,6 +44,7 @@ import com.bigbrightpaints.erp.modules.sales.dto.SalesTargetDto;
 import com.bigbrightpaints.erp.modules.sales.dto.SalesTargetRequest;
 import com.bigbrightpaints.erp.shared.dto.PageResponse;
 import com.bigbrightpaints.erp.modules.sales.util.SalesOrderReference;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.util.List;
 import java.util.Locale;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -105,7 +106,8 @@ public class SalesService {
                         CreditLimitOverrideService creditLimitOverrideService,
                         AuditService auditService,
                         CompanyClock companyClock,
-                        PlatformTransactionManager transactionManager) {
+                        PlatformTransactionManager transactionManager,
+                        MeterRegistry meterRegistry) {
         SalesCoreEngine engine = new SalesCoreEngine(
                 companyContextService,
                 dealerRepository,
@@ -135,7 +137,8 @@ public class SalesService {
                 creditLimitOverrideService,
                 auditService,
                 companyClock,
-                transactionManager
+                transactionManager,
+                meterRegistry
         );
         this.salesCoreEngine = engine;
         SalesIdempotencyService idempotencyService = new SalesIdempotencyService(engine);

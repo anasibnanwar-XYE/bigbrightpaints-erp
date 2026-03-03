@@ -54,6 +54,7 @@ import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipLine;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
 import com.bigbrightpaints.erp.modules.accounting.service.CompanyAccountingSettingsService;
 import com.bigbrightpaints.erp.modules.accounting.service.GstService;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.apache.commons.codec.digest.DigestUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -148,6 +149,7 @@ class SalesServiceTest {
     @Mock
     private CompanyClock companyClock;
     private final PlatformTransactionManager transactionManager = new NoopTransactionManager();
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
 
     private SalesService salesService;
     private Company company;
@@ -183,7 +185,8 @@ class SalesServiceTest {
                 creditLimitOverrideService,
                 auditService,
                 companyClock,
-                transactionManager);
+                transactionManager,
+                meterRegistry);
 
         when(finishedGoodsService.reserveForOrder(any()))
                 .thenReturn(new InventoryReservationResult(null, List.of()));
@@ -3389,6 +3392,11 @@ class SalesServiceTest {
         SalesOrderDto dto = salesService.createOrder(request);
 
         assertEquals("RESERVED", dto.status());
+        assertEquals(1.0d, meterRegistry.get("erp.business.orders.processed").counter().count(), 0.0001d);
+        assertEquals(1.0d, meterRegistry.get("erp.business.orders.processed.by_company")
+                .tag("company", "COMP")
+                .counter()
+                .count(), 0.0001d);
         verify(salesOrderRepository, never()).sumPendingCreditExposureByCompanyAndDealer(
                 ArgumentMatchers.any(),
                 ArgumentMatchers.any(),

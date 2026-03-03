@@ -22,6 +22,8 @@ spring:
             enable: true
   flyway:
     enabled: true
+  lifecycle:
+    timeout-per-shutdown-phase: ${SPRING_LIFECYCLE_TIMEOUT_PER_SHUTDOWN_PHASE:30s}
   jpa:
     properties:
       hibernate:
@@ -36,6 +38,7 @@ springdoc:
     enabled: false
 server:
   port: ${SERVER_PORT:8081}
+  shutdown: graceful
   tomcat:
     threads:
       max: ${SERVER_TOMCAT_MAX_THREADS:200}
@@ -93,7 +96,7 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics,prometheus
       cors:
         allowed-origins: ${MANAGEMENT_CORS_ALLOWED_ORIGINS:https://ops.bigbrightpaints.com}
         allowed-methods: GET
@@ -106,9 +109,21 @@ management:
         enabled: true
       group:
         liveness:
-          include: livenessState,ping
+          include: livenessState,ping,diskSpace
         readiness:
-          include: readinessState,db,rabbit,requiredConfig,configuration,dispatchMapping
+          include: readinessState,db,rabbit,diskSpace,requiredConfig,configuration,dispatchMapping
       show-details: when_authorized
+    metrics:
+      access: read-only
+    prometheus:
+      access: read-only
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318/v1/traces}
+      headers: ${OTEL_EXPORTER_OTLP_HEADERS:}
+      timeout: ${OTEL_EXPORTER_OTLP_TIMEOUT:5s}
+  tracing:
+    sampling:
+      probability: ${MANAGEMENT_TRACING_SAMPLING_PROBABILITY:1.0}
   security:
     enabled: true

@@ -8,8 +8,11 @@ import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -34,15 +37,24 @@ public class AccountingEventStore {
     private final ApplicationEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
     private final CompanyClock companyClock;
+    private final MeterRegistry meterRegistry;
+    private final Counter journalsCreatedCounter;
 
     public AccountingEventStore(AccountingEventRepository eventRepository,
                                 ApplicationEventPublisher eventPublisher,
                                 ObjectMapper objectMapper,
-                                CompanyClock companyClock) {
+                                CompanyClock companyClock,
+                                @Autowired(required = false) MeterRegistry meterRegistry) {
         this.eventRepository = eventRepository;
         this.eventPublisher = eventPublisher;
         this.objectMapper = objectMapper;
         this.companyClock = companyClock;
+        this.meterRegistry = meterRegistry;
+        this.journalsCreatedCounter = meterRegistry == null
+                ? null
+                : Counter.builder("erp.business.journals.created")
+                .description("Number of accounting journals posted")
+                .register(meterRegistry);
     }
 
     /**
@@ -119,6 +131,7 @@ public class AccountingEventStore {
                 correlationId
         ));
 
+        incrementJournalsCreatedMetric(entry.getCompany());
         log.debug("Recorded {} events for journal entry {}", events.size(), entry.getReferenceNumber());
         return events;
     }
@@ -246,6 +259,17 @@ public class AccountingEventStore {
 
     private String getCurrentUserId() {
         return SecurityActorResolver.resolveActorWithSystemProcessFallback();
+    }
+
+    private void incrementJournalsCreatedMetric(Company company) {
+        if (journalsCreatedCounter == null || meterRegistry == null) {
+            return;
+        }
+        String companyTag = company != null && company.getCode() != null && !company.getCode().isBlank()
+                ? company.getCode().trim().toUpperCase(Locale.ROOT)
+                : "UNKNOWN";
+        journalsCreatedCounter.increment();
+        meterRegistry.counter("erp.business.journals.created.by_company", "company", companyTag).increment();
     }
 
     private String serializePayload(Object payload) {

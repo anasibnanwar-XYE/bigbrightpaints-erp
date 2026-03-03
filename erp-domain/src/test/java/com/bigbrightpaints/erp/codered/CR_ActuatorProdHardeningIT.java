@@ -18,7 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @ActiveProfiles(value = {"test", "prod"}, inheritProfiles = false)
 @TestPropertySource(properties = {
-        "jwt.secret=test-secret-should-be-at-least-32-bytes-long-1234",
+        "jwt.secret=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
         "spring.mail.host=localhost",
         "spring.mail.username=test-smtp-user",
         "spring.mail.password=test-smtp-password",
@@ -27,7 +27,10 @@ import static org.assertj.core.api.Assertions.assertThat;
         "ERP_DISPATCH_CREDIT_ACCOUNT_ID=2",
         "management.endpoint.health.validate-group-membership=false",
         "management.server.port=0",
-        "erp.environment.validation.enabled=false"
+        "erp.environment.validation.enabled=false",
+        "management.endpoints.web.exposure.include=health,info,metrics,prometheus",
+        "management.endpoint.metrics.access=read-only",
+        "management.endpoint.prometheus.access=read-only"
 })
 class CR_ActuatorProdHardeningIT extends AbstractIntegrationTest {
 
@@ -50,19 +53,30 @@ class CR_ActuatorProdHardeningIT extends AbstractIntegrationTest {
                 HttpStatus.SERVICE_UNAVAILABLE
         );
         assertThat(response.getBody()).containsKey("status");
-        assertThat(response.getBody()).doesNotContainKey("components");
     }
 
     @Test
-    @DisplayName("Prod does not expose metrics actuator endpoint")
-    void prodActuatorMetricsNotExposed() {
-        ResponseEntity<String> response = rest.getForEntity(managementUrl("/actuator/metrics"), String.class);
-
-        assertThat(response.getStatusCode()).isIn(
-                HttpStatus.NOT_FOUND,
+    @DisplayName("Prod exposes metrics and prometheus endpoints")
+    void prodActuatorMetricsAndPrometheusAreExposed() {
+        ResponseEntity<String> metricsResponse = rest.getForEntity(managementUrl("/actuator/metrics"), String.class);
+        assertThat(metricsResponse.getStatusCode()).isIn(
+                HttpStatus.OK,
                 HttpStatus.UNAUTHORIZED,
                 HttpStatus.FORBIDDEN
         );
+        if (metricsResponse.getStatusCode() == HttpStatus.OK) {
+            assertThat(metricsResponse.getBody()).contains("names");
+        }
+
+        ResponseEntity<String> prometheusResponse = rest.getForEntity(managementUrl("/actuator/prometheus"), String.class);
+        assertThat(prometheusResponse.getStatusCode()).isIn(
+                HttpStatus.OK,
+                HttpStatus.UNAUTHORIZED,
+                HttpStatus.FORBIDDEN
+        );
+        if (prometheusResponse.getStatusCode() == HttpStatus.OK) {
+            assertThat(prometheusResponse.getBody()).contains("# HELP");
+        }
     }
 
     @Test

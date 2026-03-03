@@ -38,6 +38,7 @@ public class SecurityConfig {
     private final Environment environment;
     private final boolean swaggerPublic;
 
+    @Autowired
     public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter,
                           CompanyContextFilter companyContextFilter,
                           UserAccountDetailsService userDetailsService,

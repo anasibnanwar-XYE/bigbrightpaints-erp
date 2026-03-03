@@ -14,7 +14,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @ActiveProfiles(value = {"test", "prod"}, inheritProfiles = false)
 @TestPropertySource(properties = {
-        "jwt.secret=test-secret-should-be-at-least-32-bytes-long-1234",
+        "jwt.secret=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
         "spring.mail.host=localhost",
         "spring.mail.username=test-smtp-user",
         "spring.mail.password=test-smtp-password",
@@ -23,7 +23,10 @@ import static org.assertj.core.api.Assertions.assertThat;
         "ERP_DISPATCH_CREDIT_ACCOUNT_ID=2",
         "management.endpoint.health.validate-group-membership=false",
         "management.server.port=0",
-        "erp.environment.validation.enabled=false"
+        "erp.environment.validation.enabled=false",
+        "management.endpoints.web.exposure.include=health,info,metrics,prometheus",
+        "management.endpoint.metrics.access=read-only",
+        "management.endpoint.prometheus.access=read-only"
 })
 class CR_InventoryGlAutomationProdOffIT extends AbstractIntegrationTest {
 

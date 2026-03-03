@@ -54,6 +54,7 @@ import com.bigbrightpaints.erp.modules.sales.dto.DispatchConfirmResponse;
 import com.bigbrightpaints.erp.modules.sales.service.CreditLimitOverrideService;
 import com.bigbrightpaints.erp.modules.sales.service.OrderNumberService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesService;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -141,6 +142,7 @@ class TS_truthsuite_o2c_Approval_RuntimeTest {
     private CompanyClock companyClock;
 
     private final PlatformTransactionManager transactionManager = new NoopTransactionManager();
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
 
     private SalesService salesService;
     private Company company;
@@ -176,7 +178,8 @@ class TS_truthsuite_o2c_Approval_RuntimeTest {
                 creditLimitOverrideService,
                 auditService,
                 companyClock,
-                transactionManager);
+                transactionManager,
+                meterRegistry);
 
         when(finishedGoodsService.reserveForOrder(any()))
                 .thenReturn(new InventoryReservationResult(null, List.of()));
