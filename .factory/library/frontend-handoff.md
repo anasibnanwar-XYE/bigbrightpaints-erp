@@ -433,6 +433,87 @@ Disabled module requests return `403` with `BUS_010` (`MODULE_DISABLED`). Runtim
 - After onboarding, show/copy `adminTemporaryPassword` once and require explicit confirmation.
 - On lifecycle mutations, use confirmation dialogs and refresh dashboard + tenant list metrics after mutation.
 
+#### Versioned changelog system (VAL-ADMIN-005)
+
+##### Endpoint map
+
+| Method | Path | Auth | Request | Response `data` |
+|---|---|---|---|---|
+| `POST` | `/api/v1/admin/changelog` | `ROLE_ADMIN` or `ROLE_SUPER_ADMIN` | `ChangelogEntryRequest` | `ChangelogEntryResponse` |
+| `PUT` | `/api/v1/admin/changelog/{id}` | `ROLE_ADMIN` or `ROLE_SUPER_ADMIN` | `ChangelogEntryRequest` | `ChangelogEntryResponse` |
+| `DELETE` | `/api/v1/admin/changelog/{id}` | `ROLE_ADMIN` or `ROLE_SUPER_ADMIN` | none | `204 No Content` (soft-delete) |
+| `GET` | `/api/v1/changelog?page={page}&size={size}` | Public (no auth) | query params | `PageResponse<ChangelogEntryResponse>` |
+| `GET` | `/api/v1/changelog/latest-highlighted` | Public (no auth) | none | `ChangelogEntryResponse` |
+
+##### User flows
+
+1. **Admin publishes release notes**
+   1. Admin opens changelog composer and submits `POST /api/v1/admin/changelog`.
+   2. Backend persists semver-tagged markdown entry and returns `ChangelogEntryResponse`.
+
+2. **Admin edits existing entry**
+   1. Admin submits `PUT /api/v1/admin/changelog/{id}` with updated semver/title/body/highlight flag.
+   2. Backend updates the same entry, refreshes `publishedAt`, and returns updated payload.
+
+3. **Admin soft-deletes an entry**
+   1. Admin invokes `DELETE /api/v1/admin/changelog/{id}`.
+   2. Backend marks record deleted (`deleted=true`, `deletedAt` set) and returns `204`.
+   3. Deleted entries are excluded from all public feeds.
+
+4. **Public release-notes feed**
+   1. Frontend (authenticated or anonymous) calls `GET /api/v1/changelog?page=0&size=20`.
+   2. Backend returns newest-first page ordered by `publishedAt DESC, id DESC`.
+
+5. **“What’s New” banner fetch**
+   1. Frontend calls `GET /api/v1/changelog/latest-highlighted` on app load.
+   2. Backend returns most recent non-deleted highlighted entry.
+   3. If none exists, backend returns `404` with `BUS_003`.
+
+##### State machine
+
+- `PUBLISHED` -> `PUBLISHED` via `PUT /api/v1/admin/changelog/{id}` (editable update)
+- `PUBLISHED` -> `DELETED` via `DELETE /api/v1/admin/changelog/{id}` (soft-delete)
+- Highlight visibility is controlled by `isHighlighted` boolean inside `PUBLISHED` state.
+
+##### Error codes / handling
+
+| Error code / status | Meaning | Suggested frontend behavior |
+|---|---|---|
+| `VAL_001` / 400 | Invalid semver/title/body payload | Show inline validation and block submit. |
+| `BUS_003` / 404 | Entry not found or no highlighted entry available | For latest-highlighted, hide banner gracefully; for admin edit/delete show stale-record notice. |
+| 403 | Caller lacks admin role for admin endpoints | Show access denied and hide admin controls. |
+
+##### Data contracts
+
+- `ChangelogEntryRequest`
+  - `version: string` (required semver, max 32 chars)
+  - `title: string` (required, max 255 chars)
+  - `body: string` (required markdown)
+  - `isHighlighted?: boolean` (optional, defaults to `false`)
+
+- `ChangelogEntryResponse`
+  - `id: number`
+  - `version: string`
+  - `title: string`
+  - `body: string` (markdown)
+  - `publishedAt: string (ISO-8601 instant)`
+  - `createdBy: string`
+  - `isHighlighted: boolean`
+
+- `PageResponse<ChangelogEntryResponse>`
+  - `content: ChangelogEntryResponse[]`
+  - `totalElements: number`
+  - `totalPages: number`
+  - `page: number`
+  - `size: number`
+
+##### UI hints
+
+- Render `body` as markdown in both admin preview and public feed cards.
+- Validate semver client-side using `major.minor.patch` format before submit for immediate feedback.
+- For “What’s New”, cache latest-highlighted response briefly and dismiss banner per user preference in frontend state.
+- Admin table should include soft-delete action and highlight toggle (via update payload).
+
 ### Accounting
 
 Comprehensive frontend handoff for `VAL-DOC-003` (chart of accounts, journals, settlement, period controls, reconciliation, GST, audit, catalog bridge, and temporal/reporting endpoints).
