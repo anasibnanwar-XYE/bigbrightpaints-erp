@@ -1386,6 +1386,7 @@ Auth default for controller: `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING','RO
 | POST | `/api/v1/inventory/adjustments` | ADMIN/ACCOUNTING | Header/body idempotency + `InventoryAdjustmentRequest` | `InventoryAdjustmentDto` |
 | GET | `/api/v1/inventory/batches/{id}/movements` | ADMIN/FACTORY/ACCOUNTING/SALES | Query: `batchType?` | `InventoryBatchTraceabilityDto` |
 | POST | `/api/v1/inventory/opening-stock` | ADMIN/ACCOUNTING/FACTORY | `multipart/form-data` (`file`) + idempotency header | `OpeningStockImportResponse` |
+| GET | `/api/v1/inventory/opening-stock` | ADMIN/ACCOUNTING/FACTORY | Query: `page` (default `0`), `size` (default `20`) | `PageResponse<OpeningStockImportHistoryItem>` |
 
 ##### Dispatch APIs
 
@@ -1566,7 +1567,9 @@ Operational statuses: `PENDING`, `PENDING_STOCK`, `PENDING_PRODUCTION`, `RESERVE
 - `InventoryAdjustmentLineDto`: `finishedGoodId`, `finishedGoodName`, `quantity`, `unitCost`, `amount`, `note`.
 - `InventoryBatchTraceabilityDto`: batch identity/type/item/source + quantity/cost + `movements[]`.
 - `InventoryBatchMovementDto`: movement identity/type/qty/cost + `referenceType/referenceId` + linked journal/slip IDs.
-- `OpeningStockImportResponse`: created counts + `errors[]` (`rowNumber`, `message`).
+- `OpeningStockImportResponse`: created counts + `errors[]` (`rowNumber`, `message`). Duplicate `sku` rows in a single CSV are treated as per-row validation errors and reported without aborting the rest of the file.
+- `OpeningStockImportHistoryItem`: `id`, `idempotencyKey`, `referenceNumber`, `fileName`, `journalEntryId`, creation counters, `errorCount`, `createdAt`.
+- `PageResponse<OpeningStockImportHistoryItem>`: paginated import history payload for `GET /api/v1/inventory/opening-stock`.
 - `PackagingSlipDto`: slip identity + order/dealer + status/timestamps + journal links + `lines[]`.
 - `PackagingSlipLineDto`: line batch/product/ordered/shipped/backorder/qty/cost/notes fields.
 - `DispatchPreviewDto`: slip/order/dealer summary + `lines[]` with availability/suggested ship quantities.
@@ -1619,6 +1622,7 @@ Operational statuses: `PENDING`, `PENDING_STOCK`, `PENDING_PRODUCTION`, `RESERVE
 - **Dispatch confirm UI**: force explicit per-line shipped quantity entry (cannot exceed ordered quantity).
 - **Slip status controls**: only expose `PENDING`, `PENDING_STOCK`, `PENDING_PRODUCTION`, `RESERVED`; do not expose direct set to `DISPATCHED/BACKORDER/CANCELLED`.
 - **Idempotency-sensitive screens**: send stable idempotency keys for inventory adjustments, opening-stock import, raw-material intake/batch creation, and packing records.
+- **Opening stock import history screen**: use `GET /api/v1/inventory/opening-stock?page={n}&size={m}` for a company-scoped audit table (newest first) and show `errorCount` as a badge linking to stored import error details.
 - **Wastage dashboard**: combine `/reports/wastage` with `/reports/monthly-production-costs` for trend + variance cards.
 
 ### Sales & Dealers

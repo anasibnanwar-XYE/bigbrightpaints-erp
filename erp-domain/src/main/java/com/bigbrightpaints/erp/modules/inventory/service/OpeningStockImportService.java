@@ -36,10 +36,12 @@ import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepos
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
 import com.bigbrightpaints.erp.modules.inventory.dto.FinishedGoodDto;
 import com.bigbrightpaints.erp.modules.inventory.dto.FinishedGoodRequest;
+import com.bigbrightpaints.erp.modules.inventory.dto.OpeningStockImportHistoryItem;
 import com.bigbrightpaints.erp.modules.inventory.dto.OpeningStockImportResponse;
 import com.bigbrightpaints.erp.modules.inventory.dto.OpeningStockImportResponse.ImportError;
-import com.bigbrightpaints.erp.modules.inventory.dto.RawMaterialRequest;
 import com.bigbrightpaints.erp.modules.inventory.dto.RawMaterialDto;
+import com.bigbrightpaints.erp.modules.inventory.dto.RawMaterialRequest;
+import com.bigbrightpaints.erp.shared.dto.PageResponse;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.BufferedReader;
@@ -56,13 +58,16 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVParser;
+import org.apache.commons.csv.CSVRecord;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.env.Environment;
 import org.springframework.core.env.Profiles;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.apache.commons.csv.CSVFormat;
-import org.apache.commons.csv.CSVParser;
-import org.apache.commons.csv.CSVRecord;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -144,7 +149,7 @@ public class OpeningStockImportService {
     public OpeningStockImportResponse importOpeningStock(MultipartFile file, String idempotencyKey) {
         Company company = companyContextService.requireCurrentCompany();
         if (file == null || file.isEmpty()) {
-            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("CSV file is required");
+            throw ValidationUtils.invalidInput("CSV file is required");
         }
         assertImportAllowed();
         String fileHash = resolveFileHash(file);
@@ -168,7 +173,7 @@ public class OpeningStockImportService {
             OpeningStockImportResponse response = transactionTemplate.execute(status ->
                     importOpeningStockInternal(company, file, normalizedKey, fileHash, importReference));
             if (response == null) {
-                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Opening stock import failed to return a response");
+                throw ValidationUtils.invalidState("Opening stock import failed to return a response");
             }
             return response;
         } catch (RuntimeException ex) {
@@ -180,6 +185,22 @@ public class OpeningStockImportService {
             assertIdempotencyMatch(concurrent, fileHash, normalizedKey);
             return toResponse(concurrent);
         }
+    }
+
+    public PageResponse<OpeningStockImportHistoryItem> listImportHistory(int page, int size) {
+        Company company = companyContextService.requireCurrentCompany();
+        int safePage = Math.max(page, 0);
+        int safeSize = Math.max(size, 1);
+        PageRequest pageable = PageRequest.of(
+                safePage,
+                safeSize,
+                Sort.by(Sort.Direction.DESC, "createdAt", "id")
+        );
+        Page<OpeningStockImport> historyPage = openingStockImportRepository.findByCompany(company, pageable);
+        List<OpeningStockImportHistoryItem> items = historyPage.getContent().stream()
+                .map(this::toHistoryItem)
+                .toList();
+        return PageResponse.of(items, historyPage.getTotalElements(), safePage, safeSize);
     }
 
     private OpeningStockImportResponse importOpeningStockInternal(Company company,
@@ -242,16 +263,28 @@ public class OpeningStockImportService {
                      .build()
                      .parse(reader)) {
 
+            Map<String, Long> seenSkuRows = new HashMap<>();
             for (CSVRecord record : parser) {
                 OpeningRow row;
                 try {
                     row = OpeningRow.from(record);
-                } catch (IllegalArgumentException ex) {
+                } catch (ApplicationException ex) {
                     errors.add(new ImportError(record.getRecordNumber(), ex.getMessage()));
                     continue;
                 }
                 if (row == null) {
                     continue;
+                }
+                String normalizedSku = normalizeSku(row.sku);
+                if (normalizedSku != null) {
+                    Long firstSeenRow = seenSkuRows.putIfAbsent(normalizedSku, record.getRecordNumber());
+                    if (firstSeenRow != null) {
+                        errors.add(new ImportError(
+                                record.getRecordNumber(),
+                                "Duplicate SKU in import file: " + row.sku + " (first seen at row " + firstSeenRow + ")"
+                        ));
+                        continue;
+                    }
                 }
                 try {
                     OpeningMovementResult movementResult;
@@ -276,7 +309,7 @@ public class OpeningStockImportService {
                         finishedMovements.add(movementResult.inventoryMovement());
                     }
                     rowsProcessed++;
-                } catch (IllegalArgumentException ex) {
+                } catch (ApplicationException ex) {
                     errors.add(new ImportError(record.getRecordNumber(), ex.getMessage()));
                 } catch (Exception ex) {
                     errors.add(new ImportError(record.getRecordNumber(), "Unexpected error: " + ex.getMessage()));
@@ -305,7 +338,7 @@ public class OpeningStockImportService {
             );
             return new ImportResult(response, journalEntryId);
         } catch (IOException ex) {
-            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Failed to read CSV file", ex);
+            throw ValidationUtils.invalidState("Failed to read CSV file", ex);
         }
     }
 
@@ -336,6 +369,10 @@ public class OpeningStockImportService {
         return resolved;
     }
 
+    private String normalizeSku(String sku) {
+        return StringUtils.hasText(sku) ? sku.trim().toUpperCase(Locale.ROOT) : null;
+    }
+
     private void assertIdempotencyMatch(OpeningStockImport record, String expectedHash, String idempotencyKey) {
         String storedSignature = StringUtils.hasText(record.getIdempotencyHash())
                 ? record.getIdempotencyHash()
@@ -361,6 +398,24 @@ public class OpeningStockImportService {
                 record.getFinishedGoodsCreated(),
                 record.getFinishedGoodBatchesCreated(),
                 errors
+        );
+    }
+
+    private OpeningStockImportHistoryItem toHistoryItem(OpeningStockImport record) {
+        List<ImportError> errors = deserializeErrors(record.getErrorsJson());
+        return new OpeningStockImportHistoryItem(
+                record.getId(),
+                record.getIdempotencyKey(),
+                record.getReferenceNumber(),
+                record.getFileName(),
+                record.getJournalEntryId(),
+                record.getRowsProcessed(),
+                record.getRawMaterialsCreated(),
+                record.getRawMaterialBatchesCreated(),
+                record.getFinishedGoodsCreated(),
+                record.getFinishedGoodBatchesCreated(),
+                errors.size(),
+                record.getCreatedAt()
         );
     }
 
@@ -424,7 +479,7 @@ public class OpeningStockImportService {
         RawMaterial material = resolveRawMaterial(company, row);
         String unit = firstNonBlank(row.unitType, row.unit, material.getUnitType());
         if (!StringUtils.hasText(unit)) {
-            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Unit is required for raw material " + row.displayKey());
+            throw ValidationUtils.invalidInput("Unit is required for raw material " + row.displayKey());
         }
         BigDecimal quantity = ValidationUtils.requirePositive(row.quantity, "quantity");
         BigDecimal unitCost = ValidationUtils.requirePositive(row.unitCost, "unit_cost");
@@ -525,7 +580,7 @@ public class OpeningStockImportService {
         int attempts = 0;
         while (rawMaterialBatchRepository.existsByRawMaterialAndBatchCode(material, candidate)) {
             if (attempts++ > 10) {
-                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Unable to allocate unique batch code for raw material "
+                throw ValidationUtils.invalidState("Unable to allocate unique batch code for raw material "
                         + describeMaterial(material));
             }
             candidate = batchNumberService.nextRawMaterialBatchCode(material);
@@ -535,7 +590,7 @@ public class OpeningStockImportService {
 
     private void ensureRawMaterialBatchCodeUnique(RawMaterial material, String batchCode) {
         if (rawMaterialBatchRepository.existsByRawMaterialAndBatchCode(material, batchCode)) {
-            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Batch code already exists for raw material "
+            throw ValidationUtils.invalidInput("Batch code already exists for raw material "
                     + describeMaterial(material) + ": " + batchCode);
         }
     }
@@ -558,11 +613,11 @@ public class OpeningStockImportService {
             }
         }
         if (!StringUtils.hasText(row.name)) {
-            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Raw material name is required when SKU is missing: " + row.displayKey());
+            throw ValidationUtils.invalidInput("Raw material name is required when SKU is missing: " + row.displayKey());
         }
         String unitType = firstNonBlank(row.unitType, row.unit);
         if (!StringUtils.hasText(unitType)) {
-            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Unit type is required for raw material " + row.displayKey());
+            throw ValidationUtils.invalidInput("Unit type is required for raw material " + row.displayKey());
         }
         RawMaterialRequest request = new RawMaterialRequest(
                 row.name.trim(),
@@ -576,7 +631,7 @@ public class OpeningStockImportService {
         );
         RawMaterialDto created = rawMaterialService.createRawMaterial(request);
         RawMaterial material = rawMaterialRepository.findByCompanyAndId(company, created.id())
-                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Raw material creation failed"));
+                .orElseThrow(() -> ValidationUtils.invalidState("Raw material creation failed"));
         if (row.materialType != null) {
             material.setMaterialType(row.materialType);
             rawMaterialRepository.save(material);
@@ -587,7 +642,7 @@ public class OpeningStockImportService {
 
     private FinishedGood resolveFinishedGood(Company company, OpeningRow row) {
         if (!StringUtils.hasText(row.sku)) {
-            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Finished good SKU is required");
+            throw ValidationUtils.invalidInput("Finished good SKU is required");
         }
         Optional<FinishedGood> existing = finishedGoodRepository.findByCompanyAndProductCode(company, row.sku.trim());
         if (existing.isPresent()) {
@@ -608,7 +663,7 @@ public class OpeningStockImportService {
         );
         FinishedGoodDto created = finishedGoodsService.createFinishedGood(request);
         FinishedGood finishedGood = finishedGoodRepository.findByCompanyAndId(company, created.id())
-                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Finished good creation failed"));
+                .orElseThrow(() -> ValidationUtils.invalidState("Finished good creation failed"));
         row.markCreated();
         return finishedGood;
     }
@@ -638,7 +693,7 @@ public class OpeningStockImportService {
             }
         }
         if (accountId == null) {
-            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Raw material " + material.getName() + " is missing an inventory account");
+            throw ValidationUtils.invalidState("Raw material " + material.getName() + " is missing an inventory account");
         }
         return accountId;
     }
@@ -652,7 +707,7 @@ public class OpeningStockImportService {
             }
         }
         if (accountId == null) {
-            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Finished good " + finishedGood.getProductCode() + " is missing a valuation account");
+            throw ValidationUtils.invalidState("Finished good " + finishedGood.getProductCode() + " is missing a valuation account");
         }
         return accountId;
     }
@@ -694,7 +749,7 @@ public class OpeningStockImportService {
         Account existing = accountRepository.findByCompanyAndCodeIgnoreCase(company, "OPEN-BAL").orElse(null);
         if (existing != null) {
             if (existing.getType() != AccountType.EQUITY) {
-                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Opening balance account OPEN-BAL must be an equity account");
+                throw ValidationUtils.invalidState("Opening balance account OPEN-BAL must be an equity account");
             }
             return existing;
         }
@@ -788,7 +843,7 @@ public class OpeningStockImportService {
 
         private static StockType parseType(String value) {
             if (!StringUtils.hasText(value)) {
-                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("type is required (RAW_MATERIAL or FINISHED_GOOD)");
+                throw ValidationUtils.invalidInput("type is required (RAW_MATERIAL or FINISHED_GOOD)");
             }
             String normalized = value.trim().toUpperCase(Locale.ROOT);
             if (normalized.startsWith("RAW") || normalized.equals("RM") || normalized.equals("RAW_MATERIAL")) {
@@ -797,7 +852,7 @@ public class OpeningStockImportService {
             if (normalized.startsWith("FINISH") || normalized.equals("FG") || normalized.equals("FINISHED_GOOD")) {
                 return StockType.FINISHED_GOOD;
             }
-            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Unknown type: " + value);
+            throw ValidationUtils.invalidInput("Unknown type: " + value);
         }
 
         private static MaterialType parseMaterialType(String value) {
@@ -808,7 +863,7 @@ public class OpeningStockImportService {
             return switch (normalized) {
                 case "PACKAGING" -> MaterialType.PACKAGING;
                 case "PRODUCTION" -> MaterialType.PRODUCTION;
-                default -> throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Unknown material_type: " + value);
+                default -> throw ValidationUtils.invalidInput("Unknown material_type: " + value);
             };
         }
 
@@ -833,7 +888,7 @@ public class OpeningStockImportService {
             try {
                 return new BigDecimal(value.trim());
             } catch (NumberFormatException ex) {
-                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Invalid numeric value: " + value);
+                throw ValidationUtils.invalidInput("Invalid numeric value: " + value);
             }
         }
 
@@ -845,7 +900,7 @@ public class OpeningStockImportService {
             try {
                 return LocalDate.parse(value.trim());
             } catch (Exception ex) {
-                throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Invalid date value: " + value + " (expected YYYY-MM-DD)");
+                throw ValidationUtils.invalidInput("Invalid date value: " + value + " (expected YYYY-MM-DD)");
             }
         }
     }
