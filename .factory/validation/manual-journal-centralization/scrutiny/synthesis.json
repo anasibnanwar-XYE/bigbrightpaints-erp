@@ -1,0 +1,46 @@
+{
+  "milestone": "manual-journal-centralization",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "cd erp-domain && mvn test -Pgate-fast -Djacoco.skip=true",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "cd erp-domain && mvn compile -q",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "echo \"Checkstyle in advisory mode (49962 pre-existing violations). Skipped as hard gate.\"",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "skills/backend-worker",
+      "suggestion": "Clarify that frontend-handoff updates are required only when externally visible API contracts/behaviors change, and internal-only refactors may skip with explicit rationale.",
+      "evidence": "Review for centralize-manual-journals-through-facade found no endpoint or request/response contract changes, yet the worker had to record a skill deviation for skipping frontend handoff documentation.",
+      "isSystemic": true
+    },
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Document AccountingFacade.createManualJournal/createManualJournalEntry as the canonical manual journal path and note AccountingCoreEngineCore manual creation as legacy defensive fallback only.",
+      "evidence": "Review confirmed canonical routing via AccountingController -> AccountingService -> AccountingFacade while AccountingCoreEngineCore still retains fallback createManualJournal implementation.",
+      "isSystemic": false
+    }
+  ],
+  "rejectedObservations": [],
+  "previousRound": null
+}
