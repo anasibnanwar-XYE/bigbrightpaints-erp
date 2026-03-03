@@ -33,7 +33,7 @@ Each module section should include:
 | GET | `/api/v1/auth/me` | `isAuthenticated()` | None | `ApiResponse<MeResponse>` |
 | POST | `/api/v1/auth/password/change` | `isAuthenticated()` | `ChangePasswordRequest` | `ApiResponse<String>` |
 | POST | `/api/v1/auth/password/forgot` | Public | `ForgotPasswordRequest` | `ApiResponse<String>` |
-| POST | `/api/v1/auth/password/forgot/superadmin` | Public | `ForgotPasswordRequest` | `ApiResponse<String>` |
+| POST | `/api/v1/auth/password/forgot/superadmin` | `isAuthenticated()` (deprecated compatibility route) | `ForgotPasswordRequest` | `ApiResponse<String>` |
 | POST | `/api/v1/auth/password/reset` | Public | `ResetPasswordRequest` | `ApiResponse<String>` |
 | GET | `/api/v1/auth/profile` | `isAuthenticated()` | None | `ApiResponse<ProfileResponse>` |
 | PUT | `/api/v1/auth/profile` | `isAuthenticated()` | `UpdateProfileRequest` | `ApiResponse<ProfileResponse>` |
@@ -68,10 +68,11 @@ Notes:
    5. Backend marks MFA as enabled.
 
 4. **Password reset flow**
-   1. User submits `POST /api/v1/auth/password/forgot` (or `/forgot/superadmin`).
+   1. User submits `POST /api/v1/auth/password/forgot`.
    2. Backend always responds with generic success message (no account enumeration).
    3. User opens emailed reset link and submits `POST /api/v1/auth/password/reset` with `{ token, newPassword, confirmPassword }`.
    4. Backend revokes existing sessions/tokens; user must log in again.
+   5. `POST /api/v1/auth/password/forgot/superadmin` remains as a deprecated compatibility route but now delegates to the unified forgot flow and requires authentication context.
 
 5. **Token refresh flow**
    1. Before access token expiry (or after 401), call `POST /api/v1/auth/refresh-token` with `{ refreshToken, companyCode }`.
@@ -226,13 +227,15 @@ Password-policy failures currently surface as `VAL_001` with message prefix `Pas
 
 | Method | Path | Auth | Request | Response `data` |
 |---|---|---|---|---|
-| GET | `/api/v1/admin/users` | `ROLE_ADMIN` | None | `List<UserDto>` |
-| POST | `/api/v1/admin/users` | `ROLE_ADMIN` | `CreateUserRequest` | `UserDto` |
-| PUT | `/api/v1/admin/users/{id}` | `ROLE_ADMIN` | `UpdateUserRequest` | `UserDto` |
-| PATCH | `/api/v1/admin/users/{id}/suspend` | `ROLE_ADMIN` | None | `204 No Content` |
-| PATCH | `/api/v1/admin/users/{id}/unsuspend` | `ROLE_ADMIN` | None | `204 No Content` |
-| PATCH | `/api/v1/admin/users/{id}/mfa/disable` | `ROLE_ADMIN` | None | `204 No Content` |
-| DELETE | `/api/v1/admin/users/{id}` | `ROLE_ADMIN` | None | `204 No Content` |
+| GET | `/api/v1/admin/users` | `ROLE_ADMIN` or `ROLE_SUPER_ADMIN` | None | `List<UserDto>` |
+| POST | `/api/v1/admin/users` | `ROLE_ADMIN` or `ROLE_SUPER_ADMIN` | `CreateUserRequest` | `UserDto` |
+| PUT | `/api/v1/admin/users/{id}` | `ROLE_ADMIN` or `ROLE_SUPER_ADMIN` | `UpdateUserRequest` | `UserDto` |
+| PUT | `/api/v1/admin/users/{id}/status` | `ROLE_ADMIN` or `ROLE_SUPER_ADMIN` | `UpdateUserStatusRequest` | `UserDto` |
+| POST | `/api/v1/admin/users/{id}/force-reset-password` | `ROLE_ADMIN` or `ROLE_SUPER_ADMIN` | None | `ApiResponse<String>` (`"OK"`) |
+| PATCH | `/api/v1/admin/users/{id}/suspend` | `ROLE_ADMIN` or `ROLE_SUPER_ADMIN` | None | `204 No Content` |
+| PATCH | `/api/v1/admin/users/{id}/unsuspend` | `ROLE_ADMIN` or `ROLE_SUPER_ADMIN` | None | `204 No Content` |
+| PATCH | `/api/v1/admin/users/{id}/mfa/disable` | `ROLE_ADMIN` or `ROLE_SUPER_ADMIN` | None | `204 No Content` |
+| DELETE | `/api/v1/admin/users/{id}` | `ROLE_ADMIN` or `ROLE_SUPER_ADMIN` | None | `204 No Content` |
 | GET | `/api/v1/admin/roles` | `ROLE_ADMIN` or `ROLE_SUPER_ADMIN` | None | `List<RoleDto>` |
 | GET | `/api/v1/admin/roles/{roleKey}` | `ROLE_ADMIN` or `ROLE_SUPER_ADMIN` | None | `RoleDto` |
 | POST | `/api/v1/admin/roles` | `ROLE_SUPER_ADMIN` | `CreateRoleRequest` | `RoleDto` |
@@ -283,7 +286,10 @@ Disabled module requests return `403` with `BUS_010` (`MODULE_DISABLED`). Runtim
    2. (Optional) load target companies with `GET /api/v1/companies`.
    3. Submit `POST /api/v1/admin/users` with `{ email, displayName, companyIds, roles, password? }`.
    4. Backend creates user, assigns roles/companies, and emails credentials.
-   5. Use `PUT /api/v1/admin/users/{id}` for role/company updates; use suspend/unsuspend/MFA-disable PATCH endpoints for account operations.
+   5. Use `PUT /api/v1/admin/users/{id}` for role/company updates.
+   6. Use `PUT /api/v1/admin/users/{id}/status` with `{ enabled: boolean }` for explicit activation/deactivation.
+   7. Use `POST /api/v1/admin/users/{id}/force-reset-password` to trigger a reset link for a target user.
+   8. Suspend/unsuspend and MFA-disable PATCH endpoints remain available for direct account operations.
 
 4. **Tenant lifecycle operations (superadmin)**
    1. Review status in `GET /api/v1/superadmin/tenants`.
@@ -300,9 +306,12 @@ Disabled module requests return `403` with `BUS_010` (`MODULE_DISABLED`). Runtim
    - `DEACTIVATED` is terminal.
 
 2. **Admin user lifecycle**
-   - `ENABLED` -> `SUSPENDED` via `PATCH /api/v1/admin/users/{id}/suspend`
-   - `SUSPENDED` -> `ENABLED` via `PATCH /api/v1/admin/users/{id}/unsuspend`
-   - `ENABLED|SUSPENDED` -> `DELETED` via `DELETE /api/v1/admin/users/{id}`
+   - `enabled=true` -> `enabled=false` via `PUT /api/v1/admin/users/{id}/status` with `{ enabled: false }`
+   - `enabled=false` -> `enabled=true` via `PUT /api/v1/admin/users/{id}/status` with `{ enabled: true }`
+   - `enabled=true` -> `enabled=false` via `PATCH /api/v1/admin/users/{id}/suspend`
+   - `enabled=false` -> `enabled=true` via `PATCH /api/v1/admin/users/{id}/unsuspend`
+   - `POST /api/v1/admin/users/{id}/force-reset-password` triggers reset email/token issuance for the target account without changing the enabled flag
+   - `enabled=true|false` -> `DELETED` via `DELETE /api/v1/admin/users/{id}`
    - `MFA_ENABLED` -> `MFA_DISABLED` via `PATCH /api/v1/admin/users/{id}/mfa/disable`
 
 #### Error Codes / Error Handling
@@ -310,6 +319,7 @@ Disabled module requests return `403` with `BUS_010` (`MODULE_DISABLED`). Runtim
 | Error code / status | Meaning | Suggested frontend behavior |
 |---|---|---|
 | `AUTH_004` (`AUTH_INSUFFICIENT_PERMISSIONS`) / 403 | Caller lacks role (e.g., non-superadmin on control plane) | Route to access-denied state and hide privileged actions. |
+| `AUTH_006` (`AUTH_ACCOUNT_DISABLED`) / 401 | Disabled user attempted auth/login or token refresh | Show account-disabled screen; block retry loops and route to support/admin contact. |
 | `BUS_010` (`MODULE_DISABLED`) / 403 | Tenant module disabled by gating policy | Show module-disabled empty state; hide create/write CTA. |
 | `VAL_001` (`VALIDATION_INVALID_INPUT`) / 400 | Invalid status filter, unknown tenant/user/company, missing lifecycle reason, invalid enabled modules payload | Inline validation + toast with backend message. |
 | `VAL_007` (`VALIDATION_INVALID_STATE`) / 400 or 409 | Invalid tenant lifecycle transition | Show state-transition-specific error and refresh tenant row status. |
@@ -383,10 +393,14 @@ Disabled module requests return `403` with `BUS_010` (`MODULE_DISABLED`). Runtim
   - `roles?: string[]`
   - `enabled?: boolean`
 
+- `UpdateUserStatusRequest`
+  - `enabled: boolean` (required)
+
 - `UserDto`
   - `id`, `publicId`, `email`, `displayName`
   - `enabled`, `mfaEnabled`
   - `roles: string[]`, `companies: string[]`
+  - `lastLoginAt?: string` (ISO-8601 instant, nullable when user never logged in)
 
 - `CreateRoleRequest`
   - `name` (required)

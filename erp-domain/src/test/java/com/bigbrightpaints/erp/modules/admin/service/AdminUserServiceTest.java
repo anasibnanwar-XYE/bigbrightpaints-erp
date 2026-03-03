@@ -1,19 +1,24 @@
 package com.bigbrightpaints.erp.modules.admin.service;
 
+import com.bigbrightpaints.erp.core.audit.AuditEvent;
+import com.bigbrightpaints.erp.core.audit.AuditLog;
+import com.bigbrightpaints.erp.core.audit.AuditLogRepository;
+import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.notification.EmailService;
 import com.bigbrightpaints.erp.core.security.TokenBlacklistService;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.admin.dto.CreateUserRequest;
+import com.bigbrightpaints.erp.modules.admin.dto.UpdateUserRequest;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
+import com.bigbrightpaints.erp.modules.auth.service.PasswordResetService;
 import com.bigbrightpaints.erp.modules.auth.service.RefreshTokenService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.rbac.domain.Role;
-import com.bigbrightpaints.erp.modules.rbac.domain.RoleRepository;
 import com.bigbrightpaints.erp.modules.rbac.service.RoleService;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
@@ -30,7 +35,10 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -39,6 +47,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -52,8 +61,6 @@ class AdminUserServiceTest {
     @Mock
     private CompanyRepository companyRepository;
     @Mock
-    private RoleRepository roleRepository;
-    @Mock
     private RoleService roleService;
     @Mock
     private PasswordEncoder passwordEncoder;
@@ -63,6 +70,12 @@ class AdminUserServiceTest {
     private TokenBlacklistService tokenBlacklistService;
     @Mock
     private RefreshTokenService refreshTokenService;
+    @Mock
+    private PasswordResetService passwordResetService;
+    @Mock
+    private AuditService auditService;
+    @Mock
+    private AuditLogRepository auditLogRepository;
     @Mock
     private DealerRepository dealerRepository;
     @Mock
@@ -79,12 +92,14 @@ class AdminUserServiceTest {
                 userRepository,
                 companyContextService,
                 companyRepository,
-                roleRepository,
                 roleService,
                 passwordEncoder,
                 emailService,
                 tokenBlacklistService,
                 refreshTokenService,
+                passwordResetService,
+                auditService,
+                auditLogRepository,
                 dealerRepository,
                 accountRepository,
                 tenantRuntimePolicyService
@@ -267,5 +282,142 @@ class AdminUserServiceTest {
         } finally {
             SecurityContextHolder.clearContext();
         }
+    }
+
+    @Test
+    void listUsers_includesLastLoginAtDerivedFromLatestLoginAuditEvent() {
+        UserAccount user = new UserAccount("audited-user@example.com", "hash", "Audited User");
+        ReflectionTestUtils.setField(user, "id", 301L);
+        user.addCompany(company);
+        Role role = new Role();
+        role.setName("ROLE_ADMIN");
+        user.addRole(role);
+
+        AuditLog latestLogin = new AuditLog();
+        latestLogin.setEventType(AuditEvent.LOGIN_SUCCESS);
+        latestLogin.setUsername("AUDITED-USER@example.com");
+        latestLogin.setTimestamp(LocalDateTime.of(2026, 1, 5, 10, 15, 30));
+
+        when(userRepository.findDistinctByCompanies_Id(company.getId())).thenReturn(List.of(user));
+        when(auditLogRepository.findByEventTypeWithMetadataOrderByTimestampDesc(AuditEvent.LOGIN_SUCCESS))
+                .thenReturn(List.of(latestLogin));
+
+        var results = service.listUsers();
+
+        assertThat(results).hasSize(1);
+        assertThat(results.getFirst().lastLoginAt())
+                .isEqualTo(LocalDateTime.of(2026, 1, 5, 10, 15, 30).atZone(ZoneOffset.UTC).toInstant());
+    }
+
+    @Test
+    void updateUserStatus_disablingUserRevokesTokensSendsNotificationAndAudits() {
+        UserAccount user = new UserAccount("status-user@example.com", "hash", "Status User");
+        ReflectionTestUtils.setField(user, "id", 302L);
+        user.addCompany(company);
+        Role role = new Role();
+        role.setName("ROLE_ADMIN");
+        user.addRole(role);
+
+        when(userRepository.findByIdAndCompanies_Id(302L, company.getId())).thenReturn(Optional.of(user));
+        when(userRepository.save(any(UserAccount.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(auditLogRepository.findByEventTypeWithMetadataOrderByTimestampDesc(AuditEvent.LOGIN_SUCCESS))
+                .thenReturn(List.of());
+
+        var response = service.updateUserStatus(302L, false);
+
+        assertThat(response.enabled()).isFalse();
+        verify(tokenBlacklistService).revokeAllUserTokens("status-user@example.com");
+        verify(refreshTokenService).revokeAllForUser("status-user@example.com");
+        verify(emailService).sendUserSuspendedEmail("status-user@example.com", "Status User");
+        verify(auditService).logAuthSuccess(
+                eq(AuditEvent.USER_DEACTIVATED),
+                eq("UNKNOWN_AUTH_ACTOR"),
+                eq("TEST"),
+                any(Map.class));
+    }
+
+    @Test
+    void updateUserStatus_enablingUserChecksQuotaAndDoesNotSendSuspensionEmail() {
+        UserAccount user = new UserAccount("reenable-user@example.com", "hash", "Reenabled User");
+        ReflectionTestUtils.setField(user, "id", 303L);
+        user.setEnabled(false);
+        user.addCompany(company);
+        Role role = new Role();
+        role.setName("ROLE_ADMIN");
+        user.addRole(role);
+
+        when(userRepository.findByIdAndCompanies_Id(303L, company.getId())).thenReturn(Optional.of(user));
+        when(userRepository.save(any(UserAccount.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(auditLogRepository.findByEventTypeWithMetadataOrderByTimestampDesc(AuditEvent.LOGIN_SUCCESS))
+                .thenReturn(List.of());
+
+        var response = service.updateUserStatus(303L, true);
+
+        assertThat(response.enabled()).isTrue();
+        verify(tenantRuntimePolicyService).assertCanAddEnabledUser(company, "ADMIN_USER_STATUS");
+        verify(emailService, never()).sendUserSuspendedEmail(anyString(), anyString());
+        verify(tokenBlacklistService, never()).revokeAllUserTokens("reenable-user@example.com");
+        verify(refreshTokenService, never()).revokeAllForUser("reenable-user@example.com");
+        verify(auditService).logAuthSuccess(
+                eq(AuditEvent.USER_ACTIVATED),
+                eq("UNKNOWN_AUTH_ACTOR"),
+                eq("TEST"),
+                any(Map.class));
+    }
+
+    @Test
+    void forceResetPassword_delegatesToPasswordResetServiceAndAudits() {
+        UserAccount user = new UserAccount("force-reset@example.com", "hash", "Force Reset");
+        ReflectionTestUtils.setField(user, "id", 304L);
+        user.addCompany(company);
+        Role role = new Role();
+        role.setName("ROLE_ADMIN");
+        user.addRole(role);
+
+        when(userRepository.findByIdAndCompanies_Id(304L, company.getId())).thenReturn(Optional.of(user));
+
+        service.forceResetPassword(304L);
+
+        verify(passwordResetService).requestResetByAdmin(user);
+        verify(auditService).logAuthSuccess(
+                eq(AuditEvent.PASSWORD_RESET_REQUESTED),
+                eq("UNKNOWN_AUTH_ACTOR"),
+                eq("TEST"),
+                any(Map.class));
+    }
+
+    @Test
+    void updateUser_allowsSuperAdminToTargetForeignTenantUser() {
+        Company foreignCompany = new Company();
+        ReflectionTestUtils.setField(foreignCompany, "id", 21L);
+        foreignCompany.setCode("FOREIGN");
+
+        UserAccount foreignUser = new UserAccount("foreign-user@example.com", "hash", "Foreign User");
+        ReflectionTestUtils.setField(foreignUser, "id", 305L);
+        foreignUser.addCompany(foreignCompany);
+        Role role = new Role();
+        role.setName("ROLE_SALES");
+        foreignUser.addRole(role);
+
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+                "super-admin@bbp.com",
+                "n/a",
+                List.of(new SimpleGrantedAuthority("ROLE_SUPER_ADMIN"))));
+        when(userRepository.findById(305L)).thenReturn(Optional.of(foreignUser));
+        when(userRepository.save(any(UserAccount.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(auditLogRepository.findByEventTypeWithMetadataOrderByTimestampDesc(AuditEvent.LOGIN_SUCCESS))
+                .thenReturn(List.of());
+
+        try {
+            var response = service.updateUser(
+                    305L,
+                    new UpdateUserRequest("Foreign User Updated", null, null, true));
+            assertThat(response.displayName()).isEqualTo("Foreign User Updated");
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
+
+        verify(userRepository).findById(305L);
+        verify(userRepository, never()).findByIdAndCompanies_Id(eq(305L), any());
     }
 }

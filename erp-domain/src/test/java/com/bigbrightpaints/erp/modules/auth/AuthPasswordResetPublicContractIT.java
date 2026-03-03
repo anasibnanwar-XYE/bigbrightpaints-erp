@@ -43,9 +43,9 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void superAdminForgotEndpoint_isPublicAndAntiEnumerationSafeAcrossTenantHeaders() {
-        ResponseEntity<Map> knownUserResponse = postSuperAdminForgot(SUPERADMIN_EMAIL, "ANY-TENANT");
-        ResponseEntity<Map> unknownUserResponse = postSuperAdminForgot("unknown.superadmin@bbp.com", "OTHER-TENANT");
+    void forgotEndpoint_isPublicAndAntiEnumerationSafeAcrossTenantHeaders() {
+        ResponseEntity<Map> knownUserResponse = postForgot(SUPERADMIN_EMAIL, "ANY-TENANT");
+        ResponseEntity<Map> unknownUserResponse = postForgot("unknown.superadmin@bbp.com", "OTHER-TENANT");
 
         assertThat(knownUserResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(unknownUserResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -80,14 +80,14 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
         assertThat(response.getBody().get("message")).isEqualTo("Invalid or expired token");
     }
 
-    private ResponseEntity<Map> postSuperAdminForgot(String email, String companyCodeHeader) {
+    private ResponseEntity<Map> postForgot(String email, String companyCodeHeader) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.set("X-Company-Code", companyCodeHeader);
         Map<String, Object> payload = Map.of("email", email);
 
         return rest.exchange(
-                "/api/v1/auth/password/forgot/superadmin",
+                "/api/v1/auth/password/forgot",
                 HttpMethod.POST,
                 new HttpEntity<>(payload, headers),
                 Map.class);

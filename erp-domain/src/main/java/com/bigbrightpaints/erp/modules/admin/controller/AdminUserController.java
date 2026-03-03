@@ -14,7 +14,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/admin/users")
-@PreAuthorize("hasAuthority('ROLE_ADMIN')")
+@PreAuthorize("hasAuthority('ROLE_ADMIN') or hasAuthority('ROLE_SUPER_ADMIN')")
 public class AdminUserController {
 
     private final AdminUserService adminUserService;
@@ -37,6 +37,20 @@ public class AdminUserController {
     public ResponseEntity<ApiResponse<UserDto>> update(@PathVariable Long id,
                                                         @Valid @RequestBody UpdateUserRequest request) {
         return ResponseEntity.ok(ApiResponse.success("User updated", adminUserService.updateUser(id, request)));
+    }
+
+    @PostMapping("/{userId}/force-reset-password")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN') or hasAuthority('ROLE_SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<String>> forceResetPassword(@PathVariable Long userId) {
+        adminUserService.forceResetPassword(userId);
+        return ResponseEntity.ok(ApiResponse.success("Password reset link sent", "OK"));
+    }
+
+    @PutMapping("/{userId}/status")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN') or hasAuthority('ROLE_SUPER_ADMIN')")
+    public ResponseEntity<ApiResponse<UserDto>> updateStatus(@PathVariable Long userId,
+                                                             @Valid @RequestBody UpdateUserStatusRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("User status updated", adminUserService.updateUserStatus(userId, request.enabled().booleanValue())));
     }
 
     @PatchMapping("/{id}/suspend")

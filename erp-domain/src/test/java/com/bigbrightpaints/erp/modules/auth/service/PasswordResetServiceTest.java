@@ -113,6 +113,32 @@ class PasswordResetServiceTest {
     }
 
     @Test
+    void requestResetByAdminUsesPublicResetFlowForEnabledUser() {
+        UserAccount adminManagedUser = new UserAccount("managed@example.com", "hash", "Managed User");
+        adminManagedUser.setEnabled(true);
+        when(userAccountRepository.findByEmailIgnoreCase("managed@example.com"))
+                .thenReturn(Optional.of(adminManagedUser));
+
+        passwordResetService.requestResetByAdmin(adminManagedUser);
+
+        verify(tokenRepository).deleteByUser(adminManagedUser);
+        verify(tokenRepository).save(any(PasswordResetToken.class));
+        verify(emailService).sendPasswordResetEmail(eq("managed@example.com"), eq("Managed User"), anyString());
+        verify(emailService, never()).sendSimpleEmail(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void requestResetByAdminSkipsDisabledUsers() {
+        UserAccount disabledUser = new UserAccount("disabled-managed@example.com", "hash", "Disabled User");
+        disabledUser.setEnabled(false);
+
+        passwordResetService.requestResetByAdmin(disabledUser);
+
+        verifyNoInteractions(tokenRepository, emailService);
+        verify(userAccountRepository, never()).findByEmailIgnoreCase(anyString());
+    }
+
+    @Test
     void requestResetForSuperAdminMasksWhenResetEmailDeliveryDisabled() {
         UserAccount superAdmin = superAdminUser("superadmin@example.com");
         when(userAccountRepository.findByEmailIgnoreCase("superadmin@example.com"))

@@ -285,7 +285,7 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
 
     @Test
     void doFilter_allowsPublicPasswordResetBypassWithTrailingSlash() throws ServletException, IOException {
-        MockHttpServletRequest request = request("POST", "/api/v1/auth/password/forgot/superadmin/");
+        MockHttpServletRequest request = request("POST", "/api/v1/auth/password/forgot/");
         request.addHeader("X-Company-Code", "ACME");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
@@ -301,12 +301,12 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
     @Test
     void helperMethods_coverPublicPasswordResetAndPathNormalizationBranches() {
         assertThat(invokeIsPublicPasswordResetRequest("/api/v1/auth/password/forgot", "POST")).isTrue();
-        assertThat(invokeIsPublicPasswordResetRequest("/api/v1/auth/password/forgot/superadmin/", "POST")).isTrue();
+        assertThat(invokeIsPublicPasswordResetRequest("/api/v1/auth/password/forgot/", "POST")).isTrue();
         assertThat(invokeIsPublicPasswordResetRequest("/api/v1/auth/password/reset/", "POST")).isTrue();
         assertThat(invokeIsPublicPasswordResetRequest("/api/v1/auth/password/forgot", "GET")).isFalse();
         assertThat(invokeIsPublicPasswordResetRequest(null, "POST")).isFalse();
         assertThat(invokeIsPublicPasswordResetRequest("/api/v1/private", "POST")).isFalse();
-        assertThat(invokeIsPublicPasswordResetRequest("/api/v1/auth/password/forgot/superadmin/extra", "POST")).isFalse();
+        assertThat(invokeIsPublicPasswordResetRequest("/api/v1/auth/password/forgot/extra", "POST")).isFalse();
         assertThat(invokeIsPublicPasswordResetRequest("/api/v1/auth/password/reset/extra", "POST")).isFalse();
 
         assertThat(invokeNormalizePath(" /api/v1/auth/password/forgot/// ")).isEqualTo("/api/v1/auth/password/forgot");
@@ -315,16 +315,16 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
     }
 
     @Test
-    void authController_superAdminForgotPasswordEndpoint_delegatesToPasswordResetService() {
+    void authControllerForgotPasswordEndpoint_delegatesToPasswordResetService() {
         AuthService authService = mock(AuthService.class);
         PasswordService passwordService = mock(PasswordService.class);
         PasswordResetService passwordResetService = mock(PasswordResetService.class);
         AuthController controller = new AuthController(authService, passwordService, passwordResetService);
 
         ResponseEntity<ApiResponse<String>> response =
-                controller.forgotPasswordForSuperAdmin(new ForgotPasswordRequest("superadmin@example.com"));
+                controller.forgotPassword(new ForgotPasswordRequest("superadmin@example.com"));
 
-        verify(passwordResetService).requestResetForSuperAdmin("superadmin@example.com");
+        verify(passwordResetService).requestReset("superadmin@example.com");
         assertThat(response.getStatusCode().value()).isEqualTo(200);
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().success()).isTrue();

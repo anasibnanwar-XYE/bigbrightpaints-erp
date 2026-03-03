@@ -1,9 +1,11 @@
 package com.bigbrightpaints.erp.modules.auth.service;
 
-import com.bigbrightpaints.erp.core.notification.EmailService;
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
+import com.bigbrightpaints.erp.core.notification.EmailService;
 import com.bigbrightpaints.erp.core.security.JwtProperties;
 import com.bigbrightpaints.erp.core.security.JwtTokenService;
 import com.bigbrightpaints.erp.core.security.SecurityActorResolver;
@@ -31,8 +33,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.stereotype.Service;
 
-import java.time.Instant;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -89,10 +91,12 @@ public class AuthService {
         try {
             user = userAccountRepository.findByEmailIgnoreCase(request.email())
                     .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Invalid credentials"));
+            ensureEnabledForAuthentication(user);
             enforceLock(user);
             Authentication authentication = authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(request.email(), request.password()));
             UserPrincipal principal = (UserPrincipal) authentication.getPrincipal();
+            ensureEnabledForAuthentication(principal.getUser());
             Company company = resolveCompanyForUser(principal.getUser(), request.companyCode());
             tenantRuntimeEnforcementService.enforceAuthOperationAllowed(
                     company.getCode(),
@@ -149,7 +153,7 @@ public class AuthService {
 
     public Map<String, Object> resetPassword(ResetPasswordRequest request) {
         UserAccount user = userAccountRepository.findByResetToken(request.token())
-            .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Invalid or expired token"));
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Invalid or expired token"));
         if (user.getResetExpiry().isBefore(Instant.now())) {
             throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Token expired");
         }
@@ -174,9 +178,7 @@ public class AuthService {
         }
         UserAccount user = userAccountRepository.findByEmailIgnoreCase(userEmail)
                 .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("User not found"));
-        if (!user.isEnabled()) {
-            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("User account is disabled");
-        }
+        ensureEnabledForAuthentication(user);
         enforceLock(user);
         Company company = resolveCompanyForUser(user, request.companyCode());
         tenantRuntimeEnforcementService.enforceAuthOperationAllowed(
@@ -220,6 +222,12 @@ public class AuthService {
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private void ensureEnabledForAuthentication(UserAccount user) {
+        if (user == null || !user.isEnabled()) {
+            throw new ApplicationException(ErrorCode.AUTH_ACCOUNT_DISABLED, ErrorCode.AUTH_ACCOUNT_DISABLED.getDefaultMessage());
+        }
     }
 
     public void logout(String refreshToken, String accessToken) {

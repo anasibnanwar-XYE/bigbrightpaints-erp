@@ -1,23 +1,28 @@
 package com.bigbrightpaints.erp.modules.admin.service;
 
+import com.bigbrightpaints.erp.core.audit.AuditEvent;
+import com.bigbrightpaints.erp.core.audit.AuditLog;
+import com.bigbrightpaints.erp.core.audit.AuditLogRepository;
+import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.notification.EmailService;
+import com.bigbrightpaints.erp.core.security.SecurityActorResolver;
 import com.bigbrightpaints.erp.core.security.TokenBlacklistService;
 import com.bigbrightpaints.erp.core.util.PasswordUtils;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.admin.dto.CreateUserRequest;
 import com.bigbrightpaints.erp.modules.admin.dto.UpdateUserRequest;
 import com.bigbrightpaints.erp.modules.admin.dto.UserDto;
-import com.bigbrightpaints.erp.modules.auth.service.RefreshTokenService;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
+import com.bigbrightpaints.erp.modules.auth.service.PasswordResetService;
+import com.bigbrightpaints.erp.modules.auth.service.RefreshTokenService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.rbac.domain.Role;
-import com.bigbrightpaints.erp.modules.rbac.domain.RoleRepository;
 import com.bigbrightpaints.erp.modules.rbac.service.RoleService;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
-import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.sales.util.DealerProvisioningSupport;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -26,6 +31,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -40,12 +48,14 @@ public class AdminUserService {
     private final UserAccountRepository userRepository;
     private final CompanyContextService companyContextService;
     private final CompanyRepository companyRepository;
-    private final RoleRepository roleRepository;
     private final RoleService roleService;
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
     private final TokenBlacklistService tokenBlacklistService;
     private final RefreshTokenService refreshTokenService;
+    private final PasswordResetService passwordResetService;
+    private final AuditService auditService;
+    private final AuditLogRepository auditLogRepository;
     private final DealerRepository dealerRepository;
     private final AccountRepository accountRepository;
     private final TenantRuntimePolicyService tenantRuntimePolicyService;
@@ -53,24 +63,28 @@ public class AdminUserService {
     public AdminUserService(UserAccountRepository userRepository,
                             CompanyContextService companyContextService,
                             CompanyRepository companyRepository,
-                            RoleRepository roleRepository,
                             RoleService roleService,
                             PasswordEncoder passwordEncoder,
                             EmailService emailService,
                             TokenBlacklistService tokenBlacklistService,
                             RefreshTokenService refreshTokenService,
+                            PasswordResetService passwordResetService,
+                            AuditService auditService,
+                            AuditLogRepository auditLogRepository,
                             DealerRepository dealerRepository,
                             AccountRepository accountRepository,
                             TenantRuntimePolicyService tenantRuntimePolicyService) {
         this.userRepository = userRepository;
         this.companyContextService = companyContextService;
         this.companyRepository = companyRepository;
-        this.roleRepository = roleRepository;
         this.roleService = roleService;
         this.passwordEncoder = passwordEncoder;
         this.emailService = emailService;
         this.tokenBlacklistService = tokenBlacklistService;
         this.refreshTokenService = refreshTokenService;
+        this.passwordResetService = passwordResetService;
+        this.auditService = auditService;
+        this.auditLogRepository = auditLogRepository;
         this.dealerRepository = dealerRepository;
         this.accountRepository = accountRepository;
         this.tenantRuntimePolicyService = tenantRuntimePolicyService;
@@ -79,7 +93,7 @@ public class AdminUserService {
     public List<UserDto> listUsers() {
         Company company = companyContextService.requireCurrentCompany();
         return userRepository.findDistinctByCompanies_Id(company.getId()).stream()
-                .map(this::toDto)
+                .map(user -> toDto(user, resolveLastLoginAt(user.getEmail())))
                 .toList();
     }
 
@@ -110,7 +124,13 @@ public class AdminUserService {
         }
         
         emailService.sendUserCredentialsEmail(saved.getEmail(), saved.getDisplayName(), tempPassword);
-        return toDto(saved);
+        auditUserAccountAction(
+                AuditEvent.USER_CREATED,
+                saved,
+                company,
+                "admin_user_create",
+                Map.of("temporaryPasswordIssued", Boolean.toString(isTemporaryPassword)));
+        return toDto(saved, resolveLastLoginAt(saved.getEmail()));
     }
     
     private void createDealerForUser(UserAccount user, Company company) {
@@ -156,18 +176,13 @@ public class AdminUserService {
     @Transactional
     public UserDto updateUser(Long id, UpdateUserRequest request) {
         Company company = companyContextService.requireCurrentCompany();
-        UserAccount user = userRepository.findByIdAndCompanies_Id(id, company.getId())
-                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("User not found"));
+        UserAccount user = resolveScopedUserForAdminAction(id, company);
         user.setDisplayName(request.displayName());
         boolean requiresReauth = false;
         if (request.enabled() != null) {
-            if (request.enabled() && !user.isEnabled()) {
-                tenantRuntimePolicyService.assertCanAddEnabledUser(company, "ADMIN_USER_ENABLE");
-            }
-            if (!request.enabled() && user.isEnabled()) {
-                requiresReauth = true; // User being disabled
-            }
-            user.setEnabled(request.enabled());
+            boolean enabledChanged = user.isEnabled() != request.enabled();
+            updateUserStatusInternal(user, request.enabled(), company, "ADMIN_USER_UPDATE");
+            requiresReauth = enabledChanged;
         }
         if (request.companyIds() != null && !request.companyIds().isEmpty()) {
             user.getCompanies().clear();
@@ -184,34 +199,49 @@ public class AdminUserService {
             tokenBlacklistService.revokeAllUserTokens(user.getEmail());
             refreshTokenService.revokeAllForUser(user.getEmail());
         }
-        return toDto(user);
+        auditUserAccountAction(
+                AuditEvent.USER_UPDATED,
+                user,
+                company,
+                "admin_user_update",
+                Map.of("displayName", user.getDisplayName()));
+        return toDto(user, resolveLastLoginAt(user.getEmail()));
+    }
+
+    @Transactional
+    public void forceResetPassword(Long userId) {
+        Company company = companyContextService.requireCurrentCompany();
+        UserAccount targetUser = resolveScopedUserForAdminAction(userId, company);
+        passwordResetService.requestResetByAdmin(targetUser);
+        auditUserAccountAction(
+                AuditEvent.PASSWORD_RESET_REQUESTED,
+                targetUser,
+                company,
+                "admin_force_reset_password",
+                Map.of("targetUserId", String.valueOf(targetUser.getId())));
+    }
+
+    @Transactional
+    public UserDto updateUserStatus(Long userId, boolean enabled) {
+        Company company = companyContextService.requireCurrentCompany();
+        UserAccount user = resolveScopedUserForAdminAction(userId, company);
+        return updateUserStatusInternal(user, enabled, company, "ADMIN_USER_STATUS");
     }
 
     @Transactional
     public void suspend(Long id) {
         Company company = companyContextService.requireCurrentCompany();
         // Use pessimistic lock to prevent race condition on concurrent status changes
-        userRepository.lockByIdAndCompanyId(id, company.getId()).ifPresent(user -> {
-            user.setEnabled(false);
-            userRepository.save(user);
-            // Revoke all active tokens to force re-authentication
-            tokenBlacklistService.revokeAllUserTokens(user.getEmail());
-            refreshTokenService.revokeAllForUser(user.getEmail());
-            emailService.sendUserSuspendedEmail(user.getEmail(), user.getDisplayName());
-        });
+        userRepository.lockByIdAndCompanyId(id, company.getId()).ifPresent(user ->
+                updateUserStatusInternal(user, false, company, "ADMIN_USER_SUSPEND"));
     }
 
     @Transactional
     public void unsuspend(Long id) {
         Company company = companyContextService.requireCurrentCompany();
         // Use pessimistic lock to prevent race condition on concurrent status changes
-        userRepository.lockByIdAndCompanyId(id, company.getId()).ifPresent(user -> {
-            if (!user.isEnabled()) {
-                tenantRuntimePolicyService.assertCanAddEnabledUser(company, "ADMIN_USER_UNSUSPEND");
-            }
-            user.setEnabled(true);
-            userRepository.save(user);
-        });
+        userRepository.lockByIdAndCompanyId(id, company.getId()).ifPresent(user ->
+                updateUserStatusInternal(user, true, company, "ADMIN_USER_UNSUSPEND"));
     }
 
     @Transactional
@@ -222,6 +252,12 @@ public class AdminUserService {
             refreshTokenService.revokeAllForUser(user.getEmail());
             userRepository.delete(user);
             emailService.sendUserDeletedEmail(user.getEmail(), user.getDisplayName());
+            auditUserAccountAction(
+                    AuditEvent.USER_DELETED,
+                    user,
+                    company,
+                    "admin_user_delete",
+                    Map.of("targetUserId", String.valueOf(user.getId())));
         });
     }
 
@@ -235,7 +271,51 @@ public class AdminUserService {
             userRepository.save(user);
             tokenBlacklistService.revokeAllUserTokens(user.getEmail());
             refreshTokenService.revokeAllForUser(user.getEmail());
+            auditUserAccountAction(
+                    AuditEvent.MFA_DISABLED,
+                    user,
+                    company,
+                    "admin_disable_mfa",
+                    Map.of("targetUserId", String.valueOf(user.getId())));
         });
+    }
+
+    private UserAccount resolveScopedUserForAdminAction(Long userId, Company activeCompany) {
+        if (hasSuperAdminAuthority()) {
+            return userRepository.findById(userId)
+                    .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("User not found"));
+        }
+        return userRepository.findByIdAndCompanies_Id(userId, activeCompany.getId())
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("User not found"));
+    }
+
+    private UserDto updateUserStatusInternal(UserAccount user,
+                                             boolean enabled,
+                                             Company actorCompany,
+                                             String operation) {
+        boolean previousEnabled = user.isEnabled();
+        if (enabled && !previousEnabled) {
+            tenantRuntimePolicyService.assertCanAddEnabledUser(actorCompany, operation);
+        }
+        user.setEnabled(enabled);
+        userRepository.save(user);
+
+        if (!enabled) {
+            tokenBlacklistService.revokeAllUserTokens(user.getEmail());
+            refreshTokenService.revokeAllForUser(user.getEmail());
+            emailService.sendUserSuspendedEmail(user.getEmail(), user.getDisplayName());
+        }
+
+        auditUserAccountAction(
+                enabled ? AuditEvent.USER_ACTIVATED : AuditEvent.USER_DEACTIVATED,
+                user,
+                actorCompany,
+                enabled ? "admin_enable_user" : "admin_disable_user",
+                Map.of(
+                        "targetUserId", String.valueOf(user.getId()),
+                        "previousEnabled", Boolean.toString(previousEnabled),
+                        "enabled", Boolean.toString(enabled)));
+        return toDto(user, resolveLastLoginAt(user.getEmail()));
     }
 
     private void validateCompanyScope(Company company, List<Long> companyIds) {
@@ -314,10 +394,43 @@ public class AdminUserService {
         });
     }
 
-    private UserDto toDto(UserAccount user) {
+    private Instant resolveLastLoginAt(String userEmail) {
+        if (!StringUtils.hasText(userEmail)) {
+            return null;
+        }
+        return auditLogRepository.findByEventTypeWithMetadataOrderByTimestampDesc(AuditEvent.LOGIN_SUCCESS).stream()
+                .filter(log -> userEmail.equalsIgnoreCase(log.getUsername()))
+                .map(AuditLog::getTimestamp)
+                .findFirst()
+                .map(localDateTime -> localDateTime.atZone(ZoneOffset.UTC).toInstant())
+                .orElse(null);
+    }
+
+    private void auditUserAccountAction(AuditEvent event,
+                                        UserAccount targetUser,
+                                        Company actorCompany,
+                                        String action,
+                                        Map<String, String> metadata) {
+        Map<String, String> auditMetadata = new LinkedHashMap<>();
+        if (metadata != null && !metadata.isEmpty()) {
+            auditMetadata.putAll(metadata);
+        }
+        String actor = SecurityActorResolver.resolveActorWithSystemProcessFallback();
+        auditMetadata.put("actor", actor);
+        auditMetadata.put("targetUserEmail", targetUser != null ? targetUser.getEmail() : "UNKNOWN");
+        auditMetadata.put("action", action);
+        auditMetadata.put("tenantScope", actorCompany != null ? actorCompany.getCode() : "GLOBAL");
+        auditService.logAuthSuccess(
+                event,
+                actor,
+                actorCompany != null ? actorCompany.getCode() : null,
+                auditMetadata);
+    }
+
+    private UserDto toDto(UserAccount user, Instant lastLoginAt) {
         List<String> companies = user.getCompanies().stream().map(Company::getCode).toList();
         List<String> roles = user.getRoles().stream().map(Role::getName).toList();
         return new UserDto(user.getId(), user.getPublicId(), user.getEmail(), user.getDisplayName(),
-                user.isEnabled(), user.isMfaEnabled(), roles, companies);
+                user.isEnabled(), user.isMfaEnabled(), roles, companies, lastLoginAt);
     }
 }

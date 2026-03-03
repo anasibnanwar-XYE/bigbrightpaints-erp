@@ -12,6 +12,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.Map;
 
@@ -29,10 +30,19 @@ class AuthDisabledUserTokenIT extends AbstractIntegrationTest {
     @Autowired
     private UserAccountRepository userAccountRepository;
 
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
     @BeforeEach
     void seedUser() {
         dataSeeder.ensureUser(USER_EMAIL, USER_PASSWORD, "Disabled User", COMPANY_CODE,
                 java.util.List.of("ROLE_ADMIN"));
+        UserAccount user = userAccountRepository.findByEmailIgnoreCase(USER_EMAIL).orElseThrow();
+        user.setEnabled(true);
+        user.setPasswordHash(passwordEncoder.encode(USER_PASSWORD));
+        user.setFailedLoginAttempts(0);
+        user.setLockedUntil(null);
+        userAccountRepository.save(user);
     }
 
     @Test
@@ -53,6 +63,30 @@ class AuthDisabledUserTokenIT extends AbstractIntegrationTest {
                 Map.class);
 
         assertThat(meResponse.getStatusCode()).isIn(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void disabledUser_cannotLoginAndReceivesAuthDisabledErrorCode() {
+        UserAccount user = userAccountRepository.findByEmailIgnoreCase(USER_EMAIL).orElseThrow();
+        user.setEnabled(false);
+        userAccountRepository.save(user);
+
+        Map<String, Object> request = Map.of(
+                "email", USER_EMAIL,
+                "password", USER_PASSWORD,
+                "companyCode", COMPANY_CODE
+        );
+
+        ResponseEntity<Map> loginResponse = rest.postForEntity("/api/v1/auth/login", request, Map.class);
+
+        assertThat(loginResponse.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(loginResponse.getBody()).isNotNull();
+        Object data = loginResponse.getBody().get("data");
+        assertThat(data).isInstanceOf(Map.class);
+        Map<?, ?> error = (Map<?, ?>) data;
+        assertThat(error.get("code")).isEqualTo("AUTH_006");
+        assertThat(error.get("message")).isEqualTo("Account is disabled");
+        assertThat(loginResponse.getBody().get("message")).isEqualTo("Account is disabled");
     }
 
     private String loginToken() {

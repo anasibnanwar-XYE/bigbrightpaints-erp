@@ -123,6 +123,21 @@ public class PasswordResetService {
     }
 
     @Transactional
+    public void requestResetByAdmin(UserAccount targetUser) {
+        if (targetUser == null || !targetUser.isEnabled()) {
+            return;
+        }
+        String correlationId = resolveCorrelationId();
+        logTenantContextIgnoredIfPresent("admin_force_reset", correlationId);
+        requestReset(targetUser.getEmail());
+        log.info(
+                "event=password_reset.admin_force_reset.dispatched policy={} correlationId={} email={} outcome=email_dispatched",
+                RESET_POLICY_SCOPE,
+                correlationId,
+                obfuscateEmail(targetUser.getEmail()));
+    }
+
+    @Transactional
     public void resetPassword(String tokenValue, String newPassword, String confirmPassword) {
         logTenantContextIgnoredIfPresent("reset_password", resolveCorrelationId());
         PasswordResetToken token = tokenRepository.findByToken(tokenValue)

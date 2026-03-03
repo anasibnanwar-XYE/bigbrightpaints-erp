@@ -54,18 +54,13 @@ class CompanyContextFilterPasswordResetBypassTest {
     }
 
     @Test
-    void superAdminForgotPasswordEndpoint_isNotBlockedByCompanyHeader() throws ServletException, IOException {
-        assertPublicPasswordResetBypass("/api/v1/auth/password/forgot/superadmin");
-    }
-
-    @Test
     void forgotPasswordEndpoint_getMethod_isBlockedByCompanyHeader() throws ServletException, IOException {
         assertRequestRejectedByCompanyHeader("GET", "/api/v1/auth/password/forgot");
     }
 
     @Test
     void lookalikePasswordResetEndpoint_isBlockedByCompanyHeader() throws ServletException, IOException {
-        assertRequestRejectedByCompanyHeader("POST", "/api/v1/auth/password/forgot/superadmin/extra");
+        assertRequestRejectedByCompanyHeader("POST", "/api/v1/auth/password/forgot/extra");
     }
 
     private void assertPublicPasswordResetBypass(String path) throws ServletException, IOException {

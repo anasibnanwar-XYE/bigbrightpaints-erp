@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.admin.dto;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -10,4 +11,5 @@ public record UserDto(Long id,
                       boolean enabled,
                       boolean mfaEnabled,
                       List<String> roles,
-                      List<String> companies) {}
+                      List<String> companies,
+                      Instant lastLoginAt) {}

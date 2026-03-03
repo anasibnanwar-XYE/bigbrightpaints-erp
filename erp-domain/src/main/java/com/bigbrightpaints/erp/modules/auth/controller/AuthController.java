@@ -108,10 +108,14 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.success("If the email exists, a reset link has been sent", "OK"));
     }
 
+    /**
+     * @deprecated Use {@code /api/v1/auth/password/forgot}. This endpoint is retained for backward compatibility.
+     */
+    @Deprecated
     @PostMapping("/password/forgot/superadmin")
     public ResponseEntity<ApiResponse<String>> forgotPasswordForSuperAdmin(
             @Valid @RequestBody ForgotPasswordRequest request) {
-        passwordResetService.requestResetForSuperAdmin(request.email());
+        passwordResetService.requestReset(request.email());
         return ResponseEntity.ok(ApiResponse.success("If the email exists, a reset link has been sent", "OK"));
     }
 

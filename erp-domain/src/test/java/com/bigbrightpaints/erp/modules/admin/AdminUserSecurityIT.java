@@ -75,6 +75,23 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
     }
 
     @Test
+    void super_admin_can_force_reset_password_across_company_scope() {
+        String token = login(SUPER_ADMIN_EMAIL, SUPER_ADMIN_PASSWORD, COMPANY);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+
+        ResponseEntity<Map> response = rest.exchange(
+                "/api/v1/admin/users/" + otherCompanyUser.getId() + "/force-reset-password",
+                HttpMethod.POST,
+                new HttpEntity<>(headers),
+                Map.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().get("success")).isEqualTo(Boolean.TRUE);
+    }
+
+    @Test
     void super_admin_can_access_admin_users_via_role_hierarchy() {
         String token = login(SUPER_ADMIN_EMAIL, SUPER_ADMIN_PASSWORD, COMPANY);
         HttpHeaders headers = new HttpHeaders();
@@ -103,6 +120,22 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
                 HttpMethod.PUT,
                 new HttpEntity<>(payload, headers),
                 Map.class);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void admin_user_status_update_blocks_cross_company_access() {
+        String token = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        ResponseEntity<Map> response = rest.exchange(
+                "/api/v1/admin/users/" + otherCompanyUser.getId() + "/status",
+                HttpMethod.PUT,
+                new HttpEntity<>(Map.of("enabled", false), headers),
+                Map.class);
+
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     }
 
@@ -137,6 +170,30 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
                 new HttpEntity<>(headers),
                 Map.class);
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void admin_users_list_includes_last_login_field_in_payload() {
+        String token = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+
+        ResponseEntity<Map> response = rest.exchange(
+                "/api/v1/admin/users",
+                HttpMethod.GET,
+                new HttpEntity<>(headers),
+                Map.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isNotNull();
+        Map<String, Object> body = response.getBody();
+        assertThat(body.get("success")).isEqualTo(Boolean.TRUE);
+        Object dataObj = body.get("data");
+        assertThat(dataObj).isInstanceOf(List.class);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> users = (List<Map<String, Object>>) dataObj;
+        assertThat(users).isNotEmpty();
+        assertThat(users.getFirst()).containsKey("lastLoginAt");
     }
 
     @Test
