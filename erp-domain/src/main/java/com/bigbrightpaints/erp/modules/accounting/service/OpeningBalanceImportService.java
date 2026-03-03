@@ -48,6 +48,8 @@ import org.springframework.web.multipart.MultipartFile;
 @Service
 public class OpeningBalanceImportService {
 
+    public static final String DEFAULT_NARRATION = "Opening balance import";
+
     private static final List<String> REQUIRED_HEADERS = List.of(
             "account_code",
             "account_name",
@@ -56,8 +58,6 @@ public class OpeningBalanceImportService {
             "credit_amount",
             "narration"
     );
-
-    private static final String DEFAULT_NARRATION = "Opening balance import";
 
     private final CompanyContextService companyContextService;
     private final AccountRepository accountRepository;
@@ -172,13 +172,29 @@ public class OpeningBalanceImportService {
     }
 
     private ImportResult processImport(Company company, MultipartFile file, String referenceNumber) {
-        int rowsProcessed = 0;
-        int accountsCreated = 0;
-        List<ImportError> errors = new ArrayList<>();
-        List<JournalCreationRequest.LineRequest> lines = new ArrayList<>();
-        BigDecimal totalDebit = BigDecimal.ZERO;
-        BigDecimal totalCredit = BigDecimal.ZERO;
+        try {
+            return processParsedRowsInternal(company, parseCsvRows(file), referenceNumber);
+        } catch (IOException ex) {
+            throw ValidationUtils.invalidState("Failed to read CSV file", ex);
+        }
+    }
 
+    public OpeningBalanceImportResponse importFromParsedRows(List<ParsedOpeningBalanceRow> parsedRows) {
+        return importFromParsedRows(parsedRows, null);
+    }
+
+    public OpeningBalanceImportResponse importFromParsedRows(List<ParsedOpeningBalanceRow> parsedRows,
+                                                             String referenceNumber) {
+        Company company = companyContextService.requireCurrentCompany();
+        if (parsedRows == null || parsedRows.isEmpty()) {
+            return new OpeningBalanceImportResponse(0, 0, java.util.List.of());
+        }
+        ImportResult result = processParsedRowsInternal(company, parsedRows, referenceNumber);
+        return result.response();
+    }
+
+    private List<ParsedOpeningBalanceRow> parseCsvRows(MultipartFile file) throws IOException {
+        List<ParsedOpeningBalanceRow> parsedRows = new ArrayList<>();
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8));
              CSVParser parser = CSVFormat.DEFAULT.builder()
@@ -195,34 +211,63 @@ public class OpeningBalanceImportService {
                 try {
                     row = OpeningBalanceCsvRow.from(record);
                 } catch (RuntimeException ex) {
-                    errors.add(new ImportError(record.getRecordNumber(), ex.getMessage()));
+                    parsedRows.add(new ParsedOpeningBalanceRow(record.getRecordNumber(), ex.getMessage()));
                     continue;
                 }
                 if (row == null) {
                     continue;
                 }
-
-                try {
-                    ResolvedAccount resolvedAccount = resolveAccount(company, row);
-                    if (resolvedAccount.created()) {
-                        accountsCreated++;
-                    }
-
-                    lines.add(new JournalCreationRequest.LineRequest(
-                            resolvedAccount.account().getId(),
-                            row.debitAmount(),
-                            row.creditAmount(),
-                            row.narration()
-                    ));
-                    totalDebit = totalDebit.add(row.debitAmount());
-                    totalCredit = totalCredit.add(row.creditAmount());
-                    rowsProcessed++;
-                } catch (RuntimeException ex) {
-                    errors.add(new ImportError(record.getRecordNumber(), ex.getMessage()));
-                }
+                parsedRows.add(new ParsedOpeningBalanceRow(
+                        record.getRecordNumber(),
+                        row.accountCode(),
+                        row.accountName(),
+                        row.accountType(),
+                        row.debitAmount(),
+                        row.creditAmount(),
+                        row.narration()
+                ));
             }
-        } catch (IOException ex) {
-            throw ValidationUtils.invalidState("Failed to read CSV file", ex);
+        }
+        return parsedRows;
+    }
+
+    private ImportResult processParsedRowsInternal(Company company,
+                                                   List<ParsedOpeningBalanceRow> parsedRows,
+                                                   String referenceNumber) {
+        int rowsProcessed = 0;
+        int accountsCreated = 0;
+        List<ImportError> errors = new ArrayList<>();
+        List<JournalCreationRequest.LineRequest> lines = new ArrayList<>();
+        BigDecimal totalDebit = BigDecimal.ZERO;
+        BigDecimal totalCredit = BigDecimal.ZERO;
+
+        for (ParsedOpeningBalanceRow row : parsedRows) {
+            if (row == null) {
+                continue;
+            }
+            if (row.errorMessage() != null) {
+                errors.add(new ImportError(row.rowNumber(), row.errorMessage()));
+                continue;
+            }
+
+            try {
+                ResolvedAccount resolvedAccount = resolveAccount(company, row.accountCode(), row.accountName(), row.accountType());
+                if (resolvedAccount.created()) {
+                    accountsCreated++;
+                }
+
+                lines.add(new JournalCreationRequest.LineRequest(
+                        resolvedAccount.account().getId(),
+                        row.debitAmount(),
+                        row.creditAmount(),
+                        row.narration()
+                ));
+                totalDebit = totalDebit.add(row.debitAmount());
+                totalCredit = totalCredit.add(row.creditAmount());
+                rowsProcessed++;
+            } catch (RuntimeException ex) {
+                errors.add(new ImportError(row.rowNumber(), ex.getMessage()));
+            }
         }
 
         Long journalEntryId = null;
@@ -230,7 +275,7 @@ public class OpeningBalanceImportService {
             if (totalDebit.subtract(totalCredit).compareTo(BigDecimal.ZERO) != 0) {
                 errors.add(new ImportError(0,
                         "Import totals are unbalanced: totalDebit=" + totalDebit + ", totalCredit=" + totalCredit));
-            } else {
+            } else if (StringUtils.hasText(referenceNumber)) {
                 JournalEntryDto journalEntry = postOpeningBalanceJournal(lines, totalDebit, referenceNumber);
                 journalEntryId = journalEntry != null ? journalEntry.id() : null;
             }
@@ -262,35 +307,42 @@ public class OpeningBalanceImportService {
     }
 
     private ResolvedAccount resolveAccount(Company company, OpeningBalanceCsvRow row) {
-        Optional<Account> existingOptional = accountRepository.findByCompanyAndCodeIgnoreCase(company, row.accountCode());
+        return resolveAccount(company, row.accountCode(), row.accountName(), row.accountType());
+    }
+
+    private ResolvedAccount resolveAccount(Company company,
+                                           String accountCode,
+                                           String accountName,
+                                           AccountType accountType) {
+        Optional<Account> existingOptional = accountRepository.findByCompanyAndCodeIgnoreCase(company, accountCode);
         if (existingOptional.isPresent()) {
             Account existing = existingOptional.get();
-            if (existing.getType() != row.accountType()) {
-                throw ValidationUtils.invalidInput("Account mapping mismatch for code " + row.accountCode()
-                        + ": expected " + row.accountType() + " but found " + existing.getType());
+            if (existing.getType() != accountType) {
+                throw ValidationUtils.invalidInput("Account mapping mismatch for code " + accountCode
+                        + ": expected " + accountType + " but found " + existing.getType());
             }
             return new ResolvedAccount(existing, false);
         }
 
-        if (!StringUtils.hasText(row.accountName())) {
-            throw ValidationUtils.invalidInput("account_name is required for new account code " + row.accountCode());
+        if (!StringUtils.hasText(accountName)) {
+            throw ValidationUtils.invalidInput("account_name is required for new account code " + accountCode);
         }
 
         Account account = new Account();
         account.setCompany(company);
-        account.setCode(row.accountCode());
-        account.setName(row.accountName());
-        account.setType(row.accountType());
+        account.setCode(accountCode);
+        account.setName(accountName);
+        account.setType(accountType);
 
         try {
             Account saved = accountRepository.save(account);
             return new ResolvedAccount(saved, true);
         } catch (DataIntegrityViolationException ex) {
-            Account concurrent = accountRepository.findByCompanyAndCodeIgnoreCase(company, row.accountCode())
+            Account concurrent = accountRepository.findByCompanyAndCodeIgnoreCase(company, accountCode)
                     .orElseThrow(() -> ex);
-            if (concurrent.getType() != row.accountType()) {
-                throw ValidationUtils.invalidInput("Account mapping mismatch for code " + row.accountCode()
-                        + ": expected " + row.accountType() + " but found " + concurrent.getType());
+            if (concurrent.getType() != accountType) {
+                throw ValidationUtils.invalidInput("Account mapping mismatch for code " + accountCode
+                        + ": expected " + accountType + " but found " + concurrent.getType());
             }
             return new ResolvedAccount(concurrent, false);
         }
@@ -413,4 +465,29 @@ public class OpeningBalanceImportService {
     private record ResolvedAccount(Account account, boolean created) {}
 
     private record ImportResult(OpeningBalanceImportResponse response, Long journalEntryId) {}
+
+    public record ParsedOpeningBalanceRow(
+            long rowNumber,
+            String accountCode,
+            String accountName,
+            AccountType accountType,
+            BigDecimal debitAmount,
+            BigDecimal creditAmount,
+            String narration,
+            String errorMessage
+    ) {
+        public ParsedOpeningBalanceRow(long rowNumber,
+                                       String accountCode,
+                                       String accountName,
+                                       AccountType accountType,
+                                       BigDecimal debitAmount,
+                                       BigDecimal creditAmount,
+                                       String narration) {
+            this(rowNumber, accountCode, accountName, accountType, debitAmount, creditAmount, narration, null);
+        }
+
+        public ParsedOpeningBalanceRow(long rowNumber, String errorMessage) {
+            this(rowNumber, null, null, null, BigDecimal.ZERO, BigDecimal.ZERO, null, errorMessage);
+        }
+    }
 }

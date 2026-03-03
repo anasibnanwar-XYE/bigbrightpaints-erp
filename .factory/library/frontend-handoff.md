@@ -474,6 +474,7 @@ Comprehensive frontend handoff for `VAL-DOC-003` (chart of accounts, journals, s
 | `GET` | `/api/v1/accounting/month-end/checklist` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `MonthEndChecklistDto` |
 | `POST` | `/api/v1/accounting/month-end/checklist/{periodId}` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `MonthEndChecklistUpdateRequest` | `MonthEndChecklistDto` |
 | `POST` | `/api/v1/accounting/opening-balances` | `hasAuthority('ROLE_ADMIN')` | `multipart/form-data` (`file`: CSV) | `OpeningBalanceImportResponse` |
+| `POST` | `/api/v1/migration/tally-import` | `hasAuthority('ROLE_ADMIN')` | `multipart/form-data` (`file`: Tally XML) | `TallyImportResponse` |
 | `POST` | `/api/v1/accounting/payroll/payments` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `PayrollPaymentRequest` | `JournalEntryDto` |
 | `POST` | `/api/v1/accounting/payroll/payments/batch` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `PayrollBatchPaymentRequest` | `PayrollBatchPaymentResponse` |
 | `GET` | `/api/v1/accounting/periods` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `List<AccountingPeriodDto>` |
@@ -504,7 +505,7 @@ Comprehensive frontend handoff for `VAL-DOC-003` (chart of accounts, journals, s
 | `POST` | `/api/v1/accounting/suppliers/{supplierId}/auto-settle` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `AutoSettlementRequest` | `PartnerSettlementResponse` |
 | `GET` | `/api/v1/accounting/trial-balance/as-of` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `TemporalBalanceService.TrialBalanceSnapshot` |
 
-_Total documented accounting endpoints: **74**._
+_Total documented accounting endpoints: **75**._
 
 #### Required User Flows (API call sequences)
 
@@ -551,6 +552,13 @@ _Total documented accounting endpoints: **74**._
    3. Handle response summary (`rowsProcessed`, `accountsCreated`, `errors[]`) and surface row-level errors inline for correction/retry
    4. Treat identical file re-uploads as replay-safe: backend deduplicates by file hash idempotency key and returns same response payload
 
+8. **Tally XML bootstrap (migration/import flow)**
+   1. Export opening data from Tally Prime XML containing `LEDGER` masters and opening `VOUCHER` entries.
+   2. Upload XML via `POST /api/v1/migration/tally-import` (`multipart/form-data`, field name `file`).
+   3. Render response counters (`ledgersProcessed`, `mappedLedgers`, `accountsCreated`, `openingVoucherEntriesProcessed`, `openingBalanceRowsProcessed`).
+   4. Surface `unmappedGroups[]`, `unmappedItems[]`, and `errors[]` as actionable remediation list before re-upload.
+   5. Treat byte-identical XML re-uploads as replay-safe: backend deduplicates by file-content SHA-256 idempotency key.
+
 #### State Machines
 
 1. **Journal lifecycle** (`JournalEntry.status`)
@@ -576,7 +584,7 @@ _Total documented accounting endpoints: **74**._
 | ErrorCode enum | Wire code | Description | Suggested frontend behavior |
 |---|---|---|---|
 | `BUSINESS_CONSTRAINT_VIOLATION` | `BUS_004` | Business rule violation | Show business-rule toast/banner; do not auto-retry; keep action disabled until user changes input/state. |
-| `BUSINESS_DUPLICATE_ENTRY` | `BUS_002` | Duplicate entry found | Show business-rule toast/banner; do not auto-retry; keep action disabled until user changes input/state. |
+| `BUSINESS_DUPLICATE_ENTRY` | `BUS_002` | Duplicate entry found (including migration reference replay conflicts for import flows) | Show business-rule toast/banner; do not auto-retry; keep action disabled until user changes input/state. |
 | `BUSINESS_ENTITY_NOT_FOUND` | `BUS_003` | Requested resource not found | Show business-rule toast/banner; do not auto-retry; keep action disabled until user changes input/state. |
 | `BUSINESS_INVALID_STATE` | `BUS_001` | Operation not allowed in current state | Show business-rule toast/banner; do not auto-retry; keep action disabled until user changes input/state. |
 | `CONCURRENCY_CONFLICT` | `CONC_001` | Resource was modified by another user | Show stale-data dialog and force refresh before retry. |
@@ -853,6 +861,11 @@ _Total documented accounting endpoints: **74**._
   - CSV required headers: `account_code,account_name,account_type,debit_amount,credit_amount,narration`
   - `account_type` enum domain: `ASSET | LIABILITY | EQUITY | REVENUE | EXPENSE`
   - Row validations: either debit or credit must be positive (not both/non-zero, not both zero), `account_code` required, `account_name` required for auto-created accounts
+- **`multipart/form-data` (`POST /api/v1/migration/tally-import`)**
+  - `file`: `MultipartFile` — required Tally XML upload part (`application/xml` or multipart binary)
+  - XML content expectations: includes `LEDGER` masters (`NAME`, `PARENT`) and optional opening `VOUCHER` blocks with `ALLLEDGERENTRIES.LIST` + `AMOUNT`
+  - Backend mapping: known Tally ledger groups map to ERP `AccountType`; unknown groups are reported via `unmappedGroups[]`
+  - Re-upload behavior: file-content hash is used as idempotency key; identical file bytes replay previous result payload
 
 #### Response DTO Contracts (all endpoint `data` types)
 
@@ -1293,6 +1306,17 @@ _Total documented accounting endpoints: **74**._
   - `errors`: `List<ImportError>`
     - `rowNumber`: `long` (`0` used for file-level errors like debit/credit imbalance)
     - `message`: `String` (row-level validation or mapping failure; import continues for other rows)
+- **`TallyImportResponse`**
+  - `ledgersProcessed`: `int` (total `LEDGER` records parsed)
+  - `mappedLedgers`: `int` (ledgers successfully mapped to known `AccountType` groups)
+  - `accountsCreated`: `int` (new accounts created from mapped ledgers or opening rows)
+  - `openingVoucherEntriesProcessed`: `int` (opening voucher ledger rows parsed)
+  - `openingBalanceRowsProcessed`: `int` (rows submitted to opening-balance posting path)
+  - `unmappedGroups`: `List<String>` (group names with no mapping)
+  - `unmappedItems`: `List<String>` (ledger names from opening rows that could not be mapped)
+  - `errors`: `List<ImportError>`
+    - `context`: `String` (e.g., `ledger:<name>`, `opening-row:<name>`, `opening-balance-row-<n>`)
+    - `message`: `String` (mapping/parsing or posting error detail)
 
 #### UI Hints (accounting screens)
 
@@ -1312,11 +1336,17 @@ _Total documented accounting endpoints: **74**._
 - **Idempotency**
   - For mutation endpoints supporting replay protection, send `Idempotency-Key` (preferred). Legacy `X-Idempotency-Key` is accepted; mismatches are rejected.
   - Opening balance import uses file-content hash idempotency internally; frontend does **not** need to send idempotency header, but should preserve identical file bytes when expecting replay behavior.
+  - Tally XML import also uses file-content hash idempotency internally; frontend should preserve exact file bytes for replay expectations.
 - **Opening balance import UX**
   - Restrict action to admin role surfaces only; accounting-role users receive `403`.
   - Show downloadable CSV template with exact headers/order to reduce row errors.
   - Render `errors[]` as row-level table (row number + message) while still showing partial success counters.
   - After successful import with `rowsProcessed > 0` and empty `errors`, refresh journal list filtered by `sourceModule=OPENING_BALANCE` and recent date.
+- **Tally import UX**
+  - Restrict action to admin role surfaces only; accounting-role users receive `403`.
+  - Display `unmappedGroups[]` and `unmappedItems[]` prominently so users can fix Tally group/ledger mapping before retry.
+  - Render `errors[]` grouped by `context` to separate ledger-mapping issues from posting-row issues.
+  - After successful import, refresh chart-of-accounts and journal list filtered by `sourceModule=OPENING_BALANCE` because import posts through opening-balance journal path.
 
 ### Product Catalog & Inventory
 
