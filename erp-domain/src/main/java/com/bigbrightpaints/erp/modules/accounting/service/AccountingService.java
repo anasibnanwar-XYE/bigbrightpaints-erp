@@ -44,6 +44,7 @@ import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepo
 import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 import jakarta.persistence.EntityManager;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -60,6 +61,7 @@ public class AccountingService extends AccountingCoreService {
     private final CreditDebitNoteService creditDebitNoteService;
     private final AccountingAuditService accountingAuditService;
     private final InventoryAccountingService inventoryAccountingService;
+    private final ObjectProvider<AccountingFacade> accountingFacadeProvider;
 
     /**
      * Truth-suite marker snippets retained in this facade file for contract-level source assertions:
@@ -113,7 +115,8 @@ public class AccountingService extends AccountingCoreService {
                              SettlementService settlementService,
                              CreditDebitNoteService creditDebitNoteService,
                              AccountingAuditService accountingAuditService,
-                             InventoryAccountingService inventoryAccountingService) {
+                             InventoryAccountingService inventoryAccountingService,
+                             ObjectProvider<AccountingFacade> accountingFacadeProvider) {
         super(companyContextService,
                 accountRepository,
                 journalEntryRepository,
@@ -147,6 +150,7 @@ public class AccountingService extends AccountingCoreService {
         this.creditDebitNoteService = creditDebitNoteService;
         this.accountingAuditService = accountingAuditService;
         this.inventoryAccountingService = inventoryAccountingService;
+        this.accountingFacadeProvider = accountingFacadeProvider;
     }
 
     public AccountingService(CompanyContextService companyContextService,
@@ -208,6 +212,7 @@ public class AccountingService extends AccountingCoreService {
                 null,
                 null,
                 null,
+                null,
                 null);
     }
 
@@ -253,10 +258,11 @@ public class AccountingService extends AccountingCoreService {
 
     @Override
     public JournalEntryDto createManualJournal(ManualJournalRequest request) {
-        if (journalEntryService == null) {
+        AccountingFacade facade = resolveAccountingFacade();
+        if (facade == null) {
             return super.createManualJournal(request);
         }
-        return journalEntryService.createManualJournal(request);
+        return facade.createManualJournal(request);
     }
 
     @Override
@@ -288,10 +294,11 @@ public class AccountingService extends AccountingCoreService {
 
     @Override
     public JournalEntryDto createManualJournalEntry(JournalEntryRequest request, String idempotencyKey) {
-        if (journalEntryService == null) {
+        AccountingFacade facade = resolveAccountingFacade();
+        if (facade == null) {
             return super.createManualJournalEntry(request, idempotencyKey);
         }
-        return journalEntryService.createManualJournalEntry(request, idempotencyKey);
+        return facade.createManualJournalEntry(request, idempotencyKey);
     }
 
     @Override
@@ -428,6 +435,10 @@ public class AccountingService extends AccountingCoreService {
             return super.auditDigestCsv(from, to);
         }
         return accountingAuditService.auditDigestCsv(from, to);
+    }
+
+    private AccountingFacade resolveAccountingFacade() {
+        return accountingFacadeProvider == null ? null : accountingFacadeProvider.getIfAvailable();
     }
 
     private boolean decrementSignatureCount(java.util.Map<DealerPaymentSignature, Integer> counts,

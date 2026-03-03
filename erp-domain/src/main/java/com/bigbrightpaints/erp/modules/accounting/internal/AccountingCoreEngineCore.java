@@ -2873,14 +2873,13 @@ public abstract class AccountingCoreEngineCore {
         String rawKey = StringUtils.hasText(idempotencyKey) ? idempotencyKey.trim() : null;
         String key = StringUtils.hasText(rawKey) ? normalizeIdempotencyMappingKey(rawKey) : null;
         if (StringUtils.hasText(rawKey)) {
-            if (journalEntryRepository.findByCompanyAndReferenceNumber(company, rawKey).isPresent()) {
-                throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
-                        "Idempotency key conflicts with an existing system reference")
-                        .withDetail("referenceNumber", rawKey);
+            Optional<JournalEntry> existingByReference = journalEntryRepository.findByCompanyAndReferenceNumber(company, rawKey);
+            if (existingByReference.isPresent()) {
+                return toDto(existingByReference.get());
             }
-            Optional<JournalEntry> existing = journalReferenceResolver.findExistingEntry(company, rawKey);
-            if (existing.isPresent()) {
-                return toDto(existing.get());
+            Optional<JournalEntry> existingByResolver = journalReferenceResolver.findExistingEntry(company, rawKey);
+            if (existingByResolver.isPresent()) {
+                return toDto(existingByResolver.get());
             }
             // Reserve the idempotency key FIRST (reserve-first pattern) to make manual journal creation
             // concurrency-safe. The INSERT ... ON CONFLICT DO NOTHING is atomic and avoids a
@@ -2902,20 +2901,32 @@ public abstract class AccountingCoreEngineCore {
                         .withDetail("referenceNumber", rawKey);
             }
         }
-        JournalEntryDto created = createJournalEntry(new JournalEntryRequest(
-                null,
-                request.entryDate(),
-                request.memo(),
-                request.dealerId(),
-                request.supplierId(),
-                request.adminOverride(),
-                request.lines(),
-                request.currency(),
-                request.fxRate(),
-                request.sourceModule(),
-                request.sourceReference(),
-                StringUtils.hasText(request.journalType()) ? request.journalType() : JournalEntryType.MANUAL.name()
-        ));
+        JournalEntryDto created;
+        try {
+            created = createJournalEntry(new JournalEntryRequest(
+                    null,
+                    request.entryDate(),
+                    request.memo(),
+                    request.dealerId(),
+                    request.supplierId(),
+                    request.adminOverride(),
+                    request.lines(),
+                    request.currency(),
+                    request.fxRate(),
+                    request.sourceModule(),
+                    request.sourceReference(),
+                    StringUtils.hasText(request.journalType()) ? request.journalType() : JournalEntryType.MANUAL.name()
+            ));
+        } catch (RuntimeException ex) {
+            if (!StringUtils.hasText(rawKey) || !isRetryableManualConcurrencyFailure(ex)) {
+                throw ex;
+            }
+            JournalEntry already = awaitJournalEntry(company, rawKey, key);
+            if (already != null) {
+                return toDto(already);
+            }
+            throw ex;
+        }
         if (StringUtils.hasText(key) && created != null && StringUtils.hasText(created.referenceNumber())) {
             JournalReferenceMapping mapping = findLatestLegacyReferenceMapping(company, key)
                     .orElseThrow(() -> new ApplicationException(ErrorCode.INTERNAL_CONCURRENCY_FAILURE,
@@ -2935,6 +2946,18 @@ public abstract class AccountingCoreEngineCore {
         String hash = org.springframework.util.DigestUtils.md5DigestAsHex(
                 idempotencyKey.getBytes(java.nio.charset.StandardCharsets.UTF_8));
         return "RESERVED-" + hash;
+    }
+
+    private boolean isRetryableManualConcurrencyFailure(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof DataIntegrityViolationException
+                    || current instanceof org.hibernate.AssertionFailure) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     private boolean isReservedReference(String reference) {

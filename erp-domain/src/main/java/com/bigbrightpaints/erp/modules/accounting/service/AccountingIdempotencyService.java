@@ -30,11 +30,14 @@ import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepo
 import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 import jakarta.persistence.EntityManager;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 @Service
 public class AccountingIdempotencyService extends AccountingCoreEngine {
+
+    private final ObjectProvider<AccountingFacade> accountingFacadeProvider;
 
     public AccountingIdempotencyService(CompanyContextService companyContextService,
                                         AccountRepository accountRepository,
@@ -62,7 +65,8 @@ public class AccountingIdempotencyService extends AccountingCoreEngine {
                                         EntityManager entityManager,
                                         SystemSettingsService systemSettingsService,
                                         AuditService auditService,
-                                        AccountingEventStore accountingEventStore) {
+                                        AccountingEventStore accountingEventStore,
+                                        ObjectProvider<AccountingFacade> accountingFacadeProvider) {
         super(companyContextService,
                 accountRepository,
                 journalEntryRepository,
@@ -90,10 +94,15 @@ public class AccountingIdempotencyService extends AccountingCoreEngine {
                 systemSettingsService,
                 auditService,
                 accountingEventStore);
+        this.accountingFacadeProvider = accountingFacadeProvider;
     }
 
     public JournalEntryDto createManualJournalEntry(JournalEntryRequest request, String idempotencyKey) {
-        return super.createManualJournalEntry(request, idempotencyKey);
+        AccountingFacade facade = accountingFacadeProvider == null ? null : accountingFacadeProvider.getIfAvailable();
+        if (facade == null) {
+            return super.createManualJournalEntry(request, idempotencyKey);
+        }
+        return facade.createManualJournalEntry(request, idempotencyKey);
     }
 
     public JournalEntryDto recordDealerReceipt(DealerReceiptRequest request) {

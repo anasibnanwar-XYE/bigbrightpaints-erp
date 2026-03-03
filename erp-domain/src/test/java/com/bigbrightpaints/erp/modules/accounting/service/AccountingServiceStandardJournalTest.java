@@ -38,6 +38,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -48,7 +49,6 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.spy;
@@ -84,6 +84,8 @@ class AccountingServiceStandardJournalTest {
     @Mock private SystemSettingsService systemSettingsService;
     @Mock private AuditService auditService;
     @Mock private AccountingEventStore accountingEventStore;
+    @Mock private ObjectProvider<AccountingFacade> accountingFacadeProvider;
+    @Mock private AccountingFacade accountingFacade;
 
     private AccountingService accountingService;
 
@@ -116,7 +118,14 @@ class AccountingServiceStandardJournalTest {
                 entityManager,
                 systemSettingsService,
                 auditService,
-                accountingEventStore
+                accountingEventStore,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                accountingFacadeProvider
         );
     }
 
@@ -275,8 +284,7 @@ class AccountingServiceStandardJournalTest {
     }
 
     @Test
-    void createManualJournal_balancedMultiLineDelegatesToManualEntryCreation() {
-        AccountingService serviceSpy = spy(accountingService);
+    void createManualJournal_balancedMultiLineDelegatesToFacade() {
         JournalEntryDto expected = new JournalEntryDto(
                 301L,
                 null,
@@ -304,9 +312,6 @@ class AccountingServiceStandardJournalTest {
                 null,
                 null
         );
-        ArgumentCaptor<JournalEntryRequest> requestCaptor = ArgumentCaptor.forClass(JournalEntryRequest.class);
-        doReturn(expected).when(serviceSpy).createManualJournalEntry(requestCaptor.capture(), eq("manual-xyz"));
-
         ManualJournalRequest request = new ManualJournalRequest(
                 LocalDate.of(2026, 2, 28),
                 "Manual correction",
@@ -318,15 +323,66 @@ class AccountingServiceStandardJournalTest {
                         new ManualJournalRequest.LineRequest(22L, new BigDecimal("140.00"), "Credit line", ManualJournalRequest.EntryType.CREDIT)
                 )
         );
+        when(accountingFacadeProvider.getIfAvailable()).thenReturn(accountingFacade);
+        when(accountingFacade.createManualJournal(request)).thenReturn(expected);
 
-        JournalEntryDto actual = serviceSpy.createManualJournal(request);
+        JournalEntryDto actual = accountingService.createManualJournal(request);
 
         assertThat(actual).isSameAs(expected);
-        JournalEntryRequest captured = requestCaptor.getValue();
-        assertThat(captured.journalType()).isEqualTo("MANUAL");
-        assertThat(captured.sourceModule()).isEqualTo("MANUAL");
-        assertThat(captured.sourceReference()).isEqualTo("manual-xyz");
-        assertThat(captured.lines()).hasSize(3);
+    }
+
+    @Test
+    void createManualJournalEntry_delegatesToFacade() {
+        JournalEntryRequest request = new JournalEntryRequest(
+                null,
+                LocalDate.of(2026, 2, 28),
+                "Manual correction",
+                null,
+                null,
+                false,
+                List.of(
+                        new JournalEntryRequest.JournalLineRequest(11L, "Dr", new BigDecimal("100.00"), BigDecimal.ZERO),
+                        new JournalEntryRequest.JournalLineRequest(22L, "Cr", BigDecimal.ZERO, new BigDecimal("100.00"))
+                ),
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+        JournalEntryDto expected = new JournalEntryDto(
+                302L,
+                null,
+                "JRN-302",
+                LocalDate.of(2026, 2, 28),
+                "Manual correction",
+                "POSTED",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                List.<JournalLineDto>of(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+        when(accountingFacadeProvider.getIfAvailable()).thenReturn(accountingFacade);
+        when(accountingFacade.createManualJournalEntry(request, "manual-xyz")).thenReturn(expected);
+
+        JournalEntryDto actual = accountingService.createManualJournalEntry(request, "manual-xyz");
+
+        assertThat(actual).isSameAs(expected);
     }
 
     @Test

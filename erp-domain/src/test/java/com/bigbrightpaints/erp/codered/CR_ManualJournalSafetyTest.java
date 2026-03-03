@@ -9,6 +9,7 @@ import com.bigbrightpaints.erp.modules.accounting.controller.AccountingControlle
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMappingRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
@@ -139,6 +140,10 @@ class CR_ManualJournalSafetyTest extends AbstractIntegrationTest {
                     assertThat(mapping.getEntityId()).as("mapping entityId").isNotNull();
                     assertThat(mapping.getCanonicalReference()).as("mapping canonical reference").isNotBlank();
                 });
+
+        JournalEntry persisted = journalEntryRepository.findById(journalIds.getFirst()).orElseThrow();
+        assertThat(persisted.getJournalType()).isEqualTo(com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryType.MANUAL);
+        assertThat(persisted.getSourceModule()).isEqualTo("MANUAL");
 
         CoderedDbAssertions.assertBalancedJournal(journalEntryRepository, journalIds.getFirst());
         CoderedDbAssertions.assertNoOrphanJournalEntries(jdbcTemplate, company.getId());

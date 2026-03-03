@@ -19,7 +19,6 @@ import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryReversalRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalListItemDto;
-import com.bigbrightpaints.erp.modules.accounting.dto.ManualJournalRequest;
 import com.bigbrightpaints.erp.modules.accounting.event.AccountingEventStore;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunLineRepository;
@@ -39,7 +38,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
-import java.util.ArrayList;
 import java.util.List;
 import java.time.LocalDate;
 
@@ -193,8 +191,9 @@ public class JournalEntryService extends AccountingCoreEngine {
         String narration = request.narration().trim();
         String sourceModule = request.sourceModule().trim();
         String sourceReference = request.sourceReference().trim();
+        boolean manualSource = "MANUAL".equalsIgnoreCase(sourceModule);
         JournalEntryRequest journalRequest = new JournalEntryRequest(
-                sourceReference,
+                manualSource ? null : sourceReference,
                 entryDate,
                 narration,
                 request.dealerId(),
@@ -205,73 +204,12 @@ public class JournalEntryService extends AccountingCoreEngine {
                 null,
                 sourceModule,
                 sourceReference,
-                JournalEntryType.AUTOMATED.name()
+                manualSource ? JournalEntryType.MANUAL.name() : JournalEntryType.AUTOMATED.name()
         );
+        if (manualSource) {
+            return super.createManualJournalEntry(journalRequest, sourceReference);
+        }
         return createJournalEntry(journalRequest);
-    }
-
-    public JournalEntryDto createManualJournal(ManualJournalRequest request) {
-        if (request == null) {
-            throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
-                    "Manual journal request is required");
-        }
-        if (request.lines() == null || request.lines().isEmpty()) {
-            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
-                    "Manual journal requires at least one line");
-        }
-        BigDecimal totalDebit = BigDecimal.ZERO;
-        BigDecimal totalCredit = BigDecimal.ZERO;
-        List<JournalEntryRequest.JournalLineRequest> lines = new ArrayList<>();
-        for (ManualJournalRequest.LineRequest line : request.lines()) {
-            if (line == null || line.accountId() == null) {
-                throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
-                        "Account is required for manual journal lines");
-            }
-            BigDecimal amount = ValidationUtils.requirePositive(line.amount(), "amount");
-            ManualJournalRequest.EntryType entryType = line.entryType();
-            if (entryType == null) {
-                throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
-                        "Entry type is required for manual journal lines");
-            }
-            String lineNarration = StringUtils.hasText(line.narration())
-                    ? line.narration().trim()
-                    : (StringUtils.hasText(request.narration()) ? request.narration().trim() : "Manual journal line");
-            BigDecimal debit = entryType == ManualJournalRequest.EntryType.DEBIT ? amount : BigDecimal.ZERO;
-            BigDecimal credit = entryType == ManualJournalRequest.EntryType.CREDIT ? amount : BigDecimal.ZERO;
-            totalDebit = totalDebit.add(debit);
-            totalCredit = totalCredit.add(credit);
-            lines.add(new JournalEntryRequest.JournalLineRequest(
-                    line.accountId(),
-                    lineNarration,
-                    debit,
-                    credit
-            ));
-        }
-        if (totalDebit.subtract(totalCredit).abs().compareTo(JOURNAL_BALANCE_TOLERANCE) > 0) {
-            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
-                    "Manual journal entry must balance")
-                    .withDetail("totalDebit", totalDebit)
-                    .withDetail("totalCredit", totalCredit);
-        }
-
-        LocalDate entryDate = request.entryDate() != null ? request.entryDate() : LocalDate.now();
-        String narration = StringUtils.hasText(request.narration()) ? request.narration().trim() : "Manual journal entry";
-        String sourceReference = StringUtils.hasText(request.idempotencyKey()) ? request.idempotencyKey().trim() : null;
-        JournalEntryRequest journalRequest = new JournalEntryRequest(
-                null,
-                entryDate,
-                narration,
-                null,
-                null,
-                Boolean.TRUE.equals(request.adminOverride()),
-                lines,
-                null,
-                null,
-                "MANUAL",
-                sourceReference,
-                JournalEntryType.MANUAL.name()
-        );
-        return createManualJournalEntry(journalRequest, request.idempotencyKey());
     }
 
     public List<JournalListItemDto> listJournals(LocalDate fromDate,

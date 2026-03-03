@@ -506,7 +506,7 @@ public class AccountingController {
                 request.fxRate()
         );
         return ResponseEntity.ok(ApiResponse.success("Journal entry posted",
-                journalEntryService.createManualJournalEntry(sanitized, idempotencyKey)));
+                accountingService.createManualJournalEntry(sanitized, idempotencyKey)));
     }
 
     @PostMapping("/journal-entries/{entryId}/reverse")

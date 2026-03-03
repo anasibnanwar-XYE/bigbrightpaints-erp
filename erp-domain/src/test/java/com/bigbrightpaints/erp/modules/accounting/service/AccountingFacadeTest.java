@@ -11,6 +11,7 @@ import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalLineDto;
+import com.bigbrightpaints.erp.modules.accounting.dto.ManualJournalRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.PayrollPaymentRequest;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
@@ -36,6 +37,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.lenient;
@@ -492,6 +494,119 @@ class AccountingFacadeTest {
         assertThat(replay).isNull();
         verify(accountingService).createStandardJournal(any());
         verify(companyEntityLookup, never()).requireJournalEntry(eq(company), any(Long.class));
+    }
+
+    @Test
+    void createManualJournal_routesThroughStandardJournalWithManualSource() {
+        ManualJournalRequest request = new ManualJournalRequest(
+                LocalDate.of(2026, 2, 28),
+                "Manual adjustment",
+                "manual-100",
+                false,
+                List.of(
+                        new ManualJournalRequest.LineRequest(11L, new BigDecimal("50.00"), "Debit", ManualJournalRequest.EntryType.DEBIT),
+                        new ManualJournalRequest.LineRequest(22L, new BigDecimal("50.00"), "Credit", ManualJournalRequest.EntryType.CREDIT)
+                )
+        );
+        JournalEntryDto expected = new JournalEntryDto(
+                600L,
+                null,
+                "JRN-600",
+                LocalDate.of(2026, 2, 28),
+                "Manual adjustment",
+                "POSTED",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                List.<JournalLineDto>of(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+        when(accountingService.createStandardJournal(any(JournalCreationRequest.class))).thenReturn(expected);
+
+        JournalEntryDto actual = accountingFacade.createManualJournal(request);
+
+        assertThat(actual).isSameAs(expected);
+        verify(accountingService).createStandardJournal(argThat(journalRequest ->
+                journalRequest != null
+                        && "MANUAL".equals(journalRequest.sourceModule())
+                        && "manual-100".equals(journalRequest.sourceReference())
+                        && journalRequest.lines() != null
+                        && journalRequest.lines().size() == 2
+                        && journalRequest.amount().compareTo(new BigDecimal("50.00")) == 0
+        ));
+    }
+
+    @Test
+    void createManualJournalEntry_routesThroughStandardJournalWithManualSource() {
+        JournalEntryRequest request = new JournalEntryRequest(
+                null,
+                LocalDate.of(2026, 2, 28),
+                "Manual single",
+                null,
+                null,
+                false,
+                List.of(
+                        new JournalEntryRequest.JournalLineRequest(11L, "Dr", new BigDecimal("75.00"), BigDecimal.ZERO),
+                        new JournalEntryRequest.JournalLineRequest(22L, "Cr", BigDecimal.ZERO, new BigDecimal("75.00"))
+                ),
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+        JournalEntryDto expected = new JournalEntryDto(
+                601L,
+                null,
+                "JRN-601",
+                LocalDate.of(2026, 2, 28),
+                "Manual single",
+                "POSTED",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                List.<JournalLineDto>of(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+        when(accountingService.createStandardJournal(any(JournalCreationRequest.class))).thenReturn(expected);
+
+        JournalEntryDto actual = accountingFacade.createManualJournalEntry(request, "MANUAL-XYZ");
+
+        assertThat(actual).isSameAs(expected);
+        verify(accountingService).createStandardJournal(argThat(journalRequest ->
+                journalRequest != null
+                        && "MANUAL".equals(journalRequest.sourceModule())
+                        && "MANUAL-XYZ".equals(journalRequest.sourceReference())
+                        && journalRequest.amount().compareTo(new BigDecimal("75.00")) == 0
+        ));
     }
 
     @Test
