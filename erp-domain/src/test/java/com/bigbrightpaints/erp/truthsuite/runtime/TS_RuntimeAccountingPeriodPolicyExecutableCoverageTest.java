@@ -12,6 +12,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodReposit
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodStatus;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.PeriodCloseRequestRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodReopenRequest;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
@@ -28,18 +29,27 @@ import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepo
 import com.bigbrightpaints.erp.modules.reports.service.ReportService;
 import java.time.LocalDate;
 import java.util.Optional;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 @Tag("critical")
 @Tag("reconciliation")
 class TS_RuntimeAccountingPeriodPolicyExecutableCoverageTest {
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+    }
 
     @Mock private AccountingPeriodRepository accountingPeriodRepository;
     @Mock private CompanyContextService companyContextService;
@@ -55,6 +65,7 @@ class TS_RuntimeAccountingPeriodPolicyExecutableCoverageTest {
     @Mock private RawMaterialPurchaseRepository rawMaterialPurchaseRepository;
     @Mock private PayrollRunRepository payrollRunRepository;
     @Mock private ReconciliationDiscrepancyRepository reconciliationDiscrepancyRepository;
+    @Mock private PeriodCloseRequestRepository periodCloseRequestRepository;
     @Mock private ObjectProvider<AccountingFacade> accountingFacadeProvider;
     @Mock private PeriodCloseHook periodCloseHook;
     @Mock private AccountingPeriodSnapshotService snapshotService;
@@ -76,6 +87,7 @@ class TS_RuntimeAccountingPeriodPolicyExecutableCoverageTest {
                 rawMaterialPurchaseRepository,
                 payrollRunRepository,
                 reconciliationDiscrepancyRepository,
+                periodCloseRequestRepository,
                 accountingFacadeProvider,
                 periodCloseHook,
                 snapshotService
@@ -94,9 +106,19 @@ class TS_RuntimeAccountingPeriodPolicyExecutableCoverageTest {
 
         when(companyContextService.requireCurrentCompany()).thenReturn(company);
         when(accountingPeriodRepository.lockByCompanyAndId(company, 12L)).thenReturn(Optional.of(period));
+        authenticate("super.admin", "ROLE_SUPER_ADMIN");
 
         assertThatThrownBy(() -> service.reopenPeriod(12L, new AccountingPeriodReopenRequest("   ")))
                 .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Reopen reason is required");
+    }
+
+    private void authenticate(String username, String... roles) {
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+                username,
+                "N/A",
+                java.util.Arrays.stream(roles)
+                        .map(SimpleGrantedAuthority::new)
+                        .toList()));
     }
 }

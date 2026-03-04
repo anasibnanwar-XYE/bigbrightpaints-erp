@@ -1,27 +1,40 @@
 package com.bigbrightpaints.erp.modules.accounting.service;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
-import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriod;
-import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodStatus;
-import com.bigbrightpaints.erp.modules.company.domain.Company;
-import java.time.LocalDate;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriod;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodStatus;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.PeriodCloseRequestRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyRepository;
+import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodCloseRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodDto;
+import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodReopenRequest;
+import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import java.time.LocalDate;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunRepository;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.GoodsReceiptRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
 import com.bigbrightpaints.erp.modules.reports.service.ReportService;
+import com.bigbrightpaints.erp.core.validation.ValidationUtils;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 @Service
 public class AccountingPeriodService extends AccountingPeriodServiceCore {
+
+    private static final String SUPER_ADMIN_REQUIRED_MESSAGE =
+            "SUPER_ADMIN authority required to reopen accounting periods";
 
     // TruthSuite anchor for closed-period idempotency guard parsing:
     // if (period.getStatus() == AccountingPeriodStatus.CLOSED) {
@@ -87,6 +100,45 @@ public class AccountingPeriodService extends AccountingPeriodServiceCore {
                                    ObjectProvider<AccountingFacade> accountingFacadeProvider,
                                    PeriodCloseHook periodCloseHook,
                                    AccountingPeriodSnapshotService snapshotService) {
+        this(accountingPeriodRepository,
+                companyContextService,
+                journalEntryRepository,
+                companyEntityLookup,
+                journalLineRepository,
+                accountRepository,
+                companyClock,
+                reportService,
+                reconciliationService,
+                invoiceRepository,
+                goodsReceiptRepository,
+                rawMaterialPurchaseRepository,
+                payrollRunRepository,
+                reconciliationDiscrepancyRepository,
+                null,
+                accountingFacadeProvider,
+                periodCloseHook,
+                snapshotService);
+    }
+
+    @Autowired
+    public AccountingPeriodService(AccountingPeriodRepository accountingPeriodRepository,
+                                   CompanyContextService companyContextService,
+                                   JournalEntryRepository journalEntryRepository,
+                                   CompanyEntityLookup companyEntityLookup,
+                                   JournalLineRepository journalLineRepository,
+                                   AccountRepository accountRepository,
+                                   CompanyClock companyClock,
+                                   ReportService reportService,
+                                   ReconciliationService reconciliationService,
+                                   InvoiceRepository invoiceRepository,
+                                   GoodsReceiptRepository goodsReceiptRepository,
+                                   RawMaterialPurchaseRepository rawMaterialPurchaseRepository,
+                                   PayrollRunRepository payrollRunRepository,
+                                   ReconciliationDiscrepancyRepository reconciliationDiscrepancyRepository,
+                                   PeriodCloseRequestRepository periodCloseRequestRepository,
+                                   ObjectProvider<AccountingFacade> accountingFacadeProvider,
+                                   PeriodCloseHook periodCloseHook,
+                                   AccountingPeriodSnapshotService snapshotService) {
         super(accountingPeriodRepository,
                 companyContextService,
                 journalEntryRepository,
@@ -101,8 +153,33 @@ public class AccountingPeriodService extends AccountingPeriodServiceCore {
                 rawMaterialPurchaseRepository,
                 payrollRunRepository,
                 reconciliationDiscrepancyRepository,
+                periodCloseRequestRepository,
                 accountingFacadeProvider,
                 periodCloseHook,
                 snapshotService);
+    }
+
+    @Override
+    public AccountingPeriodDto reopenPeriod(Long periodId, AccountingPeriodReopenRequest request) {
+        requireSuperAdminRole();
+        return super.reopenPeriod(periodId, request);
+    }
+
+    @Override
+    public AccountingPeriodDto closePeriod(Long periodId, AccountingPeriodCloseRequest request) {
+        throw ValidationUtils.invalidState(
+                "Direct close is disabled; submit /request-close and approve via maker-checker workflow");
+    }
+
+    private void requireSuperAdminRole() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new ApplicationException(ErrorCode.AUTH_INSUFFICIENT_PERMISSIONS, SUPER_ADMIN_REQUIRED_MESSAGE);
+        }
+        boolean hasSuperAdmin = authentication.getAuthorities().stream()
+                .anyMatch(authority -> "ROLE_SUPER_ADMIN".equalsIgnoreCase(authority.getAuthority()));
+        if (!hasSuperAdmin) {
+            throw new ApplicationException(ErrorCode.AUTH_INSUFFICIENT_PERMISSIONS, SUPER_ADMIN_REQUIRED_MESSAGE);
+        }
     }
 }

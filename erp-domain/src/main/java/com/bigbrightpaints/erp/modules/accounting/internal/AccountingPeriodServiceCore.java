@@ -4,6 +4,7 @@ import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.security.SecurityActorResolver;
+import com.bigbrightpaints.erp.core.validation.ValidationUtils;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.*;
@@ -19,6 +20,8 @@ import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.MonthEndChecklistDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.MonthEndChecklistItemDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.MonthEndChecklistUpdateRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.PeriodCloseRequestActionRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.PeriodCloseRequestDto;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingComplianceAuditService;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodSnapshotService;
@@ -88,6 +91,7 @@ public class AccountingPeriodServiceCore {
     private final RawMaterialPurchaseRepository rawMaterialPurchaseRepository;
     private final PayrollRunRepository payrollRunRepository;
     private final ReconciliationDiscrepancyRepository reconciliationDiscrepancyRepository;
+    private final PeriodCloseRequestRepository periodCloseRequestRepository;
     private final ObjectProvider<AccountingFacade> accountingFacadeProvider;
     private final PeriodCloseHook periodCloseHook;
     private final AccountingPeriodSnapshotService snapshotService;
@@ -109,6 +113,7 @@ public class AccountingPeriodServiceCore {
                                    RawMaterialPurchaseRepository rawMaterialPurchaseRepository,
                                    PayrollRunRepository payrollRunRepository,
                                    ReconciliationDiscrepancyRepository reconciliationDiscrepancyRepository,
+                                   PeriodCloseRequestRepository periodCloseRequestRepository,
                                    ObjectProvider<AccountingFacade> accountingFacadeProvider,
                                    PeriodCloseHook periodCloseHook,
                                    AccountingPeriodSnapshotService snapshotService) {
@@ -126,6 +131,7 @@ public class AccountingPeriodServiceCore {
         this.rawMaterialPurchaseRepository = rawMaterialPurchaseRepository;
         this.payrollRunRepository = payrollRunRepository;
         this.reconciliationDiscrepancyRepository = reconciliationDiscrepancyRepository;
+        this.periodCloseRequestRepository = periodCloseRequestRepository;
         this.accountingFacadeProvider = accountingFacadeProvider;
         this.periodCloseHook = periodCloseHook;
         this.snapshotService = snapshotService;
@@ -205,7 +211,180 @@ public class AccountingPeriodServiceCore {
     }
 
     @Transactional
+    public PeriodCloseRequestDto requestPeriodClose(Long periodId, PeriodCloseRequestActionRequest request) {
+        Company company = companyContextService.requireCurrentCompany();
+        AccountingPeriod period = accountingPeriodRepository.lockByCompanyAndId(company, periodId)
+                .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                        "Accounting period not found"));
+        if (period.getStatus() == AccountingPeriodStatus.CLOSED) {
+            throw ValidationUtils.invalidState("Accounting period " + period.getLabel() + " is already closed");
+        }
+        if (periodCloseRequestRepository == null) {
+            throw ValidationUtils.invalidState("Period close request workflow is not configured");
+        }
+        String requester = resolveCurrentUsername();
+        String note = normalizeRequiredNote(request != null ? request.note() : null, "Close request note is required");
+        boolean force = request != null && Boolean.TRUE.equals(request.force());
+
+        PeriodCloseRequest pending = periodCloseRequestRepository
+                .lockByCompanyAndAccountingPeriodAndStatus(company, period, PeriodCloseRequestStatus.PENDING)
+                .orElse(null);
+        if (pending != null) {
+            if (!requester.equalsIgnoreCase(normalizeActor(pending.getRequestedBy(), "requestedBy"))) {
+                throw ValidationUtils.invalidState(
+                        "A pending period close request already exists for " + period.getLabel());
+            }
+            pending.setRequestNote(note);
+            pending.setForceRequested(force);
+            pending.setRequestedAt(CompanyTime.now(company));
+            pending.setReviewedBy(null);
+            pending.setReviewedAt(null);
+            pending.setReviewNote(null);
+            pending.setApprovalNote(null);
+            PeriodCloseRequest saved = periodCloseRequestRepository.save(pending);
+            if (accountingComplianceAuditService != null) {
+                accountingComplianceAuditService.recordPeriodCloseRequestLifecycle(
+                        company,
+                        saved,
+                        PeriodCloseRequestStatus.PENDING,
+                        PeriodCloseRequestStatus.PENDING,
+                        "PERIOD_CLOSE_REQUEST_UPDATED",
+                        "PERIOD_CLOSE_REQUEST_UPDATED",
+                        requester,
+                        note,
+                        false);
+            }
+            return toPeriodCloseRequestDto(saved);
+        }
+
+        PeriodCloseRequest created = new PeriodCloseRequest();
+        created.setCompany(company);
+        created.setAccountingPeriod(period);
+        created.setStatus(PeriodCloseRequestStatus.PENDING);
+        created.setRequestedBy(requester);
+        created.setRequestNote(note);
+        created.setForceRequested(force);
+        created.setRequestedAt(CompanyTime.now(company));
+        PeriodCloseRequest saved = periodCloseRequestRepository.save(created);
+        if (accountingComplianceAuditService != null) {
+            accountingComplianceAuditService.recordPeriodCloseRequestLifecycle(
+                    company,
+                    saved,
+                    null,
+                    PeriodCloseRequestStatus.PENDING,
+                    "PERIOD_CLOSE_REQUESTED",
+                    "PERIOD_CLOSE_REQUESTED",
+                    requester,
+                    note,
+                    false);
+        }
+        return toPeriodCloseRequestDto(saved);
+    }
+
+    @Transactional
+    public AccountingPeriodDto approvePeriodClose(Long periodId, PeriodCloseRequestActionRequest request) {
+        Company company = companyContextService.requireCurrentCompany();
+        AccountingPeriod period = accountingPeriodRepository.lockByCompanyAndId(company, periodId)
+                .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                        "Accounting period not found"));
+        if (period.getStatus() == AccountingPeriodStatus.CLOSED) {
+            throw ValidationUtils.invalidState("Accounting period " + period.getLabel() + " is already closed");
+        }
+        if (periodCloseRequestRepository == null) {
+            throw ValidationUtils.invalidState("Period close request workflow is not configured");
+        }
+
+        PeriodCloseRequest pending = periodCloseRequestRepository
+                .lockByCompanyAndAccountingPeriodAndStatus(company, period, PeriodCloseRequestStatus.PENDING)
+                .orElseThrow(() -> ValidationUtils.invalidState(
+                        "No pending period close request found for " + period.getLabel()));
+
+        String reviewer = resolveCurrentUsername();
+        assertMakerCheckerBoundary(pending, reviewer);
+        String approvalNote = normalizeRequiredNote(request != null ? request.note() : null, "Approval note is required");
+        boolean force = request != null && request.force() != null
+                ? Boolean.TRUE.equals(request.force())
+                : pending.isForceRequested();
+
+        pending.setStatus(PeriodCloseRequestStatus.APPROVED);
+        pending.setReviewedBy(reviewer);
+        pending.setReviewedAt(CompanyTime.now(company));
+        pending.setReviewNote(approvalNote);
+        pending.setApprovalNote(approvalNote);
+        pending.setForceRequested(force);
+
+        AccountingPeriodDto closed = closePeriod(
+                periodId,
+                new AccountingPeriodCloseRequest(force, approvalNote),
+                true,
+                pending);
+        periodCloseRequestRepository.save(pending);
+        if (accountingComplianceAuditService != null) {
+            accountingComplianceAuditService.recordPeriodCloseRequestLifecycle(
+                    company,
+                    pending,
+                    PeriodCloseRequestStatus.PENDING,
+                    PeriodCloseRequestStatus.APPROVED,
+                    "PERIOD_CLOSE_APPROVED",
+                    "PERIOD_CLOSE_APPROVED",
+                    reviewer,
+                    approvalNote,
+                    true);
+        }
+        return closed;
+    }
+
+    @Transactional
+    public PeriodCloseRequestDto rejectPeriodClose(Long periodId, PeriodCloseRequestActionRequest request) {
+        Company company = companyContextService.requireCurrentCompany();
+        AccountingPeriod period = accountingPeriodRepository.lockByCompanyAndId(company, periodId)
+                .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
+                        "Accounting period not found"));
+        if (periodCloseRequestRepository == null) {
+            throw ValidationUtils.invalidState("Period close request workflow is not configured");
+        }
+
+        PeriodCloseRequest pending = periodCloseRequestRepository
+                .lockByCompanyAndAccountingPeriodAndStatus(company, period, PeriodCloseRequestStatus.PENDING)
+                .orElseThrow(() -> ValidationUtils.invalidState(
+                        "No pending period close request found for " + period.getLabel()));
+
+        String reviewer = resolveCurrentUsername();
+        assertMakerCheckerBoundary(pending, reviewer);
+        String rejectionNote = normalizeRequiredNote(request != null ? request.note() : null, "Rejection note is required");
+
+        pending.setStatus(PeriodCloseRequestStatus.REJECTED);
+        pending.setReviewedBy(reviewer);
+        pending.setReviewedAt(CompanyTime.now(company));
+        pending.setReviewNote(rejectionNote);
+        pending.setApprovalNote(null);
+
+        PeriodCloseRequest saved = periodCloseRequestRepository.save(pending);
+        if (accountingComplianceAuditService != null) {
+            accountingComplianceAuditService.recordPeriodCloseRequestLifecycle(
+                    company,
+                    saved,
+                    PeriodCloseRequestStatus.PENDING,
+                    PeriodCloseRequestStatus.REJECTED,
+                    "PERIOD_CLOSE_REJECTED",
+                    "PERIOD_CLOSE_REJECTED",
+                    reviewer,
+                    rejectionNote,
+                    true);
+        }
+        return toPeriodCloseRequestDto(saved);
+    }
+
+    @Transactional
     public AccountingPeriodDto closePeriod(Long periodId, AccountingPeriodCloseRequest request) {
+        return closePeriod(periodId, request, false, null);
+    }
+
+    @Transactional
+    private AccountingPeriodDto closePeriod(Long periodId,
+                                            AccountingPeriodCloseRequest request,
+                                            boolean fromApprovedRequest,
+                                            PeriodCloseRequest approvedRequest) {
         Company company = companyContextService.requireCurrentCompany();
         AccountingPeriod period = accountingPeriodRepository.lockByCompanyAndId(company, periodId)
                 .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE,
@@ -217,6 +396,12 @@ public class AccountingPeriodServiceCore {
         String note = request != null && StringUtils.hasText(request.note()) ? request.note().trim() : null;
         if (!StringUtils.hasText(note)) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Close reason is required");
+        }
+        if (fromApprovedRequest && (approvedRequest == null
+                || approvedRequest.getStatus() != PeriodCloseRequestStatus.APPROVED
+                || approvedRequest.getAccountingPeriod() == null
+                || !Objects.equals(approvedRequest.getAccountingPeriod().getId(), periodId))) {
+            throw ValidationUtils.invalidState("Approved period close request is required before closing period");
         }
         periodCloseHook.onPeriodCloseLocked(company, period);
         boolean force = request != null && Boolean.TRUE.equals(request.force());
@@ -251,7 +436,8 @@ public class AccountingPeriodServiceCore {
                     "PERIOD_CLOSED",
                     beforeStatus,
                     saved.getStatus() != null ? saved.getStatus().name() : null,
-                    note);
+                    note,
+                    false);
         }
         ensurePeriod(company, period.getEndDate().plusDays(1));
         return toDto(saved);
@@ -297,11 +483,23 @@ public class AccountingPeriodServiceCore {
         if (request == null || !StringUtils.hasText(request.reason())) {
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Lock reason is required");
         }
+        String beforeStatus = period.getStatus() != null ? period.getStatus().name() : null;
         period.setStatus(AccountingPeriodStatus.LOCKED);
         period.setLockedAt(CompanyTime.now(company));
         period.setLockedBy(resolveCurrentUsername());
         period.setLockReason(request.reason().trim());
-        return toDto(accountingPeriodRepository.save(period));
+        AccountingPeriod saved = accountingPeriodRepository.save(period);
+        if (accountingComplianceAuditService != null) {
+            accountingComplianceAuditService.recordPeriodTransition(
+                    company,
+                    saved,
+                    "PERIOD_LOCKED",
+                    beforeStatus,
+                    saved.getStatus() != null ? saved.getStatus().name() : null,
+                    saved.getLockReason(),
+                    false);
+        }
+        return toDto(saved);
     }
 
     @Transactional
@@ -338,7 +536,8 @@ public class AccountingPeriodServiceCore {
                     "PERIOD_REOPENED",
                     beforeStatus,
                     saved.getStatus() != null ? saved.getStatus().name() : null,
-                    reason);
+                    reason,
+                    true);
         }
         return toDto(saved);
     }
@@ -946,6 +1145,57 @@ public class AccountingPeriodServiceCore {
                 period.getEndDate(),
                 List.of(PayrollRun.PayrollStatus.POSTED, PayrollRun.PayrollStatus.PAID));
         return invoiceUnlinked + purchaseUnlinked + payrollUnlinked;
+    }
+
+    private PeriodCloseRequestDto toPeriodCloseRequestDto(PeriodCloseRequest request) {
+        if (request == null) {
+            return null;
+        }
+        AccountingPeriod period = request.getAccountingPeriod();
+        String periodStatus = period != null && period.getStatus() != null ? period.getStatus().name() : null;
+        return new PeriodCloseRequestDto(
+                request.getId(),
+                request.getPublicId(),
+                period != null ? period.getId() : null,
+                period != null ? period.getLabel() : null,
+                periodStatus,
+                request.getStatus() != null ? request.getStatus().name() : null,
+                request.isForceRequested(),
+                request.getRequestedBy(),
+                request.getRequestNote(),
+                request.getRequestedAt(),
+                request.getReviewedBy(),
+                request.getReviewedAt(),
+                request.getReviewNote(),
+                request.getApprovalNote()
+        );
+    }
+
+    private String normalizeRequiredNote(String note, String message) {
+        if (!StringUtils.hasText(note)) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, message);
+        }
+        return note.trim();
+    }
+
+    private void assertMakerCheckerBoundary(PeriodCloseRequest request, String reviewer) {
+        String requester = normalizeActor(request != null ? request.getRequestedBy() : null, "requestedBy");
+        String normalizedReviewer = normalizeActor(reviewer, "reviewedBy");
+        if (requester.equalsIgnoreCase(normalizedReviewer)) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Maker-checker violation: requester and reviewer cannot be the same actor")
+                    .withDetail("resourceType", "period_close_request")
+                    .withDetail("requestedBy", requester)
+                    .withDetail("reviewedBy", normalizedReviewer);
+        }
+    }
+
+    private String normalizeActor(String actor, String fieldName) {
+        if (!StringUtils.hasText(actor)) {
+            throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    fieldName + " is required");
+        }
+        return actor.trim();
     }
 
     private String formatVariance(BigDecimal variance) {

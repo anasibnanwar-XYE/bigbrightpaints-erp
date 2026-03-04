@@ -5,5 +5,6 @@ import java.util.List;
 public record AdminApprovalsResponse(
         List<AdminApprovalItemDto> creditRequests,
         List<AdminApprovalItemDto> payrollRuns,
+        List<AdminApprovalItemDto> periodCloseRequests,
         List<AdminApprovalItemDto> exportRequests
 ) {}

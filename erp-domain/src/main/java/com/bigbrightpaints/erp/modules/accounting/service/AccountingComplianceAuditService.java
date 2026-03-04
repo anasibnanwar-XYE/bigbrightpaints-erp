@@ -11,6 +11,8 @@ import com.bigbrightpaints.erp.modules.accounting.domain.CostingMethod;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryType;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLine;
+import com.bigbrightpaints.erp.modules.accounting.domain.PeriodCloseRequest;
+import com.bigbrightpaints.erp.modules.accounting.domain.PeriodCloseRequestStatus;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -31,6 +33,7 @@ public class AccountingComplianceAuditService {
     private static final String MODULE_ACCOUNTING = "ACCOUNTING";
     private static final String ENTITY_JOURNAL = "JOURNAL_ENTRY";
     private static final String ENTITY_PERIOD = "ACCOUNTING_PERIOD";
+    private static final String ENTITY_PERIOD_CLOSE_REQUEST = "PERIOD_CLOSE_REQUEST";
     private static final String ENTITY_ACCOUNT = "ACCOUNT";
     private static final String METADATA_BEFORE_STATE = "beforeState";
     private static final String METADATA_AFTER_STATE = "afterState";
@@ -132,6 +135,16 @@ public class AccountingComplianceAuditService {
                                        String beforeStatus,
                                        String afterStatus,
                                        String reason) {
+        recordPeriodTransition(company, period, actionType, beforeStatus, afterStatus, reason, false);
+    }
+
+    public void recordPeriodTransition(Company company,
+                                       AccountingPeriod period,
+                                       String actionType,
+                                       String beforeStatus,
+                                       String afterStatus,
+                                       String reason,
+                                       boolean sensitiveOperation) {
         if (company == null || period == null || !StringUtils.hasText(actionType)) {
             return;
         }
@@ -143,7 +156,7 @@ public class AccountingComplianceAuditService {
         afterState.put("periodLabel", period.getLabel());
         afterState.put("costingMethod", period.getCostingMethod() != null ? period.getCostingMethod().name() : null);
 
-        Map<String, String> metadata = baseMetadata(company, beforeState, afterState, false);
+        Map<String, String> metadata = baseMetadata(company, beforeState, afterState, sensitiveOperation);
         if (StringUtils.hasText(reason)) {
             metadata.put("reason", reason.trim());
         }
@@ -186,6 +199,103 @@ public class AccountingComplianceAuditService {
                 period.getLabel(),
                 null,
                 company.getBaseCurrency(),
+                metadata
+        );
+    }
+
+    public void recordPeriodCloseRequestLifecycle(Company company,
+                                                  PeriodCloseRequest request,
+                                                  PeriodCloseRequestStatus beforeStatus,
+                                                  PeriodCloseRequestStatus afterStatus,
+                                                  String actionType,
+                                                  String reasonCode,
+                                                  String actor,
+                                                  String note,
+                                                  boolean sensitiveOperation) {
+        if (company == null || request == null || !StringUtils.hasText(actionType)) {
+            return;
+        }
+
+        Map<String, Object> beforeState = new LinkedHashMap<>();
+        beforeState.put("status", beforeStatus != null ? beforeStatus.name() : null);
+
+        Map<String, Object> afterState = new LinkedHashMap<>();
+        afterState.put("status", afterStatus != null ? afterStatus.name() : null);
+        afterState.put("periodId", request.getAccountingPeriod() != null ? request.getAccountingPeriod().getId() : null);
+        afterState.put("periodLabel", request.getAccountingPeriod() != null ? request.getAccountingPeriod().getLabel() : null);
+        afterState.put("forceRequested", request.isForceRequested());
+
+        Map<String, String> metadata = baseMetadata(company, beforeState, afterState, sensitiveOperation);
+        if (StringUtils.hasText(reasonCode)) {
+            metadata.put("reasonCode", reasonCode.trim());
+        }
+        if (StringUtils.hasText(actor)) {
+            metadata.put("actor", actor.trim());
+        }
+        if (StringUtils.hasText(note)) {
+            metadata.put("note", note.trim());
+        }
+        if (StringUtils.hasText(request.getRequestedBy())) {
+            metadata.put("requestedBy", request.getRequestedBy().trim());
+        }
+        if (StringUtils.hasText(request.getReviewedBy())) {
+            metadata.put("reviewedBy", request.getReviewedBy().trim());
+        }
+        if (request.getRequestedAt() != null) {
+            metadata.put("requestedAt", request.getRequestedAt().toString());
+        }
+        if (request.getReviewedAt() != null) {
+            metadata.put("reviewedAt", request.getReviewedAt().toString());
+        }
+
+        record(
+                company,
+                actionType,
+                ENTITY_PERIOD_CLOSE_REQUEST,
+                stringifyId(request.getId()),
+                periodCloseRequestReference(request),
+                null,
+                company.getBaseCurrency(),
+                metadata
+        );
+    }
+
+    public void recordAdminOverrideJournalReversal(Company company,
+                                                   JournalEntry original,
+                                                   JournalEntry reversal,
+                                                   String actor,
+                                                   String reason,
+                                                   boolean overrideRequested,
+                                                   boolean overrideAuthorized) {
+        if (company == null || original == null || reversal == null || !overrideRequested) {
+            return;
+        }
+        Map<String, Object> beforeState = new LinkedHashMap<>();
+        beforeState.put("status", "POSTED");
+
+        Map<String, Object> afterState = new LinkedHashMap<>();
+        afterState.put("status", original.getStatus());
+        afterState.put("reversalEntryId", reversal.getId());
+        afterState.put("reversalReference", reversal.getReferenceNumber());
+
+        Map<String, String> metadata = baseMetadata(company, beforeState, afterState, true);
+        metadata.put("adminOverrideRequested", Boolean.toString(overrideRequested));
+        metadata.put("adminOverrideAuthorized", Boolean.toString(overrideAuthorized));
+        if (StringUtils.hasText(actor)) {
+            metadata.put("actor", actor.trim());
+        }
+        if (StringUtils.hasText(reason)) {
+            metadata.put("reason", reason.trim());
+        }
+
+        record(
+                company,
+                "JOURNAL_REVERSAL_ADMIN_OVERRIDE",
+                ENTITY_JOURNAL,
+                stringifyId(original.getId()),
+                original.getReferenceNumber(),
+                null,
+                original.getCurrency(),
                 metadata
         );
     }
@@ -318,6 +428,16 @@ public class AccountingComplianceAuditService {
         } catch (JsonProcessingException ex) {
             return "{}";
         }
+    }
+
+    private String periodCloseRequestReference(PeriodCloseRequest request) {
+        if (request == null) {
+            return null;
+        }
+        if (request.getPublicId() != null) {
+            return request.getPublicId().toString();
+        }
+        return stringifyId(request.getId());
     }
 
     private String stringifyId(Long id) {

@@ -14,10 +14,13 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodStatus;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.PeriodCloseRequest;
+import com.bigbrightpaints.erp.modules.accounting.domain.PeriodCloseRequestRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.PeriodCloseRequestStatus;
 import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyRepository;
-import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodCloseRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodLockRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodReopenRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.PeriodCloseRequestActionRequest;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodService;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodSnapshotService;
@@ -33,12 +36,16 @@ import com.bigbrightpaints.erp.modules.reports.service.ReportService;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
@@ -60,12 +67,19 @@ class TS_RuntimeAccountingPeriodServiceRegressionExecutableCoverageTest {
     @Mock private RawMaterialPurchaseRepository rawMaterialPurchaseRepository;
     @Mock private PayrollRunRepository payrollRunRepository;
     @Mock private ReconciliationDiscrepancyRepository reconciliationDiscrepancyRepository;
+    @Mock private PeriodCloseRequestRepository periodCloseRequestRepository;
     @Mock private ObjectProvider<AccountingFacade> accountingFacadeProvider;
     @Mock private PeriodCloseHook periodCloseHook;
     @Mock private AccountingPeriodSnapshotService snapshotService;
 
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
+    }
+
     @Test
     void lockPeriod_trimsReasonAndTransitionsToLocked() {
+        SecurityContextHolder.clearContext();
         AccountingPeriodService service = newService();
         Company company = company(1L, "TRUTH");
         AccountingPeriod period = openPeriod(company, 2026, 2);
@@ -81,6 +95,7 @@ class TS_RuntimeAccountingPeriodServiceRegressionExecutableCoverageTest {
 
     @Test
     void closeThenReopen_periodLifecycleUpdatesStateAndSnapshotHooks() {
+        SecurityContextHolder.clearContext();
         AccountingPeriodService service = newService();
         Company company = company(2L, "TRUTH2");
         AccountingPeriod period = openPeriod(company, 2026, 2);
@@ -100,18 +115,24 @@ class TS_RuntimeAccountingPeriodServiceRegressionExecutableCoverageTest {
                 .thenReturn(Optional.of(openPeriod(company, 2026, 3)));
         when(journalEntryRepository.findByCompanyAndId(company, 444L)).thenReturn(Optional.of(closingEntry));
 
-        assertThat(service.closePeriod(21L, new AccountingPeriodCloseRequest(true, "month close")).status())
+        PeriodCloseRequest pending = pendingCloseRequest(company, period, 901L, "maker.user");
+        when(periodCloseRequestRepository.lockByCompanyAndAccountingPeriodAndStatus(
+                company, period, PeriodCloseRequestStatus.PENDING)).thenReturn(Optional.of(pending));
+        when(periodCloseRequestRepository.save(pending)).thenReturn(pending);
+        authenticate("checker.user", "ROLE_ACCOUNTING");
+        assertThat(service.approvePeriodClose(21L, new PeriodCloseRequestActionRequest("month close", true)).status())
                 .isEqualTo("CLOSED");
         assertThat(period.getStatus()).isEqualTo(AccountingPeriodStatus.CLOSED);
         period.setClosingJournalEntryId(444L);
 
+        authenticate("super.admin", "ROLE_SUPER_ADMIN");
         assertThat(service.reopenPeriod(21L, new AccountingPeriodReopenRequest(" reopen month ")).status())
                 .isEqualTo("OPEN");
         assertThat(period.getStatus()).isEqualTo(AccountingPeriodStatus.OPEN);
         assertThat(period.getReopenReason()).isEqualTo("reopen month");
 
         verify(periodCloseHook).onPeriodCloseLocked(company, period);
-        verify(snapshotService).captureSnapshot(company, period, "UNKNOWN_AUTH_ACTOR");
+        verify(snapshotService).captureSnapshot(company, period, "checker.user");
         verify(snapshotService).deleteSnapshotForPeriod(company, period);
     }
 
@@ -131,6 +152,7 @@ class TS_RuntimeAccountingPeriodServiceRegressionExecutableCoverageTest {
                 rawMaterialPurchaseRepository,
                 payrollRunRepository,
                 reconciliationDiscrepancyRepository,
+                periodCloseRequestRepository,
                 accountingFacadeProvider,
                 periodCloseHook,
                 snapshotService
@@ -155,6 +177,32 @@ class TS_RuntimeAccountingPeriodServiceRegressionExecutableCoverageTest {
         period.setStartDate(startDate);
         period.setEndDate(startDate.plusMonths(1).minusDays(1));
         period.setStatus(AccountingPeriodStatus.OPEN);
+        ReflectionTestUtils.setField(period, "id", 21L);
         return period;
+    }
+
+    private PeriodCloseRequest pendingCloseRequest(Company company,
+                                                   AccountingPeriod period,
+                                                   Long requestId,
+                                                   String requestedBy) {
+        PeriodCloseRequest request = new PeriodCloseRequest();
+        ReflectionTestUtils.setField(request, "id", requestId);
+        request.setCompany(company);
+        request.setAccountingPeriod(period);
+        request.setStatus(PeriodCloseRequestStatus.PENDING);
+        request.setRequestedBy(requestedBy);
+        request.setRequestNote("pending close");
+        request.setForceRequested(true);
+        request.setRequestedAt(java.time.Instant.parse("2026-01-01T00:00:00Z"));
+        return request;
+    }
+
+    private void authenticate(String username, String... roles) {
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+                username,
+                "N/A",
+                java.util.Arrays.stream(roles)
+                        .map(SimpleGrantedAuthority::new)
+                        .toList()));
     }
 }

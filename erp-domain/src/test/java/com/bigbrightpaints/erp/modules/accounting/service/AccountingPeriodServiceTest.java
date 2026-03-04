@@ -13,13 +13,16 @@ import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepan
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.PeriodCloseRequest;
+import com.bigbrightpaints.erp.modules.accounting.domain.PeriodCloseRequestRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.PeriodCloseRequestStatus;
 import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyRepository;
-import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodCloseRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodLockRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodReopenRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodUpdateRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodUpsertRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.MonthEndChecklistUpdateRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.PeriodCloseRequestActionRequest;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRun;
@@ -69,6 +72,7 @@ class AccountingPeriodServiceTest {
     @Mock private RawMaterialPurchaseRepository rawMaterialPurchaseRepository;
     @Mock private PayrollRunRepository payrollRunRepository;
     @Mock private ReconciliationDiscrepancyRepository reconciliationDiscrepancyRepository;
+    @Mock private PeriodCloseRequestRepository periodCloseRequestRepository;
     @Mock private ObjectProvider<AccountingFacade> accountingFacadeProvider;
     @Mock private PeriodCloseHook periodCloseHook;
     @Mock private AccountingPeriodSnapshotService snapshotService;
@@ -99,6 +103,7 @@ class AccountingPeriodServiceTest {
                 rawMaterialPurchaseRepository,
                 payrollRunRepository,
                 reconciliationDiscrepancyRepository,
+                periodCloseRequestRepository,
                 accountingFacadeProvider,
                 periodCloseHook,
                 snapshotService
@@ -156,13 +161,16 @@ class AccountingPeriodServiceTest {
     }
 
     @Test
-    void reopenPeriod_whenAlreadyOpen_isIdempotentWithoutSaveOrSnapshotDelete() {
+    void reopenPeriod_requiresSuperAdminRole() {
         Company company = company(1L, "ACME");
         AccountingPeriod period = openPeriod(company, 2026, 2);
         when(companyContextService.requireCurrentCompany()).thenReturn(company);
         when(accountingPeriodRepository.lockByCompanyAndId(company, 20L)).thenReturn(Optional.of(period));
+        authenticate("accounting.user", "ROLE_ACCOUNTING");
 
-        assertThat(service.reopenPeriod(20L, null).status()).isEqualTo("OPEN");
+        assertThatThrownBy(() -> service.reopenPeriod(20L, null))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("SUPER_ADMIN authority required");
         verify(accountingPeriodRepository, never()).save(any(AccountingPeriod.class));
         verify(snapshotService, never()).deleteSnapshotForPeriod(any(), any());
     }
@@ -174,6 +182,7 @@ class AccountingPeriodServiceTest {
         period.setStatus(AccountingPeriodStatus.CLOSED);
         when(companyContextService.requireCurrentCompany()).thenReturn(company);
         when(accountingPeriodRepository.lockByCompanyAndId(company, 21L)).thenReturn(Optional.of(period));
+        authenticate("super.admin", "ROLE_SUPER_ADMIN");
 
         assertThatThrownBy(() -> service.reopenPeriod(21L, null))
                 .isInstanceOf(ApplicationException.class)
@@ -190,6 +199,7 @@ class AccountingPeriodServiceTest {
         when(accountingPeriodRepository.lockByCompanyAndId(company, 22L)).thenReturn(Optional.of(period));
         when(journalEntryRepository.findByCompanyAndId(company, 901L)).thenReturn(Optional.empty());
         when(accountingPeriodRepository.save(period)).thenReturn(period);
+        authenticate("super.admin", "ROLE_SUPER_ADMIN");
 
         assertThat(service.reopenPeriod(22L, new AccountingPeriodReopenRequest("  reopen correction  ")).status())
                 .isEqualTo("OPEN");
@@ -211,6 +221,7 @@ class AccountingPeriodServiceTest {
         when(accountingPeriodRepository.lockByCompanyAndId(company, 23L)).thenReturn(Optional.of(period));
         when(journalEntryRepository.findByCompanyAndId(company, 902L)).thenReturn(Optional.of(closing));
         when(accountingPeriodRepository.save(period)).thenReturn(period);
+        authenticate("super.admin", "ROLE_SUPER_ADMIN");
 
         assertThat(service.reopenPeriod(23L, new AccountingPeriodReopenRequest("monthly reopen")).status())
                 .isEqualTo("OPEN");
@@ -219,7 +230,7 @@ class AccountingPeriodServiceTest {
     }
 
     @Test
-    void closePeriod_requiresReasonWhenRequestMissing() {
+    void closePeriod_requiresApprovedMakerCheckerRequest() {
         Company company = company(1L, "ACME");
         AccountingPeriod period = openPeriod(company, 2026, 2);
         when(companyContextService.requireCurrentCompany()).thenReturn(company);
@@ -227,40 +238,50 @@ class AccountingPeriodServiceTest {
 
         assertThatThrownBy(() -> service.closePeriod(30L, null))
                 .isInstanceOf(ApplicationException.class)
-                .hasMessageContaining("Close reason is required");
+                .hasMessageContaining("submit /request-close and approve");
     }
 
     @Test
-    void closePeriod_closesAndCapturesSnapshotWhenNetIncomeZero() {
+    void approvePeriodClose_closesAndCapturesSnapshotWhenNetIncomeZero() {
         Company company = company(1L, "ACME");
         AccountingPeriod period = openPeriod(company, 2026, 2);
+        PeriodCloseRequest pending = pendingCloseRequest(company, period, 501L, "maker.user");
         when(companyContextService.requireCurrentCompany()).thenReturn(company);
-        when(accountingPeriodRepository.lockByCompanyAndId(company, 31L)).thenReturn(Optional.of(period));
+        when(accountingPeriodRepository.lockByCompanyAndId(company, 31L)).thenReturn(Optional.of(period), Optional.of(period));
+        when(periodCloseRequestRepository.lockByCompanyAndAccountingPeriodAndStatus(
+                company, period, PeriodCloseRequestStatus.PENDING)).thenReturn(Optional.of(pending));
         when(goodsReceiptRepository.countByCompanyAndReceiptDateBetweenAndStatusNot(
                 company, period.getStartDate(), period.getEndDate(), "INVOICED")).thenReturn(0L);
         when(journalLineRepository.summarizeByAccountType(company, period.getStartDate(), period.getEndDate()))
                 .thenReturn(List.of());
         when(accountingPeriodRepository.save(period)).thenReturn(period);
+        when(periodCloseRequestRepository.save(pending)).thenReturn(pending);
         when(accountingPeriodRepository.findByCompanyAndYearAndMonth(company, 2026, 3))
                 .thenReturn(Optional.of(openPeriod(company, 2026, 3)));
+        authenticate("checker.user", "ROLE_ACCOUNTING");
 
-        assertThat(service.closePeriod(31L, new AccountingPeriodCloseRequest(true, "  month close  ")).status())
+        assertThat(service.approvePeriodClose(31L, new PeriodCloseRequestActionRequest("  month close  ", true)).status())
                 .isEqualTo("CLOSED");
         assertThat(period.getChecklistNotes()).isEqualTo("month close");
         assertThat(period.getLockReason()).isEqualTo("month close");
         assertThat(period.getClosingJournalEntryId()).isNull();
+        assertThat(pending.getStatus()).isEqualTo(PeriodCloseRequestStatus.APPROVED);
+        assertThat(pending.getReviewedBy()).isEqualTo("checker.user");
         verify(periodCloseHook).onPeriodCloseLocked(company, period);
-        verify(snapshotService).captureSnapshot(company, period, SYSTEM_PROCESS_ACTOR);
+        verify(snapshotService).captureSnapshot(company, period, "checker.user");
         verify(journalEntryRepository, never()).findByCompanyAndReferenceNumber(any(), anyString());
     }
 
     @Test
-    void closePeriod_setsClosingJournalEntryIdWhenNetIncomeNonZero() {
+    void approvePeriodClose_setsClosingJournalEntryIdWhenNetIncomeNonZero() {
         Company company = company(1L, "ACME");
         AccountingPeriod period = openPeriod(company, 2026, 2);
+        PeriodCloseRequest pending = pendingCloseRequest(company, period, 502L, "maker.user");
         JournalEntry closingEntry = journalEntryWithId(444L);
         when(companyContextService.requireCurrentCompany()).thenReturn(company);
-        when(accountingPeriodRepository.lockByCompanyAndId(company, 32L)).thenReturn(Optional.of(period));
+        when(accountingPeriodRepository.lockByCompanyAndId(company, 32L)).thenReturn(Optional.of(period), Optional.of(period));
+        when(periodCloseRequestRepository.lockByCompanyAndAccountingPeriodAndStatus(
+                company, period, PeriodCloseRequestStatus.PENDING)).thenReturn(Optional.of(pending));
         when(goodsReceiptRepository.countByCompanyAndReceiptDateBetweenAndStatusNot(
                 company, period.getStartDate(), period.getEndDate(), "INVOICED")).thenReturn(0L);
         when(journalLineRepository.summarizeByAccountType(company, period.getStartDate(), period.getEndDate()))
@@ -268,25 +289,32 @@ class AccountingPeriodServiceTest {
         when(journalEntryRepository.findByCompanyAndReferenceNumber(company, "PERIOD-CLOSE-202602"))
                 .thenReturn(Optional.of(closingEntry));
         when(accountingPeriodRepository.save(period)).thenReturn(period);
+        when(periodCloseRequestRepository.save(pending)).thenReturn(pending);
         when(accountingPeriodRepository.findByCompanyAndYearAndMonth(company, 2026, 3))
                 .thenReturn(Optional.of(openPeriod(company, 2026, 3)));
+        authenticate("checker.user", "ROLE_ACCOUNTING");
 
-        assertThat(service.closePeriod(32L, new AccountingPeriodCloseRequest(true, "close for month")).status())
+        assertThat(service.approvePeriodClose(32L, new PeriodCloseRequestActionRequest("close for month", true)).status())
                 .isEqualTo("CLOSED");
         assertThat(period.getClosingJournalEntryId()).isEqualTo(444L);
-        verify(snapshotService).captureSnapshot(company, period, SYSTEM_PROCESS_ACTOR);
+        assertThat(pending.getStatus()).isEqualTo(PeriodCloseRequestStatus.APPROVED);
+        verify(snapshotService).captureSnapshot(company, period, "checker.user");
     }
 
     @Test
-    void closePeriod_uninvoicedReceiptsPreventCloseAndSnapshotCapture() {
+    void approvePeriodClose_uninvoicedReceiptsPreventCloseAndSnapshotCapture() {
         Company company = company(1L, "ACME");
         AccountingPeriod period = openPeriod(company, 2026, 2);
+        PeriodCloseRequest pending = pendingCloseRequest(company, period, 503L, "maker.user");
         when(companyContextService.requireCurrentCompany()).thenReturn(company);
-        when(accountingPeriodRepository.lockByCompanyAndId(company, 33L)).thenReturn(Optional.of(period));
+        when(accountingPeriodRepository.lockByCompanyAndId(company, 33L)).thenReturn(Optional.of(period), Optional.of(period));
+        when(periodCloseRequestRepository.lockByCompanyAndAccountingPeriodAndStatus(
+                company, period, PeriodCloseRequestStatus.PENDING)).thenReturn(Optional.of(pending));
         when(goodsReceiptRepository.countByCompanyAndReceiptDateBetweenAndStatusNot(
                 company, period.getStartDate(), period.getEndDate(), "INVOICED")).thenReturn(3L);
+        authenticate("checker.user", "ROLE_ACCOUNTING");
 
-        assertThatThrownBy(() -> service.closePeriod(33L, new AccountingPeriodCloseRequest(true, "close")))
+        assertThatThrownBy(() -> service.approvePeriodClose(33L, new PeriodCloseRequestActionRequest("close", true)))
                 .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Un-invoiced goods receipts exist in this period (3)");
         verify(periodCloseHook).onPeriodCloseLocked(company, period);
@@ -295,14 +323,17 @@ class AccountingPeriodServiceTest {
     }
 
     @Test
-    void closePeriod_failsWhenTrialBalanceIsNotBalanced() {
+    void approvePeriodClose_failsWhenTrialBalanceIsNotBalanced() {
         Company company = company(1L, "ACME");
         AccountingPeriod period = openPeriod(company, 2026, 2);
+        PeriodCloseRequest pending = pendingCloseRequest(company, period, 504L, "maker.user");
         period.setBankReconciled(true);
         period.setInventoryCounted(true);
 
         when(companyContextService.requireCurrentCompany()).thenReturn(company);
-        when(accountingPeriodRepository.lockByCompanyAndId(company, 34L)).thenReturn(Optional.of(period));
+        when(accountingPeriodRepository.lockByCompanyAndId(company, 34L)).thenReturn(Optional.of(period), Optional.of(period));
+        when(periodCloseRequestRepository.lockByCompanyAndAccountingPeriodAndStatus(
+                company, period, PeriodCloseRequestStatus.PENDING)).thenReturn(Optional.of(pending));
         when(goodsReceiptRepository.countByCompanyAndReceiptDateBetweenAndStatusNot(
                 company, period.getStartDate(), period.getEndDate(), "INVOICED")).thenReturn(0L);
         when(journalEntryRepository.countByCompanyAndEntryDateBetweenAndStatusIn(
@@ -355,8 +386,9 @@ class AccountingPeriodServiceTest {
                 List.of(PayrollRun.PayrollStatus.DRAFT,
                         PayrollRun.PayrollStatus.CALCULATED,
                         PayrollRun.PayrollStatus.APPROVED))).thenReturn(0L);
+        authenticate("checker.user", "ROLE_ACCOUNTING");
 
-        assertThatThrownBy(() -> service.closePeriod(34L, new AccountingPeriodCloseRequest(false, "month close")))
+        assertThatThrownBy(() -> service.approvePeriodClose(34L, new PeriodCloseRequestActionRequest("month close", false)))
                 .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Trial balance is not balanced");
     }
@@ -563,6 +595,30 @@ class AccountingPeriodServiceTest {
         JournalEntry entry = new JournalEntry();
         ReflectionTestUtils.setField(entry, "id", id);
         return entry;
+    }
+
+    private PeriodCloseRequest pendingCloseRequest(Company company,
+                                                   AccountingPeriod period,
+                                                   Long requestId,
+                                                   String requestedBy) {
+        PeriodCloseRequest request = new PeriodCloseRequest();
+        ReflectionTestUtils.setField(request, "id", requestId);
+        request.setCompany(company);
+        request.setAccountingPeriod(period);
+        request.setStatus(PeriodCloseRequestStatus.PENDING);
+        request.setRequestedBy(requestedBy);
+        request.setRequestNote("pending close");
+        request.setForceRequested(true);
+        request.setRequestedAt(java.time.Instant.parse("2026-01-01T00:00:00Z"));
+        return request;
+    }
+
+    private void authenticate(String username, String... roles) {
+        List<SimpleGrantedAuthority> authorities = java.util.Arrays.stream(roles)
+                .map(SimpleGrantedAuthority::new)
+                .toList();
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(username, "N/A", authorities));
     }
 
     @Test

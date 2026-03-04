@@ -992,6 +992,14 @@ public abstract class AccountingCoreEngineCore {
             logAuditSuccessAfterCommit(AuditEvent.JOURNAL_ENTRY_REVERSED, auditMetadata);
             if (accountingComplianceAuditService != null) {
                 accountingComplianceAuditService.recordJournalReversal(company, entry, reversalEntry, sanitizedReason);
+                accountingComplianceAuditService.recordAdminOverrideJournalReversal(
+                        company,
+                        entry,
+                        reversalEntry,
+                        resolveCurrentUsername(),
+                        sanitizedReason,
+                        overrideRequested,
+                        overrideAuthorized);
             }
             return toDto(reversalEntry);
         }
@@ -1030,6 +1038,14 @@ public abstract class AccountingCoreEngineCore {
         logAuditSuccessAfterCommit(AuditEvent.JOURNAL_ENTRY_REVERSED, auditMetadata);
         if (accountingComplianceAuditService != null) {
             accountingComplianceAuditService.recordJournalReversal(company, entry, reversalEntry, sanitizedReason);
+            accountingComplianceAuditService.recordAdminOverrideJournalReversal(
+                    company,
+                    entry,
+                    reversalEntry,
+                    resolveCurrentUsername(),
+                    sanitizedReason,
+                    overrideRequested,
+                    overrideAuthorized);
         }
         return toDto(reversalEntry);
     }

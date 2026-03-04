@@ -927,6 +927,33 @@ public class AccountingController {
         return ResponseEntity.ok(ApiResponse.success("Accounting period closed", accountingPeriodService.closePeriod(periodId, request)));
     }
 
+    @PostMapping("/periods/{periodId}/request-close")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<PeriodCloseRequestDto>> requestPeriodClose(@PathVariable Long periodId,
+                                                                                  @RequestBody(required = false) PeriodCloseRequestActionRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(
+                "Period close request submitted",
+                accountingPeriodService.requestPeriodClose(periodId, request)));
+    }
+
+    @PostMapping("/periods/{periodId}/approve-close")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<AccountingPeriodDto>> approvePeriodClose(@PathVariable Long periodId,
+                                                                                @RequestBody(required = false) PeriodCloseRequestActionRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(
+                "Accounting period close approved",
+                accountingPeriodService.approvePeriodClose(periodId, request)));
+    }
+
+    @PostMapping("/periods/{periodId}/reject-close")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<PeriodCloseRequestDto>> rejectPeriodClose(@PathVariable Long periodId,
+                                                                                 @RequestBody(required = false) PeriodCloseRequestActionRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(
+                "Accounting period close rejected",
+                accountingPeriodService.rejectPeriodClose(periodId, request)));
+    }
+
     @PostMapping("/periods/{periodId}/lock")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
     public ResponseEntity<ApiResponse<AccountingPeriodDto>> lockPeriod(@PathVariable Long periodId,
@@ -935,7 +962,7 @@ public class AccountingController {
     }
 
     @PostMapping("/periods/{periodId}/reopen")
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING','ROLE_SUPER_ADMIN')")
     public ResponseEntity<ApiResponse<AccountingPeriodDto>> reopenPeriod(@PathVariable Long periodId,
                                                                          @RequestBody(required = false) AccountingPeriodReopenRequest request) {
         return ResponseEntity.ok(ApiResponse.success("Accounting period reopened", accountingPeriodService.reopenPeriod(periodId, request)));

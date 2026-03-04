@@ -2,6 +2,10 @@ package com.bigbrightpaints.erp.modules.admin.controller;
 
 import com.bigbrightpaints.erp.core.config.SystemSettingsService;
 import com.bigbrightpaints.erp.core.notification.EmailService;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriod;
+import com.bigbrightpaints.erp.modules.accounting.domain.PeriodCloseRequest;
+import com.bigbrightpaints.erp.modules.accounting.domain.PeriodCloseRequestRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.PeriodCloseRequestStatus;
 import com.bigbrightpaints.erp.modules.admin.dto.AdminApprovalItemDto;
 import com.bigbrightpaints.erp.modules.admin.dto.AdminApprovalsResponse;
 import com.bigbrightpaints.erp.modules.admin.service.ExportApprovalService;
@@ -53,6 +57,7 @@ class AdminSettingsControllerApprovalsContractTest {
         CreditRequestRepository creditRequestRepository = mock(CreditRequestRepository.class);
         CreditLimitOverrideRequestRepository creditLimitOverrideRequestRepository =
                 mock(CreditLimitOverrideRequestRepository.class);
+        PeriodCloseRequestRepository periodCloseRequestRepository = mock(PeriodCloseRequestRepository.class);
         PayrollRunRepository payrollRunRepository = mock(PayrollRunRepository.class);
         ExportApprovalService exportApprovalService = mock(ExportApprovalService.class);
         when(exportApprovalService.listPending()).thenReturn(List.of());
@@ -64,7 +69,9 @@ class AdminSettingsControllerApprovalsContractTest {
                 exportApprovalService,
                 creditRequestRepository,
                 creditLimitOverrideRequestRepository,
-                payrollRunRepository
+                periodCloseRequestRepository,
+                payrollRunRepository,
+                null
         );
 
         Company company = new Company();
@@ -169,8 +176,25 @@ class AdminSettingsControllerApprovalsContractTest {
                 .thenReturn(List.of(creditRequest));
         when(creditLimitOverrideRequestRepository.findPendingByCompanyOrderByCreatedAtDesc(company))
                 .thenReturn(List.of(overrideRequest, orderOverrideRequest, fallbackOverrideRequest, slipAndOrderOverrideRequest));
+        PeriodCloseRequest periodCloseRequest = new PeriodCloseRequest();
+        periodCloseRequest.setCompany(company);
+        AccountingPeriod period = new AccountingPeriod();
+        period.setYear(2026);
+        period.setMonth(2);
+        period.setStatus(com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodStatus.LOCKED);
+        periodCloseRequest.setAccountingPeriod(period);
+        periodCloseRequest.setStatus(PeriodCloseRequestStatus.PENDING);
+        periodCloseRequest.setForceRequested(true);
+        periodCloseRequest.setRequestedBy("maker.user@bbp.com");
+        periodCloseRequest.setRequestNote("Close after reconciliation");
+        periodCloseRequest.setRequestedAt(Instant.parse("2026-02-12T13:15:00Z"));
+        ReflectionTestUtils.setField(periodCloseRequest, "id", 91L);
+        ReflectionTestUtils.setField(periodCloseRequest, "publicId", UUID.fromString("12345678-1234-1234-1234-123456789012"));
+
         when(payrollRunRepository.findByCompanyAndStatusOrderByCreatedAtDesc(company, PayrollRun.PayrollStatus.CALCULATED))
                 .thenReturn(List.of(payrollRun));
+        when(periodCloseRequestRepository.findPendingByCompanyOrderByRequestedAtDesc(company))
+                .thenReturn(List.of(periodCloseRequest));
 
         ApiResponse<AdminApprovalsResponse> response = controller.approvals();
 
@@ -245,6 +269,23 @@ class AdminSettingsControllerApprovalsContractTest {
         assertThat(payrollApproval.sourcePortal()).isEqualTo("HR_PORTAL");
         assertThat(payrollApproval.approveEndpoint()).isEqualTo("/api/v1/payroll/runs/{id}/approve");
         assertThat(payrollApproval.rejectEndpoint()).isNull();
+
+        assertThat(response.data().periodCloseRequests()).hasSize(1);
+        AdminApprovalItemDto periodCloseApproval = response.data().periodCloseRequests().get(0);
+        assertThat(periodCloseApproval.type()).isEqualTo("PERIOD_CLOSE_REQUEST");
+        assertThat(periodCloseApproval.reference()).isEqualTo("February 2026");
+        assertThat(periodCloseApproval.status()).isEqualTo("PENDING");
+        assertThat(periodCloseApproval.summary()).contains("Approve accounting period close request for February 2026");
+        assertThat(periodCloseApproval.summary()).contains("current status: LOCKED");
+        assertThat(periodCloseApproval.summary()).contains("[force requested]");
+        assertThat(periodCloseApproval.summary()).contains("requested by maker.user@bbp.com");
+        assertThat(periodCloseApproval.summary()).contains("note: Close after reconciliation");
+        assertThat(periodCloseApproval.actionType()).isEqualTo("APPROVE_ACCOUNTING_PERIOD_CLOSE");
+        assertThat(periodCloseApproval.actionLabel()).isEqualTo("Approve accounting period close");
+        assertThat(periodCloseApproval.sourcePortal()).isEqualTo("ACCOUNTING");
+        assertThat(periodCloseApproval.approveEndpoint()).isEqualTo("/api/v1/accounting/periods/{id}/approve-close");
+        assertThat(periodCloseApproval.rejectEndpoint()).isEqualTo("/api/v1/accounting/periods/{id}/reject-close");
+        assertThat(periodCloseApproval.createdAt()).isEqualTo(Instant.parse("2026-02-12T13:15:00Z"));
     }
 
     @Test
@@ -256,6 +297,7 @@ class AdminSettingsControllerApprovalsContractTest {
         CreditRequestRepository creditRequestRepository = mock(CreditRequestRepository.class);
         CreditLimitOverrideRequestRepository creditLimitOverrideRequestRepository =
                 mock(CreditLimitOverrideRequestRepository.class);
+        PeriodCloseRequestRepository periodCloseRequestRepository = mock(PeriodCloseRequestRepository.class);
         PayrollRunRepository payrollRunRepository = mock(PayrollRunRepository.class);
         ExportApprovalService exportApprovalService = mock(ExportApprovalService.class);
         when(exportApprovalService.listPending()).thenReturn(List.of());
@@ -267,7 +309,9 @@ class AdminSettingsControllerApprovalsContractTest {
                 exportApprovalService,
                 creditRequestRepository,
                 creditLimitOverrideRequestRepository,
-                payrollRunRepository
+                periodCloseRequestRepository,
+                payrollRunRepository,
+                null
         );
 
         Company company = new Company();
@@ -322,6 +366,8 @@ class AdminSettingsControllerApprovalsContractTest {
                 .thenReturn(List.of(overrideRequest));
         when(payrollRunRepository.findByCompanyAndStatusOrderByCreatedAtDesc(company, PayrollRun.PayrollStatus.CALCULATED))
                 .thenReturn(List.of(payrollRun));
+        when(periodCloseRequestRepository.findPendingByCompanyOrderByRequestedAtDesc(company))
+                .thenReturn(List.of());
 
         ApiResponse<AdminApprovalsResponse> response = controller.approvals();
 
@@ -353,6 +399,7 @@ class AdminSettingsControllerApprovalsContractTest {
         AdminApprovalItemDto payrollApproval = response.data().payrollRuns().get(0);
         assertThat(payrollApproval.reference()).isEqualTo("PR-NULL-STATUS");
         assertThat(payrollApproval.status()).isEqualTo("UNKNOWN");
+        assertThat(response.data().periodCloseRequests()).isEmpty();
     }
 
     @Test
@@ -364,6 +411,7 @@ class AdminSettingsControllerApprovalsContractTest {
         CreditRequestRepository creditRequestRepository = mock(CreditRequestRepository.class);
         CreditLimitOverrideRequestRepository creditLimitOverrideRequestRepository =
                 mock(CreditLimitOverrideRequestRepository.class);
+        PeriodCloseRequestRepository periodCloseRequestRepository = mock(PeriodCloseRequestRepository.class);
         PayrollRunRepository payrollRunRepository = mock(PayrollRunRepository.class);
         ExportApprovalService exportApprovalService = mock(ExportApprovalService.class);
         when(exportApprovalService.listPending()).thenReturn(List.of());
@@ -375,7 +423,9 @@ class AdminSettingsControllerApprovalsContractTest {
                 exportApprovalService,
                 creditRequestRepository,
                 creditLimitOverrideRequestRepository,
-                payrollRunRepository
+                periodCloseRequestRepository,
+                payrollRunRepository,
+                null
         );
 
         Company company = new Company();
@@ -399,6 +449,8 @@ class AdminSettingsControllerApprovalsContractTest {
                 .thenReturn(List.of());
         when(payrollRunRepository.findByCompanyAndStatusOrderByCreatedAtDesc(company, PayrollRun.PayrollStatus.CALCULATED))
                 .thenReturn(List.of(payrollRun));
+        when(periodCloseRequestRepository.findPendingByCompanyOrderByRequestedAtDesc(company))
+                .thenReturn(List.of());
 
         ApiResponse<AdminApprovalsResponse> response = controller.approvals();
 
@@ -413,5 +465,71 @@ class AdminSettingsControllerApprovalsContractTest {
         assertThat(payrollApproval.summary()).contains("Approve payroll run PR-31");
         assertThat(payrollApproval.actionType()).isEqualTo("APPROVE_PAYROLL_RUN");
         assertThat(payrollApproval.sourcePortal()).isEqualTo("HR_PORTAL");
+        assertThat(response.data().periodCloseRequests()).isEmpty();
+    }
+
+    @Test
+    void approvals_periodCloseSummaryFallsBackWhenFieldsMissing() {
+        SystemSettingsService systemSettingsService = mock(SystemSettingsService.class);
+        EmailService emailService = mock(EmailService.class);
+        CompanyContextService companyContextService = mock(CompanyContextService.class);
+        TenantRuntimePolicyService tenantRuntimePolicyService = mock(TenantRuntimePolicyService.class);
+        CreditRequestRepository creditRequestRepository = mock(CreditRequestRepository.class);
+        CreditLimitOverrideRequestRepository creditLimitOverrideRequestRepository =
+                mock(CreditLimitOverrideRequestRepository.class);
+        PeriodCloseRequestRepository periodCloseRequestRepository = mock(PeriodCloseRequestRepository.class);
+        PayrollRunRepository payrollRunRepository = mock(PayrollRunRepository.class);
+        ExportApprovalService exportApprovalService = mock(ExportApprovalService.class);
+        when(exportApprovalService.listPending()).thenReturn(List.of());
+        AdminSettingsController controller = new AdminSettingsController(
+                systemSettingsService,
+                emailService,
+                companyContextService,
+                tenantRuntimePolicyService,
+                exportApprovalService,
+                creditRequestRepository,
+                creditLimitOverrideRequestRepository,
+                periodCloseRequestRepository,
+                payrollRunRepository,
+                null
+        );
+
+        Company company = new Company();
+        ReflectionTestUtils.setField(company, "id", 504L);
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+
+        PeriodCloseRequest periodCloseRequest = new PeriodCloseRequest();
+        periodCloseRequest.setCompany(company);
+        periodCloseRequest.setAccountingPeriod(null);
+        periodCloseRequest.setStatus(null);
+        periodCloseRequest.setForceRequested(false);
+        periodCloseRequest.setRequestedBy("  ");
+        periodCloseRequest.setRequestNote("   ");
+        periodCloseRequest.setRequestedAt(Instant.parse("2026-04-12T06:00:00Z"));
+        ReflectionTestUtils.setField(periodCloseRequest, "id", 92L);
+        ReflectionTestUtils.setField(periodCloseRequest, "publicId", UUID.fromString("abcdefab-cdef-cdef-cdef-abcdefabcdef"));
+
+        when(creditRequestRepository.findPendingByCompanyOrderByCreatedAtDesc(company))
+                .thenReturn(List.of());
+        when(creditLimitOverrideRequestRepository.findPendingByCompanyOrderByCreatedAtDesc(company))
+                .thenReturn(List.of());
+        when(payrollRunRepository.findByCompanyAndStatusOrderByCreatedAtDesc(company, PayrollRun.PayrollStatus.CALCULATED))
+                .thenReturn(List.of());
+        when(periodCloseRequestRepository.findPendingByCompanyOrderByRequestedAtDesc(company))
+                .thenReturn(List.of(periodCloseRequest));
+
+        ApiResponse<AdminApprovalsResponse> response = controller.approvals();
+
+        assertThat(response.success()).isTrue();
+        assertThat(response.data()).isNotNull();
+        assertThat(response.data().creditRequests()).isEmpty();
+        assertThat(response.data().payrollRuns()).isEmpty();
+        assertThat(response.data().periodCloseRequests()).hasSize(1);
+
+        AdminApprovalItemDto periodCloseApproval = response.data().periodCloseRequests().get(0);
+        assertThat(periodCloseApproval.reference()).isEqualTo("PERIOD-92");
+        assertThat(periodCloseApproval.status()).isEqualTo("UNKNOWN");
+        assertThat(periodCloseApproval.summary()).isEqualTo("Approve accounting period close request for PERIOD-92");
+        assertThat(periodCloseApproval.actionType()).isEqualTo("APPROVE_ACCOUNTING_PERIOD_CLOSE");
     }
 }

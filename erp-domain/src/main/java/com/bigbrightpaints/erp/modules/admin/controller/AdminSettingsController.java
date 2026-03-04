@@ -1,8 +1,13 @@
 package com.bigbrightpaints.erp.modules.admin.controller;
 
+import com.bigbrightpaints.erp.core.audit.AuditEvent;
+import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.config.SystemSettingsService;
 import com.bigbrightpaints.erp.core.notification.EmailService;
+import com.bigbrightpaints.erp.core.security.SecurityActorResolver;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
+import com.bigbrightpaints.erp.modules.accounting.domain.PeriodCloseRequest;
+import com.bigbrightpaints.erp.modules.accounting.domain.PeriodCloseRequestRepository;
 import com.bigbrightpaints.erp.modules.admin.dto.*;
 import com.bigbrightpaints.erp.modules.admin.service.ExportApprovalService;
 import com.bigbrightpaints.erp.modules.admin.service.TenantRuntimePolicyService;
@@ -27,6 +32,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
+import java.util.Map;
 import java.util.stream.Stream;
 
 @RestController
@@ -41,8 +47,11 @@ public class AdminSettingsController {
     private static final String CREDIT_OVERRIDE_REJECT_ENDPOINT = "/api/v1/credit/override-requests/{id}/reject";
     private static final String PAYROLL_APPROVE_ENDPOINT = "/api/v1/payroll/runs/{id}/approve";
     private static final String EXPORT_REQUEST_APPROVAL_ACTION = "APPROVE_EXPORT_REQUEST";
+    private static final String PERIOD_CLOSE_APPROVAL_ACTION = "APPROVE_ACCOUNTING_PERIOD_CLOSE";
     private static final String EXPORT_REQUEST_APPROVE_ENDPOINT = "/api/v1/admin/exports/{id}/approve";
     private static final String EXPORT_REQUEST_REJECT_ENDPOINT = "/api/v1/admin/exports/{id}/reject";
+    private static final String PERIOD_CLOSE_APPROVE_ENDPOINT = "/api/v1/accounting/periods/{id}/approve-close";
+    private static final String PERIOD_CLOSE_REJECT_ENDPOINT = "/api/v1/accounting/periods/{id}/reject-close";
 
     private final SystemSettingsService systemSettingsService;
     private final EmailService emailService;
@@ -51,7 +60,9 @@ public class AdminSettingsController {
     private final ExportApprovalService exportApprovalService;
     private final CreditRequestRepository creditRequestRepository;
     private final CreditLimitOverrideRequestRepository creditLimitOverrideRequestRepository;
+    private final PeriodCloseRequestRepository periodCloseRequestRepository;
     private final PayrollRunRepository payrollRunRepository;
+    private final AuditService auditService;
 
     public AdminSettingsController(SystemSettingsService systemSettingsService,
                                    EmailService emailService,
@@ -61,6 +72,28 @@ public class AdminSettingsController {
                                    CreditRequestRepository creditRequestRepository,
                                    CreditLimitOverrideRequestRepository creditLimitOverrideRequestRepository,
                                    PayrollRunRepository payrollRunRepository) {
+        this(systemSettingsService,
+                emailService,
+                companyContextService,
+                tenantRuntimePolicyService,
+                exportApprovalService,
+                creditRequestRepository,
+                creditLimitOverrideRequestRepository,
+                null,
+                payrollRunRepository,
+                null);
+    }
+
+    public AdminSettingsController(SystemSettingsService systemSettingsService,
+                                   EmailService emailService,
+                                   CompanyContextService companyContextService,
+                                   TenantRuntimePolicyService tenantRuntimePolicyService,
+                                   ExportApprovalService exportApprovalService,
+                                   CreditRequestRepository creditRequestRepository,
+                                   CreditLimitOverrideRequestRepository creditLimitOverrideRequestRepository,
+                                   PeriodCloseRequestRepository periodCloseRequestRepository,
+                                   PayrollRunRepository payrollRunRepository,
+                                   AuditService auditService) {
         this.systemSettingsService = systemSettingsService;
         this.emailService = emailService;
         this.companyContextService = companyContextService;
@@ -68,7 +101,9 @@ public class AdminSettingsController {
         this.exportApprovalService = exportApprovalService;
         this.creditRequestRepository = creditRequestRepository;
         this.creditLimitOverrideRequestRepository = creditLimitOverrideRequestRepository;
+        this.periodCloseRequestRepository = periodCloseRequestRepository;
         this.payrollRunRepository = payrollRunRepository;
+        this.auditService = auditService;
     }
 
     @GetMapping("/settings")
@@ -78,9 +113,12 @@ public class AdminSettingsController {
     }
 
     @PutMapping("/settings")
-    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_SUPER_ADMIN')")
     public ApiResponse<SystemSettingsDto> updateSettings(@Valid @RequestBody SystemSettingsUpdateRequest request) {
+        SystemSettingsDto before = systemSettingsService.snapshot();
+        requireSuperAdminForPeriodLockEnforcedChange(before, request);
         SystemSettingsDto dto = systemSettingsService.update(request);
+        recordSettingsUpdateAudit(before, request, dto);
         return ApiResponse.success("Settings updated", dto);
     }
 
@@ -126,7 +164,7 @@ public class AdminSettingsController {
     }
 
     @GetMapping("/approvals")
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING','ROLE_SUPER_ADMIN')")
     @Transactional(readOnly = true)
     public ApiResponse<AdminApprovalsResponse> approvals() {
         Company company = companyContextService.requireCurrentCompany();
@@ -154,12 +192,23 @@ public class AdminSettingsController {
                 .map(this::toPayrollApprovalItem)
                 .toList();
 
+        List<AdminApprovalItemDto> periodCloseApprovals = periodCloseRequestRepository == null
+                ? List.of()
+                : periodCloseRequestRepository.findPendingByCompanyOrderByRequestedAtDesc(company)
+                .stream()
+                .map(this::toPeriodCloseApprovalItem)
+                .toList();
+
         List<AdminApprovalItemDto> exportApprovals = exportApprovalService.listPending()
                 .stream()
                 .map(this::toExportApprovalItem)
                 .toList();
 
-        AdminApprovalsResponse response = new AdminApprovalsResponse(creditApprovals, payrollApprovals, exportApprovals);
+        AdminApprovalsResponse response = new AdminApprovalsResponse(
+                creditApprovals,
+                payrollApprovals,
+                periodCloseApprovals,
+                exportApprovals);
         return ApiResponse.success("Approvals fetched", response);
     }
 
@@ -261,6 +310,40 @@ public class AdminSettingsController {
         );
     }
 
+    private AdminApprovalItemDto toPeriodCloseApprovalItem(PeriodCloseRequest request) {
+        String reference = request != null && request.getAccountingPeriod() != null
+                ? request.getAccountingPeriod().getLabel()
+                : "PERIOD-" + (request != null ? request.getId() : "UNKNOWN");
+        String summary = "Approve accounting period close request for " + reference;
+        if (request != null && request.getAccountingPeriod() != null
+                && request.getAccountingPeriod().getStatus() != null) {
+            summary = summary + " (current status: " + request.getAccountingPeriod().getStatus().name() + ")";
+        }
+        if (request != null && request.isForceRequested()) {
+            summary = summary + " [force requested]";
+        }
+        if (request != null && StringUtils.hasText(request.getRequestedBy())) {
+            summary = summary + " (requested by " + request.getRequestedBy().trim() + ")";
+        }
+        if (request != null && StringUtils.hasText(request.getRequestNote())) {
+            summary = summary + " (note: " + request.getRequestNote().trim() + ")";
+        }
+        return approvalItem(
+                "PERIOD_CLOSE_REQUEST",
+                request != null ? request.getId() : null,
+                request != null ? request.getPublicId() : null,
+                reference,
+                normalizeStatus(request != null && request.getStatus() != null ? request.getStatus().name() : null),
+                summary,
+                PERIOD_CLOSE_APPROVAL_ACTION,
+                "Approve accounting period close",
+                "ACCOUNTING",
+                PERIOD_CLOSE_APPROVE_ENDPOINT,
+                PERIOD_CLOSE_REJECT_ENDPOINT,
+                request != null ? request.getRequestedAt() : null
+        );
+    }
+
     private AdminApprovalItemDto toExportApprovalItem(ExportRequestDto request) {
         String reference = "EXP-" + request.id();
         String summary = "Approve export request " + reference
@@ -312,5 +395,70 @@ public class AdminSettingsController {
 
     private String toAmountString(BigDecimal amount) {
         return amount == null ? "0" : amount.stripTrailingZeros().toPlainString();
+    }
+
+    private void requireSuperAdminForPeriodLockEnforcedChange(SystemSettingsDto before,
+                                                               SystemSettingsUpdateRequest request) {
+        if (request == null || request.periodLockEnforced() == null || before == null) {
+            return;
+        }
+        if (before.periodLockEnforced() == request.periodLockEnforced()) {
+            return;
+        }
+        if (!isSuperAdminActor()) {
+            throw new com.bigbrightpaints.erp.core.exception.ApplicationException(
+                    com.bigbrightpaints.erp.core.exception.ErrorCode.AUTH_INSUFFICIENT_PERMISSIONS,
+                    "SUPER_ADMIN authority required to change period lock enforcement");
+        }
+    }
+
+    private void recordSettingsUpdateAudit(SystemSettingsDto before,
+                                           SystemSettingsUpdateRequest request,
+                                           SystemSettingsDto after) {
+        if (auditService == null) {
+            return;
+        }
+        Map<String, String> metadata = new java.util.LinkedHashMap<>();
+        metadata.put("action", "admin_settings_update");
+        if (before != null) {
+            metadata.put("beforeAutoApprovalEnabled", Boolean.toString(before.autoApprovalEnabled()));
+            metadata.put("beforePeriodLockEnforced", Boolean.toString(before.periodLockEnforced()));
+            metadata.put("beforeExportApprovalRequired", Boolean.toString(before.exportApprovalRequired()));
+        }
+        if (request != null) {
+            if (request.autoApprovalEnabled() != null) {
+                metadata.put("requestedAutoApprovalEnabled", request.autoApprovalEnabled().toString());
+            }
+            if (request.periodLockEnforced() != null) {
+                metadata.put("requestedPeriodLockEnforced", request.periodLockEnforced().toString());
+            }
+            if (request.exportApprovalRequired() != null) {
+                metadata.put("requestedExportApprovalRequired", request.exportApprovalRequired().toString());
+            }
+        }
+        if (after != null) {
+            metadata.put("afterAutoApprovalEnabled", Boolean.toString(after.autoApprovalEnabled()));
+            metadata.put("afterPeriodLockEnforced", Boolean.toString(after.periodLockEnforced()));
+            metadata.put("afterExportApprovalRequired", Boolean.toString(after.exportApprovalRequired()));
+        }
+        String actor = SecurityActorResolver.resolveActorWithSystemProcessFallback();
+        if (actor != null && !actor.isBlank()) {
+            metadata.put("actor", actor);
+        }
+        auditService.logAuthSuccess(AuditEvent.CONFIGURATION_CHANGED, actor, null, metadata);
+    }
+
+    private boolean isSuperAdminActor() {
+        org.springframework.security.core.Authentication authentication =
+                org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return false;
+        }
+        if (authentication.getAuthorities() == null) {
+            return false;
+        }
+        return authentication.getAuthorities().stream()
+                .map(org.springframework.security.core.GrantedAuthority::getAuthority)
+                .anyMatch(authority -> "ROLE_SUPER_ADMIN".equalsIgnoreCase(authority));
     }
 }
