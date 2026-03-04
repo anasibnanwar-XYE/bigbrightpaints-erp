@@ -18,7 +18,7 @@ import com.bigbrightpaints.erp.modules.factory.dto.ProductionPlanDto;
 import com.bigbrightpaints.erp.modules.factory.dto.ProductionPlanRequest;
 import com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood;
 import com.bigbrightpaints.erp.modules.inventory.dto.FinishedGoodBatchRequest;
-import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsStockService;
+import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -55,7 +55,7 @@ class FactoryServiceTest {
     @Mock
     private FactoryTaskRepository taskRepository;
     @Mock
-    private FinishedGoodsStockService finishedGoodsStockService;
+    private FinishedGoodsService finishedGoodsService;
     @Mock
     private CompanyEntityLookup companyEntityLookup;
     @Mock
@@ -71,7 +71,7 @@ class FactoryServiceTest {
                 planRepository,
                 batchRepository,
                 taskRepository,
-                finishedGoodsStockService,
+                finishedGoodsService,
                 companyEntityLookup,
                 environment,
                 false
@@ -223,7 +223,7 @@ class FactoryServiceTest {
 
         assertThat(result.id()).isEqualTo(21L);
         verify(batchRepository, never()).insertIfAbsent(any(), any(), any(), any(), any(), any(), any());
-        verify(finishedGoodsStockService, never()).registerBatch(any(FinishedGoodBatchRequest.class));
+        verify(finishedGoodsService, never()).registerBatch(any(FinishedGoodBatchRequest.class));
     }
 
     @Test
@@ -250,7 +250,7 @@ class FactoryServiceTest {
 
         assertThat(result.id()).isEqualTo(211L);
         verify(batchRepository, never()).insertIfAbsent(any(), any(), any(), any(), any(), any(), any());
-        verify(finishedGoodsStockService, never()).registerBatch(any(FinishedGoodBatchRequest.class));
+        verify(finishedGoodsService, never()).registerBatch(any(FinishedGoodBatchRequest.class));
     }
 
     @Test
@@ -317,7 +317,7 @@ class FactoryServiceTest {
                 eq("factory-user"),
                 eq("race")
         );
-        verify(finishedGoodsStockService, never()).registerBatch(any(FinishedGoodBatchRequest.class));
+        verify(finishedGoodsService, never()).registerBatch(any(FinishedGoodBatchRequest.class));
     }
 
     @Test
@@ -419,8 +419,8 @@ class FactoryServiceTest {
                 eq("factory-user"),
                 eq("first plan batch")
         )).thenReturn(1);
-        when(finishedGoodsStockService.lockFinishedGoodByProductCode("FG-PRIMER")).thenReturn(finishedGood);
-        when(finishedGoodsStockService.currentWeightedAverageCost(finishedGood)).thenReturn(BigDecimal.valueOf(42));
+        when(finishedGoodsService.lockFinishedGoodByProductCode("FG-PRIMER")).thenReturn(finishedGood);
+        when(finishedGoodsService.currentWeightedAverageCost(finishedGood)).thenReturn(BigDecimal.valueOf(42));
 
         factoryService.logBatch(77L, request);
         factoryService.logBatch(77L, request);
@@ -434,7 +434,7 @@ class FactoryServiceTest {
                 eq("factory-user"),
                 eq("first plan batch")
         );
-        verify(finishedGoodsStockService, times(1)).registerBatch(any(FinishedGoodBatchRequest.class));
+        verify(finishedGoodsService, times(1)).registerBatch(any(FinishedGoodBatchRequest.class));
     }
 
     private void stubNonProdProfile() {

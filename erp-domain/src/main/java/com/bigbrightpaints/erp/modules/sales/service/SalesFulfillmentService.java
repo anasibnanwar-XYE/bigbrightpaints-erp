@@ -6,8 +6,7 @@ import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlip;
 import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipRepository;
-import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsDispatchService;
-import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsReservationService;
+import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.DispatchPosting;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.InventoryReservationResult;
 import com.bigbrightpaints.erp.modules.invoice.dto.InvoiceDto;
@@ -44,8 +43,7 @@ public class SalesFulfillmentService {
 
     private final SalesService salesService;
     private final SalesOrderRepository salesOrderRepository;
-    private final FinishedGoodsReservationService finishedGoodsReservationService;
-    private final FinishedGoodsDispatchService finishedGoodsDispatchService;
+    private final FinishedGoodsService finishedGoodsService;
     private final PackagingSlipRepository packagingSlipRepository;
     private final SalesJournalService salesJournalService;
     private final AccountingFacade accountingFacade;
@@ -54,8 +52,7 @@ public class SalesFulfillmentService {
 
     public SalesFulfillmentService(SalesService salesService,
                                    SalesOrderRepository salesOrderRepository,
-                                   FinishedGoodsReservationService finishedGoodsReservationService,
-                                   FinishedGoodsDispatchService finishedGoodsDispatchService,
+                                   FinishedGoodsService finishedGoodsService,
                                    PackagingSlipRepository packagingSlipRepository,
                                    SalesJournalService salesJournalService,
                                    AccountingFacade accountingFacade,
@@ -63,8 +60,7 @@ public class SalesFulfillmentService {
                                    CompanyClock companyClock) {
         this.salesService = salesService;
         this.salesOrderRepository = salesOrderRepository;
-        this.finishedGoodsReservationService = finishedGoodsReservationService;
-        this.finishedGoodsDispatchService = finishedGoodsDispatchService;
+        this.finishedGoodsService = finishedGoodsService;
         this.packagingSlipRepository = packagingSlipRepository;
         this.salesJournalService = salesJournalService;
         this.accountingFacade = accountingFacade;
@@ -136,7 +132,7 @@ public class SalesFulfillmentService {
             Long slipId = null;
             // Step 1: Reserve inventory (if not already reserved)
             if (options.reserveInventory()) {
-                InventoryReservationResult reservation = finishedGoodsReservationService.reserveForOrder(order);
+                InventoryReservationResult reservation = finishedGoodsService.reserveForOrder(order);
                 result.reservation(reservation);
                 if (reservation != null && reservation.packagingSlip() != null) {
                     slipId = reservation.packagingSlip().id();
@@ -190,7 +186,7 @@ public class SalesFulfillmentService {
             }
 
             // Step 2: Dispatch inventory and get COGS from actual cost layers
-            List<DispatchPosting> dispatches = finishedGoodsDispatchService.markSlipDispatched(orderId);
+            List<DispatchPosting> dispatches = finishedGoodsService.markSlipDispatched(orderId);
             result.dispatches(dispatches);
             
             BigDecimal totalCogs = dispatches.stream()
@@ -311,7 +307,7 @@ public class SalesFulfillmentService {
     @Transactional
     public InventoryReservationResult reserveForOrder(Long orderId) {
         SalesOrder order = salesService.getOrderWithItems(orderId);
-        InventoryReservationResult result = finishedGoodsReservationService.reserveForOrder(order);
+        InventoryReservationResult result = finishedGoodsService.reserveForOrder(order);
         salesService.updateStatusInternal(orderId, result.shortages().isEmpty() ? "RESERVED" : "PENDING_INVENTORY");
         return result;
     }

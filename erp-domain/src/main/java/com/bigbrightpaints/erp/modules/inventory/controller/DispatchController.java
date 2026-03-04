@@ -2,7 +2,7 @@ package com.bigbrightpaints.erp.modules.inventory.controller;
 
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import com.bigbrightpaints.erp.modules.inventory.dto.*;
-import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsDispatchService;
+import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
 import com.bigbrightpaints.erp.modules.sales.dto.DispatchConfirmRequest;
 import com.bigbrightpaints.erp.modules.sales.service.SalesDispatchReconciliationService;
 import jakarta.validation.Valid;
@@ -21,12 +21,12 @@ import java.util.List;
 @RequestMapping("/api/v1/dispatch")
 public class DispatchController {
 
-    private final FinishedGoodsDispatchService finishedGoodsDispatchService;
+    private final FinishedGoodsService finishedGoodsService;
     private final SalesDispatchReconciliationService salesDispatchReconciliationService;
 
-    public DispatchController(FinishedGoodsDispatchService finishedGoodsDispatchService,
+    public DispatchController(FinishedGoodsService finishedGoodsService,
                               SalesDispatchReconciliationService salesDispatchReconciliationService) {
-        this.finishedGoodsDispatchService = finishedGoodsDispatchService;
+        this.finishedGoodsService = finishedGoodsService;
         this.salesDispatchReconciliationService = salesDispatchReconciliationService;
     }
 
@@ -36,7 +36,7 @@ public class DispatchController {
     @GetMapping("/pending")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_FACTORY','ROLE_SALES')")
     public ResponseEntity<ApiResponse<List<PackagingSlipDto>>> getPendingSlips() {
-        List<PackagingSlipDto> slips = finishedGoodsDispatchService.listPackagingSlips().stream()
+        List<PackagingSlipDto> slips = finishedGoodsService.listPackagingSlips().stream()
                 .filter(s -> !"DISPATCHED".equalsIgnoreCase(s.status()))
                 .toList();
         return ResponseEntity.ok(ApiResponse.success(slips));
@@ -49,7 +49,7 @@ public class DispatchController {
     @GetMapping("/preview/{slipId}")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_FACTORY')")
     public ResponseEntity<ApiResponse<DispatchPreviewDto>> getDispatchPreview(@PathVariable Long slipId) {
-        DispatchPreviewDto preview = finishedGoodsDispatchService.getDispatchPreview(slipId);
+        DispatchPreviewDto preview = finishedGoodsService.getDispatchPreview(slipId);
         return ResponseEntity.ok(ApiResponse.success(preview));
     }
 
@@ -63,7 +63,7 @@ public class DispatchController {
             @RequestParam(required = false) String reason,
             Principal principal) {
         String username = principal != null ? principal.getName() : "system";
-        PackagingSlipDto slip = finishedGoodsDispatchService.cancelBackorderSlip(slipId, username, reason);
+        PackagingSlipDto slip = finishedGoodsService.cancelBackorderSlip(slipId, username, reason);
         return ResponseEntity.ok(ApiResponse.success("Backorder canceled", slip));
     }
 
@@ -73,7 +73,7 @@ public class DispatchController {
     @GetMapping("/slip/{slipId}")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_FACTORY','ROLE_SALES')")
     public ResponseEntity<ApiResponse<PackagingSlipDto>> getPackagingSlip(@PathVariable Long slipId) {
-        PackagingSlipDto slip = finishedGoodsDispatchService.getPackagingSlip(slipId);
+        PackagingSlipDto slip = finishedGoodsService.getPackagingSlip(slipId);
         return ResponseEntity.ok(ApiResponse.success(slip));
     }
 
@@ -83,7 +83,7 @@ public class DispatchController {
     @GetMapping("/order/{orderId}")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_FACTORY','ROLE_SALES')")
     public ResponseEntity<ApiResponse<PackagingSlipDto>> getPackagingSlipByOrder(@PathVariable Long orderId) {
-        PackagingSlipDto slip = finishedGoodsDispatchService.getPackagingSlipByOrder(orderId);
+        PackagingSlipDto slip = finishedGoodsService.getPackagingSlipByOrder(orderId);
         return ResponseEntity.ok(ApiResponse.success(slip));
     }
 
@@ -118,7 +118,7 @@ public class DispatchController {
                 request.overrideRequestId()
         );
         salesDispatchReconciliationService.confirmDispatch(accountingRequest);
-        DispatchConfirmationResponse response = finishedGoodsDispatchService.getDispatchConfirmation(request.packagingSlipId());
+        DispatchConfirmationResponse response = finishedGoodsService.getDispatchConfirmation(request.packagingSlipId());
         return ResponseEntity.ok(ApiResponse.success(response));
     }
 
@@ -130,7 +130,7 @@ public class DispatchController {
     public ResponseEntity<ApiResponse<PackagingSlipDto>> updateSlipStatus(
             @PathVariable Long slipId,
             @RequestParam String status) {
-        PackagingSlipDto slip = finishedGoodsDispatchService.updateSlipStatus(slipId, status);
+        PackagingSlipDto slip = finishedGoodsService.updateSlipStatus(slipId, status);
         return ResponseEntity.ok(ApiResponse.success(slip));
     }
 }

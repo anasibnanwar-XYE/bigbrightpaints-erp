@@ -1695,6 +1695,12 @@ Comprehensive handoff for `VAL-DOC-004` covering catalog, inventory, dispatch, a
 
 > Response convention: endpoints below return `ApiResponse<T>` unless explicitly noted (`DELETE /api/v1/factory/production-plans/{id}` and `DELETE /api/v1/accounting/raw-materials/{id}` return `204`).
 
+##### Implementation note (inventory-engine-decomposition)
+
+- Inventory backend internals were decomposed into focused services (`FinishedGoodsReservationEngine`, `FinishedGoodsDispatchEngine`, `PackagingSlipService`, `InventoryValuationService`, `InventoryMovementRecorder`) while preserving external API contracts.
+- Frontend endpoint paths, request/response DTOs, and dispatch/reservation/backorder state transitions are unchanged.
+- Existing UI flows in this section remain valid; no client migration is required for this refactor.
+
 #### Endpoint Map — Catalog (brands/products/bulk/search)
 
 Auth default: `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING','ROLE_SALES','ROLE_FACTORY')`.
