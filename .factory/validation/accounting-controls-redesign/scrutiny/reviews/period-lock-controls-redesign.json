@@ -1,0 +1,40 @@
+{
+  "featureId": "period-lock-controls-redesign",
+  "reviewedAt": "2026-03-05T03:25:00+05:30",
+  "commitId": "3ed70bef",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "Most period-control redesign behavior is implemented: maker-checker period-close request workflow (request/approve/reject), reopen reason requirement with service-level superadmin gate, compliance audit entries for period lock/close/reopen and period-close request lifecycle, superadmin-only period lock enforcement toggle in admin settings, checklist mutation blocked for LOCKED and CLOSED periods, and inclusion of period-close requests in unified approvals dashboard. However, at least one blocking acceptance gap remains in endpoint authorization semantics for reopen relative to the feature contract.",
+    "issues": [
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/controller/AccountingController.java",
+        "line": 965,
+        "severity": "blocking",
+        "description": "Reopen endpoint remains annotated with @PreAuthorize(\"hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING','ROLE_SUPER_ADMIN')\"), so non-superadmin users can invoke the endpoint and only fail later in service logic. Contract VAL-PERIOD-002 requires endpoint-level restriction to ROLE_SUPER_ADMIN with regular admin/accounting users denied as forbidden at authorization boundary."
+      },
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/core/exception/GlobalExceptionHandler.java",
+        "line": 172,
+        "severity": "non_blocking",
+        "description": "AUTH_* error codes are globally mapped to HTTP 401; insufficient-permission outcomes are typically expected as 403. This can blur contract-level differentiation for authorization failures raised via ApplicationException(ErrorCode.AUTH_INSUFFICIENT_PERMISSIONS)."
+      },
+      {
+        "file": "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingComplianceAuditService.java",
+        "line": 263,
+        "severity": "non_blocking",
+        "description": "Admin-override compliance audit is implemented for journal reversal overrides only (JOURNAL_REVERSAL_ADMIN_OVERRIDE). The feature narrative says every adminOverride=true usage should be audited; broader create/adjust flows with adminOverride flags currently rely on generic journal creation audit rather than explicit override-tagged compliance entries."
+      }
+    ]
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "Scrutiny validator should document an explicit manual-review fallback when Task model aliasing is broken, because review subagents may be unavailable despite completed feature scope.",
+      "evidence": "Task calls for scrutiny-feature-reviewer consistently fail in this run with 'Invalid model: custom:CLIProxyAPI-5.3-codex-xhigh-pro'."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "FAIL. Core maker-checker and audit redesign landed, but reopen authorization still allows ROLE_ADMIN/ROLE_ACCOUNTING at controller boundary, violating the strict superadmin-only endpoint contract."
+}

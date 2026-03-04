@@ -1,0 +1,21 @@
+{
+  "featureId": "inventory-adjustments-and-safety",
+  "reviewedAt": "2026-03-05T03:25:00+05:30",
+  "commitId": "5dbf8d4f",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Feature implementation satisfies inventory hardening scope: positive finished-goods recount adjustments are supported; raw-material adjustment API exists with idempotency and accounting posting; raw-material domain now rejects negative stock directly via business exception; and expiring-batches endpoint returns combined RM/FG data with deterministic ordering. Migration artifacts for raw material adjustment data model are present in both migration tracks and tests cover adjustment flows, idempotency, and stock constraints.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "Task subagent model resolution remains a cross-milestone constraint that can block automated review fan-out and should be handled as a known validator fallback condition.",
+      "evidence": "Repeated Task failures return the same invalid custom model alias error before any reviewer execution starts."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. Inventory safety/adjustment capabilities are implemented with required endpoints, guardrails, and accounting/idempotency behavior, and validated by focused tests plus gate-fast."
+}

@@ -1,0 +1,21 @@
+{
+  "featureId": "reconciliation-discrepancy-resolution",
+  "reviewedAt": "2026-03-05T03:25:00+05:30",
+  "commitId": "13f03191",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Implementation satisfies discrepancy detection and resolution requirements. Reconciliation discrepancies are persisted for AR/AP/inventory/GST with period scoping; OPEN discrepancies are upserted only when variance exceeds tolerance and cleared when no longer applicable; API surface supports filterable listing and resolution; and all three resolution paths (ACKNOWLEDGED, ADJUSTMENT_JOURNAL, WRITE_OFF) are implemented with required journal creation for journal-based resolutions. Period checklist integrates open-discrepancy and GST reconciliation controls, and dead reconciliation helper methods were removed.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "Subagent reviewer spawning remains blocked by model alias mismatch, requiring manual scrutiny execution path.",
+      "evidence": "Task tool returns 'Invalid model: custom:CLIProxyAPI-5.3-codex-xhigh-pro' for scrutiny-feature-reviewer invocations."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. Discrepancy auto-detection, filter/list API, all three resolution modes, and period-close checklist integration are implemented and covered by tests."
+}

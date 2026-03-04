@@ -1,0 +1,21 @@
+{
+  "featureId": "persistent-bank-reconciliation",
+  "reviewedAt": "2026-03-05T03:25:00+05:30",
+  "commitId": "097731f7",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "Feature is correctly implemented end-to-end for persistent bank reconciliation sessions. New session/item persistence model exists with proper company scoping and uniqueness constraints; lifecycle endpoints are exposed for start/update/complete/list/detail; legacy bank reconciliation flow delegates through session lifecycle; completion enforces DRAFT-only transition and optionally confirms linked period reconciliation; and gate-fast/typecheck validators pass. Unit coverage verifies core lifecycle behavior (create/update/complete/history/detail/legacy delegate).",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "Task-based scrutiny reviewer spawning is not currently reliable in this mission environment because model alias resolution fails before reviewers run.",
+      "evidence": "Task invocations fail with 'Invalid model: custom:CLIProxyAPI-5.3-codex-xhigh-pro' despite available custom aliases being space-separated labels (e.g., '5.3 codex xhigh pro')."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. Persistent session-based bank reconciliation behavior, storage, APIs, and backward-compatible delegation are all present and validated by tests and gate-fast run."
+}
