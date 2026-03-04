@@ -9,9 +9,11 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriod;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodStatus;
 import com.bigbrightpaints.erp.modules.accounting.domain.CostingMethod;
+import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyStatus;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodCloseRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodLockRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodReopenRequest;
@@ -66,6 +68,7 @@ class AccountingPeriodServiceTest {
     @Mock private GoodsReceiptRepository goodsReceiptRepository;
     @Mock private RawMaterialPurchaseRepository rawMaterialPurchaseRepository;
     @Mock private PayrollRunRepository payrollRunRepository;
+    @Mock private ReconciliationDiscrepancyRepository reconciliationDiscrepancyRepository;
     @Mock private ObjectProvider<AccountingFacade> accountingFacadeProvider;
     @Mock private PeriodCloseHook periodCloseHook;
     @Mock private AccountingPeriodSnapshotService snapshotService;
@@ -95,6 +98,7 @@ class AccountingPeriodServiceTest {
                 goodsReceiptRepository,
                 rawMaterialPurchaseRepository,
                 payrollRunRepository,
+                reconciliationDiscrepancyRepository,
                 accountingFacadeProvider,
                 periodCloseHook,
                 snapshotService
@@ -319,6 +323,10 @@ class AccountingPeriodServiceTest {
                         BigDecimal.ZERO,
                         BigDecimal.ZERO,
                         true));
+        when(reconciliationService.generateGstReconciliation(java.time.YearMonth.from(period.getStartDate())))
+                .thenReturn(gstReconciliation(BigDecimal.ZERO));
+        when(reconciliationDiscrepancyRepository.countByCompanyAndAccountingPeriodAndStatus(
+                company, period, ReconciliationDiscrepancyStatus.OPEN)).thenReturn(0L);
         when(reportService.trialBalance(period.getEndDate())).thenReturn(new TrialBalanceDto(
                 List.of(),
                 new BigDecimal("150.00"),
@@ -380,6 +388,10 @@ class AccountingPeriodServiceTest {
                         BigDecimal.ZERO,
                         BigDecimal.ZERO,
                         true));
+        when(reconciliationService.generateGstReconciliation(java.time.YearMonth.from(period.getStartDate())))
+                .thenReturn(gstReconciliation(BigDecimal.ZERO));
+        when(reconciliationDiscrepancyRepository.countByCompanyAndAccountingPeriodAndStatus(
+                company, period, ReconciliationDiscrepancyStatus.OPEN)).thenReturn(0L);
         when(reportService.trialBalance(period.getEndDate())).thenReturn(new TrialBalanceDto(
                 List.of(),
                 new BigDecimal("200.00"),
@@ -551,5 +563,28 @@ class AccountingPeriodServiceTest {
         JournalEntry entry = new JournalEntry();
         ReflectionTestUtils.setField(entry, "id", id);
         return entry;
+    }
+
+    @Test
+    void confirmBankReconciliation_rejectsChecklistMutationOnLockedPeriod() {
+        Company company = company(1L, "ACME");
+        AccountingPeriod period = openPeriod(company, 2026, 2);
+        period.setStatus(AccountingPeriodStatus.LOCKED);
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(companyEntityLookup.requireAccountingPeriod(company, 43L)).thenReturn(period);
+
+        assertThatThrownBy(() -> service.confirmBankReconciliation(43L, null, "locked mutation"))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("locked or closed period");
+    }
+
+    private com.bigbrightpaints.erp.modules.accounting.dto.GstReconciliationDto gstReconciliation(BigDecimal netTotal) {
+        com.bigbrightpaints.erp.modules.accounting.dto.GstReconciliationDto dto =
+                new com.bigbrightpaints.erp.modules.accounting.dto.GstReconciliationDto();
+        com.bigbrightpaints.erp.modules.accounting.dto.GstReconciliationDto.GstComponentSummary summary =
+                new com.bigbrightpaints.erp.modules.accounting.dto.GstReconciliationDto.GstComponentSummary();
+        summary.setTotal(netTotal);
+        dto.setNetLiability(summary);
+        return dto;
     }
 }

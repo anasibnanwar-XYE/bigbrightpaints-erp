@@ -85,6 +85,33 @@ public interface JournalLineRepository extends JpaRepository<JournalLine, Long> 
                               @Param("accountId") Long accountId,
                               @Param("end") LocalDate end);
 
+    interface AccountLineTotals {
+        Long getAccountId();
+
+        BigDecimal getTotalDebit();
+
+        BigDecimal getTotalCredit();
+    }
+
+    @Query("""
+            select line.account.id as accountId,
+                   coalesce(sum(line.debit), 0) as totalDebit,
+                   coalesce(sum(line.credit), 0) as totalCredit
+            from JournalLine line
+            join line.journalEntry entry
+            where entry.company = :company
+              and entry.status = :status
+              and line.account.id in :accountIds
+              and entry.entryDate between :start and :end
+            group by line.account.id
+            """)
+    List<AccountLineTotals> summarizeTotalsByCompanyAndAccountIdsWithin(
+            @Param("company") Company company,
+            @Param("accountIds") Collection<Long> accountIds,
+            @Param("start") LocalDate start,
+            @Param("end") LocalDate end,
+            @Param("status") String status);
+
     @Query("""
             select line.journalEntry.id as journalEntryId,
                    coalesce(sum(line.debit), 0) as totalDebit,

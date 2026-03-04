@@ -1,17 +1,18 @@
 package com.bigbrightpaints.erp.modules.accounting.service;
 
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.DealerLedgerRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.SupplierLedgerRepository;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
-import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReservationRepository;
-import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
+import com.bigbrightpaints.erp.modules.reports.service.ReportService;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
-import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderRepository;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -24,12 +25,14 @@ public class ReconciliationService extends ReconciliationServiceCore {
                                  DealerLedgerRepository dealerLedgerRepository,
                                  SupplierRepository supplierRepository,
                                  SupplierLedgerRepository supplierLedgerRepository,
-                                 InventoryReservationRepository inventoryReservationRepository,
-                                 PackagingSlipRepository packagingSlipRepository,
-                                 SalesOrderRepository salesOrderRepository,
                                  JournalEntryRepository journalEntryRepository,
                                  JournalLineRepository journalLineRepository,
-                                 TemporalBalanceService temporalBalanceService) {
+                                 TemporalBalanceService temporalBalanceService,
+                                 ReconciliationDiscrepancyRepository reconciliationDiscrepancyRepository,
+                                 AccountingPeriodRepository accountingPeriodRepository,
+                                 TaxService taxService,
+                                 ReportService reportService,
+                                 ObjectProvider<AccountingFacade> accountingFacadeProvider) {
         super(companyContextService,
                 companyRepository,
                 accountRepository,
@@ -37,11 +40,13 @@ public class ReconciliationService extends ReconciliationServiceCore {
                 dealerLedgerRepository,
                 supplierRepository,
                 supplierLedgerRepository,
-                inventoryReservationRepository,
-                packagingSlipRepository,
-                salesOrderRepository,
                 journalEntryRepository,
                 journalLineRepository,
-                temporalBalanceService);
+                temporalBalanceService,
+                reconciliationDiscrepancyRepository,
+                accountingPeriodRepository,
+                taxService,
+                reportService,
+                accountingFacadeProvider);
     }
 }

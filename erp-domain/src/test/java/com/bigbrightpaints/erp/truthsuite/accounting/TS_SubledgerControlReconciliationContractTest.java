@@ -29,6 +29,7 @@ class TS_SubledgerControlReconciliationContractTest {
         TruthSuiteFileAssert.assertContains(
                 REPORT_SERVICE,
                 "public ReconciliationSummaryDto inventoryReconciliation()",
+                "public InventoryValuationDto inventoryValuationAsOf(LocalDate asOfDate)",
                 "public ReconciliationDashboardDto reconciliationDashboard(Long bankAccountId, BigDecimal statementBalance)",
                 "public List<AgedDebtorDto> agedDebtors()",
                 "boolean inventoryBalanced = inventoryVariance.abs().compareTo(BALANCE_TOLERANCE) <= 0;");

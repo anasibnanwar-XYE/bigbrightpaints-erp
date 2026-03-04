@@ -161,6 +161,27 @@ class AccountingControllerExceptionHandlerTest {
         assertThat(body.data()).doesNotContainKey("details");
     }
 
+    @Test
+    void handleApplicationException_invalidDiscrepancyTypeMapsToBadRequestEnvelope() {
+        AccountingController controller = controller();
+        ApplicationException ex = new ApplicationException(
+                ErrorCode.VALIDATION_INVALID_INPUT,
+                "Invalid reconciliation discrepancy type: BANK");
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRequestURI("/api/v1/accounting/reconciliation/discrepancies");
+
+        ResponseEntity<ApiResponse<Map<String, Object>>> response =
+                controller.handleApplicationException(ex, request);
+
+        ApiResponse<Map<String, Object>> body = assertReplayErrorEnvelope(
+                response,
+                HttpStatus.BAD_REQUEST,
+                ErrorCode.VALIDATION_INVALID_INPUT,
+                "Invalid reconciliation discrepancy type: BANK",
+                "/api/v1/accounting/reconciliation/discrepancies");
+        assertThat(body.data()).containsEntry("message", "Invalid reconciliation discrepancy type: BANK");
+    }
+
     private ApiResponse<Map<String, Object>> assertReplayErrorEnvelope(
             ResponseEntity<ApiResponse<Map<String, Object>>> response,
             HttpStatus status,
@@ -197,6 +218,7 @@ class AccountingControllerExceptionHandlerTest {
 
     private AccountingController controller() {
         return new AccountingController(
-                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null);
     }
 }

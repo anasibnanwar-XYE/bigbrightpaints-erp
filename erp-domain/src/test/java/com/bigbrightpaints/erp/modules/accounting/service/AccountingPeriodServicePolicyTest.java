@@ -8,8 +8,10 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriod;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodStatus;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
+import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyStatus;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodCloseRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodLockRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodReopenRequest;
@@ -58,6 +60,7 @@ class AccountingPeriodServicePolicyTest {
     @Mock private GoodsReceiptRepository goodsReceiptRepository;
     @Mock private RawMaterialPurchaseRepository rawMaterialPurchaseRepository;
     @Mock private PayrollRunRepository payrollRunRepository;
+    @Mock private ReconciliationDiscrepancyRepository reconciliationDiscrepancyRepository;
     @Mock private ObjectProvider<AccountingFacade> accountingFacadeProvider;
     @Mock private AccountingFacade accountingFacade;
     @Mock private PeriodCloseHook periodCloseHook;
@@ -81,6 +84,7 @@ class AccountingPeriodServicePolicyTest {
                 goodsReceiptRepository,
                 rawMaterialPurchaseRepository,
                 payrollRunRepository,
+                reconciliationDiscrepancyRepository,
                 accountingFacadeProvider,
                 periodCloseHook,
                 snapshotService
@@ -168,6 +172,10 @@ class AccountingPeriodServicePolicyTest {
                         BigDecimal.ZERO,
                         BigDecimal.ZERO,
                         true));
+        when(reconciliationService.generateGstReconciliation(java.time.YearMonth.from(period.getStartDate())))
+                .thenReturn(gstReconciliation(BigDecimal.ZERO));
+        when(reconciliationDiscrepancyRepository.countByCompanyAndAccountingPeriodAndStatus(
+                company, period, ReconciliationDiscrepancyStatus.OPEN)).thenReturn(0L);
         when(journalEntryRepository.findByCompanyAndEntryDateBetweenOrderByEntryDateAsc(
                 company, period.getStartDate(), period.getEndDate())).thenReturn(List.of());
         when(invoiceRepository.countByCompanyAndIssueDateBetweenAndStatusNotAndJournalEntryIsNull(
@@ -225,6 +233,12 @@ class AccountingPeriodServicePolicyTest {
         when(reportService.inventoryReconciliation()).thenReturn(null);
         when(reconciliationService.reconcileSubledgersForPeriod(period.getStartDate(), period.getEndDate()))
                 .thenReturn(null);
+        when(reconciliationService.generateGstReconciliation(java.time.YearMonth.from(period.getStartDate())))
+                .thenThrow(new ApplicationException(
+                        com.bigbrightpaints.erp.core.exception.ErrorCode.VALIDATION_INVALID_INPUT,
+                        "GST unavailable"));
+        when(reconciliationDiscrepancyRepository.countByCompanyAndAccountingPeriodAndStatus(
+                company, period, ReconciliationDiscrepancyStatus.OPEN)).thenReturn(1L);
         when(journalEntryRepository.findByCompanyAndEntryDateBetweenOrderByEntryDateAsc(
                 company, period.getStartDate(), period.getEndDate())).thenReturn(List.of());
         when(invoiceRepository.countByCompanyAndIssueDateBetweenAndStatusNotAndJournalEntryIsNull(
@@ -253,7 +267,9 @@ class AccountingPeriodServicePolicyTest {
                 .hasMessage("Checklist controls unresolved for this period: "
                         + "inventoryReconciled [inventory reconciliation result unavailable; run inventory reconciliation before close], "
                         + "arReconciled [AR subledger reconciliation result unavailable; reconcile dealer ledger before close], "
-                        + "apReconciled [AP subledger reconciliation result unavailable; reconcile supplier ledger before close]");
+                        + "apReconciled [AP subledger reconciliation result unavailable; reconcile supplier ledger before close], "
+                        + "gstReconciled [GST reconciliation result unavailable; run GST reconciliation before close], "
+                        + "reconciliationDiscrepanciesResolved [open reconciliation discrepancies exist; resolve discrepancies before close]");
     }
 
     @Test
@@ -266,7 +282,7 @@ class AccountingPeriodServicePolicyTest {
 
         assertThatThrownBy(() -> service.confirmBankReconciliation(20L, null, "post-close mutation"))
                 .isInstanceOf(ApplicationException.class)
-                .hasMessageContaining("Checklist cannot be updated for a closed period");
+                .hasMessageContaining("Checklist cannot be updated for a locked or closed period");
         assertThat(period.isBankReconciled()).isFalse();
     }
 
@@ -280,7 +296,7 @@ class AccountingPeriodServicePolicyTest {
 
         assertThatThrownBy(() -> service.confirmInventoryCount(21L, null, "post-close mutation"))
                 .isInstanceOf(ApplicationException.class)
-                .hasMessageContaining("Checklist cannot be updated for a closed period");
+                .hasMessageContaining("Checklist cannot be updated for a locked or closed period");
         assertThat(period.isInventoryCounted()).isFalse();
     }
 
@@ -294,7 +310,7 @@ class AccountingPeriodServicePolicyTest {
 
         assertThatThrownBy(() -> service.updateMonthEndChecklist(22L, new MonthEndChecklistUpdateRequest(true, true, "post-close mutation")))
                 .isInstanceOf(ApplicationException.class)
-                .hasMessageContaining("Checklist cannot be updated for a closed period");
+                .hasMessageContaining("Checklist cannot be updated for a locked or closed period");
         assertThat(period.isBankReconciled()).isFalse();
         assertThat(period.isInventoryCounted()).isFalse();
     }
@@ -352,5 +368,15 @@ class AccountingPeriodServicePolicyTest {
         period.setEndDate(startDate.plusMonths(1).minusDays(1));
         period.setStatus(AccountingPeriodStatus.OPEN);
         return period;
+    }
+
+    private com.bigbrightpaints.erp.modules.accounting.dto.GstReconciliationDto gstReconciliation(BigDecimal netTotal) {
+        com.bigbrightpaints.erp.modules.accounting.dto.GstReconciliationDto dto =
+                new com.bigbrightpaints.erp.modules.accounting.dto.GstReconciliationDto();
+        com.bigbrightpaints.erp.modules.accounting.dto.GstReconciliationDto.GstComponentSummary summary =
+                new com.bigbrightpaints.erp.modules.accounting.dto.GstReconciliationDto.GstComponentSummary();
+        summary.setTotal(netTotal);
+        dto.setNetLiability(summary);
+        return dto;
     }
 }

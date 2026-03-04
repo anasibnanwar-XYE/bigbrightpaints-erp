@@ -682,6 +682,9 @@ Comprehensive frontend handoff for `VAL-DOC-003` (chart of accounts, journals, s
 | `GET` | `/api/v1/accounting/reconciliation/bank/sessions` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | Query: `page`, `size` | `PageResponse<BankReconciliationSessionSummaryDto>` |
 | `GET` | `/api/v1/accounting/reconciliation/bank/sessions/{sessionId}` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `BankReconciliationSessionDetailDto` |
 | `GET` | `/api/v1/accounting/reconciliation/subledger` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `ReconciliationService.SubledgerReconciliationReport` |
+| `GET` | `/api/v1/accounting/reconciliation/discrepancies` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | Query: `status?`, `type?` | `ReconciliationDiscrepancyListResponse` |
+| `POST` | `/api/v1/accounting/reconciliation/discrepancies/{discrepancyId}/resolve` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `ReconciliationDiscrepancyResolveRequest` | `ReconciliationDiscrepancyDto` |
+| `GET` | `/api/v1/accounting/reconciliation/inter-company` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | Query: `companyA`, `companyB` | `ReconciliationService.InterCompanyReconciliationReport` |
 | `GET` | `/api/v1/accounting/reports/aging/dealer/{dealerId}` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `AgingReportService.DealerAgingDetail` |
 | `GET` | `/api/v1/accounting/reports/aging/dealer/{dealerId}/detailed` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `AgingReportService.DealerAgingDetailedReport` |
 | `GET` | `/api/v1/accounting/reports/aging/receivables` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `AgingReportService.AgedReceivablesReport` |
@@ -700,7 +703,7 @@ Comprehensive frontend handoff for `VAL-DOC-003` (chart of accounts, journals, s
 | `POST` | `/api/v1/accounting/suppliers/{supplierId}/auto-settle` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `AutoSettlementRequest` | `PartnerSettlementResponse` |
 | `GET` | `/api/v1/accounting/trial-balance/as-of` | `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')` | `—` | `TemporalBalanceService.TrialBalanceSnapshot` |
 
-_Total documented accounting endpoints: **80**._
+_Total documented accounting endpoints: **83**._
 
 #### Required User Flows (API call sequences)
 
@@ -741,7 +744,16 @@ _Total documented accounting endpoints: **80**._
    7. Legacy compatibility path (stateless one-shot): `POST /api/v1/accounting/reconciliation/bank` (internally uses same session service)
    8. Cross-check AR/AP controls: `GET /api/v1/accounting/reconciliation/subledger`
 
-6. **GST return preparation**
+6. **Reconciliation discrepancy review + resolution**
+   1. Trigger a fresh subledger snapshot: `GET /api/v1/accounting/reconciliation/subledger`.
+   2. List discrepancies with optional filters: `GET /api/v1/accounting/reconciliation/discrepancies?status=OPEN&type=AR`.
+   3. Resolve item by action:
+      - acknowledge: `POST /api/v1/accounting/reconciliation/discrepancies/{id}/resolve` with `{ "resolution": "ACKNOWLEDGED", "note": "..." }`
+      - adjustment journal: same endpoint with `{ "resolution": "ADJUSTMENT_JOURNAL", "adjustmentAccountId": <id>, "note": "..." }`
+      - write-off: same endpoint with `{ "resolution": "WRITE_OFF", "adjustmentAccountId": <id>, "note": "..." }`
+   4. Refresh list and period checklist (`GET /api/v1/accounting/month-end/checklist?periodId={id}`) to confirm `reconciliationDiscrepanciesResolved` is complete.
+
+7. **GST return preparation**
    1. Run tax return: `GET /api/v1/accounting/gst/return?period=YYYY-MM`
    2. Run component reconciliation: `GET /api/v1/accounting/gst/reconciliation?period=YYYY-MM`
    3. Optional diagnostics for audit period: `GET /api/v1/accounting/audit-trail`
@@ -772,14 +784,21 @@ _Total documented accounting endpoints: **80**._
    - `OPEN` or `LOCKED` -> `CLOSED` via `/periods/{id}/close` (checklist + reconciliation + balancing validations)
    - `LOCKED/CLOSED` -> `OPEN` via `/periods/{id}/reopen` (reason required; closes snapshot + reverses closing journal when present)
 
-3. **Settlement lifecycle** (frontend orchestration state)
+3. **Reconciliation discrepancy lifecycle** (`ReconciliationDiscrepancyStatus`)
+   - Created as `OPEN` when AR/AP/inventory/GST variance exceeds tolerance for the open period (triggered by subledger reconciliation sync).
+   - `OPEN` -> `ACKNOWLEDGED` via resolve endpoint with `resolution=ACKNOWLEDGED` (no journal entry generated).
+   - `OPEN` -> `ADJUSTED` via resolve endpoint with `resolution=ADJUSTMENT_JOURNAL` + `adjustmentAccountId` (journal entry required and linked as `resolutionJournalId`).
+   - `OPEN` -> `RESOLVED` via resolve endpoint with `resolution=WRITE_OFF` + `adjustmentAccountId` (journal entry required and linked).
+   - Any non-`OPEN` discrepancy is terminal for this API and cannot be resolved again.
+
+4. **Settlement lifecycle** (frontend orchestration state)
    - `INITIATED` (draft UI form)
    - `VALIDATED` (allocations/payments pass amount/account checks)
    - `POSTED` (journal + allocation rows persisted, returns `PartnerSettlementResponse`)
    - `PARTIALLY_SETTLED` / `FULLY_SETTLED` determined by outstanding balance after allocation
    - `REVERSED` when the settlement-linked journal is reversed
 
-4. **Bank reconciliation session lifecycle** (`BankReconciliationSessionStatus`)
+5. **Bank reconciliation session lifecycle** (`BankReconciliationSessionStatus`)
    - `DRAFT` -> `DRAFT` via `PUT /api/v1/accounting/reconciliation/bank/sessions/{sessionId}/items` (incremental clear/un-clear updates)
    - `DRAFT` -> `COMPLETED` via `POST /api/v1/accounting/reconciliation/bank/sessions/{sessionId}/complete`
    - Terminal state: `COMPLETED` cannot be updated/edited; item updates on completed session return `BUS_001` (`BUSINESS_INVALID_STATE`)
@@ -1038,6 +1057,10 @@ _Total documented accounting endpoints: **80**._
 - **`BankReconciliationSessionCompletionRequest`**
   - `note`: `String` — validation `—`
   - `accountingPeriodId`: `Long` — validation `—` (optional override; must be OPEN and month-matching statement date)
+- **`ReconciliationDiscrepancyResolveRequest`**
+  - `resolution`: `ReconciliationDiscrepancyResolution` — validation `@NotNull`; enum values `ACKNOWLEDGED | ADJUSTMENT_JOURNAL | WRITE_OFF`
+  - `note`: `String` — validation `—`
+  - `adjustmentAccountId`: `Long` — validation `—`; required for `ADJUSTMENT_JOURNAL` and `WRITE_OFF`, ignored for `ACKNOWLEDGED`
 - **`SalesReturnRequest`**
   - `invoiceId`: `Long` — validation `@NotNull`
   - `reason`: `String` — validation `@NotBlank`
@@ -1381,6 +1404,7 @@ _Total documented accounting endpoints: **80**._
 - **`MonthEndChecklistDto`**
   - `period`: `AccountingPeriodDto`
   - `items`: `List<MonthEndChecklistItemDto>`
+    - canonical reconciliation/status control keys surfaced in `items[].key`: `inventoryReconciled`, `arReconciled`, `apReconciled`, `gstReconciled`, `reconciliationDiscrepanciesResolved`, `unbalancedJournals`, `unlinkedDocuments`, `uninvoicedReceipts`, `unpostedDocuments`, `trialBalanceBalanced`, `bankReconciled`, `inventoryCounted`
   - `readyToClose`: `boolean`
 - **`PayrollBatchPaymentResponse`**
   - `payrollRunId`: `Long`
@@ -1529,6 +1553,31 @@ _Total documented accounting endpoints: **80**._
   - `supplierReconciliation`: `SupplierReconciliationResult`
   - `combinedVariance`: `BigDecimal`
   - `reconciled`: `boolean`
+- **`ReconciliationDiscrepancyListResponse`**
+  - `items`: `List<ReconciliationDiscrepancyDto>`
+  - `openCount`: `long`
+  - `resolvedCount`: `long` (count of statuses `ACKNOWLEDGED`, `ADJUSTED`, `RESOLVED`)
+- **`ReconciliationDiscrepancyDto`**
+  - `id`: `Long`
+  - `accountingPeriodId`: `Long`
+  - `periodStart`: `LocalDate`
+  - `periodEnd`: `LocalDate`
+  - `type`: `String` (`AR`, `AP`, `INVENTORY`, `GST`)
+  - `partnerType`: `String` (`DEALER`, `SUPPLIER`, nullable)
+  - `partnerId`: `Long` (nullable)
+  - `partnerCode`: `String` (nullable)
+  - `partnerName`: `String` (nullable)
+  - `expectedAmount`: `BigDecimal`
+  - `actualAmount`: `BigDecimal`
+  - `variance`: `BigDecimal`
+  - `status`: `String` (`OPEN`, `ACKNOWLEDGED`, `ADJUSTED`, `RESOLVED`)
+  - `resolution`: `String` (`ACKNOWLEDGED`, `ADJUSTMENT_JOURNAL`, `WRITE_OFF`, nullable)
+  - `resolutionNote`: `String` (nullable)
+  - `resolutionJournalId`: `Long` (nullable)
+  - `resolvedBy`: `String` (nullable)
+  - `resolvedAt`: `Instant` (nullable)
+  - `createdAt`: `Instant`
+  - `updatedAt`: `Instant`
 - **`AgingReportService.DealerAgingDetail`**
   - `dealerId`: `Long`
   - `dealerCode`: `String`
@@ -1617,7 +1666,9 @@ _Total documented accounting endpoints: **80**._
   - `sourceState`/`destState` (dealer/supplier/company state codes) decide GST type and tax split
   - In settlement requests, non-zero discount/write-off/fx values require corresponding account IDs (`discountAccountId`, `writeOffAccountId`, etc.)
   - Period close requires checklist controls satisfied unless `force=true` is explicitly used
+  - Month-end checklist mutations (`confirmBankReconciliation`, `confirmInventoryCount`, `updateMonthEndChecklist`) are rejected when period status is `LOCKED` or `CLOSED`.
   - Bank reconciliation session completion with `accountingPeriodId` requires an OPEN period matching `statementDate` month/year.
+  - Reconciliation discrepancy resolutions require `adjustmentAccountId` for journal actions and only accept `OPEN` records.
 - **Bank reconciliation session UX**
   - Keep draft reconciliation state client-side by `sessionId`; users can leave/return and continue via `GET /reconciliation/bank/sessions/{sessionId}`.
   - For line-level toggles, send incremental diffs (`addJournalLineIds`, `removeJournalLineIds`) instead of replacing whole sets.

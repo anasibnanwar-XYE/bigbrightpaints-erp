@@ -18,6 +18,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodStatus;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodReopenRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
@@ -61,6 +62,7 @@ class TS_RuntimeAccountingPeriodServiceExecutableCoverageTest {
         GoodsReceiptRepository goodsReceiptRepository = mock(GoodsReceiptRepository.class);
         RawMaterialPurchaseRepository rawMaterialPurchaseRepository = mock(RawMaterialPurchaseRepository.class);
         PayrollRunRepository payrollRunRepository = mock(PayrollRunRepository.class);
+        ReconciliationDiscrepancyRepository reconciliationDiscrepancyRepository = mock(ReconciliationDiscrepancyRepository.class);
         AccountingFacade accountingFacade = mock(AccountingFacade.class);
         @SuppressWarnings("unchecked")
         ObjectProvider<AccountingFacade> accountingFacadeProvider = mock(ObjectProvider.class);
@@ -82,6 +84,7 @@ class TS_RuntimeAccountingPeriodServiceExecutableCoverageTest {
                 goodsReceiptRepository,
                 rawMaterialPurchaseRepository,
                 payrollRunRepository,
+                reconciliationDiscrepancyRepository,
                 accountingFacadeProvider,
                 periodCloseHook,
                 snapshotService
@@ -169,6 +172,7 @@ class TS_RuntimeAccountingPeriodServiceExecutableCoverageTest {
         GoodsReceiptRepository goodsReceiptRepository = mock(GoodsReceiptRepository.class);
         RawMaterialPurchaseRepository rawMaterialPurchaseRepository = mock(RawMaterialPurchaseRepository.class);
         PayrollRunRepository payrollRunRepository = mock(PayrollRunRepository.class);
+        ReconciliationDiscrepancyRepository reconciliationDiscrepancyRepository = mock(ReconciliationDiscrepancyRepository.class);
         AccountingFacade accountingFacade = mock(AccountingFacade.class);
         @SuppressWarnings("unchecked")
         ObjectProvider<AccountingFacade> accountingFacadeProvider = mock(ObjectProvider.class);
@@ -190,6 +194,7 @@ class TS_RuntimeAccountingPeriodServiceExecutableCoverageTest {
                 goodsReceiptRepository,
                 rawMaterialPurchaseRepository,
                 payrollRunRepository,
+                reconciliationDiscrepancyRepository,
                 accountingFacadeProvider,
                 periodCloseHook,
                 snapshotService
@@ -226,6 +231,7 @@ class TS_RuntimeAccountingPeriodServiceExecutableCoverageTest {
         GoodsReceiptRepository goodsReceiptRepository = mock(GoodsReceiptRepository.class);
         RawMaterialPurchaseRepository rawMaterialPurchaseRepository = mock(RawMaterialPurchaseRepository.class);
         PayrollRunRepository payrollRunRepository = mock(PayrollRunRepository.class);
+        ReconciliationDiscrepancyRepository reconciliationDiscrepancyRepository = mock(ReconciliationDiscrepancyRepository.class);
         AccountingFacade accountingFacade = mock(AccountingFacade.class);
         @SuppressWarnings("unchecked")
         ObjectProvider<AccountingFacade> accountingFacadeProvider = mock(ObjectProvider.class);
@@ -247,6 +253,7 @@ class TS_RuntimeAccountingPeriodServiceExecutableCoverageTest {
                 goodsReceiptRepository,
                 rawMaterialPurchaseRepository,
                 payrollRunRepository,
+                reconciliationDiscrepancyRepository,
                 accountingFacadeProvider,
                 periodCloseHook,
                 snapshotService

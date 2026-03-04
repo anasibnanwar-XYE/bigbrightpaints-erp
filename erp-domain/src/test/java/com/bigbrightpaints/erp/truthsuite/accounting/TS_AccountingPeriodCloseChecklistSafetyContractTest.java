@@ -28,7 +28,9 @@ class TS_AccountingPeriodCloseChecklistSafetyContractTest {
                 "private static final List<String> RECONCILIATION_CONTROL_ORDER = List.of(",
                 "\"inventoryReconciled\",",
                 "\"arReconciled\",",
-                "\"apReconciled\");",
+                "\"apReconciled\",",
+                "\"gstReconciled\",",
+                "\"reconciliationDiscrepanciesResolved\");",
                 "private static final Map<String, String> UNRESOLVED_CONTROL_GUIDANCE = Map.of(",
                 "return List.copyOf(unresolved);",
                 "UNRESOLVED_CONTROLS_PREFIX + formatUnresolvedControls(unresolvedControls)");

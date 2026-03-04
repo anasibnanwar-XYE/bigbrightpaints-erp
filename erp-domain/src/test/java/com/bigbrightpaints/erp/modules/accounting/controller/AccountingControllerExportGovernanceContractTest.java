@@ -10,7 +10,6 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import java.lang.reflect.Method;
 import java.time.LocalDate;
@@ -59,9 +58,8 @@ class AccountingControllerExportGovernanceContractTest {
                 null,
                 companyContextService,
                 companyClock,
-                null
+                auditService
         );
-        ReflectionTestUtils.setField(controller, "auditService", auditService);
 
         ResponseEntity<String> response = controller.auditDigestCsv("2026-01-01", "2026-01-31");
 

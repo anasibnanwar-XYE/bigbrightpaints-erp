@@ -12,6 +12,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodReposit
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodStatus;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodReopenRequest;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodService;
@@ -53,6 +54,7 @@ class TS_RuntimeAccountingPeriodPolicyExecutableCoverageTest {
     @Mock private GoodsReceiptRepository goodsReceiptRepository;
     @Mock private RawMaterialPurchaseRepository rawMaterialPurchaseRepository;
     @Mock private PayrollRunRepository payrollRunRepository;
+    @Mock private ReconciliationDiscrepancyRepository reconciliationDiscrepancyRepository;
     @Mock private ObjectProvider<AccountingFacade> accountingFacadeProvider;
     @Mock private PeriodCloseHook periodCloseHook;
     @Mock private AccountingPeriodSnapshotService snapshotService;
@@ -73,6 +75,7 @@ class TS_RuntimeAccountingPeriodPolicyExecutableCoverageTest {
                 goodsReceiptRepository,
                 rawMaterialPurchaseRepository,
                 payrollRunRepository,
+                reconciliationDiscrepancyRepository,
                 accountingFacadeProvider,
                 periodCloseHook,
                 snapshotService

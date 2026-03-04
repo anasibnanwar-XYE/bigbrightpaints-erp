@@ -10,6 +10,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyRepository;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunRepository;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
@@ -41,14 +42,17 @@ public class AccountingPeriodService extends AccountingPeriodServiceCore {
      * private static final List<String> RECONCILIATION_CONTROL_ORDER = List.of(
      * "inventoryReconciled",
      * "arReconciled",
-     * "apReconciled");
+     * "apReconciled",
+     * "gstReconciled",
+     * "reconciliationDiscrepanciesResolved");
      * private static final Map<String, String> UNRESOLVED_CONTROL_GUIDANCE = Map.of(
      * return List.copyOf(unresolved);
      * UNRESOLVED_CONTROLS_PREFIX + formatUnresolvedControls(unresolvedControls)
      *
      * private void assertChecklistMutable(AccountingPeriod period) {
-     * if (period.getStatus() == AccountingPeriodStatus.CLOSED) {
-     * Checklist cannot be updated for a closed period
+     * if (period.getStatus() == AccountingPeriodStatus.CLOSED
+     *         || period.getStatus() == AccountingPeriodStatus.LOCKED) {
+     * Checklist cannot be updated for a locked or closed period
      *
      * public AccountingPeriod requireOpenPeriod(Company company, LocalDate referenceDate) {
      * if (period.getStatus() != AccountingPeriodStatus.OPEN) {
@@ -79,6 +83,7 @@ public class AccountingPeriodService extends AccountingPeriodServiceCore {
                                    GoodsReceiptRepository goodsReceiptRepository,
                                    RawMaterialPurchaseRepository rawMaterialPurchaseRepository,
                                    PayrollRunRepository payrollRunRepository,
+                                   ReconciliationDiscrepancyRepository reconciliationDiscrepancyRepository,
                                    ObjectProvider<AccountingFacade> accountingFacadeProvider,
                                    PeriodCloseHook periodCloseHook,
                                    AccountingPeriodSnapshotService snapshotService) {
@@ -95,6 +100,7 @@ public class AccountingPeriodService extends AccountingPeriodServiceCore {
                 goodsReceiptRepository,
                 rawMaterialPurchaseRepository,
                 payrollRunRepository,
+                reconciliationDiscrepancyRepository,
                 accountingFacadeProvider,
                 periodCloseHook,
                 snapshotService);

@@ -22,6 +22,8 @@ import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccounts
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingAuditTrailService;
 import com.bigbrightpaints.erp.modules.accounting.service.BankReconciliationSessionService;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
+import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyStatus;
+import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyType;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
@@ -833,6 +835,34 @@ public class AccountingController {
         return value.trim();
     }
 
+    private ReconciliationDiscrepancyStatus parseDiscrepancyStatus(String rawStatus) {
+        if (!StringUtils.hasText(rawStatus)) {
+            return null;
+        }
+        try {
+            return ReconciliationDiscrepancyStatus.valueOf(rawStatus.trim().toUpperCase());
+        } catch (IllegalArgumentException ex) {
+            throw new ApplicationException(
+                    ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Invalid reconciliation discrepancy status: " + rawStatus,
+                    ex);
+        }
+    }
+
+    private ReconciliationDiscrepancyType parseDiscrepancyType(String rawType) {
+        if (!StringUtils.hasText(rawType)) {
+            return null;
+        }
+        try {
+            return ReconciliationDiscrepancyType.valueOf(rawType.trim().toUpperCase());
+        } catch (IllegalArgumentException ex) {
+            throw new ApplicationException(
+                    ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Invalid reconciliation discrepancy type: " + rawType,
+                    ex);
+        }
+    }
+
     @GetMapping("/gst/return")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
     public ResponseEntity<ApiResponse<GstReturnDto>> generateGstReturn(@RequestParam(required = false) String period) {
@@ -983,6 +1013,27 @@ public class AccountingController {
     public ResponseEntity<ApiResponse<ReconciliationService.SubledgerReconciliationReport>> reconcileSubledger() {
         return ResponseEntity.ok(ApiResponse.success(
                 reconciliationService.reconcileSubledgerBalances()));
+    }
+
+    @GetMapping("/reconciliation/discrepancies")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<ReconciliationDiscrepancyListResponse>> listReconciliationDiscrepancies(
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String type) {
+        ReconciliationDiscrepancyStatus statusFilter = parseDiscrepancyStatus(status);
+        ReconciliationDiscrepancyType typeFilter = parseDiscrepancyType(type);
+        return ResponseEntity.ok(ApiResponse.success(
+                reconciliationService.listDiscrepancies(statusFilter, typeFilter)));
+    }
+
+    @PostMapping("/reconciliation/discrepancies/{discrepancyId}/resolve")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<ReconciliationDiscrepancyDto>> resolveReconciliationDiscrepancy(
+            @PathVariable Long discrepancyId,
+            @Valid @RequestBody ReconciliationDiscrepancyResolveRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(
+                "Reconciliation discrepancy resolved",
+                reconciliationService.resolveDiscrepancy(discrepancyId, request)));
     }
 
     @GetMapping("/reconciliation/inter-company")

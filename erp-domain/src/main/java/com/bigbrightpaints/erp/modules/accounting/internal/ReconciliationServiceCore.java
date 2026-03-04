@@ -1,46 +1,68 @@
 package com.bigbrightpaints.erp.modules.accounting.service;
 
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
+import com.bigbrightpaints.erp.core.security.SecurityActorResolver;
+import com.bigbrightpaints.erp.core.util.CompanyTime;
+import com.bigbrightpaints.erp.core.validation.ValidationUtils;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriod;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodStatus;
 import com.bigbrightpaints.erp.modules.accounting.domain.DealerLedgerRepository;
-import com.bigbrightpaints.erp.modules.accounting.domain.SupplierLedgerRepository;
-import com.bigbrightpaints.erp.modules.accounting.service.TemporalBalanceService;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLine;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
-import com.bigbrightpaints.erp.modules.accounting.dto.DealerBalanceView;
+import com.bigbrightpaints.erp.modules.accounting.domain.PartnerType;
+import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancy;
+import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyResolution;
+import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyStatus;
+import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyType;
+import com.bigbrightpaints.erp.modules.accounting.domain.SupplierLedgerRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.BankReconciliationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.BankReconciliationSummaryDto;
+import com.bigbrightpaints.erp.modules.accounting.dto.DealerBalanceView;
+import com.bigbrightpaints.erp.modules.accounting.dto.GstReconciliationDto;
+import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
+import com.bigbrightpaints.erp.modules.accounting.dto.ReconciliationDiscrepancyDto;
+import com.bigbrightpaints.erp.modules.accounting.dto.ReconciliationDiscrepancyListResponse;
+import com.bigbrightpaints.erp.modules.accounting.dto.ReconciliationDiscrepancyResolveRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.SupplierBalanceView;
+import com.bigbrightpaints.erp.modules.accounting.service.TemporalBalanceService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
-import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReservation;
-import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReservationRepository;
-import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlip;
-import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
 import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
+import com.bigbrightpaints.erp.modules.reports.dto.InventoryValuationDto;
+import com.bigbrightpaints.erp.modules.reports.dto.ReconciliationSummaryDto;
+import com.bigbrightpaints.erp.modules.reports.service.ReportService;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
-import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
-import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderRepository;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.transaction.annotation.Transactional;
-
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 /**
  * Service for reconciling GL accounts with sub-ledgers.
@@ -58,26 +80,30 @@ public class ReconciliationServiceCore {
     private final DealerLedgerRepository dealerLedgerRepository;
     private final SupplierRepository supplierRepository;
     private final SupplierLedgerRepository supplierLedgerRepository;
-    private final InventoryReservationRepository inventoryReservationRepository;
-    private final PackagingSlipRepository packagingSlipRepository;
-    private final SalesOrderRepository salesOrderRepository;
     private final JournalEntryRepository journalEntryRepository;
     private final JournalLineRepository journalLineRepository;
     private final TemporalBalanceService temporalBalanceService;
+    private final ReconciliationDiscrepancyRepository reconciliationDiscrepancyRepository;
+    private final AccountingPeriodRepository accountingPeriodRepository;
+    private final TaxService taxService;
+    private final ReportService reportService;
+    private final ObjectProvider<AccountingFacade> accountingFacadeProvider;
 
     public ReconciliationServiceCore(CompanyContextService companyContextService,
-                                  CompanyRepository companyRepository,
-                                  AccountRepository accountRepository,
-                                  DealerRepository dealerRepository,
-                                  DealerLedgerRepository dealerLedgerRepository,
-                                  SupplierRepository supplierRepository,
-                                  SupplierLedgerRepository supplierLedgerRepository,
-                                  InventoryReservationRepository inventoryReservationRepository,
-                                  PackagingSlipRepository packagingSlipRepository,
-                                  SalesOrderRepository salesOrderRepository,
-                                  JournalEntryRepository journalEntryRepository,
-                                  JournalLineRepository journalLineRepository,
-                                  TemporalBalanceService temporalBalanceService) {
+                                     CompanyRepository companyRepository,
+                                     AccountRepository accountRepository,
+                                     DealerRepository dealerRepository,
+                                     DealerLedgerRepository dealerLedgerRepository,
+                                     SupplierRepository supplierRepository,
+                                     SupplierLedgerRepository supplierLedgerRepository,
+                                     JournalEntryRepository journalEntryRepository,
+                                     JournalLineRepository journalLineRepository,
+                                     TemporalBalanceService temporalBalanceService,
+                                     ReconciliationDiscrepancyRepository reconciliationDiscrepancyRepository,
+                                     AccountingPeriodRepository accountingPeriodRepository,
+                                     TaxService taxService,
+                                     ReportService reportService,
+                                     ObjectProvider<AccountingFacade> accountingFacadeProvider) {
         this.companyContextService = companyContextService;
         this.companyRepository = companyRepository;
         this.accountRepository = accountRepository;
@@ -85,12 +111,14 @@ public class ReconciliationServiceCore {
         this.dealerLedgerRepository = dealerLedgerRepository;
         this.supplierRepository = supplierRepository;
         this.supplierLedgerRepository = supplierLedgerRepository;
-        this.inventoryReservationRepository = inventoryReservationRepository;
-        this.packagingSlipRepository = packagingSlipRepository;
-        this.salesOrderRepository = salesOrderRepository;
         this.journalEntryRepository = journalEntryRepository;
         this.journalLineRepository = journalLineRepository;
         this.temporalBalanceService = temporalBalanceService;
+        this.reconciliationDiscrepancyRepository = reconciliationDiscrepancyRepository;
+        this.accountingPeriodRepository = accountingPeriodRepository;
+        this.taxService = taxService;
+        this.reportService = reportService;
+        this.accountingFacadeProvider = accountingFacadeProvider;
     }
 
     /**
@@ -351,19 +379,28 @@ public class ReconciliationServiceCore {
         );
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public SubledgerReconciliationReport reconcileSubledgerBalances() {
+        Company company = companyContextService.requireCurrentCompany();
         ReconciliationResult dealerReconciliation = reconcileArWithDealerLedger();
         SupplierReconciliationResult supplierReconciliation = reconcileApWithSupplierLedger();
         BigDecimal combinedVariance = safe(dealerReconciliation.variance())
                 .add(safe(supplierReconciliation.variance()));
         boolean reconciled = dealerReconciliation.isReconciled() && supplierReconciliation.isReconciled();
+
+        syncCurrentOpenPeriodDiscrepancies(company);
+
         return new SubledgerReconciliationReport(
                 dealerReconciliation,
                 supplierReconciliation,
                 combinedVariance,
                 reconciled
         );
+    }
+
+    @Transactional(readOnly = true)
+    public GstReconciliationDto generateGstReconciliation(YearMonth period) {
+        return taxService.generateGstReconciliation(period);
     }
 
     @Transactional(readOnly = true)
@@ -477,20 +514,33 @@ public class ReconciliationServiceCore {
         if (accounts == null || accounts.isEmpty()) {
             return BigDecimal.ZERO;
         }
-        BigDecimal total = BigDecimal.ZERO;
-        for (Account account : accounts) {
-            if (account.getId() == null) {
-                continue;
-            }
-            List<JournalLine> lines = journalLineRepository.findLinesForAccountBetween(company, account.getId(), start, end);
-            for (JournalLine line : lines) {
-                BigDecimal debit = line.getDebit() != null ? line.getDebit() : BigDecimal.ZERO;
-                BigDecimal credit = line.getCredit() != null ? line.getCredit() : BigDecimal.ZERO;
-                BigDecimal delta = receivable ? debit.subtract(credit) : credit.subtract(debit);
-                total = total.add(delta);
-            }
+        List<Long> accountIds = accounts.stream()
+                .map(Account::getId)
+                .filter(Objects::nonNull)
+                .toList();
+        if (accountIds.isEmpty()) {
+            return BigDecimal.ZERO;
         }
-        return total;
+
+        Collection<JournalLineRepository.AccountLineTotals> totalsByAccount = journalLineRepository
+                .summarizeTotalsByCompanyAndAccountIdsWithin(
+                        company,
+                        accountIds,
+                        start,
+                        end,
+                        "POSTED");
+        if (totalsByAccount == null || totalsByAccount.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal net = totalsByAccount.stream()
+                .map(total -> {
+                    BigDecimal debit = safe(total.getTotalDebit());
+                    BigDecimal credit = safe(total.getTotalCredit());
+                    return receivable ? debit.subtract(credit) : credit.subtract(debit);
+                })
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        return safe(net);
     }
 
     private InterCompanyReconciliationItem reconcileInterCompanyDirection(Company receivableCompany,
@@ -634,118 +684,453 @@ public class ReconciliationServiceCore {
         return isReferenceCleared(reference, clearedReferences);
     }
 
+    @Transactional(readOnly = true)
+    public ReconciliationDiscrepancyListResponse listDiscrepancies(ReconciliationDiscrepancyStatus status,
+                                                                    ReconciliationDiscrepancyType type) {
+        Company company = companyContextService.requireCurrentCompany();
+        List<ReconciliationDiscrepancy> items = reconciliationDiscrepancyRepository.findFiltered(company, status, type);
+        long openCount = items.stream().filter(item -> item.getStatus() == ReconciliationDiscrepancyStatus.OPEN).count();
+        long resolvedCount = items.stream().filter(this::isResolvedOrAcknowledged).count();
+        return new ReconciliationDiscrepancyListResponse(items.stream().map(this::toDto).toList(), openCount, resolvedCount);
+    }
+
+    @Transactional
+    public ReconciliationDiscrepancyDto resolveDiscrepancy(Long discrepancyId,
+                                                            ReconciliationDiscrepancyResolveRequest request) {
+        ValidationUtils.requireNotNull(discrepancyId, "discrepancyId");
+        ValidationUtils.requireNotNull(request, "request");
+        ValidationUtils.requireNotNull(request.resolution(), "resolution");
+
+        Company company = companyContextService.requireCurrentCompany();
+        ReconciliationDiscrepancy discrepancy = reconciliationDiscrepancyRepository
+                .findByCompanyAndId(company, discrepancyId)
+                .orElseThrow(() -> new ApplicationException(
+                        ErrorCode.BUSINESS_ENTITY_NOT_FOUND,
+                        "Reconciliation discrepancy not found: " + discrepancyId));
+
+        if (discrepancy.getStatus() != ReconciliationDiscrepancyStatus.OPEN) {
+            throw new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE,
+                    "Only OPEN discrepancies can be resolved");
+        }
+
+        String note = normalizeNote(request.note());
+        String actor = resolveCurrentActor();
+        Instant resolvedAt = CompanyTime.now(company);
+
+        switch (request.resolution()) {
+            case ACKNOWLEDGED -> applyAcknowledgedResolution(discrepancy, note, actor, resolvedAt);
+            case ADJUSTMENT_JOURNAL -> applyAdjustmentResolution(company, discrepancy, request, note, actor, resolvedAt);
+            case WRITE_OFF -> applyWriteOffResolution(company, discrepancy, request, note, actor, resolvedAt);
+            default -> throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Unsupported discrepancy resolution: " + request.resolution());
+        }
+
+        ReconciliationDiscrepancy saved = reconciliationDiscrepancyRepository.save(discrepancy);
+        return toDto(saved);
+    }
+
+    private void applyAcknowledgedResolution(ReconciliationDiscrepancy discrepancy,
+                                             String note,
+                                             String actor,
+                                             Instant resolvedAt) {
+        discrepancy.setResolution(ReconciliationDiscrepancyResolution.ACKNOWLEDGED);
+        discrepancy.setStatus(ReconciliationDiscrepancyStatus.ACKNOWLEDGED);
+        discrepancy.setResolutionNote(note);
+        discrepancy.setResolvedBy(actor);
+        discrepancy.setResolvedAt(resolvedAt);
+        discrepancy.setResolutionJournal(null);
+    }
+
+    private void applyAdjustmentResolution(Company company,
+                                           ReconciliationDiscrepancy discrepancy,
+                                           ReconciliationDiscrepancyResolveRequest request,
+                                           String note,
+                                           String actor,
+                                           Instant resolvedAt) {
+        Account adjustmentAccount = requireResolutionAccount(company, request.adjustmentAccountId(), request.resolution());
+        JournalEntry resolutionJournal = createResolutionJournal(
+                company,
+                discrepancy,
+                adjustmentAccount,
+                "RECON_DISCREPANCY_ADJUSTMENT",
+                request.resolution(),
+                note);
+
+        discrepancy.setResolution(ReconciliationDiscrepancyResolution.ADJUSTMENT_JOURNAL);
+        discrepancy.setStatus(ReconciliationDiscrepancyStatus.ADJUSTED);
+        discrepancy.setResolutionNote(note);
+        discrepancy.setResolutionJournal(resolutionJournal);
+        discrepancy.setResolvedBy(actor);
+        discrepancy.setResolvedAt(resolvedAt);
+    }
+
+    private void applyWriteOffResolution(Company company,
+                                         ReconciliationDiscrepancy discrepancy,
+                                         ReconciliationDiscrepancyResolveRequest request,
+                                         String note,
+                                         String actor,
+                                         Instant resolvedAt) {
+        Account writeOffAccount = requireResolutionAccount(company, request.adjustmentAccountId(), request.resolution());
+        JournalEntry resolutionJournal = createResolutionJournal(
+                company,
+                discrepancy,
+                writeOffAccount,
+                "RECON_DISCREPANCY_WRITE_OFF",
+                request.resolution(),
+                note);
+
+        discrepancy.setResolution(ReconciliationDiscrepancyResolution.WRITE_OFF);
+        discrepancy.setStatus(ReconciliationDiscrepancyStatus.RESOLVED);
+        discrepancy.setResolutionNote(note);
+        discrepancy.setResolutionJournal(resolutionJournal);
+        discrepancy.setResolvedBy(actor);
+        discrepancy.setResolvedAt(resolvedAt);
+    }
+
+    private JournalEntry createResolutionJournal(Company company,
+                                                 ReconciliationDiscrepancy discrepancy,
+                                                 Account adjustmentAccount,
+                                                 String sourceModule,
+                                                 ReconciliationDiscrepancyResolution resolution,
+                                                 String note) {
+        BigDecimal varianceAmount = safe(discrepancy.getVariance()).abs();
+        if (varianceAmount.compareTo(TOLERANCE) <= 0) {
+            throw new ApplicationException(ErrorCode.BUSINESS_CONSTRAINT_VIOLATION,
+                    "Discrepancy variance must be above tolerance for journal resolutions");
+        }
+
+        Long controlAccountId = resolveControlAccountId(company, discrepancy.getType());
+        String reference = buildResolutionReference(discrepancy, resolution);
+        String narration = buildResolutionNarration(discrepancy, note, resolution);
+
+        JournalCreationRequest request = new JournalCreationRequest(
+                varianceAmount,
+                controlAccountId,
+                adjustmentAccount.getId(),
+                narration,
+                sourceModule,
+                reference,
+                null,
+                null,
+                LocalDate.now(),
+                discrepancy.getPartnerType() == PartnerType.DEALER ? discrepancy.getPartnerId() : null,
+                discrepancy.getPartnerType() == PartnerType.SUPPLIER ? discrepancy.getPartnerId() : null,
+                Boolean.FALSE
+        );
+
+        AccountingFacade facade = accountingFacadeProvider.getObject();
+        JournalEntryDto created = facade.createStandardJournal(request);
+        if (created == null || created.id() == null) {
+            throw new ApplicationException(ErrorCode.SYSTEM_INTERNAL_ERROR,
+                    "Failed to create discrepancy resolution journal");
+        }
+        return journalEntryRepository.findByCompanyAndId(company, created.id())
+                .orElseThrow(() -> new ApplicationException(
+                        ErrorCode.SYSTEM_INTERNAL_ERROR,
+                        "Resolution journal was not found after creation"));
+    }
+
+    private Account requireResolutionAccount(Company company,
+                                             Long accountId,
+                                             ReconciliationDiscrepancyResolution resolution) {
+        if (accountId == null) {
+            throw new ApplicationException(
+                    ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
+                    "adjustmentAccountId is required for " + resolution.name());
+        }
+        return accountRepository.findByCompanyAndId(company, accountId)
+                .orElseThrow(() -> new ApplicationException(
+                        ErrorCode.VALIDATION_INVALID_REFERENCE,
+                        "Adjustment account not found: " + accountId));
+    }
+
+    private Long resolveControlAccountId(Company company, ReconciliationDiscrepancyType type) {
+        return switch (type) {
+            case AR -> accountRepository.findByCompanyAndCodeIgnoreCase(company, "AR")
+                    .map(Account::getId)
+                    .orElseThrow(() -> new ApplicationException(
+                            ErrorCode.VALIDATION_INVALID_REFERENCE,
+                            "AR control account not configured"));
+            case AP -> accountRepository.findByCompanyAndCodeIgnoreCase(company, "AP")
+                    .map(Account::getId)
+                    .orElseThrow(() -> new ApplicationException(
+                            ErrorCode.VALIDATION_INVALID_REFERENCE,
+                            "AP control account not configured"));
+            case INVENTORY -> accountRepository.findByCompanyAndCodeIgnoreCase(company, "INV")
+                    .map(Account::getId)
+                    .orElseThrow(() -> new ApplicationException(
+                            ErrorCode.VALIDATION_INVALID_REFERENCE,
+                            "Inventory control account not configured"));
+            case GST -> {
+                Long gstPayableAccountId = company.getGstPayableAccountId();
+                if (gstPayableAccountId == null) {
+                    throw new ApplicationException(
+                            ErrorCode.VALIDATION_INVALID_REFERENCE,
+                            "GST payable account not configured");
+                }
+                yield accountRepository.findByCompanyAndId(company, gstPayableAccountId)
+                        .map(Account::getId)
+                        .orElseThrow(() -> new ApplicationException(
+                                ErrorCode.VALIDATION_INVALID_REFERENCE,
+                                "GST payable account not configured"));
+            }
+        };
+    }
+
+    private String buildResolutionReference(ReconciliationDiscrepancy discrepancy,
+                                            ReconciliationDiscrepancyResolution resolution) {
+        Long id = discrepancy.getId() == null ? 0L : discrepancy.getId();
+        return "RECON-" + resolution.name() + "-" + id;
+    }
+
+    private String buildResolutionNarration(ReconciliationDiscrepancy discrepancy,
+                                            String note,
+                                            ReconciliationDiscrepancyResolution resolution) {
+        String prefix = switch (resolution) {
+            case ADJUSTMENT_JOURNAL -> "Reconciliation adjustment";
+            case WRITE_OFF -> "Reconciliation write-off";
+            case ACKNOWLEDGED -> "Reconciliation acknowledgement";
+        };
+        String base = prefix + " for " + discrepancy.getType();
+        if (!StringUtils.hasText(note)) {
+            return base;
+        }
+        return base + " - " + note;
+    }
+
+    @Transactional
+    public void syncPeriodDiscrepancies(Company company,
+                                        AccountingPeriod period,
+                                        PeriodReconciliationResult periodReconciliation,
+                                        ReconciliationSummaryDto inventorySummary,
+                                        GstReconciliationDto gstSummary) {
+        if (company == null || period == null || periodReconciliation == null) {
+            return;
+        }
+
+        upsertArAndApDiscrepancies(company, periodReconciliation, period);
+        upsertInventoryDiscrepancies(company, period, inventorySummary);
+        upsertGstDiscrepancies(company, period, gstSummary);
+    }
+
+    private void upsertArAndApDiscrepancies(Company company,
+                                            PeriodReconciliationResult periodReconciliation,
+                                            AccountingPeriod period) {
+        if (period == null) {
+            return;
+        }
+
+        if (periodReconciliation.arVariance().abs().compareTo(TOLERANCE) > 0) {
+            saveOrReplaceOpenDiscrepancy(company, period, ReconciliationDiscrepancyType.AR,
+                    periodReconciliation.glArNet(), periodReconciliation.dealerLedgerNet(),
+                    periodReconciliation.arVariance(), PartnerType.DEALER, null, null, null);
+        } else {
+            reconciliationDiscrepancyRepository.deleteByCompanyAndAccountingPeriodAndTypeAndStatus(
+                    company,
+                    period,
+                    ReconciliationDiscrepancyType.AR,
+                    ReconciliationDiscrepancyStatus.OPEN);
+        }
+
+        if (periodReconciliation.apVariance().abs().compareTo(TOLERANCE) > 0) {
+            saveOrReplaceOpenDiscrepancy(company, period, ReconciliationDiscrepancyType.AP,
+                    periodReconciliation.glApNet(), periodReconciliation.supplierLedgerNet(),
+                    periodReconciliation.apVariance(), PartnerType.SUPPLIER, null, null, null);
+        } else {
+            reconciliationDiscrepancyRepository.deleteByCompanyAndAccountingPeriodAndTypeAndStatus(
+                    company,
+                    period,
+                    ReconciliationDiscrepancyType.AP,
+                    ReconciliationDiscrepancyStatus.OPEN);
+        }
+    }
+
+    private void upsertInventoryDiscrepancies(Company company,
+                                              AccountingPeriod period,
+                                              ReconciliationSummaryDto inventorySummary) {
+        if (inventorySummary == null || inventorySummary.variance() == null
+                || inventorySummary.variance().abs().compareTo(TOLERANCE) <= 0) {
+            reconciliationDiscrepancyRepository.deleteByCompanyAndAccountingPeriodAndTypeAndStatus(
+                    company,
+                    period,
+                    ReconciliationDiscrepancyType.INVENTORY,
+                    ReconciliationDiscrepancyStatus.OPEN);
+            return;
+        }
+
+        saveOrReplaceOpenDiscrepancy(
+                company,
+                period,
+                ReconciliationDiscrepancyType.INVENTORY,
+                safe(inventorySummary.ledgerInventoryBalance()),
+                safe(inventorySummary.physicalInventoryValue()),
+                safe(inventorySummary.variance()),
+                null,
+                null,
+                null,
+                null);
+    }
+
+    private void upsertGstDiscrepancies(Company company,
+                                        AccountingPeriod period,
+                                        GstReconciliationDto gstSummary) {
+        if (gstSummary == null || gstSummary.getNetLiability() == null
+                || gstSummary.getNetLiability().getTotal() == null
+                || gstSummary.getNetLiability().getTotal().abs().compareTo(TOLERANCE) <= 0) {
+            reconciliationDiscrepancyRepository.deleteByCompanyAndAccountingPeriodAndTypeAndStatus(
+                    company,
+                    period,
+                    ReconciliationDiscrepancyType.GST,
+                    ReconciliationDiscrepancyStatus.OPEN);
+            return;
+        }
+
+        BigDecimal expected = safe(gstSummary.getCollected() != null ? gstSummary.getCollected().getTotal() : null);
+        BigDecimal actual = safe(gstSummary.getInputTaxCredit() != null ? gstSummary.getInputTaxCredit().getTotal() : null);
+        BigDecimal variance = safe(gstSummary.getNetLiability().getTotal());
+        saveOrReplaceOpenDiscrepancy(
+                company,
+                period,
+                ReconciliationDiscrepancyType.GST,
+                expected,
+                actual,
+                variance,
+                null,
+                null,
+                null,
+                null);
+    }
+
+    private void saveOrReplaceOpenDiscrepancy(Company company,
+                                              AccountingPeriod period,
+                                              ReconciliationDiscrepancyType type,
+                                              BigDecimal expected,
+                                              BigDecimal actual,
+                                              BigDecimal variance,
+                                              PartnerType partnerType,
+                                              Long partnerId,
+                                              String partnerCode,
+                                              String partnerName) {
+        if (variance == null || variance.abs().compareTo(TOLERANCE) <= 0) {
+            return;
+        }
+
+        reconciliationDiscrepancyRepository.deleteByCompanyAndAccountingPeriodAndTypeAndStatus(
+                company,
+                period,
+                type,
+                ReconciliationDiscrepancyStatus.OPEN);
+
+        ReconciliationDiscrepancy discrepancy = new ReconciliationDiscrepancy();
+        discrepancy.setCompany(company);
+        discrepancy.setAccountingPeriod(period);
+        discrepancy.setPeriodStart(period.getStartDate());
+        discrepancy.setPeriodEnd(period.getEndDate());
+        discrepancy.setType(type);
+        discrepancy.setPartnerType(partnerType);
+        discrepancy.setPartnerId(partnerId);
+        discrepancy.setPartnerCode(partnerCode);
+        discrepancy.setPartnerName(partnerName);
+        discrepancy.setExpectedAmount(safe(expected));
+        discrepancy.setActualAmount(safe(actual));
+        discrepancy.setVariance(safe(variance));
+        discrepancy.setStatus(ReconciliationDiscrepancyStatus.OPEN);
+        reconciliationDiscrepancyRepository.save(discrepancy);
+    }
+
+    private void syncCurrentOpenPeriodDiscrepancies(Company company) {
+        Optional<AccountingPeriod> maybeOpenPeriod = accountingPeriodRepository
+                .findFirstByCompanyAndStatusOrderByStartDateDesc(company, AccountingPeriodStatus.OPEN);
+        if (maybeOpenPeriod.isEmpty()) {
+            log.debug("Skipping reconciliation discrepancy sync because no open period exists for company {}",
+                    company != null ? company.getCode() : "UNKNOWN");
+            return;
+        }
+
+        AccountingPeriod period = maybeOpenPeriod.get();
+        PeriodReconciliationResult base = reconcileSubledgersForPeriod(period.getStartDate(), period.getEndDate());
+        ReconciliationSummaryDto inventorySummary = null;
+        GstReconciliationDto gstSummary = null;
+        try {
+            inventorySummary = buildInventorySummary(company, period);
+        } catch (Exception ex) {
+            log.warn("Inventory reconciliation summary unavailable during discrepancy sync", ex);
+        }
+        try {
+            gstSummary = taxService.generateGstReconciliation(YearMonth.from(period.getStartDate()));
+        } catch (Exception ex) {
+            log.warn("GST reconciliation summary unavailable during discrepancy sync", ex);
+        }
+
+        syncPeriodDiscrepancies(company, period, base, inventorySummary, gstSummary);
+    }
+
+    private ReconciliationSummaryDto buildInventorySummary(Company company, AccountingPeriod period) {
+        InventoryValuationDto valuation = reportService.inventoryValuationAsOf(period.getEndDate());
+        BigDecimal physicalValue = safe(valuation != null ? valuation.totalValue() : null);
+
+        BigDecimal ledgerValue = BigDecimal.ZERO;
+        Long inventoryAccountId = company.getDefaultInventoryAccountId();
+        if (inventoryAccountId != null) {
+            ledgerValue = accountRepository.findByCompanyAndId(company, inventoryAccountId)
+                    .map(Account::getBalance)
+                    .map(this::safe)
+                    .orElse(BigDecimal.ZERO);
+        }
+
+        BigDecimal variance = physicalValue.subtract(ledgerValue);
+        return new ReconciliationSummaryDto(physicalValue, ledgerValue, variance);
+    }
+
+    private String normalizeNote(String note) {
+        if (!StringUtils.hasText(note)) {
+            return null;
+        }
+        return note.trim();
+    }
+
+    private String resolveCurrentActor() {
+        return SecurityActorResolver.resolveActorWithSystemProcessFallback();
+    }
+
+    private boolean isResolvedOrAcknowledged(ReconciliationDiscrepancy discrepancy) {
+        if (discrepancy == null || discrepancy.getStatus() == null) {
+            return false;
+        }
+        return EnumSet.of(
+                ReconciliationDiscrepancyStatus.ACKNOWLEDGED,
+                ReconciliationDiscrepancyStatus.ADJUSTED,
+                ReconciliationDiscrepancyStatus.RESOLVED
+        ).contains(discrepancy.getStatus());
+    }
+
+    private ReconciliationDiscrepancyDto toDto(ReconciliationDiscrepancy discrepancy) {
+        return new ReconciliationDiscrepancyDto(
+                discrepancy.getId(),
+                discrepancy.getAccountingPeriod() != null ? discrepancy.getAccountingPeriod().getId() : null,
+                discrepancy.getPeriodStart(),
+                discrepancy.getPeriodEnd(),
+                discrepancy.getType() != null ? discrepancy.getType().name() : null,
+                discrepancy.getPartnerType() != null ? discrepancy.getPartnerType().name() : null,
+                discrepancy.getPartnerId(),
+                discrepancy.getPartnerCode(),
+                discrepancy.getPartnerName(),
+                discrepancy.getExpectedAmount(),
+                discrepancy.getActualAmount(),
+                discrepancy.getVariance(),
+                discrepancy.getStatus() != null ? discrepancy.getStatus().name() : null,
+                discrepancy.getResolution() != null ? discrepancy.getResolution().name() : null,
+                discrepancy.getResolutionNote(),
+                discrepancy.getResolutionJournal() != null ? discrepancy.getResolutionJournal().getId() : null,
+                discrepancy.getResolvedBy(),
+                discrepancy.getResolvedAt(),
+                discrepancy.getCreatedAt(),
+                discrepancy.getUpdatedAt()
+        );
+    }
+
     private BigDecimal safe(BigDecimal value) {
         return value == null ? BigDecimal.ZERO : value;
-    }
-
-    /**
-     * Check for orphan reservations (RESERVED status without corresponding packaging slips)
-     * These could block dispatch and should be cleaned up or regenerated.
-     */
-    @Transactional(readOnly = true)
-    public OrphanReservationReport findOrphanReservations() {
-        Company company = companyContextService.requireCurrentCompany();
-        
-        List<InventoryReservation> reservedItems = inventoryReservationRepository
-                .findByFinishedGoodCompanyAndStatus(company, "RESERVED");
-        
-        List<OrphanReservation> orphans = new ArrayList<>();
-        
-        for (InventoryReservation reservation : reservedItems) {
-            String refType = reservation.getReferenceType();
-            String refId = reservation.getReferenceId();
-            
-            // Only check SALES_ORDER type reservations
-            if (!"SALES_ORDER".equals(refType)) {
-                continue;
-            }
-            
-            // Check if there's a corresponding packaging slip
-            Long orderId = Long.parseLong(refId);
-            List<PackagingSlip> slips = packagingSlipRepository
-                    .findAllByCompanyAndSalesOrderId(company, orderId);
-            
-            if (slips.isEmpty()) {
-                // No slip = orphan reservation
-                Optional<SalesOrder> order = salesOrderRepository.findByCompanyAndId(company, orderId);
-                orphans.add(new OrphanReservation(
-                        reservation.getId(),
-                        orderId,
-                        order.map(SalesOrder::getOrderNumber).orElse("UNKNOWN-" + refId),
-                        reservation.getReservedQuantity() != null 
-                                ? reservation.getReservedQuantity() 
-                                : reservation.getQuantity()
-                ));
-            }
-        }
-
-        log.info("Orphan reservation check for company {}: found {} orphans",
-                company.getCode(), orphans.size());
-        
-        return new OrphanReservationReport(orphans.size(), orphans);
-    }
-
-    /**
-     * Clean up orphan reservations by setting their status to CANCELLED.
-     * Returns count of cleaned reservations.
-     */
-    @Transactional
-    public int cleanOrphanReservations() {
-        Company company = companyContextService.requireCurrentCompany();
-        OrphanReservationReport report = findOrphanReservations();
-        int cleaned = 0;
-        
-        for (OrphanReservation orphan : report.orphans()) {
-            Optional<InventoryReservation> opt = inventoryReservationRepository
-                    .findByFinishedGoodCompanyAndId(company, orphan.reservationId());
-            if (opt.isPresent()) {
-                InventoryReservation reservation = opt.get();
-                reservation.setStatus("CANCELLED");
-                reservation.setReservedQuantity(BigDecimal.ZERO);
-                inventoryReservationRepository.save(reservation);
-                cleaned++;
-                log.info("Cleaned orphan reservation {} for order {}", orphan.reservationId(), orphan.orderNumber());
-            }
-        }
-        
-        return cleaned;
-    }
-
-    /**
-     * Check for potential reference collisions with new idempotency pattern.
-     * Detects SALE-{id} and *-COGS-* references that could conflict with new flow.
-     */
-    @Transactional(readOnly = true)
-    public ReferenceCollisionReport checkReferenceCollisions() {
-        Company company = companyContextService.requireCurrentCompany();
-        
-        List<JournalEntry> allEntries = journalEntryRepository.findByCompanyOrderByEntryDateDesc(company);
-        
-        int saleCount = 0;
-        int cogsCount = 0;
-        List<String> potentialCollisions = new ArrayList<>();
-        
-        for (JournalEntry entry : allEntries) {
-            String ref = entry.getReferenceNumber();
-            if (ref == null) continue;
-            
-            // Check for SALE-{number} pattern
-            if (ref.matches("^SALE-\\d+$")) {
-                saleCount++;
-                potentialCollisions.add(ref);
-            }
-            
-            // Check for *-COGS-* pattern
-            if (ref.contains("-COGS-")) {
-                cogsCount++;
-                potentialCollisions.add(ref);
-            }
-        }
-
-        log.info("Reference collision check for company {}: {} SALE-*, {} *-COGS-*",
-                company.getCode(), saleCount, cogsCount);
-        
-        return new ReferenceCollisionReport(saleCount, cogsCount, potentialCollisions);
     }
 
     // Result DTOs
@@ -766,24 +1151,6 @@ public class ReconciliationServiceCore {
             BigDecimal outstandingBalance,
             BigDecimal ledgerBalance,
             BigDecimal variance
-    ) {}
-
-    public record OrphanReservationReport(
-            int orphanCount,
-            List<OrphanReservation> orphans
-    ) {}
-
-    public record OrphanReservation(
-            Long reservationId,
-            Long orderId,
-            String orderNumber,
-            BigDecimal quantity
-    ) {}
-
-    public record ReferenceCollisionReport(
-            int salePatternCount,
-            int cogsPatternCount,
-            List<String> potentialCollisions
     ) {}
 
     public record SupplierReconciliationResult(

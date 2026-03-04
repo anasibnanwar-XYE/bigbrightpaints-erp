@@ -33,12 +33,13 @@ class TS_PeriodCloseBoundaryCoverageTest {
     }
 
     @Test
-    void checklistMutationGuardRejectsClosedPeriodWrites() {
+    void checklistMutationGuardRejectsLockedAndClosedPeriodWrites() {
         TruthSuiteFileAssert.assertContains(
                 PERIOD_SERVICE,
                 "private void assertChecklistMutable(AccountingPeriod period) {",
-                "if (period.getStatus() == AccountingPeriodStatus.CLOSED) {",
-                "Checklist cannot be updated for a closed period");
+                "if (period.getStatus() == AccountingPeriodStatus.CLOSED",
+                "|| period.getStatus() == AccountingPeriodStatus.LOCKED)",
+                "Checklist cannot be updated for a locked or closed period");
     }
 
     @Test

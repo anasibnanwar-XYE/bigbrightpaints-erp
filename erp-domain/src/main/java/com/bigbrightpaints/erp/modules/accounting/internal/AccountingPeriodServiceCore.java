@@ -13,6 +13,7 @@ import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodReopenRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodUpdateRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingPeriodUpsertRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.GstReconciliationDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.MonthEndChecklistDto;
@@ -23,6 +24,8 @@ import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodSnapshotService;
 import com.bigbrightpaints.erp.modules.accounting.service.PeriodCloseHook;
 import com.bigbrightpaints.erp.modules.accounting.service.ReconciliationService;
+import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyStatus;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.hr.domain.PayrollRun;
@@ -42,6 +45,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -55,14 +59,20 @@ public class AccountingPeriodServiceCore {
     private static final List<String> RECONCILIATION_CONTROL_ORDER = List.of(
             "inventoryReconciled",
             "arReconciled",
-            "apReconciled");
+            "apReconciled",
+            "gstReconciled",
+            "reconciliationDiscrepanciesResolved");
     private static final Map<String, String> UNRESOLVED_CONTROL_GUIDANCE = Map.of(
             "inventoryReconciled",
             "inventory reconciliation result unavailable; run inventory reconciliation before close",
             "arReconciled",
             "AR subledger reconciliation result unavailable; reconcile dealer ledger before close",
             "apReconciled",
-            "AP subledger reconciliation result unavailable; reconcile supplier ledger before close");
+            "AP subledger reconciliation result unavailable; reconcile supplier ledger before close",
+            "gstReconciled",
+            "GST reconciliation result unavailable; run GST reconciliation before close",
+            "reconciliationDiscrepanciesResolved",
+            "open reconciliation discrepancies exist; resolve discrepancies before close");
 
     private final AccountingPeriodRepository accountingPeriodRepository;
     private final CompanyContextService companyContextService;
@@ -77,6 +87,7 @@ public class AccountingPeriodServiceCore {
     private final GoodsReceiptRepository goodsReceiptRepository;
     private final RawMaterialPurchaseRepository rawMaterialPurchaseRepository;
     private final PayrollRunRepository payrollRunRepository;
+    private final ReconciliationDiscrepancyRepository reconciliationDiscrepancyRepository;
     private final ObjectProvider<AccountingFacade> accountingFacadeProvider;
     private final PeriodCloseHook periodCloseHook;
     private final AccountingPeriodSnapshotService snapshotService;
@@ -97,6 +108,7 @@ public class AccountingPeriodServiceCore {
                                    GoodsReceiptRepository goodsReceiptRepository,
                                    RawMaterialPurchaseRepository rawMaterialPurchaseRepository,
                                    PayrollRunRepository payrollRunRepository,
+                                   ReconciliationDiscrepancyRepository reconciliationDiscrepancyRepository,
                                    ObjectProvider<AccountingFacade> accountingFacadeProvider,
                                    PeriodCloseHook periodCloseHook,
                                    AccountingPeriodSnapshotService snapshotService) {
@@ -113,6 +125,7 @@ public class AccountingPeriodServiceCore {
         this.goodsReceiptRepository = goodsReceiptRepository;
         this.rawMaterialPurchaseRepository = rawMaterialPurchaseRepository;
         this.payrollRunRepository = payrollRunRepository;
+        this.reconciliationDiscrepancyRepository = reconciliationDiscrepancyRepository;
         this.accountingFacadeProvider = accountingFacadeProvider;
         this.periodCloseHook = periodCloseHook;
         this.snapshotService = snapshotService;
@@ -367,10 +380,11 @@ public class AccountingPeriodServiceCore {
     }
 
     private void assertChecklistMutable(AccountingPeriod period) {
-        if (period.getStatus() == AccountingPeriodStatus.CLOSED) {
+        if (period.getStatus() == AccountingPeriodStatus.CLOSED
+                || period.getStatus() == AccountingPeriodStatus.LOCKED) {
             throw new ApplicationException(
                     ErrorCode.VALIDATION_INVALID_INPUT,
-                    "Checklist cannot be updated for a closed period");
+                    "Checklist cannot be updated for a locked or closed period");
         }
     }
 
@@ -601,6 +615,14 @@ public class AccountingPeriodServiceCore {
             throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("AP reconciliation variance exceeds tolerance (" +
                     formatVariance(diagnostics.apVariance()) + ")");
         }
+        if (!diagnostics.gstReconciled()) {
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("GST reconciliation variance exceeds tolerance (" +
+                    formatVariance(diagnostics.gstVariance()) + ")");
+        }
+        if (!diagnostics.reconciliationDiscrepanciesResolved()) {
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
+                    "Open reconciliation discrepancies exist in this period (" + diagnostics.openReconciliationDiscrepancies() + ")");
+        }
         if (diagnostics.unbalancedJournals() > 0) {
             throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Unbalanced journals present in this period (" +
                     diagnostics.unbalancedJournals() + ")");
@@ -684,6 +706,9 @@ public class AccountingPeriodServiceCore {
         boolean inventoryReconciled = diagnostics.inventoryReconciled();
         boolean arReconciled = diagnostics.arReconciled();
         boolean apReconciled = diagnostics.apReconciled();
+        boolean gstControlResolved = diagnostics.gstControlResolved();
+        boolean gstReconciled = diagnostics.gstReconciled();
+        boolean reconciliationDiscrepanciesResolved = diagnostics.reconciliationDiscrepanciesResolved();
         boolean unbalancedCleared = diagnostics.unbalancedJournals() == 0;
         boolean unlinkedCleared = diagnostics.unlinkedDocuments() == 0;
         boolean unpostedCleared = diagnostics.unpostedDocuments() == 0;
@@ -703,6 +728,14 @@ public class AccountingPeriodServiceCore {
                 : (apReconciled
                 ? "Variance " + formatVariance(diagnostics.apVariance()) + " within tolerance"
                 : "Variance " + formatVariance(diagnostics.apVariance()) + " exceeds tolerance");
+        String gstDetail = !gstControlResolved
+                ? "Control unresolved: GST reconciliation result unavailable"
+                : (gstReconciled
+                ? "Variance " + formatVariance(diagnostics.gstVariance()) + " within tolerance"
+                : "Variance " + formatVariance(diagnostics.gstVariance()) + " exceeds tolerance");
+        String discrepancyDetail = reconciliationDiscrepanciesResolved
+                ? "No open discrepancies"
+                : diagnostics.openReconciliationDiscrepancies() + " open discrepancies require resolution";
         String trialBalanceDetail = trialBalanceBalanced
                 ? "Debits " + formatVariance(diagnostics.trialBalanceTotalDebit())
                 + " equal credits " + formatVariance(diagnostics.trialBalanceTotalCredit())
@@ -746,6 +779,16 @@ public class AccountingPeriodServiceCore {
                         apReconciled,
                         apDetail),
                 new MonthEndChecklistItemDto(
+                        "gstReconciled",
+                        "GST reconciled",
+                        gstReconciled,
+                        gstDetail),
+                new MonthEndChecklistItemDto(
+                        "reconciliationDiscrepanciesResolved",
+                        "Reconciliation discrepancies resolved",
+                        reconciliationDiscrepanciesResolved,
+                        discrepancyDetail),
+                new MonthEndChecklistItemDto(
                         "unbalancedJournals",
                         "Unbalanced journals cleared",
                         unbalancedCleared,
@@ -773,6 +816,8 @@ public class AccountingPeriodServiceCore {
                 && inventoryReconciled
                 && arReconciled
                 && apReconciled
+                && gstReconciled
+                && reconciliationDiscrepanciesResolved
                 && unbalancedCleared
                 && unlinkedCleared
                 && receiptsCleared
@@ -786,6 +831,14 @@ public class AccountingPeriodServiceCore {
         ReconciliationSummaryDto inventory = reportService.inventoryReconciliation();
         ReconciliationServiceCore.PeriodReconciliationResult periodReconciliation = reconciliationService
                 .reconcileSubledgersForPeriod(period.getStartDate(), period.getEndDate());
+        GstReconciliationDto gstReconciliation = null;
+        try {
+            gstReconciliation = reconciliationService.generateGstReconciliation(YearMonth.from(period.getStartDate()));
+        } catch (ApplicationException ex) {
+            gstReconciliation = null;
+        }
+        long openReconciliationDiscrepancies = reconciliationDiscrepancyRepository
+                .countByCompanyAndAccountingPeriodAndStatus(company, period, ReconciliationDiscrepancyStatus.OPEN);
         TrialBalanceDto trialBalance = resolveTrialBalanceForChecklist(period, periodEntries);
         long unbalancedJournals = countUnbalancedJournals(periodEntries);
         long unlinkedDocuments = countUnlinkedDocuments(company, period);
@@ -794,6 +847,8 @@ public class AccountingPeriodServiceCore {
         return new ChecklistDiagnostics(
                 inventory,
                 periodReconciliation,
+                gstReconciliation,
+                openReconciliationDiscrepancies,
                 trialBalance,
                 unpostedDocuments,
                 unlinkedDocuments,
@@ -917,6 +972,8 @@ public class AccountingPeriodServiceCore {
     private record ChecklistDiagnostics(
             ReconciliationSummaryDto inventory,
             ReconciliationServiceCore.PeriodReconciliationResult periodReconciliation,
+            GstReconciliationDto gstReconciliation,
+            long openReconciliationDiscrepancies,
             TrialBalanceDto trialBalance,
             long unpostedDocuments,
             long unlinkedDocuments,
@@ -933,6 +990,12 @@ public class AccountingPeriodServiceCore {
             }
             if (!apControlResolved()) {
                 unresolved.add(RECONCILIATION_CONTROL_ORDER.get(2));
+            }
+            if (!gstControlResolved()) {
+                unresolved.add(RECONCILIATION_CONTROL_ORDER.get(3));
+            }
+            if (!reconciliationDiscrepanciesResolved()) {
+                unresolved.add(RECONCILIATION_CONTROL_ORDER.get(4));
             }
             return List.copyOf(unresolved);
         }
@@ -972,6 +1035,28 @@ public class AccountingPeriodServiceCore {
         BigDecimal apVariance() {
             return periodReconciliation != null ? periodReconciliation.apVariance() : BigDecimal.ZERO;
         }
+
+        boolean gstControlResolved() {
+            return gstReconciliation != null
+                    && gstReconciliation.getNetLiability() != null
+                    && gstReconciliation.getNetLiability().getTotal() != null;
+        }
+
+        boolean gstReconciled() {
+            return gstControlResolved() && varianceWithinTolerance(gstVariance());
+        }
+
+        BigDecimal gstVariance() {
+            if (!gstControlResolved()) {
+                return BigDecimal.ZERO;
+            }
+            return gstReconciliation.getNetLiability().getTotal();
+        }
+
+        boolean reconciliationDiscrepanciesResolved() {
+            return openReconciliationDiscrepancies <= 0;
+        }
+
 
         boolean trialBalanceBalanced() {
             return trialBalance != null && trialBalance.balanced();

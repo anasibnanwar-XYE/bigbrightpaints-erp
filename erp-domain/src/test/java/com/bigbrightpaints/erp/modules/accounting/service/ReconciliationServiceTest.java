@@ -1,41 +1,68 @@
 package com.bigbrightpaints.erp.modules.accounting.service;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountType;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriod;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodStatus;
 import com.bigbrightpaints.erp.modules.accounting.domain.DealerLedgerRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLine;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository.AccountLineTotals;
+import com.bigbrightpaints.erp.modules.accounting.domain.PartnerType;
+import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancy;
+import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyResolution;
+import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyStatus;
+import com.bigbrightpaints.erp.modules.accounting.domain.ReconciliationDiscrepancyType;
 import com.bigbrightpaints.erp.modules.accounting.domain.SupplierLedgerRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.BankReconciliationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerBalanceView;
+import com.bigbrightpaints.erp.modules.accounting.dto.GstReconciliationDto;
+import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
+import com.bigbrightpaints.erp.modules.accounting.dto.ReconciliationDiscrepancyDto;
+import com.bigbrightpaints.erp.modules.accounting.dto.ReconciliationDiscrepancyListResponse;
+import com.bigbrightpaints.erp.modules.accounting.dto.ReconciliationDiscrepancyResolveRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.SupplierBalanceView;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
-import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReservationRepository;
-import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
 import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
+import com.bigbrightpaints.erp.modules.reports.service.ReportService;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
-import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.YearMonth;
+import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.util.List;
-import java.util.Optional;
-
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -48,18 +75,28 @@ class ReconciliationServiceTest {
     @Mock private DealerLedgerRepository dealerLedgerRepository;
     @Mock private SupplierRepository supplierRepository;
     @Mock private SupplierLedgerRepository supplierLedgerRepository;
-    @Mock private InventoryReservationRepository inventoryReservationRepository;
-    @Mock private PackagingSlipRepository packagingSlipRepository;
-    @Mock private SalesOrderRepository salesOrderRepository;
     @Mock private JournalEntryRepository journalEntryRepository;
     @Mock private JournalLineRepository journalLineRepository;
     @Mock private TemporalBalanceService temporalBalanceService;
+    @Mock private ReconciliationDiscrepancyRepository reconciliationDiscrepancyRepository;
+    @Mock private AccountingPeriodRepository accountingPeriodRepository;
+    @Mock private TaxService taxService;
+    @Mock private ReportService reportService;
 
     private ReconciliationService reconciliationService;
     private Company company;
 
+    private ObjectProvider<AccountingFacade> accountingFacadeProvider;
+    private AccountingFacade accountingFacade;
+
     @BeforeEach
     void setUp() {
+        @SuppressWarnings("unchecked")
+        ObjectProvider<AccountingFacade> provider = mock(ObjectProvider.class);
+        accountingFacadeProvider = provider;
+        accountingFacade = mock(AccountingFacade.class);
+        lenient().when(accountingFacadeProvider.getObject()).thenReturn(accountingFacade);
+
         reconciliationService = new ReconciliationService(
                 companyContextService,
                 companyRepository,
@@ -68,15 +105,19 @@ class ReconciliationServiceTest {
                 dealerLedgerRepository,
                 supplierRepository,
                 supplierLedgerRepository,
-                inventoryReservationRepository,
-                packagingSlipRepository,
-                salesOrderRepository,
                 journalEntryRepository,
                 journalLineRepository,
-                temporalBalanceService
+                temporalBalanceService,
+                reconciliationDiscrepancyRepository,
+                accountingPeriodRepository,
+                taxService,
+                reportService,
+                accountingFacadeProvider
         );
         company = new Company();
         company.setCode("ACME");
+        company.setTimezone("Asia/Kolkata");
+        ReflectionTestUtils.setField(company, "id", 1L);
         lenient().when(companyContextService.requireCurrentCompany()).thenReturn(company);
     }
 
@@ -222,6 +263,18 @@ class ReconciliationServiceTest {
         supplier.setOutstandingBalance(new BigDecimal("250.00"));
         supplier.setPayableAccount(payable);
 
+        AccountingPeriod openPeriod = openPeriod(99L, company, 2026, 3);
+        company.setDefaultInventoryAccountId(13L);
+        company.setGstPayableAccountId(14L);
+
+        Account inventory = new Account();
+        ReflectionTestUtils.setField(inventory, "id", 13L);
+        inventory.setType(AccountType.ASSET);
+        inventory.setCode("INV");
+        inventory.setBalance(new BigDecimal("500.00"));
+
+        when(accountingPeriodRepository.findFirstByCompanyAndStatusOrderByStartDateDesc(company, AccountingPeriodStatus.OPEN))
+                .thenReturn(Optional.of(openPeriod));
         when(accountRepository.findByCompanyOrderByCodeAsc(company)).thenReturn(List.of(receivable, payable));
         when(dealerRepository.findByCompanyOrderByNameAsc(company)).thenReturn(List.of(dealer));
         when(supplierRepository.findByCompanyOrderByNameAsc(company)).thenReturn(List.of(supplier));
@@ -229,13 +282,183 @@ class ReconciliationServiceTest {
                 .thenReturn(List.of(new DealerBalanceView(1L, new BigDecimal("430.00"))));
         when(supplierLedgerRepository.aggregateBalances(company, List.of(2L)))
                 .thenReturn(List.of(new SupplierBalanceView(2L, new BigDecimal("260.00"))));
+        when(dealerLedgerRepository.aggregateBalancesBetween(company, List.of(1L), openPeriod.getStartDate(), openPeriod.getEndDate()))
+                .thenReturn(List.of(new DealerBalanceView(1L, new BigDecimal("430.00"))));
+        when(supplierLedgerRepository.aggregateBalancesBetween(company, List.of(2L), openPeriod.getStartDate(), openPeriod.getEndDate()))
+                .thenReturn(List.of(new SupplierBalanceView(2L, new BigDecimal("260.00"))));
+        when(reconciliationDiscrepancyRepository.deleteByCompanyAndAccountingPeriodAndTypeAndStatus(
+                any(), any(), any(), any())).thenReturn(1);
+
+        AccountLineTotals arTotals = mock(AccountLineTotals.class);
+        when(arTotals.getTotalDebit()).thenReturn(new BigDecimal("500.00"));
+        when(arTotals.getTotalCredit()).thenReturn(BigDecimal.ZERO);
+        AccountLineTotals apTotals = mock(AccountLineTotals.class);
+        when(apTotals.getTotalDebit()).thenReturn(BigDecimal.ZERO);
+        when(apTotals.getTotalCredit()).thenReturn(new BigDecimal("300.00"));
+        when(journalLineRepository.summarizeTotalsByCompanyAndAccountIdsWithin(
+                eq(company),
+                anyCollection(),
+                eq(openPeriod.getStartDate()),
+                eq(openPeriod.getEndDate()),
+                eq("POSTED")))
+                .thenReturn(List.of(arTotals), List.of(apTotals));
+
+        when(reportService.inventoryValuationAsOf(openPeriod.getEndDate()))
+                .thenReturn(new com.bigbrightpaints.erp.modules.reports.dto.InventoryValuationDto(
+                        new BigDecimal("500.00"),
+                        0,
+                        "WEIGHTED_AVERAGE",
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        null));
+        when(accountRepository.findByCompanyAndId(company, 13L)).thenReturn(Optional.of(inventory));
+
+        GstReconciliationDto gst = gstReconciliation("0.00", "0.00", "0.00");
+        when(taxService.generateGstReconciliation(YearMonth.from(openPeriod.getStartDate()))).thenReturn(gst);
 
         ReconciliationService.SubledgerReconciliationReport report = reconciliationService.reconcileSubledgerBalances();
+
+        verify(journalLineRepository).summarizeTotalsByCompanyAndAccountIdsWithin(
+                eq(company),
+                eq(List.of(11L)),
+                eq(openPeriod.getStartDate()),
+                eq(openPeriod.getEndDate()),
+                eq("POSTED"));
+        verify(journalLineRepository).summarizeTotalsByCompanyAndAccountIdsWithin(
+                eq(company),
+                eq(List.of(12L)),
+                eq(openPeriod.getStartDate()),
+                eq(openPeriod.getEndDate()),
+                eq("POSTED"));
 
         assertThat(report.dealerReconciliation().variance()).isEqualByComparingTo("70.00");
         assertThat(report.supplierReconciliation().variance()).isEqualByComparingTo("40.00");
         assertThat(report.combinedVariance()).isEqualByComparingTo("110.00");
         assertThat(report.reconciled()).isFalse();
+        verify(reconciliationDiscrepancyRepository).deleteByCompanyAndAccountingPeriodAndTypeAndStatus(
+                company, openPeriod, ReconciliationDiscrepancyType.INVENTORY, ReconciliationDiscrepancyStatus.OPEN);
+        verify(reconciliationDiscrepancyRepository).deleteByCompanyAndAccountingPeriodAndTypeAndStatus(
+                company, openPeriod, ReconciliationDiscrepancyType.GST, ReconciliationDiscrepancyStatus.OPEN);
+    }
+
+    @Test
+    void reconcileSubledgerBalances_createsOpenDiscrepanciesForControlVariances() {
+        Account receivable = account(111L, "AR", AccountType.ASSET, new BigDecimal("500.00"));
+        Account payable = account(112L, "AP", AccountType.LIABILITY, new BigDecimal("-300.00"));
+        Account inventory = account(113L, "INV", AccountType.ASSET, new BigDecimal("500.00"));
+
+        Dealer dealer = dealer(31L, "D-1", "Dealer", "450.00");
+        dealer.setReceivableAccount(receivable);
+        Supplier supplier = supplier(41L, "S-1", "Supplier", "250.00");
+        supplier.setPayableAccount(payable);
+
+        AccountingPeriod openPeriod = openPeriod(77L, company, 2026, 3);
+        company.setDefaultInventoryAccountId(113L);
+
+        when(accountingPeriodRepository.findFirstByCompanyAndStatusOrderByStartDateDesc(company, AccountingPeriodStatus.OPEN))
+                .thenReturn(Optional.of(openPeriod));
+        when(accountRepository.findByCompanyOrderByCodeAsc(company)).thenReturn(List.of(receivable, payable));
+        when(dealerRepository.findByCompanyOrderByNameAsc(company)).thenReturn(List.of(dealer));
+        when(supplierRepository.findByCompanyOrderByNameAsc(company)).thenReturn(List.of(supplier));
+
+        when(dealerLedgerRepository.aggregateBalances(company, List.of(31L)))
+                .thenReturn(List.of(new DealerBalanceView(31L, new BigDecimal("430.00"))));
+        when(supplierLedgerRepository.aggregateBalances(company, List.of(41L)))
+                .thenReturn(List.of(new SupplierBalanceView(41L, new BigDecimal("260.00"))));
+        when(dealerLedgerRepository.aggregateBalancesBetween(company, List.of(31L), openPeriod.getStartDate(), openPeriod.getEndDate()))
+                .thenReturn(List.of(new DealerBalanceView(31L, new BigDecimal("430.00"))));
+        when(supplierLedgerRepository.aggregateBalancesBetween(company, List.of(41L), openPeriod.getStartDate(), openPeriod.getEndDate()))
+                .thenReturn(List.of(new SupplierBalanceView(41L, new BigDecimal("260.00"))));
+
+        AccountLineTotals arTotals = mock(AccountLineTotals.class);
+        when(arTotals.getTotalDebit()).thenReturn(new BigDecimal("500.00"));
+        when(arTotals.getTotalCredit()).thenReturn(BigDecimal.ZERO);
+        AccountLineTotals apTotals = mock(AccountLineTotals.class);
+        when(apTotals.getTotalDebit()).thenReturn(BigDecimal.ZERO);
+        when(apTotals.getTotalCredit()).thenReturn(new BigDecimal("300.00"));
+        when(journalLineRepository.summarizeTotalsByCompanyAndAccountIdsWithin(
+                eq(company),
+                anyCollection(),
+                eq(openPeriod.getStartDate()),
+                eq(openPeriod.getEndDate()),
+                eq("POSTED")))
+                .thenReturn(List.of(arTotals), List.of(apTotals));
+
+        when(reportService.inventoryValuationAsOf(openPeriod.getEndDate()))
+                .thenReturn(new com.bigbrightpaints.erp.modules.reports.dto.InventoryValuationDto(
+                        new BigDecimal("420.00"),
+                        0,
+                        "WEIGHTED_AVERAGE",
+                        List.of(),
+                        List.of(),
+                        List.of(),
+                        null));
+        when(accountRepository.findByCompanyAndId(company, 113L)).thenReturn(Optional.of(inventory));
+
+        when(taxService.generateGstReconciliation(YearMonth.from(openPeriod.getStartDate())))
+                .thenReturn(gstReconciliation("30.00", "15.00", "15.00"));
+
+        when(reconciliationDiscrepancyRepository.deleteByCompanyAndAccountingPeriodAndTypeAndStatus(
+                any(), any(), any(), any())).thenReturn(1);
+        when(reconciliationDiscrepancyRepository.save(any(ReconciliationDiscrepancy.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        reconciliationService.reconcileSubledgerBalances();
+
+        ArgumentCaptor<ReconciliationDiscrepancy> discrepancyCaptor =
+                ArgumentCaptor.forClass(ReconciliationDiscrepancy.class);
+        verify(reconciliationDiscrepancyRepository, times(4)).save(discrepancyCaptor.capture());
+        List<ReconciliationDiscrepancy> saved = discrepancyCaptor.getAllValues();
+
+        assertThat(saved)
+                .extracting(ReconciliationDiscrepancy::getType)
+                .containsExactlyInAnyOrder(
+                        ReconciliationDiscrepancyType.AR,
+                        ReconciliationDiscrepancyType.AP,
+                        ReconciliationDiscrepancyType.INVENTORY,
+                        ReconciliationDiscrepancyType.GST);
+        assertThat(saved)
+                .extracting(ReconciliationDiscrepancy::getStatus)
+                .containsOnly(ReconciliationDiscrepancyStatus.OPEN);
+
+        ReconciliationDiscrepancy inventoryDiscrepancy = saved.stream()
+                .filter(item -> item.getType() == ReconciliationDiscrepancyType.INVENTORY)
+                .findFirst()
+                .orElseThrow();
+        assertThat(inventoryDiscrepancy.getExpectedAmount()).isEqualByComparingTo("500.00");
+        assertThat(inventoryDiscrepancy.getActualAmount()).isEqualByComparingTo("420.00");
+        assertThat(inventoryDiscrepancy.getVariance()).isEqualByComparingTo("-80.00");
+
+        ReconciliationDiscrepancy gstDiscrepancy = saved.stream()
+                .filter(item -> item.getType() == ReconciliationDiscrepancyType.GST)
+                .findFirst()
+                .orElseThrow();
+        assertThat(gstDiscrepancy.getExpectedAmount()).isEqualByComparingTo("30.00");
+        assertThat(gstDiscrepancy.getActualAmount()).isEqualByComparingTo("15.00");
+        assertThat(gstDiscrepancy.getVariance()).isEqualByComparingTo("15.00");
+    }
+
+    @Test
+    void reconcileSubledgerBalances_withoutOpenPeriod_skipsDiscrepancySync() {
+        Account receivable = account(121L, "AR", AccountType.ASSET, new BigDecimal("120.00"));
+        Dealer dealer = dealer(51L, "D-5", "Dealer Five", "100.00");
+        dealer.setReceivableAccount(receivable);
+
+        when(accountingPeriodRepository.findFirstByCompanyAndStatusOrderByStartDateDesc(company, AccountingPeriodStatus.OPEN))
+                .thenReturn(Optional.empty());
+        when(accountRepository.findByCompanyOrderByCodeAsc(company)).thenReturn(List.of(receivable));
+        when(dealerRepository.findByCompanyOrderByNameAsc(company)).thenReturn(List.of(dealer));
+        when(supplierRepository.findByCompanyOrderByNameAsc(company)).thenReturn(List.of());
+        when(dealerLedgerRepository.aggregateBalances(company, List.of(51L)))
+                .thenReturn(List.of(new DealerBalanceView(51L, new BigDecimal("100.00"))));
+
+        ReconciliationService.SubledgerReconciliationReport report = reconciliationService.reconcileSubledgerBalances();
+
+        assertThat(report.dealerReconciliation().variance()).isEqualByComparingTo("20.00");
+        verify(reconciliationDiscrepancyRepository, never()).save(any(ReconciliationDiscrepancy.class));
+        verify(reconciliationDiscrepancyRepository, never())
+                .deleteByCompanyAndAccountingPeriodAndTypeAndStatus(any(), any(), any(), any());
     }
 
     @Test
@@ -303,6 +526,282 @@ class ReconciliationServiceTest {
                 .containsExactlyInAnyOrder(false, true);
     }
 
+    @Test
+    void listDiscrepancies_returnsMappedDtosAndCounts() {
+        ReconciliationDiscrepancy open = discrepancy(101L, ReconciliationDiscrepancyStatus.OPEN, ReconciliationDiscrepancyType.AR, company, null);
+        ReconciliationDiscrepancy acknowledged = discrepancy(102L, ReconciliationDiscrepancyStatus.ACKNOWLEDGED, ReconciliationDiscrepancyType.GST, company, null);
+
+        when(reconciliationDiscrepancyRepository.findFiltered(company, ReconciliationDiscrepancyStatus.OPEN, ReconciliationDiscrepancyType.AR))
+                .thenReturn(List.of(open));
+        when(reconciliationDiscrepancyRepository.findFiltered(company, null, null))
+                .thenReturn(List.of(open, acknowledged));
+
+        ReconciliationDiscrepancyListResponse filtered = reconciliationService.listDiscrepancies(
+                ReconciliationDiscrepancyStatus.OPEN,
+                ReconciliationDiscrepancyType.AR);
+        assertThat(filtered.items()).hasSize(1);
+        assertThat(filtered.openCount()).isEqualTo(1);
+        assertThat(filtered.resolvedCount()).isEqualTo(0);
+        assertThat(filtered.items().get(0).status()).isEqualTo("OPEN");
+
+        ReconciliationDiscrepancyListResponse all = reconciliationService.listDiscrepancies(null, null);
+        assertThat(all.items()).hasSize(2);
+        assertThat(all.openCount()).isEqualTo(1);
+        assertThat(all.resolvedCount()).isEqualTo(1);
+    }
+
+    @Test
+    void resolveDiscrepancy_acknowledged_setsStatusWithoutJournal() {
+        ReconciliationDiscrepancy discrepancy = discrepancy(201L, ReconciliationDiscrepancyStatus.OPEN,
+                ReconciliationDiscrepancyType.AR, company, null);
+        when(reconciliationDiscrepancyRepository.findByCompanyAndId(company, 201L))
+                .thenReturn(Optional.of(discrepancy));
+        when(reconciliationDiscrepancyRepository.save(discrepancy)).thenReturn(discrepancy);
+
+        ReconciliationDiscrepancyDto resolved = reconciliationService.resolveDiscrepancy(
+                201L,
+                new ReconciliationDiscrepancyResolveRequest(
+                        ReconciliationDiscrepancyResolution.ACKNOWLEDGED,
+                        "  reviewed  ",
+                        null));
+
+        assertThat(resolved.status()).isEqualTo("ACKNOWLEDGED");
+        assertThat(resolved.resolution()).isEqualTo("ACKNOWLEDGED");
+        assertThat(resolved.resolutionJournalId()).isNull();
+        assertThat(resolved.resolutionNote()).isEqualTo("reviewed");
+        assertThat(resolved.resolvedBy()).isEqualTo("UNKNOWN_AUTH_ACTOR");
+        verify(accountingFacadeProvider, never()).getObject();
+    }
+
+    @Test
+    void resolveDiscrepancy_adjustmentJournal_createsJournalAndMarksAdjusted() {
+        Account arControl = account(701L, "AR", AccountType.ASSET, new BigDecimal("600.00"));
+        Account adjustment = account(702L, "REV-ADJ", AccountType.REVENUE, BigDecimal.ZERO);
+        ReconciliationDiscrepancy discrepancy = discrepancy(
+                202L,
+                ReconciliationDiscrepancyStatus.OPEN,
+                ReconciliationDiscrepancyType.AR,
+                company,
+                new BigDecimal("25.00"));
+
+        when(reconciliationDiscrepancyRepository.findByCompanyAndId(company, 202L))
+                .thenReturn(Optional.of(discrepancy));
+        when(accountRepository.findByCompanyAndId(company, 702L)).thenReturn(Optional.of(adjustment));
+        when(accountRepository.findByCompanyAndCodeIgnoreCase(company, "AR")).thenReturn(Optional.of(arControl));
+        when(accountingFacade.createStandardJournal(any(JournalCreationRequest.class)))
+                .thenReturn(journalEntryDto(9001L, "RECON-ADJUSTMENT_JOURNAL-202"));
+
+        JournalEntry created = new JournalEntry();
+        ReflectionTestUtils.setField(created, "id", 9001L);
+        when(journalEntryRepository.findByCompanyAndId(company, 9001L)).thenReturn(Optional.of(created));
+        when(reconciliationDiscrepancyRepository.save(discrepancy)).thenReturn(discrepancy);
+
+        ReconciliationDiscrepancyDto resolved = reconciliationService.resolveDiscrepancy(
+                202L,
+                new ReconciliationDiscrepancyResolveRequest(
+                        ReconciliationDiscrepancyResolution.ADJUSTMENT_JOURNAL,
+                        "variance booking",
+                        702L));
+
+        assertThat(resolved.status()).isEqualTo("ADJUSTED");
+        assertThat(resolved.resolution()).isEqualTo("ADJUSTMENT_JOURNAL");
+        assertThat(resolved.resolutionJournalId()).isEqualTo(9001L);
+        assertThat(resolved.resolvedBy()).isEqualTo("UNKNOWN_AUTH_ACTOR");
+
+        verify(accountingFacade).createStandardJournal(any(JournalCreationRequest.class));
+    }
+
+    @Test
+    void resolveDiscrepancy_writeOff_createsJournalAndMarksResolved() {
+        Account inventoryControl = account(711L, "INV", AccountType.ASSET, new BigDecimal("250.00"));
+        Account writeOff = account(712L, "INV-WOFF", AccountType.EXPENSE, BigDecimal.ZERO);
+        ReconciliationDiscrepancy discrepancy = discrepancy(
+                203L,
+                ReconciliationDiscrepancyStatus.OPEN,
+                ReconciliationDiscrepancyType.INVENTORY,
+                company,
+                new BigDecimal("12.50"));
+
+        when(reconciliationDiscrepancyRepository.findByCompanyAndId(company, 203L))
+                .thenReturn(Optional.of(discrepancy));
+        when(accountRepository.findByCompanyAndId(company, 712L)).thenReturn(Optional.of(writeOff));
+        when(accountRepository.findByCompanyAndCodeIgnoreCase(company, "INV")).thenReturn(Optional.of(inventoryControl));
+        when(accountingFacade.createStandardJournal(any(JournalCreationRequest.class)))
+                .thenReturn(journalEntryDto(9002L, "RECON-WRITE_OFF-203"));
+
+        JournalEntry created = new JournalEntry();
+        ReflectionTestUtils.setField(created, "id", 9002L);
+        when(journalEntryRepository.findByCompanyAndId(company, 9002L)).thenReturn(Optional.of(created));
+        when(reconciliationDiscrepancyRepository.save(discrepancy)).thenReturn(discrepancy);
+
+        ReconciliationDiscrepancyDto resolved = reconciliationService.resolveDiscrepancy(
+                203L,
+                new ReconciliationDiscrepancyResolveRequest(
+                        ReconciliationDiscrepancyResolution.WRITE_OFF,
+                        "stock write-off",
+                        712L));
+
+        assertThat(resolved.status()).isEqualTo("RESOLVED");
+        assertThat(resolved.resolution()).isEqualTo("WRITE_OFF");
+        assertThat(resolved.resolutionJournalId()).isEqualTo(9002L);
+        verify(accountingFacade).createStandardJournal(any(JournalCreationRequest.class));
+    }
+
+    @Test
+    void resolveDiscrepancy_rejectsMissingAdjustmentAccountForJournalResolutions() {
+        ReconciliationDiscrepancy discrepancy = discrepancy(
+                204L,
+                ReconciliationDiscrepancyStatus.OPEN,
+                ReconciliationDiscrepancyType.AP,
+                company,
+                new BigDecimal("18.00"));
+        when(reconciliationDiscrepancyRepository.findByCompanyAndId(company, 204L))
+                .thenReturn(Optional.of(discrepancy));
+
+        assertThatThrownBy(() -> reconciliationService.resolveDiscrepancy(
+                204L,
+                new ReconciliationDiscrepancyResolveRequest(
+                        ReconciliationDiscrepancyResolution.ADJUSTMENT_JOURNAL,
+                        "missing account",
+                        null)))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("adjustmentAccountId is required for ADJUSTMENT_JOURNAL");
+    }
+
+    @Test
+    void resolveDiscrepancy_rejectsAlreadyResolvedDiscrepancy() {
+        ReconciliationDiscrepancy discrepancy = discrepancy(
+                205L,
+                ReconciliationDiscrepancyStatus.RESOLVED,
+                ReconciliationDiscrepancyType.GST,
+                company,
+                new BigDecimal("4.00"));
+        when(reconciliationDiscrepancyRepository.findByCompanyAndId(company, 205L))
+                .thenReturn(Optional.of(discrepancy));
+
+        assertThatThrownBy(() -> reconciliationService.resolveDiscrepancy(
+                205L,
+                new ReconciliationDiscrepancyResolveRequest(
+                        ReconciliationDiscrepancyResolution.ACKNOWLEDGED,
+                        "duplicate",
+                        null)))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Only OPEN discrepancies can be resolved");
+    }
+
+    @Test
+    void resolveDiscrepancy_throwsWhenJournalCreationReturnsNullId() {
+        Account apControl = account(721L, "AP", AccountType.LIABILITY, new BigDecimal("-500.00"));
+        Account adjustment = account(722L, "AP-ADJ", AccountType.EXPENSE, BigDecimal.ZERO);
+        ReconciliationDiscrepancy discrepancy = discrepancy(
+                206L,
+                ReconciliationDiscrepancyStatus.OPEN,
+                ReconciliationDiscrepancyType.AP,
+                company,
+                new BigDecimal("9.00"));
+
+        when(reconciliationDiscrepancyRepository.findByCompanyAndId(company, 206L))
+                .thenReturn(Optional.of(discrepancy));
+        when(accountRepository.findByCompanyAndId(company, 722L)).thenReturn(Optional.of(adjustment));
+        when(accountRepository.findByCompanyAndCodeIgnoreCase(company, "AP")).thenReturn(Optional.of(apControl));
+        when(accountingFacade.createStandardJournal(any(JournalCreationRequest.class)))
+                .thenReturn(new JournalEntryDto(
+                        null,
+                        null,
+                        null,
+                        LocalDate.now(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null));
+
+        assertThatThrownBy(() -> reconciliationService.resolveDiscrepancy(
+                206L,
+                new ReconciliationDiscrepancyResolveRequest(
+                        ReconciliationDiscrepancyResolution.ADJUSTMENT_JOURNAL,
+                        "bad journal",
+                        722L)))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Failed to create discrepancy resolution journal");
+    }
+
+    @Test
+    void resolveDiscrepancy_usesGstPayableControlAccountForGstType() {
+        company.setGstPayableAccountId(731L);
+        Account gstPayable = account(731L, "GST-PAYABLE", AccountType.LIABILITY, new BigDecimal("200.00"));
+        Account writeOff = account(732L, "GST-WOFF", AccountType.EXPENSE, BigDecimal.ZERO);
+        ReconciliationDiscrepancy discrepancy = discrepancy(
+                207L,
+                ReconciliationDiscrepancyStatus.OPEN,
+                ReconciliationDiscrepancyType.GST,
+                company,
+                new BigDecimal("6.00"));
+
+        when(reconciliationDiscrepancyRepository.findByCompanyAndId(company, 207L))
+                .thenReturn(Optional.of(discrepancy));
+        when(accountRepository.findByCompanyAndId(company, 732L)).thenReturn(Optional.of(writeOff));
+        when(accountRepository.findByCompanyAndId(company, 731L)).thenReturn(Optional.of(gstPayable));
+        when(accountingFacade.createStandardJournal(any(JournalCreationRequest.class)))
+                .thenReturn(journalEntryDto(9007L, "RECON-WRITE_OFF-207"));
+
+        JournalEntry created = new JournalEntry();
+        ReflectionTestUtils.setField(created, "id", 9007L);
+        when(journalEntryRepository.findByCompanyAndId(company, 9007L)).thenReturn(Optional.of(created));
+        when(reconciliationDiscrepancyRepository.save(discrepancy)).thenReturn(discrepancy);
+
+        ReconciliationDiscrepancyDto resolved = reconciliationService.resolveDiscrepancy(
+                207L,
+                new ReconciliationDiscrepancyResolveRequest(
+                        ReconciliationDiscrepancyResolution.WRITE_OFF,
+                        "gst write-off",
+                        732L));
+
+        assertThat(resolved.status()).isEqualTo("RESOLVED");
+        verify(accountingFacade).createStandardJournal(any(JournalCreationRequest.class));
+    }
+
+    @Test
+    void resolveDiscrepancy_rejectsGstResolutionWhenPayableAccountMissing() {
+        company.setGstPayableAccountId(null);
+        Account writeOff = account(733L, "GST-WOFF", AccountType.EXPENSE, BigDecimal.ZERO);
+        ReconciliationDiscrepancy discrepancy = discrepancy(
+                208L,
+                ReconciliationDiscrepancyStatus.OPEN,
+                ReconciliationDiscrepancyType.GST,
+                company,
+                new BigDecimal("3.00"));
+
+        when(reconciliationDiscrepancyRepository.findByCompanyAndId(company, 208L))
+                .thenReturn(Optional.of(discrepancy));
+        when(accountRepository.findByCompanyAndId(company, 733L)).thenReturn(Optional.of(writeOff));
+
+        assertThatThrownBy(() -> reconciliationService.resolveDiscrepancy(
+                208L,
+                new ReconciliationDiscrepancyResolveRequest(
+                        ReconciliationDiscrepancyResolution.WRITE_OFF,
+                        "gst missing",
+                        733L)))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("GST payable account not configured");
+    }
+
     private Company company(Long id, String code, String name) {
         Company value = new Company();
         ReflectionTestUtils.setField(value, "id", id);
@@ -327,5 +826,100 @@ class ReconciliationServiceTest {
         value.setName(name);
         value.setOutstandingBalance(new BigDecimal(outstandingBalance));
         return value;
+    }
+
+    private AccountingPeriod openPeriod(Long id, Company scopedCompany, int year, int month) {
+        AccountingPeriod period = new AccountingPeriod();
+        ReflectionTestUtils.setField(period, "id", id);
+        period.setCompany(scopedCompany);
+        period.setYear(year);
+        period.setMonth(month);
+        LocalDate start = LocalDate.of(year, month, 1);
+        period.setStartDate(start);
+        period.setEndDate(start.plusMonths(1).minusDays(1));
+        period.setStatus(AccountingPeriodStatus.OPEN);
+        return period;
+    }
+
+    private Account account(Long id, String code, AccountType type, BigDecimal balance) {
+        Account account = new Account();
+        ReflectionTestUtils.setField(account, "id", id);
+        account.setCode(code);
+        account.setType(type);
+        account.setBalance(balance);
+        return account;
+    }
+
+    private ReconciliationDiscrepancy discrepancy(Long id,
+                                                  ReconciliationDiscrepancyStatus status,
+                                                  ReconciliationDiscrepancyType type,
+                                                  Company scopedCompany,
+                                                  BigDecimal variance) {
+        ReconciliationDiscrepancy discrepancy = new ReconciliationDiscrepancy();
+        ReflectionTestUtils.setField(discrepancy, "id", id);
+        discrepancy.setCompany(scopedCompany);
+        discrepancy.setStatus(status);
+        discrepancy.setType(type);
+        discrepancy.setPartnerType(type == ReconciliationDiscrepancyType.AR ? PartnerType.DEALER : null);
+        discrepancy.setPartnerId(type == ReconciliationDiscrepancyType.AR ? 901L : null);
+        discrepancy.setPeriodStart(LocalDate.of(2026, 3, 1));
+        discrepancy.setPeriodEnd(LocalDate.of(2026, 3, 31));
+        discrepancy.setExpectedAmount(new BigDecimal("100.00"));
+        discrepancy.setActualAmount(new BigDecimal("75.00"));
+        discrepancy.setVariance(variance != null ? variance : new BigDecimal("25.00"));
+        discrepancy.setResolutionNote("seeded");
+        ReflectionTestUtils.setField(discrepancy, "createdAt", Instant.parse("2026-03-01T00:00:00Z"));
+        ReflectionTestUtils.setField(discrepancy, "updatedAt", Instant.parse("2026-03-01T00:00:00Z"));
+        return discrepancy;
+    }
+
+    private GstReconciliationDto gstReconciliation(String collectedTotal, String inputTotal, String netTotal) {
+        GstReconciliationDto dto = new GstReconciliationDto();
+        dto.setCollected(new GstReconciliationDto.GstComponentSummary(
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                new BigDecimal(collectedTotal)));
+        dto.setInputTaxCredit(new GstReconciliationDto.GstComponentSummary(
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                new BigDecimal(inputTotal)));
+        dto.setNetLiability(new GstReconciliationDto.GstComponentSummary(
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                new BigDecimal(netTotal)));
+        return dto;
+    }
+
+    private JournalEntryDto journalEntryDto(Long id, String referenceNumber) {
+        return new JournalEntryDto(
+                id,
+                null,
+                referenceNumber,
+                LocalDate.of(2026, 3, 20),
+                "recon resolution",
+                "POSTED",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                List.of(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
     }
 }
