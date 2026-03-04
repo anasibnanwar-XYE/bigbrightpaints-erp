@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,7 +45,7 @@ public class GitHubIssueClient {
         return gitHubProperties.isEnabled() && gitHubProperties.isConfigured();
     }
 
-    public GitHubIssueCreateResult createIssue(String title, String body) {
+    public GitHubIssueCreateResult createIssue(String title, String body, List<String> labels) {
         ensureEnabled();
         String owner = gitHubProperties.getRepoOwner().trim();
         String repo = gitHubProperties.getRepoName().trim();
@@ -53,6 +54,9 @@ public class GitHubIssueClient {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("title", title);
         payload.put("body", body);
+        if (labels != null && !labels.isEmpty()) {
+            payload.put("labels", labels);
+        }
 
         HttpEntity<Map<String, Object>> requestEntity = new HttpEntity<>(payload, defaultHeaders());
         try {

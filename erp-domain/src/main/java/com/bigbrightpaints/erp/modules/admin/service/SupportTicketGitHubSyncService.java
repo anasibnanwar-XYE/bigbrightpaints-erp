@@ -8,6 +8,7 @@ import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketRepository;
 import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketStatus;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import org.slf4j.Logger;
@@ -59,7 +60,8 @@ public class SupportTicketGitHubSyncService {
         try {
             GitHubIssueClient.GitHubIssueCreateResult result = gitHubIssueClient.createIssue(
                     buildIssueTitle(ticket),
-                    buildIssueBody(ticket));
+                    buildIssueBody(ticket),
+                    labelsForCategory(ticket));
             ticket.setGithubIssueNumber(result.issueNumber());
             ticket.setGithubIssueUrl(result.issueUrl());
             ticket.setGithubIssueState(result.issueState());
@@ -177,6 +179,17 @@ public class SupportTicketGitHubSyncService {
             ticket.setGithubLastError("Resolved notification failed: runtime error");
             log.warn("Failed to send support ticket resolved email for ticket {}", ticket.getId(), ex);
         }
+    }
+
+    private List<String> labelsForCategory(SupportTicket ticket) {
+        if (ticket == null || ticket.getCategory() == null) {
+            return Collections.emptyList();
+        }
+        return switch (ticket.getCategory()) {
+            case BUG -> List.of("bug");
+            case FEATURE_REQUEST -> List.of("enhancement");
+            case SUPPORT -> List.of("support");
+        };
     }
 
     private String buildIssueTitle(SupportTicket ticket) {
