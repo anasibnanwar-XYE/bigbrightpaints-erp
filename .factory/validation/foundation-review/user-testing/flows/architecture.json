@@ -1,0 +1,41 @@
+{
+  "groupId": "foundation-architecture-docs",
+  "surface": "docs",
+  "generatedAt": "2026-03-05T21:07:00Z",
+  "assertions": [
+    {
+      "id": "VAL-ARCH-001",
+      "status": "pass",
+      "reason": "The architecture review set exists and the README explicitly links the architecture overview and dependency map, while the two docs contain module-boundary and coupling-hotspot sections required by the contract.",
+      "evidence": [
+        {
+          "source": "docs/code-review/README.md",
+          "observed": "Foundation artifacts table links `architecture-overview.md` as the platform-shape/module-boundary doc and `dependency-map.md` as the cross-module coupling-hotspot doc."
+        },
+        {
+          "source": "docs/code-review/architecture-overview.md",
+          "observed": "Contains `## Platform shape`, `## Entrypoints and controller surfaces`, `## Module boundaries`, and `## Shared infrastructure`, matching the required architecture overview surface."
+        },
+        {
+          "source": "docs/code-review/dependency-map.md",
+          "observed": "Contains `## Cross-module dependencies`, `## Dependency clusters`, and `## Coupling hotspots`, providing the required dependency/coupling narrative."
+        },
+        {
+          "source": "python3 assertion check (2026-03-06)",
+          "observed": "Read-only validator confirmed README links both docs, `## Module boundaries` exists in architecture-overview.md, and `## Coupling hotspots` exists in dependency-map.md."
+        }
+      ]
+    }
+  ],
+  "toolsUsed": [
+    "Task (delegation attempt failed)",
+    "LS",
+    "Grep",
+    "Execute"
+  ],
+  "frictions": [
+    "Task tool delegation to user-testing-flow-validator failed in this environment with `Invalid model: custom:CLIProxyAPI-5.4-xhigh`; validation fell back to direct in-session docs inspection per .factory/library/user-testing.md.",
+    "Passive runtime probes were degraded (`curl -sf http://localhost:8081/actuator/health` exited 7 and TCP connect to 127.0.0.1:5433 was refused), but foundation-review assertions were documentation-only and remained testable through docs/code-review/**."
+  ],
+  "blockers": []
+}
