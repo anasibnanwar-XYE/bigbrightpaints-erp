@@ -299,8 +299,20 @@ class AdminUserServiceTest {
         latestLogin.setTimestamp(LocalDateTime.of(2026, 1, 5, 10, 15, 30));
 
         when(userRepository.findDistinctByCompanies_Id(company.getId())).thenReturn(List.of(user));
-        when(auditLogRepository.findByEventTypeWithMetadataOrderByTimestampDesc(AuditEvent.LOGIN_SUCCESS))
-                .thenReturn(List.of(latestLogin));
+        when(auditLogRepository.findLatestTimestampByEventTypeAndUsernameIn(
+                AuditEvent.LOGIN_SUCCESS,
+                java.util.Set.of("audited-user@example.com")))
+                .thenReturn(List.of(new AuditLogRepository.UsernameLastLoginProjection() {
+                    @Override
+                    public String getUsernameKey() {
+                        return "audited-user@example.com";
+                    }
+
+                    @Override
+                    public LocalDateTime getLastLoginAt() {
+                        return latestLogin.getTimestamp();
+                    }
+                }));
 
         var results = service.listUsers();
 
@@ -320,8 +332,10 @@ class AdminUserServiceTest {
 
         when(userRepository.findByIdAndCompanies_Id(302L, company.getId())).thenReturn(Optional.of(user));
         when(userRepository.save(any(UserAccount.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(auditLogRepository.findByEventTypeWithMetadataOrderByTimestampDesc(AuditEvent.LOGIN_SUCCESS))
-                .thenReturn(List.of());
+        when(auditLogRepository.findFirstByEventTypeAndUsernameIgnoreCaseOrderByTimestampDesc(
+                AuditEvent.LOGIN_SUCCESS,
+                "status-user@example.com"))
+                .thenReturn(Optional.empty());
 
         var response = service.updateUserStatus(302L, false);
 
@@ -348,8 +362,10 @@ class AdminUserServiceTest {
 
         when(userRepository.findByIdAndCompanies_Id(303L, company.getId())).thenReturn(Optional.of(user));
         when(userRepository.save(any(UserAccount.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(auditLogRepository.findByEventTypeWithMetadataOrderByTimestampDesc(AuditEvent.LOGIN_SUCCESS))
-                .thenReturn(List.of());
+        when(auditLogRepository.findFirstByEventTypeAndUsernameIgnoreCaseOrderByTimestampDesc(
+                AuditEvent.LOGIN_SUCCESS,
+                "reenable-user@example.com"))
+                .thenReturn(Optional.empty());
 
         var response = service.updateUserStatus(303L, true);
 
@@ -405,8 +421,10 @@ class AdminUserServiceTest {
                 List.of(new SimpleGrantedAuthority("ROLE_SUPER_ADMIN"))));
         when(userRepository.findById(305L)).thenReturn(Optional.of(foreignUser));
         when(userRepository.save(any(UserAccount.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(auditLogRepository.findByEventTypeWithMetadataOrderByTimestampDesc(AuditEvent.LOGIN_SUCCESS))
-                .thenReturn(List.of());
+        when(auditLogRepository.findFirstByEventTypeAndUsernameIgnoreCaseOrderByTimestampDesc(
+                AuditEvent.LOGIN_SUCCESS,
+                "foreign-user@example.com"))
+                .thenReturn(Optional.empty());
 
         try {
             var response = service.updateUser(

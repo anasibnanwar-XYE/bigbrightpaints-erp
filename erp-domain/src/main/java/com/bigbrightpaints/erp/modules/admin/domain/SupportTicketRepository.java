@@ -1,10 +1,14 @@
 package com.bigbrightpaints.erp.modules.admin.domain;
 
+import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface SupportTicketRepository extends JpaRepository<SupportTicket, Long> {
 
@@ -18,4 +22,7 @@ public interface SupportTicketRepository extends JpaRepository<SupportTicket, Lo
 
     List<SupportTicket> findTop200ByGithubIssueNumberIsNotNullAndStatusInOrderByCreatedAtAsc(
             Collection<SupportTicketStatus> statuses);
+
+    @Query("SELECT u FROM UserAccount u WHERE u.id IN :ids")
+    List<UserAccount> findUsersByIdIn(@Param("ids") Set<Long> ids);
 }

@@ -12,18 +12,14 @@ import com.bigbrightpaints.erp.modules.inventory.domain.InventoryBatchSource;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReference;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-
-import static com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils.sha256Hex;
 
 @Service
 public class BulkPackingOrchestrator {
@@ -85,32 +81,6 @@ public class BulkPackingOrchestrator {
                         "Duplicate child SKU line is not allowed: " + line.childSkuId());
             }
         }
-    }
-
-    public String buildPackReference(FinishedGoodBatch bulkBatch, BulkPackRequest request) {
-        String batchCode = StringUtils.hasText(bulkBatch.getBatchCode())
-                ? bulkBatch.getBatchCode().trim().toUpperCase()
-                : String.valueOf(bulkBatch.getId());
-
-        StringBuilder fingerprint = new StringBuilder();
-        fingerprint.append("bulkBatchId=").append(bulkBatch.getId() != null ? bulkBatch.getId() : "null")
-                .append("|skipPackaging=").append(Boolean.TRUE.equals(request.skipPackagingConsumption()));
-
-        List<BulkPackRequest.PackLine> lines = request.packs().stream()
-                .sorted(Comparator.comparing(BulkPackRequest.PackLine::childSkuId))
-                .toList();
-        for (BulkPackRequest.PackLine line : lines) {
-            fingerprint.append("|")
-                    .append(line.childSkuId() != null ? line.childSkuId() : "null")
-                    .append("=")
-                    .append(line.quantity() != null ? line.quantity().stripTrailingZeros().toPlainString() : "0");
-        }
-
-        String idempotencyKey = StringUtils.hasText(request.idempotencyKey())
-                ? request.idempotencyKey().trim().toUpperCase()
-                : "";
-        String hash = sha256Hex(fingerprint + "|" + idempotencyKey, 12);
-        return trimReference("PACK-", batchCode, hash, 64);
     }
 
     public FinishedGoodBatch createChildBatch(Company company,
@@ -223,19 +193,4 @@ public class BulkPackingOrchestrator {
         return packCount;
     }
 
-    private String trimReference(String prefix, String batchCode, String hash, int maxLength) {
-        String safePrefix = StringUtils.hasText(prefix) ? prefix : "";
-        String safeBatch = StringUtils.hasText(batchCode) ? batchCode : "";
-        String safeHash = StringUtils.hasText(hash) ? hash : "";
-        String base = safePrefix + safeBatch + "-" + safeHash;
-        if (base.length() <= maxLength) {
-            return base;
-        }
-        int maxBatchLen = maxLength - safePrefix.length() - 1 - safeHash.length();
-        if (maxBatchLen <= 0) {
-            return safePrefix + safeHash;
-        }
-        String trimmedBatch = safeBatch.length() > maxBatchLen ? safeBatch.substring(0, maxBatchLen) : safeBatch;
-        return safePrefix + trimmedBatch + "-" + safeHash;
-    }
 }

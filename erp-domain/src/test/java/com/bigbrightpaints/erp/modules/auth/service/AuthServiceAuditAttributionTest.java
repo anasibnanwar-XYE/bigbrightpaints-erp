@@ -17,7 +17,6 @@ import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
 import com.bigbrightpaints.erp.modules.auth.exception.InvalidMfaException;
 import com.bigbrightpaints.erp.modules.auth.web.LoginRequest;
 import com.bigbrightpaints.erp.modules.auth.web.RefreshTokenRequest;
-import com.bigbrightpaints.erp.modules.auth.web.ResetPasswordRequest;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.company.service.TenantRuntimeEnforcementService;
@@ -67,10 +66,6 @@ class AuthServiceAuditAttributionTest {
     @Mock
     private MfaService mfaService;
     @Mock
-    private PasswordService passwordService;
-    @Mock
-    private EmailService emailService;
-    @Mock
     private TokenBlacklistService tokenBlacklistService;
     @Mock
     private AuditService auditService;
@@ -89,8 +84,6 @@ class AuthServiceAuditAttributionTest {
                 companyRepository,
                 properties,
                 mfaService,
-                passwordService,
-                emailService,
                 tokenBlacklistService,
                 auditService,
                 tenantRuntimeEnforcementService);
@@ -321,60 +314,6 @@ class AuthServiceAuditAttributionTest {
                     assertThat(event.getFormattedMessage())
                             .contains("Failed to blacklist access token during logout");
                 });
-    }
-
-    @Test
-    void resetPasswordClearsLockAndRevokesIssuedTokens() {
-        UserAccount user = userWithCompany("user@example.com", "ACME");
-        user.setResetToken("token-123");
-        user.setResetExpiry(Instant.now().plus(2, ChronoUnit.HOURS));
-        user.setFailedLoginAttempts(4);
-        user.setLockedUntil(Instant.now().plus(5, ChronoUnit.MINUTES));
-        when(userAccountRepository.findByResetToken("token-123")).thenReturn(Optional.of(user));
-
-        Map<String, Object> result = authService.resetPassword(
-                new ResetPasswordRequest("token-123", "Passw0rd!new", "Passw0rd!new"));
-
-        assertThat(result).containsEntry("success", true);
-        assertThat(result).containsEntry("message", "Password reset. Login now.");
-        assertThat(user.getFailedLoginAttempts()).isZero();
-        assertThat(user.getLockedUntil()).isNull();
-        assertThat(user.getResetToken()).isNull();
-        assertThat(user.getResetExpiry()).isNull();
-        verify(passwordService).resetPassword(user, "Passw0rd!new", "Passw0rd!new");
-        verify(userAccountRepository).save(user);
-        verify(tokenBlacklistService).revokeAllUserTokens("user@example.com");
-        verify(refreshTokenService).revokeAllForUser("user@example.com");
-        verify(emailService).sendPasswordResetConfirmation("user@example.com", user.getDisplayName());
-    }
-
-    @Test
-    void resetPasswordRejectsExpiredToken() {
-        UserAccount user = userWithCompany("user@example.com", "ACME");
-        user.setResetToken("expired-token");
-        user.setResetExpiry(Instant.now().minus(5, ChronoUnit.MINUTES));
-        when(userAccountRepository.findByResetToken("expired-token")).thenReturn(Optional.of(user));
-
-        assertThatThrownBy(() -> authService.resetPassword(
-                new ResetPasswordRequest("expired-token", "NextPass!1", "NextPass!1")))
-                .isInstanceOf(ApplicationException.class)
-                .hasMessage("Token expired");
-    }
-
-    @Test
-    void forgotPasswordPersistsResetTokenAndSendsEmail() {
-        UserAccount user = userWithCompany("user@example.com", "ACME");
-        when(userAccountRepository.findByEmailIgnoreCase("user@example.com")).thenReturn(Optional.of(user));
-
-        authService.forgotPassword(new com.bigbrightpaints.erp.modules.auth.web.ForgotPasswordRequest("user@example.com"));
-
-        assertThat(user.getResetToken()).isNotBlank();
-        assertThat(user.getResetExpiry()).isAfter(Instant.now());
-        verify(userAccountRepository).save(user);
-        verify(emailService).sendPasswordResetEmail(
-                eq("user@example.com"),
-                eq(user.getDisplayName()),
-                eq(user.getResetToken()));
     }
 
     private UserAccount userWithCompany(String email, String companyCode) {

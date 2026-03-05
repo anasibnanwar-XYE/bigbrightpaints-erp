@@ -8,6 +8,7 @@ import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Repository for audit log operations.
@@ -30,6 +31,34 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, Long> {
      */
     @EntityGraph(attributePaths = "metadata")
     List<AuditLog> findByEventTypeOrderByTimestampDesc(AuditEvent eventType);
+
+    /**
+     * Find latest event record for a username.
+     */
+    Optional<AuditLog> findFirstByEventTypeAndUsernameIgnoreCaseOrderByTimestampDesc(AuditEvent eventType,
+                                                                                      String username);
+
+    /**
+     * Projection for batched username login lookups.
+     */
+    interface UsernameLastLoginProjection {
+        String getUsernameKey();
+
+        LocalDateTime getLastLoginAt();
+    }
+
+    /**
+     * Resolve latest login timestamp by normalized username for a batch of users.
+     */
+    @Query("SELECT LOWER(al.username) AS usernameKey, MAX(al.timestamp) AS lastLoginAt " +
+           "FROM AuditLog al " +
+           "WHERE al.eventType = :eventType " +
+           "AND al.username IS NOT NULL " +
+           "AND LOWER(al.username) IN :usernames " +
+           "GROUP BY LOWER(al.username)")
+    List<UsernameLastLoginProjection> findLatestTimestampByEventTypeAndUsernameIn(
+            @Param("eventType") AuditEvent eventType,
+            @Param("usernames") java.util.Set<String> usernames);
 
     /**
      * Find audit logs by event type and eagerly load metadata for assertions/reporting.

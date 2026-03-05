@@ -9,13 +9,15 @@ import com.bigbrightpaints.erp.modules.admin.domain.SupportTicketRepository;
 import com.bigbrightpaints.erp.modules.admin.dto.SupportTicketCreateRequest;
 import com.bigbrightpaints.erp.modules.admin.dto.SupportTicketResponse;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
-import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import jakarta.annotation.Nullable;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -33,16 +35,13 @@ public class SupportTicketService {
 
     private final SupportTicketRepository supportTicketRepository;
     private final CompanyContextService companyContextService;
-    private final UserAccountRepository userAccountRepository;
     private final SupportTicketGitHubSyncService supportTicketGitHubSyncService;
 
     public SupportTicketService(SupportTicketRepository supportTicketRepository,
                                 CompanyContextService companyContextService,
-                                UserAccountRepository userAccountRepository,
                                 SupportTicketGitHubSyncService supportTicketGitHubSyncService) {
         this.supportTicketRepository = supportTicketRepository;
         this.companyContextService = companyContextService;
-        this.userAccountRepository = userAccountRepository;
         this.supportTicketGitHubSyncService = supportTicketGitHubSyncService;
     }
 
@@ -69,26 +68,25 @@ public class SupportTicketService {
         } else {
             supportTicketGitHubSyncService.submitGitHubIssueAsync(saved.getId());
         }
-        return toResponse(saved, actor);
+        return toResponses(List.of(saved), actor.getId()).getFirst();
     }
 
     @Transactional(readOnly = true)
     public List<SupportTicketResponse> list() {
         Company company = companyContextService.requireCurrentCompany();
         UserAccount actor = requireCurrentUser();
+
+        List<SupportTicket> tickets;
+        Long actorUserId = actor.getId();
         if (hasRole(actor, ROLE_SUPER_ADMIN)) {
-            return supportTicketRepository.findAllByOrderByCreatedAtDesc().stream()
-                    .map(ticket -> toResponse(ticket, null))
-                    .toList();
+            tickets = supportTicketRepository.findAllByOrderByCreatedAtDesc();
+        } else if (hasAnyRole(actor, ROLE_ADMIN, ROLE_ACCOUNTING)) {
+            tickets = supportTicketRepository.findByCompanyOrderByCreatedAtDesc(company);
+        } else {
+            tickets = supportTicketRepository.findByCompanyAndUserIdOrderByCreatedAtDesc(company, actorUserId);
         }
-        if (hasAnyRole(actor, ROLE_ADMIN, ROLE_ACCOUNTING)) {
-            return supportTicketRepository.findByCompanyOrderByCreatedAtDesc(company).stream()
-                    .map(ticket -> toResponse(ticket, null))
-                    .toList();
-        }
-        return supportTicketRepository.findByCompanyAndUserIdOrderByCreatedAtDesc(company, actor.getId()).stream()
-                .map(ticket -> toResponse(ticket, actor))
-                .toList();
+
+        return toResponses(tickets, actorUserId);
     }
 
     @Transactional(readOnly = true)
@@ -113,7 +111,7 @@ public class SupportTicketService {
             }
         }
 
-        return toResponse(ticket, null);
+        return toResponses(List.of(ticket), actor.getId()).getFirst();
     }
 
     private ApplicationException notFound(Long ticketId) {
@@ -137,9 +135,8 @@ public class SupportTicketService {
             throw new ApplicationException(ErrorCode.AUTH_INSUFFICIENT_PERMISSIONS,
                     "Authenticated user account is required");
         }
-        return userAccountRepository.findByEmailIgnoreCase(actor)
-                .orElseThrow(() -> new ApplicationException(ErrorCode.BUSINESS_ENTITY_NOT_FOUND,
-                        "User not found for actor: " + actor));
+        throw new ApplicationException(ErrorCode.AUTH_INSUFFICIENT_PERMISSIONS,
+                "Authenticated principal is not a user account: " + actor);
     }
 
     private boolean hasRole(UserAccount user, String roleName) {
@@ -181,33 +178,72 @@ public class SupportTicketService {
         return trimmed;
     }
 
-    private SupportTicketResponse toResponse(SupportTicket ticket, @Nullable UserAccount requesterHint) {
-        UserAccount requester = requesterHint;
-        if (requester == null && ticket.getUserId() != null) {
-            requester = userAccountRepository.findById(ticket.getUserId()).orElse(null);
+    private List<SupportTicketResponse> toResponses(List<SupportTicket> tickets, @Nullable Long actorUserId) {
+        if (tickets == null || tickets.isEmpty()) {
+            return List.of();
         }
-        String requesterEmail = requester != null ? requester.getEmail() : null;
-        String companyCode = ticket.getCompany() != null ? ticket.getCompany().getCode() : null;
 
-        return new SupportTicketResponse(
-                ticket.getId(),
-                ticket.getPublicId(),
-                companyCode,
-                ticket.getUserId(),
-                requesterEmail,
-                ticket.getCategory(),
-                ticket.getSubject(),
-                ticket.getDescription(),
-                ticket.getStatus(),
-                ticket.getGithubIssueNumber(),
-                ticket.getGithubIssueUrl(),
-                ticket.getGithubIssueState(),
-                ticket.getGithubSyncedAt(),
-                ticket.getGithubLastError(),
-                ticket.getResolvedAt(),
-                ticket.getResolvedNotificationSentAt(),
-                ticket.getCreatedAt(),
-                ticket.getUpdatedAt()
-        );
+        Map<Long, String> requesterEmails = resolveRequesterEmails(tickets, actorUserId);
+        return tickets.stream()
+                .map(ticket -> {
+                    String companyCode = ticket.getCompany() != null ? ticket.getCompany().getCode() : null;
+                    return new SupportTicketResponse(
+                            ticket.getId(),
+                            ticket.getPublicId(),
+                            companyCode,
+                            ticket.getUserId(),
+                            requesterEmails.get(ticket.getUserId()),
+                            ticket.getCategory(),
+                            ticket.getSubject(),
+                            ticket.getDescription(),
+                            ticket.getStatus(),
+                            ticket.getGithubIssueNumber(),
+                            ticket.getGithubIssueUrl(),
+                            ticket.getGithubIssueState(),
+                            ticket.getGithubSyncedAt(),
+                            ticket.getGithubLastError(),
+                            ticket.getResolvedAt(),
+                            ticket.getResolvedNotificationSentAt(),
+                            ticket.getCreatedAt(),
+                            ticket.getUpdatedAt()
+                    );
+                })
+                .toList();
+    }
+
+    private Map<Long, String> resolveRequesterEmails(List<SupportTicket> tickets, @Nullable Long actorUserId) {
+        Set<Long> requesterIds = tickets.stream()
+                .map(SupportTicket::getUserId)
+                .filter(id -> id != null && id > 0)
+                .collect(Collectors.toSet());
+        if (requesterIds.isEmpty()) {
+            return Map.of();
+        }
+
+        if (actorUserId != null && requesterIds.size() == 1 && requesterIds.contains(actorUserId)) {
+            return Map.of(actorUserId, resolveActorEmail());
+        }
+
+        return supportTicketRepository.findUsersByIdIn(requesterIds).stream()
+                .collect(Collectors.toMap(
+                        UserAccount::getId,
+                        UserAccount::getEmail,
+                        (existing, replacement) -> existing,
+                        java.util.LinkedHashMap::new));
+    }
+
+    private String resolveActorEmail() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null && authentication.getPrincipal() instanceof UserPrincipal userPrincipal
+                && userPrincipal.getUser() != null) {
+            return userPrincipal.getUser().getEmail();
+        }
+        String actor = SecurityActorResolver.resolveActorOrUnknown();
+        if (StringUtils.hasText(actor)
+                && !SecurityActorResolver.UNKNOWN_AUTH_ACTOR.equals(actor)
+                && !SecurityActorResolver.SYSTEM_PROCESS_ACTOR.equals(actor)) {
+            return actor;
+        }
+        return null;
     }
 }

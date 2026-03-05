@@ -9,17 +9,17 @@ class BulkPackingServiceTest {
 
     @Test
     void parseSizeInLitersSupportsMlAndLtr() {
-        assertThat(BulkPackingService.parseSizeInLiters("500ML"))
+        assertThat(BulkPackingOrchestrator.parseSizeInLiters("500ML"))
                 .isEqualByComparingTo(new BigDecimal("0.500000"));
-        assertThat(BulkPackingService.parseSizeInLiters("1LTR"))
+        assertThat(BulkPackingOrchestrator.parseSizeInLiters("1LTR"))
                 .isEqualByComparingTo(new BigDecimal("1"));
-        assertThat(BulkPackingService.parseSizeInLiters("0.5L"))
+        assertThat(BulkPackingOrchestrator.parseSizeInLiters("0.5L"))
                 .isEqualByComparingTo(new BigDecimal("0.5"));
     }
 
     @Test
     void parseSizeInLitersReturnsNullForInvalid() {
-        assertThat(BulkPackingService.parseSizeInLiters("SIZE"))
+        assertThat(BulkPackingOrchestrator.parseSizeInLiters("SIZE"))
                 .isNull();
     }
 }

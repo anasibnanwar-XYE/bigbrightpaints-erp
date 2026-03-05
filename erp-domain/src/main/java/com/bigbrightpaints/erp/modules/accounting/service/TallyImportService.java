@@ -519,8 +519,8 @@ public class TallyImportService {
     }
 
     private boolean isOpeningVoucher(String voucherType, String voucherTypeName) {
-        String normalizedType = normalizeToken(voucherType);
-        String normalizedName = normalizeToken(voucherTypeName);
+        String normalizedType = IdempotencyUtils.normalizeUpperToken(voucherType);
+        String normalizedName = IdempotencyUtils.normalizeUpperToken(voucherTypeName);
         if (normalizedType.contains("OPENING") || normalizedName.contains("OPENING")) {
             return true;
         }
@@ -600,12 +600,6 @@ public class TallyImportService {
         return ledgerName.trim().toUpperCase(Locale.ROOT);
     }
 
-    private static String normalizeToken(String value) {
-        if (!StringUtils.hasText(value)) {
-            return "";
-        }
-        return value.trim().toUpperCase(Locale.ROOT);
-    }
 
     private String resolveAccountCode(String ledgerName, Company company) {
         String normalized = StringUtils.hasText(ledgerName)

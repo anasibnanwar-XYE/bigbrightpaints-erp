@@ -16,8 +16,6 @@ public interface UserAccountRepository extends JpaRepository<UserAccount, Long> 
     @Query("select u from UserAccount u where u.id = :id")
     Optional<UserAccount> lockById(@Param("id") Long id);
 
-    Optional<UserAccount> findByResetToken(String resetToken);
-
     List<UserAccount> findDistinctByCompanies_Id(Long companyId);
 
     long countDistinctByCompanies_IdAndEnabledTrue(Long companyId);

@@ -11,19 +11,35 @@ version: "1.0"
 
 #Specify inspection profile for code analysis
 profile:
-  name: qodana.starter
+  name: qodana.recommended
 
-#Enable inspections
-#include:
-#  - name: <SomeEnabledInspectionId>
+#Enable inspections relevant to Java/Spring quality and cleanup.
+include:
+  - name: UNUSED_IMPORT
+  - name: UNUSED_SYMBOL
+  - name: GroovyUnusedDeclaration
+  - name: DataFlowIssue
+  - name: ConstantConditions
+  - name: SpringJavaInjectionPointsAutowiringInspection
+  - name: SpringDataPageableParameterMissing
 
-#Disable inspections
-#exclude:
-#  - name: <SomeDisabledInspectionId>
-#    paths:
-#      - <path/where/not/run/inspection>
+#Disable inspections on generated and test artifacts.
+exclude:
+  - name: All
+    paths:
+      - erp-domain/src/test
+      - erp-domain/target
+      - erp-domain/src/main/generated
+      - erp-domain/src/main/java/**/generated
+      - erp-domain/src/main/resources/db/migration
+      - erp-domain/src/main/resources/db/migration_v2
 
 projectJDK: "21" #(Applied in CI/CD pipeline)
+
+failureConditions:
+  severityThresholds:
+    critical: 0
+    any: 50
 
 #Execute shell command before Qodana execution (Applied in CI/CD pipeline)
 #bootstrap: sh ./prepare-qodana.sh

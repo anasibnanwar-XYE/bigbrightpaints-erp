@@ -1,7 +1,6 @@
 package com.bigbrightpaints.erp.modules.admin.service;
 
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
-import com.bigbrightpaints.erp.core.audit.AuditLog;
 import com.bigbrightpaints.erp.core.audit.AuditLogRepository;
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.notification.EmailService;
@@ -92,8 +91,10 @@ public class AdminUserService {
 
     public List<UserDto> listUsers() {
         Company company = companyContextService.requireCurrentCompany();
-        return userRepository.findDistinctByCompanies_Id(company.getId()).stream()
-                .map(user -> toDto(user, resolveLastLoginAt(user.getEmail())))
+        List<UserAccount> users = userRepository.findDistinctByCompanies_Id(company.getId());
+        Map<String, Instant> lastLoginByEmail = resolveLastLoginByEmail(users);
+        return users.stream()
+                .map(user -> toDto(user, lastLoginByEmail.get(normalizeEmailKey(user.getEmail()))))
                 .toList();
     }
 
@@ -394,16 +395,45 @@ public class AdminUserService {
         });
     }
 
+    private Map<String, Instant> resolveLastLoginByEmail(List<UserAccount> users) {
+        Set<String> normalizedEmails = users.stream()
+                .map(UserAccount::getEmail)
+                .map(this::normalizeEmailKey)
+                .filter(StringUtils::hasText)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (normalizedEmails.isEmpty()) {
+            return Map.of();
+        }
+
+        return auditLogRepository.findLatestTimestampByEventTypeAndUsernameIn(
+                        AuditEvent.LOGIN_SUCCESS,
+                        normalizedEmails)
+                .stream()
+                .filter(row -> StringUtils.hasText(row.getUsernameKey()) && row.getLastLoginAt() != null)
+                .collect(Collectors.toMap(
+                        row -> row.getUsernameKey().trim().toLowerCase(Locale.ROOT),
+                        row -> row.getLastLoginAt().atZone(ZoneOffset.UTC).toInstant(),
+                        (existing, replacement) -> existing,
+                        LinkedHashMap::new));
+    }
+
     private Instant resolveLastLoginAt(String userEmail) {
-        if (!StringUtils.hasText(userEmail)) {
+        String normalizedEmail = normalizeEmailKey(userEmail);
+        if (!StringUtils.hasText(normalizedEmail)) {
             return null;
         }
-        return auditLogRepository.findByEventTypeWithMetadataOrderByTimestampDesc(AuditEvent.LOGIN_SUCCESS).stream()
-                .filter(log -> userEmail.equalsIgnoreCase(log.getUsername()))
-                .map(AuditLog::getTimestamp)
-                .findFirst()
-                .map(localDateTime -> localDateTime.atZone(ZoneOffset.UTC).toInstant())
+        return auditLogRepository.findFirstByEventTypeAndUsernameIgnoreCaseOrderByTimestampDesc(
+                        AuditEvent.LOGIN_SUCCESS,
+                        normalizedEmail)
+                .map(auditLog -> auditLog.getTimestamp().atZone(ZoneOffset.UTC).toInstant())
                 .orElse(null);
+    }
+
+    private String normalizeEmailKey(String email) {
+        if (!StringUtils.hasText(email)) {
+            return null;
+        }
+        return email.trim().toLowerCase(Locale.ROOT);
     }
 
     private void auditUserAccountAction(AuditEvent event,

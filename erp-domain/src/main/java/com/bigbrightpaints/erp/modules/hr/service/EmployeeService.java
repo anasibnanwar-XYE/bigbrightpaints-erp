@@ -4,6 +4,7 @@ import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.security.CryptoService;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
+import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
 import com.bigbrightpaints.erp.core.validation.ValidationUtils;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
@@ -166,13 +167,13 @@ public class EmployeeService {
             employee.setDoubleOtRateMultiplier(request.doubleOtRateMultiplier());
         }
         if (request.pfNumber() != null) {
-            employee.setPfNumber(normalizeToken(request.pfNumber()));
+            employee.setPfNumber(IdempotencyUtils.normalizeToken(request.pfNumber()));
         }
         if (request.esiNumber() != null) {
-            employee.setEsiNumber(normalizeToken(request.esiNumber()));
+            employee.setEsiNumber(IdempotencyUtils.normalizeToken(request.esiNumber()));
         }
         if (request.panNumber() != null) {
-            String pan = normalizeToken(request.panNumber());
+            String pan = IdempotencyUtils.normalizeToken(request.panNumber());
             validatePan(pan);
             employee.setPanNumber(pan);
         }
@@ -220,7 +221,7 @@ public class EmployeeService {
     }
 
     private String encryptOrNull(String value) {
-        String normalized = normalizeToken(value);
+        String normalized = IdempotencyUtils.normalizeToken(value);
         if (!StringUtils.hasText(normalized)) {
             return null;
         }
@@ -317,10 +318,6 @@ public class EmployeeService {
                     "Invalid " + fieldName + ". Allowed values: " + Arrays.toString(enumClass.getEnumConstants()))
                     .withDetail(fieldName, rawValue);
         }
-    }
-
-    private String normalizeToken(String value) {
-        return value == null ? null : value.trim();
     }
 
     private EmployeeDto toDto(Employee employee) {

@@ -34,7 +34,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-@Service
+@Service("reportsInventoryValuationService")
 public class InventoryValuationService {
 
     private final RawMaterialRepository rawMaterialRepository;

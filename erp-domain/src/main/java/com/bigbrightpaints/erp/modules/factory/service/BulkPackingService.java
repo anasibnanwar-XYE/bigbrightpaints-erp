@@ -139,10 +139,6 @@ public class BulkPackingService {
         return bulkPackingReadService.listChildBatches(company, parentBatchId);
     }
 
-    static BigDecimal parseSizeInLiters(String label) {
-        return BulkPackingOrchestrator.parseSizeInLiters(label);
-    }
-
     private String buildPackReference(FinishedGoodBatch bulkBatch, BulkPackRequest request) {
         String batchCode = StringUtils.hasText(bulkBatch.getBatchCode())
                 ? bulkBatch.getBatchCode().trim().toUpperCase()

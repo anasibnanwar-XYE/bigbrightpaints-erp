@@ -5,7 +5,6 @@ import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
-import com.bigbrightpaints.erp.core.notification.EmailService;
 import com.bigbrightpaints.erp.core.security.JwtProperties;
 import com.bigbrightpaints.erp.core.security.JwtTokenService;
 import com.bigbrightpaints.erp.core.security.SecurityActorResolver;
@@ -16,10 +15,8 @@ import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
 import com.bigbrightpaints.erp.modules.auth.exception.InvalidMfaException;
 import com.bigbrightpaints.erp.modules.auth.exception.MfaRequiredException;
 import com.bigbrightpaints.erp.modules.auth.web.AuthResponse;
-import com.bigbrightpaints.erp.modules.auth.web.ForgotPasswordRequest;
 import com.bigbrightpaints.erp.modules.auth.web.LoginRequest;
 import com.bigbrightpaints.erp.modules.auth.web.RefreshTokenRequest;
-import com.bigbrightpaints.erp.modules.auth.web.ResetPasswordRequest;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.company.service.TenantRuntimeEnforcementService;
@@ -37,7 +34,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
 
 @Service
 public class AuthService {
@@ -54,8 +50,6 @@ public class AuthService {
     private final CompanyRepository companyRepository;
     private final JwtProperties properties;
     private final MfaService mfaService;
-    private final PasswordService passwordService;
-    private final EmailService emailService;
     private final TokenBlacklistService tokenBlacklistService;
     private final AuditService auditService;
     private final TenantRuntimeEnforcementService tenantRuntimeEnforcementService;
@@ -67,8 +61,6 @@ public class AuthService {
                        CompanyRepository companyRepository,
                        JwtProperties properties,
                        MfaService mfaService,
-                       PasswordService passwordService,
-                       EmailService emailService,
                        TokenBlacklistService tokenBlacklistService,
                        AuditService auditService,
                        TenantRuntimeEnforcementService tenantRuntimeEnforcementService) {
@@ -79,8 +71,6 @@ public class AuthService {
         this.companyRepository = companyRepository;
         this.properties = properties;
         this.mfaService = mfaService;
-        this.passwordService = passwordService;
-        this.emailService = emailService;
         this.tokenBlacklistService = tokenBlacklistService;
         this.auditService = auditService;
         this.tenantRuntimeEnforcementService = tenantRuntimeEnforcementService;
@@ -138,35 +128,6 @@ public class AuthService {
                     Map.of("reason", reason));
             throw ex;
         }
-    }
-
-    // Forgot Password
-    public void forgotPassword(ForgotPasswordRequest request) {
-        userAccountRepository.findByEmailIgnoreCase(request.email()).ifPresent(user -> {
-            String resetToken = UUID.randomUUID().toString();
-            user.setResetToken(resetToken);
-            user.setResetExpiry(Instant.now().plus(Duration.ofHours(1)));
-            userAccountRepository.save(user);
-            emailService.sendPasswordResetEmail(user.getEmail(), user.getDisplayName(), resetToken);
-        });
-    }
-
-    public Map<String, Object> resetPassword(ResetPasswordRequest request) {
-        UserAccount user = userAccountRepository.findByResetToken(request.token())
-                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Invalid or expired token"));
-        if (user.getResetExpiry().isBefore(Instant.now())) {
-            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Token expired");
-        }
-        passwordService.resetPassword(user, request.newPassword(), request.confirmPassword());
-        user.setFailedLoginAttempts(0);
-        user.setLockedUntil(null);
-        user.setResetToken(null);
-        user.setResetExpiry(null);
-        userAccountRepository.save(user);
-        tokenBlacklistService.revokeAllUserTokens(user.getEmail());
-        refreshTokenService.revokeAllForUser(user.getEmail());
-        emailService.sendPasswordResetConfirmation(user.getEmail(), user.getDisplayName());
-        return Map.of("success", true, "message", "Password reset. Login now.");
     }
 
     public AuthResponse refresh(RefreshTokenRequest request) {

@@ -2,6 +2,7 @@ package com.bigbrightpaints.erp.truthsuite.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -15,7 +16,6 @@ import com.bigbrightpaints.erp.modules.admin.dto.SupportTicketResponse;
 import com.bigbrightpaints.erp.modules.admin.service.SupportTicketGitHubSyncService;
 import com.bigbrightpaints.erp.modules.admin.service.SupportTicketService;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
-import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
@@ -35,7 +35,6 @@ class TS_RuntimeSupportTicketServiceExecutableCoverageTest {
 
     private SupportTicketRepository supportTicketRepository;
     private CompanyContextService companyContextService;
-    private UserAccountRepository userAccountRepository;
     private SupportTicketGitHubSyncService supportTicketGitHubSyncService;
     private SupportTicketService supportTicketService;
     private Company company;
@@ -44,13 +43,11 @@ class TS_RuntimeSupportTicketServiceExecutableCoverageTest {
     void setUp() {
         supportTicketRepository = Mockito.mock(SupportTicketRepository.class);
         companyContextService = Mockito.mock(CompanyContextService.class);
-        userAccountRepository = Mockito.mock(UserAccountRepository.class);
         supportTicketGitHubSyncService = Mockito.mock(SupportTicketGitHubSyncService.class);
 
         supportTicketService = new SupportTicketService(
                 supportTicketRepository,
                 companyContextService,
-                userAccountRepository,
                 supportTicketGitHubSyncService);
 
         company = new Company();
@@ -94,11 +91,16 @@ class TS_RuntimeSupportTicketServiceExecutableCoverageTest {
         SupportTicket ticketA = ticket(9201L, company, 71L, "ACME ticket");
         SupportTicket ticketB = ticket(9202L, company, 72L, "Another ACME ticket");
         when(supportTicketRepository.findAllByOrderByCreatedAtDesc()).thenReturn(List.of(ticketA, ticketB));
+        when(supportTicketRepository.findUsersByIdIn(argThat(ids -> ids != null && ids.containsAll(List.of(71L, 72L)))))
+                .thenReturn(List.of(
+                        user(71L, "requester1@acme.com", "ROLE_SALES", company),
+                        user(72L, "requester2@acme.com", "ROLE_SALES", company)));
 
         List<SupportTicketResponse> responses = supportTicketService.list();
 
         assertThat(responses).hasSize(2);
         verify(supportTicketRepository).findAllByOrderByCreatedAtDesc();
+        verify(supportTicketRepository).findUsersByIdIn(argThat(ids -> ids != null && ids.containsAll(List.of(71L, 72L))));
         verify(supportTicketRepository, never()).findByCompanyOrderByCreatedAtDesc(any());
         verify(supportTicketRepository, never()).findByCompanyAndUserIdOrderByCreatedAtDesc(any(), any());
     }
@@ -110,6 +112,8 @@ class TS_RuntimeSupportTicketServiceExecutableCoverageTest {
 
         SupportTicket ticket = ticket(9301L, company, 71L, "Scoped ACME ticket");
         when(supportTicketRepository.findByCompanyOrderByCreatedAtDesc(company)).thenReturn(List.of(ticket));
+        when(supportTicketRepository.findUsersByIdIn(argThat(ids -> ids != null && ids.contains(71L))))
+                .thenReturn(List.of(user(71L, "requester@acme.com", "ROLE_SALES", company)));
 
         List<SupportTicketResponse> responses = supportTicketService.list();
 
