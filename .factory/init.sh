@@ -3,6 +3,7 @@ set -euo pipefail
 
 PROJECT_ROOT="/home/realnigga/Desktop/Mission-control"
 ERP_DIR="$PROJECT_ROOT/erp-domain"
+REVIEW_DIR="$PROJECT_ROOT/docs/code-review"
 
 # Ensure .env exists for docker-compose
 if [ ! -f "$PROJECT_ROOT/.env" ]; then
@@ -12,6 +13,10 @@ if [ ! -f "$PROJECT_ROOT/.env" ]; then
     echo "ERP_SECURITY_ENCRYPTION_KEY=YOUR_ENCRYPTION_KEY_HERE" >> "$PROJECT_ROOT/.env"
 fi
 
-# Compile the project to ensure it builds
+# Ensure review documentation folders exist for review-only missions.
+mkdir -p "$REVIEW_DIR/flows"
+
+# Keep worker startup lightweight for review-only missions.
+# A quiet compile is best-effort only and should never block the session.
 cd "$ERP_DIR"
-mvn compile -q 2>/dev/null || true
+mvn compile -q >/dev/null 2>&1 || true

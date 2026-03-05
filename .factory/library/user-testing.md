@@ -6,6 +6,12 @@ Testing surface: tools, URLs, setup steps, isolation notes, known quirks.
 
 ---
 
+## Review-Only Mission Note
+- For the production backend review mission, the primary validation surface is `docs/code-review/**`.
+- Secondary evidence collection may use passive API/runtime probes against the existing backend on `http://localhost:8081`.
+- Do not start a new app stack for this mission and do not mutate shared runtime state unless the orchestrator explicitly changes scope.
+- Because worker/subagent launching is currently unreliable in this environment, validators may need to rely on direct file validation plus passive runtime evidence rather than delegated deep flow probes.
+
 ## Testing Surface
 - **Type**: REST API (no frontend in this mission)
 - **Base URL**: http://localhost:8081
