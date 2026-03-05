@@ -1,0 +1,46 @@
+{
+  "milestone": "foundation-review",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "cd \"/home/realnigga/Desktop/Mission-control/erp-domain\" && mvn test -Pgate-fast -Djacoco.skip=true",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "cd \"/home/realnigga/Desktop/Mission-control/erp-domain\" && mvn compile -q",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "echo \"Checkstyle remains advisory in this review mission; treat the existing baseline as known debt and capture findings in docs/code-review/test-ci-governance.md.\"",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 4,
+    "passed": 4,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "AGENTS.md",
+      "suggestion": "Clarify the review-only mission bootstrap contract: either pre-seed required `.factory/` review scaffolding before workers start or explicitly allow those bootstrap files in the architecture/foundation feature scope so docs-only write boundaries do not conflict with mission setup needs.",
+      "evidence": "The reviewed `architecture-overview-review` commit `b01b2dd1a5c2ef773a0986b9d1dc70d299d25c0b` added `.factory/init.sh`, `.factory/services.yaml`, `.factory/library/review-playbook.md`, `.factory/library/user-testing.md`, and `.factory/skills/review-worker/SKILL.md` in addition to the requested docs, indicating mission bootstrap work spilled into a feature-level deliverable.",
+      "isSystemic": true
+    },
+    {
+      "target": "skills/scrutiny-validator",
+      "suggestion": "Document a first-class fallback path for Task fan-out failures: when review subagents cannot start because of model-alias/bootstrap errors, perform manual evidence review, write the per-feature review JSON artifacts directly, and continue synthesis while recording the environment issue.",
+      "evidence": "All four `scrutiny-feature-reviewer` Task invocations in this run failed with `Invalid model: custom:CLIProxyAPI-5.4-xhigh`, so the validator had to inspect commits/handoffs directly and author `.factory/validation/foundation-review/scrutiny/reviews/*.json` manually to complete the milestone review.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [],
+  "previousRound": null
+}
