@@ -1,0 +1,87 @@
+{
+  "groupId": "docs-workflows",
+  "testedAt": "2026-03-05T07:00:10+05:30",
+  "credentials": {
+    "account": "ut-docs-business-validator@example.com",
+    "namespace": "ut_docs_business"
+  },
+  "toolsUsed": [
+    "read",
+    "ls",
+    "python3 content checks"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-DOC-012",
+      "title": "User-facing ERP workflow guides",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "List docs/workflows and verify all required business workflow guides exist.",
+          "expected": "Guides exist for O2C, P2P, manufacturing/packaging, inventory, accounting/period close, payroll, admin/tenant, and data migration.",
+          "observed": "All 8 required files are present: sales-order-to-cash.md, purchase-to-pay.md, manufacturing-and-packaging.md, inventory-management.md, accounting-and-period-close.md, payroll.md, admin-and-tenant-management.md, data-migration.md."
+        },
+        {
+          "action": "Read each workflow guide for business-user orientation and endpoint mapping.",
+          "expected": "Guides are step-by-step, user-facing (non-developer), and include API mappings and operational troubleshooting.",
+          "observed": "Each guide contains step table columns (what to do, screen+API mapping, expected outcome, what can go wrong) and aligns to accountant/warehouse/sales/HR audiences."
+        }
+      ],
+      "evidence": {
+        "commands": [
+          "ls /home/realnigga/Desktop/Mission-control/docs/workflows",
+          "python3 docs content validation script"
+        ],
+        "result": "PASS",
+        "output": "workflow_missing is empty and all required workflow files are present.",
+        "fileRefs": [
+          "docs/workflows/sales-order-to-cash.md",
+          "docs/workflows/purchase-to-pay.md",
+          "docs/workflows/manufacturing-and-packaging.md",
+          "docs/workflows/inventory-management.md",
+          "docs/workflows/accounting-and-period-close.md",
+          "docs/workflows/payroll.md",
+          "docs/workflows/admin-and-tenant-management.md",
+          "docs/workflows/data-migration.md"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DOC-013",
+      "title": "Private ledger architecture design doc",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Read docs/design/private-ledger.md and verify design-only contract requirements.",
+          "expected": "Document contains flag-vs-schema analysis, security model (RBAC+PIN+audit), query isolation, roadmap, and explicit not-implemented status.",
+          "observed": "Document explicitly states `Status: NOT IMPLEMENTED`, includes Option A/Option B analysis, recommended flag-based approach, RBAC+PIN+audit security flow, query isolation controls, and phased implementation roadmap."
+        }
+      ],
+      "evidence": {
+        "commands": [
+          "python3 docs content validation script"
+        ],
+        "result": "PASS",
+        "output": "private_ledger_checks flags are all true: not_implemented, option analysis, security model, query isolation, roadmap.",
+        "fileRefs": [
+          "docs/design/private-ledger.md"
+        ]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Task subagent spawn failed with model alias error (`Invalid model: custom:CLIProxyAPI-5.3-codex-xhigh-pro`).",
+      "resolved": true,
+      "resolution": "Executed flow validation directly in-session and produced flow report artifact manually.",
+      "affectedAssertions": [
+        "VAL-DOC-012",
+        "VAL-DOC-013"
+      ]
+    }
+  ],
+  "blockers": [],
+  "summary": "Validated docs-workflows assertion group through workflow file inventory and content inspection; both assertions passed."
+}

@@ -1,0 +1,104 @@
+{
+  "groupId": "docs-core",
+  "testedAt": "2026-03-05T06:59:40+05:30",
+  "credentials": {
+    "account": "ut-docs-core-validator@example.com",
+    "namespace": "ut_docs_core"
+  },
+  "toolsUsed": [
+    "read",
+    "mvn test -Pgate-fast",
+    "python3 content checks"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-DOC-010",
+      "title": "Repository README",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Read README.md and verify required section set and executable setup/test instructions.",
+          "expected": "README contains overview, stack, prerequisites, local setup, tests, docker deploy, module overview, API docs, architecture, contributing.",
+          "observed": "README.md includes all 10 required sections with concrete commands (compile, gate-fast, docker compose, health check) and required env variables (JWT_SECRET, ERP_SECURITY_ENCRYPTION_KEY)."
+        },
+        {
+          "action": "Validate baseline command compatibility by running gate-fast suite.",
+          "expected": "Project baseline command referenced in docs should succeed.",
+          "observed": "`cd erp-domain && mvn test -Pgate-fast -Djacoco.skip=true` completed with BUILD SUCCESS and `Tests run: 394, Failures: 0, Errors: 0, Skipped: 0`."
+        }
+      ],
+      "evidence": {
+        "commands": [
+          "cd /home/realnigga/Desktop/Mission-control/erp-domain && mvn test -Pgate-fast -Djacoco.skip=true",
+          "python3 docs content validation script"
+        ],
+        "result": "PASS",
+        "output": "Automated content checks all true for README required sections; gate-fast succeeded.",
+        "fileRefs": [
+          "README.md"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DOC-011",
+      "title": "Architecture documentation",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Read docs/architecture.md and validate required architecture coverage and real code references.",
+          "expected": "Doc covers module dependencies, decomposition rationale, event/accounting flows, schema/migration strategy with concrete code references.",
+          "observed": "Architecture document includes runtime topology, module inventory, cross-module O2C/P2P/M2S/payroll/tenant/migration/period/support flows, and explicit `erp-domain/src/main/java/...` file references plus Flyway dual-track strategy."
+        }
+      ],
+      "evidence": {
+        "commands": [
+          "python3 docs content validation script"
+        ],
+        "result": "PASS",
+        "output": "architecture_checks flags are all true: module inventory, dependency graph, code refs, flyway strategy, 14-module coverage.",
+        "fileRefs": [
+          "docs/architecture.md"
+        ]
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-DOC-014",
+      "title": "Developer workflow and onboarding guide",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Read docs/developer-guide.md and verify day-1 onboarding sections.",
+          "expected": "Guide includes workflow, local setup, testing, module development conventions, deployment notes, debugging tips.",
+          "observed": "Developer guide includes all required sections with executable commands and conventions for DTOs, error handling, idempotency, audit, CI overview, and troubleshooting."
+        }
+      ],
+      "evidence": {
+        "commands": [
+          "python3 docs content validation script"
+        ],
+        "result": "PASS",
+        "output": "developer_guide_checks flags are all true for all six required sections.",
+        "fileRefs": [
+          "docs/developer-guide.md"
+        ]
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Task subagent spawn failed with model alias error (`Invalid model: custom:CLIProxyAPI-5.3-codex-xhigh-pro`).",
+      "resolved": true,
+      "resolution": "Executed flow validation directly in-session and produced flow report artifact manually.",
+      "affectedAssertions": [
+        "VAL-DOC-010",
+        "VAL-DOC-011",
+        "VAL-DOC-014"
+      ]
+    }
+  ],
+  "blockers": [],
+  "summary": "Validated docs-core assertion group through direct file inspection plus executable gate-fast evidence; all three assertions passed."
+}

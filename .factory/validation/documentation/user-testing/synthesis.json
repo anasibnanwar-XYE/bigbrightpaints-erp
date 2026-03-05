@@ -1,0 +1,28 @@
+{
+  "milestone": "documentation",
+  "round": 1,
+  "status": "pass",
+  "assertionsSummary": {
+    "total": 5,
+    "passed": 5,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-DOC-010",
+    "VAL-DOC-011",
+    "VAL-DOC-012",
+    "VAL-DOC-013",
+    "VAL-DOC-014"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Added `Flow Validator Guidance: docs` section defining documentation-surface validation boundaries, evidence expectations, and parallel-safety constraints.",
+      "source": "setup"
+    }
+  ],
+  "previousRound": null
+}

@@ -44,3 +44,10 @@ Testing surface: tools, URLs, setup steps, isolation notes, known quirks.
 - Shared-state safety: do **not** restart Docker/services, do **not** run destructive DB resets, and avoid editing shared config during flow execution.
 - Concurrency guard: avoid parallel Maven test execution in multiple validators; if running tests, execute assigned command set in isolation and keep scope to assertion-specific tests.
 - Evidence minimum for each assertion: executed command/request, observed status/output, and explicit pass/fail/blocked reason.
+
+## Flow Validator Guidance: docs
+- Surface: repository documentation files (`README.md`, `docs/**`) validated via file reads and targeted content checks.
+- Isolation: validators must only read docs and validation outputs; do **not** edit source files or regenerate docs during validation.
+- Shared-state safety: avoid running heavy parallel validators that re-run full Maven suites simultaneously; reuse existing scrutiny/test outputs where relevant.
+- Assertion checks: verify required files exist, required sections/keywords are present, and guidance explicitly matches contract language (including "NOT IMPLEMENTED" for design-only artifacts).
+- Evidence minimum for each assertion: include command(s) used, exact observed section/headings/content snippets, and explicit pass/fail/blocked decision.
