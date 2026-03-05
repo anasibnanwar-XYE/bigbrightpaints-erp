@@ -1,0 +1,21 @@
+{
+  "featureId": "private-ledger-design-doc",
+  "reviewedAt": "2026-03-05T01:18:31Z",
+  "commitId": "422f9cec82d00f435d5781ed8004a7c6cdb89757",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "docs/design/private-ledger.md is clearly design-only, includes all required sections, and explicitly states NOT IMPLEMENTED. Content is actionable without introducing implementation drift. No issues found.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "skills",
+      "observation": "Another docs-only feature reported TDD-first deviation; this mirrors a systemic mismatch between backend-worker TDD wording and documentation feature types.",
+      "evidence": "private-ledger-design-doc handoff skillFeedback notes TDD-first not applicable for design-only documentation scope."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. docs/design/private-ledger.md is clearly design-only, includes all required sections, and explicitly states NOT IMPLEMENTED. Content is actionable without introducing implementation drift. No issues found."
+}

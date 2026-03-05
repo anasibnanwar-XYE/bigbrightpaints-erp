@@ -1,0 +1,40 @@
+{
+  "milestone": "documentation",
+  "round": 1,
+  "status": "pass",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "cd erp-domain && mvn test -Pgate-fast -Djacoco.skip=true",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "cd erp-domain && mvn compile -q",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "echo \"Checkstyle in advisory mode (49962 pre-existing violations). Skipped as hard gate.\"",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 5,
+    "passed": 5,
+    "failed": 0,
+    "failedFeatures": []
+  },
+  "blockingIssues": [],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "skills/backend-worker",
+      "suggestion": "Add an explicit documentation-only execution branch clarifying that TDD-first test authoring is not required for pure docs/design features while still requiring baseline and final regression validator runs.",
+      "evidence": "Both developer-workflow-guide and private-ledger-design-doc handoffs reported TDD-first deviations because the features were documentation-only and introduced no runtime behavior changes.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [],
+  "previousRound": null
+}

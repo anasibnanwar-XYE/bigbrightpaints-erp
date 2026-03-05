@@ -1,0 +1,15 @@
+{
+  "featureId": "user-workflow-guides",
+  "reviewedAt": "2026-03-05T01:18:31Z",
+  "commitId": "d3ec10e38181fde2266b950d28d8145e9ac95b64",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "docs/workflows contains all requested business-facing guides (8 files) with stepwise API mapping, expected outcomes, and troubleshooting notes. Audience alignment and scope coverage are good. No review issues found.",
+    "issues": []
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": null,
+  "summary": "PASS. docs/workflows contains all requested business-facing guides (8 files) with stepwise API mapping, expected outcomes, and troubleshooting notes. Audience alignment and scope coverage are good. No review issues found."
+}
