@@ -1,0 +1,21 @@
+{
+  "featureId": "ci-pipeline-verification",
+  "reviewedAt": "2026-03-05T09:41:00+05:30",
+  "commitId": "ce8ceb5eb958ba7f6437c0cde2e4a7f01d9cec32",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "CI verification feature delivered the requested outcomes: gate scripts were stabilized for strict Bash mode, gate-fast and Docker build were validated, migration_v2 remained explicitly active in workflow env, and README now documents CI-specific DIFF_BASE and Docker invocation details. Compatibility guards were added for legacy contract/doc checks so Factory-droid branch can run gates in its current layout.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "services",
+      "observation": "When Task subagents are unavailable due model-alias resolution errors, scrutiny validation still proceeds via manual evidence review; this fallback is currently implicit and should be documented in validator procedure guidance.",
+      "evidence": "In this session, Task invocations for scrutiny-feature-reviewer failed with `Invalid model: custom:CLIProxyAPI-5.3-codex-xhigh-pro`, requiring manual report generation for both reviewed features."
+    }
+  ],
+  "addressesFailureFrom": null,
+  "summary": "PASS. CI pipeline verification changes satisfy VAL-CLEAN-003 intent and are backed by successful gate-fast, compile, script, and Docker-build evidence."
+}
