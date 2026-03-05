@@ -1,0 +1,29 @@
+{
+  "milestone": "commercial-review",
+  "round": 1,
+  "status": "pass",
+  "generatedAt": "2026-03-05T22:04:33Z",
+  "assertionsSummary": {
+    "total": 3,
+    "passed": 3,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-O2C-001",
+    "VAL-O2C-002",
+    "VAL-P2P-001"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "previousRound": null,
+  "flowReports": [
+    ".factory/validation/commercial-review/user-testing/flows/order-to-cash.json",
+    ".factory/validation/commercial-review/user-testing/flows/procure-to-pay.json"
+  ],
+  "environmentConstraints": [
+    "Delegated Task/subagent launches failed with `Invalid model: custom:CLIProxyAPI-5.4-xhigh`; flow validation was completed directly in-session after documenting the failure path in `.factory/library/user-testing.md`.",
+    "Passive runtime setup probes were unavailable during this round (`curl -sf http://localhost:8081/actuator/health` exit 7; TCP connect to 127.0.0.1:5433 refused), but the commercial-review assertion set was documentation-only and remained fully testable via `docs/code-review/**`."
+  ]
+}

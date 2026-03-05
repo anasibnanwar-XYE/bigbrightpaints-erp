@@ -1,0 +1,64 @@
+{
+  "groupId": "commercial-order-to-cash-docs",
+  "surface": "docs",
+  "generatedAt": "2026-03-05T22:04:33Z",
+  "assertions": [
+    {
+      "id": "VAL-O2C-001",
+      "status": "pass",
+      "reason": "The order-to-cash review narrates dealer onboarding/search, dealer portal views, credit requests, credit-limit overrides, sales-order lifecycle, dispatch confirmation, invoice generation, settlement, aging, and accounting linkages across entrypoints, service chain, and data path sections.",
+      "evidence": [
+        {
+          "source": "docs/code-review/flows/order-to-cash.md",
+          "observed": "Contains `## Entrypoints`, `## Data path and schema touchpoints`, `## Service chain`, `## State machine and idempotency assumptions`, and `## Risk hotspots`, matching the required contract surfaces for narrative, call-chain, and data-path coverage."
+        },
+        {
+          "source": "docs/code-review/flows/order-to-cash.md",
+          "observed": "Service-chain subsections explicitly cover `Dealer onboarding, maintenance, and search`, `Sales order creation, search, and lifecycle`, `Dispatch confirmation is the accounting truth boundary`, and `Cash receipt, settlement, and auto-settlement`."
+        },
+        {
+          "source": ".factory/validation/commercial-review/scrutiny/reviews/order-to-cash-review.json",
+          "observed": "Scrutiny summary states the doc satisfies VAL-O2C-001 and narrates dealer onboarding, dealer portal, credit requests, override approvals, sales-order lifecycle, dispatch confirmation, invoice generation, settlement, aging/ledger, and accounting linkages with concrete evidence."
+        },
+        {
+          "source": "python3 doc assertion check (2026-03-05T22:04:33Z)",
+          "observed": "Read-only validator reported `order_to_cash: PASS` after checking the required headings and order-to-cash integrity snippets in the documentation file."
+        }
+      ]
+    },
+    {
+      "id": "VAL-O2C-002",
+      "status": "pass",
+      "reason": "The order-to-cash review explicitly records state-machine assumptions, idempotency expectations, credit and approval semantics, dispatch/accounting coupling, and ERP integrity risks with concrete code references and severity-rated findings.",
+      "evidence": [
+        {
+          "source": "docs/code-review/flows/order-to-cash.md",
+          "observed": "`## State machine and idempotency assumptions` documents dealer, sales-order, credit-request, override-request, packaging-slip, and invoice state expectations plus explicit idempotency assumptions for order creation, dispatch confirm, invoice settlement, and receipt allocation."
+        },
+        {
+          "source": "docs/code-review/flows/order-to-cash.md",
+          "observed": "`## Risk hotspots` includes severity-rated integrity findings that dispatch confirmation is the true AR/revenue/COGS boundary, order status handling accepts legacy aliases, credit-request approval directly increments `Dealer.creditLimit`, and override approvals are reused for price/discount/tax/admin-credit exceptions."
+        },
+        {
+          "source": "docs/code-review/flows/order-to-cash.md",
+          "observed": "`## Security, privacy, protocol, performance, and observability notes` highlights the dispatch workflow as the busiest and most sensitive path, dependence on pending-exposure and ledger-sync accuracy, and degraded runtime verification during the review session."
+        },
+        {
+          "source": ".factory/validation/commercial-review/scrutiny/reviews/order-to-cash-review.json",
+          "observed": "Scrutiny summary states the artifact covers the required state-machine, idempotency, accounting-coupling, and ERP-integrity angles without review defects."
+        }
+      ]
+    }
+  ],
+  "toolsUsed": [
+    "Task (delegation attempt failed)",
+    "Read",
+    "Grep",
+    "Execute"
+  ],
+  "frictions": [
+    "Task delegation to `user-testing-flow-validator` failed in this environment with `Invalid model: custom:CLIProxyAPI-5.4-xhigh`, so validation fell back to direct in-session docs inspection per `.factory/library/user-testing.md`.",
+    "Passive runtime setup probes remained degraded during this round (`curl -sf http://localhost:8081/actuator/health` exited 7 and a TCP probe to 127.0.0.1:5433 returned connection refused), but the commercial-review assertion set was fully testable through `docs/code-review/**`."
+  ],
+  "blockers": []
+}
