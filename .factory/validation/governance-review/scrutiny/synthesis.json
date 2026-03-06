@@ -1,7 +1,7 @@
 {
   "milestone": "governance-review",
-  "round": 1,
-  "status": "fail",
+  "round": 2,
+  "status": "pass",
   "validatorsRun": {
     "test": {
       "passed": true,
@@ -20,35 +20,27 @@
     }
   },
   "reviewsSummary": {
-    "total": 3,
-    "passed": 2,
-    "failed": 1,
-    "failedFeatures": [
-      "remediation-backlog-synthesis"
-    ]
+    "total": 1,
+    "passed": 1,
+    "failed": 0,
+    "failedFeatures": []
   },
-  "blockingIssues": [
-    {
-      "featureId": "remediation-backlog-synthesis",
-      "severity": "blocking",
-      "description": "`remediation-backlog-synthesis` added `docs/code-review/remediation-backlog.md` without refreshing `docs/code-review/README.md`; the README still says the backlog is pending and does not link it, so current HEAD regresses VAL-CROSS-001's requirement that the review index link every produced artifact and reflect the final review structure."
-    }
-  ],
+  "blockingIssues": [],
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
       "target": "skills/review-worker",
-      "suggestion": "When a docs-only review feature adds a new required artifact under `docs/code-review/` after synthesis/index files already exist, require the worker to update `docs/code-review/README.md` (and any related index files) in the same change so VAL-CROSS-001 stays true on milestone HEAD.",
-      "evidence": "Commit `489da9c3736dd36ea6091fdc12c4bfcea7e1c443` added `docs/code-review/remediation-backlog.md` only; `README.md` still says the backlog is a remaining planned artifact and omits a link to it, which is the blocking issue in this scrutiny round.",
+      "suggestion": "When a docs-only review feature adds a new required artifact under `docs/code-review/` after synthesis/index files already exist, require the worker to refresh `docs/code-review/README.md` (and any related index files) in the same change so VAL-CROSS-001 stays true on milestone HEAD.",
+      "evidence": "Round-1 scrutiny failed because commit `489da9c3736dd36ea6091fdc12c4bfcea7e1c443` added only `docs/code-review/remediation-backlog.md`; fix commit `6657832bd3b599cf4702c9850d7ada5351bce9bb` had to repair `docs/code-review/README.md` separately by adding the backlog link, removing stale pending-artifact language, and recording governance-review scrutiny status.",
       "isSystemic": false
     },
     {
       "target": "skills/scrutiny-validator",
       "suggestion": "Document a first-class manual fallback for reviewer fan-out failures: if `scrutiny-feature-reviewer` subagents cannot launch because of model alias/runtime issues, inspect the handoffs, transcript skeletons, and diffs directly, then author the per-feature review JSON files in-session before continuing synthesis.",
-      "evidence": "All three `scrutiny-feature-reviewer` Task launches for governance-review failed in this run with `Invalid model: custom:CLIProxyAPI-5.4-xhigh`, so the reviews had to be completed manually in-session.",
+      "evidence": "The rerun again attempted Task-based review fan-out and failed with `Invalid model: custom:CLIProxyAPI-5.4-xhigh`, so governance-review scrutiny still required direct in-session review authoring for `governance-review-index-sync-fix`.",
       "isSystemic": true
     }
   ],
   "rejectedObservations": [],
-  "previousRound": null
+  "previousRound": ".factory/validation/governance-review/scrutiny/synthesis.round1.json"
 }
