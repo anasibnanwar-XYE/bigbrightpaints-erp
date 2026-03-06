@@ -320,17 +320,45 @@ public class AdminUserService {
                                                         String denialReason,
                                                         boolean lockTarget,
                                                         OutOfScopeResponseMode outOfScopeResponseMode) {
+        boolean superAdmin = hasSuperAdminAuthority();
         java.util.Optional<UserAccount> candidate = lockTarget
-                ? userRepository.lockById(userId)
+                ? resolveLockedAdminActionTarget(userId, activeCompany, superAdmin)
                 : userRepository.findById(userId);
-        UserAccount user = candidate
-                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(USER_NOT_FOUND_MESSAGE));
-        if (hasSuperAdminAuthority()) {
+        UserAccount user = candidate.orElse(null);
+        if (user == null) {
+            if (!superAdmin && lockTarget) {
+                return userRepository.findById(userId)
+                        .map(outOfScopeUser -> handleOutOfScopeAdminAction(
+                                outOfScopeUser,
+                                activeCompany,
+                                denialReason,
+                                outOfScopeResponseMode))
+                        .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(USER_NOT_FOUND_MESSAGE));
+            }
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(USER_NOT_FOUND_MESSAGE);
+        }
+        if (superAdmin) {
             return user;
         }
         if (isUserWithinCompanyScope(user, activeCompany)) {
             return user;
         }
+        return handleOutOfScopeAdminAction(user, activeCompany, denialReason, outOfScopeResponseMode);
+    }
+
+    private java.util.Optional<UserAccount> resolveLockedAdminActionTarget(Long userId,
+                                                                           Company activeCompany,
+                                                                           boolean superAdmin) {
+        if (superAdmin || activeCompany == null || activeCompany.getId() == null) {
+            return userRepository.lockById(userId);
+        }
+        return userRepository.lockByIdAndCompanyId(userId, activeCompany.getId());
+    }
+
+    private UserAccount handleOutOfScopeAdminAction(UserAccount user,
+                                                    Company activeCompany,
+                                                    String denialReason,
+                                                    OutOfScopeResponseMode outOfScopeResponseMode) {
         auditPrivilegedUserActionDenied(user, activeCompany, denialReason);
         if (outOfScopeResponseMode == OutOfScopeResponseMode.MASK_AS_MISSING) {
             throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(USER_NOT_FOUND_MESSAGE);

@@ -440,7 +440,7 @@ class AdminUserServiceTest {
     }
 
     @Test
-    void suspend_crossTenantUser_forTenantAdmin_masksTargetAsMissingAndAuditsDenial() {
+    void suspend_crossTenantUser_forTenantAdmin_usesScopedLockAndMasksTargetAsMissing() {
         Company foreignCompany = new Company();
         ReflectionTestUtils.setField(foreignCompany, "id", 21L);
         foreignCompany.setCode("FOREIGN");
@@ -449,12 +449,96 @@ class AdminUserServiceTest {
         ReflectionTestUtils.setField(foreignUser, "id", 306L);
         foreignUser.addCompany(foreignCompany);
 
-        when(userRepository.lockById(306L)).thenReturn(Optional.of(foreignUser));
+        when(userRepository.lockByIdAndCompanyId(306L, 1L)).thenReturn(Optional.empty());
+        when(userRepository.findById(306L)).thenReturn(Optional.of(foreignUser));
 
         assertThatThrownBy(() -> service.suspend(306L))
                 .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("User not found");
 
+        verify(userRepository).lockByIdAndCompanyId(306L, 1L);
+        verify(userRepository, never()).lockById(306L);
+        verify(auditService).logAuthFailure(
+                eq(AuditEvent.ACCESS_DENIED),
+                eq("UNKNOWN_AUTH_ACTOR"),
+                eq("TEST"),
+                any(Map.class));
+        verify(userRepository, never()).save(any(UserAccount.class));
+    }
+
+    @Test
+    void unsuspend_crossTenantUser_forTenantAdmin_usesScopedLockAndMasksTargetAsMissing() {
+        Company foreignCompany = new Company();
+        ReflectionTestUtils.setField(foreignCompany, "id", 21L);
+        foreignCompany.setCode("FOREIGN");
+
+        UserAccount foreignUser = new UserAccount("foreign-user@example.com", "hash", "Foreign User");
+        ReflectionTestUtils.setField(foreignUser, "id", 308L);
+        foreignUser.addCompany(foreignCompany);
+
+        when(userRepository.lockByIdAndCompanyId(308L, 1L)).thenReturn(Optional.empty());
+        when(userRepository.findById(308L)).thenReturn(Optional.of(foreignUser));
+
+        assertThatThrownBy(() -> service.unsuspend(308L))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("User not found");
+
+        verify(userRepository).lockByIdAndCompanyId(308L, 1L);
+        verify(userRepository, never()).lockById(308L);
+        verify(auditService).logAuthFailure(
+                eq(AuditEvent.ACCESS_DENIED),
+                eq("UNKNOWN_AUTH_ACTOR"),
+                eq("TEST"),
+                any(Map.class));
+        verify(userRepository, never()).save(any(UserAccount.class));
+    }
+
+    @Test
+    void deleteUser_crossTenantUser_forTenantAdmin_usesScopedLockAndMasksTargetAsMissing() {
+        Company foreignCompany = new Company();
+        ReflectionTestUtils.setField(foreignCompany, "id", 21L);
+        foreignCompany.setCode("FOREIGN");
+
+        UserAccount foreignUser = new UserAccount("foreign-user@example.com", "hash", "Foreign User");
+        ReflectionTestUtils.setField(foreignUser, "id", 309L);
+        foreignUser.addCompany(foreignCompany);
+
+        when(userRepository.lockByIdAndCompanyId(309L, 1L)).thenReturn(Optional.empty());
+        when(userRepository.findById(309L)).thenReturn(Optional.of(foreignUser));
+
+        assertThatThrownBy(() -> service.deleteUser(309L))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("User not found");
+
+        verify(userRepository).lockByIdAndCompanyId(309L, 1L);
+        verify(userRepository, never()).lockById(309L);
+        verify(auditService).logAuthFailure(
+                eq(AuditEvent.ACCESS_DENIED),
+                eq("UNKNOWN_AUTH_ACTOR"),
+                eq("TEST"),
+                any(Map.class));
+        verify(userRepository, never()).delete(any(UserAccount.class));
+    }
+
+    @Test
+    void disableMfa_crossTenantUser_forTenantAdmin_usesScopedLockAndMasksTargetAsMissing() {
+        Company foreignCompany = new Company();
+        ReflectionTestUtils.setField(foreignCompany, "id", 21L);
+        foreignCompany.setCode("FOREIGN");
+
+        UserAccount foreignUser = new UserAccount("foreign-user@example.com", "hash", "Foreign User");
+        ReflectionTestUtils.setField(foreignUser, "id", 310L);
+        foreignUser.addCompany(foreignCompany);
+
+        when(userRepository.lockByIdAndCompanyId(310L, 1L)).thenReturn(Optional.empty());
+        when(userRepository.findById(310L)).thenReturn(Optional.of(foreignUser));
+
+        assertThatThrownBy(() -> service.disableMfa(310L))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("User not found");
+
+        verify(userRepository).lockByIdAndCompanyId(310L, 1L);
+        verify(userRepository, never()).lockById(310L);
         verify(auditService).logAuthFailure(
                 eq(AuditEvent.ACCESS_DENIED),
                 eq("UNKNOWN_AUTH_ACTOR"),
