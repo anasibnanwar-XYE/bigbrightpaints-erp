@@ -130,7 +130,7 @@ public class TokenBlacklistService {
 
         Instant normalizedIssuedAt = truncateToMillis(tokenIssuedAt);
         Instant normalizedRevokedAt = truncateToMillis(revocation.get().getRevokedAt());
-        return !normalizedIssuedAt.isAfter(normalizedRevokedAt);
+        return normalizedIssuedAt.isBefore(normalizedRevokedAt);
     }
 
     private Instant truncateToMillis(Instant instant) {

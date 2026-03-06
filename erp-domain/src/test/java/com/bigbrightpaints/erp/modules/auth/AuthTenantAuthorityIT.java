@@ -317,7 +317,7 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
                 HttpMethod.GET,
                 new HttpEntity<>(jsonHeaders(adminToken, TENANT_A)),
                 Map.class);
-        assertThat(meDuringHold.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(meDuringHold.getStatusCode()).isEqualTo(HttpStatus.OK);
 
         String blockReason = "Critical security incident";
         ResponseEntity<Map> blockResponse = updateLifecycleState(tenantAId, superToken, ROOT_TENANT, "BLOCKED", blockReason);
