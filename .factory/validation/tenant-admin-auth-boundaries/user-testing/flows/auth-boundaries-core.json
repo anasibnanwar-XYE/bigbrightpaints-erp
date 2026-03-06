@@ -1,0 +1,222 @@
+{
+  "groupId": "auth-boundaries-core",
+  "surface": "api",
+  "appUrl": "http://localhost:8081",
+  "testedAt": "2026-03-06T16:06:30Z",
+  "credentials": {
+    "account": "ut_taab_auth_boundaries_1",
+    "namespace": "ut_taab_auth_boundaries_1"
+  },
+  "toolsUsed": [
+    "python urllib runtime probes",
+    "mvn test targeted suites",
+    "docker compose current-code runtime restart"
+  ],
+  "assertions": [
+    {
+      "id": "VAL-AUTHZ-001",
+      "title": "Must-change-password users stay in a password-change corridor",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Log in as seeded tenant admin `uat.admin@example.com` with `mustChangePassword=true` on the current-code runtime",
+          "expected": "Login succeeds, response exposes `mustChangePassword=true`, and `/auth/me` still reports corridor state",
+          "observed": "`POST /api/v1/auth/login` returned 200 with `mustChangePassword=true`; `GET /api/v1/auth/me` with `X-Company-Code: MOCK` returned 200 and the payload still reported `mustChangePassword=true`."
+        },
+        {
+          "action": "Probe a normal protected admin surface before password change",
+          "expected": "Protected work is blocked until the password is changed",
+          "observed": "`GET /api/v1/admin/users` returned 403 with controlled payload `{code: AUTH_004, reason: PASSWORD_CHANGE_REQUIRED, mustChangePassword: true}`."
+        },
+        {
+          "action": "Run targeted corridor regression suites",
+          "expected": "Corridor-focused tests pass",
+          "observed": "The targeted Maven subset passed (54 tests total) including `AuthControllerIT`, `PasswordServiceTest`, and `TenantRuntimeEnforcementAuthIT`; `AuthControllerIT.must_change_password_user_can_detect_corridor_but_is_blocked_from_admin_surface_until_password_changed` is covered in the passing subset."
+        }
+      ],
+      "evidence": {
+        "runtime": {
+          "loginStatus": 200,
+          "meStatus": 200,
+          "blockedAdminStatus": 403,
+          "blockedAdminCode": "AUTH_004",
+          "blockedAdminReason": "PASSWORD_CHANGE_REQUIRED"
+        },
+        "tests": {
+          "command": "cd /home/realnigga/Desktop/Mission-control/erp-domain && mvn test -Djacoco.skip=true -pl . '-Dtest=AuthControllerIT,PasswordServiceTest,TenantRuntimeEnforcementAuthIT,AdminUserSecurityIT,CompanyContextFilterPasswordResetBypassTest,AdminSettingsControllerTenantRuntimeContractTest,SystemSettingsServiceCorsTest,AuthHardeningIT,OpenApiSnapshotIT'",
+          "result": "BUILD SUCCESS; Tests run: 54, Failures: 0, Errors: 0, Skipped: 0"
+        }
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-RESET-002",
+      "title": "Resetting or controlling other users respects tenant and role boundaries",
+      "status": "fail",
+      "steps": [
+        {
+          "action": "Probe representative cross-tenant admin denials and super-admin allows on the current-code runtime",
+          "expected": "Tenant admin is denied cross-tenant privileged actions while super-admin can perform the same action",
+          "observed": "Tenant admin `ut.taab.admin2@example.com` in `UTTAAB2` received 403 `AUTH_004` on `POST /api/v1/admin/users/3/force-reset-password` and `PUT /api/v1/admin/users/3/status`; super-admin successfully updated the same user status with 200 and the user was re-enabled afterward."
+        },
+        {
+          "action": "Run the dedicated tenant-authority integration suite",
+          "expected": "Cross-tenant reset/control matrix and denial evidence are green",
+          "observed": "`mvn test -Djacoco.skip=true -pl . '-Dtest=AuthTenantAuthorityIT'` failed 3/23 tests. Two failures (`tenant_admin_cross_tenant_privileged_user_actions_are_denied_and_audited`, `admin_cannot_create_tenant_admin_user`) reported `Audit event ACCESS_DENIED not found with expected metadata`, and `control_plane_support_reset_denials_use_uniform_message_for_unknown_and_foreign_tenants` remained red."
+        }
+      ],
+      "evidence": {
+        "runtime": {
+          "tenantAdminForceResetStatus": 403,
+          "tenantAdminDisableStatus": 403,
+          "superAdminDisableStatus": 200,
+          "superAdminEnableRestoreStatus": 200
+        },
+        "tests": {
+          "command": "cd /home/realnigga/Desktop/Mission-control/erp-domain && mvn test -Djacoco.skip=true -pl . '-Dtest=AuthTenantAuthorityIT'",
+          "result": "BUILD FAILURE; Tests run: 23, Failures: 3, Errors: 0, Skipped: 0",
+          "failingCases": [
+            "tenant_admin_cross_tenant_privileged_user_actions_are_denied_and_audited",
+            "admin_cannot_create_tenant_admin_user",
+            "control_plane_support_reset_denials_use_uniform_message_for_unknown_and_foreign_tenants"
+          ]
+        }
+      },
+      "issues": [
+        "Denied tenant-admin boundary cases still fail the audit-evidence assertions in `AuthTenantAuthorityIT`, so this assertion is not validation-clean even though representative runtime denials now return 403.",
+        "The support-reset denial regression suite remains red, so reset-boundary behavior does not yet have passing end-to-end validation evidence."
+      ]
+    },
+    {
+      "id": "VAL-AUTHZ-002",
+      "title": "Privileged auth-sensitive user actions are boundary-consistent",
+      "status": "fail",
+      "steps": [
+        {
+          "action": "Check runtime deny/allow behavior for representative privileged actions",
+          "expected": "Tenant admin gets controlled denials while super-admin retains the allowed path",
+          "observed": "On the rebuilt runtime, tenant admin cross-tenant force-reset and disable attempts returned 403 `AUTH_004`, while super-admin disable/restore on the same user returned 200."
+        },
+        {
+          "action": "Review boundary-matrix integration coverage",
+          "expected": "The full privileged-action matrix passes, including denial audit evidence",
+          "observed": "`AdminUserSecurityIT` passed inside the 54-test targeted subset, but the dedicated `AuthTenantAuthorityIT` matrix still failed 3/23 tests because denied privileged actions did not emit the expected `ACCESS_DENIED` audit evidence and the support-reset denial contract regression remains red."
+        }
+      ],
+      "evidence": {
+        "runtime": {
+          "tenantAdminDeniedCode": "AUTH_004",
+          "superAdminAllowedStatus": 200
+        },
+        "tests": {
+          "passingSubset": "`AdminUserSecurityIT` passed as part of the 54-test successful targeted run.",
+          "failingMatrix": "`AuthTenantAuthorityIT` failed 3/23 tests with missing denial audit metadata and one remaining support-reset contract regression."
+        }
+      },
+      "issues": [
+        "Privileged-action denial auditing is still not validation-clean in `AuthTenantAuthorityIT`, so the matrix evidence required by this assertion is incomplete.",
+        "A remaining denial-contract regression in the support-reset path keeps the boundary suite red."
+      ]
+    },
+    {
+      "id": "VAL-AUTHZ-003",
+      "title": "Global security/runtime settings are not tenant-admin writable",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Fetch current global settings as super-admin and replay the same payload as tenant admin and super-admin",
+          "expected": "Tenant admin is denied mutating global settings while super-admin succeeds",
+          "observed": "`GET /api/v1/admin/settings` returned 200 for super-admin. Replaying the same payload as tenant admin `ut.taab.admin2@example.com` returned 403 `AUTH_004`; replaying as super-admin returned 200 `Settings updated`."
+        },
+        {
+          "action": "Run admin settings authorization regression suites",
+          "expected": "Admin settings authorization tests pass",
+          "observed": "The targeted Maven subset passed (54 tests total) and included `AdminSettingsControllerTenantRuntimeContractTest`, `SystemSettingsServiceCorsTest`, and `AdminUserSecurityIT` coverage for the denied tenant-admin settings path."
+        }
+      ],
+      "evidence": {
+        "runtime": {
+          "tenantAdminPutStatus": 403,
+          "superAdminPutStatus": 200,
+          "tenantAdminDeniedCode": "AUTH_004"
+        },
+        "tests": {
+          "command": "cd /home/realnigga/Desktop/Mission-control/erp-domain && mvn test -Djacoco.skip=true -pl . '-Dtest=AuthControllerIT,PasswordServiceTest,TenantRuntimeEnforcementAuthIT,AdminUserSecurityIT,CompanyContextFilterPasswordResetBypassTest,AdminSettingsControllerTenantRuntimeContractTest,SystemSettingsServiceCorsTest,AuthHardeningIT,OpenApiSnapshotIT'",
+          "result": "BUILD SUCCESS; Tests run: 54, Failures: 0, Errors: 0, Skipped: 0"
+        }
+      },
+      "issues": null
+    },
+    {
+      "id": "VAL-SEC-001",
+      "title": "Auth-sensitive failures return controlled application contracts",
+      "status": "pass",
+      "steps": [
+        {
+          "action": "Probe invalid tenant binding on the runtime login surface",
+          "expected": "Failure returns a controlled JSON envelope instead of raw servlet/framework output",
+          "observed": "`POST /api/v1/auth/login` with `companyCode=UTTAAB2` for `uat.sales@example.com` returned 400 JSON with `success=false`, `code=VAL_001`, `reason=User not assigned to company: UTTAAB2`, and a trace id/path payload."
+        },
+        {
+          "action": "Probe the retired super-admin forgot-password alias",
+          "expected": "Retired alias returns a controlled retirement contract",
+          "observed": "`POST /api/v1/auth/password/forgot/superadmin` returned 410 JSON with message `Deprecated super-admin forgot-password alias has been retired; use the supported recovery routes` and canonical replacement paths in `data`."
+        },
+        {
+          "action": "Run auth-hardening regression suites",
+          "expected": "Auth-sensitive contract tests pass",
+          "observed": "The targeted Maven subset passed (54 tests total) and included `AuthHardeningIT`, `AuthControllerIT`, `CompanyContextFilterPasswordResetBypassTest`, and `OpenApiSnapshotIT`."
+        }
+      ],
+      "evidence": {
+        "runtime": {
+          "invalidTenantLoginStatus": 400,
+          "invalidTenantCode": "VAL_001",
+          "retiredAliasStatus": 410
+        },
+        "tests": {
+          "command": "cd /home/realnigga/Desktop/Mission-control/erp-domain && mvn test -Djacoco.skip=true -pl . '-Dtest=AuthControllerIT,PasswordServiceTest,TenantRuntimeEnforcementAuthIT,AdminUserSecurityIT,CompanyContextFilterPasswordResetBypassTest,AdminSettingsControllerTenantRuntimeContractTest,SystemSettingsServiceCorsTest,AuthHardeningIT,OpenApiSnapshotIT'",
+          "result": "BUILD SUCCESS; Tests run: 54, Failures: 0, Errors: 0, Skipped: 0"
+        }
+      },
+      "issues": null
+    }
+  ],
+  "frictions": [
+    {
+      "description": "Launching the delegated `user-testing-flow-validator` subagent failed immediately with `Invalid model: custom:CLIProxyAPI-5.4-high`.",
+      "resolved": true,
+      "resolution": "Fell back to direct in-session validation and recorded the newer invalid-model variant in `.factory/library/user-testing.md`.",
+      "affectedAssertions": [
+        "VAL-RESET-002",
+        "VAL-AUTHZ-001",
+        "VAL-AUTHZ-002",
+        "VAL-AUTHZ-003",
+        "VAL-SEC-001"
+      ]
+    },
+    {
+      "description": "A plain `docker compose up -d --build app` did not produce a testable current-code runtime because `.env` forced `SPRING_PROFILES_ACTIVE=dev`, the compose database only had `flyway_schema_history_v2`, and production CORS validation rejected the persisted HTTP origins.",
+      "resolved": true,
+      "resolution": "Restarted the compose app with `SPRING_PROFILES_ACTIVE='prod,flyway-v2' ERP_CORS_ALLOWED_ORIGINS='https://app.bigbrightpaints.com' ERP_CORS_ALLOW_TAILSCALE_HTTP_ORIGINS='true' DB_PORT=5433 docker compose up -d app` and documented the setup override in `.factory/library/user-testing.md`.",
+      "affectedAssertions": [
+        "VAL-RESET-002",
+        "VAL-AUTHZ-001",
+        "VAL-AUTHZ-002",
+        "VAL-AUTHZ-003",
+        "VAL-SEC-001"
+      ]
+    },
+    {
+      "description": "The current-code runtime returned `503 SYS_004 Failed to dispatch email via SMTP` for the super-admin force-reset probe, so runtime evidence for the allowed reset path could not complete on the live surface.",
+      "resolved": false,
+      "resolution": "Used the passing runtime disable/enable probe plus `AuthTenantAuthorityIT`/`AdminUserSecurityIT` coverage for the remaining privileged reset matrix evidence.",
+      "affectedAssertions": [
+        "VAL-RESET-002",
+        "VAL-AUTHZ-002"
+      ]
+    }
+  ],
+  "blockers": [],
+  "summary": "Validated five tenant-admin-auth-boundaries assertions on the rebuilt current-code runtime plus targeted test suites. `VAL-AUTHZ-001`, `VAL-AUTHZ-003`, and `VAL-SEC-001` passed with matching runtime and regression evidence. `VAL-RESET-002` and `VAL-AUTHZ-002` remain failed because the dedicated `AuthTenantAuthorityIT` matrix still reports missing `ACCESS_DENIED` audit metadata for denied privileged actions and a remaining support-reset denial regression, even though representative runtime 403/200 boundary behavior is now visible." 
+}
