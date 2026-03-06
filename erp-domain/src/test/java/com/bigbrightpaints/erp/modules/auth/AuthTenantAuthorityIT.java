@@ -70,9 +70,25 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
                 List.of("ROLE_SUPER_ADMIN", "ROLE_ADMIN"));
         dataSeeder.ensureUser(SUPER_ADMIN_HIERARCHY_EMAIL, PASSWORD, "Hierarchy Super Admin", TENANT_A,
                 List.of("ROLE_SUPER_ADMIN"));
+        resetSeededUserState(ADMIN_EMAIL);
+        resetSeededUserState(ROLE_GUARD_ADMIN_EMAIL);
+        resetSeededUserState(NON_PRIVILEGED_ADMIN_EMAIL);
+        resetSeededUserState("other-admin@bbp.com");
+        resetSeededUserState(SUPER_ADMIN_EMAIL);
+        resetSeededUserState(SUPER_ADMIN_HIERARCHY_EMAIL);
         resetTenantLifecycle(TENANT_A);
         resetTenantLifecycle(TENANT_B);
         resetTenantLifecycle(ROOT_TENANT);
+    }
+
+    private void resetSeededUserState(String email) {
+        userAccountRepository.findByEmailIgnoreCase(email).ifPresent(user -> {
+            user.setEnabled(true);
+            user.setMustChangePassword(false);
+            user.setFailedLoginAttempts(0);
+            user.setLockedUntil(null);
+            userAccountRepository.save(user);
+        });
     }
 
     private void resetTenantLifecycle(String companyCode) {
@@ -212,24 +228,44 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
                 .max()
                 .orElse(0L) + 10_000L;
 
-        ResponseEntity<String> foreignTenantResponse = rest.exchange(
+        ResponseEntity<Map> foreignTenantResponse = rest.exchange(
                 "/api/v1/companies/" + tenantBId + "/support/admin-password-reset",
                 HttpMethod.POST,
                 new HttpEntity<>(Map.of("adminEmail", ADMIN_EMAIL), jsonHeaders(token, TENANT_A)),
-                String.class);
+                Map.class);
 
-        ResponseEntity<String> unknownTenantResponse = rest.exchange(
+        ResponseEntity<Map> unknownTenantResponse = rest.exchange(
                 "/api/v1/companies/" + unknownCompanyId + "/support/admin-password-reset",
                 HttpMethod.POST,
                 new HttpEntity<>(Map.of("adminEmail", ADMIN_EMAIL), jsonHeaders(token, TENANT_A)),
-                String.class);
+                Map.class);
 
         assertThat(foreignTenantResponse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
         assertThat(unknownTenantResponse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
-        assertThat(foreignTenantResponse.getBody()).isEqualTo(unknownTenantResponse.getBody());
-        if (foreignTenantResponse.getBody() != null) {
-            assertThat(foreignTenantResponse.getBody()).contains(CONTROL_PLANE_AUTH_DENIED_MESSAGE);
-        }
+        assertThat(foreignTenantResponse.getBody()).isNotNull();
+        assertThat(unknownTenantResponse.getBody()).isNotNull();
+        assertThat(foreignTenantResponse.getBody().get("success")).isEqualTo(Boolean.FALSE);
+        assertThat(unknownTenantResponse.getBody().get("success")).isEqualTo(Boolean.FALSE);
+        assertThat(foreignTenantResponse.getBody().get("message")).isEqualTo("Access denied");
+        assertThat(unknownTenantResponse.getBody().get("message")).isEqualTo("Access denied");
+        assertThat(foreignTenantResponse.getBody().get("timestamp")).isNotNull();
+        assertThat(unknownTenantResponse.getBody().get("timestamp")).isNotNull();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> foreignTenantError = (Map<String, Object>) foreignTenantResponse.getBody().get("data");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> unknownTenantError = (Map<String, Object>) unknownTenantResponse.getBody().get("data");
+        assertThat(foreignTenantError).isNotNull();
+        assertThat(unknownTenantError).isNotNull();
+        assertThat(foreignTenantError.get("code")).isEqualTo("AUTH_004");
+        assertThat(unknownTenantError.get("code")).isEqualTo("AUTH_004");
+        assertThat(foreignTenantError.get("message")).isEqualTo("Insufficient permissions for this operation");
+        assertThat(unknownTenantError.get("message")).isEqualTo("Insufficient permissions for this operation");
+        assertThat(foreignTenantError.get("reason")).isEqualTo("COMPANY_CONTROL_ACCESS_DENIED");
+        assertThat(unknownTenantError.get("reason")).isEqualTo("COMPANY_CONTROL_ACCESS_DENIED");
+        assertThat(foreignTenantError.get("reasonDetail")).isEqualTo(CONTROL_PLANE_AUTH_DENIED_MESSAGE);
+        assertThat(unknownTenantError.get("reasonDetail")).isEqualTo(CONTROL_PLANE_AUTH_DENIED_MESSAGE);
+        assertThat(foreignTenantError.get("traceId")).isNotNull();
+        assertThat(unknownTenantError.get("traceId")).isNotNull();
     }
 
     @Test
@@ -1012,7 +1048,8 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
     }
 
     private AuditLog awaitAuditEvent(AuditEvent eventType, Predicate<AuditLog> matcher) throws InterruptedException {
-        for (int i = 0; i < 40; i++) {
+        for (int i = 0; i < 80; i++) {
+            entityManager.clear();
             List<AuditLog> logs = entityManager.createQuery(
                             "select distinct al from AuditLog al left join fetch al.metadata where al.eventType = :eventType order by al.timestamp desc",
                             AuditLog.class)
