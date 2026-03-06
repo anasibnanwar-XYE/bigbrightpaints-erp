@@ -34,6 +34,7 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final CompanyContextFilter companyContextFilter;
+    private final MustChangePasswordCorridorFilter mustChangePasswordCorridorFilter;
     private final UserAccountDetailsService userDetailsService;
     private final Environment environment;
     private final boolean swaggerPublic;
@@ -41,11 +42,13 @@ public class SecurityConfig {
     @Autowired
     public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter,
                           CompanyContextFilter companyContextFilter,
+                          MustChangePasswordCorridorFilter mustChangePasswordCorridorFilter,
                           UserAccountDetailsService userDetailsService,
                           @Autowired(required = false) Environment environment,
                           @Value("${erp.security.swagger-public:false}") boolean swaggerPublic) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.companyContextFilter = companyContextFilter;
+        this.mustChangePasswordCorridorFilter = mustChangePasswordCorridorFilter;
         this.userDetailsService = userDetailsService;
         this.environment = environment;
         this.swaggerPublic = swaggerPublic;
@@ -53,9 +56,11 @@ public class SecurityConfig {
 
     SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter,
                    CompanyContextFilter companyContextFilter,
+                   MustChangePasswordCorridorFilter mustChangePasswordCorridorFilter,
                    UserAccountDetailsService userDetailsService,
                    boolean swaggerPublic) {
-        this(jwtAuthenticationFilter, companyContextFilter, userDetailsService, null, swaggerPublic);
+        this(jwtAuthenticationFilter, companyContextFilter, mustChangePasswordCorridorFilter,
+                userDetailsService, null, swaggerPublic);
     }
 
     /**
@@ -98,7 +103,8 @@ public class SecurityConfig {
             })
             .userDetailsService(userDetailsService)
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
-            .addFilterAfter(companyContextFilter, JwtAuthenticationFilter.class);
+            .addFilterAfter(companyContextFilter, JwtAuthenticationFilter.class)
+            .addFilterAfter(mustChangePasswordCorridorFilter, CompanyContextFilter.class);
         return http.build();
     }
 

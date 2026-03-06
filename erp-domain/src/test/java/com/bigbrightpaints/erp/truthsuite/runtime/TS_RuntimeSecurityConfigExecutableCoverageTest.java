@@ -5,6 +5,7 @@ import static org.mockito.Mockito.mock;
 
 import com.bigbrightpaints.erp.core.security.CompanyContextFilter;
 import com.bigbrightpaints.erp.core.security.JwtAuthenticationFilter;
+import com.bigbrightpaints.erp.core.security.MustChangePasswordCorridorFilter;
 import com.bigbrightpaints.erp.core.security.SecurityConfig;
 import com.bigbrightpaints.erp.modules.auth.service.UserAccountDetailsService;
 import java.util.List;
@@ -25,6 +26,7 @@ class TS_RuntimeSecurityConfigExecutableCoverageTest {
         SecurityConfig securityConfig = new SecurityConfig(
                 mock(JwtAuthenticationFilter.class),
                 mock(CompanyContextFilter.class),
+                mock(MustChangePasswordCorridorFilter.class),
                 mock(UserAccountDetailsService.class),
                 null,
                 false);

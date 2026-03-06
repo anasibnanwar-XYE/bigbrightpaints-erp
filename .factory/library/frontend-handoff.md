@@ -29,6 +29,7 @@ Each module section should include:
 - 2026-03-06 `auth-session-revocation-hardening`: no auth/admin request or response shape changes were required. Logout now invalidates all previously issued access and refresh sessions for the authenticated user, and password change, password reset, disablement, lockout, and support hard-reset now consistently reject old tokens instead of letting prior sessions remain usable.
 - 2026-03-06 `auth-reset-recovery-contract-hardening`: supported public forgot/reset, admin force-reset, and support admin-password-reset request/response shapes stay the same. The deprecated compatibility alias `POST /api/v1/auth/password/forgot/superadmin` is now explicitly retired with a `410 Gone` `ApiResponse` that carries `canonicalPath=/api/v1/auth/password/forgot` plus `supportResetPath=/api/v1/companies/{id}/support/admin-password-reset`; public forgot suppresses delivery failures without leaving a newly issued undispatched reset token behind, and admin force-reset now only succeeds when reset-email delivery is enabled and dispatch completes.
 - 2026-03-06 `reset-token-issuance-race-hardening`: no auth/admin request or response shape changes were required. Public forgot-password and admin force-reset now serialize reset-token issuance per user so duplicate or overlapping requests deterministically leave only the latest reset link usable instead of cross-deleting every valid token.
+- 2026-03-06 `must-change-password-corridor-hardening`: login, refresh-token, `/auth/me`, `GET /auth/profile`, password-change, and logout success payloads stay the same. While `mustChangePassword=true`, the backend now confines the bearer session to that corridor, denies normal protected work with a `403` `ApiResponse` carrying `reason=PASSWORD_CHANGE_REQUIRED` and `mustChangePassword=true`, and still preserves company binding on the allowed corridor endpoints.
 
 #### Endpoint Map
 
@@ -52,6 +53,7 @@ Notes:
 - Login/refresh return raw `AuthResponse` (not wrapped in `ApiResponse`).
 - Most other auth endpoints return `ApiResponse<T>`.
 - MFA verification during login is done by `POST /api/v1/auth/login` using `mfaCode` or `recoveryCode` in `LoginRequest`.
+- When `mustChangePassword=true`, only login, refresh-token, `/auth/me`, `GET /auth/profile`, `POST /auth/password/change`, and `POST /auth/logout` remain usable until the password is updated.
 
 #### Auth Flows
 
@@ -85,6 +87,7 @@ Notes:
    1. Authenticated user submits `POST /api/v1/auth/password/change` with current + new password fields.
    2. Backend validates policy/history, updates the stored password, and revokes all previously issued access/refresh tokens for that user.
    3. UI should clear stored tokens and force a fresh login with the new password after success.
+   4. If login or `/auth/me` reports `mustChangePassword = true`, route the user directly into this flow and avoid calling normal protected APIs until the change succeeds.
 
 6. **Token refresh flow**
    1. Before access token expiry (or after 401), call `POST /api/v1/auth/refresh-token` with `{ refreshToken, companyCode }`.

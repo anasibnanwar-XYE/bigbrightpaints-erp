@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Optional;
 
 /**
@@ -75,12 +76,16 @@ public class TokenBlacklistService {
             return;
         }
 
+        Instant revokedAt = truncateToMillis(Instant.now());
+
         Optional<UserTokenRevocation> existing = userTokenRevocationRepository.findByUserId(userId);
         if (existing.isPresent()) {
-            existing.get().setRevokedAt(Instant.now());
+            existing.get().setRevokedAt(revokedAt);
             userTokenRevocationRepository.save(existing.get());
         } else {
-            userTokenRevocationRepository.save(new UserTokenRevocation(userId, "all tokens revoked"));
+            UserTokenRevocation revocation = new UserTokenRevocation(userId, "all tokens revoked");
+            revocation.setRevokedAt(revokedAt);
+            userTokenRevocationRepository.save(revocation);
         }
         logger.info("All tokens revoked for user: {}", userId);
     }
@@ -123,7 +128,16 @@ public class TokenBlacklistService {
             return false;
         }
 
-        return tokenIssuedAt.isBefore(revocation.get().getRevokedAt());
+        Instant normalizedIssuedAt = truncateToMillis(tokenIssuedAt);
+        Instant normalizedRevokedAt = truncateToMillis(revocation.get().getRevokedAt());
+        return normalizedIssuedAt.isBefore(normalizedRevokedAt);
+    }
+
+    private Instant truncateToMillis(Instant instant) {
+        if (instant == null) {
+            return null;
+        }
+        return instant.truncatedTo(ChronoUnit.MILLIS);
     }
 
     /**

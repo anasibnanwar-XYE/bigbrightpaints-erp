@@ -178,9 +178,10 @@ class AuthServiceAuditAttributionTest {
         when(userAccountRepository.findByEmailIgnoreCase("super-admin@example.com")).thenReturn(Optional.of(user));
         when(authenticationManager.authenticate(any())).thenReturn(authentication);
         when(companyRepository.findByCodeIgnoreCase("TARGET")).thenReturn(Optional.of(company("TARGET")));
-        when(tokenService.generateAccessToken(eq("super-admin@example.com"), eq("TARGET"), any(Map.class)))
+        when(tokenService.generateAccessToken(eq("super-admin@example.com"), eq("TARGET"), any(Map.class), any(Instant.class)))
                 .thenReturn("access-new");
-        when(refreshTokenService.issue(eq("super-admin@example.com"), any(Instant.class))).thenReturn("refresh-new");
+        when(refreshTokenService.issue(eq("super-admin@example.com"), any(Instant.class), any(Instant.class)))
+                .thenReturn("refresh-new");
         when(properties.getRefreshTokenTtlSeconds()).thenReturn(3600L);
         when(properties.getAccessTokenTtlSeconds()).thenReturn(900L);
 
@@ -232,9 +233,11 @@ class AuthServiceAuditAttributionTest {
                 eq("user@example.com"),
                 eq("ACME"),
                 argThat((Map<String, Object> claims) ->
-                        claims != null && user.getDisplayName().equals(claims.get("name")))))
+                        claims != null && user.getDisplayName().equals(claims.get("name"))),
+                any(Instant.class)))
                 .thenReturn("access-new");
-        when(refreshTokenService.issue(eq("user@example.com"), any(Instant.class))).thenReturn("refresh-new");
+        when(refreshTokenService.issue(eq("user@example.com"), any(Instant.class), any(Instant.class)))
+                .thenReturn("refresh-new");
         when(properties.getRefreshTokenTtlSeconds()).thenReturn(3600L);
         when(properties.getAccessTokenTtlSeconds()).thenReturn(900L);
 

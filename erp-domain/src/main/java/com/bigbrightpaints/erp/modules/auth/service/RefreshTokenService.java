@@ -26,11 +26,16 @@ public class RefreshTokenService {
 
     @Transactional
     public String issue(String userEmail, Instant expiresAt) {
+        return issue(userEmail, Instant.now(), expiresAt);
+    }
+
+    @Transactional
+    public String issue(String userEmail, Instant issuedAt, Instant expiresAt) {
         String token = UUID.randomUUID().toString();
         RefreshToken record = RefreshToken.digestOnly(
                 AuthTokenDigests.refreshTokenDigest(token),
                 userEmail,
-                Instant.now(),
+                issuedAt,
                 expiresAt);
         refreshTokenRepository.save(record);
         return token;

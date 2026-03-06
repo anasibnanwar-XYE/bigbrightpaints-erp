@@ -50,8 +50,23 @@ public class AuthControllerIT extends AbstractIntegrationTest {
 
     @org.junit.jupiter.api.BeforeEach
     void seedUserAndCompany() {
-        dataSeeder.ensureUser(ADMIN_EMAIL, ADMIN_PASSWORD, "Admin", COMPANY_CODE, java.util.List.of("ROLE_ADMIN"));
-        dataSeeder.ensureUser(USER_EMAIL, USER_PASSWORD, "Reset Target", COMPANY_CODE, java.util.List.of("ROLE_SALES"));
+        UserAccount adminUser = dataSeeder.ensureUser(
+                ADMIN_EMAIL,
+                ADMIN_PASSWORD,
+                "Admin",
+                COMPANY_CODE,
+                java.util.List.of("ROLE_ADMIN"));
+        adminUser.setMustChangePassword(false);
+        userAccountRepository.save(adminUser);
+
+        UserAccount resetTarget = dataSeeder.ensureUser(
+                USER_EMAIL,
+                USER_PASSWORD,
+                "Reset Target",
+                COMPANY_CODE,
+                java.util.List.of("ROLE_SALES"));
+        resetTarget.setMustChangePassword(false);
+        userAccountRepository.save(resetTarget);
     }
 
     @Test
@@ -180,6 +195,72 @@ public class AuthControllerIT extends AbstractIntegrationTest {
     }
 
     @Test
+    void must_change_password_user_can_detect_corridor_but_is_blocked_from_admin_surface_until_password_changed() {
+        markMustChangePassword(ADMIN_EMAIL);
+
+        Map<String, Object> loginPayload = login(ADMIN_EMAIL, ADMIN_PASSWORD);
+        assertThat(loginPayload.get("mustChangePassword")).isEqualTo(true);
+
+        String accessToken = loginPayload.get("accessToken").toString();
+        ResponseEntity<Map> meResponse = rest.exchange(
+                "/api/v1/auth/me",
+                HttpMethod.GET,
+                new HttpEntity<>(bearer(accessToken)),
+                Map.class);
+
+        assertThat(meResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(meResponse.getBody()).isNotNull();
+        Map<?, ?> meData = (Map<?, ?>) meResponse.getBody().get("data");
+        assertThat(meData).isNotNull();
+        assertThat(meData.get("mustChangePassword")).isEqualTo(true);
+
+        ResponseEntity<Map> blockedAdminResponse = rest.exchange(
+                "/api/v1/admin/users",
+                HttpMethod.GET,
+                new HttpEntity<>(bearer(accessToken)),
+                Map.class);
+        assertThat(blockedAdminResponse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+
+        ResponseEntity<Map> changePasswordResponse = rest.exchange(
+                "/api/v1/auth/password/change",
+                HttpMethod.POST,
+                new HttpEntity<>(Map.of(
+                        "currentPassword", ADMIN_PASSWORD,
+                        "newPassword", "TempChanged123!",
+                        "confirmPassword", "TempChanged123!"), bearerJson(accessToken)),
+                Map.class);
+        assertThat(changePasswordResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        assertThat(me(accessToken).getStatusCode()).isIn(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN);
+
+        Map<String, Object> reloginPayload = login(ADMIN_EMAIL, "TempChanged123!");
+        assertThat(reloginPayload.get("mustChangePassword")).isEqualTo(false);
+
+        ResponseEntity<Map> adminResponseAfterPasswordChange = rest.exchange(
+                "/api/v1/admin/users",
+                HttpMethod.GET,
+                new HttpEntity<>(bearer(reloginPayload.get("accessToken").toString())),
+                Map.class);
+        assertThat(adminResponseAfterPasswordChange.getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    @Test
+    void must_change_password_corridor_still_enforces_company_header_matching() {
+        markMustChangePassword(ADMIN_EMAIL);
+
+        Map<String, Object> loginPayload = login(ADMIN_EMAIL, ADMIN_PASSWORD);
+        String accessToken = loginPayload.get("accessToken").toString();
+
+        ResponseEntity<Map> mismatchedCompanyResponse = rest.exchange(
+                "/api/v1/auth/me",
+                HttpMethod.GET,
+                new HttpEntity<>(bearer(accessToken, "OTHER")),
+                Map.class);
+
+        assertThat(mismatchedCompanyResponse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
     void overlappingPublicAndAdminResetRequests_leaveLatestResetLinkUsable() throws Exception {
         UserAccount resetTarget = userAccountRepository.findByEmailIgnoreCase(USER_EMAIL).orElseThrow();
         String adminAccessToken = login(ADMIN_EMAIL, ADMIN_PASSWORD).get("accessToken").toString();
@@ -255,10 +336,20 @@ public class AuthControllerIT extends AbstractIntegrationTest {
                 Map.class);
     }
 
+    private void markMustChangePassword(String email) {
+        UserAccount user = userAccountRepository.findByEmailIgnoreCase(email).orElseThrow();
+        user.setMustChangePassword(true);
+        userAccountRepository.save(user);
+    }
+
     private HttpHeaders bearer(String accessToken) {
+        return bearer(accessToken, COMPANY_CODE);
+    }
+
+    private HttpHeaders bearer(String accessToken, String companyCode) {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(accessToken);
-        headers.set("X-Company-Code", COMPANY_CODE);
+        headers.set("X-Company-Code", companyCode);
         return headers;
     }
 

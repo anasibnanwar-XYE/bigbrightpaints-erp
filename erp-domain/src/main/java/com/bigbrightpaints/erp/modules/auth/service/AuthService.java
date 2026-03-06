@@ -98,9 +98,16 @@ public class AuthService {
                     company.getCode(), Map.of("companyCode", company.getCode()));
             Map<String, Object> claims = new HashMap<>();
             claims.put("name", principal.getUser().getDisplayName());
-            String accessToken = tokenService.generateAccessToken(principal.getUsername(), company.getCode(), claims);
-            String refreshToken = refreshTokenService.issue(principal.getUsername(),
-                    Instant.now().plusSeconds(properties.getRefreshTokenTtlSeconds()));
+            Instant issuedAt = Instant.now();
+            String accessToken = tokenService.generateAccessToken(
+                    principal.getUsername(),
+                    company.getCode(),
+                    claims,
+                    issuedAt);
+            String refreshToken = refreshTokenService.issue(
+                    principal.getUsername(),
+                    issuedAt,
+                    issuedAt.plusSeconds(properties.getRefreshTokenTtlSeconds()));
             return new AuthResponse("Bearer", accessToken, refreshToken, properties.getAccessTokenTtlSeconds(),
                     company.getCode(), principal.getUser().getDisplayName(), user.isMustChangePassword());
         } catch (AuthenticationException ex) {
@@ -147,9 +154,12 @@ public class AuthService {
                 userEmail,
                 "REFRESH_TOKEN");
         Map<String, Object> claims = Map.of("name", user.getDisplayName());
-        String accessToken = tokenService.generateAccessToken(userEmail, company.getCode(), claims);
-        String refreshToken = refreshTokenService.issue(userEmail,
-                Instant.now().plusSeconds(properties.getRefreshTokenTtlSeconds()));
+        Instant issuedAt = Instant.now();
+        String accessToken = tokenService.generateAccessToken(userEmail, company.getCode(), claims, issuedAt);
+        String refreshToken = refreshTokenService.issue(
+                userEmail,
+                issuedAt,
+                issuedAt.plusSeconds(properties.getRefreshTokenTtlSeconds()));
         return new AuthResponse("Bearer", accessToken, refreshToken, properties.getAccessTokenTtlSeconds(),
                 company.getCode(), user.getDisplayName(), user.isMustChangePassword());
     }
