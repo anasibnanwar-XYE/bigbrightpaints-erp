@@ -1,0 +1,74 @@
+{
+  "groupId": "governance-qa",
+  "surface": "docs",
+  "generatedAt": "2026-03-06T01:40:01Z",
+  "assertions": [
+    {
+      "id": "VAL-QA-001",
+      "status": "pass",
+      "reason": "The test/CI governance review document exists and includes the required test inventory, gate classification, usefulness assessment, and missing-gates analysis for the governance-review contract.",
+      "evidence": [
+        {
+          "source": "docs/code-review/test-ci-governance.md",
+          "observed": "The file contains `## Test inventory`, `## CI workflow inventory`, `## Gate classification`, `## Usefulness assessment`, and `## Missing gates and weak controls`, matching the contract sections for inventory, gate classification, usefulness, and missing controls."
+        },
+        {
+          "source": "docs/code-review/test-ci-governance.md",
+          "observed": "The narrative explicitly inventories unit, integration, truthsuite, CODE-RED, E2E, regression, smoke, performance, and standalone contract-style tests, then classifies `knowledgebase-lint`, `architecture-check`, `gate-fast`, `gate-core`, `gate-release`, `gate-reconciliation`, `gate-quality`, Checkstyle, and Qodana by effective posture."
+        },
+        {
+          "source": ".github/workflows/ci.yml",
+          "observed": "A read-only validation script confirmed the workflow defines `gate-fast`, `gate-core`, `gate-release`, `gate-reconciliation`, and `gate-quality`, which aligns with the review document's CI gate map."
+        }
+      ]
+    },
+    {
+      "id": "VAL-QA-002",
+      "status": "pass",
+      "reason": "The static-analysis triage document classifies the backlog by severity bucket, type group, and rule concentration hotspots as required.",
+      "evidence": [
+        {
+          "source": "docs/code-review/static-analysis-triage.md",
+          "observed": "The file contains `## Severity buckets`, `## Type groups`, and `## Rule concentration hotspots`, including the required severity buckets (`blocker`, `critical`, `major`, `minor`, `info`) and type groups (`security`, `correctness`, `nullability`, `performance`, `maintainability`, `style`)."
+        },
+        {
+          "source": "docs/code-review/static-analysis-triage.md",
+          "observed": "The hotspot tables identify concentration candidates such as `AccountingCoreEngineCore.java`, `SalesCoreEngine.java`, `AccountingServiceTest.java`, and other large files, satisfying the contract's rule-concentration requirement."
+        },
+        {
+          "source": "qodana.yaml and erp-domain/pom.xml",
+          "observed": "A read-only validation script confirmed that Qodana thresholds (`critical: 0`, `any: 50`) and advisory Checkstyle configuration (`failsOnError=false`, warning severity) match the triage document's posture summary."
+        }
+      ]
+    },
+    {
+      "id": "VAL-QA-003",
+      "status": "pass",
+      "reason": "The static-analysis triage document defines a baseline-first, new-violations-only quality gate that blocks new high-risk issues while tolerating legacy debt temporarily.",
+      "evidence": [
+        {
+          "source": "docs/code-review/static-analysis-triage.md",
+          "observed": "The file contains `## Quality gate strategy`, `### Baseline policy`, and `### New-violations-only`, satisfying the contract's required sections."
+        },
+        {
+          "source": "docs/code-review/static-analysis-triage.md",
+          "observed": "The recommended gate rules explicitly say new blocker and security findings fail immediately, new critical correctness/nullability findings fail, hotspot-package majors are elevated, and legacy minor/info findings are baseline noise."
+        },
+        {
+          "source": "docs/code-review/static-analysis-triage.md",
+          "observed": "The practical rollout sequence says to capture a baseline, wire Qodana into CI, filter Checkstyle to changed files or baseline deltas, and fail only on new high-risk findings first, which matches the contract's baseline-policy and new-violations-only requirements."
+        }
+      ]
+    }
+  ],
+  "toolsUsed": [
+    "Task (delegation attempt failed)",
+    "Read",
+    "Execute"
+  ],
+  "frictions": [
+    "Task delegation to `user-testing-flow-validator` failed with `Invalid model: custom:CLIProxyAPI-5.4-xhigh`, so this docs-only validation group was executed directly in-session per `.factory/library/user-testing.md`.",
+    "Passive runtime setup probes could not connect to `127.0.0.1:8081`, `http://localhost:9090/actuator/health`, or `127.0.0.1:5433` during this round, but the assigned governance-review assertions remained fully testable from `docs/code-review/**`."
+  ],
+  "blockers": []
+}

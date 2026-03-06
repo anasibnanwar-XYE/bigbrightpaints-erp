@@ -1,0 +1,74 @@
+{
+  "groupId": "governance-cross",
+  "surface": "docs",
+  "generatedAt": "2026-03-06T01:40:01Z",
+  "assertions": [
+    {
+      "id": "VAL-CROSS-001",
+      "status": "pass",
+      "reason": "The review index and coverage matrix exist, link the full review artifact set, and show coverage for every mandatory review angle required by the validation contract.",
+      "evidence": [
+        {
+          "source": "docs/code-review/README.md",
+          "observed": "The review artifact map links `architecture-overview.md`, `dependency-map.md`, all eight required flow docs, `ops-deployment-runtime.md`, `test-ci-governance.md`, `static-analysis-triage.md`, `coverage-matrix.md`, `risk-register.md`, and `remediation-backlog.md`."
+        },
+        {
+          "source": "docs/code-review/coverage-matrix.md",
+          "observed": "The file contains `## Mandatory-angle matrix` and lists all required angles, including Cyber security, Data privacy, Protocol / protection handling, Bad-pattern detection, State machines and invariants, DB schema and migrations, External integrations and side effects, API / OpenAPI drift, Performance and scalability risk, Access logging and observability, Business-rule correctness and ERP data integrity, and Incident recovery and resilience."
+        },
+        {
+          "source": "docs/code-review/README.md and docs/code-review/coverage-matrix.md",
+          "observed": "Read-only validation scripts found no missing required artifact links in the README and no missing mandatory-angle labels in the coverage matrix."
+        }
+      ]
+    },
+    {
+      "id": "VAL-CROSS-002",
+      "status": "pass",
+      "reason": "The central risk register aggregates findings consistently across the completed area reviews with severity, category, evidence, and affected-surface fields.",
+      "evidence": [
+        {
+          "source": "docs/code-review/risk-register.md",
+          "observed": "The file contains `## Review-finding summary`, `## Review-finding counts by source review`, and per-area sections covering company/tenant, auth, admin, order-to-cash, procure-to-pay, manufacturing/inventory, finance/reporting/audit, orchestrator/background/integration, ops/runtime, test/CI governance, and static-analysis triage."
+        },
+        {
+          "source": "docs/code-review/risk-register.md",
+          "observed": "Each finding table uses the consistent columns `ID`, `Severity`, `Category`, `Affected surface`, `Finding`, `Evidence`, and `Impact`, which satisfies the contract's consistency requirement."
+        },
+        {
+          "source": "docs/code-review/risk-register.md",
+          "observed": "The register cross-links back to the source review documents in section headings and the counts-by-source table, and it also preserves mission-level evidence constraints in a dedicated section."
+        }
+      ]
+    },
+    {
+      "id": "VAL-CROSS-003",
+      "status": "pass",
+      "reason": "The remediation backlog exists and prioritizes follow-up work using severity, exploitability, ERP integrity impact, operational risk, and sequencing rationale.",
+      "evidence": [
+        {
+          "source": "docs/code-review/remediation-backlog.md",
+          "observed": "The file contains `## Prioritization method`, including the factors Severity, Exploitability, ERP integrity impact, Operational risk, Implementation sequencing, and Cleanup vs immediate-fix split."
+        },
+        {
+          "source": "docs/code-review/remediation-backlog.md",
+          "observed": "The immediate-fix and later-cleanup tables use the columns `Seq`, `Priority`, `Workstream`, `Why now / sequencing rationale`, `Included finding IDs`, and `Primary source docs`, satisfying the contract's backlog-table and sequencing requirements."
+        },
+        {
+          "source": "docs/code-review/README.md and docs/code-review/remediation-backlog.md",
+          "observed": "The README links `remediation-backlog.md`, and a read-only validation script confirmed the index no longer treats the remediation backlog as a pending artifact."
+        }
+      ]
+    }
+  ],
+  "toolsUsed": [
+    "Task (delegation attempt failed)",
+    "Read",
+    "Execute"
+  ],
+  "frictions": [
+    "Task delegation to `user-testing-flow-validator` failed with `Invalid model: custom:CLIProxyAPI-5.4-xhigh`, so this docs-only validation group was executed directly in-session per `.factory/library/user-testing.md`.",
+    "Passive runtime setup probes could not connect to `127.0.0.1:8081`, `http://localhost:9090/actuator/health`, or `127.0.0.1:5433` during this round, but the assigned governance-review assertions remained fully testable from `docs/code-review/**`."
+  ],
+  "blockers": []
+}
