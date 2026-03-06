@@ -2,7 +2,7 @@
 
 This directory now holds the full review set for the production-backend audit. The index below links every completed review document, points to the milestone validation evidence under `.factory/validation/`, and records the environment limits that affected how much runtime corroboration the mission could gather.
 
-The current synthesis covers **90 carried-forward review findings** from the completed area reviews plus **5 mission-level evidence constraints**. The only remaining planned artifact is `remediation-backlog.md`, which belongs to the follow-up backlog-synthesis feature.
+The final review set carries **90 review findings** from the completed area reviews plus **5 mission-level evidence constraints** into the synthesis outputs, and it now includes the implementation-facing [remediation-backlog.md](./remediation-backlog.md) handoff for the follow-up fix mission.
 
 ## Review artifact map
 
@@ -45,6 +45,7 @@ The current synthesis covers **90 carried-forward review findings** from the com
 | [static-analysis-triage.md](./static-analysis-triage.md) | Legacy backlog triage model, hotspot concentration, and baseline/new-violations-only gate strategy. |
 | [coverage-matrix.md](./coverage-matrix.md) | Cross-area mandatory-angle map showing where each required review angle is covered. |
 | [risk-register.md](./risk-register.md) | Central register of 90 carried-forward review findings plus 5 mission-level evidence constraints. |
+| [remediation-backlog.md](./remediation-backlog.md) | Prioritized next-mission fix backlog grouped into immediate workstreams and later cleanup/ratchet work. |
 
 ## Milestone validation evidence
 
@@ -53,6 +54,7 @@ The current synthesis covers **90 carried-forward review findings** from the com
 | Foundation review | [`../../.factory/validation/foundation-review/scrutiny/synthesis.json`](../../.factory/validation/foundation-review/scrutiny/synthesis.json) | [`../../.factory/validation/foundation-review/user-testing/synthesis.json`](../../.factory/validation/foundation-review/user-testing/synthesis.json) | Docs-first validation completed after helper-worker delegation failed and runtime probes degraded. |
 | Commercial review | [`../../.factory/validation/commercial-review/scrutiny/synthesis.json`](../../.factory/validation/commercial-review/scrutiny/synthesis.json) | [`../../.factory/validation/commercial-review/user-testing/synthesis.json`](../../.factory/validation/commercial-review/user-testing/synthesis.json) | Commercial docs were validated through direct inspection because `8081`/`5433` probes were unreliable. |
 | Operations review | [`../../.factory/validation/operations-review/scrutiny/synthesis.json`](../../.factory/validation/operations-review/scrutiny/synthesis.json) | [`../../.factory/validation/operations-review/user-testing/synthesis.json`](../../.factory/validation/operations-review/user-testing/synthesis.json) | Operations validation captured the strongest degraded-runtime evidence, including `9090` returning `503/DOWN` in one round. |
+| Governance review | [`../../.factory/validation/governance-review/scrutiny/synthesis.json`](../../.factory/validation/governance-review/scrutiny/synthesis.json) | Pending | Scrutiny round 1 captured the README/remediation-backlog index drift on the prior head; this sync fix brings the review index back in line with the completed governance-review artifacts. |
 
 ## Mandatory-angle coverage
 
@@ -85,4 +87,5 @@ Every mandatory review angle from the mission plan is covered somewhere in the p
 
 - Baseline repo validation for this session succeeded with `mvn test -Pgate-fast -Djacoco.skip=true` (`394` tests, `0` failures, `0` errors).
 - The review docs remain the primary validation surface because runtime probes and delegated validator surfaces were not reliable enough to serve as a hard prerequisite.
-- The next synthesis feature should consume [risk-register.md](./risk-register.md) to build `remediation-backlog.md` without re-deriving source findings.
+- The completed [remediation-backlog.md](./remediation-backlog.md) now consumes [risk-register.md](./risk-register.md) and the area reviews as the implementation-facing handoff for the next mission.
+- Governance-review scrutiny evidence has been published, while governance-review user-testing synthesis is still pending publication at the time of this index refresh.
