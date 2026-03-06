@@ -44,8 +44,8 @@ public class TenantLifecycleService {
         return new CompanyLifecycleStateDto(
                 company.getId(),
                 company.getCode(),
-                previousState.name(),
-                targetState.name(),
+                previousState.toExternalValue(),
+                targetState.toExternalValue(),
                 lifecycleReason);
     }
 
@@ -88,8 +88,8 @@ public class TenantLifecycleService {
         metadata.put("reason", LIFECYCLE_UPDATED_REASON);
         metadata.put("targetCompanyCode", company.getCode());
         metadata.put("targetCompanyId", String.valueOf(company.getId()));
-        metadata.put("previousLifecycleState", previousState.name());
-        metadata.put("companyLifecycleState", targetState.name());
+        metadata.put("previousLifecycleState", previousState.toExternalValue());
+        metadata.put("companyLifecycleState", targetState.toExternalValue());
         metadata.put("companyLifecycleReason", lifecycleReason);
         metadata.put("lifecycleEvidence", "immutable-audit-log");
         auditService.logAuthSuccess(

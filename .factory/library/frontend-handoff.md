@@ -218,6 +218,10 @@ Password-policy failures currently surface as `VAL_001` with message prefix `Pas
 
 ### Tenant & Admin
 
+#### Current mission note
+
+- 2026-03-06 `privileged-user-boundary-hardening`: no admin user-management request or response shape changes were required for `POST /api/v1/admin/users/{id}/force-reset-password`, `PUT /api/v1/admin/users/{id}/status`, `PATCH /api/v1/admin/users/{id}/{suspend|unsuspend}`, `PATCH /api/v1/admin/users/{id}/mfa/disable`, or `DELETE /api/v1/admin/users/{id}`. Tenant-admin attempts against out-of-scope users now consistently return the existing `403` access-denied envelope instead of drifting between `400` and silent `204`, while authorized super-admins can use the same endpoints cross-tenant without contract changes. The company control-plane lifecycle endpoint also once again accepts `HOLD`/`BLOCKED` compatibility aliases and echoes those values in its response while preserving the existing path shape.
+
 #### Endpoint Map
 
 **A) Superadmin tenant control endpoints**

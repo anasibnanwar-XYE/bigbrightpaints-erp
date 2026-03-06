@@ -72,13 +72,6 @@ class CompanyContextFilterControlPlaneBindingTest {
         authenticate("root-superadmin@bbp.com", Set.of("ROLE_SUPER_ADMIN"), Set.of("ROOT"));
         when(companyService.resolveCompanyCodeById(42L)).thenReturn("TENANT-A");
         when(companyService.resolveLifecycleStateByCode("TENANT-A")).thenReturn(CompanyLifecycleState.ACTIVE);
-        when(tenantRuntimeEnforcementService.beginRequest(
-                eq("TENANT-A"),
-                eq("/api/v1/companies/42/lifecycle-state"),
-                eq("POST"),
-                eq("root-superadmin@bbp.com"),
-                eq(false)))
-                .thenReturn(admission(true, 200, null));
 
         MockHttpServletRequest request = request("POST", "/api/v1/companies/42/lifecycle-state");
         request.setAttribute("jwtClaims", claimsFor("ROOT"));
@@ -89,12 +82,8 @@ class CompanyContextFilterControlPlaneBindingTest {
         assertThat(response.getStatus()).isEqualTo(200);
         verify(companyService).resolveCompanyCodeById(42L);
         verify(companyService).resolveLifecycleStateByCode("TENANT-A");
-        verify(tenantRuntimeEnforcementService).beginRequest(
-                eq("TENANT-A"),
-                eq("/api/v1/companies/42/lifecycle-state"),
-                eq("POST"),
-                eq("root-superadmin@bbp.com"),
-                eq(false));
+        verify(tenantRuntimeEnforcementService, never())
+                .beginRequest(anyString(), anyString(), anyString(), anyString(), anyBoolean());
         verify(filterChain).doFilter(request, response);
     }
 
@@ -103,13 +92,6 @@ class CompanyContextFilterControlPlaneBindingTest {
         authenticate("root-superadmin@bbp.com", Set.of("ROLE_SUPER_ADMIN"), Set.of("ROOT"));
         when(companyService.resolveCompanyCodeById(42L)).thenReturn("TENANT-A");
         when(companyService.resolveLifecycleStateByCode("TENANT-A")).thenReturn(CompanyLifecycleState.ACTIVE);
-        when(tenantRuntimeEnforcementService.beginRequest(
-                eq("TENANT-A"),
-                eq("/api/v1/companies/42"),
-                eq("PUT"),
-                eq("root-superadmin@bbp.com"),
-                eq(false)))
-                .thenReturn(admission(true, 200, null));
 
         MockHttpServletRequest request = request("PUT", "/api/v1/companies/42");
         request.setAttribute("jwtClaims", claimsFor("ROOT"));
@@ -120,12 +102,8 @@ class CompanyContextFilterControlPlaneBindingTest {
         assertThat(response.getStatus()).isEqualTo(200);
         verify(companyService).resolveCompanyCodeById(42L);
         verify(companyService).resolveLifecycleStateByCode("TENANT-A");
-        verify(tenantRuntimeEnforcementService).beginRequest(
-                eq("TENANT-A"),
-                eq("/api/v1/companies/42"),
-                eq("PUT"),
-                eq("root-superadmin@bbp.com"),
-                eq(false));
+        verify(tenantRuntimeEnforcementService, never())
+                .beginRequest(anyString(), anyString(), anyString(), anyString(), anyBoolean());
         verify(filterChain).doFilter(request, response);
     }
 
@@ -134,13 +112,6 @@ class CompanyContextFilterControlPlaneBindingTest {
         authenticate("root-superadmin@bbp.com", Set.of("ROLE_SUPER_ADMIN"), Set.of("ROOT"));
         when(companyService.resolveCompanyCodeById(42L)).thenReturn("TENANT-A");
         when(companyService.resolveLifecycleStateByCode("TENANT-A")).thenReturn(CompanyLifecycleState.ACTIVE);
-        when(tenantRuntimeEnforcementService.beginRequest(
-                eq("TENANT-A"),
-                eq("/api/v1/companies/42/support/admin-password-reset"),
-                eq("POST"),
-                eq("root-superadmin@bbp.com"),
-                eq(false)))
-                .thenReturn(admission(true, 200, null));
 
         MockHttpServletRequest request = request("POST", "/api/v1/companies/42/support/admin-password-reset");
         request.setAttribute("jwtClaims", claimsFor("ROOT"));
@@ -151,12 +122,8 @@ class CompanyContextFilterControlPlaneBindingTest {
         assertThat(response.getStatus()).isEqualTo(200);
         verify(companyService).resolveCompanyCodeById(42L);
         verify(companyService).resolveLifecycleStateByCode("TENANT-A");
-        verify(tenantRuntimeEnforcementService).beginRequest(
-                eq("TENANT-A"),
-                eq("/api/v1/companies/42/support/admin-password-reset"),
-                eq("POST"),
-                eq("root-superadmin@bbp.com"),
-                eq(false));
+        verify(tenantRuntimeEnforcementService, never())
+                .beginRequest(anyString(), anyString(), anyString(), anyString(), anyBoolean());
         verify(filterChain).doFilter(request, response);
     }
 

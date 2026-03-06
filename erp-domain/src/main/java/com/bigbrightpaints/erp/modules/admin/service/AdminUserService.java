@@ -23,6 +23,7 @@ import com.bigbrightpaints.erp.modules.rbac.service.RoleService;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 import com.bigbrightpaints.erp.modules.sales.util.DealerProvisioningSupport;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -43,6 +44,7 @@ import java.util.stream.Collectors;
 @Service
 public class AdminUserService {
     private static final String SUPER_ADMIN_ROLE = "ROLE_SUPER_ADMIN";
+    private static final String OUT_OF_SCOPE_MESSAGE = "Target user is out of scope for this operation";
 
     private final UserAccountRepository userRepository;
     private final CompanyContextService companyContextService;
@@ -177,7 +179,7 @@ public class AdminUserService {
     @Transactional
     public UserDto updateUser(Long id, UpdateUserRequest request) {
         Company company = companyContextService.requireCurrentCompany();
-        UserAccount user = resolveScopedUserForAdminAction(id, company);
+        UserAccount user = resolveScopedUserForAdminAction(id, company, "admin-update-user-out-of-scope", false);
         user.setDisplayName(request.displayName());
         boolean requiresReauth = false;
         if (request.enabled() != null) {
@@ -212,7 +214,7 @@ public class AdminUserService {
     @Transactional
     public void forceResetPassword(Long userId) {
         Company company = companyContextService.requireCurrentCompany();
-        UserAccount targetUser = resolveScopedUserForAdminAction(userId, company);
+        UserAccount targetUser = resolveScopedUserForAdminAction(userId, company, "admin-force-reset-password-out-of-scope", false);
         passwordResetService.requestResetByAdmin(targetUser);
         auditUserAccountAction(
                 AuditEvent.PASSWORD_RESET_REQUESTED,
@@ -225,69 +227,75 @@ public class AdminUserService {
     @Transactional
     public UserDto updateUserStatus(Long userId, boolean enabled) {
         Company company = companyContextService.requireCurrentCompany();
-        UserAccount user = resolveScopedUserForAdminAction(userId, company);
+        UserAccount user = resolveScopedUserForAdminAction(userId, company, "admin-status-update-out-of-scope", false);
         return updateUserStatusInternal(user, enabled, company, "ADMIN_USER_STATUS");
     }
 
     @Transactional
     public void suspend(Long id) {
         Company company = companyContextService.requireCurrentCompany();
-        // Use pessimistic lock to prevent race condition on concurrent status changes
-        userRepository.lockByIdAndCompanyId(id, company.getId()).ifPresent(user ->
-                updateUserStatusInternal(user, false, company, "ADMIN_USER_SUSPEND"));
+        UserAccount user = resolveScopedUserForAdminAction(id, company, "admin-suspend-user-out-of-scope", true);
+        updateUserStatusInternal(user, false, company, "ADMIN_USER_SUSPEND");
     }
 
     @Transactional
     public void unsuspend(Long id) {
         Company company = companyContextService.requireCurrentCompany();
-        // Use pessimistic lock to prevent race condition on concurrent status changes
-        userRepository.lockByIdAndCompanyId(id, company.getId()).ifPresent(user ->
-                updateUserStatusInternal(user, true, company, "ADMIN_USER_UNSUSPEND"));
+        UserAccount user = resolveScopedUserForAdminAction(id, company, "admin-unsuspend-user-out-of-scope", true);
+        updateUserStatusInternal(user, true, company, "ADMIN_USER_UNSUSPEND");
     }
 
     @Transactional
     public void deleteUser(Long id) {
         Company company = companyContextService.requireCurrentCompany();
-        userRepository.lockByIdAndCompanyId(id, company.getId()).ifPresent(user -> {
-            tokenBlacklistService.revokeAllUserTokens(user.getEmail());
-            refreshTokenService.revokeAllForUser(user.getEmail());
-            userRepository.delete(user);
-            emailService.sendUserDeletedEmail(user.getEmail(), user.getDisplayName());
-            auditUserAccountAction(
-                    AuditEvent.USER_DELETED,
-                    user,
-                    company,
-                    "admin_user_delete",
-                    Map.of("targetUserId", String.valueOf(user.getId())));
-        });
+        UserAccount user = resolveScopedUserForAdminAction(id, company, "admin-delete-user-out-of-scope", true);
+        tokenBlacklistService.revokeAllUserTokens(user.getEmail());
+        refreshTokenService.revokeAllForUser(user.getEmail());
+        userRepository.delete(user);
+        emailService.sendUserDeletedEmail(user.getEmail(), user.getDisplayName());
+        auditUserAccountAction(
+                AuditEvent.USER_DELETED,
+                user,
+                company,
+                "admin_user_delete",
+                Map.of("targetUserId", String.valueOf(user.getId())));
     }
 
     @Transactional
     public void disableMfa(Long id) {
         Company company = companyContextService.requireCurrentCompany();
-        userRepository.lockByIdAndCompanyId(id, company.getId()).ifPresent(user -> {
-            user.setMfaEnabled(false);
-            user.setMfaSecret(null);
-            user.setMfaRecoveryCodeHashes(List.of());
-            userRepository.save(user);
-            tokenBlacklistService.revokeAllUserTokens(user.getEmail());
-            refreshTokenService.revokeAllForUser(user.getEmail());
-            auditUserAccountAction(
-                    AuditEvent.MFA_DISABLED,
-                    user,
-                    company,
-                    "admin_disable_mfa",
-                    Map.of("targetUserId", String.valueOf(user.getId())));
-        });
+        UserAccount user = resolveScopedUserForAdminAction(id, company, "admin-disable-mfa-out-of-scope", true);
+        user.setMfaEnabled(false);
+        user.setMfaSecret(null);
+        user.setMfaRecoveryCodeHashes(List.of());
+        userRepository.save(user);
+        tokenBlacklistService.revokeAllUserTokens(user.getEmail());
+        refreshTokenService.revokeAllForUser(user.getEmail());
+        auditUserAccountAction(
+                AuditEvent.MFA_DISABLED,
+                user,
+                company,
+                "admin_disable_mfa",
+                Map.of("targetUserId", String.valueOf(user.getId())));
     }
 
-    private UserAccount resolveScopedUserForAdminAction(Long userId, Company activeCompany) {
-        if (hasSuperAdminAuthority()) {
-            return userRepository.findById(userId)
-                    .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("User not found"));
-        }
-        return userRepository.findByIdAndCompanies_Id(userId, activeCompany.getId())
+    private UserAccount resolveScopedUserForAdminAction(Long userId,
+                                                        Company activeCompany,
+                                                        String denialReason,
+                                                        boolean lockTarget) {
+        java.util.Optional<UserAccount> candidate = lockTarget
+                ? userRepository.lockById(userId)
+                : userRepository.findById(userId);
+        UserAccount user = candidate
                 .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("User not found"));
+        if (hasSuperAdminAuthority()) {
+            return user;
+        }
+        if (isUserWithinCompanyScope(user, activeCompany)) {
+            return user;
+        }
+        auditPrivilegedUserActionDenied(user, activeCompany, denialReason);
+        throw new AccessDeniedException(OUT_OF_SCOPE_MESSAGE);
     }
 
     private UserDto updateUserStatusInternal(UserAccount user,
@@ -296,7 +304,8 @@ public class AdminUserService {
                                              String operation) {
         boolean previousEnabled = user.isEnabled();
         if (enabled && !previousEnabled) {
-            tenantRuntimePolicyService.assertCanAddEnabledUser(actorCompany, operation);
+            resolveTargetCompanies(user, actorCompany).forEach(company ->
+                    tenantRuntimePolicyService.assertCanAddEnabledUser(company, operation));
         }
         user.setEnabled(enabled);
         userRepository.save(user);
@@ -445,16 +454,84 @@ public class AdminUserService {
         if (metadata != null && !metadata.isEmpty()) {
             auditMetadata.putAll(metadata);
         }
-        String actor = SecurityActorResolver.resolveActorWithSystemProcessFallback();
+        String actor = resolveAuditActor();
+        String targetCompanyCodes = resolveTargetCompanyCodes(targetUser);
         auditMetadata.put("actor", actor);
         auditMetadata.put("targetUserEmail", targetUser != null ? targetUser.getEmail() : "UNKNOWN");
         auditMetadata.put("action", action);
         auditMetadata.put("tenantScope", actorCompany != null ? actorCompany.getCode() : "GLOBAL");
+        if (StringUtils.hasText(targetCompanyCodes)) {
+            auditMetadata.put("targetCompanyCode", targetCompanyCodes);
+        }
         auditService.logAuthSuccess(
                 event,
                 actor,
                 actorCompany != null ? actorCompany.getCode() : null,
                 auditMetadata);
+    }
+
+    private boolean isUserWithinCompanyScope(UserAccount user, Company activeCompany) {
+        if (user == null || activeCompany == null || activeCompany.getId() == null || user.getCompanies() == null) {
+            return false;
+        }
+        return user.getCompanies().stream()
+                .map(Company::getId)
+                .anyMatch(activeCompany.getId()::equals);
+    }
+
+    private void auditPrivilegedUserActionDenied(UserAccount targetUser,
+                                                 Company actorCompany,
+                                                 String denialReason) {
+        Map<String, String> metadata = new LinkedHashMap<>();
+        String actor = resolveAuditActor();
+        metadata.put("actor", actor);
+        metadata.put("reason", denialReason);
+        metadata.put("tenantScope", actorCompany != null ? actorCompany.getCode() : "GLOBAL");
+        if (targetUser != null) {
+            if (targetUser.getId() != null) {
+                metadata.put("targetUserId", String.valueOf(targetUser.getId()));
+            }
+            if (StringUtils.hasText(targetUser.getEmail())) {
+                metadata.put("targetUserEmail", targetUser.getEmail());
+            }
+            String targetCompanyCodes = resolveTargetCompanyCodes(targetUser);
+            if (StringUtils.hasText(targetCompanyCodes)) {
+                metadata.put("targetCompanyCode", targetCompanyCodes);
+            }
+        }
+        auditService.logAuthFailure(
+                AuditEvent.ACCESS_DENIED,
+                actor,
+                actorCompany != null ? actorCompany.getCode() : null,
+                metadata);
+    }
+
+    private String resolveAuditActor() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null && StringUtils.hasText(authentication.getName())) {
+            return authentication.getName().trim();
+        }
+        return SecurityActorResolver.resolveActorWithSystemProcessFallback();
+    }
+
+    private List<Company> resolveTargetCompanies(UserAccount user, Company actorCompany) {
+        if (user != null && user.getCompanies() != null && !user.getCompanies().isEmpty()) {
+            return user.getCompanies().stream().distinct().toList();
+        }
+        return actorCompany == null ? List.of() : List.of(actorCompany);
+    }
+
+    private String resolveTargetCompanyCodes(UserAccount user) {
+        if (user == null || user.getCompanies() == null || user.getCompanies().isEmpty()) {
+            return null;
+        }
+        return user.getCompanies().stream()
+                .map(Company::getCode)
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .distinct()
+                .sorted(String.CASE_INSENSITIVE_ORDER)
+                .collect(Collectors.joining(","));
     }
 
     private UserDto toDto(UserAccount user, Instant lastLoginAt) {

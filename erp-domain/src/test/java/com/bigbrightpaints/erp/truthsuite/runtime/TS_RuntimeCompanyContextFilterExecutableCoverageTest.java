@@ -133,13 +133,6 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
         authenticate("ops@bbp.com", Set.of("ROLE_SUPER_ADMIN"), Set.of());
         when(companyService.resolveCompanyCodeById(42L)).thenReturn("ACME");
         when(companyService.resolveLifecycleStateByCode("ACME")).thenReturn(CompanyLifecycleState.DEACTIVATED);
-        when(tenantRuntimeEnforcementService.beginRequest(
-                eq("ACME"),
-                eq("/api/v1/companies/42/lifecycle-state"),
-                eq("POST"),
-                eq("ops@bbp.com"),
-                eq(false)))
-                .thenReturn(admission(true, 200, null));
 
         MockHttpServletRequest request = request("POST", "/api/v1/companies/42/lifecycle-state");
         request.setAttribute("jwtClaims", claimsFor("ACME"));
@@ -148,6 +141,8 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
         filter.doFilter(request, response, filterChain);
 
         assertThat(response.getStatus()).isEqualTo(200);
+        verify(tenantRuntimeEnforcementService, never())
+                .beginRequest(anyString(), anyString(), anyString(), anyString(), anyBoolean());
         verify(filterChain).doFilter(request, response);
     }
 

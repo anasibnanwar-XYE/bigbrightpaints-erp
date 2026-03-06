@@ -148,26 +148,28 @@ public class CompanyContextFilter extends OncePerRequestFilter {
                             lifecycleDeniedMessage(lifecycleState, request.getMethod()));
                     return;
                 }
-                admission = tenantRuntimeEnforcementService.beginRequest(
-                        companyCode,
-                        runtimePath,
-                        request.getMethod(),
-                        resolveCurrentActor(),
-                        hasTenantRuntimePolicyControlAuthority(runtimePath, request.getMethod()));
-                if (!admission.isAdmitted()) {
-                    response.setStatus(admission.statusCode());
-                    response.setContentType("application/json");
-                    response.setCharacterEncoding("UTF-8");
-                    String message = admission.message();
-                    if (StringUtils.hasText(message)) {
-                        String escaped = message
-                                .replace("\\", "\\\\")
-                                .replace("\"", "\\\"");
-                        response.getWriter().write("{\"message\":\"" + escaped + "\"}");
-                    } else {
-                        response.getWriter().write("{\"message\":\"Access denied\"}");
+                if (!lifecycleControlRequest) {
+                    admission = tenantRuntimeEnforcementService.beginRequest(
+                            companyCode,
+                            runtimePath,
+                            request.getMethod(),
+                            resolveCurrentActor(),
+                            hasTenantRuntimePolicyControlAuthority(runtimePath, request.getMethod()));
+                    if (!admission.isAdmitted()) {
+                        response.setStatus(admission.statusCode());
+                        response.setContentType("application/json");
+                        response.setCharacterEncoding("UTF-8");
+                        String message = admission.message();
+                        if (StringUtils.hasText(message)) {
+                            String escaped = message
+                                    .replace("\\", "\\\\")
+                                    .replace("\"", "\\\"");
+                            response.getWriter().write("{\"message\":\"" + escaped + "\"}");
+                        } else {
+                            response.getWriter().write("{\"message\":\"Access denied\"}");
+                        }
+                        return;
                     }
-                    return;
                 }
                 CompanyContextHolder.setCompanyCode(companyCode);
             }
@@ -413,7 +415,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
                 : lifecycleState;
         return switch (resolvedState) {
             case ACTIVE -> false;
-            case SUSPENDED -> isMutatingMethod(method);
+            case SUSPENDED -> true;
             case DEACTIVATED -> true;
         };
     }
@@ -426,7 +428,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
             case ACTIVE -> "Tenant lifecycle state allows access";
             case SUSPENDED -> isMutatingMethod(method)
                     ? "Suspended tenants are read-only"
-                    : "Tenant lifecycle state allows access";
+                    : "Tenant is suspended";
             case DEACTIVATED -> "Tenant is deactivated";
         };
     }

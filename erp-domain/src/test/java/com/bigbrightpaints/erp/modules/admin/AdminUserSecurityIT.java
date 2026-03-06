@@ -120,7 +120,7 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
                 HttpMethod.PUT,
                 new HttpEntity<>(payload, headers),
                 Map.class);
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
     }
 
     @Test
@@ -136,7 +136,72 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
                 new HttpEntity<>(Map.of("enabled", false), headers),
                 Map.class);
 
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void tenant_admin_cross_company_privileged_actions_are_forbidden() {
+        String token = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        assertThat(rest.exchange(
+                "/api/v1/admin/users/" + otherCompanyUser.getId() + "/force-reset-password",
+                HttpMethod.POST,
+                new HttpEntity<>(headers),
+                Map.class).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(rest.exchange(
+                "/api/v1/admin/users/" + otherCompanyUser.getId() + "/suspend",
+                HttpMethod.PATCH,
+                new HttpEntity<>(headers),
+                Map.class).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(rest.exchange(
+                "/api/v1/admin/users/" + otherCompanyUser.getId() + "/unsuspend",
+                HttpMethod.PATCH,
+                new HttpEntity<>(headers),
+                Map.class).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(rest.exchange(
+                "/api/v1/admin/users/" + otherCompanyUser.getId() + "/mfa/disable",
+                HttpMethod.PATCH,
+                new HttpEntity<>(headers),
+                Map.class).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(rest.exchange(
+                "/api/v1/admin/users/" + otherCompanyUser.getId(),
+                HttpMethod.DELETE,
+                new HttpEntity<>(headers),
+                Map.class).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void super_admin_can_suspend_unsuspend_disable_mfa_and_delete_across_company_scope() {
+        String token = login(SUPER_ADMIN_EMAIL, SUPER_ADMIN_PASSWORD, COMPANY);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+
+        assertThat(rest.exchange(
+                "/api/v1/admin/users/" + otherCompanyUser.getId() + "/suspend",
+                HttpMethod.PATCH,
+                new HttpEntity<>(headers),
+                Void.class).getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+
+        assertThat(rest.exchange(
+                "/api/v1/admin/users/" + otherCompanyUser.getId() + "/unsuspend",
+                HttpMethod.PATCH,
+                new HttpEntity<>(headers),
+                Void.class).getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+
+        assertThat(rest.exchange(
+                "/api/v1/admin/users/" + otherCompanyUser.getId() + "/mfa/disable",
+                HttpMethod.PATCH,
+                new HttpEntity<>(headers),
+                Void.class).getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+
+        assertThat(rest.exchange(
+                "/api/v1/admin/users/" + otherCompanyUser.getId(),
+                HttpMethod.DELETE,
+                new HttpEntity<>(headers),
+                Void.class).getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
     }
 
     @Test
