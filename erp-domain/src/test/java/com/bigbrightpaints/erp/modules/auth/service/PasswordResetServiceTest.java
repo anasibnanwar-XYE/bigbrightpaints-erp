@@ -80,6 +80,13 @@ class PasswordResetServiceTest {
                 tokenBlacklistService,
                 refreshTokenService,
                 new ResourcelessTransactionManager());
+        lenient().when(tokenRepository.saveAndFlush(any(PasswordResetToken.class))).thenAnswer(invocation -> {
+            PasswordResetToken token = invocation.getArgument(0);
+            if (token != null && ReflectionTestUtils.getField(token, "id") == null) {
+                ReflectionTestUtils.setField(token, "id", 1L);
+            }
+            return token;
+        });
     }
 
     @Test
@@ -91,11 +98,11 @@ class PasswordResetServiceTest {
 
         passwordResetService.requestReset("user@example.com");
 
-        verify(tokenRepository).deleteByUser(user);
         ArgumentCaptor<PasswordResetToken> tokenCaptor = ArgumentCaptor.forClass(PasswordResetToken.class);
-        verify(tokenRepository).save(tokenCaptor.capture());
+        verify(tokenRepository).saveAndFlush(tokenCaptor.capture());
         ArgumentCaptor<String> emailTokenCaptor = ArgumentCaptor.forClass(String.class);
-        verify(emailService).sendPasswordResetEmail(eq("user@example.com"), eq("User"), emailTokenCaptor.capture());
+        verify(emailService).sendPasswordResetEmailRequired(eq("user@example.com"), eq("User"), emailTokenCaptor.capture());
+        verify(tokenRepository).deleteByUserAndIdNot(eq(user), anyLong());
         // ensure token is linked to the same user
         assertEquals(user, tokenCaptor.getValue().getUser());
         assertNull(tokenCaptor.getValue().getToken());
@@ -150,14 +157,12 @@ class PasswordResetServiceTest {
     void requestResetByAdminUsesPublicResetFlowForEnabledUser() {
         UserAccount adminManagedUser = new UserAccount("managed@example.com", "hash", "Managed User");
         adminManagedUser.setEnabled(true);
-        when(userAccountRepository.findByEmailIgnoreCase("managed@example.com"))
-                .thenReturn(Optional.of(adminManagedUser));
 
         passwordResetService.requestResetByAdmin(adminManagedUser);
 
-        verify(tokenRepository).deleteByUser(adminManagedUser);
-        verify(tokenRepository).save(any(PasswordResetToken.class));
-        verify(emailService).sendPasswordResetEmail(eq("managed@example.com"), eq("Managed User"), anyString());
+        verify(tokenRepository).saveAndFlush(any(PasswordResetToken.class));
+        verify(emailService).sendPasswordResetEmailRequired(eq("managed@example.com"), eq("Managed User"), anyString());
+        verify(tokenRepository).deleteByUserAndIdNot(eq(adminManagedUser), anyLong());
         verify(emailService, never()).sendSimpleEmail(anyString(), anyString(), anyString());
     }
 
@@ -170,6 +175,53 @@ class PasswordResetServiceTest {
 
         verifyNoInteractions(tokenRepository, emailService);
         verify(userAccountRepository, never()).findByEmailIgnoreCase(anyString());
+    }
+
+    @Test
+    void requestResetSkipsTokenIssuanceWhenResetEmailDeliveryDisabled() {
+        UserAccount user = new UserAccount("user@example.com", "hash", "User");
+        user.setEnabled(true);
+        when(userAccountRepository.findByEmailIgnoreCase("user@example.com"))
+                .thenReturn(Optional.of(user));
+        emailProperties.setSendPasswordReset(false);
+
+        assertDoesNotThrow(() -> passwordResetService.requestReset("user@example.com"));
+
+        verify(tokenRepository, never()).deleteByUser(any());
+        verify(tokenRepository, never()).save(any(PasswordResetToken.class));
+        verify(tokenRepository, never()).saveAndFlush(any(PasswordResetToken.class));
+        verify(emailService, never()).sendPasswordResetEmailRequired(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void requestResetMasksDispatchFailureAndDeletesIssuedToken() {
+        UserAccount user = new UserAccount("user@example.com", "hash", "User");
+        user.setEnabled(true);
+        when(userAccountRepository.findByEmailIgnoreCase("user@example.com"))
+                .thenReturn(Optional.of(user));
+        doThrow(new RuntimeException("smtp down"))
+                .when(emailService)
+                .sendPasswordResetEmailRequired(eq("user@example.com"), eq("User"), anyString());
+
+        assertDoesNotThrow(() -> passwordResetService.requestReset("user@example.com"));
+
+        verify(tokenRepository).saveAndFlush(any(PasswordResetToken.class));
+        verify(tokenRepository).deleteByTokenDigest(anyString());
+    }
+
+    @Test
+    void requestResetByAdminRequiresResetEmailDelivery() {
+        UserAccount adminManagedUser = new UserAccount("managed@example.com", "hash", "Managed User");
+        adminManagedUser.setEnabled(true);
+        emailProperties.setSendPasswordReset(false);
+
+        assertThrows(ApplicationException.class,
+                () -> passwordResetService.requestResetByAdmin(adminManagedUser));
+
+        verify(tokenRepository, never()).deleteByUser(any());
+        verify(tokenRepository, never()).save(any(PasswordResetToken.class));
+        verify(tokenRepository, never()).saveAndFlush(any(PasswordResetToken.class));
+        verify(emailService, never()).sendPasswordResetEmailRequired(anyString(), anyString(), anyString());
     }
 
     @Test

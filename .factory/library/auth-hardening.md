@@ -26,6 +26,7 @@ Mission-specific guidance for the security/auth remediation wave.
 - `V158__auth_token_digest_storage.sql` adds `token_digest` columns for refresh-token and password-reset storage while keeping legacy token columns nullable during the transition.
 - `AuthSecretStorageBackfillRunner` backfills legacy plaintext rows to digest-only storage at startup.
 - Runtime lookup/revoke/reset flows still fall back to legacy raw-token columns so pre-existing rows remain usable during rollout even before every node has restarted onto the backfill-capable build.
+- As of 2026-03-06 `auth-reset-recovery-contract-hardening`, public forgot-password suppresses delivery/configuration failures without leaving a newly issued undispatched reset token behind, tenant-admin force-reset now requires successful reset-email delivery before it returns success, and the stale `/api/v1/auth/password/forgot/superadmin` alias returns a controlled `410 Gone` compatibility contract pointing callers at the canonical self-service and support-recovery paths.
 
 ## Session invalidation rules
 - As of 2026-03-06, logout, password change, password reset, disablement, lockout, and support hard-reset all revoke prior access sessions through `UserTokenRevocation` and delete outstanding refresh tokens for the affected user.

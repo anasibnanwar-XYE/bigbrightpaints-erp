@@ -35,6 +35,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
             "Access denied to company control request";
     private static final Set<String> PUBLIC_PASSWORD_RESET_ENDPOINTS = Set.of(
             "/api/v1/auth/password/forgot",
+            "/api/v1/auth/password/forgot/superadmin",
             "/api/v1/auth/password/reset");
     private final TenantRuntimeEnforcementService tenantRuntimeEnforcementService;
     private final CompanyService companyService;

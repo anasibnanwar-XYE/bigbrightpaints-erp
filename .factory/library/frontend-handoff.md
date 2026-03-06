@@ -27,6 +27,7 @@ Each module section should include:
 
 - 2026-03-06 `auth-token-secret-storage-hardening`: no auth/admin request or response shape changes were required. Login, refresh-token, logout, forgot-password, and reset-password payloads stay the same; only backend persistence changed so refresh-token and password-reset secrets are now stored as digests with compatibility backfill/fallback for legacy rows.
 - 2026-03-06 `auth-session-revocation-hardening`: no auth/admin request or response shape changes were required. Logout now invalidates all previously issued access and refresh sessions for the authenticated user, and password change, password reset, disablement, lockout, and support hard-reset now consistently reject old tokens instead of letting prior sessions remain usable.
+- 2026-03-06 `auth-reset-recovery-contract-hardening`: supported public forgot/reset, admin force-reset, and support admin-password-reset request/response shapes stay the same. The deprecated compatibility alias `POST /api/v1/auth/password/forgot/superadmin` is now explicitly retired with a `410 Gone` `ApiResponse` that carries `canonicalPath=/api/v1/auth/password/forgot` plus `supportResetPath=/api/v1/companies/{id}/support/admin-password-reset`; public forgot suppresses delivery failures without leaving a newly issued undispatched reset token behind, and admin force-reset now only succeeds when reset-email delivery is enabled and dispatch completes.
 
 #### Endpoint Map
 
@@ -38,7 +39,7 @@ Each module section should include:
 | GET | `/api/v1/auth/me` | `isAuthenticated()` | None | `ApiResponse<MeResponse>` |
 | POST | `/api/v1/auth/password/change` | `isAuthenticated()` | `ChangePasswordRequest` | `ApiResponse<String>` |
 | POST | `/api/v1/auth/password/forgot` | Public | `ForgotPasswordRequest` | `ApiResponse<String>` |
-| POST | `/api/v1/auth/password/forgot/superadmin` | `isAuthenticated()` (deprecated compatibility route) | `ForgotPasswordRequest` | `ApiResponse<String>` |
+| POST | `/api/v1/auth/password/forgot/superadmin` | Public (retired compatibility alias) | `ForgotPasswordRequest` | `410 Gone` `ApiResponse<{ canonicalPath: string, supportResetPath: string }>` |
 | POST | `/api/v1/auth/password/reset` | Public | `ResetPasswordRequest` | `ApiResponse<String>` |
 | GET | `/api/v1/auth/profile` | `isAuthenticated()` | None | `ApiResponse<ProfileResponse>` |
 | PUT | `/api/v1/auth/profile` | `isAuthenticated()` | `UpdateProfileRequest` | `ApiResponse<ProfileResponse>` |
@@ -77,7 +78,7 @@ Notes:
    2. Backend always responds with generic success message (no account enumeration).
    3. User opens emailed reset link and submits `POST /api/v1/auth/password/reset` with `{ token, newPassword, confirmPassword }`.
    4. Backend revokes existing sessions/tokens; user must log in again.
-   5. `POST /api/v1/auth/password/forgot/superadmin` remains as a deprecated compatibility route but now delegates to the unified forgot flow and requires authentication context.
+   5. If an old client still calls `POST /api/v1/auth/password/forgot/superadmin`, backend now returns `410 Gone` with canonical migration pointers instead of silently drifting through auth filters. Use `POST /api/v1/auth/password/forgot` for self-service recovery or `POST /api/v1/companies/{id}/support/admin-password-reset` for root-only support recovery.
 
 5. **Password change flow**
    1. Authenticated user submits `POST /api/v1/auth/password/change` with current + new password fields.

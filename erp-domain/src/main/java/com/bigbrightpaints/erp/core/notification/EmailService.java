@@ -60,6 +60,10 @@ public class EmailService {
         sendUserCredentialsEmail(to, displayName, password, null);
     }
 
+    public boolean isPasswordResetEmailDeliveryEnabled() {
+        return properties.isEnabled() && properties.isSendPasswordReset();
+    }
+
     public boolean isCredentialEmailDeliveryEnabled() {
         return properties.isEnabled() && properties.isSendCredentials();
     }
@@ -102,6 +106,22 @@ public class EmailService {
             log.debug("Password reset email sending disabled. Skipping for {}", to);
             return;
         }
+        sendPasswordResetEmailInternal(to, displayName, resetToken, false);
+    }
+
+    public void sendPasswordResetEmailRequired(String to, String displayName, String resetToken) {
+        if (!isPasswordResetEmailDeliveryEnabled()) {
+            throw new ApplicationException(
+                    ErrorCode.SYSTEM_CONFIGURATION_ERROR,
+                    "Password reset email delivery is disabled; enable erp.mail.enabled=true and erp.mail.send-password-reset=true");
+        }
+        sendPasswordResetEmailInternal(to, displayName, resetToken, true);
+    }
+
+    private void sendPasswordResetEmailInternal(String to,
+                                                String displayName,
+                                                String resetToken,
+                                                boolean required) {
         String resetLink = properties.getBaseUrl() + "/reset-password?token=" + resetToken;
         String subject = "Reset your BigBright ERP password";
         Context context = new Context();
@@ -110,6 +130,10 @@ public class EmailService {
         context.setVariable("resetUrl", resetLink);
         context.setVariable("baseUrl", properties.getBaseUrl());
         context.setVariable("preheader", "Use this secure link to reset your password (expires in 60 minutes).");
+        if (required) {
+            sendHtmlEmailRequired(to, subject, "mail/password-reset", context);
+            return;
+        }
         sendHtmlEmail(to, subject, "mail/password-reset", context);
     }
 

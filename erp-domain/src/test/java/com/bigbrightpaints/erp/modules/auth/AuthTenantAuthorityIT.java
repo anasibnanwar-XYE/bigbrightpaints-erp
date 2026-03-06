@@ -186,6 +186,7 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
         assertThat(data).isNotNull();
         assertThat(data.get("companyCode")).isEqualTo(TENANT_A);
         assertThat(data.get("adminEmail")).isEqualTo(ADMIN_EMAIL);
+        assertThat(data).doesNotContainKeys("temporaryPassword", "adminTemporaryPassword");
     }
 
     @Test

@@ -80,6 +80,30 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
         assertThat(response.getBody().get("message")).isEqualTo("Invalid or expired token");
     }
 
+    @Test
+    void retiredSuperAdminForgotAlias_returnsControlledCompatibilityContractAcrossTenantHeaders() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("X-Company-Code", "ANY-TENANT");
+
+        ResponseEntity<Map> response = rest.exchange(
+                "/api/v1/auth/password/forgot/superadmin",
+                HttpMethod.POST,
+                new HttpEntity<>(Map.of("email", SUPERADMIN_EMAIL), headers),
+                Map.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.GONE);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().get("success")).isEqualTo(false);
+        assertThat(response.getBody().get("message"))
+                .isEqualTo("Deprecated super-admin forgot-password alias has been retired; use the supported recovery routes");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) response.getBody().get("data");
+        assertThat(data).isNotNull();
+        assertThat(data.get("canonicalPath")).isEqualTo("/api/v1/auth/password/forgot");
+        assertThat(data.get("supportResetPath")).isEqualTo("/api/v1/companies/{id}/support/admin-password-reset");
+    }
+
     private ResponseEntity<Map> postForgot(String email, String companyCodeHeader) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
