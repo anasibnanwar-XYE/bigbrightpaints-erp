@@ -224,6 +224,7 @@ Password-policy failures currently surface as `VAL_001` with message prefix `Pas
 #### Current mission note
 
 - 2026-03-06 `privileged-user-boundary-hardening`: no admin user-management request or response shape changes were required for `POST /api/v1/admin/users/{id}/force-reset-password`, `PUT /api/v1/admin/users/{id}/status`, `PATCH /api/v1/admin/users/{id}/{suspend|unsuspend}`, `PATCH /api/v1/admin/users/{id}/mfa/disable`, or `DELETE /api/v1/admin/users/{id}`. Tenant-admin attempts against out-of-scope users now consistently return the existing `403` access-denied envelope instead of drifting between `400` and silent `204`, while authorized super-admins can use the same endpoints cross-tenant without contract changes. The company control-plane lifecycle endpoint also once again accepts `HOLD`/`BLOCKED` compatibility aliases and echoes those values in its response while preserving the existing path shape.
+- 2026-03-06 `global-security-settings-authorization`: no admin request or response payload shapes changed, but `PUT /api/v1/admin/settings` now requires `ROLE_SUPER_ADMIN` because it mutates platform-wide CORS, mail, export, and related security/runtime settings. Tenant admins still retain `GET /api/v1/admin/tenant-runtime/metrics` for tenant-scoped visibility, while `PUT /api/v1/admin/tenant-runtime/policy` remains the super-admin control-plane path.
 
 #### Endpoint Map
 

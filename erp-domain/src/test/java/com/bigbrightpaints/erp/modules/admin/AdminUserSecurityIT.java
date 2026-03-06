@@ -327,6 +327,45 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
     }
 
+    @Test
+    void tenant_admin_cannot_update_global_system_settings() {
+        String token = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("X-Company-Code", COMPANY);
+
+        ResponseEntity<Map> response = rest.exchange(
+                "/api/v1/admin/settings",
+                HttpMethod.PUT,
+                new HttpEntity<>(Map.of("exportApprovalRequired", true), headers),
+                Map.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void super_admin_can_update_global_system_settings() {
+        String token = login(SUPER_ADMIN_EMAIL, SUPER_ADMIN_PASSWORD, COMPANY);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("X-Company-Code", COMPANY);
+
+        ResponseEntity<Map> response = rest.exchange(
+                "/api/v1/admin/settings",
+                HttpMethod.PUT,
+                new HttpEntity<>(Map.of("exportApprovalRequired", true), headers),
+                Map.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().get("success")).isEqualTo(Boolean.TRUE);
+        Map<?, ?> data = (Map<?, ?>) response.getBody().get("data");
+        assertThat(data).isNotNull();
+        assertThat(data.get("exportApprovalRequired")).isEqualTo(Boolean.TRUE);
+    }
+
     private String login(String email, String password, String companyCode) {
         Map<String, Object> body = Map.of(
                 "email", email,
