@@ -1,7 +1,7 @@
 {
   "milestone": "auth-secret-session-hardening",
-  "round": 2,
-  "status": "pass",
+  "round": 1,
+  "status": "fail",
   "validatorsRun": {
     "test": {
       "passed": true,
@@ -20,21 +20,30 @@
     }
   },
   "reviewsSummary": {
-    "total": 1,
-    "passed": 1,
-    "failed": 0,
-    "failedFeatures": []
+    "total": 3,
+    "passed": 2,
+    "failed": 1,
+    "failedFeatures": [
+      "auth-reset-recovery-contract-hardening"
+    ]
   },
-  "blockingIssues": [],
+  "blockingIssues": [
+    {
+      "featureId": "auth-reset-recovery-contract-hardening",
+      "severity": "blocking",
+      "description": "The new `PasswordResetService.dispatchResetEmail(...)` flow issues a reset token and only later deletes sibling tokens in a separate transaction. Overlapping forgot/admin-reset requests for the same user can therefore delete each other's tokens and leave the user with delivered reset emails but no valid reset token.",
+      "evidence": "See `.factory/validation/auth-secret-session-hardening/scrutiny/reviews/auth-reset-recovery-contract-hardening.json` for the code-path analysis covering `issueResetToken(...)`, `cleanupSupersededResetTokens(...)`, and the missing concurrent-request coverage in the updated reset tests."
+    }
+  ],
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
       "target": "skills/scrutiny-validator",
       "suggestion": "Document a first-class fallback when `scrutiny-feature-reviewer` fan-out fails: manually review the feature handoff/transcript skeleton plus commit diff, author the per-feature review JSONs directly, and continue synthesis instead of blocking the milestone review.",
-      "evidence": "The initial milestone review and this rerun both attempted `scrutiny-feature-reviewer` fan-out, but the Task launch again failed with `Invalid model: custom:CLIProxyAPI-5.4-high`. Scrutiny had to review the fix feature directly in-session and author `.factory/validation/auth-secret-session-hardening/scrutiny/reviews/reset-token-issuance-race-hardening.json` manually.",
+      "evidence": "All three `scrutiny-feature-reviewer` Task launches for this milestone failed with `Invalid model: custom:CLIProxyAPI-5.4-xhigh`, so scrutiny had to complete the reviews directly in-session and author `.factory/validation/auth-secret-session-hardening/scrutiny/reviews/*.json` manually.",
       "isSystemic": true
     }
   ],
   "rejectedObservations": [],
-  "previousRound": ".factory/validation/auth-secret-session-hardening/scrutiny/synthesis.round1.json"
+  "previousRound": null
 }

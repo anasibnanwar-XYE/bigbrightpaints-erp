@@ -1,0 +1,15 @@
+{
+  "featureId": "reset-token-issuance-race-hardening",
+  "reviewedAt": "2026-03-06T19:20:00+05:30",
+  "commitId": "dab218cdd8c21972406dcdcf42c3a31ee0aebdf1",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix feature resolves the prior reset-token race by taking a pessimistic write lock on the target user, deleting prior reset tokens, and persisting the replacement token inside the same issuance transaction before email dispatch. The added unit and integration regressions reproduce overlapping public/public and public/admin reset requests and verify deterministic last-writer-wins behavior without auth/admin contract drift.",
+    "issues": []
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": "auth-reset-recovery-contract-hardening",
+  "summary": "PASS. The prior blocking issue is addressed: overlapping reset issuance no longer cross-deletes every token, and the new regression coverage shows only the latest delivered reset link remains valid."
+}
