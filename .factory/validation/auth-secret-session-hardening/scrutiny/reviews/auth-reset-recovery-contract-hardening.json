@@ -1,0 +1,21 @@
+{
+  "featureId": "auth-reset-recovery-contract-hardening",
+  "reviewedAt": "2026-03-06T16:55:03+05:30",
+  "commitId": "aae06aed89d7123a0ffd823b068ff6a778a9dd3b",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "fail",
+  "codeReview": {
+    "summary": "The feature correctly retires the stale super-admin alias with a controlled `410 Gone` contract and adds fail-closed delivery handling, but the new two-phase reset-token issuance and cleanup sequence is not atomic and can invalidate every reset token when overlapping reset requests for the same user both succeed.",
+    "issues": [
+      {
+        "severity": "blocking",
+        "description": "`PasswordResetService.dispatchResetEmail(...)` now saves a new reset token in `issueResetToken(...)`, sends the email, and only then removes sibling tokens in `cleanupSupersededResetTokens(...)` using a second `REQUIRES_NEW` transaction. Two overlapping forgot/admin-reset requests for the same user can therefore cross-delete each other's tokens, leaving the user with delivered reset emails but no valid token row at all.",
+        "evidence": "In `PasswordResetService`, `issueResetToken(...)` persists the token before `cleanupSupersededResetTokens(...)` later executes `tokenRepository.deleteByUserAndIdNot(user, keepId)`. Because those steps are separated by email delivery and run in distinct transactions, there is no user-level lock or single last-writer-wins transaction protecting duplicate-submit or retry races. The updated `PasswordResetServiceTest`, `AuthPasswordResetPublicContractIT`, and `AuthControllerIT` cover delivery/configuration behavior but contain no concurrent/overlapping request coverage for this path."
+      }
+    ]
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": null,
+  "summary": "FAIL. Alias retirement and fail-closed delivery semantics landed, but the reset-token cleanup refactor introduces a race that can strand users without any valid reset token under overlapping requests."
+}
