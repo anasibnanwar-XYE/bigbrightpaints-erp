@@ -35,7 +35,7 @@ commands:
   packet-review: >-
     git -C /home/realnigga/Desktop/Mission-control status --short --branch && echo FACTORY-DROID && git -C /home/realnigga/Desktop/Mission-control log --oneline --decorate -5 origin/Factory-droid
   runtime-probe: >-
-    status1=$(curl -s -o /tmp/factory-health.out -w '%{http_code}' http://localhost:9090/actuator/health || true) && status2=$(curl -s -o /tmp/factory-auth.out -w '%{http_code}' http://localhost:8081/api/v1/auth/me || true) && echo "$status1;$status2" && { [ "$status2" = "200" ] || [ "$status2" = "401" ] || [ "$status2" = "403" ]; }
+    status1=$(curl -s -o /tmp/factory-health.out -w '%{http_code}' http://localhost:9090/actuator/health || true) && status2=$(curl -s -o /tmp/factory-auth.out -w '%{http_code}' http://localhost:8081/api/v1/auth/me || true) && echo "$status1;$status2" && { [ "$status1" = "200" ] && { [ "$status2" = "200" ] || [ "$status2" = "401" ] || [ "$status2" = "403" ]; }; }
 
 services:
   postgres-existing:
