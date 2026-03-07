@@ -25,6 +25,18 @@ Primary evidence:
 
 Supporting runtime evidence was degraded in this session: `curl -i -s http://localhost:8081/actuator/health` failed with exit code `7`, so this review relies on static inspection plus existing regression/e2e/truth-suite coverage. Baseline suite `mvn test -Pgate-fast -Djacoco.skip=true` passed before drafting.
 
+## Executable remediation handoff
+
+This review feeds:
+
+- [Lane 03 exec spec](../executable-specs/03-lane-accounting-truth-boundary/EXEC-SPEC.md)
+- [Lane 05 exec spec](../executable-specs/05-lane-catalog-manufacturing/EXEC-SPEC.md)
+
+Planning notes:
+
+- `MFG-09` is a real execution blocker for stock-bearing create flows and should be closed before broad catalog authority cleanup.
+- Do not collapse packaging-workbench convergence into the same slice that fixes product, raw-material, or default-account authority paths.
+
 ## Entrypoints
 
 | Surface | Entrypoints | Controller | Notes |

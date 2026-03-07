@@ -1,8 +1,8 @@
 # Code-review synthesis index
 
-This directory now holds the full review set for the production-backend audit. The index below links every completed review document, points to the milestone validation evidence under `.factory/validation/`, and records the environment limits that affected how much runtime corroboration the mission could gather.
+This directory now holds the full review set for the production-backend audit. The index below links every completed review document, points to the milestone validation evidence under `.factory/validation/`, records the environment limits that affected how much runtime corroboration the mission could gather, and links the execution-safe remediation package under [`executable-specs/`](./executable-specs/README.md).
 
-The final review set carries **90 review findings** from the completed area reviews plus **5 mission-level evidence constraints** into the synthesis outputs, and it now includes the implementation-facing [remediation-backlog.md](./remediation-backlog.md) handoff for the follow-up fix mission.
+The final review set carries **99 review findings** from the completed area reviews plus **5 mission-level evidence constraints** into the synthesis outputs. Use the review docs and [risk-register.md](./risk-register.md) for traceability. Use [remediation-backlog.md](./remediation-backlog.md) and [`executable-specs/`](./executable-specs/README.md) for the production-safe execution plan.
 
 ## Review artifact map
 
@@ -44,7 +44,8 @@ The final review set carries **90 review findings** from the completed area revi
 | [test-ci-governance.md](./test-ci-governance.md) | Test-layer inventory, CI gate classification, signal-vs-noise assessment, and missing hard controls. |
 | [static-analysis-triage.md](./static-analysis-triage.md) | Legacy backlog triage model, hotspot concentration, and baseline/new-violations-only gate strategy. |
 | [coverage-matrix.md](./coverage-matrix.md) | Cross-area mandatory-angle map showing where each required review angle is covered. |
-| [risk-register.md](./risk-register.md) | Central register of 90 carried-forward review findings plus 5 mission-level evidence constraints. |
+| [executable-specs/README.md](./executable-specs/README.md) | Execution package with lane-by-lane `EXEC-SPEC`s, shared packet template, release gate, and program order. |
+| [risk-register.md](./risk-register.md) | Central register of 99 carried-forward review findings plus 5 mission-level evidence constraints. |
 | [remediation-backlog.md](./remediation-backlog.md) | Prioritized next-mission fix backlog grouped into immediate workstreams and later cleanup/ratchet work. |
 
 ## Milestone validation evidence

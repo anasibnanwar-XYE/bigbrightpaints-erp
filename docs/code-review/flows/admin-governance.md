@@ -18,6 +18,19 @@ Primary evidence:
 
 Supporting runtime evidence was limited: `curl -i -s http://localhost:8081/actuator/health` returned connection failure (`exit 7`) during this session, so this document relies on static inspection plus existing integration/truth-suite coverage.
 
+## Executable remediation handoff
+
+This review feeds:
+
+- [Lane 01 exec spec](../executable-specs/01-lane-control-plane-runtime/EXEC-SPEC.md)
+- [Lane 02 exec spec](../executable-specs/02-lane-auth-secrets-incident/EXEC-SPEC.md)
+- [Lane 06 exec spec](../executable-specs/06-lane-governance-finance/EXEC-SPEC.md)
+
+Planning notes:
+
+- `ADMIN-07` and `ADMIN-13` are validation-first. Re-prove them against current code and `openapi.json` before assigning backend implementation work.
+- Keep global settings scoping work separate from auth-secret storage migration and from accounting-boundary redesign.
+
 ## Entrypoints
 
 | Surface | Entrypoints | Controller | Notes |

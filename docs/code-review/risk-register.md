@@ -4,6 +4,26 @@ This register carries forward the findings from every completed area review plus
 
 Repeated themes (for example the inventory-accounting double-posting boundary) are intentionally preserved under each source review that found them. The goal of this register is traceability first, deduplication second.
 
+## Execution package
+
+This register is not the execution order. Use the execution package below when work starts:
+
+- [executable-specs/README.md](./executable-specs/README.md)
+- [executable-specs/00-program-map.md](./executable-specs/00-program-map.md)
+- [remediation-backlog.md](./remediation-backlog.md)
+
+Planning rule:
+- this register preserves every finding for traceability, but implementation should follow lane ownership, packet sequencing, and release gates from the executable-spec package
+
+## Validation-first findings in the current plan
+
+These items remain in the register for evidence traceability, but the current plan treats them as validation-first rather than automatic backend implementation:
+
+- `TEN-09`
+- `ADMIN-07`
+- `ADMIN-13`
+- `ORCH-10`
+
 ## Review-finding summary
 
 | Severity | Count |

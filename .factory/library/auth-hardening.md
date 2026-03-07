@@ -56,5 +56,6 @@ Mission-specific guidance for the security/auth remediation wave.
 
 ## Strict review expectation
 - Every feature handoff must name the adjacent ERP-sensitive flows that were rechecked.
+- Every frontend-relevant auth/admin/control outcome must update `.factory/library/frontend-handoff.md` and the matching `docs/frontend-update-v2/**` tracker entry, even when the conclusion is "no frontend change required".
 - Scrutiny should treat missing regression evidence as a quality failure, not a documentation nit.
 - If a fix closes one auth/security gap by widening another boundary, return to the orchestrator instead of guessing.

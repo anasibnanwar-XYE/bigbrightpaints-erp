@@ -20,13 +20,17 @@ Use for backend features that change:
 
 ### Step 1: Understand the feature and its blast radius
 1. Read the feature description, preconditions, expectedBehavior, and verificationSteps carefully.
-2. Read `AGENTS.md`, `.factory/services.yaml`, `.factory/library/auth-hardening.md`, and `.factory/library/frontend-handoff.md` before planning changes.
+2. Read `AGENTS.md`, `.factory/services.yaml`, `.factory/library/auth-hardening.md`, `.factory/library/frontend-handoff.md`, and `.factory/library/packet-governance.md` before planning changes.
 3. Read the relevant review evidence in:
    - `docs/code-review/flows/auth-identity.md`
    - `docs/code-review/flows/admin-governance.md`
    - `docs/code-review/risk-register.md`
-4. Enumerate all touched endpoints, DTOs, roles, tenant/company-boundary checks, token stores, and adjacent ERP-sensitive flows before coding.
-5. Explicitly note whether the feature is expected to preserve the current request/response shape. Default assumption: preserve it.
+4. Read the packet controls for the active lane in:
+   - `docs/code-review/executable-specs/PACKET-TEMPLATE.md`
+   - `docs/code-review/executable-specs/RELEASE-GATE.md`
+   - the lane-specific `EXEC-SPEC.md`
+5. Enumerate all touched endpoints, DTOs, roles, tenant/company-boundary checks, token stores, migrations, and adjacent ERP-sensitive flows before coding.
+6. Explicitly note whether the feature is expected to preserve the current request/response shape. Default assumption: preserve it.
 
 ### Step 2: Write characterization tests first
 1. Before implementation, add or update tests that lock in the current contract and reproduce the security or boundary problem.
@@ -38,13 +42,15 @@ Use for backend features that change:
 ### Step 3: Implement the minimal compatible fix
 1. Make the smallest change that closes the security gap without unnecessary API churn.
 2. Preserve request/response shapes unless the feature explicitly allows a documented change.
-3. If a shape change is truly unavoidable:
+3. If the packet requires schema work, use Flyway `v2` only (`db/migration_v2`, `flyway_schema_history_v2`) and do not touch legacy `db/migration/**`.
+4. If a shape change is truly unavoidable:
    - update `.factory/library/frontend-handoff.md` in the same session,
+   - update the relevant `docs/frontend-update-v2/**` tracker entry in the same session,
    - describe the exact contract delta,
    - include migration notes for the frontend,
    - mention it explicitly in the handoff summary.
-4. Keep company/tenant binding fail-closed.
-5. Prefer strengthening existing code paths over introducing parallel contracts unless the feature specifically requires a replacement path.
+5. Keep company/tenant binding fail-closed.
+6. Prefer strengthening existing code paths over introducing parallel contracts unless the feature specifically requires a replacement path.
 
 ### Step 4: Verify aggressively
 1. Run `cd erp-domain && mvn compile -q`.
@@ -53,11 +59,13 @@ Use for backend features that change:
 4. Re-read every touched controller, DTO, migration, and error path in the diff looking for silent regressions.
 5. Explicitly verify adjacent ERP-sensitive flows touched by the change (for example: login/refresh/logout, `/auth/me`, forgot/reset, admin user controls, admin settings authz, tenant binding).
 6. If the local app is started and the feature needs runtime evidence, verify the changed flow with `curl` and capture the exact sequence.
+7. Before closing the packet, record whether release-gate evidence and rollback notes are complete; if branch review or merge action is required, return to the orchestrator instead of guessing.
 
 ### Step 5: Update shared knowledge
 1. Update `.factory/library/frontend-handoff.md` for any touched auth/admin surface. If nothing changed, say so explicitly.
-2. If you learned a new auth/security constraint or rollout caveat, update `.factory/library/auth-hardening.md`.
-3. If runtime setup/verification changed, update `.factory/library/user-testing.md`.
+2. Update the relevant `docs/frontend-update-v2/**` entry for any frontend-relevant auth/admin/control-plane outcome, including explicit no-op notes where applicable.
+3. If you learned a new auth/security constraint or rollout caveat, update `.factory/library/auth-hardening.md`.
+4. If runtime setup/verification changed, update `.factory/library/user-testing.md`.
 
 ### Step 6: Produce a strict handoff
 Your handoff must make shortcuts visible. Include:
@@ -65,6 +73,7 @@ Your handoff must make shortcuts visible. Include:
 - whether API shapes changed (`yes` or `no`)
 - the regression flows you rechecked explicitly
 - exact commands run and what passed/failed
+- whether the packet touched Flyway `v2` schema work and what compatibility window remains
 - any remaining risk or rollout caveat
 
 ## Example Handoff
@@ -113,3 +122,4 @@ Your handoff must make shortcuts visible. Include:
 - A boundary fix expands into unrelated domain refactoring outside the agreed security/auth scope.
 - Targeted regression coverage reveals an adjacent ERP-breaking flow that is not safely fixable inside the current feature.
 - Runtime verification is required but the needed infrastructure or credentials are unavailable.
+- The packet is technically complete but now needs base-branch review, merge handling, or release-gate judgment from the orchestrator.

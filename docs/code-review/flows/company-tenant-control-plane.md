@@ -17,6 +17,18 @@ Primary evidence:
 - `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/company/{CompanyControllerIT,SuperAdminControllerIT,TenantOnboardingControllerTest}.java`
 - `erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/{TS_RuntimeCompanyContextFilterExecutableCoverageTest,TS_RuntimeTenantPolicyControlExecutableCoverageTest,TS_RuntimeTenantControlPlaneEnforcementTest}.java`
 
+## Executable remediation handoff
+
+This review feeds:
+
+- [Lane 01 exec spec](../executable-specs/01-lane-control-plane-runtime/EXEC-SPEC.md)
+- [Lane 02 exec spec](../executable-specs/02-lane-auth-secrets-incident/EXEC-SPEC.md)
+
+Planning notes:
+
+- `TEN-09` is validation-first. Re-prove current tenant-runtime and portal payload drift against code, tests, and `openapi.json` before creating backend implementation work.
+- `TEN-10` is a merge gate on the current auth-hardening branch, not a later cleanup item.
+
 ## Entrypoints
 
 | Surface | Entrypoints | Controller | Notes |

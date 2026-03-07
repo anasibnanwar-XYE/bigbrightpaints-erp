@@ -24,6 +24,18 @@ Primary evidence:
 
 Supporting runtime evidence was limited in this session: `curl -i -s http://localhost:8081/actuator/health` failed with exit code `7`, so this review relies on static inspection plus existing integration/truth-suite coverage.
 
+## Executable remediation handoff
+
+This review feeds:
+
+- [Lane 03 exec spec](../executable-specs/03-lane-accounting-truth-boundary/EXEC-SPEC.md)
+- [Lane 04 exec spec](../executable-specs/04-lane-commercial-workflows/EXEC-SPEC.md)
+
+Planning notes:
+
+- `O2C-09` should be treated as an early runtime repair packet inside Lane 04, not as a reason to redesign the sales workflow.
+- Keep dispatch as the canonical posting boundary from Lane 03, and keep the reservation prerequisite explicit before `POST /api/v1/sales/orders/{id}/confirm` succeeds.
+
 ## Entrypoints
 
 | Surface | Entrypoints | Controller | Notes |
