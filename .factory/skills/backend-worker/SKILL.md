@@ -39,23 +39,24 @@ Use for any backend Java/Spring feature in the BigBright ERP, including:
    - Single responsibility per service
    - Company-scoped queries
    - Event-driven cross-module communication
-3. For service decomposition:
+3. While touching O2C/P2P hotspots, remove dead code, unused branches, stale helpers, and retired duplicate-truth paths that are made obsolete by your feature. Do not leave known dead logic behind in the touched area.
+4. For service decomposition:
    - Create new focused service classes
    - Move methods from the god service to appropriate new services
    - Update the god service to delegate to new services (keep it as a facade initially if needed)
    - Update all controllers and other services that call the moved methods
    - Update all test imports and references
-4. For new Flyway migrations: continue from the highest existing version number.
+5. For new Flyway migrations: continue from the highest existing version number in `migration_v2` only.
 
 ### Step 4: Verify
 1. Run compilation check: `cd erp-domain && mvn compile -q`
 2. Run the baseline test suite: `cd erp-domain && mvn test -Pgate-fast -Djacoco.skip=true`
 3. For broader validation (optional, takes ~2.5min): `cd erp-domain && mvn test -Djacoco.skip=true '-Dtest=!*IT,!*ITCase,!*codered*' -pl .`
-3. Manually verify key behaviors using the approach appropriate for the feature:
+4. Manually verify key behaviors using the approach appropriate for the feature:
    - For new endpoints: document curl commands that demonstrate the endpoint works
    - For refactoring: confirm all callers are updated and tests pass
    - For bug fixes: confirm the specific bug is fixed via the test you wrote
-4. Check for any regressions in related modules.
+5. Check for any regressions in related modules.
 
 ### Step 5: Document Frontend Handoff
 If your feature adds or changes API endpoints, you MUST update `.factory/library/frontend-handoff.md` with:
@@ -68,10 +69,13 @@ If your feature adds or changes API endpoints, you MUST update `.factory/library
 
 This is a mandatory deliverable. A frontend developer should be able to build the UI from this documentation alone.
 
+Also update `.factory/library/frontend-v2.md` when the feature changes role surfaces, blocker semantics, generated artifacts, or backend-facing frontend assumptions.
+
 ### Step 6: Update Shared Knowledge
 1. If you discovered important patterns, quirks, or conventions, update `.factory/library/architecture.md`.
 2. If you changed environment setup, update `.factory/library/environment.md`.
-3. If you found issues outside your feature scope, report them in `discoveredIssues`.
+3. If you removed duplicate-truth or dead code paths, append a concise dated note to `.factory/library/remediation-log.md`.
+4. If you found issues outside your feature scope, report them in `discoveredIssues`.
 
 ## Example Handoff
 

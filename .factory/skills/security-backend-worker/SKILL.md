@@ -38,13 +38,14 @@ Use for backend features that change:
 ### Step 3: Implement the minimal compatible fix
 1. Make the smallest change that closes the security gap without unnecessary API churn.
 2. Preserve request/response shapes unless the feature explicitly allows a documented change.
-3. If a shape change is truly unavoidable:
+3. Remove obsolete authz checks, stale override paths, unused compatibility branches, and dead security-related code in the touched area when they would otherwise leave production confusion behind.
+4. If a shape change is truly unavoidable:
    - update `.factory/library/frontend-handoff.md` in the same session,
    - describe the exact contract delta,
    - include migration notes for the frontend,
    - mention it explicitly in the handoff summary.
-4. Keep company/tenant binding fail-closed.
-5. Prefer strengthening existing code paths over introducing parallel contracts unless the feature specifically requires a replacement path.
+5. Keep company/tenant binding fail-closed.
+6. Prefer strengthening existing code paths over introducing parallel contracts unless the feature specifically requires a replacement path.
 
 ### Step 4: Verify aggressively
 1. Run `cd erp-domain && mvn compile -q`.
@@ -56,8 +57,10 @@ Use for backend features that change:
 
 ### Step 5: Update shared knowledge
 1. Update `.factory/library/frontend-handoff.md` for any touched auth/admin surface. If nothing changed, say so explicitly.
-2. If you learned a new auth/security constraint or rollout caveat, update `.factory/library/auth-hardening.md`.
-3. If runtime setup/verification changed, update `.factory/library/user-testing.md`.
+2. Update `.factory/library/frontend-v2.md` for any touched role-surface, blocker, or approval-flow change relevant to frontend-v2 consumers.
+3. If you learned a new auth/security constraint or rollout caveat, update `.factory/library/auth-hardening.md`.
+4. If runtime setup/verification changed, update `.factory/library/user-testing.md`.
+5. If you removed obsolete override or boundary code, append a concise dated note to `.factory/library/remediation-log.md`.
 
 ### Step 6: Produce a strict handoff
 Your handoff must make shortcuts visible. Include:

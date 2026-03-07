@@ -11,6 +11,7 @@ Testing surface: tools, URLs, setup steps, isolation notes, known quirks.
 - Start the local app only when a feature or validator needs runtime-assisted evidence.
 - Preserve auth/admin contracts wherever possible; if a shape changes, verify the documented handoff note matches the runtime/API behavior.
 - If delegated helper launches fail, perform the validation directly in-session and emit the expected validation artifacts manually.
+- For orchestrator-side delegation, prefer the custom project droids approved by the user instead of built-in helper subagents.
 
 ## Testing Surface
 - **Type**: REST API
@@ -25,18 +26,18 @@ Testing surface: tools, URLs, setup steps, isolation notes, known quirks.
 
 ## Setup Steps
 1. Run `/home/realnigga/Desktop/Mission-control/.factory/init.sh`.
-2. Confirm the local PostgreSQL dependency on `5432` is reachable.
-3. When runtime evidence is needed, start `rabbitmq` and `mailhog`.
-4. Start the backend on `8081/9090`.
-5. Wait for health: `curl -sf http://localhost:9090/actuator/health`.
+2. When runtime evidence is needed, start the compose-backed mission services on `5433/5672/1025/8081/9090` rather than touching the unrelated local PostgreSQL on `5432`.
+3. Start `db`, `rabbitmq`, and `mailhog` with `DB_PORT=5433 docker compose up -d db rabbitmq mailhog`.
+4. Start the backend on `8081/9090` with the explicit Flyway v2 overrides from `.factory/services.yaml`.
+5. Wait for health using either `curl -sf http://localhost:9090/actuator/health` or the fallback auth probe on `http://localhost:8081/api/v1/auth/me`.
 6. Exercise auth/admin endpoints with `curl`.
 7. For the compose-backed auth runtime currently on `8081`, the seeded `MOCK` tenant already has usable UAT actors (`uat.admin@example.com`, `uat.sales@example.com`, `uat.superadmin@example.com`). If their passwords drift, reset them directly in the local `erp_db` container with `crypt('<password>', gen_salt('bf'))` before user-testing.
 8. To validate the **current code** on the compose-backed runtime after this milestone, rebuild and restart the app with explicit overrides so it uses Flyway v2, passes production CORS validation, and forces MailHog instead of any `.env` SMTP credentials: `SPRING_PROFILES_ACTIVE='prod,flyway-v2' ERP_CORS_ALLOWED_ORIGINS='https://app.bigbrightpaints.com' ERP_CORS_ALLOW_TAILSCALE_HTTP_ORIGINS='true' DB_PORT=5433 SPRING_MAIL_HOST='mailhog' SPRING_MAIL_PORT='1025' SPRING_MAIL_USERNAME='' SPRING_MAIL_PASSWORD='' SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH='false' SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE='false' SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_REQUIRED='false' docker compose up -d --build app`.
 
 ## Known Issues
-- Delegated validator/reviewer helpers may fail with `Invalid model: custom:CLIProxyAPI-5.4-xhigh` or `Invalid model: custom:CLIProxyAPI-5.4-high`; attempt once if required by procedure, then fall back to direct in-session validation.
+- Built-in helper subagent launches may fail with invalid model-alias errors; attempt once only when necessary, then fall back to direct in-session validation or approved custom project droids.
 - Local runtime surfaces may be down until the backend is started explicitly for this mission.
-- Local PostgreSQL on `5432` is reused by this mission; do not start another database on the same port.
+- Local PostgreSQL on `5432` belongs to another local database; mission-owned compose runtime must use `5433` instead.
 - Starting a second local Spring Boot instance against the compose database on `127.0.0.1:5433/erp_domain` currently fails at Flyway startup because the schema is populated but only `flyway_schema_history_v2` exists; prefer the already-running compose app on `8081/9090` for runtime auth validation instead of a parallel local app process.
 - Plain `docker compose up -d --build app` currently picks up `.env` `SPRING_PROFILES_ACTIVE=dev`, localhost HTTP CORS origins, and any persisted SMTP credentials, which makes the rebuilt app fail on either Flyway history detection, prod-profile origin validation, or runtime reset-email delivery. Use the explicit override command above when you need the runtime to reflect current repository code, and keep the `--build` flag because `up -d app` alone can leave you probing a stale image.
 - The compose-backed app can report `503 {"status":"DOWN"}` on `http://localhost:9090/actuator/health` even while the auth/admin APIs on `8081` are usable; if that happens, confirm the target API endpoints directly before treating the runtime as unavailable.
