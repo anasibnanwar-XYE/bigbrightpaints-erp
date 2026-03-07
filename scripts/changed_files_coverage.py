@@ -93,7 +93,7 @@ def merge_line_stats(
     missed_line = max(total_line - covered_line, 0)
 
     total_branch = max(current_mb + current_cb, incoming_mb + incoming_cb)
-    covered_branch = max(current_cb, incoming_cb)
+    covered_branch = min(total_branch, current_cb + incoming_cb)
     missed_branch = max(total_branch - covered_branch, 0)
 
     return missed_line, covered_line, missed_branch, covered_branch
@@ -255,16 +255,18 @@ def main() -> int:
         and not files_with_unmapped_lines
         and not skipped_files
     )
-    vacuous = files_considered == 0 or (line_total == 0 and not structural_only)
+    no_changed_source_files = files_considered == 0
+    vacuous = (not no_changed_source_files) and (line_total == 0 and not structural_only)
     vacuous_reason = ""
-    if files_considered == 0:
-        vacuous_reason = "no_files_considered"
+    if no_changed_source_files:
+        vacuous_reason = "no_changed_source_files"
     elif line_total == 0 and not structural_only:
         vacuous_reason = "no_instrumented_lines"
 
     summary = {
         "diff_base": base,
         "files_considered": files_considered,
+        "no_changed_source_files": no_changed_source_files,
         "line_covered": line_cov,
         "line_total": line_total,
         "line_ratio": line_ratio,
