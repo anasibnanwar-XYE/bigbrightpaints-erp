@@ -75,6 +75,7 @@ public class TenantOnboardingService {
 
         String normalizedCompanyCode = normalizeCompanyCode(request.code());
         String normalizedAdminEmail = normalizeEmail(request.firstAdminEmail());
+        requireCredentialEmailDeliveryReady();
         ensureCompanyCodeAvailable(normalizedCompanyCode);
         ensureAdminEmailAvailable(normalizedAdminEmail);
 
@@ -202,12 +203,19 @@ public class TenantOnboardingService {
         admin.addRole(adminRole);
         userAccountRepository.save(admin);
 
-        emailService.sendUserCredentialsEmail(
+        emailService.sendUserCredentialsEmailRequired(
                 admin.getEmail(),
                 admin.getDisplayName(),
                 temporaryPassword,
                 company.getCode());
-        return new AdminProvisioningResult(emailService.isCredentialEmailDeliveryEnabled());
+        return new AdminProvisioningResult(true);
+    }
+
+    private void requireCredentialEmailDeliveryReady() {
+        if (!emailService.isCredentialEmailDeliveryEnabled()) {
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
+                    "Credential email delivery is disabled; enable erp.mail.enabled=true and erp.mail.send-credentials=true");
+        }
     }
 
     private String resolveAdminDisplayName(String requestedDisplayName, Company company) {
