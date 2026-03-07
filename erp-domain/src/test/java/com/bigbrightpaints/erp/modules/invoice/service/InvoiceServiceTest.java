@@ -5,6 +5,7 @@ import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.service.DealerLedgerService;
 import com.bigbrightpaints.erp.modules.accounting.service.JournalReferenceResolver;
+import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocationRepository;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
@@ -20,6 +21,7 @@ import com.bigbrightpaints.erp.modules.sales.dto.DispatchConfirmResponse;
 import com.bigbrightpaints.erp.modules.sales.service.SalesDispatchReconciliationService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesJournalService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesOrderCrudService;
+import com.bigbrightpaints.erp.shared.dto.LinkedBusinessReferenceDto;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
@@ -65,6 +67,8 @@ class InvoiceServiceTest {
     private PackagingSlipRepository packagingSlipRepository;
     @Mock
     private CompanyClock companyClock;
+    @Mock
+    private PartnerSettlementAllocationRepository settlementAllocationRepository;
 
     private InvoiceService invoiceService;
     private Company company;
@@ -77,13 +81,9 @@ class InvoiceServiceTest {
                 salesOrderCrudService,
                 salesDispatchReconciliationService,
                 salesOrderRepository,
-                invoiceNumberService,
-                salesJournalService,
                 companyEntityLookup,
-                journalReferenceResolver,
-                dealerLedgerService,
                 packagingSlipRepository,
-                companyClock
+                settlementAllocationRepository
         );
         company = new Company();
         company.setTimezone("UTC");
@@ -301,6 +301,7 @@ class InvoiceServiceTest {
         ReflectionTestUtils.setField(existingInvoice, "id", 321L);
         existingInvoice.setCompany(company);
         existingInvoice.setInvoiceNumber("INV-79");
+        existingInvoice.setStatus("ISSUED");
         when(invoiceRepository.findAllByCompanyAndSalesOrderId(company, orderId)).thenReturn(List.of(existingInvoice));
 
         Dealer dealer = new Dealer();
@@ -308,13 +309,24 @@ class InvoiceServiceTest {
         order.setCompany(company);
         order.setDealer(dealer);
         order.setOrderNumber("SO-79");
+        order.setStatus("READY_TO_SHIP");
         order.setCurrency("INR");
         ReflectionTestUtils.setField(order, "id", orderId);
+        existingInvoice.setSalesOrder(order);
+
+        com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry journalEntry =
+                new com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry();
+        ReflectionTestUtils.setField(journalEntry, "id", 654L);
+        journalEntry.setReferenceNumber("INV-BBP-SO-79");
+        journalEntry.setStatus("POSTED");
+        existingInvoice.setJournalEntry(journalEntry);
 
         when(salesOrderCrudService.getOrderWithItems(orderId)).thenReturn(order);
 
         PackagingSlip activeSlip = new PackagingSlip();
         ReflectionTestUtils.setField(activeSlip, "id", 201L);
+        activeSlip.setSlipNumber("PS-79");
+        activeSlip.setStatus("DISPATCHED");
         PackagingSlip cancelledSlip = new PackagingSlip();
         ReflectionTestUtils.setField(cancelledSlip, "id", 202L);
         cancelledSlip.setStatus("CANCELLED");
@@ -326,6 +338,15 @@ class InvoiceServiceTest {
         assertThat(order.getFulfillmentInvoiceId()).isEqualTo(321L);
         assertThat(dto.id()).isEqualTo(321L);
         assertThat(activeSlip.getInvoiceId()).isEqualTo(321L);
+        assertThat(dto.lifecycle().workflowStatus()).isEqualTo("ISSUED");
+        assertThat(dto.lifecycle().accountingStatus()).isEqualTo("POSTED");
+        assertThat(dto.linkedReferences())
+                .extracting(LinkedBusinessReferenceDto::relationType, LinkedBusinessReferenceDto::documentType)
+                .contains(
+                        org.assertj.core.groups.Tuple.tuple("SOURCE_ORDER", "SALES_ORDER"),
+                        org.assertj.core.groups.Tuple.tuple("DISPATCH", "PACKAGING_SLIP"),
+                        org.assertj.core.groups.Tuple.tuple("ACCOUNTING_ENTRY", "JOURNAL_ENTRY")
+                );
         verify(salesOrderRepository).save(order);
         verifyNoInteractions(salesDispatchReconciliationService);
         verifyNoInteractions(invoiceNumberService);

@@ -31,6 +31,7 @@ import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
 import com.bigbrightpaints.erp.modules.purchasing.dto.GoodsReceiptLineRequest;
 import com.bigbrightpaints.erp.modules.purchasing.dto.GoodsReceiptRequest;
 import com.bigbrightpaints.erp.modules.purchasing.dto.GoodsReceiptResponse;
+import com.bigbrightpaints.erp.shared.dto.LinkedBusinessReferenceDto;
 import org.apache.commons.codec.digest.DigestUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -403,10 +404,15 @@ class PurchasingServiceGoodsReceiptTest {
 
         assertThat(response.id()).isEqualTo(950L);
         assertThat(response.status()).isEqualTo("PARTIAL");
+        assertThat(response.lifecycle().workflowStatus()).isEqualTo("PARTIAL");
+        assertThat(response.lifecycle().accountingStatus()).isEqualTo("PENDING");
         assertThat(response.receiptNumber()).isEqualTo("GRN-30-01");
         assertThat(response.lines()).hasSize(1);
         assertThat(response.lines().get(0).batchCode()).isEqualTo("RM-20-LOT-001");
         assertThat(response.totalAmount()).isEqualByComparingTo("20.00");
+        assertThat(response.linkedReferences())
+                .extracting(LinkedBusinessReferenceDto::relationType, LinkedBusinessReferenceDto::documentType)
+                .contains(org.assertj.core.groups.Tuple.tuple("PURCHASE_ORDER", "PURCHASE_ORDER"));
     }
 
     @Test

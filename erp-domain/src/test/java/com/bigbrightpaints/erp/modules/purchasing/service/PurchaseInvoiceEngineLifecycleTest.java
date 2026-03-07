@@ -31,6 +31,7 @@ import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
 import com.bigbrightpaints.erp.modules.purchasing.dto.RawMaterialPurchaseLineRequest;
 import com.bigbrightpaints.erp.modules.purchasing.dto.RawMaterialPurchaseRequest;
 import com.bigbrightpaints.erp.modules.purchasing.dto.RawMaterialPurchaseResponse;
+import com.bigbrightpaints.erp.shared.dto.LinkedBusinessReferenceDto;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -246,6 +247,8 @@ class PurchaseInvoiceEngineLifecycleTest {
 
         JournalEntry linkedEntry = new JournalEntry();
         ReflectionTestUtils.setField(linkedEntry, "id", 700L);
+        linkedEntry.setStatus("POSTED");
+        linkedEntry.setReferenceNumber("RMP-SUP10-INV40");
         when(companyEntityLookup.requireJournalEntry(company, 700L)).thenReturn(linkedEntry);
 
         when(purchaseRepository.save(any(RawMaterialPurchase.class))).thenAnswer(invocation -> {
@@ -364,6 +367,15 @@ class PurchaseInvoiceEngineLifecycleTest {
         RawMaterialPurchaseResponse response = purchaseInvoiceEngine.createPurchase(request);
 
         assertThat(response.id()).isEqualTo(600L);
+        assertThat(response.lifecycle().workflowStatus()).isEqualTo("POSTED");
+        assertThat(response.lifecycle().accountingStatus()).isEqualTo("POSTED");
+        assertThat(response.linkedReferences())
+                .extracting(LinkedBusinessReferenceDto::relationType, LinkedBusinessReferenceDto::documentType)
+                .contains(
+                        org.assertj.core.groups.Tuple.tuple("PURCHASE_ORDER", "PURCHASE_ORDER"),
+                        org.assertj.core.groups.Tuple.tuple("GOODS_RECEIPT", "GOODS_RECEIPT"),
+                        org.assertj.core.groups.Tuple.tuple("ACCOUNTING_ENTRY", "JOURNAL_ENTRY")
+                );
         verify(movementRepository).saveAll(org.mockito.ArgumentMatchers.argThat(movements -> {
             java.util.Iterator<RawMaterialMovement> iterator = movements.iterator();
             if (!iterator.hasNext()) {

@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.accounting.dto;
 
+import com.bigbrightpaints.erp.shared.dto.LinkedBusinessReferenceDto;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -35,6 +36,8 @@ public record AccountingTransactionAuditDetailDto(
         List<LinkedDocument> linkedDocuments,
         List<SettlementAllocation> settlementAllocations,
         List<EventTrailItem> eventTrail,
+        LinkedBusinessReferenceDto drivingDocument,
+        List<LinkedBusinessReferenceDto> linkedReferenceChain,
         Instant createdAt,
         Instant updatedAt,
         Instant postedAt,

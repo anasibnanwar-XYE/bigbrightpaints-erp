@@ -2,10 +2,10 @@ package com.bigbrightpaints.erp.modules.invoice.service;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
-import com.bigbrightpaints.erp.core.util.CompanyClock;
+import com.bigbrightpaints.erp.core.util.BusinessDocumentTruths;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
-import com.bigbrightpaints.erp.core.util.MoneyUtils;
-import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
+import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocation;
+import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocationRepository;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
@@ -13,8 +13,6 @@ import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceLine;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
 import com.bigbrightpaints.erp.modules.invoice.dto.InvoiceDto;
 import com.bigbrightpaints.erp.modules.invoice.dto.InvoiceLineDto;
-import com.bigbrightpaints.erp.modules.accounting.service.JournalReferenceResolver;
-import com.bigbrightpaints.erp.modules.accounting.service.DealerLedgerService;
 import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlip;
 import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
@@ -23,17 +21,16 @@ import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderRepository;
 import com.bigbrightpaints.erp.modules.sales.dto.DispatchConfirmRequest;
 import com.bigbrightpaints.erp.modules.sales.dto.DispatchConfirmResponse;
 import com.bigbrightpaints.erp.modules.sales.service.SalesDispatchReconciliationService;
-import com.bigbrightpaints.erp.modules.sales.service.SalesJournalService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesOrderCrudService;
-import com.bigbrightpaints.erp.modules.sales.util.SalesOrderReference;
+import com.bigbrightpaints.erp.shared.dto.DocumentLifecycleDto;
+import com.bigbrightpaints.erp.shared.dto.LinkedBusinessReferenceDto;
 import jakarta.transaction.Transactional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import java.math.BigDecimal;
-import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -45,38 +42,26 @@ public class InvoiceService {
     private final SalesOrderCrudService salesOrderCrudService;
     private final SalesDispatchReconciliationService salesDispatchReconciliationService;
     private final SalesOrderRepository salesOrderRepository;
-    private final InvoiceNumberService invoiceNumberService;
-    private final SalesJournalService salesJournalService;
     private final CompanyEntityLookup companyEntityLookup;
-    private final JournalReferenceResolver journalReferenceResolver;
-    private final DealerLedgerService dealerLedgerService;
     private final PackagingSlipRepository packagingSlipRepository;
-    private final CompanyClock companyClock;
+    private final PartnerSettlementAllocationRepository settlementAllocationRepository;
 
     public InvoiceService(CompanyContextService companyContextService,
                           InvoiceRepository invoiceRepository,
                           SalesOrderCrudService salesOrderCrudService,
                           SalesDispatchReconciliationService salesDispatchReconciliationService,
                           SalesOrderRepository salesOrderRepository,
-                          InvoiceNumberService invoiceNumberService,
-                          SalesJournalService salesJournalService,
                           CompanyEntityLookup companyEntityLookup,
-                          JournalReferenceResolver journalReferenceResolver,
-                          DealerLedgerService dealerLedgerService,
                           PackagingSlipRepository packagingSlipRepository,
-                          CompanyClock companyClock) {
+                          PartnerSettlementAllocationRepository settlementAllocationRepository) {
         this.companyContextService = companyContextService;
         this.invoiceRepository = invoiceRepository;
         this.salesOrderCrudService = salesOrderCrudService;
         this.salesDispatchReconciliationService = salesDispatchReconciliationService;
         this.salesOrderRepository = salesOrderRepository;
-        this.invoiceNumberService = invoiceNumberService;
-        this.salesJournalService = salesJournalService;
         this.companyEntityLookup = companyEntityLookup;
-        this.journalReferenceResolver = journalReferenceResolver;
-        this.dealerLedgerService = dealerLedgerService;
         this.packagingSlipRepository = packagingSlipRepository;
-        this.companyClock = companyClock;
+        this.settlementAllocationRepository = settlementAllocationRepository;
     }
 
     @Transactional
@@ -217,10 +202,6 @@ public class InvoiceService {
         return false;
     }
 
-    private BigDecimal currency(BigDecimal value) {
-        return MoneyUtils.roundCurrency(value);
-    }
-
     @Transactional
     public List<InvoiceDto> listInvoices(int page, int size) {
         Company company = companyContextService.requireCurrentCompany();
@@ -275,37 +256,6 @@ public class InvoiceService {
         return toDto(invoice);
     }
 
-    private JournalEntry resolveInvoiceJournal(SalesOrder order, Invoice invoice) {
-        Company company = order.getCompany();
-        String reference = resolveInvoiceReference(order, invoice);
-        Optional<JournalEntry> existing = journalReferenceResolver.findExistingEntry(company, reference);
-        return existing.orElseGet(() -> createInvoiceJournal(order, invoice, reference));
-    }
-
-    private String resolveInvoiceReference(SalesOrder order, Invoice invoice) {
-        if (invoice != null && StringUtils.hasText(invoice.getInvoiceNumber())) {
-            return invoice.getInvoiceNumber().trim();
-        }
-        return SalesOrderReference.invoiceReference(order);
-    }
-
-    private JournalEntry createInvoiceJournal(SalesOrder order, Invoice invoice, String reference) {
-        Long entryId = salesJournalService.postSalesJournal(
-                order,
-                invoice.getTotalAmount(),
-                reference,
-                invoice.getIssueDate(),
-                "Invoice " + invoice.getInvoiceNumber());
-        if (entryId == null) {
-            return null;
-        }
-        return companyEntityLookup.requireJournalEntry(order.getCompany(), entryId);
-    }
-
-    private LocalDate currentDate(Company company) {
-        return companyClock.today(company);
-    }
-
     public record InvoiceWithEmail(InvoiceDto invoice, String dealerEmail, String companyName) {}
 
     @Transactional
@@ -335,6 +285,11 @@ public class InvoiceService {
                         line.getSgstAmount(),
                         line.getIgstAmount()))
                 .toList();
+        DocumentLifecycleDto lifecycle = BusinessDocumentTruths.invoiceLifecycle(
+                invoice.getStatus(),
+                invoice.getJournalEntry()
+        );
+        List<LinkedBusinessReferenceDto> linkedReferences = buildLinkedReferences(invoice, lifecycle);
         Dealer dealer = invoice.getDealer();
         return new InvoiceDto(
                 invoice.getId(),
@@ -353,7 +308,63 @@ public class InvoiceService {
                 invoice.getSalesOrder() != null ? invoice.getSalesOrder().getId() : null,
                 invoice.getJournalEntry() != null ? invoice.getJournalEntry().getId() : null,
                 invoice.getCreatedAt(),
-                lineDtos
+                lineDtos,
+                lifecycle,
+                linkedReferences
         );
+    }
+
+    private List<LinkedBusinessReferenceDto> buildLinkedReferences(Invoice invoice,
+                                                                   DocumentLifecycleDto lifecycle) {
+        List<LinkedBusinessReferenceDto> linkedReferences = new ArrayList<>();
+        SalesOrder salesOrder = invoice.getSalesOrder();
+        if (salesOrder != null) {
+            linkedReferences.add(BusinessDocumentTruths.reference(
+                    "SOURCE_ORDER",
+                    "SALES_ORDER",
+                    salesOrder.getId(),
+                    salesOrder.getOrderNumber(),
+                    BusinessDocumentTruths.salesOrderLifecycle(salesOrder),
+                    salesOrder.getSalesJournalEntryId()
+            ));
+            for (PackagingSlip slip : findOrderSlips(invoice.getCompany(), salesOrder.getId(), false)) {
+                linkedReferences.add(BusinessDocumentTruths.reference(
+                        "DISPATCH",
+                        "PACKAGING_SLIP",
+                        slip.getId(),
+                        slip.getSlipNumber(),
+                        BusinessDocumentTruths.packagingSlipLifecycle(slip),
+                        slip.getCogsJournalEntryId() != null ? slip.getCogsJournalEntryId() : slip.getJournalEntryId()
+                ));
+            }
+        }
+        if (invoice.getJournalEntry() != null) {
+            linkedReferences.add(BusinessDocumentTruths.reference(
+                    "ACCOUNTING_ENTRY",
+                    "JOURNAL_ENTRY",
+                    invoice.getJournalEntry().getId(),
+                    invoice.getJournalEntry().getReferenceNumber(),
+                    BusinessDocumentTruths.journalLifecycle(invoice.getJournalEntry()),
+                    invoice.getJournalEntry().getId()
+            ));
+        }
+        List<PartnerSettlementAllocation> settlementAllocations = settlementAllocationRepository
+                .findByCompanyAndInvoiceOrderByCreatedAtDesc(invoice.getCompany(), invoice);
+        if (settlementAllocations != null) {
+            for (PartnerSettlementAllocation allocation : settlementAllocations) {
+                linkedReferences.add(BusinessDocumentTruths.reference(
+                        "SETTLEMENT",
+                        "SETTLEMENT_ALLOCATION",
+                        allocation.getId(),
+                        allocation.getIdempotencyKey(),
+                        BusinessDocumentTruths.settlementLifecycle(allocation.getJournalEntry()),
+                        allocation.getJournalEntry() != null ? allocation.getJournalEntry().getId() : null
+                ));
+            }
+        }
+        return linkedReferences.stream()
+                .filter(reference -> reference.documentId() != null)
+                .distinct()
+                .toList();
     }
 }

@@ -20,13 +20,16 @@ import com.bigbrightpaints.erp.modules.accounting.event.AccountingEventRepositor
 import com.bigbrightpaints.erp.modules.accounting.event.AccountingEventType;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipRepository;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchase;
+import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
+import com.bigbrightpaints.erp.modules.purchasing.domain.GoodsReceipt;
+import com.bigbrightpaints.erp.modules.purchasing.domain.PurchaseOrder;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
+import com.bigbrightpaints.erp.shared.dto.LinkedBusinessReferenceDto;
 import com.bigbrightpaints.erp.shared.dto.PageResponse;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.TypedQuery;
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -57,9 +60,9 @@ class AccountingAuditTrailServiceTest {
     @Mock
     private InvoiceRepository invoiceRepository;
     @Mock
-    private EntityManager entityManager;
+    private RawMaterialPurchaseRepository rawMaterialPurchaseRepository;
     @Mock
-    private TypedQuery<RawMaterialPurchase> rawMaterialPurchaseQuery;
+    private PackagingSlipRepository packagingSlipRepository;
 
     private AccountingAuditTrailService service;
 
@@ -72,7 +75,8 @@ class AccountingAuditTrailServiceTest {
                 accountingEventRepository,
                 settlementAllocationRepository,
                 invoiceRepository,
-                entityManager
+                rawMaterialPurchaseRepository,
+                packagingSlipRepository
         );
     }
 
@@ -118,10 +122,7 @@ class AccountingAuditTrailServiceTest {
         when(journalLineRepository.summarizeTotalsByCompanyAndJournalEntryIds(eq(company), eq(List.of(11L))))
                 .thenReturn(List.of(totals(11L, "2000.00", "2000.00")));
         when(invoiceRepository.findByCompanyAndJournalEntry_IdIn(eq(company), eq(List.of(11L)))).thenReturn(List.of());
-        when(entityManager.createQuery(any(String.class), eq(RawMaterialPurchase.class))).thenReturn(rawMaterialPurchaseQuery);
-        when(rawMaterialPurchaseQuery.setParameter("company", company)).thenReturn(rawMaterialPurchaseQuery);
-        when(rawMaterialPurchaseQuery.setParameter("journalEntryIds", List.of(11L))).thenReturn(rawMaterialPurchaseQuery);
-        when(rawMaterialPurchaseQuery.getResultList()).thenReturn(List.of());
+        when(rawMaterialPurchaseRepository.findByCompanyAndJournalEntry_IdIn(eq(company), eq(List.of(11L)))).thenReturn(List.of());
         when(settlementAllocationRepository.findByCompanyAndJournalEntry_IdIn(eq(company), eq(List.of(11L)))).thenReturn(List.of());
 
         PageResponse<AccountingTransactionAuditListItemDto> result = service.listTransactions(
@@ -150,7 +151,7 @@ class AccountingAuditTrailServiceTest {
                 null, null, null, null, null, 0, 50);
 
         assertThat(result.content()).isEmpty();
-        verifyNoInteractions(journalLineRepository, invoiceRepository, entityManager, settlementAllocationRepository);
+        verifyNoInteractions(journalLineRepository, invoiceRepository, rawMaterialPurchaseRepository, settlementAllocationRepository);
     }
 
     @Test
@@ -197,11 +198,7 @@ class AccountingAuditTrailServiceTest {
         when(journalEntryRepository.findByCompanyAndId(company, 42L)).thenReturn(Optional.of(entry));
         when(settlementAllocationRepository.findByCompanyAndJournalEntryOrderByCreatedAtAsc(company, entry)).thenReturn(List.of());
         when(invoiceRepository.findByCompanyAndJournalEntry(company, entry)).thenReturn(Optional.empty());
-        when(entityManager.createQuery(any(String.class), eq(RawMaterialPurchase.class))).thenReturn(rawMaterialPurchaseQuery);
-        when(rawMaterialPurchaseQuery.setParameter("company", company)).thenReturn(rawMaterialPurchaseQuery);
-        when(rawMaterialPurchaseQuery.setParameter("journalEntry", entry)).thenReturn(rawMaterialPurchaseQuery);
-        when(rawMaterialPurchaseQuery.setMaxResults(1)).thenReturn(rawMaterialPurchaseQuery);
-        when(rawMaterialPurchaseQuery.getResultList()).thenReturn(List.of());
+        when(rawMaterialPurchaseRepository.findByCompanyAndJournalEntry(company, entry)).thenReturn(Optional.empty());
         when(accountingEventRepository.findByJournalEntryIdOrderByEventTimestampAsc(42L)).thenReturn(List.of(event));
 
         AccountingTransactionAuditDetailDto detail = service.transactionDetail(42L);
@@ -250,11 +247,7 @@ class AccountingAuditTrailServiceTest {
         when(journalEntryRepository.findByCompanyAndId(company, 84L)).thenReturn(Optional.of(entry));
         when(settlementAllocationRepository.findByCompanyAndJournalEntryOrderByCreatedAtAsc(company, entry)).thenReturn(List.of());
         when(invoiceRepository.findByCompanyAndJournalEntry(company, entry)).thenReturn(Optional.empty());
-        when(entityManager.createQuery(any(String.class), eq(RawMaterialPurchase.class))).thenReturn(rawMaterialPurchaseQuery);
-        when(rawMaterialPurchaseQuery.setParameter("company", company)).thenReturn(rawMaterialPurchaseQuery);
-        when(rawMaterialPurchaseQuery.setParameter("journalEntry", entry)).thenReturn(rawMaterialPurchaseQuery);
-        when(rawMaterialPurchaseQuery.setMaxResults(1)).thenReturn(rawMaterialPurchaseQuery);
-        when(rawMaterialPurchaseQuery.getResultList()).thenReturn(List.of());
+        when(rawMaterialPurchaseRepository.findByCompanyAndJournalEntry(company, entry)).thenReturn(Optional.empty());
         when(accountingEventRepository.findByJournalEntryIdOrderByEventTimestampAsc(84L)).thenReturn(List.of());
 
         AccountingTransactionAuditDetailDto detail = service.transactionDetail(84L);
@@ -304,10 +297,7 @@ class AccountingAuditTrailServiceTest {
         when(journalLineRepository.summarizeTotalsByCompanyAndJournalEntryIds(eq(company), eq(List.of(85L))))
                 .thenReturn(List.of(totals(85L, "4000.00", "4000.00")));
         when(invoiceRepository.findByCompanyAndJournalEntry_IdIn(eq(company), eq(List.of(85L)))).thenReturn(List.of());
-        when(entityManager.createQuery(any(String.class), eq(RawMaterialPurchase.class))).thenReturn(rawMaterialPurchaseQuery);
-        when(rawMaterialPurchaseQuery.setParameter("company", company)).thenReturn(rawMaterialPurchaseQuery);
-        when(rawMaterialPurchaseQuery.setParameter("journalEntryIds", List.of(85L))).thenReturn(rawMaterialPurchaseQuery);
-        when(rawMaterialPurchaseQuery.getResultList()).thenReturn(List.of());
+        when(rawMaterialPurchaseRepository.findByCompanyAndJournalEntry_IdIn(eq(company), eq(List.of(85L)))).thenReturn(List.of());
         when(settlementAllocationRepository.findByCompanyAndJournalEntry_IdIn(eq(company), eq(List.of(85L)))).thenReturn(List.of());
 
         PageResponse<AccountingTransactionAuditListItemDto> result = service.listTransactions(
@@ -317,6 +307,85 @@ class AccountingAuditTrailServiceTest {
         AccountingTransactionAuditListItemDto row = result.content().getFirst();
         assertThat(row.module()).isEqualTo("SETTLEMENT");
         assertThat(row.transactionType()).isEqualTo("SETTLEMENT_SUPPLIER");
+    }
+
+    @Test
+    void transactionDetail_exposesPurchaseWorkflowProvenanceChain() {
+        Company company = new Company();
+        company.setCode("BBP");
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+
+        JournalEntry entry = new JournalEntry();
+        setField(entry, "id", 91L);
+        entry.setReferenceNumber("RMP-BBP-SUP-91");
+        entry.setEntryDate(LocalDate.of(2026, 2, 15));
+        entry.setStatus("POSTED");
+
+        Account inv = new Account();
+        inv.setCode("RM-INVENTORY");
+        inv.setType(AccountType.ASSET);
+        JournalLine debit = new JournalLine();
+        debit.setAccount(inv);
+        debit.setDebit(new BigDecimal("800.00"));
+        debit.setCredit(BigDecimal.ZERO);
+
+        Account ap = new Account();
+        ap.setCode("AP-SUP");
+        ap.setType(AccountType.LIABILITY);
+        JournalLine credit = new JournalLine();
+        credit.setAccount(ap);
+        credit.setDebit(BigDecimal.ZERO);
+        credit.setCredit(new BigDecimal("800.00"));
+        entry.getLines().add(debit);
+        entry.getLines().add(credit);
+
+        Supplier supplier = new Supplier();
+        setField(supplier, "id", 201L);
+        supplier.setName("Supplier 201");
+
+        PurchaseOrder purchaseOrder = new PurchaseOrder();
+        setField(purchaseOrder, "id", 301L);
+        purchaseOrder.setOrderNumber("PO-301");
+        purchaseOrder.setStatus("INVOICED");
+
+        GoodsReceipt goodsReceipt = new GoodsReceipt();
+        setField(goodsReceipt, "id", 401L);
+        goodsReceipt.setCompany(company);
+        goodsReceipt.setReceiptNumber("GRN-401");
+        goodsReceipt.setStatus("INVOICED");
+        goodsReceipt.setPurchaseOrder(purchaseOrder);
+
+        RawMaterialPurchase purchase = new RawMaterialPurchase();
+        setField(purchase, "id", 501L);
+        purchase.setCompany(company);
+        purchase.setSupplier(supplier);
+        purchase.setInvoiceNumber("PINV-501");
+        purchase.setStatus("POSTED");
+        purchase.setGoodsReceipt(goodsReceipt);
+        purchase.setPurchaseOrder(purchaseOrder);
+        purchase.setJournalEntry(entry);
+        purchase.setTotalAmount(new BigDecimal("800.00"));
+        purchase.setOutstandingAmount(new BigDecimal("200.00"));
+
+        when(journalEntryRepository.findByCompanyAndId(company, 91L)).thenReturn(Optional.of(entry));
+        when(settlementAllocationRepository.findByCompanyAndJournalEntryOrderByCreatedAtAsc(company, entry)).thenReturn(List.of());
+        when(invoiceRepository.findByCompanyAndJournalEntry(company, entry)).thenReturn(Optional.empty());
+        when(rawMaterialPurchaseRepository.findByCompanyAndJournalEntry(company, entry)).thenReturn(Optional.of(purchase));
+        when(settlementAllocationRepository.findByCompanyAndPurchaseOrderByCreatedAtDesc(company, purchase)).thenReturn(List.of());
+        when(accountingEventRepository.findByJournalEntryIdOrderByEventTimestampAsc(91L)).thenReturn(List.of());
+
+        AccountingTransactionAuditDetailDto detail = service.transactionDetail(91L);
+
+        assertThat(detail.drivingDocument().documentType()).isEqualTo("PURCHASE_INVOICE");
+        assertThat(detail.drivingDocument().documentId()).isEqualTo(501L);
+        assertThat(detail.drivingDocument().lifecycle().workflowStatus()).isEqualTo("POSTED");
+        assertThat(detail.linkedReferenceChain())
+                .extracting(LinkedBusinessReferenceDto::relationType, LinkedBusinessReferenceDto::documentType)
+                .contains(
+                        org.assertj.core.groups.Tuple.tuple("GOODS_RECEIPT", "GOODS_RECEIPT"),
+                        org.assertj.core.groups.Tuple.tuple("PURCHASE_ORDER", "PURCHASE_ORDER"),
+                        org.assertj.core.groups.Tuple.tuple("ACCOUNTING_ENTRY", "JOURNAL_ENTRY")
+                );
     }
 
     private static void setField(Object target, String fieldName, Object value) {

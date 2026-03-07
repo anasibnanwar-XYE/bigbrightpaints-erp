@@ -119,7 +119,7 @@ public class PurchasingService {
                              GstService gstService,
                              PurchaseOrderStatusHistoryRepository purchaseOrderStatusHistoryRepository,
                              PlatformTransactionManager transactionManager) {
-        PurchaseResponseMapper responseMapper = new PurchaseResponseMapper();
+        PurchaseResponseMapper responseMapper = new PurchaseResponseMapper(purchaseRepository);
         PurchaseTaxPolicy purchaseTaxPolicy = new PurchaseTaxPolicy();
         this.purchaseOrderService = new PurchaseOrderService(
                 companyContextService,

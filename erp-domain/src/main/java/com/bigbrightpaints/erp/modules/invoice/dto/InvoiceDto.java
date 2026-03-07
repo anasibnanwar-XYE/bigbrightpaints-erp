@@ -1,5 +1,7 @@
 package com.bigbrightpaints.erp.modules.invoice.dto;
 
+import com.bigbrightpaints.erp.shared.dto.DocumentLifecycleDto;
+import com.bigbrightpaints.erp.shared.dto.LinkedBusinessReferenceDto;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -22,4 +24,47 @@ public record InvoiceDto(Long id,
                          Long salesOrderId,
                          Long journalEntryId,
                          Instant createdAt,
-                         List<InvoiceLineDto> lines) {}
+                         List<InvoiceLineDto> lines,
+                         DocumentLifecycleDto lifecycle,
+                         List<LinkedBusinessReferenceDto> linkedReferences) {
+
+    public InvoiceDto(Long id,
+                      UUID publicId,
+                      String invoiceNumber,
+                      String status,
+                      BigDecimal subtotal,
+                      BigDecimal taxTotal,
+                      BigDecimal totalAmount,
+                      BigDecimal outstandingAmount,
+                      String currency,
+                      LocalDate issueDate,
+                      LocalDate dueDate,
+                      Long dealerId,
+                      String dealerName,
+                      Long salesOrderId,
+                      Long journalEntryId,
+                      Instant createdAt,
+                      List<InvoiceLineDto> lines) {
+        this(
+                id,
+                publicId,
+                invoiceNumber,
+                status,
+                subtotal,
+                taxTotal,
+                totalAmount,
+                outstandingAmount,
+                currency,
+                issueDate,
+                dueDate,
+                dealerId,
+                dealerName,
+                salesOrderId,
+                journalEntryId,
+                createdAt,
+                lines,
+                null,
+                List.of()
+        );
+    }
+}
