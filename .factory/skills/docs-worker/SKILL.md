@@ -39,8 +39,10 @@ This worker does not change application code.
 
 ### Step 4: Verify accuracy
 1. Re-read every edited doc against the feature description and code evidence.
-2. Run lightweight verification as needed (for example, JSON/OpenAPI spot checks or grep-based existence checks) but do not start services unless the feature explicitly requires runtime evidence.
-3. Confirm that docs do not mention Flyway v1; this mission is v2-only.
+2. Docs-only features do **not** require repo-wide compile, test, or code-review passes unless the feature explicitly says otherwise.
+3. Run lightweight verification as needed (for example, JSON/OpenAPI spot checks, knowledgebase lint, or grep-based existence checks) but do not start services unless the feature explicitly requires runtime evidence.
+4. Confirm that docs do not mention Flyway v1; this mission is v2-only.
+5. If worker-base baseline validation fails on a clearly unrelated pre-existing issue, record it briefly but continue and complete the docs packet as long as the scoped documentation checks pass.
 
 ### Step 5: Produce a precise handoff
 Include:
