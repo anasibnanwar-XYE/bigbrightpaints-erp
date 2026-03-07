@@ -21,6 +21,11 @@ Packet-branch, base-branch, review, and release-gate rules for the current remed
 5. Run Lane 01 as separate packet work.
 6. Run Lane 02 as separate packet work.
 
+Current continuation state:
+- Steps 1-4 are sealed and already evidenced on `Factory-droid`.
+- Active execution resumes at Lane 01 packet work.
+- Lane 02 can start only after Lane 01 release-gate review returns to the orchestrator.
+
 ## Required Packet Controls
 
 - Use `docs/code-review/executable-specs/PACKET-TEMPLATE.md` for packet shape.
@@ -43,4 +48,4 @@ Packet-branch, base-branch, review, and release-gate rules for the current remed
 - Keep `Factory-droid` as the base when reviewing or comparing packet scope.
 - Do not let Lane 02 consume Lane 01 work until Lane 01 has its release-gate evidence.
 - Keep Flyway work on `db/migration_v2` only.
-- As of preflight, the token-revocation precision regression in `TokenBlacklistService` is part of the merge-gate review set and must stay visible until closed.
+- Treat the current Lane 01 HOLD/SUSPENDED lifecycle/runtime semantics drift as the active control-plane truth risk until the lane closes it explicitly.

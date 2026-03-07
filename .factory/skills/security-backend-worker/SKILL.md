@@ -31,6 +31,7 @@ Use for backend features that change:
    - the lane-specific `EXEC-SPEC.md`
 5. Enumerate all touched endpoints, DTOs, roles, tenant/company-boundary checks, token stores, migrations, and adjacent ERP-sensitive flows before coding.
 6. Explicitly note whether the feature is expected to preserve the current request/response shape. Default assumption: preserve it.
+7. Reconfirm the packet stays inside its assigned lane: Lane 01 work must not absorb auth-secret migration, and Lane 02 work must not reopen control-plane lifecycle/runtime redesign.
 
 ### Step 2: Write characterization tests first
 1. Before implementation, add or update tests that lock in the current contract and reproduce the security or boundary problem.
