@@ -128,7 +128,7 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void forgotEndpoint_preservesAntiEnumerationWhenTokenPersistenceFails() {
+    void forgotEndpoint_keepsMaskedSuccessContractWhenTokenPersistenceFails() {
         doThrow(new DataAccessResourceFailureException("db unavailable"))
                 .when(passwordResetTokenRepository)
                 .saveAndFlush(any(PasswordResetToken.class));
@@ -146,6 +146,8 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
                 .isEqualTo("If the email exists, a reset link has been sent");
         assertThat(unknownUserResponse.getBody().get("message"))
                 .isEqualTo("If the email exists, a reset link has been sent");
+        assertThat(knownUserResponse.getBody().get("data")).isEqualTo("OK");
+        assertThat(unknownUserResponse.getBody().get("data")).isEqualTo("OK");
     }
 
     @Test

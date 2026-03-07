@@ -11,7 +11,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.Optional;
 
 /**
@@ -76,7 +75,7 @@ public class TokenBlacklistService {
             return;
         }
 
-        Instant revokedAt = truncateToMillis(Instant.now());
+        Instant revokedAt = Instant.now();
 
         Optional<UserTokenRevocation> existing = userTokenRevocationRepository.findByUserId(userId);
         if (existing.isPresent()) {
@@ -128,16 +127,33 @@ public class TokenBlacklistService {
             return false;
         }
 
-        Instant normalizedIssuedAt = truncateToMillis(tokenIssuedAt);
-        Instant normalizedRevokedAt = truncateToMillis(revocation.get().getRevokedAt());
-        return normalizedIssuedAt.isBefore(normalizedRevokedAt);
+        Instant revokedAt = revocation.get().getRevokedAt();
+        return revokedAt != null && !tokenIssuedAt.isAfter(revokedAt);
     }
 
-    private Instant truncateToMillis(Instant instant) {
-        if (instant == null) {
-            return null;
+    /**
+     * Aligns a newly issued token timestamp so JWT millisecond precision remains safely after
+     * any stored revocation marker for the same user.
+     *
+     * <p>Access tokens currently serialize {@code iatMs} at millisecond precision. Revocation
+     * markers are stored with the full {@link Instant} precision from the database clock. When a
+     * user logs back in immediately after a password change/logout/reset, a fresh token minted in
+     * the same millisecond as the revocation marker can round down to the same {@code iatMs} and
+     * be rejected as if it were an older session. Bumping the issue time to the next representable
+     * millisecond preserves the fail-closed revocation check for genuinely older tokens while still
+     * allowing the brand-new session to authenticate.
+     */
+    @Transactional(readOnly = true)
+    public Instant alignIssuedAtAfterRevocation(String userId, Instant candidateIssuedAt) {
+        if (userId == null || candidateIssuedAt == null) {
+            return candidateIssuedAt;
         }
-        return instant.truncatedTo(ChronoUnit.MILLIS);
+
+        return userTokenRevocationRepository.findByUserId(userId)
+                .map(UserTokenRevocation::getRevokedAt)
+                .filter(revokedAt -> revokedAt != null && candidateIssuedAt.toEpochMilli() <= revokedAt.toEpochMilli())
+                .map(revokedAt -> Instant.ofEpochMilli(revokedAt.toEpochMilli() + 1))
+                .orElse(candidateIssuedAt);
     }
 
     /**

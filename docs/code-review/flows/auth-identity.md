@@ -17,6 +17,17 @@ Primary evidence:
 - `openapi.json`
 - Tests: `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/auth/{AuthControllerIT,AuthAuditIT,AuthDisabledUserTokenIT,AuthHardeningIT,AuthPasswordResetPublicContractIT,MfaControllerIT,ProfileControllerIT,TenantRuntimeEnforcementAuthIT,CompanyContextFilterPasswordResetBypassTest}.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/auth/service/{PasswordResetServiceTest,MfaServiceTest,PasswordServiceTest}.java`, and `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/admin/service/AdminUserServiceTest.java`
 
+## Executable remediation handoff
+
+This review feeds:
+
+- [Lane 02 exec spec](../executable-specs/02-lane-auth-secrets-incident/EXEC-SPEC.md)
+
+Planning notes:
+
+- `AUTH-09` is a merge gate on the current auth-hardening branch and should close before the broader remediation wave starts.
+- The super-admin forgot-password alias should be treated as contract cleanup plus route-wiring correction, not as a net-new auth surface.
+
 ## Entrypoints
 
 | Surface | Entrypoints | Controller | Notes |

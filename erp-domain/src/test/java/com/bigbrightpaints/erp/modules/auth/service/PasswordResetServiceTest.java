@@ -222,7 +222,7 @@ class PasswordResetServiceTest {
     }
 
     @Test
-    void requestResetMasksTokenPersistenceFailureToPreserveAntiEnumeration() {
+    void requestResetMasksTokenPersistenceFailureAndKeepsPublicContract() {
         UserAccount user = new UserAccount("user@example.com", "hash", "User");
         user.setEnabled(true);
         when(userAccountRepository.findByEmailIgnoreCase("user@example.com"))
@@ -240,7 +240,7 @@ class PasswordResetServiceTest {
     }
 
     @Test
-    void requestResetMasksCleanupPersistenceFailureToPreserveAntiEnumeration() {
+    void requestResetMasksCleanupPersistenceFailureAndKeepsPublicContract() {
         UserAccount user = new UserAccount("user@example.com", "hash", "User");
         user.setEnabled(true);
         when(userAccountRepository.findByEmailIgnoreCase("user@example.com"))

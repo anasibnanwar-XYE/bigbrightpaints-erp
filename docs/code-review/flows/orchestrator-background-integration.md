@@ -29,6 +29,19 @@ Supporting runtime evidence in this session:
 - `curl -i -s http://localhost:9090/actuator/health` returned HTTP `200` with `{"status":"UP","groups":["liveness","readiness"]}`.
 - Baseline validator `mvn test -Pgate-fast -Djacoco.skip=true` passed before drafting.
 
+## Executable remediation handoff
+
+This review feeds:
+
+- [Lane 06 exec spec](../executable-specs/06-lane-governance-finance/EXEC-SPEC.md)
+- [Lane 07 exec spec](../executable-specs/07-lane-orchestrator-ops/EXEC-SPEC.md)
+- [Lane 08 exec spec](../executable-specs/08-lane-quality-governance/EXEC-SPEC.md)
+
+Planning notes:
+
+- `ORCH-10` is validation-first. Re-prove it against current controller code and published contracts before building a new operator-status backend surface.
+- Keep operator recovery, health-truth, and scheduler-locking work separate from new domain workflow behavior.
+
 ## Entrypoints
 
 | Surface | Entrypoints | Controller / trigger | Notes |

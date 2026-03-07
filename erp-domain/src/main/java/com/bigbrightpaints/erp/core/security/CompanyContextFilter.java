@@ -172,6 +172,12 @@ public class CompanyContextFilter extends OncePerRequestFilter {
                             request.getMethod(),
                             resolveCurrentActor(),
                             tenantRuntimePolicyControlRequest);
+                    if (admission == null) {
+                        writeAccessDenied(response,
+                                "TENANT_RUNTIME_ADMISSION_MISSING",
+                                "Tenant runtime admission unavailable");
+                        return;
+                    }
                     if (!admission.isAdmitted()) {
                         writeRuntimeAdmissionDenied(response, admission);
                         return;
@@ -472,7 +478,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
                 : lifecycleState;
         return switch (resolvedState) {
             case ACTIVE -> false;
-            case SUSPENDED -> isMutatingMethod(method);
+            case SUSPENDED -> true;
             case DEACTIVATED -> true;
         };
     }

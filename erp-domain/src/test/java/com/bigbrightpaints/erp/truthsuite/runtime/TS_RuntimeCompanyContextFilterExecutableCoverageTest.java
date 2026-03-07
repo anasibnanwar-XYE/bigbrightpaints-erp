@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
@@ -170,6 +171,30 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
         assertThat(payload).containsEntry("message", "bad \"quote\" \\\\ slash");
         assertThat(payload).containsEntry("success", false);
         verify(filterChain, never()).doFilter(request, response);
+    }
+
+    @Test
+    void doFilter_rejectsMissingTenantRuntimeAdmissionHandle_failClosed() throws ServletException, IOException {
+        authenticate("admin@bbp.com", Set.of("ROLE_ADMIN"), Set.of("ACME"));
+        when(companyService.resolveLifecycleStateByCode("ACME")).thenReturn(CompanyLifecycleState.ACTIVE);
+        when(tenantRuntimeEnforcementService.beginRequest(
+                eq("ACME"),
+                eq("/api/v1/private"),
+                eq("GET"),
+                eq("admin@bbp.com"),
+                eq(false)))
+                .thenReturn(null);
+
+        MockHttpServletRequest request = request("GET", "/api/v1/private");
+        request.setAttribute("jwtClaims", claimsFor("ACME"));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, filterChain);
+
+        assertThat(response.getStatus()).isEqualTo(403);
+        assertThat(response.getContentAsString()).contains("Tenant runtime admission unavailable");
+        verify(filterChain, never()).doFilter(request, response);
+        verify(tenantRuntimeEnforcementService).completeRequest(isNull(), eq(403));
     }
 
     @Test

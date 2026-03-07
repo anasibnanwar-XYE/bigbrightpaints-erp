@@ -5,6 +5,7 @@ PROJECT_ROOT="/home/realnigga/Desktop/Mission-control"
 ERP_DIR="$PROJECT_ROOT/erp-domain"
 LIB_DIR="$PROJECT_ROOT/.factory/library"
 FRONTEND_HANDOFF="$LIB_DIR/frontend-handoff.md"
+PACKET_GUIDE="$LIB_DIR/packet-governance.md"
 
 if [ ! -f "$PROJECT_ROOT/.env" ]; then
   cp "$PROJECT_ROOT/.env.example" "$PROJECT_ROOT/.env"
@@ -19,6 +20,14 @@ Capture backend contract impact for frontend consumers.
 
 ## Auth/Admin Contract Impact
 - Add notes here whenever a mission changes or confirms auth/admin request-response shapes.
+EOF
+fi
+
+if [ ! -f "$PACKET_GUIDE" ]; then
+  cat > "$PACKET_GUIDE" <<'EOF'
+# Packet Governance
+
+Packet-branch, base-branch, review, and release-gate rules for the current remediation mission.
 EOF
 fi
 

@@ -1,10 +1,10 @@
 # Forgot-password persistence failure regression fix
 
 - Feature: `forgot-password-persistence-failure-regression-fix`
-- Frontend impact: review only
+- Frontend impact: historical only
 
 ## Notes
 
-- `POST /api/v1/auth/password/forgot` keeps the same request body and the same generic success payload for unknown-user, disabled-user, and delivery/configuration-masked cases.
-- When reset-token persistence fails before a reset link can be stored, the endpoint now returns a controlled non-success `ApiResponse` instead of the normal generic success contract.
-- Frontend code does not need a payload-shape migration, but any UX that assumed forgot-password always returns `200 OK` should tolerate a controlled temporary-failure response.
+- This packet note is superseded by `review-fix-auth-regressions-from-pr90`.
+- The live `POST /api/v1/auth/password/forgot` contract once again keeps the same generic success payload for known-user and unknown-user requests even when reset-token persistence fails before a reset link can be stored.
+- No frontend migration is required; clients should continue treating forgot-password as externally non-enumerating while operators use backend diagnostics for persistence failures.
