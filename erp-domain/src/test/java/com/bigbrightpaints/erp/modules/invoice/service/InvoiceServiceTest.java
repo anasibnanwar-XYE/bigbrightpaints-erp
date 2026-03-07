@@ -294,6 +294,45 @@ class InvoiceServiceTest {
     }
 
     @Test
+    void issueInvoiceForOrder_existingInvoiceDoesNotReplayDispatchWhenSingleActiveSlipExists() {
+        Long orderId = 79L;
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        Invoice existingInvoice = new Invoice();
+        ReflectionTestUtils.setField(existingInvoice, "id", 321L);
+        existingInvoice.setCompany(company);
+        existingInvoice.setInvoiceNumber("INV-79");
+        when(invoiceRepository.findAllByCompanyAndSalesOrderId(company, orderId)).thenReturn(List.of(existingInvoice));
+
+        Dealer dealer = new Dealer();
+        SalesOrder order = new SalesOrder();
+        order.setCompany(company);
+        order.setDealer(dealer);
+        order.setOrderNumber("SO-79");
+        order.setCurrency("INR");
+        ReflectionTestUtils.setField(order, "id", orderId);
+
+        when(salesOrderCrudService.getOrderWithItems(orderId)).thenReturn(order);
+
+        PackagingSlip activeSlip = new PackagingSlip();
+        ReflectionTestUtils.setField(activeSlip, "id", 201L);
+        PackagingSlip cancelledSlip = new PackagingSlip();
+        ReflectionTestUtils.setField(cancelledSlip, "id", 202L);
+        cancelledSlip.setStatus("CANCELLED");
+        when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, orderId))
+                .thenReturn(List.of(activeSlip, cancelledSlip));
+
+        InvoiceDto dto = invoiceService.issueInvoiceForOrder(orderId);
+
+        assertThat(order.getFulfillmentInvoiceId()).isEqualTo(321L);
+        assertThat(dto.id()).isEqualTo(321L);
+        assertThat(activeSlip.getInvoiceId()).isEqualTo(321L);
+        verify(salesOrderRepository).save(order);
+        verifyNoInteractions(salesDispatchReconciliationService);
+        verifyNoInteractions(invoiceNumberService);
+        verifyNoInteractions(salesJournalService);
+    }
+
+    @Test
     void issueInvoiceForOrder_usesDispatchConfirmationWhenSlipExists() {
         Long orderId = 77L;
         when(companyContextService.requireCurrentCompany()).thenReturn(company);

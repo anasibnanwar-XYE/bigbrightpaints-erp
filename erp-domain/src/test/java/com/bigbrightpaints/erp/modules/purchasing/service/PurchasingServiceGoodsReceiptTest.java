@@ -409,6 +409,59 @@ class PurchasingServiceGoodsReceiptTest {
         assertThat(response.totalAmount()).isEqualByComparingTo("20.00");
     }
 
+    @Test
+    @DisplayName("createGoodsReceipt keeps AP truth out of receipt posting")
+    void createGoodsReceipt_doesNotPostApJournalOnSuccessfulReceipt() {
+        GoodsReceiptRequest request = request(
+                "idem-stock-only",
+                LocalDate.of(2026, 2, 20),
+                List.of(new GoodsReceiptLineRequest(
+                        20L,
+                        null,
+                        new BigDecimal("4.0000"),
+                        "KG",
+                        new BigDecimal("5.00"),
+                        "line note"))
+        );
+
+        when(goodsReceiptRepository.findWithLinesByCompanyAndIdempotencyKey(company, "idem-stock-only"))
+                .thenReturn(Optional.empty());
+        when(purchaseOrderRepository.lockByCompanyAndId(company, 30L))
+                .thenReturn(Optional.of(purchaseOrder));
+        when(goodsReceiptRepository.lockByCompanyAndReceiptNumberIgnoreCase(company, "GRN-30-01"))
+                .thenReturn(Optional.empty());
+        when(goodsReceiptRepository.findByPurchaseOrder(purchaseOrder))
+                .thenReturn(List.of());
+        when(rawMaterialRepository.lockByCompanyAndId(company, 20L))
+                .thenReturn(Optional.of(rawMaterial));
+
+        RawMaterialBatch recordedBatch = new RawMaterialBatch();
+        ReflectionTestUtils.setField(recordedBatch, "id", 702L);
+        recordedBatch.setBatchCode("RM-20-LOT-002");
+        recordedBatch.setRawMaterial(rawMaterial);
+        recordedBatch.setQuantity(new BigDecimal("4.0000"));
+        recordedBatch.setUnit("KG");
+        recordedBatch.setCostPerUnit(new BigDecimal("5.00"));
+
+        when(rawMaterialService.recordReceipt(eq(20L), any(RawMaterialBatchRequest.class), any(RawMaterialService.ReceiptContext.class)))
+                .thenReturn(new RawMaterialService.ReceiptResult(recordedBatch, null, null));
+        when(goodsReceiptRepository.saveAndFlush(any(GoodsReceipt.class)))
+                .thenAnswer(invocation -> {
+                    GoodsReceipt receipt = invocation.getArgument(0);
+                    ReflectionTestUtils.setField(receipt, "id", 951L);
+                    ReflectionTestUtils.setField(receipt, "createdAt", Instant.parse("2026-02-20T00:00:00Z"));
+                    return receipt;
+                });
+        when(purchaseOrderRepository.save(any(PurchaseOrder.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        GoodsReceiptResponse response = purchasingService.createGoodsReceipt(request);
+
+        assertThat(response.id()).isEqualTo(951L);
+        assertThat(response.status()).isEqualTo("PARTIAL");
+        verifyNoInteractions(accountingFacade, journalEntryRepository);
+    }
+
     private GoodsReceiptRequest request(String idempotencyKey, LocalDate receiptDate, List<GoodsReceiptLineRequest> lines) {
         return new GoodsReceiptRequest(
                 30L,

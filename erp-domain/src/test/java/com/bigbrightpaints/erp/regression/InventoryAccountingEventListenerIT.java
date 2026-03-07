@@ -132,6 +132,34 @@ class InventoryAccountingEventListenerIT extends AbstractIntegrationTest {
         assertThat(after).isEqualTo(before + 2);
     }
 
+    @Test
+    void movementEventSkipsWhenAccountsAreMissing() {
+        LocalDate movementDate = LocalDate.now().minusDays(1);
+        long before = journalEntryRepository.count();
+        InventoryMovementEvent event = InventoryMovementEvent.builder()
+                .companyId(company.getId())
+                .movementType(InventoryMovementEvent.MovementType.ISSUE)
+                .inventoryType(InventoryValuationChangedEvent.InventoryType.FINISHED_GOOD)
+                .itemId(3L)
+                .itemCode("FG-TEST-3")
+                .itemName("Finished Good Test 3")
+                .quantity(new BigDecimal("1"))
+                .unitCost(new BigDecimal("8.00"))
+                .totalCost(new BigDecimal("8.00"))
+                .sourceAccountId(inventoryAccount.getId())
+                .destinationAccountId(null)
+                .referenceNumber("INV-MOVE-NO-ACCOUNTS")
+                .movementDate(movementDate)
+                .memo("Test movement event without destination account")
+                .relatedEntityId(101L)
+                .relatedEntityType("TEST")
+                .build();
+
+        listener.onInventoryMovement(event);
+
+        assertThat(journalEntryRepository.count()).isEqualTo(before);
+    }
+
     private Account ensureAccount(String code, String name, AccountType type) {
         return accountRepository.findByCompanyAndCodeIgnoreCase(company, code)
                 .orElseGet(() -> {

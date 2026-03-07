@@ -49,8 +49,10 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -332,5 +334,49 @@ class PurchaseInvoiceEngineLifecycleTest {
                 any()
         );
         verify(purchaseOrderService, times(1)).transitionStatus(any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("createPurchase links AP journal to receipt movement without replaying stock receipt")
+    void createPurchase_linksJournalToReceiptMovementWithoutRestocking() {
+        when(goodsReceiptRepository.findByPurchaseOrder(purchaseOrder)).thenReturn(List.of(goodsReceipt));
+
+        RawMaterialPurchaseRequest request = new RawMaterialPurchaseRequest(
+                10L,
+                "INV-40",
+                LocalDate.of(2026, 3, 2),
+                "invoice",
+                30L,
+                40L,
+                BigDecimal.ZERO,
+                List.of(new RawMaterialPurchaseLineRequest(
+                        20L,
+                        null,
+                        new BigDecimal("10.0000"),
+                        "KG",
+                        new BigDecimal("12.50"),
+                        null,
+                        null,
+                        "line"
+                ))
+        );
+
+        RawMaterialPurchaseResponse response = purchaseInvoiceEngine.createPurchase(request);
+
+        assertThat(response.id()).isEqualTo(600L);
+        verify(movementRepository).saveAll(org.mockito.ArgumentMatchers.argThat(movements -> {
+            java.util.Iterator<RawMaterialMovement> iterator = movements.iterator();
+            if (!iterator.hasNext()) {
+                return false;
+            }
+            RawMaterialMovement movement = iterator.next();
+            return !iterator.hasNext()
+                    && movement.getId().equals(500L)
+                    && movement.getJournalEntryId() != null
+                    && movement.getJournalEntryId().equals(700L);
+        }));
+        verify(goodsReceiptRepository).save(goodsReceipt);
+        verify(rawMaterialBatchRepository, never()).save(any(RawMaterialBatch.class));
+        verifyNoInteractions(rawMaterialService);
     }
 }
