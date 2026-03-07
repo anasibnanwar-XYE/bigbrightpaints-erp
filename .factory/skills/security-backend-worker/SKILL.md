@@ -65,8 +65,9 @@ Use for backend features that change:
 ### Step 5: Update shared knowledge
 1. Update `.factory/library/frontend-handoff.md` for any touched auth/admin surface. If nothing changed, say so explicitly.
 2. Update the relevant `docs/frontend-update-v2/**` entry for any frontend-relevant auth/admin/control-plane outcome, including explicit no-op notes where applicable.
-3. If you learned a new auth/security constraint or rollout caveat, update `.factory/library/auth-hardening.md`.
-4. If runtime setup/verification changed, update `.factory/library/user-testing.md`.
+3. When a packet restores live runtime behavior to an already-published contract on a frontend-relevant surface, still record that parity/no-op conclusion in the handoff docs instead of silently skipping the update.
+4. If you learned a new auth/security constraint or rollout caveat, update `.factory/library/auth-hardening.md`.
+5. If runtime setup/verification changed, update `.factory/library/user-testing.md`.
 
 ### Step 6: Produce a strict handoff
 Your handoff must make shortcuts visible. Include:
