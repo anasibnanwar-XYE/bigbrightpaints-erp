@@ -98,7 +98,7 @@ public class AuthService {
                     company.getCode(), Map.of("companyCode", company.getCode()));
             Map<String, Object> claims = new HashMap<>();
             claims.put("name", principal.getUser().getDisplayName());
-            Instant issuedAt = Instant.now();
+            Instant issuedAt = tokenBlacklistService.alignIssuedAtAfterRevocation(user.getEmail(), Instant.now());
             String accessToken = tokenService.generateAccessToken(
                     principal.getUsername(),
                     company.getCode(),
@@ -154,7 +154,7 @@ public class AuthService {
                 userEmail,
                 "REFRESH_TOKEN");
         Map<String, Object> claims = Map.of("name", user.getDisplayName());
-        Instant issuedAt = Instant.now();
+        Instant issuedAt = tokenBlacklistService.alignIssuedAtAfterRevocation(userEmail, Instant.now());
         String accessToken = tokenService.generateAccessToken(userEmail, company.getCode(), claims, issuedAt);
         String refreshToken = refreshTokenService.issue(
                 userEmail,

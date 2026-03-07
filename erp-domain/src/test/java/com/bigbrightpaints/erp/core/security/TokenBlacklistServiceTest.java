@@ -59,4 +59,35 @@ class TokenBlacklistServiceTest {
 
         assertFalse(revoked);
     }
+
+    @Test
+    void alignIssuedAtAfterRevocationBumpsSameMillisecondIssueTimeToNextRepresentableInstant() {
+        UserTokenRevocation revocation = new UserTokenRevocation("user@example.com", "all tokens revoked");
+        revocation.setRevokedAt(Instant.parse("2026-03-07T12:00:00.123999Z"));
+        when(userTokenRevocationRepository.findByUserId("user@example.com"))
+                .thenReturn(Optional.of(revocation));
+
+        Instant alignedIssuedAt = tokenBlacklistService.alignIssuedAtAfterRevocation(
+                "user@example.com",
+                Instant.parse("2026-03-07T12:00:00.123111Z"));
+
+        assertTrue(alignedIssuedAt.isAfter(revocation.getRevokedAt()));
+        assertTrue(alignedIssuedAt.toEpochMilli() > revocation.getRevokedAt().toEpochMilli());
+    }
+
+    @Test
+    void alignIssuedAtAfterRevocationLeavesLaterIssueTimeUnchanged() {
+        UserTokenRevocation revocation = new UserTokenRevocation("user@example.com", "all tokens revoked");
+        revocation.setRevokedAt(Instant.parse("2026-03-07T12:00:00.123111Z"));
+        when(userTokenRevocationRepository.findByUserId("user@example.com"))
+                .thenReturn(Optional.of(revocation));
+
+        Instant issuedAt = Instant.parse("2026-03-07T12:00:00.124000Z");
+
+        Instant alignedIssuedAt = tokenBlacklistService.alignIssuedAtAfterRevocation(
+                "user@example.com",
+                issuedAt);
+
+        assertTrue(alignedIssuedAt.equals(issuedAt));
+    }
 }

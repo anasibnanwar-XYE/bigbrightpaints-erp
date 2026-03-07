@@ -44,6 +44,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -87,6 +88,8 @@ class AuthServiceAuditAttributionTest {
                 tokenBlacklistService,
                 auditService,
                 tenantRuntimeEnforcementService);
+        lenient().when(tokenBlacklistService.alignIssuedAtAfterRevocation(any(), any(Instant.class)))
+                .thenAnswer(invocation -> invocation.getArgument(1));
     }
 
     @Test
@@ -264,6 +267,78 @@ class AuthServiceAuditAttributionTest {
         assertThatThrownBy(() -> authService.refresh(new RefreshTokenRequest("refresh-old", "ACME")))
                 .isInstanceOf(ApplicationException.class)
                 .hasMessage("Refresh token revoked");
+    }
+
+    @Test
+    void loginUsesIssuedAtAlignedAfterLatestRevocationBoundary() {
+        LoginRequest request = new LoginRequest("user@example.com", "Passw0rd!", "ACME", null, null);
+        UserAccount user = userWithCompany("user@example.com", "ACME");
+        Authentication authentication =
+                new UsernamePasswordAuthenticationToken(new UserPrincipal(user), null);
+        Instant alignedIssuedAt = Instant.parse("2026-03-07T12:00:00.124Z");
+
+        when(userAccountRepository.findByEmailIgnoreCase("user@example.com")).thenReturn(Optional.of(user));
+        when(authenticationManager.authenticate(any())).thenReturn(authentication);
+        when(companyRepository.findByCodeIgnoreCase("ACME")).thenReturn(Optional.of(company("ACME")));
+        when(tokenBlacklistService.alignIssuedAtAfterRevocation(eq("user@example.com"), any(Instant.class)))
+                .thenReturn(alignedIssuedAt);
+        when(tokenService.generateAccessToken(eq("user@example.com"), eq("ACME"), any(Map.class), eq(alignedIssuedAt)))
+                .thenReturn("access-new");
+        when(refreshTokenService.issue(
+                eq("user@example.com"),
+                eq(alignedIssuedAt),
+                eq(alignedIssuedAt.plusSeconds(3600L))))
+                .thenReturn("refresh-new");
+        when(properties.getRefreshTokenTtlSeconds()).thenReturn(3600L);
+        when(properties.getAccessTokenTtlSeconds()).thenReturn(900L);
+
+        var response = authService.login(request);
+
+        assertThat(response.accessToken()).isEqualTo("access-new");
+        assertThat(response.refreshToken()).isEqualTo("refresh-new");
+        verify(tokenBlacklistService).alignIssuedAtAfterRevocation(eq("user@example.com"), any(Instant.class));
+        verify(refreshTokenService).issue(
+                "user@example.com",
+                alignedIssuedAt,
+                alignedIssuedAt.plusSeconds(3600L));
+    }
+
+    @Test
+    void refreshUsesIssuedAtAlignedAfterLatestRevocationBoundary() {
+        RefreshTokenRequest request = new RefreshTokenRequest("refresh-old", "ACME");
+        Instant consumedIssuedAt = Instant.parse("2026-01-01T00:00:00Z");
+        Instant alignedIssuedAt = Instant.parse("2026-03-07T12:00:00.124Z");
+        UserAccount user = userWithCompany("user@example.com", "ACME");
+        RefreshTokenService.TokenRecord record = new RefreshTokenService.TokenRecord(
+                "user@example.com",
+                consumedIssuedAt,
+                consumedIssuedAt.plus(1, ChronoUnit.DAYS));
+
+        when(refreshTokenService.consume("refresh-old")).thenReturn(Optional.of(record));
+        when(tokenBlacklistService.isUserTokenRevoked("user@example.com", consumedIssuedAt)).thenReturn(false);
+        when(userAccountRepository.findByEmailIgnoreCase("user@example.com")).thenReturn(Optional.of(user));
+        when(companyRepository.findByCodeIgnoreCase("ACME")).thenReturn(Optional.of(company("ACME")));
+        when(tokenBlacklistService.alignIssuedAtAfterRevocation(eq("user@example.com"), any(Instant.class)))
+                .thenReturn(alignedIssuedAt);
+        when(tokenService.generateAccessToken(eq("user@example.com"), eq("ACME"), any(Map.class), eq(alignedIssuedAt)))
+                .thenReturn("access-new");
+        when(refreshTokenService.issue(
+                eq("user@example.com"),
+                eq(alignedIssuedAt),
+                eq(alignedIssuedAt.plusSeconds(3600L))))
+                .thenReturn("refresh-new");
+        when(properties.getRefreshTokenTtlSeconds()).thenReturn(3600L);
+        when(properties.getAccessTokenTtlSeconds()).thenReturn(900L);
+
+        var response = authService.refresh(request);
+
+        assertThat(response.accessToken()).isEqualTo("access-new");
+        assertThat(response.refreshToken()).isEqualTo("refresh-new");
+        verify(tokenBlacklistService).alignIssuedAtAfterRevocation(eq("user@example.com"), any(Instant.class));
+        verify(refreshTokenService).issue(
+                "user@example.com",
+                alignedIssuedAt,
+                alignedIssuedAt.plusSeconds(3600L));
     }
 
     @Test
