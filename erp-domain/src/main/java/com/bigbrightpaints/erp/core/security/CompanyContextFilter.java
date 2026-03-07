@@ -1,10 +1,13 @@
 package com.bigbrightpaints.erp.core.security;
 
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserPrincipal;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyLifecycleState;
 import com.bigbrightpaints.erp.modules.company.service.CompanyService;
 import com.bigbrightpaints.erp.modules.company.service.TenantRuntimeEnforcementService;
+import com.bigbrightpaints.erp.shared.dto.ApiResponse;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -20,7 +23,10 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 @Component
 public class CompanyContextFilter extends OncePerRequestFilter {
@@ -35,14 +41,18 @@ public class CompanyContextFilter extends OncePerRequestFilter {
             "Access denied to company control request";
     private static final Set<String> PUBLIC_PASSWORD_RESET_ENDPOINTS = Set.of(
             "/api/v1/auth/password/forgot",
+            "/api/v1/auth/password/forgot/superadmin",
             "/api/v1/auth/password/reset");
     private final TenantRuntimeEnforcementService tenantRuntimeEnforcementService;
     private final CompanyService companyService;
+    private final ObjectMapper objectMapper;
 
     public CompanyContextFilter(TenantRuntimeEnforcementService tenantRuntimeEnforcementService,
-                                CompanyService companyService) {
+                                CompanyService companyService,
+                                ObjectMapper objectMapper) {
         this.tenantRuntimeEnforcementService = tenantRuntimeEnforcementService;
         this.companyService = companyService;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -57,6 +67,8 @@ public class CompanyContextFilter extends OncePerRequestFilter {
                 return;
             }
             boolean lifecycleControlRequest = isLifecycleControlRequest(runtimePath, request.getMethod());
+            boolean tenantRuntimePolicyControlRequest =
+                    hasTenantRuntimePolicyControlAuthority(runtimePath, request.getMethod());
             if (lifecycleControlRequest && !hasAuthenticatedPrincipal()) {
                 denyControlPlaneRequest(response);
                 return;
@@ -67,7 +79,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
                     && !headerCompanyCode.trim().equalsIgnoreCase(legacyHeaderCompanyId.trim())) {
                 log.warn("Rejecting mismatched company headers. X-Company-Code={}, X-Company-Id={}, path={}",
                         headerCompanyCode, legacyHeaderCompanyId, request.getRequestURI());
-                response.sendError(HttpServletResponse.SC_FORBIDDEN, "Company headers do not match");
+                writeAccessDenied(response, "COMPANY_HEADER_MISMATCH", "Company headers do not match");
                 return;
             }
             String requestedCompany = StringUtils.hasText(headerCompanyCode)
@@ -81,7 +93,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
                         && !tokenCompanyCode.trim().equalsIgnoreCase(legacyTokenCompanyId.trim())) {
                     log.warn("Rejecting mismatched token company claims. companyCode={}, cid={}, path={}",
                             tokenCompanyCode, legacyTokenCompanyId, request.getRequestURI());
-                    response.sendError(HttpServletResponse.SC_FORBIDDEN, "Token company claims do not match");
+                    writeAccessDenied(response, "COMPANY_CLAIM_MISMATCH", "Token company claims do not match");
                     return;
                 }
                 String resolvedTokenCompany = StringUtils.hasText(tokenCompanyCode)
@@ -89,21 +101,24 @@ public class CompanyContextFilter extends OncePerRequestFilter {
                         : legacyTokenCompanyId;
                 if (!StringUtils.hasText(resolvedTokenCompany)) {
                     log.warn("Rejecting authenticated request without company claim. path={}", request.getRequestURI());
-                    response.sendError(HttpServletResponse.SC_FORBIDDEN, "Authenticated token missing company context");
+                    writeAccessDenied(response, "COMPANY_CONTEXT_MISSING", "Authenticated token missing company context");
                     return;
                 }
                 if (StringUtils.hasText(requestedCompany)
                         && !resolvedTokenCompany.trim().equalsIgnoreCase(requestedCompany.trim())) {
                     log.warn("Rejecting company header mismatch. tokenCompanyCode={}, headerCompanyCode={}, path={}",
                             resolvedTokenCompany, requestedCompany, request.getRequestURI());
-                    response.sendError(HttpServletResponse.SC_FORBIDDEN, "Company header does not match authenticated company context");
+                    writeAccessDenied(response,
+                            "COMPANY_CONTEXT_MISMATCH",
+                            "Company header does not match authenticated company context");
                     return;
                 }
                 requestedCompany = resolvedTokenCompany;
             } else {
                 // Do not allow unauthenticated requests to set tenant context via header.
                 if (StringUtils.hasText(requestedCompany)) {
-                    response.sendError(HttpServletResponse.SC_FORBIDDEN,
+                    writeAccessDenied(response,
+                            "COMPANY_CONTEXT_AUTH_REQUIRED",
                             "Access denied to company-scoped request");
                     return;
                 }
@@ -139,34 +154,28 @@ public class CompanyContextFilter extends OncePerRequestFilter {
                 // even when they are not explicitly attached to the tenant membership list.
                 if (!lifecycleControlBypass && !validateCompanyAccess(companyCode)) {
                     log.warn("User attempted to access unauthorized company: {}", companyCode);
-                    response.sendError(HttpServletResponse.SC_FORBIDDEN, "Access denied to company: " + companyCode);
+                    writeAccessDenied(response,
+                            "COMPANY_ACCESS_DENIED",
+                            "Access denied to company: " + companyCode);
                     return;
                 }
                 if (!lifecycleControlBypass && shouldDenyTenantRequestByLifecycle(lifecycleState, request.getMethod())) {
-                    response.sendError(HttpServletResponse.SC_FORBIDDEN,
+                    writeAccessDenied(response,
+                            "TENANT_LIFECYCLE_RESTRICTED",
                             lifecycleDeniedMessage(lifecycleState, request.getMethod()));
                     return;
                 }
-                admission = tenantRuntimeEnforcementService.beginRequest(
-                        companyCode,
-                        runtimePath,
-                        request.getMethod(),
-                        resolveCurrentActor(),
-                        hasTenantRuntimePolicyControlAuthority(runtimePath, request.getMethod()));
-                if (!admission.isAdmitted()) {
-                    response.setStatus(admission.statusCode());
-                    response.setContentType("application/json");
-                    response.setCharacterEncoding("UTF-8");
-                    String message = admission.message();
-                    if (StringUtils.hasText(message)) {
-                        String escaped = message
-                                .replace("\\", "\\\\")
-                                .replace("\"", "\\\"");
-                        response.getWriter().write("{\"message\":\"" + escaped + "\"}");
-                    } else {
-                        response.getWriter().write("{\"message\":\"Access denied\"}");
+                if (!lifecycleControlRequest || tenantRuntimePolicyControlRequest) {
+                    admission = tenantRuntimeEnforcementService.beginRequest(
+                            companyCode,
+                            runtimePath,
+                            request.getMethod(),
+                            resolveCurrentActor(),
+                            tenantRuntimePolicyControlRequest);
+                    if (!admission.isAdmitted()) {
+                        writeRuntimeAdmissionDenied(response, admission);
+                        return;
                     }
-                    return;
                 }
                 CompanyContextHolder.setCompanyCode(companyCode);
             }
@@ -335,7 +344,58 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     }
 
     private void denyControlPlaneRequest(HttpServletResponse response) throws IOException {
-        response.sendError(HttpServletResponse.SC_FORBIDDEN, CONTROL_PLANE_AUTH_DENIED_MESSAGE);
+        writeAccessDenied(response, "COMPANY_CONTROL_ACCESS_DENIED", CONTROL_PLANE_AUTH_DENIED_MESSAGE);
+    }
+
+    private void writeAccessDenied(HttpServletResponse response,
+                                   String reason,
+                                   String reasonDetail) throws IOException {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("code", ErrorCode.AUTH_INSUFFICIENT_PERMISSIONS.getCode());
+        data.put("message", ErrorCode.AUTH_INSUFFICIENT_PERMISSIONS.getDefaultMessage());
+        data.put("reason", reason);
+        data.put("reasonDetail", reasonDetail);
+        data.put("traceId", UUID.randomUUID().toString());
+        writeControlledError(response, HttpServletResponse.SC_FORBIDDEN, "Access denied", data);
+    }
+
+    private void writeRuntimeAdmissionDenied(HttpServletResponse response,
+                                             TenantRuntimeEnforcementService.TenantRequestAdmission admission)
+            throws IOException {
+        String message = StringUtils.hasText(admission.message()) ? admission.message() : "Access denied";
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("code", StringUtils.hasText(admission.reasonCode()) ? admission.reasonCode() : "TENANT_REQUEST_DENIED");
+        data.put("message", message);
+        data.put("traceId", UUID.randomUUID().toString());
+        if (StringUtils.hasText(admission.reasonCode())) {
+            data.put("reason", admission.reasonCode());
+        }
+        if (StringUtils.hasText(admission.auditChainId())) {
+            data.put("auditChainId", admission.auditChainId());
+        }
+        if (StringUtils.hasText(admission.tenantReasonCode())) {
+            data.put("tenantReasonCode", admission.tenantReasonCode());
+        }
+        if (StringUtils.hasText(admission.limitType())) {
+            data.put("limitType", admission.limitType());
+        }
+        if (StringUtils.hasText(admission.observedValue())) {
+            data.put("observedValue", admission.observedValue());
+        }
+        if (StringUtils.hasText(admission.limitValue())) {
+            data.put("limitValue", admission.limitValue());
+        }
+        writeControlledError(response, admission.statusCode(), message, data);
+    }
+
+    private void writeControlledError(HttpServletResponse response,
+                                      int status,
+                                      String message,
+                                      Map<String, Object> data) throws IOException {
+        response.setStatus(status);
+        response.setContentType("application/json");
+        response.setCharacterEncoding("UTF-8");
+        objectMapper.writeValue(response.getWriter(), ApiResponse.failure(message, data));
     }
 
     private String resolveApplicationPath(HttpServletRequest request) {
@@ -425,7 +485,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
             case ACTIVE -> "Tenant lifecycle state allows access";
             case SUSPENDED -> isMutatingMethod(method)
                     ? "Suspended tenants are read-only"
-                    : "Tenant lifecycle state allows access";
+                    : "Tenant is suspended";
             case DEACTIVATED -> "Tenant is deactivated";
         };
     }

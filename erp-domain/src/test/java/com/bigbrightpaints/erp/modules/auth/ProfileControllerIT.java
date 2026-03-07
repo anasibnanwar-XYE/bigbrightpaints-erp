@@ -32,7 +32,9 @@ class ProfileControllerIT extends AbstractIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        dataSeeder.ensureUser(EMAIL, PASSWORD, "Portal Admin", COMPANY, List.of("ROLE_ADMIN"));
+        UserAccount user = dataSeeder.ensureUser(EMAIL, PASSWORD, "Portal Admin", COMPANY, List.of("ROLE_ADMIN"));
+        user.setMustChangePassword(false);
+        userAccountRepository.save(user);
     }
 
     @Test
@@ -68,6 +70,36 @@ class ProfileControllerIT extends AbstractIntegrationTest {
         UserAccount reloaded = userAccountRepository.findByEmailIgnoreCase(EMAIL).orElseThrow();
         assertThat(reloaded.getDisplayName()).isEqualTo("Portal Admin Updated");
         assertThat(reloaded.getPreferredName()).isEqualTo("Portal");
+    }
+
+    @Test
+    void must_change_password_user_can_view_profile_but_cannot_update_it() {
+        markMustChangePassword();
+        HttpHeaders headers = authenticatedHeaders();
+
+        ResponseEntity<Map> profile = rest.exchange(
+                "/api/v1/auth/profile",
+                HttpMethod.GET,
+                new HttpEntity<>(headers),
+                Map.class);
+        assertThat(profile.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(profile.getBody()).isNotNull();
+        Map<?, ?> profileData = (Map<?, ?>) profile.getBody().get("data");
+        assertThat(profileData).isNotNull();
+        assertThat(profileData.get("email")).isEqualTo(EMAIL);
+
+        ResponseEntity<Map> update = rest.exchange(
+                "/api/v1/auth/profile",
+                HttpMethod.PUT,
+                new HttpEntity<>(Map.of("displayName", "Blocked Update"), headers),
+                Map.class);
+        assertThat(update.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    private void markMustChangePassword() {
+        UserAccount user = userAccountRepository.findByEmailIgnoreCase(EMAIL).orElseThrow();
+        user.setMustChangePassword(true);
+        userAccountRepository.save(user);
     }
 
     private HttpHeaders authenticatedHeaders() {

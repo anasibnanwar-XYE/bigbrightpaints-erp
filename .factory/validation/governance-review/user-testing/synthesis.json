@@ -1,0 +1,32 @@
+{
+  "milestone": "governance-review",
+  "round": 1,
+  "status": "pass",
+  "generatedAt": "2026-03-06T01:40:01Z",
+  "assertionsSummary": {
+    "total": 6,
+    "passed": 6,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-QA-001",
+    "VAL-QA-002",
+    "VAL-QA-003",
+    "VAL-CROSS-001",
+    "VAL-CROSS-002",
+    "VAL-CROSS-003"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "previousRound": null,
+  "flowReports": [
+    ".factory/validation/governance-review/user-testing/flows/governance-qa.json",
+    ".factory/validation/governance-review/user-testing/flows/governance-cross.json"
+  ],
+  "environmentConstraints": [
+    "Delegated Task/subagent launches failed with `Invalid model: custom:CLIProxyAPI-5.4-xhigh`; flow validation was completed directly in-session after the failed delegation attempt.",
+    "Passive runtime setup probes failed during this round: `127.0.0.1:8081` and `127.0.0.1:5433` refused TCP connections, while `http://localhost:9090/actuator/health` was unreachable with curl exit 7. The governance-review assertion set was documentation-only and remained fully testable via `docs/code-review/**`."
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "featureId": "finance-reporting-audit-review",
+  "reviewedAt": "2026-03-06T05:22:27+05:30",
+  "commitId": "a5db331989f57aa06d85828011a76c0122eadb33",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The finance/reporting/audit review doc satisfies VAL-FIN-001. It covers accounting bootstrap and defaults, balanced journal posting, maker/checker period close, reconciliation layers, GST/tax handling, payroll accounting, audit-trail surfaces, report/export governance, temporal reporting, and the GRN versus purchase-invoice double-posting boundary with concrete code and test evidence.",
+    "issues": []
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": null,
+  "summary": "PASS. The finance/reporting/audit review artifact is complete, internally consistent with the underlying controllers/services/tests, and documents the required controls, invariants, auditability risks, and accounting-boundary findings without scrutiny-level defects."
+}

@@ -98,9 +98,16 @@ public class AuthService {
                     company.getCode(), Map.of("companyCode", company.getCode()));
             Map<String, Object> claims = new HashMap<>();
             claims.put("name", principal.getUser().getDisplayName());
-            String accessToken = tokenService.generateAccessToken(principal.getUsername(), company.getCode(), claims);
-            String refreshToken = refreshTokenService.issue(principal.getUsername(),
-                    Instant.now().plusSeconds(properties.getRefreshTokenTtlSeconds()));
+            Instant issuedAt = Instant.now();
+            String accessToken = tokenService.generateAccessToken(
+                    principal.getUsername(),
+                    company.getCode(),
+                    claims,
+                    issuedAt);
+            String refreshToken = refreshTokenService.issue(
+                    principal.getUsername(),
+                    issuedAt,
+                    issuedAt.plusSeconds(properties.getRefreshTokenTtlSeconds()));
             return new AuthResponse("Bearer", accessToken, refreshToken, properties.getAccessTokenTtlSeconds(),
                     company.getCode(), principal.getUser().getDisplayName(), user.isMustChangePassword());
         } catch (AuthenticationException ex) {
@@ -147,9 +154,12 @@ public class AuthService {
                 userEmail,
                 "REFRESH_TOKEN");
         Map<String, Object> claims = Map.of("name", user.getDisplayName());
-        String accessToken = tokenService.generateAccessToken(userEmail, company.getCode(), claims);
-        String refreshToken = refreshTokenService.issue(userEmail,
-                Instant.now().plusSeconds(properties.getRefreshTokenTtlSeconds()));
+        Instant issuedAt = Instant.now();
+        String accessToken = tokenService.generateAccessToken(userEmail, company.getCode(), claims, issuedAt);
+        String refreshToken = refreshTokenService.issue(
+                userEmail,
+                issuedAt,
+                issuedAt.plusSeconds(properties.getRefreshTokenTtlSeconds()));
         return new AuthResponse("Bearer", accessToken, refreshToken, properties.getAccessTokenTtlSeconds(),
                 company.getCode(), user.getDisplayName(), user.isMustChangePassword());
     }
@@ -195,13 +205,21 @@ public class AuthService {
         Claims accessTokenClaims = parseLogoutClaims(accessToken);
         String tokenUserEmail = extractTokenSubject(accessTokenClaims);
 
-        if (refreshToken != null && !refreshToken.isBlank()) {
+        if (tokenUserEmail != null) {
+            revokeActiveSessions(tokenUserEmail);
+        } else if (refreshToken != null && !refreshToken.isBlank()) {
             refreshTokenService.revoke(refreshToken);
-        } else if (tokenUserEmail != null) {
-            refreshTokenService.revokeAllForUser(tokenUserEmail);
         }
 
         blacklistAccessToken(accessTokenClaims, tokenUserEmail);
+    }
+
+    private void revokeActiveSessions(String userEmail) {
+        if (userEmail == null || userEmail.isBlank()) {
+            return;
+        }
+        tokenBlacklistService.revokeAllUserTokens(userEmail);
+        refreshTokenService.revokeAllForUser(userEmail);
     }
 
     private Claims parseLogoutClaims(String accessToken) {
@@ -271,9 +289,13 @@ public class AuthService {
     private void registerFailure(UserAccount user) {
         int attempts = user.getFailedLoginAttempts() + 1;
         user.setFailedLoginAttempts(attempts);
+        boolean locked = attempts >= MAX_FAILED_ATTEMPTS;
         if (attempts >= MAX_FAILED_ATTEMPTS) {
             user.setLockedUntil(Instant.now().plus(LOCKOUT_DURATION));
         }
         userAccountRepository.save(user);
+        if (locked) {
+            revokeActiveSessions(user.getEmail());
+        }
     }
 }

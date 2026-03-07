@@ -1,9 +1,14 @@
 package com.bigbrightpaints.erp.modules.company;
 
+import com.bigbrightpaints.erp.core.config.SystemSettingsRepository;
+import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
+import com.bigbrightpaints.erp.modules.company.domain.CompanyLifecycleState;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
+import com.bigbrightpaints.erp.modules.company.service.TenantRuntimeEnforcementService;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.*;
 
@@ -13,11 +18,17 @@ import java.util.Locale;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.verify;
 
 public class CompanyControllerIT extends AbstractIntegrationTest {
 
     @Autowired private TestRestTemplate rest;
     @Autowired private CompanyRepository companyRepository;
+    @Autowired private UserAccountRepository userAccountRepository;
+    @Autowired private SystemSettingsRepository systemSettingsRepository;
+    @SpyBean private TenantRuntimeEnforcementService tenantRuntimeEnforcementService;
     private static final String COMPANY_CODE = "ACME";
     private static final String ROOT_COMPANY_CODE = "ROOT";
     private static final String ADMIN_EMAIL = "admin@bbp.com";
@@ -34,6 +45,47 @@ public class CompanyControllerIT extends AbstractIntegrationTest {
                 java.util.List.of("ROLE_SUPER_ADMIN", "ROLE_ADMIN"));
         dataSeeder.ensureUser(HIERARCHY_SUPER_ADMIN_EMAIL, ADMIN_PASSWORD, "Hierarchy Super Admin", COMPANY_CODE,
                 java.util.List.of("ROLE_SUPER_ADMIN"));
+        userAccountRepository.findByEmailIgnoreCase(ADMIN_EMAIL).ifPresent(user -> {
+            user.setMustChangePassword(false);
+            user.setEnabled(true);
+            userAccountRepository.save(user);
+        });
+        userAccountRepository.findByEmailIgnoreCase(SUPER_ADMIN_EMAIL).ifPresent(user -> {
+            user.setMustChangePassword(false);
+            user.setEnabled(true);
+            userAccountRepository.save(user);
+        });
+        userAccountRepository.findByEmailIgnoreCase(HIERARCHY_SUPER_ADMIN_EMAIL).ifPresent(user -> {
+            user.setMustChangePassword(false);
+            user.setEnabled(true);
+            userAccountRepository.save(user);
+        });
+        companyRepository.findByCodeIgnoreCase(COMPANY_CODE).ifPresent(company -> {
+            company.setLifecycleState(CompanyLifecycleState.ACTIVE);
+            company.setLifecycleReason(null);
+            companyRepository.save(company);
+            resetTenantRuntimePolicy(company.getId(), company.getCode());
+        });
+        companyRepository.findByCodeIgnoreCase(ROOT_COMPANY_CODE).ifPresent(company -> {
+            company.setLifecycleState(CompanyLifecycleState.ACTIVE);
+            company.setLifecycleReason(null);
+            companyRepository.save(company);
+            resetTenantRuntimePolicy(company.getId(), company.getCode());
+        });
+    }
+
+    private void resetTenantRuntimePolicy(Long companyId, String companyCode) {
+        if (companyId == null) {
+            return;
+        }
+        systemSettingsRepository.deleteById("tenant.runtime.hold-state." + companyId);
+        systemSettingsRepository.deleteById("tenant.runtime.hold-reason." + companyId);
+        systemSettingsRepository.deleteById("tenant.runtime.max-active-users." + companyId);
+        systemSettingsRepository.deleteById("tenant.runtime.max-requests-per-minute." + companyId);
+        systemSettingsRepository.deleteById("tenant.runtime.max-concurrent-requests." + companyId);
+        systemSettingsRepository.deleteById("tenant.runtime.policy-reference." + companyId);
+        systemSettingsRepository.deleteById("tenant.runtime.policy-updated-at." + companyId);
+        tenantRuntimeEnforcementService.invalidatePolicyCache(companyCode);
     }
 
     private String loginToken() {
@@ -41,12 +93,19 @@ public class CompanyControllerIT extends AbstractIntegrationTest {
     }
 
     private String loginToken(String email, String companyCode) {
+        return loginPayload(email, companyCode).get("accessToken").toString();
+    }
+
+    private Map<String, Object> loginPayload(String email, String companyCode) {
         Map<String, Object> req = Map.of(
                 "email", email,
                 "password", ADMIN_PASSWORD,
                 "companyCode", companyCode
         );
-        return (String) rest.postForEntity("/api/v1/auth/login", req, Map.class).getBody().get("accessToken");
+        ResponseEntity<Map> response = rest.postForEntity("/api/v1/auth/login", req, Map.class);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isNotNull();
+        return response.getBody();
     }
 
     @Test
@@ -55,6 +114,7 @@ public class CompanyControllerIT extends AbstractIntegrationTest {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token);
         headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("X-Company-Code", COMPANY_CODE);
 
         ResponseEntity<Map> listResp = rest.exchange("/api/v1/companies", HttpMethod.GET, new HttpEntity<>(headers), Map.class);
         assertThat(listResp.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -151,6 +211,48 @@ public class CompanyControllerIT extends AbstractIntegrationTest {
         assertThat(data.get("companyCode").toString().toUpperCase(Locale.ROOT)).isEqualTo(COMPANY_CODE);
         assertThat(data.get("warningId")).isNotNull();
         assertThat(data.get("requestedLifecycleState")).isEqualTo("SUSPENDED");
+    }
+
+    @Test
+    void support_admin_password_reset_revokes_existing_admin_tokens() {
+        Long companyId = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow().getId();
+        Map<String, Object> adminLogin = loginPayload(ADMIN_EMAIL, COMPANY_CODE);
+        String adminAccessToken = adminLogin.get("accessToken").toString();
+        String adminRefreshToken = adminLogin.get("refreshToken").toString();
+
+        String superAdminToken = loginToken(SUPER_ADMIN_EMAIL, ROOT_COMPANY_CODE);
+        HttpHeaders supportHeaders = new HttpHeaders();
+        supportHeaders.setBearerAuth(superAdminToken);
+        supportHeaders.setContentType(MediaType.APPLICATION_JSON);
+        supportHeaders.set("X-Company-Code", ROOT_COMPANY_CODE);
+
+        ResponseEntity<Map> resetResponse = rest.exchange(
+                "/api/v1/companies/" + companyId + "/support/admin-password-reset",
+                HttpMethod.POST,
+                new HttpEntity<>(Map.of(
+                        "adminEmail", ADMIN_EMAIL,
+                        "reason", "Security hard reset"), supportHeaders),
+                Map.class);
+
+        assertThat(resetResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        HttpHeaders adminHeaders = new HttpHeaders();
+        adminHeaders.setBearerAuth(adminAccessToken);
+        adminHeaders.set("X-Company-Code", COMPANY_CODE);
+        ResponseEntity<Map> meResponse = rest.exchange(
+                "/api/v1/auth/me",
+                HttpMethod.GET,
+                new HttpEntity<>(adminHeaders),
+                Map.class);
+        assertThat(meResponse.getStatusCode()).isIn(HttpStatus.UNAUTHORIZED, HttpStatus.FORBIDDEN);
+
+        ResponseEntity<Map> refreshResponse = rest.postForEntity(
+                "/api/v1/auth/refresh-token",
+                Map.of(
+                        "refreshToken", adminRefreshToken,
+                        "companyCode", COMPANY_CODE),
+                Map.class);
+        assertThat(refreshResponse.getStatusCode()).isIn(HttpStatus.BAD_REQUEST, HttpStatus.UNAUTHORIZED);
     }
 
     @Test
@@ -371,5 +473,67 @@ public class CompanyControllerIT extends AbstractIntegrationTest {
                 Map.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    @Test
+    void canonical_tenant_runtime_policy_update_tracks_policy_control_and_blocks_same_node_immediately() {
+        Long companyId = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow().getId();
+        String rootOnlySuperAdminEmail = "root-policy-super-admin@bbp.com";
+        dataSeeder.ensureUser(rootOnlySuperAdminEmail, ADMIN_PASSWORD, "Root Policy Super Admin", ROOT_COMPANY_CODE,
+                java.util.List.of("ROLE_SUPER_ADMIN"));
+
+        String adminToken = loginToken(ADMIN_EMAIL, COMPANY_CODE);
+        HttpHeaders adminHeaders = new HttpHeaders();
+        adminHeaders.setBearerAuth(adminToken);
+        adminHeaders.setContentType(MediaType.APPLICATION_JSON);
+        adminHeaders.set("X-Company-Code", COMPANY_CODE);
+
+        ResponseEntity<Map> warmResponse = rest.exchange(
+                "/api/v1/auth/me",
+                HttpMethod.GET,
+                new HttpEntity<>(adminHeaders),
+                Map.class);
+        assertThat(warmResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        clearInvocations(tenantRuntimeEnforcementService);
+
+        String rootToken = loginToken(rootOnlySuperAdminEmail, ROOT_COMPANY_CODE);
+        HttpHeaders rootHeaders = new HttpHeaders();
+        rootHeaders.setBearerAuth(rootToken);
+        rootHeaders.setContentType(MediaType.APPLICATION_JSON);
+        rootHeaders.set("X-Company-Code", ROOT_COMPANY_CODE);
+
+        ResponseEntity<Map> updateResponse = rest.exchange(
+                "/api/v1/companies/" + companyId + "/tenant-runtime/policy",
+                HttpMethod.PUT,
+                new HttpEntity<>(Map.of(
+                        "holdState", "BLOCKED",
+                        "reasonCode", "incident-lockdown",
+                        "maxConcurrentRequests", 25,
+                        "maxRequestsPerMinute", 250,
+                        "maxActiveUsers", 45
+                ), rootHeaders),
+                Map.class);
+
+        assertThat(updateResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        verify(tenantRuntimeEnforcementService).beginRequest(
+                eq(COMPANY_CODE),
+                eq("/api/v1/companies/" + companyId + "/tenant-runtime/policy"),
+                eq("PUT"),
+                eq(rootOnlySuperAdminEmail),
+                eq(true));
+
+        ResponseEntity<Map> blockedMeResponse = rest.exchange(
+                "/api/v1/auth/me",
+                HttpMethod.GET,
+                new HttpEntity<>(adminHeaders),
+                Map.class);
+
+        assertThat(blockedMeResponse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(blockedMeResponse.getBody()).isNotNull();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> errorData = (Map<String, Object>) blockedMeResponse.getBody().get("data");
+        assertThat(errorData).isNotNull();
+        assertThat(errorData.get("reason")).isEqualTo("TENANT_BLOCKED");
     }
 }

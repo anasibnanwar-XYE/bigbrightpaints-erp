@@ -1,0 +1,49 @@
+{
+  "milestone": "auth-secret-session-hardening",
+  "round": 1,
+  "status": "fail",
+  "validatorsRun": {
+    "test": {
+      "passed": true,
+      "command": "cd \"/home/realnigga/Desktop/Mission-control/erp-domain\" && mvn test -Pgate-fast -Djacoco.skip=true",
+      "exitCode": 0
+    },
+    "typecheck": {
+      "passed": true,
+      "command": "cd \"/home/realnigga/Desktop/Mission-control/erp-domain\" && mvn compile -q",
+      "exitCode": 0
+    },
+    "lint": {
+      "passed": true,
+      "command": "bash \"/home/realnigga/Desktop/Mission-control/ci/lint-knowledgebase.sh\" && bash \"/home/realnigga/Desktop/Mission-control/ci/check-architecture.sh\" && bash \"/home/realnigga/Desktop/Mission-control/ci/check-enterprise-policy.sh\" && bash \"/home/realnigga/Desktop/Mission-control/ci/check-orchestrator-layer.sh\" && python3 \"/home/realnigga/Desktop/Mission-control/scripts/check_flaky_tags.py\" --tests-root \"/home/realnigga/Desktop/Mission-control/erp-domain/src/test/java\" --gate gate-fast && bash \"/home/realnigga/Desktop/Mission-control/scripts/guard_openapi_contract_drift.sh\"",
+      "exitCode": 0
+    }
+  },
+  "reviewsSummary": {
+    "total": 3,
+    "passed": 2,
+    "failed": 1,
+    "failedFeatures": [
+      "auth-reset-recovery-contract-hardening"
+    ]
+  },
+  "blockingIssues": [
+    {
+      "featureId": "auth-reset-recovery-contract-hardening",
+      "severity": "blocking",
+      "description": "The new `PasswordResetService.dispatchResetEmail(...)` flow issues a reset token and only later deletes sibling tokens in a separate transaction. Overlapping forgot/admin-reset requests for the same user can therefore delete each other's tokens and leave the user with delivered reset emails but no valid reset token.",
+      "evidence": "See `.factory/validation/auth-secret-session-hardening/scrutiny/reviews/auth-reset-recovery-contract-hardening.json` for the code-path analysis covering `issueResetToken(...)`, `cleanupSupersededResetTokens(...)`, and the missing concurrent-request coverage in the updated reset tests."
+    }
+  ],
+  "appliedUpdates": [],
+  "suggestedGuidanceUpdates": [
+    {
+      "target": "skills/scrutiny-validator",
+      "suggestion": "Document a first-class fallback when `scrutiny-feature-reviewer` fan-out fails: manually review the feature handoff/transcript skeleton plus commit diff, author the per-feature review JSONs directly, and continue synthesis instead of blocking the milestone review.",
+      "evidence": "All three `scrutiny-feature-reviewer` Task launches for this milestone failed with `Invalid model: custom:CLIProxyAPI-5.4-xhigh`, so scrutiny had to complete the reviews directly in-session and author `.factory/validation/auth-secret-session-hardening/scrutiny/reviews/*.json` manually.",
+      "isSystemic": true
+    }
+  ],
+  "rejectedObservations": [],
+  "previousRound": null
+}

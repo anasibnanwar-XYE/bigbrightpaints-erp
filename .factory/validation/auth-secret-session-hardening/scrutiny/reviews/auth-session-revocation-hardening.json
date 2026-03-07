@@ -1,0 +1,15 @@
+{
+  "featureId": "auth-session-revocation-hardening",
+  "reviewedAt": "2026-03-06T16:55:03+05:30",
+  "commitId": "7deb909d01babc643d6729fea4988ea954bbe3f4",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The feature now revokes user-wide access and refresh sessions on logout, password change, lockout, disablement, reset, and support hard-reset paths, and `JwtAuthenticationFilter` refuses locked-user bearer tokens. The targeted auth/security suites, auth-focused subset, contract subset, gate-fast, compile, and lint all passed.",
+    "issues": []
+  },
+  "sharedStateObservations": [],
+  "addressesFailureFrom": null,
+  "summary": "PASS. Session invalidation is consistently tightened across the milestone's security-event paths without introducing validator-visible regressions or auth contract drift."
+}

@@ -710,7 +710,7 @@ class CompanyServiceTest {
                 companyService.updateLifecycleState(1L, new CompanyLifecycleStateRequest("SUSPENDED", "  compliance-review  "));
 
         assertThat(response.previousLifecycleState()).isEqualTo("ACTIVE");
-        assertThat(response.lifecycleState()).isEqualTo("SUSPENDED");
+        assertThat(response.lifecycleState()).isEqualTo("HOLD");
         assertThat(response.reason()).isEqualTo("compliance-review");
         assertThat(company.getLifecycleState()).isEqualTo(CompanyLifecycleState.SUSPENDED);
         assertThat(company.getLifecycleReason()).isEqualTo("compliance-review");

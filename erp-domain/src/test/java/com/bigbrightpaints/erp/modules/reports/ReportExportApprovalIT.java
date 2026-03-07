@@ -26,6 +26,7 @@ class ReportExportApprovalIT extends AbstractIntegrationTest {
 
     private static final String COMPANY_CODE = "EXPORT-APPROVAL";
     private static final String ADMIN_EMAIL = "export-admin@bbp.com";
+    private static final String SUPER_ADMIN_EMAIL = "export-super-admin@bbp.com";
     private static final String ACCOUNTING_EMAIL = "export-accounting@bbp.com";
     private static final String PASSWORD = "Export123!";
 
@@ -44,6 +45,8 @@ class ReportExportApprovalIT extends AbstractIntegrationTest {
     @BeforeEach
     void setupUsers() {
         dataSeeder.ensureUser(ADMIN_EMAIL, PASSWORD, "Export Admin", COMPANY_CODE, List.of("ROLE_ADMIN"));
+        dataSeeder.ensureUser(SUPER_ADMIN_EMAIL, PASSWORD, "Export Super Admin", COMPANY_CODE,
+                List.of("ROLE_SUPER_ADMIN"));
         accountingUser = dataSeeder.ensureUser(ACCOUNTING_EMAIL, PASSWORD, "Export Accounting", COMPANY_CODE,
                 List.of("ROLE_ACCOUNTING"));
         company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
@@ -51,11 +54,12 @@ class ReportExportApprovalIT extends AbstractIntegrationTest {
 
     @Test
     void exportRequest_and_adminApproval_flow_enforcesDownloadGate() {
+        HttpHeaders superAdminHeaders = authHeaders(SUPER_ADMIN_EMAIL);
         HttpHeaders adminHeaders = authHeaders(ADMIN_EMAIL);
         ResponseEntity<Map> enableGate = rest.exchange(
                 "/api/v1/admin/settings",
                 HttpMethod.PUT,
-                new HttpEntity<>(Map.of("exportApprovalRequired", true), jsonHeaders(adminHeaders)),
+                new HttpEntity<>(Map.of("exportApprovalRequired", true), jsonHeaders(superAdminHeaders)),
                 Map.class
         );
         assertThat(enableGate.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -119,11 +123,11 @@ class ReportExportApprovalIT extends AbstractIntegrationTest {
 
     @Test
     void exportDownload_bypassesApprovalWhenSettingDisabled() {
-        HttpHeaders adminHeaders = authHeaders(ADMIN_EMAIL);
+        HttpHeaders superAdminHeaders = authHeaders(SUPER_ADMIN_EMAIL);
         ResponseEntity<Map> settingResponse = rest.exchange(
                 "/api/v1/admin/settings",
                 HttpMethod.PUT,
-                new HttpEntity<>(Map.of("exportApprovalRequired", false), jsonHeaders(adminHeaders)),
+                new HttpEntity<>(Map.of("exportApprovalRequired", false), jsonHeaders(superAdminHeaders)),
                 Map.class
         );
         assertThat(settingResponse.getStatusCode()).isEqualTo(HttpStatus.OK);

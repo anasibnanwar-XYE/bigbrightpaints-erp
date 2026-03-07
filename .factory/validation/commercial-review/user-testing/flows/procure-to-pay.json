@@ -1,0 +1,45 @@
+{
+  "groupId": "commercial-procure-to-pay-docs",
+  "surface": "docs",
+  "generatedAt": "2026-03-05T22:04:33Z",
+  "assertions": [
+    {
+      "id": "VAL-P2P-001",
+      "status": "pass",
+      "reason": "The procure-to-pay review narrates supplier CRUD and approval, purchase-order workflow, goods receipt, raw-material purchase invoicing, purchase returns, supplier payment/settlement, and supplier statement/aging views across entrypoints, service chain, data path, invariants, and failure points.",
+      "evidence": [
+        {
+          "source": "docs/code-review/flows/procure-to-pay.md",
+          "observed": "Contains `## Entrypoints`, `## Data path and schema touchpoints`, `## Service chain`, `## State machine and idempotency assumptions`, and `## Risk hotspots`, matching the required narrative, invariants, and failure-point surfaces from the contract."
+        },
+        {
+          "source": "docs/code-review/flows/procure-to-pay.md",
+          "observed": "Service-chain subsections explicitly cover `Supplier onboarding, maintenance, and lifecycle`, `Purchase-order creation, approval, and timeline`, `Goods receipt is the stock boundary`, `Purchase invoice posting is the AP truth boundary`, and `Purchase returns reverse stock and payable together`."
+        },
+        {
+          "source": "docs/code-review/flows/procure-to-pay.md",
+          "observed": "Risk and state sections document supplier lifecycle rules, purchase-order workflow states, goods-receipt and purchase status assumptions, plus fail-closed settlement parity and accounting-boundary analysis."
+        },
+        {
+          "source": ".factory/validation/commercial-review/scrutiny/reviews/procure-to-pay-review.json",
+          "observed": "Scrutiny summary states the doc satisfies VAL-P2P-001 and covers supplier CRUD/lifecycle, purchase-order workflow, goods receipts, raw-material purchase invoicing, purchase returns, supplier settlement, ledger/aging views, invariants, retry behavior, and integration side effects with code-grounded evidence."
+        },
+        {
+          "source": "python3 doc assertion check (2026-03-05T22:04:33Z)",
+          "observed": "Read-only validator reported `procure_to_pay: PASS` after checking the required headings and procure-to-pay integrity snippets in the documentation file."
+        }
+      ]
+    }
+  ],
+  "toolsUsed": [
+    "Task (delegation attempt failed)",
+    "Read",
+    "Grep",
+    "Execute"
+  ],
+  "frictions": [
+    "Task delegation to `user-testing-flow-validator` failed in this environment with `Invalid model: custom:CLIProxyAPI-5.4-xhigh`, so validation fell back to direct in-session docs inspection per `.factory/library/user-testing.md`.",
+    "Passive runtime setup probes remained degraded during this round (`curl -sf http://localhost:8081/actuator/health` exited 7 and a TCP probe to 127.0.0.1:5433 returned connection refused), but the commercial-review assertion set was fully testable through `docs/code-review/**`."
+  ],
+  "blockers": []
+}

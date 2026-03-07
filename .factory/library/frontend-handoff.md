@@ -23,6 +23,19 @@ Each module section should include:
 
 ### Auth
 
+#### Current mission note
+
+- Dedicated review tracker: see `docs/frontend-update-v2/README.md` for the per-feature frontend follow-up matrix and explicit no-op entries for this mission.
+- 2026-03-06 `auth-token-secret-storage-hardening`: no auth/admin request or response shape changes were required. Login, refresh-token, logout, forgot-password, and reset-password payloads stay the same; only backend persistence changed so refresh-token and password-reset secrets are now stored as digests with compatibility backfill/fallback for legacy rows.
+- 2026-03-06 `auth-session-revocation-hardening`: no auth/admin request or response shape changes were required. Logout now invalidates all previously issued access and refresh sessions for the authenticated user, and password change, password reset, disablement, lockout, and support hard-reset now consistently reject old tokens instead of letting prior sessions remain usable.
+- 2026-03-06 `auth-reset-recovery-contract-hardening`: supported public forgot/reset, admin force-reset, and support admin-password-reset request/response shapes stay the same. The deprecated compatibility alias `POST /api/v1/auth/password/forgot/superadmin` is now explicitly retired with a `410 Gone` `ApiResponse` that carries `canonicalPath=/api/v1/auth/password/forgot` plus `supportResetPath=/api/v1/companies/{id}/support/admin-password-reset`; public forgot suppresses delivery failures without leaving a newly issued undispatched reset token behind, and admin force-reset now only succeeds when reset-email delivery is enabled and dispatch completes.
+- 2026-03-06 `reset-token-issuance-race-hardening`: no auth/admin request or response shape changes were required. Public forgot-password and admin force-reset now serialize reset-token issuance per user so duplicate or overlapping requests deterministically leave only the latest reset link usable instead of cross-deleting every valid token.
+- 2026-03-06 `must-change-password-corridor-hardening`: login, refresh-token, `/auth/me`, `GET /auth/profile`, password-change, and logout success payloads stay the same. While `mustChangePassword=true`, the backend now confines the bearer session to that corridor, denies normal protected work with a `403` `ApiResponse` carrying `reason=PASSWORD_CHANGE_REQUIRED` and `mustChangePassword=true`, and still preserves company binding on the allowed corridor endpoints.
+- 2026-03-06 `controlled-auth-error-contracts`: supported auth/admin success payloads stay the same, but previously raw framework/servlet failure paths are now normalized into `ApiResponse` contracts. Lockout now returns `401` with `AUTH_005`, authenticated tenant-binding mismatches now return `403` `ApiResponse` envelopes with `AUTH_004` plus `reason` / `reasonDetail`, and tenant runtime hold/block/quota denials on login or authenticated auth requests now return controlled `ApiResponse` error bodies carrying their runtime denial codes (for example `TENANT_ON_HOLD`, `TENANT_BLOCKED`, `TENANT_REQUEST_RATE_EXCEEDED`).
+- 2026-03-06 `auth-compatibility-regression-handoff`: no auth/admin request or response shape changes were required. Login, refresh-token, logout, `/auth/me`, password-change, forgot/reset, admin user-control, and admin settings payloads remain frontend-safe; contract regression coverage was refreshed across those surfaces, and the published OpenAPI contract now matches the live `204 No Content` logout response so the `AuthControllerIT.refresh_token_revoked_after_logout` regression stays aligned with runtime behavior.
+- 2026-03-07 `forgot-password-persistence-failure-regression-fix`: `POST /api/v1/auth/password/forgot` keeps the same request body and the same generic success payload where no-enumeration or delivery/configuration masking still applies, but reset-token persistence failures no longer return the normal success contract. Those storage failures now surface as a controlled non-success `ApiResponse`, so clients should treat forgot-password as potentially retryable instead of assuming it always returns `200 OK`.
+- 2026-03-07 `masked-admin-lock-scope-regression-fix`: admin user-management request and success-response payload shapes still did not change for `PATCH /api/v1/admin/users/{id}/{suspend|unsuspend}`, `PATCH /api/v1/admin/users/{id}/mfa/disable`, or `DELETE /api/v1/admin/users/{id}`. Tenant-admin foreign-target attempts on those paths still return the same masked `400 User not found` validation envelope as truly missing ids, but the backend now acquires pessimistic locks only through company-scoped lookup before falling back to a non-locking existence check for internal denial auditing, so no frontend code change is required.
+
 #### Endpoint Map
 
 | Method | Path | Auth | Request | Response |
@@ -33,7 +46,7 @@ Each module section should include:
 | GET | `/api/v1/auth/me` | `isAuthenticated()` | None | `ApiResponse<MeResponse>` |
 | POST | `/api/v1/auth/password/change` | `isAuthenticated()` | `ChangePasswordRequest` | `ApiResponse<String>` |
 | POST | `/api/v1/auth/password/forgot` | Public | `ForgotPasswordRequest` | `ApiResponse<String>` |
-| POST | `/api/v1/auth/password/forgot/superadmin` | `isAuthenticated()` (deprecated compatibility route) | `ForgotPasswordRequest` | `ApiResponse<String>` |
+| POST | `/api/v1/auth/password/forgot/superadmin` | Public (retired compatibility alias) | `ForgotPasswordRequest` | `410 Gone` `ApiResponse<{ canonicalPath: string, supportResetPath: string }>` |
 | POST | `/api/v1/auth/password/reset` | Public | `ResetPasswordRequest` | `ApiResponse<String>` |
 | GET | `/api/v1/auth/profile` | `isAuthenticated()` | None | `ApiResponse<ProfileResponse>` |
 | PUT | `/api/v1/auth/profile` | `isAuthenticated()` | `UpdateProfileRequest` | `ApiResponse<ProfileResponse>` |
@@ -45,6 +58,7 @@ Notes:
 - Login/refresh return raw `AuthResponse` (not wrapped in `ApiResponse`).
 - Most other auth endpoints return `ApiResponse<T>`.
 - MFA verification during login is done by `POST /api/v1/auth/login` using `mfaCode` or `recoveryCode` in `LoginRequest`.
+- When `mustChangePassword=true`, only login, refresh-token, `/auth/me`, `GET /auth/profile`, `POST /auth/password/change`, and `POST /auth/logout` remain usable until the password is updated.
 
 #### Auth Flows
 
@@ -72,9 +86,15 @@ Notes:
    2. Backend always responds with generic success message (no account enumeration).
    3. User opens emailed reset link and submits `POST /api/v1/auth/password/reset` with `{ token, newPassword, confirmPassword }`.
    4. Backend revokes existing sessions/tokens; user must log in again.
-   5. `POST /api/v1/auth/password/forgot/superadmin` remains as a deprecated compatibility route but now delegates to the unified forgot flow and requires authentication context.
+   5. If an old client still calls `POST /api/v1/auth/password/forgot/superadmin`, backend now returns `410 Gone` with canonical migration pointers instead of silently drifting through auth filters. Use `POST /api/v1/auth/password/forgot` for self-service recovery or `POST /api/v1/companies/{id}/support/admin-password-reset` for root-only support recovery.
 
-5. **Token refresh flow**
+5. **Password change flow**
+   1. Authenticated user submits `POST /api/v1/auth/password/change` with current + new password fields.
+   2. Backend validates policy/history, updates the stored password, and revokes all previously issued access/refresh tokens for that user.
+   3. UI should clear stored tokens and force a fresh login with the new password after success.
+   4. If login or `/auth/me` reports `mustChangePassword = true`, route the user directly into this flow and avoid calling normal protected APIs until the change succeeds.
+
+6. **Token refresh flow**
    1. Before access token expiry (or after 401), call `POST /api/v1/auth/refresh-token` with `{ refreshToken, companyCode }`.
    2. Backend consumes old refresh token and returns a new access + refresh token pair (rotation).
    3. Client must atomically replace both tokens.
@@ -84,9 +104,9 @@ Notes:
 - Access token contains tenant and identity claims (`sub`, `companyCode`, `cid`, `name`, `jti`, `iat`, `exp`).
 - Refresh tokens are one-time-use and rotated on every refresh.
 - `logout` behavior:
-  - If `refreshToken` query param is supplied, backend revokes that token.
-  - Otherwise backend revokes all refresh tokens for token subject.
-  - Access token `jti` is blacklisted when parseable.
+  - When the current bearer token can be parsed, backend revokes all refresh tokens for that authenticated user and marks all previously issued access tokens invalid.
+  - The current access token `jti` is still blacklisted when parseable for immediate single-token rejection.
+  - If token subject recovery fails but `refreshToken` query param is supplied, backend falls back to revoking that refresh token only.
 - Token/company consistency:
   - If request carries `X-Company-Code`, it must match token `companyCode` claim.
   - Mismatch is rejected with `403` by company-context enforcement.
@@ -205,6 +225,16 @@ Password-policy failures currently surface as `VAL_001` with message prefix `Pas
 - Always include a tenant selector input bound to `companyCode` in login form.
 
 ### Tenant & Admin
+
+#### Current mission note
+
+- Dedicated review tracker: see `docs/frontend-update-v2/README.md` for the per-feature frontend follow-up matrix and explicit no-op entries for this mission.
+- 2026-03-06 `privileged-user-boundary-hardening`: no admin user-management request or response shape changes were required for `POST /api/v1/admin/users/{id}/force-reset-password`, `PUT /api/v1/admin/users/{id}/status`, `PATCH /api/v1/admin/users/{id}/{suspend|unsuspend}`, `PATCH /api/v1/admin/users/{id}/mfa/disable`, or `DELETE /api/v1/admin/users/{id}`. The feature aligned tenant-boundary authorization and audit behavior while preserving the existing frontend payloads for authorized super-admin flows, and the company control-plane lifecycle endpoint once again accepts `HOLD`/`BLOCKED` compatibility aliases while preserving the existing path shape. The later `masked-admin-target-lookup-hardening` refinement now defines the current foreign-target masking behavior for auth-sensitive tenant-admin actions.
+- 2026-03-06 `global-security-settings-authorization`: no admin request or response payload shapes changed, but `PUT /api/v1/admin/settings` now requires `ROLE_SUPER_ADMIN` because it mutates platform-wide CORS, mail, export, and related security/runtime settings. Tenant admins still retain `GET /api/v1/admin/tenant-runtime/metrics` for tenant-scoped visibility, while `PUT /api/v1/admin/tenant-runtime/policy` remains the super-admin control-plane path.
+- 2026-03-06 `auth-compatibility-regression-handoff`: no admin request or response payload shapes changed. `POST /api/v1/admin/users/{id}/force-reset-password`, `PUT /api/v1/admin/users/{id}/status`, `PATCH /api/v1/admin/users/{id}/{suspend|unsuspend}`, `PATCH /api/v1/admin/users/{id}/mfa/disable`, `DELETE /api/v1/admin/users/{id}`, `GET /api/v1/admin/settings`, `PUT /api/v1/admin/settings`, `GET /api/v1/admin/tenant-runtime/metrics`, and `PUT /api/v1/admin/tenant-runtime/policy` all keep their existing frontend payloads; the refreshed OpenAPI snapshot now also documents the user-control no-content endpoints as `204 No Content` instead of stale `200` responses.
+- 2026-03-06 `tenant-lifecycle-rollout-safety-hardening`: no auth/admin/lifecycle request or response payload shapes changed. `POST /api/v1/superadmin/tenants/{id}/{suspend|activate|deactivate}`, `POST /api/v1/superadmin/tenants/{id}/lifecycle-state`, and `POST /api/v1/companies/{id}/lifecycle-state` keep the same payloads while the backend continues to persist Flyway-v2-compatible lifecycle storage values (`ACTIVE`, `HOLD`, `BLOCKED`); if a stored lifecycle value is corrupted or unrecognized, tenant access now fails closed instead of being treated as active, so no frontend code change is required.
+- 2026-03-07 `masked-admin-target-lookup-hardening`: admin user-management request and success-response payload shapes still did not change, but tenant-admin attempts to `POST /api/v1/admin/users/{id}/force-reset-password`, `PUT /api/v1/admin/users/{id}/status`, `PATCH /api/v1/admin/users/{id}/{suspend|unsuspend}`, `PATCH /api/v1/admin/users/{id}/mfa/disable`, or `DELETE /api/v1/admin/users/{id}` against a foreign-tenant user id now return the same `400 User not found` validation envelope as a truly missing id. This masks foreign targets from enumeration while preserving internal `ACCESS_DENIED` audit evidence, and `POST /api/v1/admin/roles` remains request/response compatible while now enforcing the super-admin mutation boundary directly at the controller guard.
+- 2026-03-07 `masked-admin-lock-scope-regression-fix`: no admin request or response payload shapes changed. The masked foreign-target behavior from `masked-admin-target-lookup-hardening` remains the same for tenant-admin `suspend`, `unsuspend`, `mfa/disable`, and `delete` actions, but those paths no longer take cross-tenant pessimistic locks before scope checks, so the frontend should continue treating foreign and missing targets identically and needs no migration.
 
 #### Endpoint Map
 

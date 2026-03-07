@@ -1,0 +1,38 @@
+{
+  "milestone": "foundation-review",
+  "round": 1,
+  "status": "pass",
+  "generatedAt": "2026-03-05T21:07:00Z",
+  "assertionsSummary": {
+    "total": 5,
+    "passed": 5,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-ARCH-001",
+    "VAL-TENANT-001",
+    "VAL-AUTH-001",
+    "VAL-AUTH-002",
+    "VAL-ADMIN-001"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [
+    {
+      "target": "user-testing.md",
+      "description": "Documented the current invalid-model Task failure (`custom:CLIProxyAPI-5.4-xhigh`) and the docs-only runtime probe degradation (8081 health probe exit 7, 5433 connection refused) so future validators know to fall back to in-session docs validation when the contract is documentation-only.",
+      "source": "setup"
+    }
+  ],
+  "previousRound": null,
+  "flowReports": [
+    ".factory/validation/foundation-review/user-testing/flows/architecture.json",
+    ".factory/validation/foundation-review/user-testing/flows/auth.json",
+    ".factory/validation/foundation-review/user-testing/flows/governance.json"
+  ],
+  "environmentConstraints": [
+    "Delegated Task/subagent launches failed with `Invalid model: custom:CLIProxyAPI-5.4-xhigh`; flow validation was completed directly in-session.",
+    "Passive runtime probes were unavailable during this round (`curl -sf http://localhost:8081/actuator/health` exit 7; 127.0.0.1:5433 refused), but the assertion set was fully testable via docs/code-review/**."
+  ]
+}

@@ -120,23 +120,141 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
                 HttpMethod.PUT,
                 new HttpEntity<>(payload, headers),
                 Map.class);
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
     }
 
     @Test
-    void admin_user_status_update_blocks_cross_company_access() {
+    void admin_user_status_update_masks_cross_company_target_as_missing() {
         String token = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
+        long missingUserId = otherCompanyUser.getId() + 10_000L;
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token);
         headers.setContentType(MediaType.APPLICATION_JSON);
 
-        ResponseEntity<Map> response = rest.exchange(
+        ResponseEntity<Map> foreignResponse = rest.exchange(
                 "/api/v1/admin/users/" + otherCompanyUser.getId() + "/status",
                 HttpMethod.PUT,
                 new HttpEntity<>(Map.of("enabled", false), headers),
                 Map.class);
+        ResponseEntity<Map> missingResponse = rest.exchange(
+                "/api/v1/admin/users/" + missingUserId + "/status",
+                HttpMethod.PUT,
+                new HttpEntity<>(Map.of("enabled", false), headers),
+                Map.class);
 
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertMaskedMissingUserContractPair(foreignResponse, missingResponse);
+    }
+
+    @Test
+    void tenant_admin_cross_company_privileged_actions_mask_foreign_targets_as_missing() {
+        String token = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
+        long missingUserId = otherCompanyUser.getId() + 10_000L;
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        ResponseEntity<Map> foreignForceReset = rest.exchange(
+                "/api/v1/admin/users/" + otherCompanyUser.getId() + "/force-reset-password",
+                HttpMethod.POST,
+                new HttpEntity<>(headers),
+                Map.class);
+        ResponseEntity<Map> missingForceReset = rest.exchange(
+                "/api/v1/admin/users/" + missingUserId + "/force-reset-password",
+                HttpMethod.POST,
+                new HttpEntity<>(headers),
+                Map.class);
+        assertMaskedMissingUserContractPair(foreignForceReset, missingForceReset);
+
+        ResponseEntity<Map> foreignSuspend = rest.exchange(
+                "/api/v1/admin/users/" + otherCompanyUser.getId() + "/suspend",
+                HttpMethod.PATCH,
+                new HttpEntity<>(headers),
+                Map.class);
+        ResponseEntity<Map> missingSuspend = rest.exchange(
+                "/api/v1/admin/users/" + missingUserId + "/suspend",
+                HttpMethod.PATCH,
+                new HttpEntity<>(headers),
+                Map.class);
+        assertMaskedMissingUserContractPair(foreignSuspend, missingSuspend);
+
+        ResponseEntity<Map> foreignUnsuspend = rest.exchange(
+                "/api/v1/admin/users/" + otherCompanyUser.getId() + "/unsuspend",
+                HttpMethod.PATCH,
+                new HttpEntity<>(headers),
+                Map.class);
+        ResponseEntity<Map> missingUnsuspend = rest.exchange(
+                "/api/v1/admin/users/" + missingUserId + "/unsuspend",
+                HttpMethod.PATCH,
+                new HttpEntity<>(headers),
+                Map.class);
+        assertMaskedMissingUserContractPair(foreignUnsuspend, missingUnsuspend);
+
+        ResponseEntity<Map> foreignDisableMfa = rest.exchange(
+                "/api/v1/admin/users/" + otherCompanyUser.getId() + "/mfa/disable",
+                HttpMethod.PATCH,
+                new HttpEntity<>(headers),
+                Map.class);
+        ResponseEntity<Map> missingDisableMfa = rest.exchange(
+                "/api/v1/admin/users/" + missingUserId + "/mfa/disable",
+                HttpMethod.PATCH,
+                new HttpEntity<>(headers),
+                Map.class);
+        assertMaskedMissingUserContractPair(foreignDisableMfa, missingDisableMfa);
+
+        ResponseEntity<Map> foreignDelete = rest.exchange(
+                "/api/v1/admin/users/" + otherCompanyUser.getId(),
+                HttpMethod.DELETE,
+                new HttpEntity<>(headers),
+                Map.class);
+        ResponseEntity<Map> missingDelete = rest.exchange(
+                "/api/v1/admin/users/" + missingUserId,
+                HttpMethod.DELETE,
+                new HttpEntity<>(headers),
+                Map.class);
+        assertMaskedMissingUserContractPair(foreignDelete, missingDelete);
+
+        ResponseEntity<Map> foreignStatus = rest.exchange(
+                "/api/v1/admin/users/" + otherCompanyUser.getId() + "/status",
+                HttpMethod.PUT,
+                new HttpEntity<>(Map.of("enabled", false), headers),
+                Map.class);
+        ResponseEntity<Map> missingStatus = rest.exchange(
+                "/api/v1/admin/users/" + missingUserId + "/status",
+                HttpMethod.PUT,
+                new HttpEntity<>(Map.of("enabled", false), headers),
+                Map.class);
+        assertMaskedMissingUserContractPair(foreignStatus, missingStatus);
+    }
+
+    @Test
+    void super_admin_can_suspend_unsuspend_disable_mfa_and_delete_across_company_scope() {
+        String token = login(SUPER_ADMIN_EMAIL, SUPER_ADMIN_PASSWORD, COMPANY);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+
+        assertThat(rest.exchange(
+                "/api/v1/admin/users/" + otherCompanyUser.getId() + "/suspend",
+                HttpMethod.PATCH,
+                new HttpEntity<>(headers),
+                Void.class).getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+
+        assertThat(rest.exchange(
+                "/api/v1/admin/users/" + otherCompanyUser.getId() + "/unsuspend",
+                HttpMethod.PATCH,
+                new HttpEntity<>(headers),
+                Void.class).getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+
+        assertThat(rest.exchange(
+                "/api/v1/admin/users/" + otherCompanyUser.getId() + "/mfa/disable",
+                HttpMethod.PATCH,
+                new HttpEntity<>(headers),
+                Void.class).getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+
+        assertThat(rest.exchange(
+                "/api/v1/admin/users/" + otherCompanyUser.getId(),
+                HttpMethod.DELETE,
+                new HttpEntity<>(headers),
+                Void.class).getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
     }
 
     @Test
@@ -262,6 +380,45 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
     }
 
+    @Test
+    void tenant_admin_cannot_update_global_system_settings() {
+        String token = login(ADMIN_EMAIL, ADMIN_PASSWORD, COMPANY);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("X-Company-Code", COMPANY);
+
+        ResponseEntity<Map> response = rest.exchange(
+                "/api/v1/admin/settings",
+                HttpMethod.PUT,
+                new HttpEntity<>(Map.of("exportApprovalRequired", true), headers),
+                Map.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void super_admin_can_update_global_system_settings() {
+        String token = login(SUPER_ADMIN_EMAIL, SUPER_ADMIN_PASSWORD, COMPANY);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(token);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("X-Company-Code", COMPANY);
+
+        ResponseEntity<Map> response = rest.exchange(
+                "/api/v1/admin/settings",
+                HttpMethod.PUT,
+                new HttpEntity<>(Map.of("exportApprovalRequired", true), headers),
+                Map.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().get("success")).isEqualTo(Boolean.TRUE);
+        Map<?, ?> data = (Map<?, ?>) response.getBody().get("data");
+        assertThat(data).isNotNull();
+        assertThat(data.get("exportApprovalRequired")).isEqualTo(Boolean.TRUE);
+    }
+
     private String login(String email, String password, String companyCode) {
         Map<String, Object> body = Map.of(
                 "email", email,
@@ -275,5 +432,31 @@ public class AdminUserSecurityIT extends AbstractIntegrationTest {
         String token = payload.get("accessToken").toString();
         assertThat(token).isNotBlank();
         return token;
+    }
+
+    private void assertMaskedMissingUserContractPair(ResponseEntity<Map> foreignResponse,
+                                                     ResponseEntity<Map> missingResponse) {
+        Map<String, Object> foreignError = assertMaskedMissingUserContract(foreignResponse);
+        Map<String, Object> missingError = assertMaskedMissingUserContract(missingResponse);
+        assertThat(foreignError.get("code")).isEqualTo(missingError.get("code"));
+        assertThat(foreignError.get("message")).isEqualTo(missingError.get("message"));
+        assertThat(foreignError.get("reason")).isEqualTo(missingError.get("reason"));
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> assertMaskedMissingUserContract(ResponseEntity<Map> response) {
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().get("success")).isEqualTo(Boolean.FALSE);
+        assertThat(response.getBody().get("message")).isEqualTo("User not found");
+        Object errorBody = response.getBody().get("data");
+        assertThat(errorBody).isInstanceOf(Map.class);
+        Map<String, Object> error = (Map<String, Object>) errorBody;
+        assertThat(error.get("code")).isEqualTo("VAL_001");
+        assertThat(error.get("message")).isEqualTo("User not found");
+        assertThat(error.get("reason")).isEqualTo("User not found");
+        assertThat(error.get("traceId")).isNotNull();
+        assertThat(error.get("path")).isNotNull();
+        return error;
     }
 }

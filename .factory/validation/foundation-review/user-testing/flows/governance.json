@@ -1,0 +1,59 @@
+{
+  "groupId": "foundation-governance-docs",
+  "surface": "docs",
+  "generatedAt": "2026-03-05T21:07:00Z",
+  "assertions": [
+    {
+      "id": "VAL-TENANT-001",
+      "status": "pass",
+      "reason": "The tenant/control-plane review provides the requested full-stack narrative with entrypoints, service chain, state/invariants, and failure points for onboarding, CRUD, lifecycle, module gating, runtime policy, metrics, and support paths.",
+      "evidence": [
+        {
+          "source": "docs/code-review/flows/company-tenant-control-plane.md",
+          "observed": "Contains `## Entrypoints`, `## Data path and schema touchpoints`, `## Service chain`, `## State and invariants`, `## Side effects and integrations`, and `## Failure points`."
+        },
+        {
+          "source": "docs/code-review/flows/company-tenant-control-plane.md",
+          "observed": "Entrypoints/service-chain sections explicitly cover canonical and alias super-admin company controls, tenant onboarding, company CRUD, lifecycle changes, multi-company context switching, module gating, tenant runtime policy/usage metrics, and support recovery paths."
+        },
+        {
+          "source": "python3 assertion check (2026-03-06)",
+          "observed": "Read-only validator confirmed the required section markers `## Entrypoints`, `## Service chain`, `## State and invariants`, and `## Failure points` are present."
+        }
+      ]
+    },
+    {
+      "id": "VAL-ADMIN-001",
+      "status": "pass",
+      "reason": "The admin/governance review covers admin user management, changelog publishing, support tickets/GitHub sync, settings/CORS/runtime flags, export approvals, governance boundaries, side effects, and risk hotspots.",
+      "evidence": [
+        {
+          "source": "docs/code-review/flows/admin-governance.md",
+          "observed": "Contains `## Governance controls`, `## Control boundaries`, `## Side effects and integrations`, and `## Risk hotspots`."
+        },
+        {
+          "source": "docs/code-review/flows/admin-governance.md",
+          "observed": "Governance controls section explicitly narrates admin user governance, changelog publishing, support tickets and GitHub sync, system settings/CORS/runtime flags, export approvals, and other governance controls."
+        },
+        {
+          "source": "docs/code-review/flows/admin-governance.md",
+          "observed": "Risk-hotspot table records critical/high issues around global system settings, public changelog control, third-party support-ticket data export, missing retries/audit trails, approval semantics, and OpenAPI/runtime drift."
+        },
+        {
+          "source": "python3 assertion check (2026-03-06)",
+          "observed": "Read-only validator confirmed the required section markers `## governance controls`, `## side effects and integrations`, and `## risk hotspots` are present."
+        }
+      ]
+    }
+  ],
+  "toolsUsed": [
+    "Task (delegation attempt failed)",
+    "Grep",
+    "Execute"
+  ],
+  "frictions": [
+    "Task tool delegation to user-testing-flow-validator failed in this environment with `Invalid model: custom:CLIProxyAPI-5.4-xhigh`; validation fell back to direct in-session docs inspection per .factory/library/user-testing.md.",
+    "Passive runtime probes were degraded (`curl -sf http://localhost:8081/actuator/health` exited 7 and TCP connect to 127.0.0.1:5433 was refused), but foundation-review assertions were documentation-only and remained testable through docs/code-review/**."
+  ],
+  "blockers": []
+}

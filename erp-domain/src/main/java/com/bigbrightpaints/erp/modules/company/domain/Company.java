@@ -81,7 +81,7 @@ public class Company extends VersionedEntity {
     @Column(name = "base_currency", nullable = false)
     private String baseCurrency = "INR";
 
-    @Enumerated(EnumType.STRING)
+    @Convert(converter = CompanyLifecycleStateConverter.class)
     @Column(name = "lifecycle_state", nullable = false)
     private CompanyLifecycleState lifecycleState = CompanyLifecycleState.ACTIVE;
 

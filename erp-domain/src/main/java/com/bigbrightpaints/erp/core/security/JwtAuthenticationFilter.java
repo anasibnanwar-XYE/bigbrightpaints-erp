@@ -25,6 +25,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.time.Instant;
 import java.util.Collection;
 import java.util.Date;
 
@@ -67,8 +68,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
                 // Check if user's tokens are revoked
                 String userId = claims.getSubject();
-                Date issuedAt = claims.getIssuedAt();
-                if (issuedAt != null && blacklistService.isUserTokenRevoked(userId, issuedAt.toInstant())) {
+                Instant issuedAt = resolveTokenIssuedAt(claims);
+                if (issuedAt != null && blacklistService.isUserTokenRevoked(userId, issuedAt)) {
                     logger.warn("Attempted use of revoked user token - User: {}, IP: {}",
                                userId, request.getRemoteAddr());
                     filterChain.doFilter(request, response);
@@ -79,6 +80,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 UserPrincipal principal = (UserPrincipal) userDetailsService.loadUserByUsername(claims.getSubject());
                 if (!principal.isEnabled()) {
                     logger.warn("Attempted use of token for disabled user - User: {}, IP: {}",
+                            claims.getSubject(), request.getRemoteAddr());
+                    filterChain.doFilter(request, response);
+                    return;
+                }
+                if (!principal.isAccountNonLocked()) {
+                    logger.warn("Attempted use of token for locked user - User: {}, IP: {}",
                             claims.getSubject(), request.getRemoteAddr());
                     filterChain.doFilter(request, response);
                     return;
@@ -120,5 +127,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return bearer.substring(7);
         }
         return null;
+    }
+
+    private Instant resolveTokenIssuedAt(Claims claims) {
+        if (claims == null) {
+            return null;
+        }
+        Number issuedAtMillis = claims.get("iatMs", Number.class);
+        if (issuedAtMillis != null) {
+            return Instant.ofEpochMilli(issuedAtMillis.longValue());
+        }
+        Date issuedAt = claims.getIssuedAt();
+        return issuedAt != null ? issuedAt.toInstant() : null;
     }
 }

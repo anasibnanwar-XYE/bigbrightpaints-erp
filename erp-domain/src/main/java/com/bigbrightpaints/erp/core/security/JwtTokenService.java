@@ -37,7 +37,11 @@ public class JwtTokenService {
     }
 
     public String generateAccessToken(String subject, String companyCode, Map<String, Object> claims) {
-        Instant now = Instant.now();
+        return generateAccessToken(subject, companyCode, claims, Instant.now());
+    }
+
+    public String generateAccessToken(String subject, String companyCode, Map<String, Object> claims, Instant issuedAt) {
+        Instant now = issuedAt != null ? issuedAt : Instant.now();
         Instant expiry = now.plusSeconds(properties.getAccessTokenTtlSeconds());
         return Jwts.builder()
                 .setSubject(subject)
@@ -45,6 +49,7 @@ public class JwtTokenService {
                 .addClaims(claims)
                 .claim("companyCode", companyCode)
                 .claim("cid", companyCode)
+                .claim("iatMs", now.toEpochMilli())
                 .setIssuedAt(Date.from(now))
                 .setExpiration(Date.from(expiry))
                 .signWith(signingKey, SignatureAlgorithm.HS256)

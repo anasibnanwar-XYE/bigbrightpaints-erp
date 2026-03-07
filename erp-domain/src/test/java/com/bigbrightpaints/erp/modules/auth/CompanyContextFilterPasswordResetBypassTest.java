@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.auth;
 
 import com.bigbrightpaints.erp.core.security.CompanyContextFilter;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.bigbrightpaints.erp.modules.company.service.CompanyService;
 import com.bigbrightpaints.erp.modules.company.service.TenantRuntimeEnforcementService;
 import jakarta.servlet.FilterChain;
@@ -40,7 +41,10 @@ class CompanyContextFilterPasswordResetBypassTest {
 
     @BeforeEach
     void setUp() {
-        filter = new CompanyContextFilter(tenantRuntimeEnforcementService, companyService);
+        filter = new CompanyContextFilter(
+                tenantRuntimeEnforcementService,
+                companyService,
+                new ObjectMapper().findAndRegisterModules());
     }
 
     @Test
@@ -51,6 +55,11 @@ class CompanyContextFilterPasswordResetBypassTest {
     @Test
     void resetPasswordEndpoint_isNotBlockedByCompanyHeader() throws ServletException, IOException {
         assertPublicPasswordResetBypass("/api/v1/auth/password/reset");
+    }
+
+    @Test
+    void retiredSuperAdminForgotAlias_isNotBlockedByCompanyHeader() throws ServletException, IOException {
+        assertPublicPasswordResetBypass("/api/v1/auth/password/forgot/superadmin");
     }
 
     @Test

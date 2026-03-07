@@ -37,7 +37,7 @@ class TenantLifecycleServiceTest {
                 new UsernamePasswordAuthenticationToken("ops@bbp.com", "n/a"));
 
         assertThat(response.previousLifecycleState()).isEqualTo("ACTIVE");
-        assertThat(response.lifecycleState()).isEqualTo("SUSPENDED");
+        assertThat(response.lifecycleState()).isEqualTo("HOLD");
         assertThat(company.getLifecycleState()).isEqualTo(CompanyLifecycleState.SUSPENDED);
         assertThat(company.getLifecycleReason()).isEqualTo("compliance-review");
         verify(auditService).logAuthSuccess(
@@ -72,8 +72,8 @@ class TenantLifecycleServiceTest {
                 "contract-terminated",
                 null);
 
-        assertThat(response.previousLifecycleState()).isEqualTo("SUSPENDED");
-        assertThat(response.lifecycleState()).isEqualTo("DEACTIVATED");
+        assertThat(response.previousLifecycleState()).isEqualTo("HOLD");
+        assertThat(response.lifecycleState()).isEqualTo("BLOCKED");
     }
 
     private Company company(Long id, String code, CompanyLifecycleState lifecycleState) {

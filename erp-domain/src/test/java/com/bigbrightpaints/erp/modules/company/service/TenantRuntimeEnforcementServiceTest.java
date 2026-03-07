@@ -16,6 +16,7 @@ import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.config.SystemSetting;
 import com.bigbrightpaints.erp.core.config.SystemSettingsRepository;
+import com.bigbrightpaints.erp.core.exception.AuthSecurityContractException;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyTime;
@@ -40,7 +41,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
-import org.springframework.web.server.ResponseStatusException;
 
 @ExtendWith(MockitoExtension.class)
 class TenantRuntimeEnforcementServiceTest {
@@ -103,6 +103,12 @@ class TenantRuntimeEnforcementServiceTest {
                         return Optional.empty();
                     }
                     return Optional.of(new SystemSetting(key, value));
+                });
+        lenient().when(systemSettingsRepository.save(any(SystemSetting.class)))
+                .thenAnswer(invocation -> {
+                    SystemSetting setting = invocation.getArgument(0, SystemSetting.class);
+                    persistedSettingsByKey.put(setting.getKey(), setting.getValue());
+                    return setting;
                 });
     }
 
@@ -265,11 +271,11 @@ class TenantRuntimeEnforcementServiceTest {
         service.blockTenant("ACME", "abuse_incident", "ops@bbp.com");
 
         assertThatThrownBy(() -> service.enforceAuthOperationAllowed("ACME", "auth-op@bbp.com", "login"))
-                .isInstanceOf(ResponseStatusException.class)
+                .isInstanceOf(AuthSecurityContractException.class)
                 .satisfies(error -> {
-                    ResponseStatusException ex = (ResponseStatusException) error;
-                    assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
-                    assertThat(ex.getReason()).isEqualTo("Tenant is currently blocked");
+                    AuthSecurityContractException ex = (AuthSecurityContractException) error;
+                    assertThat(ex.getHttpStatus()).isEqualTo(HttpStatus.FORBIDDEN);
+                    assertThat(ex.getUserMessage()).isEqualTo("Tenant is currently blocked");
                 });
 
         assertThat(service.snapshot("ACME").metrics().rejectedRequests()).isEqualTo(1L);
@@ -295,11 +301,11 @@ class TenantRuntimeEnforcementServiceTest {
         clearInvocations(userAccountRepository);
 
         assertThatThrownBy(() -> service.enforceAuthOperationAllowed("ACME", "actor@bbp.com", "login"))
-                .isInstanceOf(ResponseStatusException.class)
+                .isInstanceOf(AuthSecurityContractException.class)
                 .satisfies(error -> {
-                    ResponseStatusException ex = (ResponseStatusException) error;
-                    assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.LOCKED);
-                    assertThat(ex.getReason()).isEqualTo("Tenant is currently on hold");
+                    AuthSecurityContractException ex = (AuthSecurityContractException) error;
+                    assertThat(ex.getHttpStatus()).isEqualTo(HttpStatus.LOCKED);
+                    assertThat(ex.getUserMessage()).isEqualTo("Tenant is currently on hold");
                 });
 
         verifyNoInteractions(userAccountRepository);
@@ -466,6 +472,54 @@ class TenantRuntimeEnforcementServiceTest {
     }
 
     @Test
+    void canonicalUpdatePolicy_persistsSettings_and_survivesPolicyControlInvalidation() {
+        TenantRuntimeEnforcementService.TenantRequestAdmission warmed = service.beginRequest(
+                "ACME",
+                "/api/v1/private",
+                "GET",
+                "actor@bbp.com");
+        assertThat(warmed.isAdmitted()).isTrue();
+        service.completeRequest(warmed, 200);
+
+        TenantRuntimeEnforcementService.TenantRuntimeSnapshot updated = service.updatePolicy(
+                "ACME",
+                TenantRuntimeEnforcementService.TenantRuntimeState.BLOCKED,
+                "incident_lockdown",
+                5,
+                7,
+                9,
+                "ops@bbp.com");
+
+        assertThat(updated.state()).isEqualTo(TenantRuntimeEnforcementService.TenantRuntimeState.BLOCKED);
+        assertThat(persistedSettingsByKey.get(keyHoldState(1L))).isEqualTo("BLOCKED");
+        assertThat(persistedSettingsByKey.get(keyHoldReason(1L))).isEqualTo("INCIDENT_LOCKDOWN");
+        assertThat(persistedSettingsByKey.get(keyMaxConcurrentRequests(1L))).isEqualTo("5");
+        assertThat(persistedSettingsByKey.get(keyMaxRequestsPerMinute(1L))).isEqualTo("7");
+        assertThat(persistedSettingsByKey.get(keyMaxActiveUsers(1L))).isEqualTo("9");
+        assertThat(persistedSettingsByKey.get(keyPolicyReference(1L))).isEqualTo(updated.auditChainId());
+        assertThat(persistedSettingsByKey.get(keyPolicyUpdatedAt(1L))).isEqualTo(updated.updatedAt().toString());
+
+        TenantRuntimeEnforcementService.TenantRequestAdmission controlAdmission = service.beginRequest(
+                "ACME",
+                "/api/v1/companies/1/tenant-runtime/policy",
+                "PUT",
+                "ops@bbp.com",
+                true);
+        assertThat(controlAdmission.isAdmitted()).isTrue();
+        service.completeRequest(controlAdmission, 200);
+
+        TenantRuntimeEnforcementService.TenantRequestAdmission blockedAfterInvalidate = service.beginRequest(
+                "ACME",
+                "/api/v1/private",
+                "GET",
+                "actor@bbp.com");
+
+        assertThat(blockedAfterInvalidate.isAdmitted()).isFalse();
+        assertThat(blockedAfterInvalidate.statusCode()).isEqualTo(HttpStatus.FORBIDDEN.value());
+        assertThat(blockedAfterInvalidate.message()).isEqualTo("Tenant is currently blocked");
+    }
+
+    @Test
     void invalidatePolicyCache_ignoresBlankCompanyCode() {
         TenantRuntimeEnforcementService.TenantRequestAdmission warmed = service.beginRequest(
                 "ACME",
@@ -556,11 +610,11 @@ class TenantRuntimeEnforcementServiceTest {
         service.updateQuotas("ACME", 10, 10, 2, "active_users", "ops@bbp.com");
 
         assertThatThrownBy(() -> service.enforceAuthOperationAllowed("ACME", "   ", "sign_in"))
-                .isInstanceOf(ResponseStatusException.class)
+                .isInstanceOf(AuthSecurityContractException.class)
                 .satisfies(error -> {
-                    ResponseStatusException ex = (ResponseStatusException) error;
-                    assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
-                    assertThat(ex.getReason()).isEqualTo("Tenant active-user quota exceeded");
+                    AuthSecurityContractException ex = (AuthSecurityContractException) error;
+                    assertThat(ex.getHttpStatus()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+                    assertThat(ex.getUserMessage()).isEqualTo("Tenant active-user quota exceeded");
                 });
 
         assertThat(service.snapshot("ACME").metrics().rejectedRequests()).isEqualTo(1L);

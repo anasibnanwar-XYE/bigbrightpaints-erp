@@ -14,6 +14,7 @@ import com.bigbrightpaints.erp.modules.auth.web.ResetPasswordRequest;
 import com.bigbrightpaints.erp.modules.auth.web.ChangePasswordRequest;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -23,9 +24,11 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @RestController
@@ -56,6 +59,7 @@ public class AuthController {
 
     @PostMapping("/logout")
     @PreAuthorize("isAuthenticated()")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     public ResponseEntity<Void> logout(@RequestParam(required = false) String refreshToken,
                                        Authentication authentication) {
         String accessToken = null;
@@ -112,11 +116,15 @@ public class AuthController {
      * @deprecated Use {@code /api/v1/auth/password/forgot}. This endpoint is retained for backward compatibility.
      */
     @Deprecated
+    @ResponseStatus(HttpStatus.GONE)
     @PostMapping("/password/forgot/superadmin")
-    public ResponseEntity<ApiResponse<String>> forgotPasswordForSuperAdmin(
+    public ApiResponse<Map<String, String>> forgotPasswordForSuperAdmin(
             @Valid @RequestBody ForgotPasswordRequest request) {
-        passwordResetService.requestReset(request.email());
-        return ResponseEntity.ok(ApiResponse.success("If the email exists, a reset link has been sent", "OK"));
+        return ApiResponse.failure(
+                "Deprecated super-admin forgot-password alias has been retired; use the supported recovery routes",
+                Map.of(
+                        "canonicalPath", "/api/v1/auth/password/forgot",
+                        "supportResetPath", "/api/v1/companies/{id}/support/admin-password-reset"));
     }
 
     @PostMapping("/password/reset")

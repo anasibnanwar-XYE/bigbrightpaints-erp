@@ -115,7 +115,7 @@ public class AdminSettingsController {
     }
 
     @PutMapping("/settings")
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_SUPER_ADMIN')")
+    @PreAuthorize("hasAuthority('ROLE_SUPER_ADMIN')")
     public ApiResponse<SystemSettingsDto> updateSettings(@Valid @RequestBody SystemSettingsUpdateRequest request) {
         SystemSettingsDto before = systemSettingsService.snapshot();
         requireSuperAdminForPeriodLockEnforcedChange(before, request);

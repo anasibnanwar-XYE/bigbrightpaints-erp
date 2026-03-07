@@ -178,9 +178,10 @@ class AuthServiceAuditAttributionTest {
         when(userAccountRepository.findByEmailIgnoreCase("super-admin@example.com")).thenReturn(Optional.of(user));
         when(authenticationManager.authenticate(any())).thenReturn(authentication);
         when(companyRepository.findByCodeIgnoreCase("TARGET")).thenReturn(Optional.of(company("TARGET")));
-        when(tokenService.generateAccessToken(eq("super-admin@example.com"), eq("TARGET"), any(Map.class)))
+        when(tokenService.generateAccessToken(eq("super-admin@example.com"), eq("TARGET"), any(Map.class), any(Instant.class)))
                 .thenReturn("access-new");
-        when(refreshTokenService.issue(eq("super-admin@example.com"), any(Instant.class))).thenReturn("refresh-new");
+        when(refreshTokenService.issue(eq("super-admin@example.com"), any(Instant.class), any(Instant.class)))
+                .thenReturn("refresh-new");
         when(properties.getRefreshTokenTtlSeconds()).thenReturn(3600L);
         when(properties.getAccessTokenTtlSeconds()).thenReturn(900L);
 
@@ -232,9 +233,11 @@ class AuthServiceAuditAttributionTest {
                 eq("user@example.com"),
                 eq("ACME"),
                 argThat((Map<String, Object> claims) ->
-                        claims != null && user.getDisplayName().equals(claims.get("name")))))
+                        claims != null && user.getDisplayName().equals(claims.get("name"))),
+                any(Instant.class)))
                 .thenReturn("access-new");
-        when(refreshTokenService.issue(eq("user@example.com"), any(Instant.class))).thenReturn("refresh-new");
+        when(refreshTokenService.issue(eq("user@example.com"), any(Instant.class), any(Instant.class)))
+                .thenReturn("refresh-new");
         when(properties.getRefreshTokenTtlSeconds()).thenReturn(3600L);
         when(properties.getAccessTokenTtlSeconds()).thenReturn(900L);
 
@@ -274,6 +277,7 @@ class AuthServiceAuditAttributionTest {
 
         authService.logout("   ", "access-token");
 
+        verify(tokenBlacklistService).revokeAllUserTokens("token-user@example.com");
         verify(refreshTokenService).revokeAllForUser("token-user@example.com");
         verify(refreshTokenService, never()).revokeAllForUser("caller@example.com");
         verify(tokenBlacklistService).blacklistToken(
@@ -306,7 +310,8 @@ class AuthServiceAuditAttributionTest {
             logAppender.stop();
         }
 
-        verify(refreshTokenService).revoke("refresh-token");
+        verify(tokenBlacklistService).revokeAllUserTokens("user@example.com");
+        verify(refreshTokenService).revokeAllForUser("user@example.com");
         verify(tokenBlacklistService).blacklistToken("jti-logout", expiresAt, "user@example.com", "logout");
         assertThat(logAppender.list)
                 .anySatisfy(event -> {
@@ -314,6 +319,26 @@ class AuthServiceAuditAttributionTest {
                     assertThat(event.getFormattedMessage())
                             .contains("Failed to blacklist access token during logout");
                 });
+    }
+
+    @Test
+    void loginLockoutThreshold_revokesExistingSessions() {
+        LoginRequest request = new LoginRequest("user@example.com", "wrong-password", "ACME", null, null);
+        UserAccount user = userWithCompany("user@example.com", "ACME");
+        user.setFailedLoginAttempts(4);
+
+        when(userAccountRepository.findByEmailIgnoreCase("user@example.com")).thenReturn(Optional.of(user));
+        when(authenticationManager.authenticate(any()))
+                .thenThrow(new BadCredentialsException("bad credentials"));
+
+        assertThatThrownBy(() -> authService.login(request))
+                .isInstanceOf(BadCredentialsException.class);
+
+        assertThat(user.getFailedLoginAttempts()).isEqualTo(5);
+        assertThat(user.getLockedUntil()).isNotNull();
+        verify(userAccountRepository).save(user);
+        verify(tokenBlacklistService).revokeAllUserTokens("user@example.com");
+        verify(refreshTokenService).revokeAllForUser("user@example.com");
     }
 
     private UserAccount userWithCompany(String email, String companyCode) {

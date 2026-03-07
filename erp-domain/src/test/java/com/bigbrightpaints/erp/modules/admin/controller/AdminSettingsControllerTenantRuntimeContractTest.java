@@ -14,8 +14,10 @@ import com.bigbrightpaints.erp.modules.hr.domain.PayrollRunRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.CreditLimitOverrideRequestRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.CreditRequestRepository;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
+import java.lang.reflect.Method;
 import java.time.Instant;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -24,6 +26,26 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class AdminSettingsControllerTenantRuntimeContractTest {
+
+    @Test
+    void updateSettings_requiresSuperAdminAuthority() throws Exception {
+        Method method = AdminSettingsController.class.getMethod("updateSettings", SystemSettingsUpdateRequest.class);
+
+        PreAuthorize annotation = method.getAnnotation(PreAuthorize.class);
+
+        assertThat(annotation).isNotNull();
+        assertThat(annotation.value()).isEqualTo("hasAuthority('ROLE_SUPER_ADMIN')");
+    }
+
+    @Test
+    void tenantRuntimeMetrics_remainsTenantAdminReadable() throws Exception {
+        Method method = AdminSettingsController.class.getMethod("tenantRuntimeMetrics");
+
+        PreAuthorize annotation = method.getAnnotation(PreAuthorize.class);
+
+        assertThat(annotation).isNotNull();
+        assertThat(annotation.value()).isEqualTo("hasAuthority('ROLE_ADMIN')");
+    }
 
     @Test
     void getSettings_returnsCurrentSnapshot() {

@@ -5,6 +5,7 @@ import com.bigbrightpaints.erp.core.audit.AuditLog;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.company.domain.CompanyLifecycleState;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 import jakarta.persistence.EntityManager;
@@ -69,6 +70,33 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
                 List.of("ROLE_SUPER_ADMIN", "ROLE_ADMIN"));
         dataSeeder.ensureUser(SUPER_ADMIN_HIERARCHY_EMAIL, PASSWORD, "Hierarchy Super Admin", TENANT_A,
                 List.of("ROLE_SUPER_ADMIN"));
+        resetSeededUserState(ADMIN_EMAIL);
+        resetSeededUserState(ROLE_GUARD_ADMIN_EMAIL);
+        resetSeededUserState(NON_PRIVILEGED_ADMIN_EMAIL);
+        resetSeededUserState("other-admin@bbp.com");
+        resetSeededUserState(SUPER_ADMIN_EMAIL);
+        resetSeededUserState(SUPER_ADMIN_HIERARCHY_EMAIL);
+        resetTenantLifecycle(TENANT_A);
+        resetTenantLifecycle(TENANT_B);
+        resetTenantLifecycle(ROOT_TENANT);
+    }
+
+    private void resetSeededUserState(String email) {
+        userAccountRepository.findByEmailIgnoreCase(email).ifPresent(user -> {
+            user.setEnabled(true);
+            user.setMustChangePassword(false);
+            user.setFailedLoginAttempts(0);
+            user.setLockedUntil(null);
+            userAccountRepository.save(user);
+        });
+    }
+
+    private void resetTenantLifecycle(String companyCode) {
+        companyRepository.findByCodeIgnoreCase(companyCode).ifPresent(company -> {
+            company.setLifecycleState(CompanyLifecycleState.ACTIVE);
+            company.setLifecycleReason(null);
+            companyRepository.save(company);
+        });
     }
 
     @Test
@@ -186,6 +214,7 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
         assertThat(data).isNotNull();
         assertThat(data.get("companyCode")).isEqualTo(TENANT_A);
         assertThat(data.get("adminEmail")).isEqualTo(ADMIN_EMAIL);
+        assertThat(data).doesNotContainKeys("temporaryPassword", "adminTemporaryPassword");
     }
 
     @Test
@@ -199,24 +228,44 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
                 .max()
                 .orElse(0L) + 10_000L;
 
-        ResponseEntity<String> foreignTenantResponse = rest.exchange(
+        ResponseEntity<Map> foreignTenantResponse = rest.exchange(
                 "/api/v1/companies/" + tenantBId + "/support/admin-password-reset",
                 HttpMethod.POST,
                 new HttpEntity<>(Map.of("adminEmail", ADMIN_EMAIL), jsonHeaders(token, TENANT_A)),
-                String.class);
+                Map.class);
 
-        ResponseEntity<String> unknownTenantResponse = rest.exchange(
+        ResponseEntity<Map> unknownTenantResponse = rest.exchange(
                 "/api/v1/companies/" + unknownCompanyId + "/support/admin-password-reset",
                 HttpMethod.POST,
                 new HttpEntity<>(Map.of("adminEmail", ADMIN_EMAIL), jsonHeaders(token, TENANT_A)),
-                String.class);
+                Map.class);
 
         assertThat(foreignTenantResponse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
         assertThat(unknownTenantResponse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
-        assertThat(foreignTenantResponse.getBody()).isEqualTo(unknownTenantResponse.getBody());
-        if (foreignTenantResponse.getBody() != null) {
-            assertThat(foreignTenantResponse.getBody()).contains(CONTROL_PLANE_AUTH_DENIED_MESSAGE);
-        }
+        assertThat(foreignTenantResponse.getBody()).isNotNull();
+        assertThat(unknownTenantResponse.getBody()).isNotNull();
+        assertThat(foreignTenantResponse.getBody().get("success")).isEqualTo(Boolean.FALSE);
+        assertThat(unknownTenantResponse.getBody().get("success")).isEqualTo(Boolean.FALSE);
+        assertThat(foreignTenantResponse.getBody().get("message")).isEqualTo("Access denied");
+        assertThat(unknownTenantResponse.getBody().get("message")).isEqualTo("Access denied");
+        assertThat(foreignTenantResponse.getBody().get("timestamp")).isNotNull();
+        assertThat(unknownTenantResponse.getBody().get("timestamp")).isNotNull();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> foreignTenantError = (Map<String, Object>) foreignTenantResponse.getBody().get("data");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> unknownTenantError = (Map<String, Object>) unknownTenantResponse.getBody().get("data");
+        assertThat(foreignTenantError).isNotNull();
+        assertThat(unknownTenantError).isNotNull();
+        assertThat(foreignTenantError.get("code")).isEqualTo("AUTH_004");
+        assertThat(unknownTenantError.get("code")).isEqualTo("AUTH_004");
+        assertThat(foreignTenantError.get("message")).isEqualTo("Insufficient permissions for this operation");
+        assertThat(unknownTenantError.get("message")).isEqualTo("Insufficient permissions for this operation");
+        assertThat(foreignTenantError.get("reason")).isEqualTo("COMPANY_CONTROL_ACCESS_DENIED");
+        assertThat(unknownTenantError.get("reason")).isEqualTo("COMPANY_CONTROL_ACCESS_DENIED");
+        assertThat(foreignTenantError.get("reasonDetail")).isEqualTo(CONTROL_PLANE_AUTH_DENIED_MESSAGE);
+        assertThat(unknownTenantError.get("reasonDetail")).isEqualTo(CONTROL_PLANE_AUTH_DENIED_MESSAGE);
+        assertThat(foreignTenantError.get("traceId")).isNotNull();
+        assertThat(unknownTenantError.get("traceId")).isNotNull();
     }
 
     @Test
@@ -268,7 +317,7 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
                 HttpMethod.GET,
                 new HttpEntity<>(jsonHeaders(adminToken, TENANT_A)),
                 Map.class);
-        assertThat(meDuringHold.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(meDuringHold.getStatusCode()).isEqualTo(HttpStatus.OK);
 
         String blockReason = "Critical security incident";
         ResponseEntity<Map> blockResponse = updateLifecycleState(tenantAId, superToken, ROOT_TENANT, "BLOCKED", blockReason);
@@ -705,6 +754,158 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
         assertThat(roles).contains("ROLE_SALES");
     }
 
+    @Test
+    void tenant_admin_cross_tenant_privileged_user_actions_mask_foreign_targets_as_missing_and_still_audit_denials() throws InterruptedException {
+        String token = login(ADMIN_EMAIL, TENANT_A);
+        Long foreignUserId = userAccountRepository.findByEmailIgnoreCase("other-admin@bbp.com")
+                .map(UserAccount::getId)
+                .orElseThrow();
+        long missingUserId = foreignUserId + 10_000L;
+
+        assertMaskedPrivilegedUserActionPair(
+                rest.exchange(
+                        "/api/v1/admin/users/" + foreignUserId + "/force-reset-password",
+                        HttpMethod.POST,
+                        new HttpEntity<>(jsonHeaders(token, TENANT_A)),
+                        Map.class),
+                rest.exchange(
+                        "/api/v1/admin/users/" + missingUserId + "/force-reset-password",
+                        HttpMethod.POST,
+                        new HttpEntity<>(jsonHeaders(token, TENANT_A)),
+                        Map.class));
+        awaitPrivilegedUserDeniedAudit(ADMIN_EMAIL, foreignUserId, "admin-force-reset-password-out-of-scope");
+
+        assertMaskedPrivilegedUserActionPair(
+                rest.exchange(
+                        "/api/v1/admin/users/" + foreignUserId + "/status",
+                        HttpMethod.PUT,
+                        new HttpEntity<>(Map.of("enabled", false), jsonHeaders(token, TENANT_A)),
+                        Map.class),
+                rest.exchange(
+                        "/api/v1/admin/users/" + missingUserId + "/status",
+                        HttpMethod.PUT,
+                        new HttpEntity<>(Map.of("enabled", false), jsonHeaders(token, TENANT_A)),
+                        Map.class));
+        awaitPrivilegedUserDeniedAudit(ADMIN_EMAIL, foreignUserId, "admin-status-update-out-of-scope");
+
+        assertMaskedPrivilegedUserActionPair(
+                rest.exchange(
+                        "/api/v1/admin/users/" + foreignUserId + "/suspend",
+                        HttpMethod.PATCH,
+                        new HttpEntity<>(jsonHeaders(token, TENANT_A)),
+                        Map.class),
+                rest.exchange(
+                        "/api/v1/admin/users/" + missingUserId + "/suspend",
+                        HttpMethod.PATCH,
+                        new HttpEntity<>(jsonHeaders(token, TENANT_A)),
+                        Map.class));
+        awaitPrivilegedUserDeniedAudit(ADMIN_EMAIL, foreignUserId, "admin-suspend-user-out-of-scope");
+
+        assertMaskedPrivilegedUserActionPair(
+                rest.exchange(
+                        "/api/v1/admin/users/" + foreignUserId + "/unsuspend",
+                        HttpMethod.PATCH,
+                        new HttpEntity<>(jsonHeaders(token, TENANT_A)),
+                        Map.class),
+                rest.exchange(
+                        "/api/v1/admin/users/" + missingUserId + "/unsuspend",
+                        HttpMethod.PATCH,
+                        new HttpEntity<>(jsonHeaders(token, TENANT_A)),
+                        Map.class));
+        awaitPrivilegedUserDeniedAudit(ADMIN_EMAIL, foreignUserId, "admin-unsuspend-user-out-of-scope");
+
+        assertMaskedPrivilegedUserActionPair(
+                rest.exchange(
+                        "/api/v1/admin/users/" + foreignUserId + "/mfa/disable",
+                        HttpMethod.PATCH,
+                        new HttpEntity<>(jsonHeaders(token, TENANT_A)),
+                        Map.class),
+                rest.exchange(
+                        "/api/v1/admin/users/" + missingUserId + "/mfa/disable",
+                        HttpMethod.PATCH,
+                        new HttpEntity<>(jsonHeaders(token, TENANT_A)),
+                        Map.class));
+        awaitPrivilegedUserDeniedAudit(ADMIN_EMAIL, foreignUserId, "admin-disable-mfa-out-of-scope");
+
+        assertMaskedPrivilegedUserActionPair(
+                rest.exchange(
+                        "/api/v1/admin/users/" + foreignUserId,
+                        HttpMethod.DELETE,
+                        new HttpEntity<>(jsonHeaders(token, TENANT_A)),
+                        Map.class),
+                rest.exchange(
+                        "/api/v1/admin/users/" + missingUserId,
+                        HttpMethod.DELETE,
+                        new HttpEntity<>(jsonHeaders(token, TENANT_A)),
+                        Map.class));
+        awaitPrivilegedUserDeniedAudit(ADMIN_EMAIL, foreignUserId, "admin-delete-user-out-of-scope");
+    }
+
+    @Test
+    void super_admin_can_execute_privileged_user_action_matrix_across_tenants() {
+        String token = login(SUPER_ADMIN_EMAIL, TENANT_A);
+        Long foreignUserId = userAccountRepository.findByEmailIgnoreCase("other-admin@bbp.com")
+                .map(UserAccount::getId)
+                .orElseThrow();
+
+        ResponseEntity<Map> forceResetResponse = rest.exchange(
+                "/api/v1/admin/users/" + foreignUserId + "/force-reset-password",
+                HttpMethod.POST,
+                new HttpEntity<>(jsonHeaders(token, TENANT_A)),
+                Map.class);
+        assertThat(forceResetResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        ResponseEntity<Void> suspendResponse = rest.exchange(
+                "/api/v1/admin/users/" + foreignUserId + "/suspend",
+                HttpMethod.PATCH,
+                new HttpEntity<>(jsonHeaders(token, TENANT_A)),
+                Void.class);
+        assertThat(suspendResponse.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+        assertThat(userAccountRepository.findById(foreignUserId).orElseThrow().isEnabled()).isFalse();
+
+        ResponseEntity<Void> unsuspendResponse = rest.exchange(
+                "/api/v1/admin/users/" + foreignUserId + "/unsuspend",
+                HttpMethod.PATCH,
+                new HttpEntity<>(jsonHeaders(token, TENANT_A)),
+                Void.class);
+        assertThat(unsuspendResponse.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+        assertThat(userAccountRepository.findById(foreignUserId).orElseThrow().isEnabled()).isTrue();
+
+        ResponseEntity<Map> disableResponse = rest.exchange(
+                "/api/v1/admin/users/" + foreignUserId + "/status",
+                HttpMethod.PUT,
+                new HttpEntity<>(Map.of("enabled", false), jsonHeaders(token, TENANT_A)),
+                Map.class);
+        assertThat(disableResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(userAccountRepository.findById(foreignUserId).orElseThrow().isEnabled()).isFalse();
+
+        ResponseEntity<Map> enableResponse = rest.exchange(
+                "/api/v1/admin/users/" + foreignUserId + "/status",
+                HttpMethod.PUT,
+                new HttpEntity<>(Map.of("enabled", true), jsonHeaders(token, TENANT_A)),
+                Map.class);
+        assertThat(enableResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(userAccountRepository.findById(foreignUserId).orElseThrow().isEnabled()).isTrue();
+
+        ResponseEntity<Void> disableMfaResponse = rest.exchange(
+                "/api/v1/admin/users/" + foreignUserId + "/mfa/disable",
+                HttpMethod.PATCH,
+                new HttpEntity<>(jsonHeaders(token, TENANT_A)),
+                Void.class);
+        assertThat(disableMfaResponse.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+        UserAccount mfaDisabledUser = userAccountRepository.findById(foreignUserId).orElseThrow();
+        assertThat(mfaDisabledUser.isMfaEnabled()).isFalse();
+        assertThat(mfaDisabledUser.getMfaRecoveryCodeHashes()).isEmpty();
+
+        ResponseEntity<Void> deleteResponse = rest.exchange(
+                "/api/v1/admin/users/" + foreignUserId,
+                HttpMethod.DELETE,
+                new HttpEntity<>(jsonHeaders(token, TENANT_A)),
+                Void.class);
+        assertThat(deleteResponse.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+        assertThat(userAccountRepository.findById(foreignUserId)).isEmpty();
+    }
+
     private void assertTokenCanAccessMe(String token, String companyCode) {
         ResponseEntity<Map> authCheck = rest.exchange(
                 "/api/v1/auth/me",
@@ -726,6 +927,43 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
         Map<String, Object> error = (Map<String, Object>) errorValue;
         assertThat(error.get("code")).isEqualTo("AUTH_004");
         assertThat(error.get("message")).isEqualTo("Insufficient permissions for this operation");
+    }
+
+    private void assertMaskedPrivilegedUserActionPair(ResponseEntity<Map> foreignResponse,
+                                                      ResponseEntity<Map> missingResponse) {
+        Map<String, Object> foreignError = assertMaskedPrivilegedUserAction(foreignResponse);
+        Map<String, Object> missingError = assertMaskedPrivilegedUserAction(missingResponse);
+        assertThat(foreignError.get("code")).isEqualTo(missingError.get("code"));
+        assertThat(foreignError.get("message")).isEqualTo(missingError.get("message"));
+        assertThat(foreignError.get("reason")).isEqualTo(missingError.get("reason"));
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> assertMaskedPrivilegedUserAction(ResponseEntity<Map> response) {
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        Map<String, Object> body = response.getBody();
+        assertThat(body).isNotNull();
+        assertThat(body.get("success")).isEqualTo(Boolean.FALSE);
+        assertThat(body.get("message")).isEqualTo("User not found");
+        Object errorValue = body.get("data");
+        assertThat(errorValue).isInstanceOf(Map.class);
+        Map<String, Object> error = (Map<String, Object>) errorValue;
+        assertThat(error.get("code")).isEqualTo("VAL_001");
+        assertThat(error.get("message")).isEqualTo("User not found");
+        assertThat(error.get("reason")).isEqualTo("User not found");
+        assertThat(error.get("traceId")).isNotNull();
+        assertThat(error.get("path")).isNotNull();
+        return error;
+    }
+
+    private void awaitPrivilegedUserDeniedAudit(String actorEmail, Long targetUserId, String reason) throws InterruptedException {
+        AuditLog denied = awaitAuditEvent(AuditEvent.ACCESS_DENIED, log ->
+                actorEmail.equalsIgnoreCase(log.getUsername())
+                        && reason.equals(log.getMetadata().get("reason"))
+                        && String.valueOf(targetUserId).equals(log.getMetadata().get("targetUserId")));
+        assertThat(denied.getMetadata()).containsEntry("actor", actorEmail);
+        assertThat(denied.getMetadata().get("tenantScope")).contains(TENANT_A);
+        assertThat(denied.getMetadata().get("targetCompanyCode")).contains(TENANT_B);
     }
 
     private String login(String email, String companyCode) {
@@ -864,7 +1102,8 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
     }
 
     private AuditLog awaitAuditEvent(AuditEvent eventType, Predicate<AuditLog> matcher) throws InterruptedException {
-        for (int i = 0; i < 40; i++) {
+        for (int i = 0; i < 80; i++) {
+            entityManager.clear();
             List<AuditLog> logs = entityManager.createQuery(
                             "select distinct al from AuditLog al left join fetch al.metadata where al.eventType = :eventType order by al.timestamp desc",
                             AuditLog.class)

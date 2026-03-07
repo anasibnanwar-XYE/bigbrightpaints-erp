@@ -26,6 +26,7 @@ import org.springframework.util.StringUtils;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.List;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
@@ -53,6 +54,7 @@ public class PasswordResetService {
     private static final String SUPER_ADMIN_CLEANUP_FAILURE_CLASS_TOKEN_CLEANUP = "TOKEN_CLEANUP";
     private static final String SUPER_ADMIN_CLEANUP_FAILURE_SECURITY_EVENT_CODE =
             "SEC_AUTH_SUPERADMIN_RESET_CLEANUP_FAILURE";
+    private static final String PUBLIC_RESET_PERSISTENCE_FAILURE_REASON_CODE = "RESET_PERSISTENCE_FAILURE";
     private static final int MAX_TENANT_CONTEXT_LENGTH = 64;
     private static final Pattern SAFE_TENANT_CONTEXT_PATTERN =
             Pattern.compile("^[A-Za-z0-9._:-]{1,64}$");
@@ -67,6 +69,9 @@ public class PasswordResetService {
     private final TransactionTemplate tokenLifecycleTransactionTemplate;
     private final TransactionTemplate tokenCleanupTransactionTemplate;
     private final SecureRandom secureRandom = new SecureRandom();
+
+    private record IssuedResetToken(Long id, String rawToken) {
+    }
 
     public PasswordResetService(UserAccountRepository userAccountRepository,
                                 PasswordResetTokenRepository tokenRepository,
@@ -84,25 +89,19 @@ public class PasswordResetService {
         this.tokenBlacklistService = tokenBlacklistService;
         this.refreshTokenService = refreshTokenService;
         this.tokenLifecycleTransactionTemplate = new TransactionTemplate(transactionManager);
+        this.tokenLifecycleTransactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         this.tokenCleanupTransactionTemplate = new TransactionTemplate(transactionManager);
         this.tokenCleanupTransactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     @Transactional
     public void requestReset(String email) {
-        logTenantContextIgnoredIfPresent("forgot_password", resolveCorrelationId());
+        String correlationId = resolveCorrelationId();
+        logTenantContextIgnoredIfPresent("forgot_password", correlationId);
         // GLOBAL_IDENTITY policy: one user identity spans all company memberships.
         userAccountRepository.findByEmailIgnoreCase(email)
                 .filter(UserAccount::isEnabled)
-                .ifPresent(user -> {
-                    tokenRepository.deleteByUser(user);
-                    String token = generateToken();
-                    Instant now = Instant.now();
-                    Instant expiresAt = now.plusSeconds(RESET_TOKEN_TTL_SECONDS);
-                    PasswordResetToken resetToken = new PasswordResetToken(user, token, expiresAt);
-                    tokenRepository.save(resetToken);
-                    emailService.sendPasswordResetEmail(user.getEmail(), user.getDisplayName(), token);
-                });
+                .ifPresent(user -> dispatchResetEmail(user, correlationId, true, "forgot_password"));
     }
 
     public void requestResetForSuperAdmin(String email) {
@@ -129,18 +128,21 @@ public class PasswordResetService {
         }
         String correlationId = resolveCorrelationId();
         logTenantContextIgnoredIfPresent("admin_force_reset", correlationId);
-        requestReset(targetUser.getEmail());
-        log.info(
-                "event=password_reset.admin_force_reset.dispatched policy={} correlationId={} email={} outcome=email_dispatched",
-                RESET_POLICY_SCOPE,
-                correlationId,
-                obfuscateEmail(targetUser.getEmail()));
+        if (dispatchResetEmail(targetUser, correlationId, false, "admin_force_reset")) {
+            log.info(
+                    "event=password_reset.admin_force_reset.dispatched policy={} correlationId={} email={} outcome=email_dispatched",
+                    RESET_POLICY_SCOPE,
+                    correlationId,
+                    obfuscateEmail(targetUser.getEmail()));
+        }
     }
 
     @Transactional
     public void resetPassword(String tokenValue, String newPassword, String confirmPassword) {
         logTenantContextIgnoredIfPresent("reset_password", resolveCorrelationId());
-        PasswordResetToken token = tokenRepository.findByToken(tokenValue)
+        String tokenDigest = AuthTokenDigests.passwordResetTokenDigest(tokenValue);
+        PasswordResetToken token = tokenRepository.findByTokenDigest(tokenDigest)
+                .or(() -> tokenRepository.findByToken(tokenValue))
                 .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Invalid or expired token"));
         Instant now = Instant.now();
         if (token.isUsed() || token.isExpired(now)) {
@@ -156,6 +158,7 @@ public class PasswordResetService {
         userAccountRepository.save(user);
         tokenBlacklistService.revokeAllUserTokens(user.getEmail());
         refreshTokenService.revokeAllForUser(user.getEmail());
+        token.migrateToDigest(tokenDigest);
         token.markUsed();
         tokenRepository.save(token);
         tokenRepository.deleteByUser(user);
@@ -223,7 +226,10 @@ public class PasswordResetService {
             tokenRepository.deleteByUser(user);
             String token = generateToken();
             Instant expiresAt = Instant.now().plusSeconds(RESET_TOKEN_TTL_SECONDS);
-            PasswordResetToken resetToken = new PasswordResetToken(user, token, expiresAt);
+            PasswordResetToken resetToken = PasswordResetToken.digestOnly(
+                    user,
+                    AuthTokenDigests.passwordResetTokenDigest(token),
+                    expiresAt);
             tokenRepository.saveAndFlush(resetToken);
             return token;
         });
@@ -238,6 +244,150 @@ public class PasswordResetService {
         return tokenValue;
     }
 
+    private boolean dispatchResetEmail(UserAccount user,
+                                       String correlationId,
+                                       boolean suppressFailures,
+                                       String operation) {
+        if (user == null) {
+            return false;
+        }
+        String maskedEmail = obfuscateEmail(user.getEmail());
+        IssuedResetToken issuedResetToken = null;
+        try {
+            ensureRequiredResetEmailDelivery();
+            issuedResetToken = issueResetToken(user, correlationId, maskedEmail);
+            if (issuedResetToken == null) {
+                return false;
+            }
+            emailService.sendPasswordResetEmailRequired(user.getEmail(), user.getDisplayName(), issuedResetToken.rawToken());
+            return true;
+        } catch (RuntimeException ex) {
+            RuntimeException cleanupFailure = suppressFailures
+                    ? cleanupIssuedResetTokenMasked(issuedResetToken, correlationId, maskedEmail, operation)
+                    : null;
+            if (!suppressFailures) {
+                cleanupIssuedResetToken(issuedResetToken, correlationId, maskedEmail);
+            }
+            if (suppressFailures) {
+                logMaskedPublicResetFailure(operation, correlationId, maskedEmail, ex, issuedResetToken, cleanupFailure);
+                return false;
+            }
+            log.warn(
+                    "event=password_reset.{}.failed policy={} correlationId={} email={} outcome=delivery_failed exceptionClass={}",
+                    operation,
+                    RESET_POLICY_SCOPE,
+                    correlationId,
+                    maskedEmail,
+                    ex.getClass().getSimpleName());
+            throw ex;
+        }
+    }
+
+    private IssuedResetToken issueResetToken(UserAccount user, String correlationId, String maskedEmail) {
+        IssuedResetToken issuedResetToken = tokenLifecycleTransactionTemplate.execute(status -> {
+            assertTokenLifecycleTransactionActive("issue", correlationId, maskedEmail);
+            UserAccount lockedUser = lockUserForResetIssuance(user);
+            if (lockedUser == null) {
+                return null;
+            }
+            tokenRepository.deleteByUser(lockedUser);
+            String token = generateToken();
+            Instant expiresAt = Instant.now().plusSeconds(RESET_TOKEN_TTL_SECONDS);
+            PasswordResetToken resetToken = PasswordResetToken.digestOnly(
+                    lockedUser,
+                    AuthTokenDigests.passwordResetTokenDigest(token),
+                    expiresAt);
+            PasswordResetToken saved = tokenRepository.saveAndFlush(resetToken);
+            return new IssuedResetToken(saved.getId(), token);
+        });
+        if (issuedResetToken == null) {
+            return null;
+        }
+        if (issuedResetToken == null || !StringUtils.hasText(issuedResetToken.rawToken())) {
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Failed to persist password reset token");
+        }
+        return issuedResetToken;
+    }
+
+    private UserAccount lockUserForResetIssuance(UserAccount user) {
+        if (user == null || !user.isEnabled()) {
+            return null;
+        }
+        if (user.getId() == null) {
+            return user;
+        }
+        return userAccountRepository.lockById(user.getId())
+                .filter(UserAccount::isEnabled)
+                .orElse(null);
+    }
+
+    private void cleanupIssuedResetToken(IssuedResetToken issuedResetToken,
+                                         String correlationId,
+                                         String maskedEmail) {
+        if (issuedResetToken == null || !StringUtils.hasText(issuedResetToken.rawToken())) {
+            return;
+        }
+        tokenCleanupTransactionTemplate.executeWithoutResult(status -> {
+            assertTokenLifecycleTransactionActive("cleanup_failed_issue", correlationId, maskedEmail);
+            deletePersistedResetToken(issuedResetToken.rawToken());
+        });
+    }
+
+    private RuntimeException cleanupIssuedResetTokenMasked(IssuedResetToken issuedResetToken,
+                                                           String correlationId,
+                                                           String maskedEmail,
+                                                           String operation) {
+        try {
+            cleanupIssuedResetToken(issuedResetToken, correlationId, maskedEmail);
+            return null;
+        } catch (RuntimeException cleanupEx) {
+            log.error(
+                    "event=password_reset.{}.masked policy={} correlationId={} email={} outcome=cleanup_failed reasonCode={} exceptionClass={}",
+                    operation,
+                    RESET_POLICY_SCOPE,
+                    correlationId,
+                    maskedEmail,
+                    PUBLIC_RESET_PERSISTENCE_FAILURE_REASON_CODE,
+                    cleanupEx.getClass().getSimpleName());
+            return cleanupEx;
+        }
+    }
+
+    private void logMaskedPublicResetFailure(String operation,
+                                             String correlationId,
+                                             String maskedEmail,
+                                             RuntimeException dispatchFailure,
+                                             IssuedResetToken issuedResetToken,
+                                             RuntimeException cleanupFailure) {
+        RuntimeException effectiveFailure = cleanupFailure != null ? cleanupFailure : dispatchFailure;
+        if (isPublicResetPersistenceFailure(dispatchFailure, issuedResetToken) || cleanupFailure != null) {
+            log.error(
+                    "event=password_reset.{}.masked policy={} correlationId={} email={} outcome=suppressed_failure reasonCode={} exceptionClass={}",
+                    operation,
+                    RESET_POLICY_SCOPE,
+                    correlationId,
+                    maskedEmail,
+                    PUBLIC_RESET_PERSISTENCE_FAILURE_REASON_CODE,
+                    effectiveFailure.getClass().getSimpleName());
+            return;
+        }
+        log.warn(
+                "event=password_reset.{}.masked policy={} correlationId={} email={} outcome=suppressed_failure exceptionClass={}",
+                operation,
+                RESET_POLICY_SCOPE,
+                correlationId,
+                maskedEmail,
+                effectiveFailure.getClass().getSimpleName());
+    }
+
+    private boolean isPublicResetPersistenceFailure(RuntimeException exception, IssuedResetToken issuedResetToken) {
+        if (exception instanceof ApplicationException appException
+                && appException.getErrorCode() == ErrorCode.SYSTEM_CONFIGURATION_ERROR) {
+            return false;
+        }
+        return issuedResetToken == null || !StringUtils.hasText(issuedResetToken.rawToken());
+    }
+
     private void cleanupFailedSuperAdminResetToken(UserAccount user, String tokenValue, String correlationId) {
         if (!StringUtils.hasText(tokenValue)) {
             return;
@@ -246,7 +396,7 @@ public class PasswordResetService {
         try {
             tokenCleanupTransactionTemplate.executeWithoutResult(status -> {
                 assertTokenLifecycleTransactionActive("cleanup", correlationId, maskedEmail);
-                tokenRepository.deleteByToken(tokenValue);
+                deletePersistedResetToken(tokenValue);
             });
             log.info(
                     "event=password_reset.superadmin_forgot.cleanup policy={} correlationId={} email={} outcome=token_removed",
@@ -282,6 +432,14 @@ public class PasswordResetService {
                 maskedEmail,
                 stage);
         throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Password reset token lifecycle operation requires an active transaction");
+    }
+
+    private void deletePersistedResetToken(String tokenValue) {
+        String tokenDigest = AuthTokenDigests.passwordResetTokenDigest(tokenValue);
+        int deleted = tokenRepository.deleteByTokenDigest(tokenDigest);
+        if (deleted == 0) {
+            tokenRepository.deleteByToken(tokenValue);
+        }
     }
 
     private String classifySuperAdminDispatchFailure(RuntimeException exception, String persistedToken) {
@@ -405,5 +563,15 @@ public class PasswordResetService {
             return "<redacted>";
         }
         return candidate;
+    }
+
+    @Transactional
+    public int backfillLegacyTokens() {
+        List<PasswordResetToken> legacyTokens = tokenRepository.findAllByTokenIsNotNullAndTokenDigestIsNull();
+        legacyTokens.forEach(token -> token.migrateToDigest(AuthTokenDigests.passwordResetTokenDigest(token.getToken())));
+        if (!legacyTokens.isEmpty()) {
+            tokenRepository.saveAll(legacyTokens);
+        }
+        return legacyTokens.size();
     }
 }

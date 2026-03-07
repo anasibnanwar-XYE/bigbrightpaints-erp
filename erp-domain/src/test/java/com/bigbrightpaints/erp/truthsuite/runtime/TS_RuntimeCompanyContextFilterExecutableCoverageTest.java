@@ -71,7 +71,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 @ExtendWith(MockitoExtension.class)
 class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
 
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().findAndRegisterModules();
 
     @Mock
     private TenantRuntimeEnforcementService tenantRuntimeEnforcementService;
@@ -86,7 +86,7 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
 
     @BeforeEach
     void setUp() {
-        filter = new CompanyContextFilter(tenantRuntimeEnforcementService, companyService);
+        filter = new CompanyContextFilter(tenantRuntimeEnforcementService, companyService, OBJECT_MAPPER);
     }
 
     @AfterEach
@@ -104,7 +104,7 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
         filter.doFilter(request, response, filterChain);
 
         assertThat(response.getStatus()).isEqualTo(403);
-        assertThat(response.getErrorMessage()).isEqualTo("Access denied to company-scoped request");
+        assertThat(response.getContentAsString()).contains("Access denied to company-scoped request");
         verifyNoInteractions(companyService);
         verify(tenantRuntimeEnforcementService).completeRequest(
                 any(TenantRuntimeEnforcementService.TenantRequestAdmission.class), eq(403));
@@ -123,7 +123,7 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
         filter.doFilter(request, response, filterChain);
 
         assertThat(response.getStatus()).isEqualTo(403);
-        assertThat(response.getErrorMessage()).isEqualTo("Access denied to company: ACME");
+        assertThat(response.getContentAsString()).contains("Access denied to company: ACME");
         verify(tenantRuntimeEnforcementService, never()).beginRequest(anyString(), anyString(), anyString(), anyString(), anyBoolean());
         verify(filterChain, never()).doFilter(request, response);
     }
@@ -133,13 +133,6 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
         authenticate("ops@bbp.com", Set.of("ROLE_SUPER_ADMIN"), Set.of());
         when(companyService.resolveCompanyCodeById(42L)).thenReturn("ACME");
         when(companyService.resolveLifecycleStateByCode("ACME")).thenReturn(CompanyLifecycleState.DEACTIVATED);
-        when(tenantRuntimeEnforcementService.beginRequest(
-                eq("ACME"),
-                eq("/api/v1/companies/42/lifecycle-state"),
-                eq("POST"),
-                eq("ops@bbp.com"),
-                eq(false)))
-                .thenReturn(admission(true, 200, null));
 
         MockHttpServletRequest request = request("POST", "/api/v1/companies/42/lifecycle-state");
         request.setAttribute("jwtClaims", claimsFor("ACME"));
@@ -148,6 +141,8 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
         filter.doFilter(request, response, filterChain);
 
         assertThat(response.getStatus()).isEqualTo(200);
+        verify(tenantRuntimeEnforcementService, never())
+                .beginRequest(anyString(), anyString(), anyString(), anyString(), anyBoolean());
         verify(filterChain).doFilter(request, response);
     }
 
@@ -170,9 +165,10 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
         filter.doFilter(request, response, filterChain);
 
         assertThat(response.getStatus()).isEqualTo(429);
-        Map<String, String> payload =
+        Map<String, Object> payload =
                 OBJECT_MAPPER.readValue(response.getContentAsString(), new TypeReference<>() {});
         assertThat(payload).containsEntry("message", "bad \"quote\" \\\\ slash");
+        assertThat(payload).containsEntry("success", false);
         verify(filterChain, never()).doFilter(request, response);
     }
 
@@ -188,7 +184,7 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
         filter.doFilter(request, response, filterChain);
 
         assertThat(response.getStatus()).isEqualTo(403);
-        assertThat(response.getErrorMessage()).isEqualTo("Tenant is deactivated");
+        assertThat(response.getContentAsString()).contains("Tenant is deactivated");
         verify(tenantRuntimeEnforcementService, never()).beginRequest(anyString(), anyString(), anyString(), anyString(), anyBoolean());
     }
 
@@ -205,7 +201,7 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
         filter.doFilter(request, response, filterChain);
 
         assertThat(response.getStatus()).isEqualTo(403);
-        assertThat(response.getErrorMessage()).isEqualTo("Tenant is deactivated");
+        assertThat(response.getContentAsString()).contains("Tenant is deactivated");
         verify(tenantRuntimeEnforcementService, never()).beginRequest(anyString(), anyString(), anyString(), anyString(), anyBoolean());
     }
 
@@ -615,7 +611,12 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
                             countersClass,
                             int.class,
                             String.class,
-                            boolean.class);
+                            boolean.class,
+                            String.class,
+                            String.class,
+                            String.class,
+                            String.class,
+                            String.class);
             constructor.setAccessible(true);
             return constructor.newInstance(
                     admitted,
@@ -624,7 +625,12 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
                     admitted ? counters : null,
                     statusCode,
                     message,
-                    false);
+                    false,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null);
         } catch (ReflectiveOperationException ex) {
             throw new IllegalStateException("Unable to construct tenant admission handle", ex);
         }

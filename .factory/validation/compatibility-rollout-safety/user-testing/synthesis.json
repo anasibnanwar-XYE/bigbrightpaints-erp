@@ -1,0 +1,28 @@
+{
+  "milestone": "compatibility-rollout-safety",
+  "round": 1,
+  "status": "pass",
+  "generatedAt": "2026-03-06T17:16:37Z",
+  "assertionsSummary": {
+    "total": 3,
+    "passed": 3,
+    "failed": 0,
+    "blocked": 0
+  },
+  "passedAssertions": [
+    "VAL-AUTH-001",
+    "VAL-CROSS-001",
+    "VAL-CROSS-002"
+  ],
+  "failedAssertions": [],
+  "blockedAssertions": [],
+  "appliedUpdates": [],
+  "previousRound": null,
+  "flowReports": [
+    ".factory/validation/compatibility-rollout-safety/user-testing/flows/compatibility-contracts.json"
+  ],
+  "environmentConstraints": [
+    "Delegated Task/subagent launch failed with `Invalid model: custom:CLIProxyAPI-5.4-high`; the compatibility validation was completed directly in-session.",
+    "The compose-backed actuator endpoint still returned `503 {\"status\":\"DOWN\"}` while the target auth/admin APIs on `8081` were responsive, so validation used direct endpoint probes instead of actuator health as the readiness signal."
+  ]
+}

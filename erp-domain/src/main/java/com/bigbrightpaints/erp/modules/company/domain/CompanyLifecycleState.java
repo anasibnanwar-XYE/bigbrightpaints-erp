@@ -10,6 +10,14 @@ public enum CompanyLifecycleState {
     SUSPENDED,
     DEACTIVATED;
 
+    public String toExternalValue() {
+        return switch (this) {
+            case ACTIVE -> "ACTIVE";
+            case SUSPENDED -> "HOLD";
+            case DEACTIVATED -> "BLOCKED";
+        };
+    }
+
     public static CompanyLifecycleState fromRequestValue(String rawValue) {
         return fromStoredValue(rawValue)
                 .orElseThrow(() -> ValidationUtils.invalidInput("Unsupported company lifecycle state: " + rawValue));

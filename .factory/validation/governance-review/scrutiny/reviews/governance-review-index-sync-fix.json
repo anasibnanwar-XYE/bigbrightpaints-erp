@@ -1,0 +1,21 @@
+{
+  "featureId": "governance-review-index-sync-fix",
+  "reviewedAt": "2026-03-06T06:57:06+05:30",
+  "commitId": "6657832bd3b599cf4702c9850d7ada5351bce9bb",
+  "transcriptSkeletonReviewed": true,
+  "diffReviewed": true,
+  "status": "pass",
+  "codeReview": {
+    "summary": "The fix directly resolves the only blocking governance-review scrutiny failure. Reviewing the original `remediation-backlog-synthesis` diff alongside this fix shows the gap was not the backlog document itself but the stale review index: commit `6657832bd3b599cf4702c9850d7ada5351bce9bb` updates `docs/code-review/README.md` to link `remediation-backlog.md`, removes the stale language that still called the backlog a remaining planned artifact, adds the governance-review scrutiny row, and refreshes the verification-state section so current HEAD is internally consistent again.",
+    "issues": []
+  },
+  "sharedStateObservations": [
+    {
+      "area": "guidance",
+      "observation": "When a docs-only review feature adds a new required artifact under `docs/code-review/` after synthesis/index files already exist, the same change (or an explicitly coupled follow-up) must refresh `docs/code-review/README.md` so the review index continues to link every completed artifact on current HEAD.",
+      "evidence": "Round-1 scrutiny review `.factory/validation/governance-review/scrutiny/reviews/remediation-backlog-synthesis.json` failed because commit `489da9c3736dd36ea6091fdc12c4bfcea7e1c443` added only `docs/code-review/remediation-backlog.md`. Fix commit `6657832bd3b599cf4702c9850d7ada5351bce9bb` resolves it by updating `docs/code-review/README.md` with the backlog link, removing the stale pending-artifact wording, and adding the governance-review scrutiny status row."
+    }
+  ],
+  "addressesFailureFrom": ".factory/validation/governance-review/scrutiny/reviews/remediation-backlog-synthesis.json",
+  "summary": "PASS. The fix fully resolves the prior blocking governance-review scrutiny failure by refreshing `docs/code-review/README.md` so it links `remediation-backlog.md`, no longer treats the backlog as pending, and reflects the published governance-review scrutiny state on current HEAD."
+}
