@@ -8,6 +8,7 @@ This folder is the dedicated review surface for frontend follow-up from the `sec
 - The only request/response contract delta that may require endpoint migration is the retired compatibility alias `POST /api/v1/auth/password/forgot/superadmin`, which now returns `410 Gone` with canonical migration pointers.
 - `POST /api/v1/auth/password/forgot` still uses the same request body and generic success payload where masking is intended, but reset-token persistence failures now return a controlled non-success response instead of `200 OK`.
 - Tenant-admin foreign-target `suspend`, `unsuspend`, `mfa/disable`, and `delete` flows keep the same masked `400 User not found` contract; the latest regression fix only removes an internal cross-tenant lock side effect.
+- The merge-gate release-governance review added no new frontend contract delta: `openapi.json` stayed unchanged for the review packet, and the only surviving frontend-relevant merge-gate note remains the already-tracked forgot-password controlled non-success path.
 - Hardened error semantics and authorization boundaries are tracked below so review does not rely on implicit knowledge.
 
 ## Per-change tracker
@@ -28,3 +29,4 @@ This folder is the dedicated review surface for frontend follow-up from the `sec
 | `masked-admin-lock-scope-regression-fix` | Admin lock scope | None | No frontend code change required; masked foreign-target behavior is unchanged while cross-tenant contention is removed | [masked-admin-lock-scope-regression-fix.md](./masked-admin-lock-scope-regression-fix.md) |
 | `runtime-policy-cache-invalidation-regression-fix` | Company runtime policy | None | No frontend code change required; same-node enforcement now refreshes immediately after canonical policy updates | [runtime-policy-cache-invalidation-regression-fix.md](./runtime-policy-cache-invalidation-regression-fix.md) |
 | `forgot-password-persistence-failure-regression-fix` | Forgot-password error handling | Review only | Allow controlled non-success responses when reset-token persistence fails before dispatch | [forgot-password-persistence-failure-regression-fix.md](./forgot-password-persistence-failure-regression-fix.md) |
+| `merge-gate-release-governance-review` | Merge-gate release review | None | No new frontend code change required; release review confirms `openapi.json` stayed unchanged and existing forgot-password follow-up remains the only frontend-relevant merge-gate note | [merge-gate-release-governance-review.md](./merge-gate-release-governance-review.md) |
