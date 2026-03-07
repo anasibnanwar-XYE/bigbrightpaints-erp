@@ -134,9 +134,9 @@ def compute_flags(paths: list[str]) -> dict[str, str]:
         matches_prefix(path, IDEMPOTENCY_PATTERNS) for path in paths
     )
     run_business_slice = run_ci_infra_validation or any(matches_prefix(path, WORKFLOW_PATTERNS) for path in paths)
-    run_codered_access = run_ci_infra_validation or any(matches_prefix(path, ACCESS_PATTERNS) for path in paths)
-    run_codered_finance = run_ci_infra_validation or any(matches_prefix(path, FINANCE_PATTERNS) for path in paths)
-    run_codered_workflow = run_ci_infra_validation or any(matches_prefix(path, WORKFLOW_PATTERNS) for path in paths)
+    run_codered_access = any(matches_prefix(path, ACCESS_PATTERNS) for path in paths)
+    run_codered_finance = any(matches_prefix(path, FINANCE_PATTERNS) for path in paths)
+    run_codered_workflow = any(matches_prefix(path, WORKFLOW_PATTERNS) for path in paths)
     run_persistence_smoke = run_ci_infra_validation or any(
         matches_prefix(path, PERSISTENCE_PATTERNS) or matches_keyword(path, PERSISTENCE_KEYWORDS)
         for path in paths

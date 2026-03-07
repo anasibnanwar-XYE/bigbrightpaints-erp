@@ -319,6 +319,7 @@ jobs:
           bash scripts/run_test_manifest.sh \
             --profile pr-fast \
             --label persistence-smoke \
+            --maven-arg -Dtest.groups= \
             --manifest ci/pr_manifests/pr_persistence_smoke.txt
 
       - name: Upload shard coverage
@@ -437,24 +438,7 @@ jobs:
           mkdir -p artifacts/pr-jacoco
 
           if [[ "$RUN_CHANGED_COVERAGE" != "true" ]]; then
-            python3 - <<'PY'
-            import json
-            import os
-
-            summary = {
-                "diff_base": os.environ["DIFF_BASE"],
-                "skipped": True,
-                "reason": "no_runtime_source_changes",
-                "changed_files_count": int(os.environ["CHANGED_FILES_COUNT"]),
-                "changed_runtime_source_count": int(os.environ["CHANGED_RUNTIME_SOURCE_COUNT"]),
-                "passes": True,
-            }
-            output_path = "artifacts/pr-jacoco/changed-coverage.json"
-            with open(output_path, "w", encoding="utf-8") as fh:
-                json.dump(summary, fh, indent=2)
-            print("[pr-changed-coverage] no runtime source changes; recorded explicit skip summary")
-            print(json.dumps(summary, indent=2))
-            PY
+            python3 -c 'import json, os; summary = {"diff_base": os.environ["DIFF_BASE"], "skipped": True, "reason": "no_runtime_source_changes", "changed_files_count": int(os.environ["CHANGED_FILES_COUNT"]), "changed_runtime_source_count": int(os.environ["CHANGED_RUNTIME_SOURCE_COUNT"]), "passes": True}; output_path = "artifacts/pr-jacoco/changed-coverage.json"; open(output_path, "w", encoding="utf-8").write(json.dumps(summary, indent=2)); print("[pr-changed-coverage] no runtime source changes; recorded explicit skip summary"); print(json.dumps(summary, indent=2))'
             exit 0
           fi
 

@@ -53,7 +53,7 @@ class CiRiskRouterTest(unittest.TestCase):
         self.assertEqual("false", flags["run_business_slice"])
         self.assertEqual("false", flags["run_codered_finance"])
 
-    def test_ci_infra_change_runs_all_shards_but_not_changed_coverage(self):
+    def test_ci_infra_change_runs_core_pr_shards_but_not_codered_or_changed_coverage(self):
         flags = ci_risk_router.compute_flags([".github/workflows/ci.yml"])
 
         self.assertEqual("true", flags["run_auth_tenant"])
@@ -61,9 +61,21 @@ class CiRiskRouterTest(unittest.TestCase):
         self.assertEqual("true", flags["run_idempotency_outbox"])
         self.assertEqual("true", flags["run_business_slice"])
         self.assertEqual("true", flags["run_persistence_smoke"])
-        self.assertEqual("true", flags["run_codered_access"])
-        self.assertEqual("true", flags["run_codered_finance"])
+        self.assertEqual("false", flags["run_codered_access"])
+        self.assertEqual("false", flags["run_codered_finance"])
         self.assertEqual("false", flags["run_changed_coverage"])
+
+    def test_workflow_surface_change_still_routes_codered_finance(self):
+        flags = ci_risk_router.compute_flags(
+            [
+                "erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/service/SalesOrderService.java",
+            ]
+        )
+
+        self.assertEqual("true", flags["run_accounting"])
+        self.assertEqual("true", flags["run_business_slice"])
+        self.assertEqual("true", flags["run_persistence_smoke"])
+        self.assertEqual("true", flags["run_codered_finance"])
 
 
 class ChangedFilesCoverageTest(unittest.TestCase):
