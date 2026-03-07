@@ -128,7 +128,7 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void forgotEndpoint_surfacesControlledNonSuccessWhenTokenPersistenceFails() {
+    void forgotEndpoint_keepsMaskedSuccessContractWhenTokenPersistenceFails() {
         doThrow(new DataAccessResourceFailureException("db unavailable"))
                 .when(passwordResetTokenRepository)
                 .saveAndFlush(any(PasswordResetToken.class));
@@ -136,20 +136,18 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
         ResponseEntity<Map> knownUserResponse = postForgot(SUPERADMIN_EMAIL, "ANY-TENANT");
         ResponseEntity<Map> unknownUserResponse = postForgot("unknown.superadmin@bbp.com", "ANY-TENANT");
 
-        assertThat(knownUserResponse.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+        assertThat(knownUserResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(unknownUserResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(knownUserResponse.getBody()).isNotNull();
         assertThat(unknownUserResponse.getBody()).isNotNull();
-        assertThat(knownUserResponse.getBody().get("success")).isEqualTo(false);
+        assertThat(knownUserResponse.getBody().get("success")).isEqualTo(true);
         assertThat(unknownUserResponse.getBody().get("success")).isEqualTo(true);
         assertThat(knownUserResponse.getBody().get("message"))
-                .isEqualTo("Password reset request could not be processed. Please try again later.");
+                .isEqualTo("If the email exists, a reset link has been sent");
         assertThat(unknownUserResponse.getBody().get("message"))
                 .isEqualTo("If the email exists, a reset link has been sent");
-        @SuppressWarnings("unchecked")
-        Map<String, Object> data = (Map<String, Object>) knownUserResponse.getBody().get("data");
-        assertThat(data).isNotNull();
-        assertThat(data.get("code")).isEqualTo("SYS_003");
+        assertThat(knownUserResponse.getBody().get("data")).isEqualTo("OK");
+        assertThat(unknownUserResponse.getBody().get("data")).isEqualTo("OK");
     }
 
     @Test

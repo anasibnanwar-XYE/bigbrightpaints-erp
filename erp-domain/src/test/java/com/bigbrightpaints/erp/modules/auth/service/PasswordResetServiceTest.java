@@ -222,7 +222,7 @@ class PasswordResetServiceTest {
     }
 
     @Test
-    void requestResetSurfacesTokenPersistenceFailureAsControlledNonSuccess() {
+    void requestResetMasksTokenPersistenceFailureAndKeepsPublicContract() {
         UserAccount user = new UserAccount("user@example.com", "hash", "User");
         user.setEnabled(true);
         when(userAccountRepository.findByEmailIgnoreCase("user@example.com"))
@@ -231,12 +231,8 @@ class PasswordResetServiceTest {
                 .when(tokenRepository)
                 .saveAndFlush(any(PasswordResetToken.class));
 
-        ApplicationException ex = assertThrows(
-                ApplicationException.class,
-                () -> passwordResetService.requestReset("user@example.com"));
+        assertDoesNotThrow(() -> passwordResetService.requestReset("user@example.com"));
 
-        assertEquals(ErrorCode.SYSTEM_DATABASE_ERROR, ex.getErrorCode());
-        assertEquals("Password reset request could not be processed. Please try again later.", ex.getUserMessage());
         verify(tokenRepository).deleteByUser(user);
         verify(tokenRepository).saveAndFlush(any(PasswordResetToken.class));
         verify(tokenRepository, never()).deleteByTokenDigest(anyString());
@@ -244,7 +240,7 @@ class PasswordResetServiceTest {
     }
 
     @Test
-    void requestResetSurfacesCleanupPersistenceFailureAsControlledNonSuccess() {
+    void requestResetMasksCleanupPersistenceFailureAndKeepsPublicContract() {
         UserAccount user = new UserAccount("user@example.com", "hash", "User");
         user.setEnabled(true);
         when(userAccountRepository.findByEmailIgnoreCase("user@example.com"))
@@ -256,12 +252,8 @@ class PasswordResetServiceTest {
                 .when(tokenRepository)
                 .deleteByTokenDigest(anyString());
 
-        ApplicationException ex = assertThrows(
-                ApplicationException.class,
-                () -> passwordResetService.requestReset("user@example.com"));
+        assertDoesNotThrow(() -> passwordResetService.requestReset("user@example.com"));
 
-        assertEquals(ErrorCode.SYSTEM_DATABASE_ERROR, ex.getErrorCode());
-        assertEquals("Password reset request could not be processed. Please try again later.", ex.getUserMessage());
         verify(tokenRepository).saveAndFlush(any(PasswordResetToken.class));
         verify(tokenRepository).deleteByTokenDigest(anyString());
     }
