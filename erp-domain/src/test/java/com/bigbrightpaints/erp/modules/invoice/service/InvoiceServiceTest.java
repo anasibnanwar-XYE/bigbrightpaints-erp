@@ -526,6 +526,88 @@ class InvoiceServiceTest {
     }
 
     @Test
+    void listInvoices_skipsPackagingSlipBatchLookupWhenInvoicesLackSalesOrders() {
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(invoiceRepository.findIdsByCompanyOrderByIssueDateDescIdDesc(company, PageRequest.of(0, 50)))
+                .thenReturn(new PageImpl<>(List.of(77L)));
+
+        Invoice invoice = new Invoice();
+        ReflectionTestUtils.setField(invoice, "id", 77L);
+        invoice.setCompany(company);
+        invoice.setInvoiceNumber("INV-TRANSIENT");
+        invoice.setStatus("DRAFT");
+
+        when(invoiceRepository.findByCompanyAndIdInOrderByIssueDateDescIdDesc(company, List.of(77L)))
+                .thenReturn(List.of(invoice));
+        when(settlementAllocationRepository.findByCompanyAndInvoice_IdInOrderByCreatedAtDesc(company, List.of(77L)))
+                .thenReturn(List.of());
+
+        List<InvoiceDto> invoices = invoiceService.listInvoices(0, 50);
+
+        assertThat(invoices).singleElement().satisfies(invoiceDto -> {
+            assertThat(invoiceDto.invoiceNumber()).isEqualTo("INV-TRANSIENT");
+            assertThat(invoiceDto.linkedReferences()).isEmpty();
+        });
+        verifyNoInteractions(packagingSlipRepository);
+        verify(settlementAllocationRepository).findByCompanyAndInvoice_IdInOrderByCreatedAtDesc(company, List.of(77L));
+    }
+
+    @Test
+    void getInvoice_includesAccountingEntryAndSettlementLinksWhenPresent() {
+        Long invoiceId = 403L;
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+
+        SalesOrder order = new SalesOrder();
+        ReflectionTestUtils.setField(order, "id", 89L);
+        order.setCompany(company);
+        order.setOrderNumber("SO-89");
+        order.setStatus("INVOICED");
+
+        Invoice invoice = new Invoice();
+        ReflectionTestUtils.setField(invoice, "id", invoiceId);
+        invoice.setCompany(company);
+        invoice.setInvoiceNumber("INV-403");
+        invoice.setStatus("ISSUED");
+        invoice.setSalesOrder(order);
+
+        com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry journalEntry =
+                new com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry();
+        ReflectionTestUtils.setField(journalEntry, "id", 990L);
+        journalEntry.setReferenceNumber("INV-403-JR");
+        journalEntry.setStatus("POSTED");
+        invoice.setJournalEntry(journalEntry);
+
+        PackagingSlip slip = new PackagingSlip();
+        ReflectionTestUtils.setField(slip, "id", 290L);
+        slip.setSalesOrder(order);
+        slip.setSlipNumber("PS-290");
+        slip.setStatus("DISPATCHED");
+
+        com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocation allocation =
+                new com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocation();
+        ReflectionTestUtils.setField(allocation, "id", 603L);
+        allocation.setInvoice(invoice);
+        allocation.setIdempotencyKey("settlement-403");
+
+        when(invoiceRepository.findByCompanyAndId(company, invoiceId)).thenReturn(Optional.of(invoice));
+        when(packagingSlipRepository.findAllByCompanyAndSalesOrderIdIn(company, List.of(89L))).thenReturn(List.of(slip));
+        when(settlementAllocationRepository.findByCompanyAndInvoice_IdInOrderByCreatedAtDesc(company, List.of(invoiceId)))
+                .thenReturn(List.of(allocation));
+
+        InvoiceDto dto = invoiceService.getInvoice(invoiceId);
+
+        assertThat(dto.lifecycle().accountingStatus()).isEqualTo("POSTED");
+        assertThat(dto.linkedReferences())
+                .extracting(LinkedBusinessReferenceDto::relationType, LinkedBusinessReferenceDto::documentType)
+                .contains(
+                        org.assertj.core.groups.Tuple.tuple("SOURCE_ORDER", "SALES_ORDER"),
+                        org.assertj.core.groups.Tuple.tuple("DISPATCH", "PACKAGING_SLIP"),
+                        org.assertj.core.groups.Tuple.tuple("ACCOUNTING_ENTRY", "JOURNAL_ENTRY"),
+                        org.assertj.core.groups.Tuple.tuple("SETTLEMENT", "SETTLEMENT_ALLOCATION")
+                );
+    }
+
+    @Test
     void getInvoiceWithDealerEmail_handlesMissingLinkedReferences() {
         Long invoiceId = 402L;
         when(companyContextService.requireCurrentCompany()).thenReturn(company);

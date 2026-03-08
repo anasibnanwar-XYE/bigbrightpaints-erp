@@ -67,6 +67,15 @@ class BusinessDocumentTruthsTest {
     }
 
     @Test
+    void packagingSlipLifecycle_usesCogsJournalWhenInvoiceTruthIsAbsent() {
+        PackagingSlip slip = new PackagingSlip();
+        slip.setStatus("DISPATCHED");
+        slip.setCogsJournalEntryId(91L);
+
+        assertThat(BusinessDocumentTruths.packagingSlipLifecycle(slip).accountingStatus()).isEqualTo("POSTED");
+    }
+
+    @Test
     void invoiceLifecycle_andJournalLifecycle_followWorkflowAndJournalState() {
         JournalEntry postedJournal = new JournalEntry();
         postedJournal.setStatus("POSTED");
@@ -107,6 +116,18 @@ class BusinessDocumentTruthsTest {
         assertThat(BusinessDocumentTruths.goodsReceiptLifecycle(receipt, purchase).workflowStatus()).isEqualTo("INVOICED");
         assertThat(BusinessDocumentTruths.goodsReceiptLifecycle(receipt, purchase).accountingStatus()).isEqualTo("POSTED");
         assertThat(BusinessDocumentTruths.goodsReceiptLifecycle(receipt, null).accountingStatus()).isEqualTo("PENDING");
+    }
+
+    @Test
+    void purchaseLifecycle_andSettlementLifecycle_coverBlockedAndReversedBranches() {
+        RawMaterialPurchase blockedPurchase = new RawMaterialPurchase();
+        blockedPurchase.setStatus("BLOCKED");
+
+        JournalEntry reversedJournal = new JournalEntry();
+        reversedJournal.setStatus("VOIDED");
+
+        assertThat(BusinessDocumentTruths.purchaseLifecycle(blockedPurchase).accountingStatus()).isEqualTo("BLOCKED");
+        assertThat(BusinessDocumentTruths.settlementLifecycle(reversedJournal).accountingStatus()).isEqualTo("REVERSED");
     }
 
     @Test

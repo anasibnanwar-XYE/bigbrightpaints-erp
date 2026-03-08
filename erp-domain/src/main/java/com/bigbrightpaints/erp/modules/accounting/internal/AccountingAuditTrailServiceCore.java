@@ -1,4 +1,4 @@
-package com.bigbrightpaints.erp.modules.accounting.internal;
+package com.bigbrightpaints.erp.modules.accounting.service;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;

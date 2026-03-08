@@ -22,6 +22,7 @@ import com.bigbrightpaints.erp.modules.accounting.event.AccountingEventRepositor
 import com.bigbrightpaints.erp.modules.accounting.event.AccountingEventType;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlip;
 import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipRepository;
 import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
@@ -31,6 +32,7 @@ import com.bigbrightpaints.erp.modules.purchasing.domain.GoodsReceipt;
 import com.bigbrightpaints.erp.modules.purchasing.domain.PurchaseOrder;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
+import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
 import com.bigbrightpaints.erp.shared.dto.LinkedBusinessReferenceDto;
 import com.bigbrightpaints.erp.shared.dto.PageResponse;
 import java.lang.reflect.Field;
@@ -387,6 +389,75 @@ class AccountingAuditTrailServiceTest {
                 .contains(
                         org.assertj.core.groups.Tuple.tuple("GOODS_RECEIPT", "GOODS_RECEIPT"),
                         org.assertj.core.groups.Tuple.tuple("PURCHASE_ORDER", "PURCHASE_ORDER"),
+                        org.assertj.core.groups.Tuple.tuple("ACCOUNTING_ENTRY", "JOURNAL_ENTRY")
+                );
+    }
+
+    @Test
+    void transactionDetail_exposesInvoiceWorkflowProvenanceChain() {
+        Company company = new Company();
+        company.setCode("BBP");
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+
+        JournalEntry entry = new JournalEntry();
+        setField(entry, "id", 92L);
+        entry.setReferenceNumber("INV-BBP-92");
+        entry.setEntryDate(LocalDate.of(2026, 2, 16));
+        entry.setStatus("POSTED");
+        entry.getLines().add(line("AR", "800.00", "0.00"));
+        entry.getLines().add(line("REV", "0.00", "800.00"));
+
+        SalesOrder order = new SalesOrder();
+        setField(order, "id", 302L);
+        order.setOrderNumber("SO-302");
+        order.setStatus("INVOICED");
+        order.setSalesJournalEntryId(92L);
+
+        Invoice invoice = new Invoice();
+        setField(invoice, "id", 502L);
+        invoice.setCompany(company);
+        invoice.setInvoiceNumber("INV-502");
+        invoice.setStatus("ISSUED");
+        invoice.setSalesOrder(order);
+        invoice.setJournalEntry(entry);
+        invoice.setTotalAmount(new BigDecimal("800.00"));
+        invoice.setOutstandingAmount(new BigDecimal("125.00"));
+
+        PackagingSlip slip = new PackagingSlip();
+        setField(slip, "id", 402L);
+        slip.setSalesOrder(order);
+        slip.setSlipNumber("PS-402");
+        slip.setStatus("DISPATCHED");
+        slip.setJournalEntryId(92L);
+
+        PartnerSettlementAllocation allocation = new PartnerSettlementAllocation();
+        setField(allocation, "id", 602L);
+        allocation.setCompany(company);
+        allocation.setPartnerType(PartnerType.DEALER);
+        allocation.setInvoice(invoice);
+        allocation.setJournalEntry(entry);
+        allocation.setAllocationAmount(new BigDecimal("675.00"));
+        allocation.setIdempotencyKey("settlement-602");
+
+        when(journalEntryRepository.findByCompanyAndId(company, 92L)).thenReturn(Optional.of(entry));
+        when(settlementAllocationRepository.findByCompanyAndJournalEntryOrderByCreatedAtAsc(company, entry)).thenReturn(List.of());
+        when(invoiceRepository.findByCompanyAndJournalEntry(company, entry)).thenReturn(Optional.of(invoice));
+        when(rawMaterialPurchaseRepository.findByCompanyAndJournalEntry(company, entry)).thenReturn(Optional.empty());
+        when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, 302L)).thenReturn(List.of(slip));
+        when(settlementAllocationRepository.findByCompanyAndInvoiceOrderByCreatedAtDesc(company, invoice)).thenReturn(List.of(allocation));
+        when(accountingEventRepository.findByJournalEntryIdOrderByEventTimestampAsc(92L)).thenReturn(List.of());
+
+        AccountingTransactionAuditDetailDto detail = service.transactionDetail(92L);
+
+        assertThat(detail.drivingDocument().documentType()).isEqualTo("INVOICE");
+        assertThat(detail.drivingDocument().documentId()).isEqualTo(502L);
+        assertThat(detail.linkedReferenceChain())
+                .extracting(LinkedBusinessReferenceDto::relationType, LinkedBusinessReferenceDto::documentType)
+                .contains(
+                        org.assertj.core.groups.Tuple.tuple("DRIVING_DOCUMENT", "INVOICE"),
+                        org.assertj.core.groups.Tuple.tuple("SOURCE_ORDER", "SALES_ORDER"),
+                        org.assertj.core.groups.Tuple.tuple("DISPATCH", "PACKAGING_SLIP"),
+                        org.assertj.core.groups.Tuple.tuple("SETTLEMENT", "SETTLEMENT_ALLOCATION"),
                         org.assertj.core.groups.Tuple.tuple("ACCOUNTING_ENTRY", "JOURNAL_ENTRY")
                 );
     }

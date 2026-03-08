@@ -14,6 +14,7 @@ import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
 import com.bigbrightpaints.erp.modules.purchasing.domain.GoodsReceipt;
 import com.bigbrightpaints.erp.modules.purchasing.domain.GoodsReceiptLine;
 import com.bigbrightpaints.erp.modules.purchasing.domain.PurchaseOrder;
+import com.bigbrightpaints.erp.modules.purchasing.domain.PurchaseOrderLine;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchase;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseLine;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
@@ -142,6 +143,71 @@ class PurchaseResponseMapperTest {
     void toGoodsReceiptResponses_returnsEmptyForNullOrEmptyInput() {
         assertThat(mapper.toGoodsReceiptResponses(null)).isEmpty();
         assertThat(mapper.toGoodsReceiptResponses(List.of())).isEmpty();
+    }
+
+    @Test
+    void toPurchaseOrderResponse_mapsSupplierAndLineTotals() {
+        PurchaseOrder order = new PurchaseOrder();
+        ReflectionTestUtils.setField(order, "id", 101L);
+        order.setCompany(company);
+        order.setSupplier(supplier);
+        order.setOrderNumber("PO-101");
+        order.setStatus("APPROVED");
+
+        PurchaseOrderLine line = new PurchaseOrderLine();
+        line.setPurchaseOrder(order);
+        line.setRawMaterial(rawMaterial);
+        line.setQuantity(new BigDecimal("5.00"));
+        line.setUnit("KG");
+        line.setCostPerUnit(new BigDecimal("12.00"));
+        line.setLineTotal(new BigDecimal("60.00"));
+        order.getLines().add(line);
+
+        assertThat(mapper.toPurchaseOrderResponse(order))
+                .satisfies(response -> {
+                    assertThat(response.supplierId()).isEqualTo(11L);
+                    assertThat(response.totalAmount()).isEqualByComparingTo("60.00");
+                    assertThat(response.lines()).singleElement().satisfies(mappedLine -> {
+                        assertThat(mappedLine.rawMaterialId()).isEqualTo(31L);
+                        assertThat(mappedLine.rawMaterialName()).isEqualTo("Resin");
+                    });
+                });
+    }
+
+    @Test
+    void toGoodsReceiptResponse_usesSingleReceiptLookupAndAddsLinkedPurchaseReferences() {
+        GoodsReceipt receipt = goodsReceipt(611L, "GRN-611");
+        RawMaterialPurchase linkedPurchase = new RawMaterialPurchase();
+        ReflectionTestUtils.setField(linkedPurchase, "id", 612L);
+        linkedPurchase.setCompany(company);
+        linkedPurchase.setSupplier(supplier);
+        linkedPurchase.setPurchaseOrder(purchaseOrder);
+        linkedPurchase.setGoodsReceipt(receipt);
+        linkedPurchase.setJournalEntry(journalEntry(613L, "RMP-613", "POSTED"));
+        linkedPurchase.setInvoiceNumber("PINV-612");
+        linkedPurchase.setStatus("POSTED");
+
+        when(purchaseRepository.findByCompanyAndGoodsReceipt(company, receipt)).thenReturn(java.util.Optional.of(linkedPurchase));
+
+        GoodsReceiptResponse response = mapper.toGoodsReceiptResponse(receipt);
+
+        assertThat(response.linkedReferences())
+                .extracting(LinkedBusinessReferenceDto::relationType)
+                .contains("PURCHASE_ORDER", "PURCHASE_INVOICE", "ACCOUNTING_ENTRY", "SELF");
+        verify(purchaseRepository).findByCompanyAndGoodsReceipt(company, receipt);
+    }
+
+    @Test
+    void toGoodsReceiptResponses_fallsBackToSelfReferenceWhenNoLinkedPurchaseIsResolved() {
+        GoodsReceipt unlinkedReceipt = goodsReceipt(701L, "GRN-701");
+
+        when(purchaseRepository.findByCompanyAndGoodsReceipt_IdIn(company, List.of(701L))).thenReturn(List.of());
+
+        assertThat(mapper.toGoodsReceiptResponses(List.of(unlinkedReceipt))).singleElement()
+                .satisfies(response -> assertThat(response.linkedReferences())
+                        .extracting(LinkedBusinessReferenceDto::relationType)
+                        .containsExactly("PURCHASE_ORDER", "SELF"));
+        verify(purchaseRepository).findByCompanyAndGoodsReceipt_IdIn(company, List.of(701L));
     }
 
     @Test
