@@ -1,102 +1,34 @@
 # R2 Checkpoint
 
 ## Scope
-- Feature: `recovery-review.p2p-live-comment-closure`
-- Branch: `recovery/04-p2p-truth`
-- High-risk paths touched: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/purchasing/service/PurchaseInvoiceEngine.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/purchasing/service/PurchaseInvoiceEngineLifecycleTest.java`, plus the carried accounting-facade purchase-journal change set on this branch under `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/internal/AccountingFacadeCore.java` that required packet-local review evidence.
-- Why this is R2: the packet closes still-live PR #98 review scope on a high-risk P2P/accounting branch by recording the missing governance evidence for the accounting-facade change set and tightening purchase-invoice journal linkage so AP posting re-reads current GRN stock truth before binding journal references.
+- Feature: `corrections-and-control.linked-corrections-and-close-blockers`
+- Branch: `mission/erp-truth-stabilization-20260308`
+- High-risk paths touched: accounting controller/core services, sales return service, purchase return service, and accounting truth/invariant tests.
+- Why this is R2: the change set modifies accounting correction linkage, posted-document correction controls, and period-close fail-closed behavior in enterprise accounting paths.
 
 ## Risk Trigger
-- Triggered by review-driven remediation on high-risk purchasing and accounting paths that determine when GRN stock truth is eligible to bind to AP journal truth.
-- Contract surfaces affected: purchase-invoice to GRN linkage, current movement-to-journal binding, and governance evidence for the carried accounting-facade purchase-journal supplier-lifecycle change set.
-- Main risks being controlled: stale GRN movement linkage raising transaction/optimistic-lock failures instead of the intended business conflict, AP truth binding against out-of-date receipt movement state, and enterprise-policy rejection when the accounting-facade review packet lacks packet-local R2 evidence.
+- Triggered by edits under `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/service/`, and `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/purchasing/`.
+- Contract surfaces affected: linked sales returns, linked purchase returns, correction journal provenance, correction preview endpoints, and accounting period-close blocker checks.
+- Main risks being controlled: silent mutation of posted source documents, unlinked correction journals that allow close drift, and replay paths that lose journal linkage metadata.
 
 ## Approval Authority
 - Mode: orchestrator
-- Approver: ERP truth-stabilization recovery-review orchestration
-- Basis: compatibility-preserving review remediation on the active stacked branch with no privilege widening, no tenant-boundary change, and no destructive migration behavior.
+- Approver: ERP truth-stabilization mission orchestration
+- Basis: compatibility-preserving accounting remediation within the active mission scope; no privilege expansion, tenant-boundary widening, or migration changes were introduced.
 
 ## Escalation Decision
 - Human escalation required: no
-- Reason: the packet preserves the shipped P2P/accounting behavior while restoring the required governance record and current-truth linkage checks; it does not widen permissions, tenant access, or migration scope.
+- Reason: the packet tightens existing accounting controls and linkage invariants without widening privileges or introducing destructive persistence changes.
 
 ## Rollback Owner
-- Owner: recovery-review P2P worker
-- Rollback method: revert the recovery-review commit, then rerun `bash ci/check-enterprise-policy.sh`, `bash ci/check-codex-review-guidelines.sh`, and `MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='PurchaseInvoiceEngineLifecycleTest,PurchasingServiceGoodsReceiptTest,CR_PurchasingToApAccountingTest,RawMaterialServiceReceiptContextTest' test` before re-opening PR #98.
+- Owner: corrections-and-control feature worker
+- Rollback method: revert the feature commit, then rerun the targeted correction suites and `MIGRATION_SET=v2 mvn -Pgate-fast -Djacoco.skip=true test` before merge.
 
 ## Expiry
-- Valid until: 2026-03-16
-- Re-evaluate if: the packet grows beyond review remediation into new purchasing/accounting workflows, widens approval authority, changes tenant/accounting boundaries, or introduces migration behavior.
+- Valid until: 2026-03-13
+- Re-evaluate if: additional accounting reversal types, tenant-crossing journal flows, or migration-backed linkage fields are added.
 
 ## Verification Evidence
-- Commands run: `cd /home/realnigga/Desktop/Mission-control && bash ci/check-enterprise-policy.sh`; `cd /home/realnigga/Desktop/Mission-control && bash ci/check-codex-review-guidelines.sh`; `cd /home/realnigga/Desktop/Mission-control/erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='PurchaseInvoiceEngineLifecycleTest,PurchasingServiceGoodsReceiptTest,CR_PurchasingToApAccountingTest,RawMaterialServiceReceiptContextTest' test`; `cd /home/realnigga/Desktop/Mission-control/erp-domain && MIGRATION_SET=v2 mvn -T8 test -Pgate-fast -Djacoco.skip=true`; `cd /home/realnigga/Desktop/Mission-control && gh pr checks 98 --repo anasibnanwar-XYE/bigbrightpaints-erp || true`
-- Result summary: the packet records scope-specific R2 evidence for the carried accounting-facade review scope, re-reads GRN movements before AP journal linkage so current stock truth wins over stale in-memory linkage state, and keeps the earlier replay/lifecycle fixes intact while targeting only the still-live PR #98 review comments.
-- Artifacts/links: `docs/approvals/R2-CHECKPOINT.md`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/purchasing/service/PurchaseInvoiceEngine.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/internal/AccountingFacadeCore.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/purchasing/service/PurchaseInvoiceEngineLifecycleTest.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/codered/CR_PurchasingToApAccountingTest.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/inventory/service/RawMaterialServiceReceiptContextTest.java`
-
-## Scope
-- Feature: `recovery-review.o2c-feedback-and-coverage`
-- Branch: `recovery/03-o2c-truth`
-- High-risk paths touched: O2C dispatch, challan, credit-posture, and fulfillment truth surfaces under `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/invoice/`, plus paired O2C tests and the `db/migration_v2` truth-rails migrations already carried on this branch.
-- Why this is R2: the packet remediates PR #97 review findings on canonical dispatch, commercial-only proformas, challan eligibility, and finance/CODE-RED proof for a branch that touches high-risk sales, inventory, invoice, and migration-backed O2C flows.
-
-## Risk Trigger
-- Triggered by edits under `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/`, and `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/invoice/`, along with O2C E2E/CODE-RED/controller/service regressions and changed-coverage additions.
-- Contract surfaces affected: dispatch confirmation logistics metadata, delivery challan generation, proforma credit posture, shortage-to-production synchronization, dispatch valuation call sites, and order confirmation behavior when production requirements remain open.
-- Main risks being controlled: challans emitted before real dispatch, double-escaped dispatch documents, silent shortage skips for missing finished-good masters, stale packaging-slip assumptions in finance proof tests, enterprise-policy rejection for missing R2 evidence, and changed-files coverage misses on the O2C packet.
-
-## Approval Authority
-- Mode: orchestrator
-- Approver: ERP truth-stabilization recovery-review orchestration
-- Basis: compatibility-preserving remediation on the active recovery branch with no privilege widening, no tenant-boundary change, and no destructive migration behavior introduced by this packet.
-
-## Escalation Decision
-- Human escalation required: no
-- Reason: the packet narrows existing O2C behavior to the intended truth model, updates stale tests to match current boundaries, and preserves the existing authorization and data-boundary model.
-
-## Rollback Owner
-- Owner: recovery-review O2C worker
-- Rollback method: revert the recovery-review commit, then rerun `bash ci/check-enterprise-policy.sh`, `bash scripts/run_test_manifest.sh --profile codered --label codered-finance --manifest ci/pr_manifests/pr_codered_finance.txt`, and the targeted O2C Maven suite before re-opening PR #97.
-
-## Expiry
-- Valid until: 2026-03-16
-- Re-evaluate if: the packet grows beyond review-remediation into new sales/inventory workflows, widens approval authority, changes tenant/accounting boundaries, or adds new `db/migration_v2` behavior beyond the carried truth-rails migrations.
-
-## Verification Evidence
-- Commands run: `cd /home/realnigga/Desktop/Mission-control/erp-domain && MIGRATION_SET=v2 mvn -T8 test -Pgate-fast -Djacoco.skip=true`; `cd /home/realnigga/Desktop/Mission-control/erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='DeliveryChallanPdfServiceTest,DispatchControllerTest,SalesServiceTest,SalesFulfillmentServiceTest,DispatchOperationalBoundaryIT,InvoiceServiceTest,FactoryPackagingCostingIT,OrderFulfillmentE2ETest,CR_SalesDispatchInvoiceAccounting' test`; `cd /home/realnigga/Desktop/Mission-control/erp-domain && MIGRATION_SET=v2 mvn -Dtest='DeliveryChallanPdfServiceTest,DispatchArtifactPathsTest,DispatchDtoContractTest,DispatchControllerTest,InvoiceServiceTest,SalesControllerIT,SalesControllerIdempotencyHeaderTest,SalesFulfillmentServiceTest,SalesServiceTest,SalesProformaBoundaryServiceTest,DispatchConfirmRequestTest,SalesOrderDtoContractTest,SalesOrderRequestTest,SalesOrderTest,SalesTargetGovernanceServiceTest,TS_truthsuite_o2c_Approval_RuntimeTest,DispatchOperationalBoundaryIT,FactoryPackagingCostingIT,OrderFulfillmentE2ETest,CR_SalesDispatchInvoiceAccounting' test`; `python3 scripts/changed_files_coverage.py --jacoco erp-domain/target/site/jacoco/jacoco.xml --diff-base eedd5a5737450235882009645565dd22a0c89391 --src-root erp-domain/src/main/java --threshold-line 0.95 --threshold-branch 0.90 --fail-on-vacuous ...`
-- Result summary: PR #97 review comments were remediated in code, stale O2C controller/E2E/CODE-RED expectations were realigned to the canonical dispatch truth, new focused unit tests raised stacked-base changed coverage materially (from ~0.815/0.521 to ~0.930/0.740 locally), and the branch now carries scope-specific R2 evidence for the high-risk O2C packet. Remaining local changed-files coverage debt is concentrated in stacked O2C diff lines still awaiting additional branch-coverage work.
-- Artifacts/links: `docs/approvals/R2-CHECKPOINT.md`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/service/DeliveryChallanPdfService.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/service/InventoryValuationService.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/service/FinishedGoodsDispatchEngine.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/service/SalesFulfillmentService.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/service/SalesProformaBoundaryService.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/inventory/service/DeliveryChallanPdfServiceTest.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/inventory/controller/DispatchControllerTest.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/sales/service/SalesProformaBoundaryServiceTest.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/codered/CR_SalesDispatchInvoiceAccounting.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/e2e/sales/OrderFulfillmentE2ETest.java`
-
----
-
-## Scope
-- Feature: `recovery-followup.p2p-comment-recheck-and-closure`
-- Branch: `recovery/04-p2p-truth`
-- High-risk paths touched: P2P purchasing and accounting truth surfaces under `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/purchasing/` and `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/internal/`, plus focused purchasing/accounting regression tests and the packet-local frontend handoff nit.
-- Why this is R2: the packet remediates PR #98 review findings on supplier lifecycle fail-closed behavior, replay ordering across high-risk accounting/P2P write paths, purchase-return replay stability, and changed-coverage proof for AP-truth and settlement code that touches enterprise-protected accounting paths.
-
-## Risk Trigger
-- Triggered by edits under `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/internal/AccountingCoreEngineCore.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/internal/AccountingFacadeCore.java`, and P2P purchasing domain/service files that enforce supplier lifecycle and GRN-to-AP truth boundaries.
-- Contract surfaces affected: supplier payment replay, supplier settlement replay, purchase-journal replay short-circuiting, purchase-return replay short-circuiting before mutable supplier lifecycle checks, and the packet-local review correction for supplier onboarding flow documentation.
-- Main risks being controlled: idempotent supplier payment/settlement retries failing closed after legitimate prior success, purchase journal or purchase return replay being blocked by later supplier lifecycle changes instead of returning canonical truth, missing R2 audit evidence for enterprise-policy enforcement, and changed-coverage debt on the P2P packet.
-
-## Approval Authority
-- Mode: orchestrator
-- Approver: ERP truth-stabilization recovery-review orchestration
-- Basis: compatibility-preserving recovery remediation on the active stacked branch with no privilege widening, no tenant-boundary change, and no destructive migration behavior.
-
-## Escalation Decision
-- Human escalation required: no
-- Reason: the packet restores the shipped idempotency contract and governance evidence without expanding permissions, tenant access, or migration risk.
-
-## Rollback Owner
-- Owner: recovery-review P2P worker
-- Rollback method: revert the recovery-review commit, then rerun `bash ci/check-enterprise-policy.sh`, `bash ci/check-codex-review-guidelines.sh`, and the targeted P2P Maven suite before re-opening PR #98.
-
-## Expiry
-- Valid until: 2026-03-16
-- Re-evaluate if: the packet grows beyond review remediation into new accounting or purchasing workflows, widens approval authority, changes tenant/accounting boundaries, or introduces migration behavior.
-
-## Verification Evidence
-- Commands run: `cd /home/realnigga/Desktop/Mission-control && bash ci/check-enterprise-policy.sh`; `cd /home/realnigga/Desktop/Mission-control && bash ci/check-codex-review-guidelines.sh`; `cd /home/realnigga/Desktop/Mission-control/erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='PurchaseInvoiceEngineLifecycleTest,PurchasingServiceGoodsReceiptTest,AccountingServiceTest,CR_PurchasingToApAccountingTest' test`; `cd /home/realnigga/Desktop/Mission-control/erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='PurchaseReturnIdempotencyRegressionIT' test`; `cd /home/realnigga/Desktop/Mission-control/erp-domain && MIGRATION_SET=v2 mvn -T8 test -Pgate-fast -Djacoco.skip=true`
-- Result summary: the packet now records scope-specific R2 evidence for the high-risk accounting/P2P paths, preserves replay-safe supplier payment and settlement behavior even if a supplier becomes non-transactional after the original success, keeps purchase-return replay resolution ahead of mutable supplier lifecycle rejection, keeps the packet-local supplier onboarding handoff polish corrected, and adds focused regression coverage so the touched P2P paths stay branch-locally reviewable.
-- Artifacts/links: `docs/approvals/R2-CHECKPOINT.md`, `.factory/library/frontend-handoff.md`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/internal/AccountingCoreEngineCore.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/internal/AccountingFacadeCore.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/purchasing/service/PurchaseReturnService.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/codered/CR_PurchasingToApAccountingTest.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingServiceTest.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/purchasing/service/PurchaseInvoiceEngineLifecycleTest.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/purchasing/domain/SupplierLifecycleGuardTest.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/regression/PurchaseReturnIdempotencyRegressionIT.java`
+- Commands run: `cd /home/realnigga/Desktop/Mission-control/erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='SalesReturnServiceTest,PurchaseReturnIdempotencyRegressionIT,AccountingControllerJournalEndpointsTest,AccountingPeriodServicePolicyTest,ErpInvariantsSuiteIT' test`; `cd /home/realnigga/Desktop/Mission-control/erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='SalesReturnServiceTest,ErpInvariantsSuiteIT,InvoiceSettlementPolicyTest' test`; `cd /home/realnigga/Desktop/Mission-control/erp-domain && MIGRATION_SET=v2 mvn -Pgate-fast -Djacoco.skip=true test`
+- Result summary: focused correction and period-close regressions passed, the mission-required `SalesReturnServiceTest` + `ErpInvariantsSuiteIT` + `InvoiceSettlementPolicyTest` target set passed, and the full fast gate finished green with 395 tests and 0 failures.
+- Artifacts/links: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/service/SalesReturnService.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/purchasing/service/PurchaseReturnService.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/internal/AccountingPeriodServiceCore.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/sales/service/SalesReturnServiceTest.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/invariants/ErpInvariantsSuiteIT.java`
