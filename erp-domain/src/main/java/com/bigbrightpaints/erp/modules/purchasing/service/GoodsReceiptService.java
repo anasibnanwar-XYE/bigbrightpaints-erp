@@ -100,6 +100,14 @@ public class GoodsReceiptService {
         if (request == null || request.lines() == null || request.lines().isEmpty()) {
             throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Goods receipt lines are required");
         }
+        if (request.purchaseOrderId() == null) {
+            throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
+                    "Purchase order is required");
+        }
+        if (!StringUtils.hasText(request.receiptNumber())) {
+            throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
+                    "Receipt number is required");
+        }
         Company company = companyContextService.requireCurrentCompany();
         String idempotencyKey = normalizeIdempotencyKey(request.idempotencyKey());
         if (!StringUtils.hasText(idempotencyKey)) {

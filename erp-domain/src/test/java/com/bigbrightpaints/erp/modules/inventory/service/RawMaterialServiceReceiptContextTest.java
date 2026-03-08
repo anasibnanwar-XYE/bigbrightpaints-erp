@@ -1,0 +1,206 @@
+package com.bigbrightpaints.erp.modules.inventory.service;
+
+import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
+import com.bigbrightpaints.erp.modules.accounting.service.ReferenceNumberService;
+import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReference;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialAdjustmentRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialIntakeRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovement;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
+import com.bigbrightpaints.erp.modules.inventory.dto.RawMaterialBatchRequest;
+import com.bigbrightpaints.erp.modules.production.domain.ProductionBrandRepository;
+import com.bigbrightpaints.erp.modules.production.domain.ProductionProductRepository;
+import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
+import com.bigbrightpaints.erp.core.audit.AuditService;
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.core.exception.ErrorCode;
+import com.bigbrightpaints.erp.core.util.CompanyClock;
+import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.batch.support.transaction.ResourcelessTransactionManager;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
+import org.springframework.test.util.ReflectionTestUtils;
+
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.Optional;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+class RawMaterialServiceReceiptContextTest {
+
+    @Mock
+    private RawMaterialRepository rawMaterialRepository;
+    @Mock
+    private RawMaterialBatchRepository batchRepository;
+    @Mock
+    private RawMaterialMovementRepository movementRepository;
+    @Mock
+    private RawMaterialAdjustmentRepository rawMaterialAdjustmentRepository;
+    @Mock
+    private RawMaterialIntakeRepository rawMaterialIntakeRepository;
+    @Mock
+    private CompanyContextService companyContextService;
+    @Mock
+    private ProductionProductRepository productionProductRepository;
+    @Mock
+    private ProductionBrandRepository productionBrandRepository;
+    @Mock
+    private AccountingFacade accountingFacade;
+    @Mock
+    private BatchNumberService batchNumberService;
+    @Mock
+    private ReferenceNumberService referenceNumberService;
+    @Mock
+    private CompanyClock companyClock;
+    @Mock
+    private CompanyEntityLookup companyEntityLookup;
+    @Mock
+    private AuditService auditService;
+    @Mock
+    private Environment environment;
+
+    private RawMaterialService rawMaterialService;
+    private Company company;
+    private RawMaterial material;
+    private Supplier supplier;
+
+    @BeforeEach
+    void setUp() {
+        rawMaterialService = new RawMaterialService(
+                rawMaterialRepository,
+                batchRepository,
+                movementRepository,
+                rawMaterialAdjustmentRepository,
+                rawMaterialIntakeRepository,
+                companyContextService,
+                productionProductRepository,
+                productionBrandRepository,
+                accountingFacade,
+                batchNumberService,
+                referenceNumberService,
+                companyClock,
+                companyEntityLookup,
+                auditService,
+                environment,
+                new ResourcelessTransactionManager(),
+                false
+        );
+
+        company = new Company();
+        ReflectionTestUtils.setField(company, "id", 1L);
+        company.setCode("ACME");
+        company.setTimezone("UTC");
+        company.setDefaultInventoryAccountId(99L);
+
+        material = new RawMaterial();
+        ReflectionTestUtils.setField(material, "id", 20L);
+        material.setCompany(company);
+        material.setName("Resin");
+        material.setSku("RM-20");
+        material.setUnitType("KG");
+        material.setCurrentStock(BigDecimal.ZERO);
+        material.setInventoryAccountId(99L);
+
+        supplier = new Supplier();
+        ReflectionTestUtils.setField(supplier, "id", 10L);
+        supplier.setCompany(company);
+        supplier.setCode("SUP-10");
+        supplier.setName("Supplier 10");
+
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(rawMaterialRepository.lockByCompanyAndId(company, 20L)).thenReturn(Optional.of(material));
+        when(companyEntityLookup.requireSupplier(company, 10L)).thenReturn(supplier);
+        lenient().when(rawMaterialRepository.save(any(RawMaterial.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        lenient().when(batchRepository.existsByRawMaterialAndBatchCode(material, "BATCH-1")).thenReturn(false);
+        lenient().when(batchRepository.save(any(RawMaterialBatch.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        lenient().when(movementRepository.save(any(RawMaterialMovement.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        lenient().when(companyClock.now(company)).thenReturn(Instant.parse("2026-03-08T00:00:00Z"));
+        lenient().when(environment.acceptsProfiles(any(Profiles.class))).thenReturn(false);
+    }
+
+    @Test
+    @DisplayName("recordReceipt keeps GRN stock-only contexts free of AP posting requirements")
+    void recordReceipt_grnContextSkipsPayableAndJournalPosting() {
+        RawMaterialBatchRequest request = new RawMaterialBatchRequest(
+                "BATCH-1",
+                new BigDecimal("4.0000"),
+                "KG",
+                new BigDecimal("5.00"),
+                10L,
+                null,
+                null,
+                "GRN receipt"
+        );
+
+        RawMaterialService.ReceiptResult result = rawMaterialService.recordReceipt(
+                20L,
+                request,
+                new RawMaterialService.ReceiptContext(
+                        InventoryReference.GOODS_RECEIPT,
+                        "GRN-001",
+                        "Goods receipt GRN-001",
+                        false
+                )
+        );
+
+        ArgumentCaptor<RawMaterialMovement> movementCaptor = ArgumentCaptor.forClass(RawMaterialMovement.class);
+        verify(movementRepository).save(movementCaptor.capture());
+        RawMaterialMovement savedMovement = movementCaptor.getValue();
+        assertThat(savedMovement.getReferenceType()).isEqualTo(InventoryReference.GOODS_RECEIPT);
+        assertThat(savedMovement.getReferenceId()).isEqualTo("GRN-001");
+        assertThat(savedMovement.getMovementType()).isEqualTo("RECEIPT");
+        assertThat(savedMovement.getJournalEntryId()).isNull();
+        assertThat(result.journalEntryId()).isNull();
+        assertThat(result.batch()).isNotNull();
+        verifyNoInteractions(accountingFacade);
+    }
+
+    @Test
+    @DisplayName("recordReceipt keeps purchase-posting contexts fail-closed when payable account is missing")
+    void recordReceipt_defaultPurchaseContextRequiresPayableAccount() {
+        RawMaterialBatchRequest request = new RawMaterialBatchRequest(
+                "BATCH-1",
+                new BigDecimal("4.0000"),
+                "KG",
+                new BigDecimal("5.00"),
+                10L,
+                null,
+                null,
+                "Purchase receipt"
+        );
+
+        assertThatThrownBy(() -> rawMaterialService.recordReceipt(20L, request, null))
+                .isInstanceOfSatisfying(ApplicationException.class, ex -> {
+                    assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_STATE);
+                    assertThat(ex).hasMessage("Supplier Supplier 10 is missing a payable account");
+                });
+
+        verify(rawMaterialRepository, never()).save(any(RawMaterial.class));
+        verify(batchRepository, never()).save(any(RawMaterialBatch.class));
+        verify(movementRepository, never()).save(any(RawMaterialMovement.class));
+        verifyNoInteractions(accountingFacade);
+    }
+}
