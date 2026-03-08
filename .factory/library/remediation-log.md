@@ -72,3 +72,12 @@ Track cleanup, duplicate-truth removals, dead-code retirement, and production-re
 - **Duplicate-truth or dead-code impact:** removed the redundant intermediate supplier save in onboarding and retired the touched fallback behavior where later P2P/AP flows each decided supplier usability differently instead of sharing one lifecycle truth.
 - **Evidence:** `SupplierServiceTest`, `PurchaseOrderServiceTest`, `PurchasingServiceGoodsReceiptTest`, `PurchaseInvoiceEngineLifecycleTest`, `AccountingServiceTest`, and `ErpInvariantsSuiteIT` now cover payable provisioning plus visible-but-blocked reference-only supplier behavior.
 - **Follow-up:** the next P2P packets should keep reusing the shared supplier lifecycle guard so GRN, purchase invoice, settlement, and correction work stays aligned to the same reference-only semantics.
+
+## 2026-03-08 — `p2p-truth.grn-stock-truth-boundary`
+
+- **Area:** GRN validation and the shared raw-material receipt seam used by goods receipts.
+- **Risk addressed:** the GRN path was already stock-only by context, but the shared receipt helper still carried an obsolete AP-coupled validation branch, and direct service callers could reach blank/missing GRN identifiers without explicit business validation.
+- **Cleanup/remediation performed:** added service-level guards for missing purchase-order IDs and blank receipt numbers, captured the stock-only GRN receipt context in tests, and split raw-material receipt account validation so GRN contexts only require inventory truth while AP-posting contexts still fail closed on missing payable setup.
+- **Duplicate-truth or dead-code impact:** removed the dead assumption that every raw-material receipt must validate payable-account posting semantics, and retired the unused `resolveReferenceNumber` helper from the touched inventory receipt service.
+- **Evidence:** `PurchasingServiceGoodsReceiptTest`, `RawMaterialServiceReceiptContextTest`, `TS_P2PGoodsReceiptIdempotencyTest`, `InventoryAccountingEventListenerIT`, and `ErpInvariantsSuiteIT` all pass with the refactored GRN stock-only boundary.
+- **Follow-up:** the purchase-invoice AP-truth packet should continue reusing the explicit GRN receipt linkage and keep journal linking confined to invoice posting rather than reintroducing GRN-side posting paths.
