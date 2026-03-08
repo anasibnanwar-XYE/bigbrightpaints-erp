@@ -3,9 +3,7 @@ package com.bigbrightpaints.erp.modules.sales.controller;
 import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
 import com.bigbrightpaints.erp.core.security.PortalRoleActionMatrix;
-import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.dto.CreditRequestDto;
-import com.bigbrightpaints.erp.modules.sales.dto.CreditRequestRequest;
 import com.bigbrightpaints.erp.modules.sales.dto.DealerPortalCreditRequestCreateRequest;
 import com.bigbrightpaints.erp.modules.sales.service.DealerPortalService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesDealerCrudService;
@@ -20,6 +18,7 @@ import java.util.Map;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -100,13 +99,7 @@ public class DealerPortalController {
     @PostMapping("/credit-requests")
     public ResponseEntity<ApiResponse<CreditRequestDto>> createCreditRequest(
             @Valid @RequestBody DealerPortalCreditRequestCreateRequest request) {
-        Dealer dealer = dealerPortalService.getCurrentDealer();
-        CreditRequestDto response = salesDealerCrudService.createCreditRequest(new CreditRequestRequest(
-                dealer.getId(),
-                request.amountRequested(),
-                request.reason(),
-                "PENDING"));
-        return ResponseEntity.ok(ApiResponse.success("Credit request submitted", response));
+        throw new AccessDeniedException("Dealer portal is read-only");
     }
 
     /**

@@ -25,6 +25,7 @@ class AccountingExportGovernanceIT extends AbstractIntegrationTest {
 
     private static final String COMPANY_CODE = "ACC-EXPORT-GOV";
     private static final String ADMIN_EMAIL = "acc-export-admin@bbp.com";
+    private static final String SUPER_ADMIN_EMAIL = "acc-export-super-admin@bbp.com";
     private static final String ACCOUNTING_EMAIL = "acc-export-accounting@bbp.com";
     private static final String PASSWORD = "ExportGov123!";
 
@@ -37,6 +38,8 @@ class AccountingExportGovernanceIT extends AbstractIntegrationTest {
     @BeforeEach
     void setupUsers() {
         dataSeeder.ensureUser(ADMIN_EMAIL, PASSWORD, "Export Governance Admin", COMPANY_CODE, List.of("ROLE_ADMIN"));
+        dataSeeder.ensureUser(SUPER_ADMIN_EMAIL, PASSWORD, "Export Governance Super Admin", COMPANY_CODE,
+                List.of("ROLE_SUPER_ADMIN"));
         dataSeeder.ensureUser(ACCOUNTING_EMAIL, PASSWORD, "Export Governance Accounting", COMPANY_CODE, List.of("ROLE_ACCOUNTING"));
     }
 
@@ -72,6 +75,20 @@ class AccountingExportGovernanceIT extends AbstractIntegrationTest {
                 .contains("audit-digest.csv");
 
         assertExportAuditMetadata(ADMIN_EMAIL, "ACCOUNTING_AUDIT_DIGEST", "EXPORT", "csv");
+    }
+
+    @Test
+    void auditDigestCsv_blocksSuperAdminFromTenantAccountingExport() {
+        HttpHeaders superAdminHeaders = authHeaders(SUPER_ADMIN_EMAIL);
+
+        ResponseEntity<String> response = rest.exchange(
+                "/api/v1/accounting/audit/digest.csv?from=2026-01-01&to=2026-01-31",
+                HttpMethod.GET,
+                new HttpEntity<>(superAdminHeaders),
+                String.class
+        );
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
     }
 
     private void assertMethodIsAdminOnly(String methodName, Class<?>... parameterTypes) throws Exception {

@@ -39,6 +39,19 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     private static final String SUPPORT_ADMIN_PASSWORD_RESET_SUFFIX = "/support/admin-password-reset";
     private static final String CONTROL_PLANE_AUTH_DENIED_MESSAGE =
             "Access denied to company control request";
+    private static final String SUPER_ADMIN_PLATFORM_ONLY_MESSAGE =
+            "Super Admin is limited to platform control-plane operations and cannot execute tenant business workflows";
+    private static final Set<String> SUPER_ADMIN_TENANT_BUSINESS_PREFIXES = Set.of(
+            "/api/v1/dealer-portal",
+            "/api/v1/portal",
+            "/api/v1/sales",
+            "/api/v1/dealers",
+            "/api/v1/invoices",
+            "/api/v1/reports",
+            "/api/v1/exports",
+            "/api/v1/purchasing",
+            "/api/v1/suppliers",
+            "/api/v1/dispatch");
     private static final Set<String> PUBLIC_PASSWORD_RESET_ENDPOINTS = Set.of(
             "/api/v1/auth/password/forgot",
             "/api/v1/auth/password/forgot/superadmin",
@@ -71,6 +84,10 @@ public class CompanyContextFilter extends OncePerRequestFilter {
                     hasTenantRuntimePolicyControlAuthority(runtimePath, request.getMethod());
             if (lifecycleControlRequest && !hasAuthenticatedPrincipal()) {
                 denyControlPlaneRequest(response);
+                return;
+            }
+            if (hasSuperAdminAuthority() && isTenantBusinessRequestBlockedForSuperAdmin(runtimePath)) {
+                writeAccessDenied(response, "SUPER_ADMIN_PLATFORM_ONLY", SUPER_ADMIN_PLATFORM_ONLY_MESSAGE);
                 return;
             }
             String headerCompanyCode = request.getHeader("X-Company-Code");
@@ -256,6 +273,26 @@ public class CompanyContextFilter extends OncePerRequestFilter {
             return hasAuthority(auth, "ROLE_SUPER_ADMIN");
         }
         return false;
+    }
+
+    private boolean isTenantBusinessRequestBlockedForSuperAdmin(String requestPath) {
+        String normalizedPath = normalizePath(requestPath);
+        if (!StringUtils.hasText(normalizedPath)) {
+            return false;
+        }
+        boolean matchesBusinessPrefix = SUPER_ADMIN_TENANT_BUSINESS_PREFIXES.stream()
+                .anyMatch(prefix -> normalizedPath.equals(prefix) || normalizedPath.startsWith(prefix + "/"));
+        if (matchesBusinessPrefix) {
+            return true;
+        }
+        if (normalizedPath.equals("/api/v1/accounting") || normalizedPath.startsWith("/api/v1/accounting/")) {
+            return !isSuperAdminAllowedAccountingControlPath(normalizedPath);
+        }
+        return false;
+    }
+
+    private boolean isSuperAdminAllowedAccountingControlPath(String normalizedPath) {
+        return normalizedPath.matches("^/api/v1/accounting/periods/[^/]+/reopen$");
     }
 
     private boolean hasAuthority(Authentication authentication, String authority) {

@@ -122,6 +122,23 @@ class ReportExportApprovalIT extends AbstractIntegrationTest {
     }
 
     @Test
+    void superAdmin_is_blocked_from_tenant_export_request_surface() {
+        HttpHeaders superAdminHeaders = authHeaders(SUPER_ADMIN_EMAIL);
+
+        ResponseEntity<Map> createResponse = rest.exchange(
+                "/api/v1/exports/request",
+                HttpMethod.POST,
+                new HttpEntity<>(Map.of(
+                        "reportType", "trial-balance",
+                        "parameters", "periodId=10"
+                ), jsonHeaders(superAdminHeaders)),
+                Map.class
+        );
+
+        assertThat(createResponse.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
     void exportDownload_bypassesApprovalWhenSettingDisabled() {
         HttpHeaders superAdminHeaders = authHeaders(SUPER_ADMIN_EMAIL);
         ResponseEntity<Map> settingResponse = rest.exchange(
