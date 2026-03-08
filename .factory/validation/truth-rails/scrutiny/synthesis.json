@@ -1,7 +1,7 @@
 {
   "milestone": "truth-rails",
-  "round": 1,
-  "status": "fail",
+  "round": 2,
+  "status": "pass",
   "validatorsRun": {
     "test": {
       "passed": true,
@@ -20,20 +20,12 @@
     }
   },
   "reviewsSummary": {
-    "total": 5,
-    "passed": 4,
-    "failed": 1,
-    "failedFeatures": [
-      "truth-rails.shared-truth-contracts-and-state-split"
-    ]
+    "total": 6,
+    "passed": 6,
+    "failed": 0,
+    "failedFeatures": []
   },
-  "blockingIssues": [
-    {
-      "featureId": "truth-rails.shared-truth-contracts-and-state-split",
-      "severity": "blocking",
-      "description": "`BusinessDocumentTruths.salesOrderLifecycle` reports accounting status `PENDING` for any sales order with a workflow status even when the order has neither `fulfillmentInvoiceId` nor `salesJournalEntryId`, so linked-reference surfaces can still overstate accounting eligibility before dispatch/invoice truth exists."
-    }
-  ],
+  "blockingIssues": [],
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
@@ -55,5 +47,5 @@
       "reason": "outside-repo-tooling"
     }
   ],
-  "previousRound": null
+  "previousRound": "git:cffe39ed:.factory/validation/truth-rails/scrutiny/synthesis.json"
 }
