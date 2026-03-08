@@ -61,7 +61,7 @@ Use for any backend Java/Spring feature in the BigBright ERP, including:
 6. If your change exposed stale adjacent tests in the touched control surface, either fix them in the same feature or return a clearly tracked discovered issue tied to a pending feature.
 
 ### Step 5: Document Frontend Handoff
-If your feature adds or changes API endpoints, you MUST update `.factory/library/frontend-handoff.md` with:
+If your feature adds or changes frontend-facing API endpoints or contracts, you MUST update `.factory/library/frontend-handoff.md` with:
 1. **Endpoint map**: Every new/changed endpoint (method, path, auth, request/response types)
 2. **User flows**: Step-by-step API call sequences for each user-facing flow
 3. **State machines**: Entity lifecycle states and valid transitions with triggering API calls
@@ -72,6 +72,8 @@ If your feature adds or changes API endpoints, you MUST update `.factory/library
 This is a mandatory deliverable. A frontend developer should be able to build the UI from this documentation alone.
 
 Also update `.factory/library/frontend-v2.md` when the feature changes role surfaces, blocker semantics, generated artifacts, or backend-facing frontend assumptions.
+
+If a higher-priority instruction says to avoid doc updates for the packet and the feature preserves the existing frontend-facing contract, do not force a docs edit; instead, state explicitly in the handoff that no frontend-handoff/frontend-v2 update was required.
 
 ### Step 6: Update Shared Knowledge
 1. If you discovered important patterns, quirks, or conventions, update `.factory/library/architecture.md`.
