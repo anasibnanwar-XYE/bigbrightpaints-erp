@@ -48,6 +48,14 @@ public final class PortalRoleActionMatrix {
                 return "Accounting must complete the final dispatch posting after the shipment is confirmed.";
             }
         }
+        if ("/api/v1/dealer-portal/credit-requests".equals(path)
+                && "POST".equalsIgnoreCase(request.getMethod())
+                && hasAuthority(authentication, "ROLE_DEALER")) {
+            return "Dealer portal is read-only. Ask your sales or admin contact to review credit-limit changes.";
+        }
+        if ("/api/v1/sales/promotions".equals(path) && hasAuthority(authentication, "ROLE_DEALER")) {
+            return "Dealer access is limited to your own portal records and exports.";
+        }
         if (path.startsWith("/api/v1/dispatch/") && hasAuthority(authentication, "ROLE_SALES")) {
             return "Factory must complete shipment confirmation and challan details from the dispatch workspace.";
         }
