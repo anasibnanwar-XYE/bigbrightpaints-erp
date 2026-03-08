@@ -74,6 +74,7 @@ This is a mandatory deliverable. A frontend developer should be able to build th
 Also update `.factory/library/frontend-v2.md` when the feature changes role surfaces, blocker semantics, generated artifacts, or backend-facing frontend assumptions.
 
 If a higher-priority instruction says to avoid doc updates for the packet and the feature preserves the existing frontend-facing contract, do not force a docs edit; instead, state explicitly in the handoff that no frontend-handoff/frontend-v2 update was required.
+If `mission.md`, `AGENTS.md`, or the feature description explicitly requires remediation-log, frontend-v2, frontend-handoff, or README updates, that counts as an explicit user request for those scoped docs and you should make them.
 
 ### Step 6: Update Shared Knowledge
 1. If you discovered important patterns, quirks, or conventions, update `.factory/library/architecture.md`.

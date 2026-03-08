@@ -65,6 +65,7 @@ Use for backend features that change:
 5. If you removed obsolete override or boundary code, append a concise dated note to `.factory/library/remediation-log.md`.
 
 If a higher-priority instruction says to avoid doc updates for the packet and the feature preserves existing auth/admin request-response shapes, you may skip the shared-knowledge doc edits; call that out explicitly in the handoff instead of inventing no-op documentation churn.
+If `mission.md`, `AGENTS.md`, or the feature description explicitly requires remediation-log, frontend-v2, frontend-handoff, or README updates for the packet, treat that as an explicit user request and make the scoped documentation updates.
 
 ### Step 6: Produce a strict handoff
 Your handoff must make shortcuts visible. Include:
