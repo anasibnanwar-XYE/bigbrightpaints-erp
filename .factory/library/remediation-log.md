@@ -81,3 +81,12 @@ Track cleanup, duplicate-truth removals, dead-code retirement, and production-re
 - **Duplicate-truth or dead-code impact:** removed the dead assumption that every raw-material receipt must validate payable-account posting semantics, and retired the unused `resolveReferenceNumber` helper from the touched inventory receipt service.
 - **Evidence:** `PurchasingServiceGoodsReceiptTest`, `RawMaterialServiceReceiptContextTest`, `TS_P2PGoodsReceiptIdempotencyTest`, `InventoryAccountingEventListenerIT`, and `ErpInvariantsSuiteIT` all pass with the refactored GRN stock-only boundary.
 - **Follow-up:** the purchase-invoice AP-truth packet should continue reusing the explicit GRN receipt linkage and keep journal linking confined to invoice posting rather than reintroducing GRN-side posting paths.
+
+## 2026-03-08 — `p2p-truth.purchase-invoice-ap-truth-and-linkage`
+
+- **Area:** purchase invoice issuance, GRN linkage validation, and AP journal anchoring.
+- **Risk addressed:** purchase invoices still carried a dead fallback path that could try to recreate stock-side receipt effects, and AP posting could proceed even if the linked GRN had lost its stock movement or batch linkage proof.
+- **Cleanup/remediation performed:** made purchase invoicing fail closed unless the linked GRN still has matching stock movements and batch linkage for every received material, then linked the posted AP journal back onto those existing GRN movements instead of creating any new receipt artifacts.
+- **Duplicate-truth or dead-code impact:** removed the duplicate stock-side fallback from `PurchaseInvoiceEngine`, preventing purchase invoice issuance from recreating receipt movements or tolerating linkage drift that would overlap AP truth.
+- **Evidence:** `PurchaseInvoiceEngineLifecycleTest`, `InventoryAccountingEventListenerIT`, `ErpInvariantsSuiteIT`.
+- **Follow-up:** keep the remaining P2P settlement and correction packets anchored to the same GRN-to-purchase journal provenance so close blockers can fail on linkage drift instead of repairing it silently.

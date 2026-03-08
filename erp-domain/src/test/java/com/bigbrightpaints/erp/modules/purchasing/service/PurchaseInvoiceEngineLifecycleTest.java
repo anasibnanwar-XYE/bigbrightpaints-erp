@@ -1,5 +1,6 @@
 package com.bigbrightpaints.erp.modules.purchasing.service;
 
+import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
@@ -427,6 +428,76 @@ class PurchaseInvoiceEngineLifecycleTest {
         verify(goodsReceiptRepository).save(goodsReceipt);
         verify(rawMaterialBatchRepository, never()).save(any(RawMaterialBatch.class));
         verifyNoInteractions(rawMaterialService);
+    }
+
+    @Test
+    @DisplayName("createPurchase rejects goods receipt drift when stock movement is missing")
+    void createPurchase_rejectsGoodsReceiptWithoutStockMovement() {
+        when(movementRepository.findByRawMaterialCompanyAndReferenceTypeAndReferenceId(
+                company,
+                "GOODS_RECEIPT",
+                "GRN-40"
+        )).thenReturn(List.of());
+
+        RawMaterialPurchaseRequest request = new RawMaterialPurchaseRequest(
+                10L,
+                "INV-40",
+                LocalDate.of(2026, 3, 2),
+                "invoice",
+                30L,
+                40L,
+                BigDecimal.ZERO,
+                List.of(new RawMaterialPurchaseLineRequest(
+                        20L,
+                        null,
+                        new BigDecimal("10.0000"),
+                        "KG",
+                        new BigDecimal("12.50"),
+                        null,
+                        null,
+                        "line"
+                ))
+        );
+
+        assertThatThrownBy(() -> purchaseInvoiceEngine.createPurchase(request))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("has no stock movement");
+
+        verify(accountingFacade, never()).postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any(), any());
+        verify(purchaseRepository, never()).save(any(RawMaterialPurchase.class));
+    }
+
+    @Test
+    @DisplayName("createPurchase rejects goods receipt lines missing GRN batch linkage before posting AP")
+    void createPurchase_rejectsGoodsReceiptLineMissingBatchBeforePostingAp() {
+        goodsReceipt.getLines().getFirst().setRawMaterialBatch(null);
+
+        RawMaterialPurchaseRequest request = new RawMaterialPurchaseRequest(
+                10L,
+                "INV-40",
+                LocalDate.of(2026, 3, 2),
+                "invoice",
+                30L,
+                40L,
+                BigDecimal.ZERO,
+                List.of(new RawMaterialPurchaseLineRequest(
+                        20L,
+                        null,
+                        new BigDecimal("10.0000"),
+                        "KG",
+                        new BigDecimal("12.50"),
+                        null,
+                        null,
+                        "line"
+                ))
+        );
+
+        assertThatThrownBy(() -> purchaseInvoiceEngine.createPurchase(request))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("missing batch linkage");
+
+        verify(accountingFacade, never()).postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any(), any());
+        verify(purchaseRepository, never()).save(any(RawMaterialPurchase.class));
     }
 
     @Test
