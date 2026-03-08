@@ -28,6 +28,7 @@ import com.bigbrightpaints.erp.modules.purchasing.domain.PurchaseOrderStatus;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchase;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
+import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierStatus;
 import com.bigbrightpaints.erp.modules.purchasing.dto.RawMaterialPurchaseLineRequest;
 import com.bigbrightpaints.erp.modules.purchasing.dto.RawMaterialPurchaseRequest;
 import com.bigbrightpaints.erp.modules.purchasing.dto.RawMaterialPurchaseResponse;
@@ -130,6 +131,7 @@ class PurchaseInvoiceEngineLifecycleTest {
         supplier.setCompany(company);
         supplier.setCode("SUP-10");
         supplier.setName("Supplier 10");
+        supplier.setStatus(SupplierStatus.ACTIVE);
         supplier.setStateCode("KA");
         supplier.setPayableAccount(payableAccount);
 
@@ -197,9 +199,9 @@ class PurchaseInvoiceEngineLifecycleTest {
 
         when(companyContextService.requireCurrentCompany()).thenReturn(company);
         when(companyEntityLookup.requireSupplier(company, 10L)).thenReturn(supplier);
-        when(purchaseRepository.lockByCompanyAndInvoiceNumberIgnoreCase(company, "INV-40")).thenReturn(Optional.empty());
-        when(goodsReceiptRepository.lockByCompanyAndId(company, 40L)).thenReturn(Optional.of(goodsReceipt));
-        when(purchaseRepository.findByCompanyAndGoodsReceipt(company, goodsReceipt)).thenReturn(Optional.empty());
+        lenient().when(purchaseRepository.lockByCompanyAndInvoiceNumberIgnoreCase(company, "INV-40")).thenReturn(Optional.empty());
+        lenient().when(goodsReceiptRepository.lockByCompanyAndId(company, 40L)).thenReturn(Optional.of(goodsReceipt));
+        lenient().when(purchaseRepository.findByCompanyAndGoodsReceipt(company, goodsReceipt)).thenReturn(Optional.empty());
         lenient().when(rawMaterialRepository.lockByCompanyAndId(company, 20L)).thenReturn(Optional.of(rawMaterial));
         lenient().when(referenceNumberService.purchaseReference(company, supplier, "INV-40")).thenReturn("RMP-SUP10-INV40");
         lenient().when(gstService.splitTaxAmount(any(), any(), any(), any()))
@@ -211,7 +213,7 @@ class PurchaseInvoiceEngineLifecycleTest {
                         GstService.TaxType.INTRA_STATE
                 ));
 
-        when(movementRepository.findByRawMaterialCompanyAndReferenceTypeAndReferenceId(
+        lenient().when(movementRepository.findByRawMaterialCompanyAndReferenceTypeAndReferenceId(
                 company,
                 "GOODS_RECEIPT",
                 "GRN-40"
@@ -339,6 +341,39 @@ class PurchaseInvoiceEngineLifecycleTest {
                 any()
         );
         verify(purchaseOrderService, times(1)).transitionStatus(any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("createPurchase rejects suppliers that are no longer active")
+    void createPurchase_rejectsSuspendedSupplierWithExplicitReason() {
+        supplier.setStatus(SupplierStatus.SUSPENDED);
+
+        RawMaterialPurchaseRequest request = new RawMaterialPurchaseRequest(
+                10L,
+                "INV-40",
+                LocalDate.of(2026, 3, 2),
+                "invoice",
+                30L,
+                40L,
+                BigDecimal.ZERO,
+                List.of(new RawMaterialPurchaseLineRequest(
+                        20L,
+                        null,
+                        new BigDecimal("10.0000"),
+                        "KG",
+                        new BigDecimal("12.50"),
+                        null,
+                        null,
+                        "line"
+                ))
+        );
+
+        assertThatThrownBy(() -> purchaseInvoiceEngine.createPurchase(request))
+                .isInstanceOf(com.bigbrightpaints.erp.core.exception.ApplicationException.class)
+                .hasMessageContaining("suspended")
+                .hasMessageContaining("reference only");
+
+        verify(accountingFacade, never()).postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
