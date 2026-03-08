@@ -120,7 +120,7 @@ class TS_RuntimeAccountingPeriodServiceRegressionExecutableCoverageTest {
         when(periodCloseRequestRepository.lockByCompanyAndAccountingPeriodAndStatus(
                 company, period, PeriodCloseRequestStatus.PENDING)).thenReturn(Optional.of(pending));
         when(periodCloseRequestRepository.save(pending)).thenReturn(pending);
-        authenticate("checker.user", "ROLE_ACCOUNTING");
+        authenticate("checker.user", "ROLE_ADMIN");
         assertThat(service.approvePeriodClose(21L, new PeriodCloseRequestActionRequest("month close", true)).status())
                 .isEqualTo("CLOSED");
         assertThat(period.getStatus()).isEqualTo(AccountingPeriodStatus.CLOSED);

@@ -58,7 +58,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAlloca
 import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocationRepository;
 import com.bigbrightpaints.erp.modules.invoice.service.InvoiceSettlementPolicy;
 import com.bigbrightpaints.erp.core.audit.AuditService;
-import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -70,6 +70,9 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -84,6 +87,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
@@ -164,6 +168,10 @@ class AccountingServiceTest {
 
     @BeforeEach
     void setup() {
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+                "policy.admin",
+                "n/a",
+                List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
         accountingService = new AccountingService(
                 companyContextService,
                 accountRepository,
@@ -200,6 +208,8 @@ class AccountingServiceTest {
         lenient().when(companyContextService.requireCurrentCompany()).thenReturn(company);
         lenient().when(systemSettingsService.isPeriodLockEnforced()).thenReturn(true);
         lenient().when(accountingPeriodService.requireOpenPeriod(any(), any())).thenReturn(new AccountingPeriod());
+        lenient().when(accountingPeriodService.requirePostablePeriod(any(), any(), any(), any(), any(), anyBoolean()))
+                .thenReturn(new AccountingPeriod());
         lenient().when(dealerRepository.findByCompanyAndReceivableAccountIn(any(), any())).thenReturn(List.of());
         lenient().when(supplierRepository.findByCompanyAndPayableAccountIn(any(), any())).thenReturn(List.of());
         lenient().when(referenceNumberService.dealerReceiptReference(any(), any())).thenReturn("REF-SETTLE");
@@ -207,6 +217,11 @@ class AccountingServiceTest {
                 .thenReturn(1);
         lenient().when(journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(any(), any()))
                 .thenAnswer(invocation -> Optional.of(new JournalReferenceMapping()));
+    }
+
+    @AfterEach
+    void clearSecurityContext() {
+        SecurityContextHolder.clearContext();
     }
 
     @Test
@@ -362,7 +377,7 @@ class AccountingServiceTest {
     void createJournalEntry_rejectsClosedPeriod() {
         LocalDate today = LocalDate.of(2024, 2, 1);
         when(companyClock.today(company)).thenReturn(today);
-        when(accountingPeriodService.requireOpenPeriod(company, today))
+        when(accountingPeriodService.requirePostablePeriod(eq(company), eq(today), any(), any(), any(), anyBoolean()))
                 .thenThrow(new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Accounting period is closed"));
 
         JournalEntryRequest request = new JournalEntryRequest(
@@ -447,7 +462,7 @@ class AccountingServiceTest {
         LocalDate today = LocalDate.of(2024, 4, 1);
         when(companyClock.today(company)).thenReturn(today);
         AccountingPeriod openPeriod = openPeriod(today);
-        when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(openPeriod);
+        when(accountingPeriodService.requirePostablePeriod(eq(company), eq(today), any(), any(), any(), anyBoolean())).thenReturn(openPeriod);
 
         AccountingService service = spy(accountingService);
         JournalEntry original = reversalSourceEntry(500L, "REV-AUDIT-OK", today);
@@ -482,7 +497,7 @@ class AccountingServiceTest {
         LocalDate today = LocalDate.of(2024, 4, 1);
         when(companyClock.today(company)).thenReturn(today);
         AccountingPeriod openPeriod = openPeriod(today);
-        when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(openPeriod);
+        when(accountingPeriodService.requirePostablePeriod(eq(company), eq(today), any(), any(), any(), anyBoolean())).thenReturn(openPeriod);
 
         AccountingService service = spy(accountingService);
         JournalEntry original = reversalSourceEntry(501L, "REV-AUDIT-ROLLBACK", today);
@@ -517,7 +532,7 @@ class AccountingServiceTest {
         LocalDate today = LocalDate.of(2024, 4, 1);
         when(companyClock.today(company)).thenReturn(today);
         AccountingPeriod openPeriod = openPeriod(today);
-        when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(openPeriod);
+        when(accountingPeriodService.requirePostablePeriod(eq(company), eq(today), any(), any(), any(), anyBoolean())).thenReturn(openPeriod);
 
         AccountingService service = spy(accountingService);
         JournalEntry original = reversalSourceEntry(502L, "REV-AUDIT-POLICY", today);
@@ -551,7 +566,7 @@ class AccountingServiceTest {
         LocalDate today = LocalDate.of(2024, 4, 2);
         when(companyClock.today(company)).thenReturn(today);
         AccountingPeriod openPeriod = openPeriod(today);
-        when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(openPeriod);
+        when(accountingPeriodService.requirePostablePeriod(eq(company), eq(today), any(), any(), any(), anyBoolean())).thenReturn(openPeriod);
 
         AccountingService service = spy(accountingService);
         JournalEntry original = reversalSourceEntry(503L, "REV-CONSISTENT-DTO", today);
@@ -582,7 +597,7 @@ class AccountingServiceTest {
     void createJournalEntry_rejectsDealerWithoutReceivableAccount() {
         LocalDate today = LocalDate.of(2024, 3, 15);
         when(companyClock.today(company)).thenReturn(today);
-        when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(new AccountingPeriod());
+        when(accountingPeriodService.requirePostablePeriod(eq(company), eq(today), any(), any(), any(), anyBoolean())).thenReturn(new AccountingPeriod());
         when(journalEntryRepository.findByCompanyAndReferenceNumber(eq(company), eq("DEALER-REF")))
                 .thenReturn(Optional.empty());
 
@@ -632,7 +647,7 @@ class AccountingServiceTest {
         AccountingPeriod period = new AccountingPeriod();
         period.setYear(today.getYear());
         period.setMonth(today.getMonthValue());
-        when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(period);
+        when(accountingPeriodService.requirePostablePeriod(eq(company), eq(today), any(), any(), any(), anyBoolean())).thenReturn(period);
         when(journalEntryRepository.findByCompanyAndReferenceNumber(eq(company), eq("DEALER-NON-AR")))
                 .thenReturn(Optional.empty());
         when(journalEntryRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
@@ -912,7 +927,7 @@ class AccountingServiceTest {
         AccountingPeriod period = new AccountingPeriod();
         period.setYear(today.getYear());
         period.setMonth(today.getMonthValue());
-        when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(period);
+        when(accountingPeriodService.requirePostablePeriod(eq(company), eq(today), any(), any(), any(), anyBoolean())).thenReturn(period);
 
         Account cash = new Account();
         ReflectionTestUtils.setField(cash, "id", 7L);
@@ -1018,7 +1033,7 @@ class AccountingServiceTest {
         AccountingPeriod period = new AccountingPeriod();
         period.setYear(today.getYear());
         period.setMonth(today.getMonthValue());
-        when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(period);
+        when(accountingPeriodService.requirePostablePeriod(eq(company), eq(today), any(), any(), any(), anyBoolean())).thenReturn(period);
 
         Account debitAccount = new Account();
         ReflectionTestUtils.setField(debitAccount, "id", 241L);
@@ -1084,7 +1099,7 @@ class AccountingServiceTest {
     void createJournalEntry_failsWhenAccountBalanceNotUpdated() {
         LocalDate today = LocalDate.of(2024, 3, 21);
         when(companyClock.today(company)).thenReturn(today);
-        when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(new AccountingPeriod());
+        when(accountingPeriodService.requirePostablePeriod(eq(company), eq(today), any(), any(), any(), anyBoolean())).thenReturn(new AccountingPeriod());
         when(journalEntryRepository.findByCompanyAndReferenceNumber(eq(company), eq("ACC-UPD")))
                 .thenReturn(Optional.empty());
         // Return locked accounts with zero balance (need two accounts for balanced entry)
@@ -1129,7 +1144,7 @@ class AccountingServiceTest {
         AccountingPeriod period = new AccountingPeriod();
         period.setYear(today.getYear());
         period.setMonth(today.getMonthValue());
-        when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(period);
+        when(accountingPeriodService.requirePostablePeriod(eq(company), eq(today), any(), any(), any(), anyBoolean())).thenReturn(period);
         when(journalEntryRepository.findByCompanyAndReferenceNumber(eq(company), eq("EVT-STRICT")))
                 .thenReturn(Optional.empty());
 
@@ -1189,7 +1204,7 @@ class AccountingServiceTest {
         AccountingPeriod period = new AccountingPeriod();
         period.setYear(today.getYear());
         period.setMonth(today.getMonthValue());
-        when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(period);
+        when(accountingPeriodService.requirePostablePeriod(eq(company), eq(today), any(), any(), any(), anyBoolean())).thenReturn(period);
         when(journalEntryRepository.findByCompanyAndReferenceNumber(eq(company), eq("EVT-BEST-EFFORT")))
                 .thenReturn(Optional.empty());
 
@@ -1247,7 +1262,7 @@ class AccountingServiceTest {
         AccountingPeriod period = new AccountingPeriod();
         period.setYear(today.getYear());
         period.setMonth(today.getMonthValue());
-        when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(period);
+        when(accountingPeriodService.requirePostablePeriod(eq(company), eq(today), any(), any(), any(), anyBoolean())).thenReturn(period);
         when(journalEntryRepository.findByCompanyAndReferenceNumber(eq(company), eq("EVT-VALIDATION")))
                 .thenReturn(Optional.empty());
 
@@ -1301,7 +1316,7 @@ class AccountingServiceTest {
         AccountingPeriod period = new AccountingPeriod();
         period.setYear(today.getYear());
         period.setMonth(today.getMonthValue());
-        when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(period);
+        when(accountingPeriodService.requirePostablePeriod(eq(company), eq(today), any(), any(), any(), anyBoolean())).thenReturn(period);
         when(journalEntryRepository.findByCompanyAndReferenceNumber(eq(company), eq("EVT-INTEGRITY")))
                 .thenReturn(Optional.empty());
 
@@ -1354,7 +1369,7 @@ class AccountingServiceTest {
         AccountingPeriod period = new AccountingPeriod();
         period.setYear(today.getYear());
         period.setMonth(today.getMonthValue());
-        when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(period);
+        when(accountingPeriodService.requirePostablePeriod(eq(company), eq(today), any(), any(), any(), anyBoolean())).thenReturn(period);
         when(journalEntryRepository.findByCompanyAndReferenceNumber(eq(company), eq("JE-RACE-1")))
                 .thenReturn(Optional.empty());
 
@@ -1398,7 +1413,7 @@ class AccountingServiceTest {
         AccountingPeriod period = new AccountingPeriod();
         period.setYear(today.getYear());
         period.setMonth(today.getMonthValue());
-        when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(period);
+        when(accountingPeriodService.requirePostablePeriod(eq(company), eq(today), any(), any(), any(), anyBoolean())).thenReturn(period);
         String oversizedReference = "R".repeat(101);
         when(journalEntryRepository.findByCompanyAndReferenceNumber(eq(company), eq(oversizedReference)))
                 .thenReturn(Optional.empty());
@@ -1445,7 +1460,7 @@ class AccountingServiceTest {
         LocalDate today = LocalDate.of(2024, 4, 2);
         when(companyClock.today(company)).thenReturn(today);
         AccountingPeriod openPeriod = openPeriod(today);
-        when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(openPeriod);
+        when(accountingPeriodService.requirePostablePeriod(eq(company), eq(today), any(), any(), any(), anyBoolean())).thenReturn(openPeriod);
 
         AccountingService service = spy(accountingService);
         JournalEntry original = reversalSourceEntry(610L, "REV-EVT-STRICT", today);
@@ -1493,7 +1508,7 @@ class AccountingServiceTest {
         LocalDate today = LocalDate.of(2024, 4, 3);
         when(companyClock.today(company)).thenReturn(today);
         AccountingPeriod openPeriod = openPeriod(today);
-        when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(openPeriod);
+        when(accountingPeriodService.requirePostablePeriod(eq(company), eq(today), any(), any(), any(), anyBoolean())).thenReturn(openPeriod);
 
         AccountingService service = spy(accountingService);
         JournalEntry original = reversalSourceEntry(612L, "REV-EVT-VALIDATION", today);
@@ -1539,7 +1554,7 @@ class AccountingServiceTest {
         LocalDate today = LocalDate.of(2024, 4, 4);
         when(companyClock.today(company)).thenReturn(today);
         AccountingPeriod openPeriod = openPeriod(today);
-        when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(openPeriod);
+        when(accountingPeriodService.requirePostablePeriod(eq(company), eq(today), any(), any(), any(), anyBoolean())).thenReturn(openPeriod);
 
         AccountingService service = spy(accountingService);
         JournalEntry original = reversalSourceEntry(613L, "REV-EVT-INTEGRITY", today);
@@ -1585,7 +1600,7 @@ class AccountingServiceTest {
         LocalDate today = LocalDate.of(2024, 4, 3);
         when(companyClock.today(company)).thenReturn(today);
         AccountingPeriod openPeriod = openPeriod(today);
-        when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(openPeriod);
+        when(accountingPeriodService.requirePostablePeriod(eq(company), eq(today), any(), any(), any(), anyBoolean())).thenReturn(openPeriod);
 
         AccountingService service = spy(accountingService);
         JournalEntry original = reversalSourceEntry(611L, "REV-EVT-BEST", today);
@@ -1625,7 +1640,7 @@ class AccountingServiceTest {
         period.setMonth(today.getMonthValue());
         period.setStartDate(today.withDayOfMonth(1));
         period.setEndDate(today.withDayOfMonth(today.lengthOfMonth()));
-        when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(period);
+        when(accountingPeriodService.requirePostablePeriod(eq(company), eq(today), any(), any(), any(), anyBoolean())).thenReturn(period);
         when(journalEntryRepository.findByCompanyAndReferenceNumber(eq(company), eq("FX-REF")))
                 .thenReturn(Optional.empty());
 
@@ -1839,7 +1854,7 @@ class AccountingServiceTest {
         period.setMonth(today.getMonthValue());
         period.setStartDate(today.withDayOfMonth(1));
         period.setEndDate(today.withDayOfMonth(today.lengthOfMonth()));
-        when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(period);
+        when(accountingPeriodService.requirePostablePeriod(eq(company), eq(today), any(), any(), any(), anyBoolean())).thenReturn(period);
         when(journalEntryRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(accountRepository.updateBalanceAtomic(eq(company), any(), any())).thenReturn(1);
 
@@ -1892,7 +1907,7 @@ class AccountingServiceTest {
         period.setMonth(today.getMonthValue());
         period.setStartDate(today.withDayOfMonth(1));
         period.setEndDate(today.withDayOfMonth(today.lengthOfMonth()));
-        when(accountingPeriodService.requireOpenPeriod(company, today)).thenReturn(period);
+        when(accountingPeriodService.requirePostablePeriod(eq(company), eq(today), any(), any(), any(), anyBoolean())).thenReturn(period);
         when(journalEntryRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(accountRepository.updateBalanceAtomic(eq(company), any(), any())).thenReturn(1);
 
@@ -2120,7 +2135,7 @@ class AccountingServiceTest {
                 "REF-AP-1",
                 "Supplier settlement",
                 "IDEMP-AP-1",
-                Boolean.FALSE,
+                Boolean.TRUE,
                 List.of(allocation)
         );
 
@@ -4654,7 +4669,7 @@ class AccountingServiceTest {
                 "DR-SETTLE-REPLAY-NETCASH-1",
                 "Dealer settlement replay",
                 "IDEMP-DR-SETTLE-REPLAY-NETCASH",
-                Boolean.FALSE,
+                Boolean.TRUE,
                 List.of(
                         new SettlementAllocationRequest(
                                 701L,
@@ -4835,7 +4850,7 @@ class AccountingServiceTest {
                 "AP-SETTLE-REPLAY-NETCASH-1",
                 "Supplier settlement replay",
                 "IDEMP-AP-SETTLE-REPLAY-NETCASH",
-                Boolean.FALSE,
+                Boolean.TRUE,
                 List.of(
                         new SettlementAllocationRequest(
                                 null,
@@ -4928,7 +4943,7 @@ class AccountingServiceTest {
                 "REF-AR-1",
                 "Dealer settlement",
                 "IDEMP-AR-1",
-                Boolean.FALSE,
+                Boolean.TRUE,
                 List.of(allocation),
                 null
         );
@@ -5024,7 +5039,7 @@ class AccountingServiceTest {
                 "DR-TEST-1",
                 "Dealer settlement",
                 "IDEMP-AR-CASH",
-                Boolean.FALSE,
+                Boolean.TRUE,
                 List.of(allocation),
                 null
         );
@@ -6732,7 +6747,7 @@ class AccountingServiceTest {
                 "REF-NEG-CASH-DEALER-TOLERANCE",
                 "Dealer settlement",
                 "IDEMP-NEG-CASH-DEALER-TOLERANCE",
-                Boolean.FALSE,
+                Boolean.TRUE,
                 List.of(
                         new SettlementAllocationRequest(
                                 5L,
@@ -7035,7 +7050,7 @@ class AccountingServiceTest {
                 null,
                 "Dealer settlement replay",
                 "IDEMP-DR-REPLAY-ADJ",
-                Boolean.FALSE,
+                Boolean.TRUE,
                 List.of(new SettlementAllocationRequest(
                         701L,
                         null,
@@ -7411,7 +7426,7 @@ class AccountingServiceTest {
                 "REF-NEG-CASH-SUPPLIER-TOLERANCE",
                 "Supplier settlement",
                 "IDEMP-NEG-CASH-SUPPLIER-TOLERANCE",
-                Boolean.FALSE,
+                Boolean.TRUE,
                 List.of(
                         new SettlementAllocationRequest(
                                 null,
@@ -7616,7 +7631,7 @@ class AccountingServiceTest {
                 null,
                 "Supplier settlement replay",
                 "IDEMP-AP-REPLAY-ADJ",
-                Boolean.FALSE,
+                Boolean.TRUE,
                 List.of(allocation)
         );
 

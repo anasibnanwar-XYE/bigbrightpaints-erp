@@ -47,7 +47,7 @@ public class CreditLimitOverrideController {
     }
 
     @PostMapping("/{id}/approve")
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<ApiResponse<CreditLimitOverrideRequestDto>> approveRequest(
             @PathVariable Long id,
             @RequestBody(required = false) CreditLimitOverrideDecisionRequest request,
@@ -58,7 +58,7 @@ public class CreditLimitOverrideController {
     }
 
     @PostMapping("/{id}/reject")
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<ApiResponse<CreditLimitOverrideRequestDto>> rejectRequest(
             @PathVariable Long id,
             @RequestBody(required = false) CreditLimitOverrideDecisionRequest request,

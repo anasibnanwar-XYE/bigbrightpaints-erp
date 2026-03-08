@@ -101,6 +101,9 @@ public class AccountingPeriodServiceCore {
     @Autowired(required = false)
     private AccountingComplianceAuditService accountingComplianceAuditService;
 
+    @Autowired(required = false)
+    private ClosedPeriodPostingExceptionService closedPeriodPostingExceptionService;
+
     public AccountingPeriodServiceCore(AccountingPeriodRepository accountingPeriodRepository,
                                    CompanyContextService companyContextService,
                                    JournalEntryRepository journalEntryRepository,
@@ -577,6 +580,31 @@ public class AccountingPeriodServiceCore {
                     ErrorCode.VALIDATION_INVALID_INPUT,
                     "Accounting period " + period.getLabel() + " is locked/closed");
         }
+        return period;
+    }
+
+    public AccountingPeriod requirePostablePeriod(Company company,
+                                                  LocalDate referenceDate,
+                                                  String documentType,
+                                                  String documentReference,
+                                                  String reason,
+                                                  boolean overrideRequested) {
+        AccountingPeriod period = lockOrCreatePeriod(company, referenceDate);
+        if (period.getStatus() == AccountingPeriodStatus.OPEN) {
+            return period;
+        }
+        if (!overrideRequested) {
+            throw new ApplicationException(
+                    ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Accounting period " + period.getLabel()
+                            + " is locked/closed; an admin one-hour posting exception is required for this document");
+        }
+        if (closedPeriodPostingExceptionService == null) {
+            throw new ApplicationException(
+                    ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Closed-period posting exception workflow is not configured");
+        }
+        closedPeriodPostingExceptionService.authorize(company, period, documentType, documentReference, reason);
         return period;
     }
 

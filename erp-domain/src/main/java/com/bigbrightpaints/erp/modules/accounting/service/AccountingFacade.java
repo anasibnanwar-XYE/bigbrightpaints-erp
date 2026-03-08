@@ -99,7 +99,10 @@ public class AccountingFacade extends AccountingFacadeCore {
         }
 
         LocalDate entryDate = request.entryDate() != null ? request.entryDate() : LocalDate.now();
-        String narration = StringUtils.hasText(request.narration()) ? request.narration().trim() : "Manual journal entry";
+        if (!StringUtils.hasText(request.narration())) {
+            throw validationMissingField("Manual journal reason is required");
+        }
+        String narration = request.narration().trim();
         String idempotencyKey = StringUtils.hasText(request.idempotencyKey()) ? request.idempotencyKey().trim() : null;
         String sourceReference = StringUtils.hasText(idempotencyKey) ? idempotencyKey : generatedManualSourceReference(entryDate);
 
@@ -115,7 +118,8 @@ public class AccountingFacade extends AccountingFacadeCore {
                 entryDate,
                 null,
                 null,
-                Boolean.TRUE.equals(request.adminOverride())
+                Boolean.TRUE.equals(request.adminOverride()),
+                request.attachmentReferences()
         );
 
         return createStandardJournal(journalRequest);
@@ -127,6 +131,9 @@ public class AccountingFacade extends AccountingFacadeCore {
         }
 
         String resolvedIdempotencyKey = StringUtils.hasText(idempotencyKey) ? idempotencyKey.trim() : null;
+        if (!StringUtils.hasText(request.memo())) {
+            throw validationMissingField("Manual journal reason is required");
+        }
         String sourceReference = StringUtils.hasText(request.sourceReference())
                 ? request.sourceReference().trim()
                 : (StringUtils.hasText(resolvedIdempotencyKey)
@@ -138,7 +145,7 @@ public class AccountingFacade extends AccountingFacadeCore {
                 amount,
                 firstDebitAccountFromEntryLines(request.lines()),
                 firstCreditAccountFromEntryLines(request.lines()),
-                StringUtils.hasText(request.memo()) ? request.memo().trim() : "Manual journal entry",
+                request.memo().trim(),
                 "MANUAL",
                 sourceReference,
                 null,
@@ -146,7 +153,8 @@ public class AccountingFacade extends AccountingFacadeCore {
                 request.entryDate() != null ? request.entryDate() : LocalDate.now(),
                 request.dealerId(),
                 request.supplierId(),
-                Boolean.TRUE.equals(request.adminOverride())
+                Boolean.TRUE.equals(request.adminOverride()),
+                request.attachmentReferences()
         );
 
         return createStandardJournal(journalRequest);

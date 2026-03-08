@@ -259,7 +259,7 @@ class AccountingPeriodServiceTest {
         when(periodCloseRequestRepository.save(pending)).thenReturn(pending);
         when(accountingPeriodRepository.findByCompanyAndYearAndMonth(company, 2026, 3))
                 .thenReturn(Optional.of(openPeriod(company, 2026, 3)));
-        authenticate("checker.user", "ROLE_ACCOUNTING");
+        authenticate("checker.user", "ROLE_ADMIN");
 
         assertThat(service.approvePeriodClose(31L, new PeriodCloseRequestActionRequest("  month close  ", true)).status())
                 .isEqualTo("CLOSED");
@@ -293,7 +293,7 @@ class AccountingPeriodServiceTest {
         when(periodCloseRequestRepository.save(pending)).thenReturn(pending);
         when(accountingPeriodRepository.findByCompanyAndYearAndMonth(company, 2026, 3))
                 .thenReturn(Optional.of(openPeriod(company, 2026, 3)));
-        authenticate("checker.user", "ROLE_ACCOUNTING");
+        authenticate("checker.user", "ROLE_ADMIN");
 
         assertThat(service.approvePeriodClose(32L, new PeriodCloseRequestActionRequest("close for month", true)).status())
                 .isEqualTo("CLOSED");
@@ -312,8 +312,8 @@ class AccountingPeriodServiceTest {
         when(periodCloseRequestRepository.lockByCompanyAndAccountingPeriodAndStatus(
                 company, period, PeriodCloseRequestStatus.PENDING)).thenReturn(Optional.of(pending));
         when(goodsReceiptRepository.countByCompanyAndReceiptDateBetweenAndStatusNot(
-                company, period.getStartDate(), period.getEndDate(), GoodsReceiptStatus.INVOICED)).thenReturn(3L);
-        authenticate("checker.user", "ROLE_ACCOUNTING");
+                company, period.getStartDate(), period.getEndDate(), "INVOICED")).thenReturn(3L);
+        authenticate("checker.user", "ROLE_ADMIN");
 
         assertThatThrownBy(() -> service.approvePeriodClose(33L, new PeriodCloseRequestActionRequest("close", true)))
                 .isInstanceOf(ApplicationException.class)
@@ -387,7 +387,7 @@ class AccountingPeriodServiceTest {
                 List.of(PayrollRun.PayrollStatus.DRAFT,
                         PayrollRun.PayrollStatus.CALCULATED,
                         PayrollRun.PayrollStatus.APPROVED))).thenReturn(0L);
-        authenticate("checker.user", "ROLE_ACCOUNTING");
+        authenticate("checker.user", "ROLE_ADMIN");
 
         assertThatThrownBy(() -> service.approvePeriodClose(34L, new PeriodCloseRequestActionRequest("month close", false)))
                 .isInstanceOf(ApplicationException.class)
