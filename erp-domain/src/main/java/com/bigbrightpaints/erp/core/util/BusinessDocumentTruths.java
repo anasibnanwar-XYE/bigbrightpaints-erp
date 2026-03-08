@@ -18,9 +18,9 @@ public final class BusinessDocumentTruths {
     public static DocumentLifecycleDto salesOrderLifecycle(SalesOrder order) {
         String workflowStatus = normalizeWorkflow(order != null ? order.getStatus() : null, "DRAFT");
         String accountingStatus = "NOT_ELIGIBLE";
-        if (order != null && (order.getFulfillmentInvoiceId() != null || order.getSalesJournalEntryId() != null)) {
+        if (order != null && order.getSalesJournalEntryId() != null) {
             accountingStatus = "POSTED";
-        } else if (order != null && StringUtils.hasText(order.getStatus())) {
+        } else if (order != null && order.getFulfillmentInvoiceId() != null) {
             accountingStatus = "PENDING";
         }
         return new DocumentLifecycleDto(workflowStatus, accountingStatus);

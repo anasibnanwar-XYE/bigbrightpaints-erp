@@ -399,4 +399,36 @@ class InvoiceServiceTest {
 
         verifyNoInteractions(invoiceNumberService);
     }
+
+    @Test
+    void getInvoice_sourceOrderReferenceStaysNotEligibleBeforePostingTruthExists() {
+        Long invoiceId = 401L;
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+
+        SalesOrder order = new SalesOrder();
+        ReflectionTestUtils.setField(order, "id", 88L);
+        order.setCompany(company);
+        order.setOrderNumber("SO-88");
+        order.setStatus("READY_TO_SHIP");
+
+        Invoice invoice = new Invoice();
+        ReflectionTestUtils.setField(invoice, "id", invoiceId);
+        invoice.setCompany(company);
+        invoice.setInvoiceNumber("INV-401");
+        invoice.setStatus("DRAFT");
+        invoice.setSalesOrder(order);
+
+        when(invoiceRepository.findByCompanyAndId(company, invoiceId)).thenReturn(Optional.of(invoice));
+        when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, 88L)).thenReturn(List.of());
+
+        InvoiceDto dto = invoiceService.getInvoice(invoiceId);
+
+        LinkedBusinessReferenceDto sourceOrderReference = dto.linkedReferences().stream()
+                .filter(reference -> "SOURCE_ORDER".equals(reference.relationType()))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(sourceOrderReference.lifecycle().workflowStatus()).isEqualTo("READY_TO_SHIP");
+        assertThat(sourceOrderReference.lifecycle().accountingStatus()).isEqualTo("NOT_ELIGIBLE");
+    }
 }
