@@ -424,6 +424,7 @@ public class AccountingFacadeCore {
 
         Company company = companyContextService.requireCurrentCompany();
         Supplier supplier = requireSupplier(company, supplierId);
+        supplier.requireTransactionalUsage("post purchase journals");
 
         String baseReference = referenceNumberService.purchaseReferenceKey(company, supplier, invoiceNumber);
         Optional<JournalEntry> existingByBase = journalReferenceResolver.findExistingEntry(company, baseReference);
