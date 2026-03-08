@@ -86,9 +86,7 @@ public class GoodsReceiptService {
         List<GoodsReceipt> receipts = supplier == null
                 ? goodsReceiptRepository.findByCompanyWithLinesOrderByReceiptDateDesc(company)
                 : goodsReceiptRepository.findByCompanyAndSupplierWithLinesOrderByReceiptDateDesc(company, supplier);
-        return receipts.stream()
-                .map(responseMapper::toGoodsReceiptResponse)
-                .toList();
+        return responseMapper.toGoodsReceiptResponses(receipts);
     }
 
     public GoodsReceiptResponse getGoodsReceipt(Long id) {

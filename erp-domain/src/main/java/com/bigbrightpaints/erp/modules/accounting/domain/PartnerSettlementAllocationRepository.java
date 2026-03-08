@@ -12,6 +12,9 @@ public interface PartnerSettlementAllocationRepository extends JpaRepository<Par
 
     List<PartnerSettlementAllocation> findByCompanyAndInvoiceOrderByCreatedAtDesc(Company company, Invoice invoice);
 
+    @EntityGraph(attributePaths = {"invoice", "purchase", "dealer", "supplier", "journalEntry"})
+    List<PartnerSettlementAllocation> findByCompanyAndInvoice_IdInOrderByCreatedAtDesc(Company company, List<Long> invoiceIds);
+
     List<PartnerSettlementAllocation> findByCompanyAndPurchaseOrderByCreatedAtDesc(Company company, RawMaterialPurchase purchase);
 
     List<PartnerSettlementAllocation> findByCompanyAndIdempotencyKey(Company company, String idempotencyKey);

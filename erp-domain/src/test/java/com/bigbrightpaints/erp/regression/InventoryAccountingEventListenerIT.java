@@ -217,6 +217,57 @@ class InventoryAccountingEventListenerIT extends AbstractIntegrationTest {
         assertThat(journalEntryRepository.count()).isEqualTo(before);
     }
 
+    @Test
+    void movementEventSkipsCanonicalPackagingSlipBoundaryEvenWhenAccountsArePresent() {
+        LocalDate movementDate = LocalDate.now().minusDays(1);
+        long before = journalEntryRepository.count();
+        InventoryMovementEvent event = InventoryMovementEvent.builder()
+                .companyId(company.getId())
+                .movementType(InventoryMovementEvent.MovementType.ISSUE)
+                .inventoryType(InventoryValuationChangedEvent.InventoryType.FINISHED_GOOD)
+                .itemId(6L)
+                .itemCode("FG-PS-1")
+                .itemName("Finished Good Packaging Slip Test")
+                .quantity(new BigDecimal("1"))
+                .unitCost(new BigDecimal("9.00"))
+                .totalCost(new BigDecimal("9.00"))
+                .sourceAccountId(inventoryAccount.getId())
+                .destinationAccountId(cogsAccount.getId())
+                .referenceNumber("PS-601")
+                .movementDate(movementDate)
+                .memo("Packaging slip event")
+                .relatedEntityId(601L)
+                .relatedEntityType("PACKAGING_SLIP")
+                .build();
+
+        listener.onInventoryMovement(event);
+
+        assertThat(journalEntryRepository.count()).isEqualTo(before);
+    }
+
+    @Test
+    void valuationEventSkipsWhenValueChangeIsZero() {
+        long before = journalEntryRepository.count();
+        InventoryValuationChangedEvent event = InventoryValuationChangedEvent.builder()
+                .companyId(company.getId())
+                .inventoryType(InventoryValuationChangedEvent.InventoryType.RAW_MATERIAL)
+                .itemId(7L)
+                .itemCode("RM-VAL-0")
+                .itemName("Raw Material Zero")
+                .oldValue(new BigDecimal("12.00"))
+                .newValue(new BigDecimal("12.00"))
+                .quantity(new BigDecimal("3"))
+                .oldUnitCost(new BigDecimal("4.00"))
+                .newUnitCost(new BigDecimal("4.00"))
+                .inventoryAccountId(inventoryAccount.getId())
+                .reason(InventoryValuationChangedEvent.ValuationChangeReason.PHYSICAL_COUNT_ADJUSTMENT)
+                .build();
+
+        listener.onInventoryValuationChanged(event);
+
+        assertThat(journalEntryRepository.count()).isEqualTo(before);
+    }
+
     private Account ensureAccount(String code, String name, AccountType type) {
         return accountRepository.findByCompanyAndCodeIgnoreCase(company, code)
                 .orElseGet(() -> {

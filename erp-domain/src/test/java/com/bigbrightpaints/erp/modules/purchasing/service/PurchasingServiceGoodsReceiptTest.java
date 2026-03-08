@@ -26,6 +26,7 @@ import com.bigbrightpaints.erp.modules.purchasing.domain.PurchaseOrderLine;
 import com.bigbrightpaints.erp.modules.purchasing.domain.PurchaseOrderRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.PurchaseOrderStatus;
 import com.bigbrightpaints.erp.modules.purchasing.domain.PurchaseOrderStatusHistoryRepository;
+import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchase;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
 import com.bigbrightpaints.erp.modules.purchasing.dto.GoodsReceiptLineRequest;
@@ -227,6 +228,50 @@ class PurchasingServiceGoodsReceiptTest {
         verify(goodsReceiptRepository).findWithLinesByCompanyAndIdempotencyKey(company, "idem-replay-ok");
         verify(goodsReceiptRepository, never()).save(any(GoodsReceipt.class));
         verifyNoInteractions(accountingPeriodService, purchaseOrderRepository, rawMaterialRepository, rawMaterialService);
+    }
+
+    @Test
+    @DisplayName("listGoodsReceipts batches linked purchase lookup for lifecycle mapping")
+    void listGoodsReceipts_batchesLinkedPurchaseLookup() {
+        GoodsReceipt firstReceipt = existingReceipt(request(
+                "idem-list-1",
+                LocalDate.of(2026, 2, 20),
+                List.of(new GoodsReceiptLineRequest(20L, "REQ-BATCH-1", new BigDecimal("4.0000"), "KG", new BigDecimal("5.00"), "line note"))
+        ));
+        ReflectionTestUtils.setField(firstReceipt, "id", 901L);
+
+        GoodsReceipt secondReceipt = existingReceipt(request(
+                "idem-list-2",
+                LocalDate.of(2026, 2, 21),
+                List.of(new GoodsReceiptLineRequest(20L, "REQ-BATCH-2", new BigDecimal("3.0000"), "KG", new BigDecimal("5.00"), "line note"))
+        ));
+        ReflectionTestUtils.setField(secondReceipt, "id", 902L);
+
+        RawMaterialPurchase linkedPurchase = new RawMaterialPurchase();
+        ReflectionTestUtils.setField(linkedPurchase, "id", 990L);
+        linkedPurchase.setCompany(company);
+        linkedPurchase.setSupplier(supplier);
+        linkedPurchase.setInvoiceNumber("PINV-990");
+        linkedPurchase.setStatus("POSTED");
+        linkedPurchase.setGoodsReceipt(firstReceipt);
+
+        when(goodsReceiptRepository.findByCompanyWithLinesOrderByReceiptDateDesc(company))
+                .thenReturn(List.of(firstReceipt, secondReceipt));
+        when(purchaseRepository.findByCompanyAndGoodsReceipt_IdIn(company, List.of(901L, 902L)))
+                .thenReturn(List.of(linkedPurchase));
+
+        List<GoodsReceiptResponse> responses = purchasingService.listGoodsReceipts();
+
+        assertThat(responses).hasSize(2);
+        assertThat(responses.get(0).linkedReferences())
+                .extracting(LinkedBusinessReferenceDto::relationType)
+                .contains("PURCHASE_ORDER", "PURCHASE_INVOICE", "SELF");
+        assertThat(responses.get(1).linkedReferences())
+                .extracting(LinkedBusinessReferenceDto::relationType)
+                .containsExactlyInAnyOrder("PURCHASE_ORDER", "SELF");
+
+        verify(purchaseRepository).findByCompanyAndGoodsReceipt_IdIn(company, List.of(901L, 902L));
+        verify(purchaseRepository, never()).findByCompanyAndGoodsReceipt(any(), any());
     }
 
     @Test

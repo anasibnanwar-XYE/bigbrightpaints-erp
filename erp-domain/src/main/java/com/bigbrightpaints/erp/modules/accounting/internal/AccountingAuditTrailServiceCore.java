@@ -1,4 +1,4 @@
-package com.bigbrightpaints.erp.modules.accounting.service;
+package com.bigbrightpaints.erp.modules.accounting.internal;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
@@ -377,7 +377,7 @@ public class AccountingAuditTrailServiceCore {
                         settledInvoice.getId(),
                         settledInvoice.getInvoiceNumber(),
                         BusinessDocumentTruths.invoiceLifecycle(settledInvoice.getStatus(), settledInvoice.getJournalEntry()),
-                        allocation.getJournalEntry() != null ? allocation.getJournalEntry().getId() : null
+                        settledInvoice.getJournalEntry() != null ? settledInvoice.getJournalEntry().getId() : null
                 );
             }
             if (allocation.getPurchase() != null) {
@@ -388,7 +388,7 @@ public class AccountingAuditTrailServiceCore {
                         settledPurchase.getId(),
                         settledPurchase.getInvoiceNumber(),
                         BusinessDocumentTruths.purchaseLifecycle(settledPurchase),
-                        allocation.getJournalEntry() != null ? allocation.getJournalEntry().getId() : null
+                        settledPurchase.getJournalEntry() != null ? settledPurchase.getJournalEntry().getId() : null
                 );
             }
         }

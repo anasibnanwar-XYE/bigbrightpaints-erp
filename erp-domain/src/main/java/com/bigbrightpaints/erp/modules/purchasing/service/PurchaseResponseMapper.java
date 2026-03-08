@@ -22,11 +22,13 @@ import com.bigbrightpaints.erp.modules.purchasing.dto.RawMaterialPurchaseRespons
 import com.bigbrightpaints.erp.shared.dto.DocumentLifecycleDto;
 import com.bigbrightpaints.erp.shared.dto.LinkedBusinessReferenceDto;
 import java.util.ArrayList;
+import java.util.Map;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
 
 @Component
@@ -48,6 +50,16 @@ public class PurchaseResponseMapper {
 
     PurchaseResponseMapper(RawMaterialPurchaseRepository purchaseRepository) {
         this(purchaseRepository, null);
+    }
+
+    public List<GoodsReceiptResponse> toGoodsReceiptResponses(List<GoodsReceipt> receipts) {
+        if (receipts == null || receipts.isEmpty()) {
+            return List.of();
+        }
+        Map<Long, RawMaterialPurchase> linkedPurchasesByReceiptId = resolveLinkedPurchases(receipts);
+        return receipts.stream()
+                .map(receipt -> toGoodsReceiptResponse(receipt, linkedPurchasesByReceiptId.get(receipt.getId())))
+                .toList();
     }
 
     public RawMaterialPurchaseResponse toPurchaseResponse(RawMaterialPurchase purchase) {
@@ -143,9 +155,12 @@ public class PurchaseResponseMapper {
     }
 
     public GoodsReceiptResponse toGoodsReceiptResponse(GoodsReceipt receipt) {
+        return toGoodsReceiptResponse(receipt, resolveLinkedPurchase(receipt));
+    }
+
+    GoodsReceiptResponse toGoodsReceiptResponse(GoodsReceipt receipt, RawMaterialPurchase linkedPurchase) {
         Supplier supplier = receipt.getSupplier();
         PurchaseOrder purchaseOrder = receipt.getPurchaseOrder();
-        RawMaterialPurchase linkedPurchase = resolveLinkedPurchase(receipt);
         List<GoodsReceiptLineResponse> lines = receipt.getLines().stream()
                 .map(this::toGoodsReceiptLineResponse)
                 .toList();
@@ -308,5 +323,33 @@ public class PurchaseResponseMapper {
             return null;
         }
         return purchaseRepository.findByCompanyAndGoodsReceipt(receipt.getCompany(), receipt).orElse(null);
+    }
+
+    private Map<Long, RawMaterialPurchase> resolveLinkedPurchases(List<GoodsReceipt> receipts) {
+        if (purchaseRepository == null || receipts == null || receipts.isEmpty()) {
+            return Map.of();
+        }
+        com.bigbrightpaints.erp.modules.company.domain.Company company = receipts.stream()
+                .map(GoodsReceipt::getCompany)
+                .filter(Objects::nonNull)
+                .findFirst()
+                .orElse(null);
+        if (company == null) {
+            return Map.of();
+        }
+        List<Long> receiptIds = receipts.stream()
+                .map(GoodsReceipt::getId)
+                .filter(Objects::nonNull)
+                .toList();
+        if (receiptIds.isEmpty()) {
+            return Map.of();
+        }
+        return purchaseRepository.findByCompanyAndGoodsReceipt_IdIn(company, receiptIds).stream()
+                .filter(purchase -> purchase.getGoodsReceipt() != null && purchase.getGoodsReceipt().getId() != null)
+                .collect(Collectors.toMap(
+                        purchase -> purchase.getGoodsReceipt().getId(),
+                        purchase -> purchase,
+                        (left, right) -> left
+                ));
     }
 }

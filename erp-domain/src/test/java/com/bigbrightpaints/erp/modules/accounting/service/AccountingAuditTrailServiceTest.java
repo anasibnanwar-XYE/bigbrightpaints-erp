@@ -12,7 +12,9 @@ import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLine;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocation;
 import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocationRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.PartnerType;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingTransactionAuditDetailDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingTransactionAuditListItemDto;
 import com.bigbrightpaints.erp.modules.accounting.event.AccountingEvent;
@@ -21,6 +23,7 @@ import com.bigbrightpaints.erp.modules.accounting.event.AccountingEventType;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipRepository;
+import com.bigbrightpaints.erp.modules.invoice.domain.Invoice;
 import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchase;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
@@ -386,6 +389,119 @@ class AccountingAuditTrailServiceTest {
                         org.assertj.core.groups.Tuple.tuple("PURCHASE_ORDER", "PURCHASE_ORDER"),
                         org.assertj.core.groups.Tuple.tuple("ACCOUNTING_ENTRY", "JOURNAL_ENTRY")
                 );
+    }
+
+    @Test
+    void transactionDetail_settlementDrivingInvoiceUsesSourceInvoiceJournalEntryId() {
+        Company company = new Company();
+        company.setCode("BBP");
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+
+        JournalEntry settlementEntry = new JournalEntry();
+        setField(settlementEntry, "id", 110L);
+        settlementEntry.setReferenceNumber("SET-110");
+        settlementEntry.setEntryDate(LocalDate.of(2026, 2, 18));
+        settlementEntry.setStatus("POSTED");
+        settlementEntry.getLines().add(line("CASH", "0.00", "100.00"));
+        settlementEntry.getLines().add(line("AR", "100.00", "0.00"));
+
+        JournalEntry invoiceJournal = new JournalEntry();
+        setField(invoiceJournal, "id", 210L);
+        invoiceJournal.setReferenceNumber("INV-210");
+        invoiceJournal.setStatus("POSTED");
+
+        Invoice invoice = new Invoice();
+        setField(invoice, "id", 310L);
+        invoice.setCompany(company);
+        invoice.setInvoiceNumber("INV-310");
+        invoice.setStatus("ISSUED");
+        invoice.setJournalEntry(invoiceJournal);
+        invoice.setTotalAmount(new BigDecimal("100.00"));
+        invoice.setOutstandingAmount(new BigDecimal("40.00"));
+
+        PartnerSettlementAllocation allocation = new PartnerSettlementAllocation();
+        setField(allocation, "id", 410L);
+        allocation.setCompany(company);
+        allocation.setPartnerType(PartnerType.DEALER);
+        allocation.setInvoice(invoice);
+        allocation.setJournalEntry(settlementEntry);
+        allocation.setAllocationAmount(new BigDecimal("60.00"));
+        allocation.setIdempotencyKey("settlement-410");
+
+        when(journalEntryRepository.findByCompanyAndId(company, 110L)).thenReturn(Optional.of(settlementEntry));
+        when(settlementAllocationRepository.findByCompanyAndJournalEntryOrderByCreatedAtAsc(company, settlementEntry))
+                .thenReturn(List.of(allocation));
+        when(invoiceRepository.findByCompanyAndJournalEntry(company, settlementEntry)).thenReturn(Optional.empty());
+        when(rawMaterialPurchaseRepository.findByCompanyAndJournalEntry(company, settlementEntry)).thenReturn(Optional.empty());
+        when(accountingEventRepository.findByJournalEntryIdOrderByEventTimestampAsc(110L)).thenReturn(List.of());
+
+        AccountingTransactionAuditDetailDto detail = service.transactionDetail(110L);
+
+        assertThat(detail.drivingDocument().documentType()).isEqualTo("INVOICE");
+        assertThat(detail.drivingDocument().documentId()).isEqualTo(310L);
+        assertThat(detail.drivingDocument().journalEntryId()).isEqualTo(210L);
+    }
+
+    @Test
+    void transactionDetail_settlementDrivingPurchaseUsesSourcePurchaseJournalEntryId() {
+        Company company = new Company();
+        company.setCode("BBP");
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+
+        JournalEntry settlementEntry = new JournalEntry();
+        setField(settlementEntry, "id", 111L);
+        settlementEntry.setReferenceNumber("SUP-SET-111");
+        settlementEntry.setEntryDate(LocalDate.of(2026, 2, 18));
+        settlementEntry.setStatus("POSTED");
+        settlementEntry.getLines().add(line("CASH", "100.00", "0.00"));
+        settlementEntry.getLines().add(line("AP", "0.00", "100.00"));
+
+        JournalEntry purchaseJournal = new JournalEntry();
+        setField(purchaseJournal, "id", 211L);
+        purchaseJournal.setReferenceNumber("RMP-211");
+        purchaseJournal.setStatus("POSTED");
+
+        RawMaterialPurchase purchase = new RawMaterialPurchase();
+        setField(purchase, "id", 311L);
+        purchase.setCompany(company);
+        purchase.setInvoiceNumber("PINV-311");
+        purchase.setStatus("POSTED");
+        purchase.setJournalEntry(purchaseJournal);
+        purchase.setTotalAmount(new BigDecimal("100.00"));
+        purchase.setOutstandingAmount(new BigDecimal("25.00"));
+
+        PartnerSettlementAllocation allocation = new PartnerSettlementAllocation();
+        setField(allocation, "id", 411L);
+        allocation.setCompany(company);
+        allocation.setPartnerType(PartnerType.SUPPLIER);
+        allocation.setPurchase(purchase);
+        allocation.setJournalEntry(settlementEntry);
+        allocation.setAllocationAmount(new BigDecimal("75.00"));
+        allocation.setIdempotencyKey("settlement-411");
+
+        when(journalEntryRepository.findByCompanyAndId(company, 111L)).thenReturn(Optional.of(settlementEntry));
+        when(settlementAllocationRepository.findByCompanyAndJournalEntryOrderByCreatedAtAsc(company, settlementEntry))
+                .thenReturn(List.of(allocation));
+        when(invoiceRepository.findByCompanyAndJournalEntry(company, settlementEntry)).thenReturn(Optional.empty());
+        when(rawMaterialPurchaseRepository.findByCompanyAndJournalEntry(company, settlementEntry)).thenReturn(Optional.empty());
+        when(accountingEventRepository.findByJournalEntryIdOrderByEventTimestampAsc(111L)).thenReturn(List.of());
+
+        AccountingTransactionAuditDetailDto detail = service.transactionDetail(111L);
+
+        assertThat(detail.drivingDocument().documentType()).isEqualTo("PURCHASE_INVOICE");
+        assertThat(detail.drivingDocument().documentId()).isEqualTo(311L);
+        assertThat(detail.drivingDocument().journalEntryId()).isEqualTo(211L);
+    }
+
+    private static JournalLine line(String accountCode, String debitAmount, String creditAmount) {
+        Account account = new Account();
+        account.setCode(accountCode);
+
+        JournalLine line = new JournalLine();
+        line.setAccount(account);
+        line.setDebit(new BigDecimal(debitAmount));
+        line.setCredit(new BigDecimal(creditAmount));
+        return line;
     }
 
     private static void setField(Object target, String fieldName, Object value) {

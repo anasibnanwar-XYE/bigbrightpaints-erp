@@ -31,11 +31,14 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -325,12 +328,16 @@ class InvoiceServiceTest {
 
         PackagingSlip activeSlip = new PackagingSlip();
         ReflectionTestUtils.setField(activeSlip, "id", 201L);
+        activeSlip.setSalesOrder(order);
         activeSlip.setSlipNumber("PS-79");
         activeSlip.setStatus("DISPATCHED");
         PackagingSlip cancelledSlip = new PackagingSlip();
         ReflectionTestUtils.setField(cancelledSlip, "id", 202L);
+        cancelledSlip.setSalesOrder(order);
         cancelledSlip.setStatus("CANCELLED");
         when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, orderId))
+                .thenReturn(List.of(activeSlip, cancelledSlip));
+        when(packagingSlipRepository.findAllByCompanyAndSalesOrderIdIn(company, List.of(orderId)))
                 .thenReturn(List.of(activeSlip, cancelledSlip));
 
         InvoiceDto dto = invoiceService.issueInvoiceForOrder(orderId);
@@ -401,6 +408,80 @@ class InvoiceServiceTest {
     }
 
     @Test
+    void listInvoices_batchesLinkedReferenceLookupsForPage() {
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(invoiceRepository.findIdsByCompanyOrderByIssueDateDescIdDesc(company, PageRequest.of(0, 50)))
+                .thenReturn(new PageImpl<>(List.of(11L, 12L)));
+
+        SalesOrder firstOrder = new SalesOrder();
+        ReflectionTestUtils.setField(firstOrder, "id", 101L);
+        firstOrder.setCompany(company);
+        firstOrder.setOrderNumber("SO-101");
+        firstOrder.setStatus("READY_TO_SHIP");
+
+        SalesOrder secondOrder = new SalesOrder();
+        ReflectionTestUtils.setField(secondOrder, "id", 102L);
+        secondOrder.setCompany(company);
+        secondOrder.setOrderNumber("SO-102");
+        secondOrder.setStatus("INVOICED");
+
+        Invoice firstInvoice = new Invoice();
+        ReflectionTestUtils.setField(firstInvoice, "id", 11L);
+        firstInvoice.setCompany(company);
+        firstInvoice.setInvoiceNumber("INV-11");
+        firstInvoice.setStatus("ISSUED");
+        firstInvoice.setSalesOrder(firstOrder);
+
+        Invoice secondInvoice = new Invoice();
+        ReflectionTestUtils.setField(secondInvoice, "id", 12L);
+        secondInvoice.setCompany(company);
+        secondInvoice.setInvoiceNumber("INV-12");
+        secondInvoice.setStatus("ISSUED");
+        secondInvoice.setSalesOrder(secondOrder);
+
+        when(invoiceRepository.findByCompanyAndIdInOrderByIssueDateDescIdDesc(company, List.of(11L, 12L)))
+                .thenReturn(List.of(firstInvoice, secondInvoice));
+
+        PackagingSlip firstSlip = new PackagingSlip();
+        ReflectionTestUtils.setField(firstSlip, "id", 201L);
+        firstSlip.setSalesOrder(firstOrder);
+        firstSlip.setSlipNumber("PS-201");
+        firstSlip.setStatus("DISPATCHED");
+
+        PackagingSlip secondSlip = new PackagingSlip();
+        ReflectionTestUtils.setField(secondSlip, "id", 202L);
+        secondSlip.setSalesOrder(secondOrder);
+        secondSlip.setSlipNumber("PS-202");
+        secondSlip.setStatus("DISPATCHED");
+
+        when(packagingSlipRepository.findAllByCompanyAndSalesOrderIdIn(company, List.of(101L, 102L)))
+                .thenReturn(List.of(firstSlip, secondSlip));
+
+        com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocation allocation =
+                new com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocation();
+        ReflectionTestUtils.setField(allocation, "id", 301L);
+        allocation.setInvoice(secondInvoice);
+        allocation.setIdempotencyKey("settlement-301");
+        when(settlementAllocationRepository.findByCompanyAndInvoice_IdInOrderByCreatedAtDesc(company, List.of(11L, 12L)))
+                .thenReturn(List.of(allocation));
+
+        List<InvoiceDto> invoices = invoiceService.listInvoices(0, 50);
+
+        assertThat(invoices).hasSize(2);
+        assertThat(invoices.get(0).linkedReferences())
+                .extracting(LinkedBusinessReferenceDto::relationType)
+                .contains("SOURCE_ORDER", "DISPATCH");
+        assertThat(invoices.get(1).linkedReferences())
+                .extracting(LinkedBusinessReferenceDto::relationType)
+                .contains("SOURCE_ORDER", "DISPATCH", "SETTLEMENT");
+
+        verify(packagingSlipRepository).findAllByCompanyAndSalesOrderIdIn(company, List.of(101L, 102L));
+        verify(settlementAllocationRepository).findByCompanyAndInvoice_IdInOrderByCreatedAtDesc(company, List.of(11L, 12L));
+        verify(packagingSlipRepository, org.mockito.Mockito.never()).findAllByCompanyAndSalesOrderId(any(), anyLong());
+        verify(settlementAllocationRepository, org.mockito.Mockito.never()).findByCompanyAndInvoiceOrderByCreatedAtDesc(any(), any());
+    }
+
+    @Test
     void getInvoice_sourceOrderReferenceStaysNotEligibleBeforePostingTruthExists() {
         Long invoiceId = 401L;
         when(companyContextService.requireCurrentCompany()).thenReturn(company);
@@ -419,7 +500,7 @@ class InvoiceServiceTest {
         invoice.setSalesOrder(order);
 
         when(invoiceRepository.findByCompanyAndId(company, invoiceId)).thenReturn(Optional.of(invoice));
-        when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, 88L)).thenReturn(List.of());
+        when(packagingSlipRepository.findAllByCompanyAndSalesOrderIdIn(company, List.of(88L))).thenReturn(List.of());
 
         InvoiceDto dto = invoiceService.getInvoice(invoiceId);
 
@@ -430,5 +511,46 @@ class InvoiceServiceTest {
 
         assertThat(sourceOrderReference.lifecycle().workflowStatus()).isEqualTo("READY_TO_SHIP");
         assertThat(sourceOrderReference.lifecycle().accountingStatus()).isEqualTo("NOT_ELIGIBLE");
+    }
+
+    @Test
+    void listInvoices_returnsEmptyWhenPageContainsNoIds() {
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(invoiceRepository.findIdsByCompanyOrderByIssueDateDescIdDesc(company, PageRequest.of(0, 1)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        assertThat(invoiceService.listInvoices(0, 0)).isEmpty();
+
+        verifyNoInteractions(packagingSlipRepository);
+        verifyNoInteractions(settlementAllocationRepository);
+    }
+
+    @Test
+    void getInvoiceWithDealerEmail_handlesMissingLinkedReferences() {
+        Long invoiceId = 402L;
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+
+        Dealer dealer = new Dealer();
+        dealer.setName("Dealer 402");
+        dealer.setEmail("dealer402@example.com");
+        company.setName("BigBright 402");
+
+        Invoice invoice = new Invoice();
+        ReflectionTestUtils.setField(invoice, "id", invoiceId);
+        invoice.setCompany(company);
+        invoice.setDealer(dealer);
+        invoice.setInvoiceNumber("INV-402");
+        invoice.setStatus("ISSUED");
+
+        when(invoiceRepository.findByCompanyAndId(company, invoiceId)).thenReturn(Optional.of(invoice));
+        when(settlementAllocationRepository.findByCompanyAndInvoice_IdInOrderByCreatedAtDesc(company, List.of(invoiceId)))
+                .thenReturn(List.of());
+
+        InvoiceService.InvoiceWithEmail result = invoiceService.getInvoiceWithDealerEmail(invoiceId);
+
+        assertThat(result.dealerEmail()).isEqualTo("dealer402@example.com");
+        assertThat(result.companyName()).isEqualTo("BigBright 402");
+        assertThat(result.invoice().linkedReferences()).isEmpty();
+        verifyNoInteractions(packagingSlipRepository);
     }
 }

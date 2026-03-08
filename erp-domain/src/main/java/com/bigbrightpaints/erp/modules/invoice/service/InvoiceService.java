@@ -32,7 +32,10 @@ import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 public class InvoiceService {
@@ -213,7 +216,7 @@ public class InvoiceService {
             return List.of();
         }
         List<Invoice> invoices = invoiceRepository.findByCompanyAndIdInOrderByIssueDateDescIdDesc(company, ids);
-        return invoices.stream().map(this::toDto).toList();
+        return toDtos(company, invoices);
     }
 
     @Transactional
@@ -228,24 +231,20 @@ public class InvoiceService {
             return List.of();
         }
         List<Invoice> invoices = invoiceRepository.findByCompanyAndIdInOrderByIssueDateDescIdDesc(company, ids);
-        return invoices.stream().map(this::toDto).toList();
+        return toDtos(company, invoices);
     }
 
     @Transactional
     public List<InvoiceDto> listInvoices() {
         Company company = companyContextService.requireCurrentCompany();
-        return invoiceRepository.findByCompanyOrderByIssueDateDesc(company).stream()
-                .map(this::toDto)
-                .toList();
+        return toDtos(company, invoiceRepository.findByCompanyOrderByIssueDateDesc(company));
     }
 
     @Transactional
     public List<InvoiceDto> listDealerInvoices(Long dealerId) {
         Company company = companyContextService.requireCurrentCompany();
         Dealer dealer = companyEntityLookup.requireDealer(company, dealerId);
-        return invoiceRepository.findByCompanyAndDealerOrderByIssueDateDesc(company, dealer).stream()
-                .map(this::toDto)
-                .toList();
+        return toDtos(company, invoiceRepository.findByCompanyAndDealerOrderByIssueDateDesc(company, dealer));
     }
 
     @Transactional
@@ -253,7 +252,7 @@ public class InvoiceService {
         Company company = companyContextService.requireCurrentCompany();
         Invoice invoice = invoiceRepository.findByCompanyAndId(company, id)
                 .orElseGet(() -> companyEntityLookup.requireInvoice(company, id));
-        return toDto(invoice);
+        return toDto(invoice, buildLinkedReferenceContext(company, List.of(invoice)));
     }
 
     public record InvoiceWithEmail(InvoiceDto invoice, String dealerEmail, String companyName) {}
@@ -265,10 +264,14 @@ public class InvoiceService {
                 .orElseGet(() -> companyEntityLookup.requireInvoice(company, id));
         String dealerEmail = invoice.getDealer() != null ? invoice.getDealer().getEmail() : null;
         String companyName = invoice.getCompany() != null ? invoice.getCompany().getName() : null;
-        return new InvoiceWithEmail(toDto(invoice), dealerEmail, companyName);
+        return new InvoiceWithEmail(toDto(invoice, buildLinkedReferenceContext(company, List.of(invoice))), dealerEmail, companyName);
     }
 
     private InvoiceDto toDto(Invoice invoice) {
+        return toDto(invoice, buildLinkedReferenceContext(invoice.getCompany(), List.of(invoice)));
+    }
+
+    private InvoiceDto toDto(Invoice invoice, LinkedReferenceContext linkedReferenceContext) {
         List<InvoiceLineDto> lineDtos = invoice.getLines().stream()
                 .map(line -> new InvoiceLineDto(
                         line.getId(),
@@ -289,7 +292,7 @@ public class InvoiceService {
                 invoice.getStatus(),
                 invoice.getJournalEntry()
         );
-        List<LinkedBusinessReferenceDto> linkedReferences = buildLinkedReferences(invoice, lifecycle);
+        List<LinkedBusinessReferenceDto> linkedReferences = buildLinkedReferences(invoice, lifecycle, linkedReferenceContext);
         Dealer dealer = invoice.getDealer();
         return new InvoiceDto(
                 invoice.getId(),
@@ -314,8 +317,19 @@ public class InvoiceService {
         );
     }
 
+    private List<InvoiceDto> toDtos(Company company, List<Invoice> invoices) {
+        if (invoices == null || invoices.isEmpty()) {
+            return List.of();
+        }
+        LinkedReferenceContext linkedReferenceContext = buildLinkedReferenceContext(company, invoices);
+        return invoices.stream()
+                .map(invoice -> toDto(invoice, linkedReferenceContext))
+                .toList();
+    }
+
     private List<LinkedBusinessReferenceDto> buildLinkedReferences(Invoice invoice,
-                                                                   DocumentLifecycleDto lifecycle) {
+                                                                   DocumentLifecycleDto lifecycle,
+                                                                   LinkedReferenceContext linkedReferenceContext) {
         List<LinkedBusinessReferenceDto> linkedReferences = new ArrayList<>();
         SalesOrder salesOrder = invoice.getSalesOrder();
         if (salesOrder != null) {
@@ -327,7 +341,8 @@ public class InvoiceService {
                     BusinessDocumentTruths.salesOrderLifecycle(salesOrder),
                     salesOrder.getSalesJournalEntryId()
             ));
-            for (PackagingSlip slip : findOrderSlips(invoice.getCompany(), salesOrder.getId(), false)) {
+            for (PackagingSlip slip : linkedReferenceContext.packagingSlipsBySalesOrderId()
+                    .getOrDefault(salesOrder.getId(), List.of())) {
                 linkedReferences.add(BusinessDocumentTruths.reference(
                         "DISPATCH",
                         "PACKAGING_SLIP",
@@ -348,8 +363,8 @@ public class InvoiceService {
                     invoice.getJournalEntry().getId()
             ));
         }
-        List<PartnerSettlementAllocation> settlementAllocations = settlementAllocationRepository
-                .findByCompanyAndInvoiceOrderByCreatedAtDesc(invoice.getCompany(), invoice);
+        List<PartnerSettlementAllocation> settlementAllocations = linkedReferenceContext.settlementAllocationsByInvoiceId()
+                .getOrDefault(invoice.getId(), List.of());
         if (settlementAllocations != null) {
             for (PartnerSettlementAllocation allocation : settlementAllocations) {
                 linkedReferences.add(BusinessDocumentTruths.reference(
@@ -366,5 +381,44 @@ public class InvoiceService {
                 .filter(reference -> reference.documentId() != null)
                 .distinct()
                 .toList();
+    }
+
+    private LinkedReferenceContext buildLinkedReferenceContext(Company company, List<Invoice> invoices) {
+        if (company == null || invoices == null || invoices.isEmpty()) {
+            return LinkedReferenceContext.empty();
+        }
+        List<Long> salesOrderIds = invoices.stream()
+                .map(Invoice::getSalesOrder)
+                .filter(Objects::nonNull)
+                .map(SalesOrder::getId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        Map<Long, List<PackagingSlip>> packagingSlipsBySalesOrderId = salesOrderIds.isEmpty()
+                ? Map.of()
+                : packagingSlipRepository.findAllByCompanyAndSalesOrderIdIn(company, salesOrderIds).stream()
+                .filter(slip -> slip.getSalesOrder() != null && slip.getSalesOrder().getId() != null)
+                .collect(Collectors.groupingBy(slip -> slip.getSalesOrder().getId()));
+
+        List<Long> invoiceIds = invoices.stream()
+                .map(Invoice::getId)
+                .filter(Objects::nonNull)
+                .toList();
+        Map<Long, List<PartnerSettlementAllocation>> settlementAllocationsByInvoiceId = invoiceIds.isEmpty()
+                ? Map.of()
+                : settlementAllocationRepository.findByCompanyAndInvoice_IdInOrderByCreatedAtDesc(company, invoiceIds).stream()
+                .filter(allocation -> allocation.getInvoice() != null && allocation.getInvoice().getId() != null)
+                .collect(Collectors.groupingBy(allocation -> allocation.getInvoice().getId()));
+
+        return new LinkedReferenceContext(packagingSlipsBySalesOrderId, settlementAllocationsByInvoiceId);
+    }
+
+    private record LinkedReferenceContext(
+            Map<Long, List<PackagingSlip>> packagingSlipsBySalesOrderId,
+            Map<Long, List<PartnerSettlementAllocation>> settlementAllocationsByInvoiceId
+    ) {
+        private static LinkedReferenceContext empty() {
+            return new LinkedReferenceContext(Map.of(), Map.of());
+        }
     }
 }
