@@ -142,6 +142,9 @@ public abstract class AccountingCoreEngineCore {
     @Autowired(required = false)
     private AccountingComplianceAuditService accountingComplianceAuditService;
 
+    @Autowired(required = false)
+    private ClosedPeriodPostingExceptionService closedPeriodPostingExceptionService;
+
     /**
      * When true, disables date validation for benchmark mode.
      * This allows posting entries with any date regardless of past/future constraints.
@@ -343,6 +346,9 @@ public abstract class AccountingCoreEngineCore {
         String narration = request.narration().trim();
         String sourceModule = request.sourceModule().trim();
         String sourceReference = request.sourceReference().trim();
+        String journalType = "MANUAL".equalsIgnoreCase(sourceModule)
+                ? JournalEntryType.MANUAL.name()
+                : JournalEntryType.AUTOMATED.name();
         JournalEntryRequest journalRequest = new JournalEntryRequest(
                 sourceReference,
                 entryDate,
@@ -355,7 +361,8 @@ public abstract class AccountingCoreEngineCore {
                 null,
                 sourceModule,
                 sourceReference,
-                JournalEntryType.AUTOMATED.name()
+                journalType,
+                request.attachmentReferences()
         );
         return createJournalEntry(journalRequest);
     }
@@ -406,7 +413,11 @@ public abstract class AccountingCoreEngineCore {
         }
 
         LocalDate entryDate = request.entryDate() != null ? request.entryDate() : LocalDate.now();
-        String narration = StringUtils.hasText(request.narration()) ? request.narration().trim() : "Manual journal entry";
+        if (!StringUtils.hasText(request.narration())) {
+            throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
+                    "Manual journal reason is required");
+        }
+        String narration = request.narration().trim();
         String sourceReference = StringUtils.hasText(request.idempotencyKey()) ? request.idempotencyKey().trim() : null;
         JournalEntryRequest journalRequest = new JournalEntryRequest(
                 null,
@@ -420,7 +431,8 @@ public abstract class AccountingCoreEngineCore {
                 null,
                 "MANUAL",
                 sourceReference,
-                JournalEntryType.MANUAL.name()
+                JournalEntryType.MANUAL.name(),
+                request.attachmentReferences()
         );
         return createManualJournalEntry(journalRequest, request.idempotencyKey());
     }
@@ -496,10 +508,23 @@ public abstract class AccountingCoreEngineCore {
         }
         boolean overrideRequested = Boolean.TRUE.equals(request.adminOverride());
         boolean overrideAuthorized = overrideRequested && hasEntryDateOverrideAuthority();
+        boolean manualJournal = entry.getJournalType() == JournalEntryType.MANUAL
+                || "MANUAL".equalsIgnoreCase(entry.getSourceModule());
+        if (manualJournal && !StringUtils.hasText(request.memo())) {
+            throw new ApplicationException(ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
+                    "Manual journal reason is required");
+        }
+        entry.setAttachmentReferences(joinAttachmentReferences(request.attachmentReferences()));
         if (duplicate.isEmpty()) {
             validateEntryDate(company, entryDate, overrideRequested, overrideAuthorized);
             AccountingPeriod postingPeriod = systemSettingsService.isPeriodLockEnforced()
-                    ? accountingPeriodService.requireOpenPeriod(company, entryDate)
+                    ? accountingPeriodService.requirePostablePeriod(
+                            company,
+                            entryDate,
+                            resolvePostingDocumentType(entry),
+                            resolvePostingDocumentReference(entry),
+                            request.memo(),
+                            overrideRequested)
                     : accountingPeriodService.ensurePeriod(company, entryDate);
             if (postingPeriod == null) {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Accounting period is required for journal posting");
@@ -845,6 +870,14 @@ public abstract class AccountingCoreEngineCore {
         if (accountingComplianceAuditService != null) {
             accountingComplianceAuditService.recordJournalCreation(company, saved);
         }
+        if (closedPeriodPostingExceptionService != null && saved.getAccountingPeriod() != null
+                && saved.getAccountingPeriod().getStatus() != AccountingPeriodStatus.OPEN) {
+            closedPeriodPostingExceptionService.linkJournalEntry(
+                    company,
+                    resolvePostingDocumentType(saved),
+                    resolvePostingDocumentReference(saved),
+                    saved);
+        }
         return toDto(saved);
         } catch (Exception e) {
             if (e.getMessage() != null) {
@@ -911,7 +944,13 @@ public abstract class AccountingCoreEngineCore {
 
         // PERIOD LOCK CHECK: Strictly enforce period status
         AccountingPeriod postingPeriod = systemSettingsService.isPeriodLockEnforced()
-                ? accountingPeriodService.requireOpenPeriod(company, reversalDate)
+                ? accountingPeriodService.requirePostablePeriod(
+                        company,
+                        reversalDate,
+                        "JOURNAL_REVERSAL",
+                        entry.getReferenceNumber(),
+                        request != null ? request.reason() : null,
+                        overrideRequested || allowClosedPeriodOverride)
                 : accountingPeriodService.ensurePeriod(company, reversalDate);
         AccountingPeriod originalPeriod = entry.getAccountingPeriod();
         if (originalPeriod != null) {
@@ -2074,6 +2113,10 @@ public abstract class AccountingCoreEngineCore {
         String memo = StringUtils.hasText(request.memo())
                 ? request.memo().trim()
                 : "Settlement for dealer " + dealer.getName();
+        boolean settlementOverrideRequested = settlementOverrideRequested(totals);
+        if (settlementOverrideRequested) {
+            requireAdminExceptionReason("Settlement override", request.adminOverride(), request.memo());
+        }
         String reference = resolveDealerSettlementReference(company, dealer, request, trimmedIdempotencyKey);
         IdempotencyReservation reservation = reserveReferenceMapping(company, trimmedIdempotencyKey, reference, ENTITY_TYPE_DEALER_SETTLEMENT);
         if (reservation.leader()
@@ -2210,7 +2253,13 @@ public abstract class AccountingCoreEngineCore {
                 dealer.getId(),
                 null,
                 request.adminOverride(),
-                lineDraft.lines()
+                lineDraft.lines(),
+                null,
+                null,
+                ENTITY_TYPE_DEALER_SETTLEMENT,
+                reference,
+                null,
+                List.of()
         ));
 
         JournalEntry journalEntry = companyEntityLookup.requireJournalEntry(company, journalEntryDto.id());
@@ -2252,7 +2301,10 @@ public abstract class AccountingCoreEngineCore {
                 totalDiscount,
                 totalWriteOff,
                 totalFxGain,
-                totalFxLoss);
+                totalFxLoss,
+                settlementOverrideRequested,
+                settlementOverrideRequested ? memo : null,
+                settlementOverrideRequested ? resolveCurrentUsername() : null);
 
         return new PartnerSettlementResponse(
                 journalEntryDto,
@@ -2291,6 +2343,10 @@ public abstract class AccountingCoreEngineCore {
         String memo = StringUtils.hasText(request.memo())
                 ? request.memo().trim()
                 : "Settlement to supplier " + supplier.getName();
+        boolean settlementOverrideRequested = settlementOverrideRequested(totals);
+        if (settlementOverrideRequested) {
+            requireAdminExceptionReason("Settlement override", request.adminOverride(), request.memo());
+        }
         String reference = resolveSupplierSettlementReference(company, supplier, request, trimmedIdempotencyKey);
         IdempotencyReservation reservation = reserveReferenceMapping(company, trimmedIdempotencyKey, reference, ENTITY_TYPE_SUPPLIER_SETTLEMENT);
 
@@ -2420,7 +2476,13 @@ public abstract class AccountingCoreEngineCore {
                 null,
                 supplier.getId(),
                 request.adminOverride(),
-                lineDraft.lines()
+                lineDraft.lines(),
+                null,
+                null,
+                ENTITY_TYPE_SUPPLIER_SETTLEMENT,
+                reference,
+                null,
+                List.of()
         ));
 
         JournalEntry journalEntry = companyEntityLookup.requireJournalEntry(company, journalEntryDto.id());
@@ -2461,8 +2523,10 @@ public abstract class AccountingCoreEngineCore {
                 totalDiscount,
                 totalWriteOff,
                 totalFxGain,
-                totalFxLoss);
-
+                totalFxLoss,
+                settlementOverrideRequested,
+                settlementOverrideRequested ? memo : null,
+                settlementOverrideRequested ? resolveCurrentUsername() : null);
         return new PartnerSettlementResponse(
                 journalEntryDto,
                 totalApplied,
@@ -4101,7 +4165,10 @@ public abstract class AccountingCoreEngineCore {
                                            BigDecimal totalDiscount,
                                            BigDecimal totalWriteOff,
                                            BigDecimal totalFxGain,
-                                           BigDecimal totalFxLoss) {
+                                           BigDecimal totalFxLoss,
+                                           boolean settlementOverrideRequested,
+                                           String settlementOverrideReason,
+                                           String settlementOverrideActor) {
         Map<String, String> auditMetadata = new HashMap<>();
         auditMetadata.put(IntegrationFailureMetadataSchema.KEY_PARTNER_TYPE, partnerType.name());
         if (partnerId != null) {
@@ -4123,6 +4190,13 @@ public abstract class AccountingCoreEngineCore {
         auditMetadata.put("totalWriteOff", totalWriteOff.toPlainString());
         auditMetadata.put("totalFxGain", totalFxGain.toPlainString());
         auditMetadata.put("totalFxLoss", totalFxLoss.toPlainString());
+        auditMetadata.put("settlementOverrideRequested", Boolean.toString(settlementOverrideRequested));
+        if (StringUtils.hasText(settlementOverrideReason)) {
+            auditMetadata.put("settlementOverrideReason", settlementOverrideReason.trim());
+        }
+        if (StringUtils.hasText(settlementOverrideActor)) {
+            auditMetadata.put("settlementOverrideActor", settlementOverrideActor.trim());
+        }
         logAuditSuccessAfterCommit(AuditEvent.SETTLEMENT_RECORDED, auditMetadata);
     }
 
@@ -4187,15 +4261,15 @@ public abstract class AccountingCoreEngineCore {
         boolean tooOld = entryDate.isBefore(oldestAllowed);
         if ((!overrideAuthorized) && (future || tooOld)) {
             if (overrideRequested && !overrideAuthorized) {
-                String reason = future ? "future period" : "a closed period";
+                String reason = future ? "the future" : "entries older than 30 days";
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT,
-                        "Administrator approval is required to post into " + reason);
+                        "Administrator approval with a mandatory reason is required to post into " + reason);
             }
             if (future) {
                 throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, "Entry date cannot be in the future");
             }
             throw new ApplicationException(ErrorCode.VALIDATION_INVALID_INPUT, 
-                    "Entry date cannot be more than 30 days old; posting to locked/closed periods requires admin override");
+                    "Entry date cannot be more than 30 days old without an explicit admin exception");
         }
     }
 
@@ -4225,11 +4299,44 @@ public abstract class AccountingCoreEngineCore {
             return false;
         }
         for (GrantedAuthority authority : authentication.getAuthorities()) {
-            if ("ROLE_ADMIN".equals(authority.getAuthority())) {
+            if ("ROLE_ADMIN".equals(authority.getAuthority())
+                    || "ROLE_SUPER_ADMIN".equals(authority.getAuthority())) {
                 return true;
             }
         }
         return false;
+    }
+
+    private String joinAttachmentReferences(List<String> attachmentReferences) {
+        if (attachmentReferences == null || attachmentReferences.isEmpty()) {
+            return null;
+        }
+        List<String> normalized = attachmentReferences.stream()
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .distinct()
+                .toList();
+        return normalized.isEmpty() ? null : String.join("\n", normalized);
+    }
+
+    private String resolvePostingDocumentType(JournalEntry entry) {
+        if (entry == null || !StringUtils.hasText(entry.getSourceModule())) {
+            return "JOURNAL_ENTRY";
+        }
+        return entry.getSourceModule().trim().toUpperCase(Locale.ROOT);
+    }
+
+    private String resolvePostingDocumentReference(JournalEntry entry) {
+        if (entry == null) {
+            return null;
+        }
+        if (StringUtils.hasText(entry.getSourceReference())) {
+            return entry.getSourceReference().trim();
+        }
+        if (StringUtils.hasText(entry.getReferenceNumber())) {
+            return entry.getReferenceNumber().trim();
+        }
+        return null;
     }
 
     private LocalDate currentDate(Company company) {
@@ -4697,6 +4804,38 @@ public abstract class AccountingCoreEngineCore {
                     "Supplier " + (supplier != null ? supplier.getName() : "unknown") + " is missing a payable account");
         }
         return supplier.getPayableAccount();
+    }
+
+    private boolean settlementOverrideRequested(SettlementTotals totals) {
+        if (totals == null) {
+            return false;
+        }
+        return totals.totalDiscount().compareTo(BigDecimal.ZERO) > 0
+                || totals.totalWriteOff().compareTo(BigDecimal.ZERO) > 0
+                || totals.totalFxGain().compareTo(BigDecimal.ZERO) > 0
+                || totals.totalFxLoss().compareTo(BigDecimal.ZERO) > 0;
+    }
+
+    private String requireAdminExceptionReason(String operation,
+                                               Boolean adminOverride,
+                                               String reason) {
+        if (!Boolean.TRUE.equals(adminOverride)) {
+            throw new ApplicationException(
+                    ErrorCode.AUTH_INSUFFICIENT_PERMISSIONS,
+                    operation + " requires an explicit admin override for this document");
+        }
+        if (!hasEntryDateOverrideAuthority()) {
+            throw new ApplicationException(
+                    ErrorCode.AUTH_INSUFFICIENT_PERMISSIONS,
+                    operation + " is admin-only");
+        }
+        if (StringUtils.hasText(reason)) {
+            return reason.trim();
+        }
+        throw new ApplicationException(
+                ErrorCode.VALIDATION_MISSING_REQUIRED_FIELD,
+                operation + " reason is required")
+                .withDetail("field", "memo");
     }
 
     private boolean isReceivableAccount(Account account) {
@@ -5384,6 +5523,7 @@ public abstract class AccountingCoreEngineCore {
         Account expense = requireAccount(company, request.expenseAccountId());
         LocalDate entryDate = request.entryDate() != null ? request.entryDate() : currentDate(company);
         String memo = StringUtils.hasText(request.memo()) ? request.memo().trim() : "Bad debt write-off for invoice " + invoice.getInvoiceNumber();
+        requireAdminExceptionReason("Bad debt write-off", request.adminOverride(), request.memo());
         BigDecimal outstanding = MoneyUtils.zeroIfNull(invoice.getOutstandingAmount());
         BigDecimal amount = request.amount() != null ? request.amount() : outstanding;
         amount = ValidationUtils.requirePositive(amount, "amount");
@@ -5404,7 +5544,13 @@ public abstract class AccountingCoreEngineCore {
                 List.of(
                         new JournalEntryRequest.JournalLineRequest(expense.getId(), memo, amount, BigDecimal.ZERO),
                         new JournalEntryRequest.JournalLineRequest(ar.getId(), memo, BigDecimal.ZERO, amount)
-                )
+                ),
+                null,
+                null,
+                "BAD_DEBT_WRITE_OFF",
+                reference,
+                null,
+                List.of()
         ));
         JournalEntry saved = companyEntityLookup.requireJournalEntry(company, je.id());
         BigDecimal postedAmount = calculateEntryTotal(saved);

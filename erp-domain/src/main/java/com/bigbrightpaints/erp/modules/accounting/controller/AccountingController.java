@@ -542,7 +542,11 @@ public class AccountingController {
                 request.adminOverride(),
                 request.lines(),
                 request.currency(),
-                request.fxRate()
+                request.fxRate(),
+                null,
+                null,
+                null,
+                request.attachmentReferences()
         );
         return ResponseEntity.ok(ApiResponse.success("Journal entry posted",
                 accountingService.createManualJournalEntry(sanitized, idempotencyKey)));
@@ -937,7 +941,7 @@ public class AccountingController {
     }
 
     @PostMapping("/periods/{periodId}/approve-close")
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<ApiResponse<AccountingPeriodDto>> approvePeriodClose(@PathVariable Long periodId,
                                                                                 @RequestBody(required = false) PeriodCloseRequestActionRequest request) {
         return ResponseEntity.ok(ApiResponse.success(
@@ -946,7 +950,7 @@ public class AccountingController {
     }
 
     @PostMapping("/periods/{periodId}/reject-close")
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<ApiResponse<PeriodCloseRequestDto>> rejectPeriodClose(@PathVariable Long periodId,
                                                                                  @RequestBody(required = false) PeriodCloseRequestActionRequest request) {
         return ResponseEntity.ok(ApiResponse.success(

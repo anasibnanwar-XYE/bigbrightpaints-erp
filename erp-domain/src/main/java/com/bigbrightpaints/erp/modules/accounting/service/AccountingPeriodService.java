@@ -169,6 +169,20 @@ public class AccountingPeriodService extends AccountingPeriodServiceCore {
     }
 
     @Override
+    public AccountingPeriodDto approvePeriodClose(Long periodId,
+                                                  com.bigbrightpaints.erp.modules.accounting.dto.PeriodCloseRequestActionRequest request) {
+        requireAdminRole();
+        return super.approvePeriodClose(periodId, request);
+    }
+
+    @Override
+    public com.bigbrightpaints.erp.modules.accounting.dto.PeriodCloseRequestDto rejectPeriodClose(Long periodId,
+                                                                                                   com.bigbrightpaints.erp.modules.accounting.dto.PeriodCloseRequestActionRequest request) {
+        requireAdminRole();
+        return super.rejectPeriodClose(periodId, request);
+    }
+
+    @Override
     public AccountingPeriodDto closePeriod(Long periodId, AccountingPeriodCloseRequest request) {
         throw ValidationUtils.invalidState(
                 "Direct close is disabled; submit /request-close and approve via maker-checker workflow");
@@ -183,6 +197,21 @@ public class AccountingPeriodService extends AccountingPeriodServiceCore {
                 .anyMatch(authority -> "ROLE_SUPER_ADMIN".equalsIgnoreCase(authority.getAuthority()));
         if (!hasSuperAdmin) {
             throw new ApplicationException(ErrorCode.AUTH_INSUFFICIENT_PERMISSIONS, SUPER_ADMIN_REQUIRED_MESSAGE);
+        }
+    }
+
+    private void requireAdminRole() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !authentication.isAuthenticated()) {
+            throw new ApplicationException(ErrorCode.AUTH_INSUFFICIENT_PERMISSIONS,
+                    "ROLE_ADMIN authority required to approve or reject period close requests");
+        }
+        boolean hasAdmin = authentication.getAuthorities().stream()
+                .anyMatch(authority -> "ROLE_ADMIN".equalsIgnoreCase(authority.getAuthority())
+                        || "ROLE_SUPER_ADMIN".equalsIgnoreCase(authority.getAuthority()));
+        if (!hasAdmin) {
+            throw new ApplicationException(ErrorCode.AUTH_INSUFFICIENT_PERMISSIONS,
+                    "ROLE_ADMIN authority required to approve or reject period close requests");
         }
     }
 }

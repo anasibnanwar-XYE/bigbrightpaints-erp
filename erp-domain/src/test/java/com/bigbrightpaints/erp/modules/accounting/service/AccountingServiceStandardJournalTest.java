@@ -284,6 +284,24 @@ class AccountingServiceStandardJournalTest {
     }
 
     @Test
+    void createManualJournal_requiresReason() {
+        ManualJournalRequest request = new ManualJournalRequest(
+                LocalDate.of(2026, 2, 28),
+                "   ",
+                "manual-no-reason",
+                false,
+                List.of(
+                        new ManualJournalRequest.LineRequest(11L, new BigDecimal("100.00"), "Debit line", ManualJournalRequest.EntryType.DEBIT),
+                        new ManualJournalRequest.LineRequest(22L, new BigDecimal("100.00"), "Credit line", ManualJournalRequest.EntryType.CREDIT)
+                )
+        );
+
+        assertThatThrownBy(() -> accountingService.createManualJournal(request))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Manual journal reason is required");
+    }
+
+    @Test
     void createManualJournal_balancedMultiLineDelegatesToFacade() {
         JournalEntryDto expected = new JournalEntryDto(
                 301L,
