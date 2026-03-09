@@ -43,6 +43,7 @@ import org.springframework.http.*;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -386,10 +387,10 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
         // Create and get order
         Long orderId = createOrder(dealer, fg, new BigDecimal("5"), new BigDecimal("1000.00"));
 
-        Map<String, Object> dispatchReq = Map.of(
-                "orderId", orderId,
-                "confirmedBy", "e2e"
-        );
+        Map<String, Object> dispatchReq = new HashMap<>();
+        dispatchReq.put("orderId", orderId);
+        dispatchReq.put("confirmedBy", "e2e");
+        addDispatchMetadata(dispatchReq, "dispatch-create-" + orderId);
 
         ResponseEntity<Map> response = rest.exchange("/api/v1/sales/dispatch/confirm",
                 HttpMethod.POST, new HttpEntity<>(dispatchReq, headers), Map.class);
@@ -409,10 +410,10 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
 
         Long orderId = createOrder(dealer, fg, new BigDecimal("5"), new BigDecimal("1000.00"));
 
-        Map<String, Object> dispatchReq = Map.of(
-                "orderId", orderId,
-                "confirmedBy", "e2e"
-        );
+        Map<String, Object> dispatchReq = new HashMap<>();
+        dispatchReq.put("orderId", orderId);
+        dispatchReq.put("confirmedBy", "e2e");
+        addDispatchMetadata(dispatchReq, "dispatch-idempotent-" + orderId);
 
         ResponseEntity<Map> first = rest.exchange("/api/v1/sales/dispatch/confirm",
                 HttpMethod.POST, new HttpEntity<>(dispatchReq, headers), Map.class);
@@ -516,6 +517,7 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
         dispatchReq.put("lines", lines);
         dispatchReq.put("notes", "factory confirm");
         dispatchReq.put("confirmedBy", "e2e");
+        addDispatchMetadata(dispatchReq, "dispatch-equivalent-factory-" + slip.getId());
 
         ResponseEntity<Map> factoryResponse = rest.exchange("/api/v1/dispatch/confirm",
                 HttpMethod.POST, new HttpEntity<>(dispatchReq, headers), Map.class);
@@ -536,10 +538,10 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
                         "DISPATCH")
                 .size();
 
-        Map<String, Object> salesDispatchReq = Map.of(
-                "orderId", orderId,
-                "confirmedBy", "e2e"
-        );
+        Map<String, Object> salesDispatchReq = new HashMap<>();
+        salesDispatchReq.put("orderId", orderId);
+        salesDispatchReq.put("confirmedBy", "e2e");
+        addDispatchMetadata(salesDispatchReq, "dispatch-equivalent-sales-" + orderId);
         ResponseEntity<Map> salesResponse = rest.exchange("/api/v1/sales/dispatch/confirm",
                 HttpMethod.POST, new HttpEntity<>(salesDispatchReq, headers), Map.class);
         assertThat(salesResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -572,10 +574,10 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
 
         Long orderId = createOrder(dealer, fg, new BigDecimal("3"), new BigDecimal("1000.00"));
 
-        Map<String, Object> dispatchReq = Map.of(
-                "orderId", orderId,
-                "confirmedBy", "e2e"
-        );
+        Map<String, Object> dispatchReq = new HashMap<>();
+        dispatchReq.put("orderId", orderId);
+        dispatchReq.put("confirmedBy", "e2e");
+        addDispatchMetadata(dispatchReq, "dispatch-cogs-" + orderId);
         ResponseEntity<Map> response = rest.exchange("/api/v1/sales/dispatch/confirm",
                 HttpMethod.POST, new HttpEntity<>(dispatchReq, headers), Map.class);
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -636,6 +638,7 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
                 "lineId", line.getId(),
                 "shipQty", shippedQty
         )));
+        addDispatchMetadata(dispatchReq, "dispatch-partial-" + orderId);
 
         ResponseEntity<Map> response = rest.exchange("/api/v1/sales/dispatch/confirm",
                 HttpMethod.POST, new HttpEntity<>(dispatchReq, headers), Map.class);
@@ -666,6 +669,7 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
                 "lineId", backorderLine.getId(),
                 "shipQty", backorderQty
         )));
+        addDispatchMetadata(backorderDispatchReq, "dispatch-backorder-" + backorderSlip.getId());
 
         ResponseEntity<Map> backorderDispatchResp = rest.exchange("/api/v1/sales/dispatch/confirm",
                 HttpMethod.POST, new HttpEntity<>(backorderDispatchReq, headers), Map.class);
@@ -751,10 +755,10 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
 
         BigDecimal beforeOutput = gstOutputTax();
 
-        Map<String, Object> dispatchReq = Map.of(
-                "orderId", orderId,
-                "confirmedBy", "e2e"
-        );
+        Map<String, Object> dispatchReq = new HashMap<>();
+        dispatchReq.put("orderId", orderId);
+        dispatchReq.put("confirmedBy", "e2e");
+        addDispatchMetadata(dispatchReq, "dispatch-gst-" + orderId);
 
         ResponseEntity<Map> dispatchResp = rest.exchange("/api/v1/sales/dispatch/confirm",
                 HttpMethod.POST, new HttpEntity<>(dispatchReq, headers), Map.class);
@@ -815,10 +819,10 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
 
         BigDecimal beforeOutput = gstOutputTax();
 
-        Map<String, Object> dispatchReq = Map.of(
-                "orderId", orderId,
-                "confirmedBy", "e2e"
-        );
+        Map<String, Object> dispatchReq = new HashMap<>();
+        dispatchReq.put("orderId", orderId);
+        dispatchReq.put("confirmedBy", "e2e");
+        addDispatchMetadata(dispatchReq, "dispatch-gst-mix-" + orderId);
 
         ResponseEntity<Map> dispatchResp = rest.exchange("/api/v1/sales/dispatch/confirm",
                 HttpMethod.POST, new HttpEntity<>(dispatchReq, headers), Map.class);
@@ -1061,6 +1065,13 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
         } finally {
             com.bigbrightpaints.erp.core.security.CompanyContextHolder.clear();
         }
+    }
+
+    private void addDispatchMetadata(Map<String, Object> request, String referenceSeed) {
+        request.put("transporterName", "BB Logistics");
+        request.put("driverName", "Driver " + referenceSeed);
+        request.put("vehicleNumber", "MH12" + Math.abs(referenceSeed.hashCode()));
+        request.put("challanReference", "CH-" + referenceSeed);
     }
 
     private Map<?, ?> requireData(ResponseEntity<Map> response, String action) {

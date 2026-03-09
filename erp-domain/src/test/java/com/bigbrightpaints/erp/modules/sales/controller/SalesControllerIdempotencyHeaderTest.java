@@ -1,6 +1,8 @@
 package com.bigbrightpaints.erp.modules.sales.controller;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
+import com.bigbrightpaints.erp.modules.sales.dto.DispatchConfirmRequest;
+import com.bigbrightpaints.erp.modules.sales.dto.DispatchConfirmResponse;
 import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderItemRequest;
 import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderRequest;
 import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderStatusHistoryDto;
@@ -196,6 +198,68 @@ class SalesControllerIdempotencyHeaderTest {
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().data()).hasSize(1);
         verify(salesOrderLifecycleService).orderTimeline(99L);
+    }
+
+    @Test
+    void confirmDispatch_validatesMetadataBeforeDelegating() {
+        SalesController controller = new SalesController(
+                salesService,
+                salesOrderCrudService,
+                salesOrderLifecycleService,
+                salesDealerCrudService,
+                salesDispatchReconciliationService,
+                salesDashboardService,
+                dealerService);
+        DispatchConfirmRequest request = new DispatchConfirmRequest(
+                11L,
+                22L,
+                List.of(),
+                "notes",
+                "tester",
+                Boolean.FALSE,
+                null,
+                null,
+                "Carrier",
+                null,
+                "MH12AB1234",
+                "CH-22"
+        );
+        DispatchConfirmResponse response = new DispatchConfirmResponse(11L, 22L, 33L, 44L, List.of(), true, List.of(), null);
+        when(salesDispatchReconciliationService.confirmDispatch(request)).thenReturn(response);
+
+        var result = controller.confirmDispatch(request);
+
+        assertThat(result.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(result.getBody()).isNotNull();
+        assertThat(result.getBody().data().finalInvoiceId()).isEqualTo(33L);
+        verify(salesDispatchReconciliationService).confirmDispatch(request);
+    }
+
+    @Test
+    void confirmDispatch_rejectsMissingLogisticsMetadata() {
+        SalesController controller = new SalesController(
+                salesService,
+                salesOrderCrudService,
+                salesOrderLifecycleService,
+                salesDealerCrudService,
+                salesDispatchReconciliationService,
+                salesDashboardService,
+                dealerService);
+        DispatchConfirmRequest request = new DispatchConfirmRequest(
+                11L,
+                22L,
+                List.of(),
+                "notes",
+                "tester",
+                Boolean.FALSE,
+                null,
+                null
+        );
+
+        assertThatThrownBy(() -> controller.confirmDispatch(request))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("transporterName or driverName");
+        verifyNoInteractions(salesDispatchReconciliationService);
     }
 
     private SalesOrderRequest requestWithoutIdempotencyKey() {

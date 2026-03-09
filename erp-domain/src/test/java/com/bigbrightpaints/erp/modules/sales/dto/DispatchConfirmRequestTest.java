@@ -25,4 +25,27 @@ class DispatchConfirmRequestTest {
         assertThat(request.vehicleNumber()).isNull();
         assertThat(request.challanReference()).isNull();
     }
+
+    @Test
+    void canonicalConstructor_keepsExplicitLogisticsFields() {
+        DispatchConfirmRequest request = new DispatchConfirmRequest(
+                10L,
+                100L,
+                List.of(new DispatchConfirmRequest.DispatchLine(1L, 2L, BigDecimal.ONE, null, null, null, null, null)),
+                "notes",
+                "admin",
+                Boolean.FALSE,
+                null,
+                50L,
+                "Carrier",
+                "Driver",
+                "MH12AB1234",
+                "CH-100"
+        );
+
+        assertThat(request.transporterName()).isEqualTo("Carrier");
+        assertThat(request.driverName()).isEqualTo("Driver");
+        assertThat(request.vehicleNumber()).isEqualTo("MH12AB1234");
+        assertThat(request.challanReference()).isEqualTo("CH-100");
+    }
 }
