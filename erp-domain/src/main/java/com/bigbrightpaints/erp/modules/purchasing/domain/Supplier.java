@@ -133,18 +133,13 @@ public class Supplier extends VersionedEntity {
         return status;
     }
 
-    public boolean isTransactionalUsageAllowed() {
-        return getResolvedStatus() == SupplierStatus.ACTIVE;
-    }
+    public boolean isTransactionalUsageAllowed() { return getResolvedStatus() == SupplierStatus.ACTIVE; }
 
-    public void requireTransactionalUsage(String action) {
-        SupplierStatus resolvedStatus = getResolvedStatus();
+    public void requireTransactionalUsage(String action) { SupplierStatus resolvedStatus = getResolvedStatus();
         if (resolvedStatus == SupplierStatus.ACTIVE) {
             return;
         }
-        throw new ApplicationException(
-                ErrorCode.BUSINESS_INVALID_STATE,
-                transactionalBlockReason(resolvedStatus, action))
+        throw new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE, transactionalBlockReason(resolvedStatus, action))
                 .withDetail("supplierId", id)
                 .withDetail("supplierCode", code)
                 .withDetail("supplierStatus", resolvedStatus.name())
@@ -288,21 +283,14 @@ public class Supplier extends VersionedEntity {
         return createdAt;
     }
 
-    private SupplierStatus getResolvedStatus() {
-        return status == null ? SupplierStatus.PENDING : status;
-    }
+    private SupplierStatus getResolvedStatus() { return status == null ? SupplierStatus.PENDING : status; }
 
-    private String transactionalBlockReason(SupplierStatus resolvedStatus, String action) {
-        String supplierName = org.springframework.util.StringUtils.hasText(name) ? name : "Supplier";
+    private String transactionalBlockReason(SupplierStatus resolvedStatus, String action) { String supplierName = org.springframework.util.StringUtils.hasText(name) ? name : "Supplier";
         String normalizedAction = org.springframework.util.StringUtils.hasText(action)
                 ? action.trim()
                 : "continue this purchasing flow";
-        if (resolvedStatus == SupplierStatus.PENDING) {
-            return supplierName + " is pending approval and remains visible for reference only; approve and activate it before you can " + normalizedAction;
-        }
-        if (resolvedStatus == SupplierStatus.APPROVED) {
-            return supplierName + " is approved but not yet active and remains visible for reference only; activate it before you can " + normalizedAction;
-        }
+        if (resolvedStatus == SupplierStatus.PENDING) { return supplierName + " is pending approval and remains visible for reference only; approve and activate it before you can " + normalizedAction; }
+        if (resolvedStatus == SupplierStatus.APPROVED) { return supplierName + " is approved but not yet active and remains visible for reference only; activate it before you can " + normalizedAction; }
         return supplierName + " is suspended and remains visible for reference only; resolve the suspension and reactivate it before you can " + normalizedAction;
     }
 }

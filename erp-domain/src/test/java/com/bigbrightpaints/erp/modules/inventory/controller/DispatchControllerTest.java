@@ -789,6 +789,46 @@ class DispatchControllerTest {
     }
 
     @Test
+    void factoryViews_handleNullPackagingSlipLines() {
+        DispatchController controller = new DispatchController(
+                finishedGoodsService,
+                salesDispatchReconciliationService,
+                deliveryChallanPdfService);
+        setAuthentication("ROLE_FACTORY");
+
+        PackagingSlipDto slip = new PackagingSlipDto(
+                15L,
+                UUID.randomUUID(),
+                75L,
+                "SO-75",
+                "Dealer",
+                "PS-15",
+                "READY",
+                Instant.now(),
+                null,
+                null,
+                null,
+                null,
+                151L,
+                252L,
+                null,
+                "FastMove Logistics",
+                null,
+                "MH12AB1234",
+                "LR-1500",
+                "DC-PS-15",
+                "/api/v1/dispatch/slip/15/challan/pdf"
+        );
+        when(finishedGoodsService.getPackagingSlip(15L)).thenReturn(slip);
+
+        PackagingSlipDto response = controller.getPackagingSlip(15L).getBody().data();
+
+        assertThat(response.lines()).isEmpty();
+        assertThat(response.journalEntryId()).isNull();
+        assertThat(response.cogsJournalEntryId()).isNull();
+    }
+
+    @Test
     void getPendingSlips_filtersDispatchedAndRedactsFactoryView() {
         DispatchController controller = new DispatchController(
                 finishedGoodsService,

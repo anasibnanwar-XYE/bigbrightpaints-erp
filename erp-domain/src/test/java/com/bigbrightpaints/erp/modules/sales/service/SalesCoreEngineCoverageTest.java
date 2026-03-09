@@ -222,6 +222,7 @@ class SalesCoreEngineCoverageTest {
         Company company = new Company();
         SalesOrder order = new SalesOrder();
         ReflectionTestUtils.setField(order, "id", 42L);
+        SalesOrder orderWithoutId = new SalesOrder();
         SalesProformaBoundaryService.CommercialAssessment reservedAssessment =
                 new SalesProformaBoundaryService.CommercialAssessment("RESERVED", List.of());
 
@@ -230,7 +231,31 @@ class SalesCoreEngineCoverageTest {
 
         assertThat(method.invoke(engine, company, order, reservedAssessment)).isEqualTo(reservedAssessment);
         assertThat(method.invoke(engine, company, null, reservedAssessment)).isEqualTo(reservedAssessment);
+        assertThat(method.invoke(engine, company, orderWithoutId, reservedAssessment)).isEqualTo(reservedAssessment);
         assertThat(method.invoke(engine, company, order, null)).isNull();
+    }
+
+    @Test
+    void syncFactoryDispatchReadiness_returnsExistingAssessmentWhenReservationResponseIsIncomplete() throws Exception {
+        Method method = SalesCoreEngine.class.getDeclaredMethod(
+                "syncFactoryDispatchReadiness",
+                Company.class,
+                SalesOrder.class,
+                SalesProformaBoundaryService.CommercialAssessment.class);
+        method.setAccessible(true);
+
+        Company company = new Company();
+        SalesOrder order = new SalesOrder();
+        ReflectionTestUtils.setField(order, "id", 43L);
+        SalesProformaBoundaryService.CommercialAssessment reservedAssessment =
+                new SalesProformaBoundaryService.CommercialAssessment("RESERVED", List.of());
+
+        when(finishedGoodsService.reserveForOrder(order))
+                .thenReturn(null)
+                .thenReturn(new FinishedGoodsService.InventoryReservationResult(null, null));
+
+        assertThat(method.invoke(engine, company, order, reservedAssessment)).isEqualTo(reservedAssessment);
+        assertThat(method.invoke(engine, company, order, reservedAssessment)).isEqualTo(reservedAssessment);
     }
 
     @Test
