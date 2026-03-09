@@ -9,6 +9,7 @@ import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
 import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
 import org.springframework.stereotype.Service;
+import org.springframework.web.util.HtmlUtils;
 import org.thymeleaf.TemplateEngine;
 import org.thymeleaf.context.Context;
 
@@ -61,19 +62,19 @@ public class DeliveryChallanPdfService {
                 .toList();
 
         DeliveryChallanView view = new DeliveryChallanView(
-                sanitize(company.getName()),
-                sanitize(company.getCode()),
-                sanitize(DispatchArtifactPaths.deliveryChallanNumber(slip.getSlipNumber())),
-                sanitize(slip.getSlipNumber()),
-                sanitize(order != null ? order.getOrderNumber() : null),
+                normalizeTemplateText(company.getName()),
+                normalizeTemplateText(company.getCode()),
+                normalizeTemplateText(DispatchArtifactPaths.deliveryChallanNumber(slip.getSlipNumber())),
+                normalizeTemplateText(slip.getSlipNumber()),
+                normalizeTemplateText(order != null ? order.getOrderNumber() : null),
                 dispatchDate,
-                sanitize(dealer != null ? dealer.getName() : null),
-                sanitize(dealer != null ? dealer.getAddress() : null),
-                sanitize(dealer != null ? dealer.getPhone() : null),
-                sanitize(slip.getTransporterName()),
-                sanitize(slip.getDriverName()),
-                sanitize(slip.getVehicleNumber()),
-                sanitize(slip.getChallanReference()),
+                normalizeTemplateText(dealer != null ? dealer.getName() : null),
+                normalizeTemplateText(dealer != null ? dealer.getAddress() : null),
+                normalizeTemplateText(dealer != null ? dealer.getPhone() : null),
+                normalizeTemplateText(slip.getTransporterName()),
+                normalizeTemplateText(slip.getDriverName()),
+                normalizeTemplateText(slip.getVehicleNumber()),
+                normalizeTemplateText(slip.getChallanReference()),
                 lines
         );
 
@@ -96,11 +97,11 @@ public class DeliveryChallanPdfService {
             shipped = line.getQuantity();
         }
         return new DeliveryChallanLineView(
-                sanitize(line.getFinishedGoodBatch().getFinishedGood().getProductCode()),
-                sanitize(line.getFinishedGoodBatch().getFinishedGood().getName()),
-                sanitize(line.getFinishedGoodBatch().getBatchCode()),
+                normalizeTemplateText(line.getFinishedGoodBatch().getFinishedGood().getProductCode()),
+                normalizeTemplateText(line.getFinishedGoodBatch().getFinishedGood().getName()),
+                normalizeTemplateText(line.getFinishedGoodBatch().getBatchCode()),
                 shipped != null ? shipped : BigDecimal.ZERO,
-                sanitize(line.getNotes())
+                normalizeTemplateText(line.getNotes())
         );
     }
 
@@ -118,11 +119,11 @@ public class DeliveryChallanPdfService {
         }
     }
 
-    private String sanitize(String value) {
+    private String normalizeTemplateText(String value) {
         if (value == null || value.isBlank()) {
             return "";
         }
-        return value;
+        return HtmlUtils.htmlUnescape(value);
     }
 
     private boolean isEligibleForDeliveryChallan(PackagingSlip slip) {

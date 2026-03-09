@@ -9,11 +9,14 @@ import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipLine;
 import com.bigbrightpaints.erp.modules.inventory.domain.PackagingSlipRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
+import java.io.ByteArrayInputStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.text.PDFTextStripper;
 import org.thymeleaf.TemplateEngine;
 import org.thymeleaf.spring6.SpringTemplateEngine;
 import org.thymeleaf.templateresolver.ClassLoaderTemplateResolver;
@@ -157,6 +160,30 @@ class DeliveryChallanPdfServiceTest {
     }
 
     @Test
+    void renderDeliveryChallanPdf_unescapesStoredEntitiesBeforeTemplateEscaping() throws Exception {
+        Company company = company("Acme &amp; Co", "AC&amp;ME");
+        PackagingSlip slip = dispatchedSlip(company, true);
+        slip.getSalesOrder().getDealer().setName("Dealer &amp; Sons");
+        slip.setTransporterName("Rapid &amp; Safe Logistics");
+
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(packagingSlipRepository.findByIdAndCompany(20L, company)).thenReturn(Optional.of(slip));
+
+        DeliveryChallanPdfService realService = new DeliveryChallanPdfService(
+                companyContextService,
+                packagingSlipRepository,
+                templateEngine());
+
+        DeliveryChallanPdfService.PdfDocument pdf = realService.renderDeliveryChallanPdf(20L);
+        String text = extractText(pdf.content());
+
+        assertThat(text).contains("Acme & Co");
+        assertThat(text).contains("Dealer & Sons");
+        assertThat(text).contains("Rapid & Safe Logistics");
+        assertThat(text).doesNotContain("&amp;");
+    }
+
+    @Test
     void toLineView_preservesRawTextAndUsesShippedQuantity() throws Exception {
         PackagingSlipLine line = dispatchedSlip(company("Acme & Sons", "AC&ME"), true).getLines().getFirst();
         line.setNotes("Use <care> & verify");
@@ -185,14 +212,16 @@ class DeliveryChallanPdfServiceTest {
     }
 
     @Test
-    void sanitizeLeavesHtmlEscapingToThymeleaf() throws Exception {
-        Method sanitize = DeliveryChallanPdfService.class.getDeclaredMethod("sanitize", String.class);
-        sanitize.setAccessible(true);
+    void normalizeTemplateText_collapsesBlankValues_andUnescapesHtmlEntities() throws Exception {
+        Method normalizeTemplateText = DeliveryChallanPdfService.class
+                .getDeclaredMethod("normalizeTemplateText", String.class);
+        normalizeTemplateText.setAccessible(true);
 
-        assertThat(sanitize.invoke(service, "A&B <tag> \"quoted\""))
+        assertThat(normalizeTemplateText.invoke(service, "A&B <tag> \"quoted\""))
                 .isEqualTo("A&B <tag> \"quoted\"");
-        assertThat(sanitize.invoke(service, (Object) null)).isEqualTo("");
-        assertThat(sanitize.invoke(service, "   ")).isEqualTo("");
+        assertThat(normalizeTemplateText.invoke(service, "Acme &amp; Co")).isEqualTo("Acme & Co");
+        assertThat(normalizeTemplateText.invoke(service, (Object) null)).isEqualTo("");
+        assertThat(normalizeTemplateText.invoke(service, "   ")).isEqualTo("");
     }
 
     @Test
@@ -305,6 +334,22 @@ class DeliveryChallanPdfServiceTest {
         line.setPackagingSlip(slip);
         slip.getLines().add(line);
         return slip;
+    }
+
+    private SpringTemplateEngine templateEngine() {
+        SpringTemplateEngine stubTemplateEngine = new SpringTemplateEngine();
+        ClassLoaderTemplateResolver resolver = new ClassLoaderTemplateResolver();
+        resolver.setPrefix("templates/");
+        resolver.setSuffix(".html");
+        resolver.setCharacterEncoding("UTF-8");
+        stubTemplateEngine.setTemplateResolver(resolver);
+        return stubTemplateEngine;
+    }
+
+    private String extractText(byte[] pdf) throws Exception {
+        try (PDDocument document = PDDocument.load(new ByteArrayInputStream(pdf))) {
+            return new PDFTextStripper().getText(document);
+        }
     }
 
 }

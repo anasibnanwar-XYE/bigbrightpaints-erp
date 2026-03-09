@@ -30,6 +30,8 @@ public class SalesControllerIT extends AbstractIntegrationTest {
     private static final String COMPANY_CODE = "ACME";
     private static final String ADMIN_EMAIL = "admin@bbp.com";
     private static final String ADMIN_PASSWORD = "admin123";
+    private static final String ADMIN_DISPATCH_EMAIL = "admin-dispatch@bbp.com";
+    private static final String ADMIN_DISPATCH_PASSWORD = "admindispatch123";
     private static final String SALES_EMAIL = "sales@bbp.com";
     private static final String SALES_PASSWORD = "sales123";
     private static final String SALES_DISPATCH_EMAIL = "sales-dispatch@bbp.com";
@@ -48,6 +50,12 @@ public class SalesControllerIT extends AbstractIntegrationTest {
     @BeforeEach
     void seed() {
         dataSeeder.ensureUser(ADMIN_EMAIL, ADMIN_PASSWORD, "Admin", COMPANY_CODE, List.of("ROLE_ADMIN", "ROLE_SALES"));
+        dataSeeder.ensureUser(
+                ADMIN_DISPATCH_EMAIL,
+                ADMIN_DISPATCH_PASSWORD,
+                "Admin Dispatch User",
+                COMPANY_CODE,
+                List.of("ROLE_ADMIN", "dispatch.confirm"));
         dataSeeder.ensureUser(SALES_EMAIL, SALES_PASSWORD, "Sales User", COMPANY_CODE, List.of("ROLE_SALES"));
         dataSeeder.ensureUser(
                 SALES_DISPATCH_EMAIL,
@@ -357,6 +365,28 @@ public class SalesControllerIT extends AbstractIntegrationTest {
                 new HttpEntity<>(payload, headers),
                 Map.class);
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    @Test
+    void dispatch_confirm_requires_logistics_metadata_on_admin_endpoint() {
+        String token = loginToken(ADMIN_DISPATCH_EMAIL, ADMIN_DISPATCH_PASSWORD);
+        HttpHeaders headers = authenticatedHeaders(token);
+
+        Map<String, Object> payload = Map.of(
+                "packingSlipId", 9999,
+                "lines", List.of(Map.of("shipQty", new BigDecimal("1.00")))
+        );
+
+        ResponseEntity<Map> response = rest.exchange(
+                "/api/v1/sales/dispatch/confirm",
+                HttpMethod.POST,
+                new HttpEntity<>(payload, headers),
+                Map.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isNotNull();
+        assertThat((String) response.getBody().get("message"))
+                .contains("transporterName or driverName");
     }
 
     @Test

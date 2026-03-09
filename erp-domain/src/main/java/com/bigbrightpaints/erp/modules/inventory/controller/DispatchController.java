@@ -5,6 +5,7 @@ import com.bigbrightpaints.erp.modules.inventory.dto.*;
 import com.bigbrightpaints.erp.modules.inventory.service.DeliveryChallanPdfService;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
 import com.bigbrightpaints.erp.modules.sales.dto.DispatchConfirmRequest;
+import com.bigbrightpaints.erp.modules.sales.service.DispatchMetadataValidator;
 import com.bigbrightpaints.erp.modules.sales.service.SalesDispatchReconciliationService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpHeaders;
@@ -105,7 +106,6 @@ public class DispatchController {
     public ResponseEntity<ApiResponse<DispatchConfirmationResponse>> confirmDispatch(
             @Valid @RequestBody DispatchConfirmationRequest request,
             Principal principal) {
-        validateFactoryDispatchMetadata(request);
         String username = principal != null ? principal.getName() : "system";
         DispatchConfirmRequest accountingRequest = new DispatchConfirmRequest(
                 request.packagingSlipId(),
@@ -131,6 +131,7 @@ public class DispatchController {
                 request.vehicleNumber(),
                 request.challanReference()
         );
+        DispatchMetadataValidator.validate(accountingRequest);
         salesDispatchReconciliationService.confirmDispatch(accountingRequest);
         DispatchConfirmationResponse response = toDispatchConfirmationView(
                 finishedGoodsService.getDispatchConfirmation(request.packagingSlipId()));
@@ -157,25 +158,6 @@ public class DispatchController {
             @RequestParam String status) {
         PackagingSlipDto slip = finishedGoodsService.updateSlipStatus(slipId, status);
         return ResponseEntity.ok(ApiResponse.success(toPackagingSlipView(slip)));
-    }
-
-    private void validateFactoryDispatchMetadata(DispatchConfirmationRequest request) {
-        if (!isOperationalFactoryView()) {
-            return;
-        }
-        boolean hasTransportActor = hasText(request.transporterName()) || hasText(request.driverName());
-        if (!hasTransportActor) {
-            throw com.bigbrightpaints.erp.core.validation.ValidationUtils
-                    .invalidInput("Dispatch confirmation requires transporterName or driverName");
-        }
-        if (!hasText(request.vehicleNumber())) {
-            throw com.bigbrightpaints.erp.core.validation.ValidationUtils
-                    .invalidInput("Dispatch confirmation requires vehicleNumber");
-        }
-        if (!hasText(request.challanReference())) {
-            throw com.bigbrightpaints.erp.core.validation.ValidationUtils
-                    .invalidInput("Dispatch confirmation requires challanReference");
-        }
     }
 
     private PackagingSlipDto toPackagingSlipView(PackagingSlipDto slip) {
@@ -297,9 +279,5 @@ public class DispatchController {
                         || "ROLE_ACCOUNTING".equals(authority.getAuthority())
                         || "ROLE_SALES".equals(authority.getAuthority()));
         return factory && !elevated;
-    }
-
-    private boolean hasText(String value) {
-        return value != null && !value.trim().isEmpty();
     }
 }
