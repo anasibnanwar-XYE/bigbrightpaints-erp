@@ -5,6 +5,7 @@ import com.bigbrightpaints.erp.modules.sales.service.DealerService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesDashboardService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesDealerCrudService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesDispatchReconciliationService;
+import com.bigbrightpaints.erp.modules.sales.service.DispatchMetadataValidator;
 import com.bigbrightpaints.erp.modules.sales.service.SalesOrderCrudService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesOrderLifecycleService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesService;
@@ -329,6 +330,7 @@ public class SalesController {
     @PostMapping("/sales/dispatch/confirm")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING') and hasAuthority('dispatch.confirm')")
     public ResponseEntity<ApiResponse<DispatchConfirmResponse>> confirmDispatch(@Valid @RequestBody DispatchConfirmRequest request) {
+        DispatchMetadataValidator.validate(request);
         return ResponseEntity.ok(ApiResponse.success("Dispatch confirmed", salesDispatchReconciliationService.confirmDispatch(request)));
     }
 

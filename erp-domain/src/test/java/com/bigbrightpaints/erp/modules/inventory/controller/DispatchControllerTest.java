@@ -271,13 +271,12 @@ class DispatchControllerTest {
     }
 
     @Test
-    void elevatedViews_bypassFactoryValidationAndRetainFinancialFields() {
+    void adminViews_requireDispatchMetadata() {
         DispatchController controller = new DispatchController(
                 finishedGoodsService,
                 salesDispatchReconciliationService,
                 deliveryChallanPdfService);
-        Principal principal = () -> "admin.user";
-        setAuthentication("ROLE_FACTORY", "ROLE_ADMIN");
+        setAuthentication("ROLE_ADMIN", "dispatch.confirm");
 
         DispatchConfirmationRequest request = new DispatchConfirmationRequest(
                 10L,
@@ -289,6 +288,32 @@ class DispatchControllerTest {
                 null,
                 null,
                 null
+        );
+
+        assertThat(org.junit.jupiter.api.Assertions.assertThrows(RuntimeException.class,
+                () -> controller.confirmDispatch(request, () -> "admin.user")).getMessage())
+                .contains("transporterName or driverName");
+    }
+
+    @Test
+    void adminViews_requireMetadataAndRetainFinancialFieldsWhenProvided() {
+        DispatchController controller = new DispatchController(
+                finishedGoodsService,
+                salesDispatchReconciliationService,
+                deliveryChallanPdfService);
+        Principal principal = () -> "admin.user";
+        setAuthentication("ROLE_ADMIN", "dispatch.confirm");
+
+        DispatchConfirmationRequest request = new DispatchConfirmationRequest(
+                10L,
+                List.of(new DispatchConfirmationRequest.LineConfirmation(100L, BigDecimal.ONE, null)),
+                "Dispatch notes",
+                null,
+                null,
+                "FastMove Logistics",
+                null,
+                "MH12AB1234",
+                "LR-7788"
         );
         DispatchConfirmationResponse expected = new DispatchConfirmationResponse(
                 10L,
@@ -303,10 +328,10 @@ class DispatchControllerTest {
                 222L,
                 List.of(),
                 null,
+                "FastMove Logistics",
                 null,
-                null,
-                null,
-                null,
+                "MH12AB1234",
+                "LR-7788",
                 "DC-PS-10",
                 "/api/v1/dispatch/slip/10/challan/pdf"
         );
@@ -527,10 +552,10 @@ class DispatchControllerTest {
                         "notes",
                         null,
                         null,
+                        "FastMove Logistics",
                         null,
-                        null,
-                        null,
-                        null),
+                        "MH12AB1234",
+                        "LR-7788"),
                 () -> "admin.user").getBody().data()).isNull();
     }
 
