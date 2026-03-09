@@ -442,16 +442,6 @@ class InvoiceServiceTest {
         PackagingSlip slip = new PackagingSlip();
         ReflectionTestUtils.setField(slip, "id", 801L);
         when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, orderId)).thenReturn(List.of(slip));
-        when(salesDispatchReconciliationService.confirmDispatch(any())).thenReturn(new DispatchConfirmResponse(
-                slip.getId(),
-                orderId,
-                null,
-                null,
-                List.of(),
-                true,
-                List.of(),
-                null
-        ));
 
         assertThrows(ApplicationException.class, () -> invoiceService.issueInvoiceForOrder(orderId));
     }
@@ -1133,7 +1123,6 @@ class InvoiceServiceTest {
         PackagingSlip slip = new PackagingSlip();
         ReflectionTestUtils.setField(slip, "id", 1202L);
         when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, nullResponseOrderId)).thenReturn(List.of(slip));
-        when(salesDispatchReconciliationService.confirmDispatch(any())).thenReturn(null);
 
         assertThrows(ApplicationException.class, () -> invoiceService.issueInvoiceForOrder(nullResponseOrderId));
 
@@ -1148,7 +1137,6 @@ class InvoiceServiceTest {
         PackagingSlip secondSlip = new PackagingSlip();
         ReflectionTestUtils.setField(secondSlip, "id", 1204L);
         when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, missingIdOrderId)).thenReturn(List.of(secondSlip));
-        when(salesDispatchReconciliationService.confirmDispatch(any())).thenReturn(new DispatchConfirmResponse(1204L, missingIdOrderId, null, null, List.of(), false, List.of(), null));
 
         assertThrows(ApplicationException.class, () -> invoiceService.issueInvoiceForOrder(missingIdOrderId));
 
