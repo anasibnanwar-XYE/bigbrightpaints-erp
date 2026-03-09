@@ -316,7 +316,7 @@ class DispatchControllerTest {
 
         assertThat(org.junit.jupiter.api.Assertions.assertThrows(RuntimeException.class,
                 () -> controller.confirmDispatch(request, () -> "factory.user")).getMessage())
-                .contains("transporterName or driverName");
+                .isEqualTo("Add the transporter name or driver name before confirming dispatch.");
     }
 
     @Test
@@ -352,10 +352,10 @@ class DispatchControllerTest {
 
         assertThat(org.junit.jupiter.api.Assertions.assertThrows(RuntimeException.class,
                 () -> controller.confirmDispatch(missingVehicle, () -> "factory.user")).getMessage())
-                .contains("vehicleNumber");
+                .isEqualTo("Add the vehicle number before confirming dispatch.");
         assertThat(org.junit.jupiter.api.Assertions.assertThrows(RuntimeException.class,
                 () -> controller.confirmDispatch(missingChallan, () -> "factory.user")).getMessage())
-                .contains("challanReference");
+                .isEqualTo("Add the challan reference before confirming dispatch.");
     }
 
     @Test
