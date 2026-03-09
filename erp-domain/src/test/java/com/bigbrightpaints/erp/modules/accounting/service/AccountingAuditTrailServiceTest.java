@@ -13,6 +13,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLine;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocation;
+import com.bigbrightpaints.erp.modules.accounting.domain.PartnerType;
 import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocationRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.PartnerType;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingTransactionAuditDetailDto;
@@ -47,6 +48,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -314,6 +316,68 @@ class AccountingAuditTrailServiceTest {
         AccountingTransactionAuditListItemDto row = result.content().getFirst();
         assertThat(row.module()).isEqualTo("SETTLEMENT");
         assertThat(row.transactionType()).isEqualTo("SETTLEMENT_SUPPLIER");
+    }
+
+    @Test
+    void listTransactions_filtersDuplicateJournalLinksAndDefaultsNullTotals() {
+        Company company = new Company();
+        company.setCode("BBP");
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+
+        JournalEntry entry = new JournalEntry();
+        setField(entry, "id", 86L);
+        entry.setReferenceNumber("INV-202602-0086");
+        entry.setEntryDate(LocalDate.of(2026, 2, 12));
+        entry.setStatus("POSTED");
+        entry.setPostedAt(Instant.parse("2026-02-12T12:00:00Z"));
+
+        when(journalEntryRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(PageRequest.class)))
+                .thenReturn(new PageImpl<>(List.of(entry)));
+        when(journalLineRepository.summarizeTotalsByCompanyAndJournalEntryIds(eq(company), eq(List.of(86L))))
+                .thenReturn(List.of(new JournalLineRepository.JournalEntryLineTotals() {
+                    @Override
+                    public Long getJournalEntryId() {
+                        return 86L;
+                    }
+
+                    @Override
+                    public BigDecimal getTotalDebit() {
+                        return null;
+                    }
+
+                    @Override
+                    public BigDecimal getTotalCredit() {
+                        return null;
+                    }
+                }));
+
+        Invoice invoice = new Invoice();
+        invoice.setJournalEntry(entry);
+        Invoice duplicateInvoice = new Invoice();
+        duplicateInvoice.setJournalEntry(entry);
+        Invoice invoiceWithoutJournal = new Invoice();
+
+        RawMaterialPurchase purchase = new RawMaterialPurchase();
+        purchase.setJournalEntry(entry);
+        RawMaterialPurchase duplicatePurchase = new RawMaterialPurchase();
+        duplicatePurchase.setJournalEntry(entry);
+        RawMaterialPurchase purchaseWithoutJournal = new RawMaterialPurchase();
+
+        when(invoiceRepository.findByCompanyAndJournalEntry_IdIn(eq(company), eq(List.of(86L))))
+                .thenReturn(List.of(invoice, duplicateInvoice, invoiceWithoutJournal));
+        when(rawMaterialPurchaseRepository.findByCompanyAndJournalEntry_IdIn(eq(company), eq(List.of(86L))))
+                .thenReturn(List.of(purchase, duplicatePurchase, purchaseWithoutJournal));
+        when(settlementAllocationRepository.findByCompanyAndJournalEntry_IdIn(eq(company), eq(List.of(86L))))
+                .thenReturn(List.of());
+
+        PageResponse<AccountingTransactionAuditListItemDto> result = service.listTransactions(
+                null, null, null, null, null, 0, 50);
+
+        assertThat(result.content()).singleElement().satisfies(row -> {
+            assertThat(row.journalEntryId()).isEqualTo(86L);
+            assertThat(row.totalDebit()).isEqualByComparingTo(BigDecimal.ZERO);
+            assertThat(row.totalCredit()).isEqualByComparingTo(BigDecimal.ZERO);
+        });
     }
 
     @Test
@@ -634,6 +698,52 @@ class AccountingAuditTrailServiceTest {
     }
 
     @Test
+    void helperMethods_coverSettlementAppendGuardsAndReferenceChainFiltering() {
+        Invoice invoice = new Invoice();
+        List<LinkedBusinessReferenceDto> chain = new java.util.ArrayList<>();
+
+        ReflectionTestUtils.invokeMethod(service, "appendSettlementReferences", chain, null, invoice, null);
+        assertThat(chain).isEmpty();
+
+        Company company = new Company();
+        company.setCode("BBP");
+        when(settlementAllocationRepository.findByCompanyAndInvoiceOrderByCreatedAtDesc(company, invoice)).thenReturn(null);
+
+        ReflectionTestUtils.invokeMethod(service, "appendSettlementReferences", chain, company, invoice, null);
+        assertThat(chain).isEmpty();
+
+        JournalEntry entry = new JournalEntry();
+        setField(entry, "id", 891L);
+        entry.setReferenceNumber("GEN-891");
+        entry.setStatus("POSTED");
+
+        SalesOrder orderWithoutId = new SalesOrder();
+        orderWithoutId.setCompany(company);
+        orderWithoutId.setOrderNumber("SO-NO-ID");
+
+        Invoice filteredInvoice = new Invoice();
+        filteredInvoice.setCompany(company);
+        filteredInvoice.setInvoiceNumber("INV-FILTERED");
+        filteredInvoice.setStatus("ISSUED");
+        filteredInvoice.setSalesOrder(orderWithoutId);
+
+        when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, null)).thenReturn(List.of());
+
+        @SuppressWarnings("unchecked")
+        List<LinkedBusinessReferenceDto> filteredChain = ReflectionTestUtils.invokeMethod(
+                service,
+                "buildReferenceChain",
+                entry,
+                filteredInvoice,
+                null,
+                List.of(),
+                null);
+
+        assertThat(filteredChain).extracting(LinkedBusinessReferenceDto::relationType)
+                .containsExactly("ACCOUNTING_ENTRY");
+    }
+
+    @Test
     void deriveTransactionTypeAndModulePrefixes_coverFallbackBranches() {
         JournalEntry reversal = new JournalEntry();
         reversal.setReferenceNumber("REV-1");
@@ -672,6 +782,240 @@ class AccountingAuditTrailServiceTest {
         assertThat(unknownPrefixes).isEmpty();
         assertThat((String) ReflectionTestUtils.invokeMethod(service, "deriveModule", "REVERSAL_ENTRY", "REV-1"))
                 .isEqualTo("ADJUSTMENT");
+    }
+
+    @Test
+    void deriveTransactionTypeAndConsistency_coverSettlementWarningsAndPartnerBranches() {
+        JournalEntry dealerJournal = new JournalEntry();
+        dealerJournal.setReferenceNumber("GEN-DEALER");
+        dealerJournal.setDealer(new Dealer());
+        JournalEntry supplierJournal = new JournalEntry();
+        supplierJournal.setReferenceNumber("GEN-SUPPLIER");
+        supplierJournal.setSupplier(new Supplier());
+        JournalEntry mixedSettlement = new JournalEntry();
+        mixedSettlement.setReferenceNumber("SET-900");
+        mixedSettlement.setStatus("POSTED");
+
+        PartnerSettlementAllocation dealerAllocation = new PartnerSettlementAllocation();
+        dealerAllocation.setPartnerType(PartnerType.DEALER);
+        PartnerSettlementAllocation supplierAllocation = new PartnerSettlementAllocation();
+        supplierAllocation.setPartnerType(PartnerType.SUPPLIER);
+
+        assertThat((String) ReflectionTestUtils.invokeMethod(service, "deriveTransactionType", dealerJournal, null, null, List.of()))
+                .isEqualTo("DEALER_JOURNAL");
+        assertThat((String) ReflectionTestUtils.invokeMethod(service, "deriveTransactionType", supplierJournal, null, null, List.of()))
+                .isEqualTo("SUPPLIER_JOURNAL");
+        assertThat((String) ReflectionTestUtils.invokeMethod(service, "deriveTransactionType", mixedSettlement, null, null, List.of(dealerAllocation, supplierAllocation)))
+                .isEqualTo("SETTLEMENT_MIXED");
+        assertThat((String) ReflectionTestUtils.invokeMethod(service, "deriveModule", "PAYROLL_ENTRY", "PAY-1"))
+                .isEqualTo("PAYROLL");
+        assertThat((String) ReflectionTestUtils.invokeMethod(service, "deriveModule", "INVENTORY_ADJUSTMENT", "REVAL-1"))
+                .isEqualTo("INVENTORY");
+
+        Object warning = ReflectionTestUtils.invokeMethod(service, "assessConsistency", mixedSettlement, List.of(), BigDecimal.TEN, BigDecimal.TEN);
+        assertThat((String) ReflectionTestUtils.invokeMethod(warning, "status")).isEqualTo("WARNING");
+    }
+
+    @Test
+    void helperMethods_coverModulePrefixAndClassificationBranches() {
+        @SuppressWarnings("unchecked")
+        List<String> salesPrefixes = ReflectionTestUtils.invokeMethod(service, "moduleReferencePrefixes", "SALES");
+        @SuppressWarnings("unchecked")
+        List<String> purchasingPrefixes = ReflectionTestUtils.invokeMethod(service, "moduleReferencePrefixes", "PURCHASING");
+        @SuppressWarnings("unchecked")
+        List<String> settlementPrefixes = ReflectionTestUtils.invokeMethod(service, "moduleReferencePrefixes", "SETTLEMENT");
+        @SuppressWarnings("unchecked")
+        List<String> payrollPrefixes = ReflectionTestUtils.invokeMethod(service, "moduleReferencePrefixes", "PAYROLL");
+        @SuppressWarnings("unchecked")
+        List<String> reversalPrefixes = ReflectionTestUtils.invokeMethod(service, "moduleReferencePrefixes", "REVERSAL");
+
+        assertThat(salesPrefixes).contains("INV", "CRN", "SR");
+        assertThat(purchasingPrefixes).contains("RMP", "DBN", "PUR", "GRN");
+        assertThat(settlementPrefixes).contains("SET", "RCPT", "SUP-", "DEALER-SETTLEMENT");
+        assertThat(payrollPrefixes).contains("PAY", "PRL", "SAL");
+        assertThat(reversalPrefixes).contains("REV", "VOID");
+
+        JournalEntry reversal = new JournalEntry();
+        reversal.setReferenceNumber("REV-1");
+        reversal.setReversalOf(new JournalEntry());
+        JournalEntry reversedOriginal = new JournalEntry();
+        reversedOriginal.setReferenceNumber("VOID-1");
+        reversedOriginal.setReversalEntry(new JournalEntry());
+        JournalEntry supplierPrefixed = new JournalEntry();
+        supplierPrefixed.setReferenceNumber("SUP-SET-1");
+        JournalEntry dealerPrefixed = new JournalEntry();
+        dealerPrefixed.setReferenceNumber("SET-1");
+        JournalEntry payroll = new JournalEntry();
+        payroll.setReferenceNumber("PAY-1");
+
+        assertThat((String) ReflectionTestUtils.invokeMethod(service, "deriveTransactionType", reversal, null, null, List.of()))
+                .isEqualTo("REVERSAL_ENTRY");
+        assertThat((String) ReflectionTestUtils.invokeMethod(service, "deriveTransactionType", reversedOriginal, null, null, List.of()))
+                .isEqualTo("REVERSED_ORIGINAL");
+        assertThat((String) ReflectionTestUtils.invokeMethod(service, "deriveTransactionType", supplierPrefixed, null, null, List.of()))
+                .isEqualTo("SETTLEMENT_SUPPLIER");
+        assertThat((String) ReflectionTestUtils.invokeMethod(service, "deriveTransactionType", dealerPrefixed, null, null, List.of()))
+                .isEqualTo("SETTLEMENT_DEALER");
+        assertThat((String) ReflectionTestUtils.invokeMethod(service, "deriveTransactionType", payroll, null, null, List.of()))
+                .isEqualTo("PAYROLL_ENTRY");
+
+        assertThat((String) ReflectionTestUtils.invokeMethod(service, "deriveModule", null, "INV-1")).isEqualTo("SALES");
+        assertThat((String) ReflectionTestUtils.invokeMethod(service, "deriveModule", null, "RMP-1")).isEqualTo("PURCHASING");
+        assertThat((String) ReflectionTestUtils.invokeMethod(service, "deriveModule", null, "SUP-1")).isEqualTo("SETTLEMENT");
+        assertThat((String) ReflectionTestUtils.invokeMethod(service, "deriveModule", null, "SETTLEMENT-1")).isEqualTo("SETTLEMENT");
+        assertThat((String) ReflectionTestUtils.invokeMethod(service, "deriveModule", null, "GEN-1")).isEqualTo("ACCOUNTING");
+    }
+
+    @Test
+    void helperMethods_coverDrivingDocumentReferenceChainAndConsistencyErrors() {
+        Company scopedCompany = new Company();
+        scopedCompany.setCode("BBP");
+
+        JournalEntry entry = new JournalEntry();
+        setField(entry, "id", 999L);
+        entry.setReferenceNumber("SETTLEMENT-999");
+        entry.setStatus("VOIDED");
+
+        SalesOrder order = new SalesOrder();
+        ReflectionTestUtils.setField(order, "id", 1001L);
+        order.setCompany(scopedCompany);
+        order.setOrderNumber("SO-1001");
+
+        PackagingSlip slip = new PackagingSlip();
+        ReflectionTestUtils.setField(slip, "id", 1002L);
+        slip.setSalesOrder(order);
+        slip.setSlipNumber("PS-1002");
+        slip.setStatus("DISPATCHED");
+        when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(scopedCompany, 1001L)).thenReturn(List.of(slip));
+
+        Invoice invoice = new Invoice();
+        ReflectionTestUtils.setField(invoice, "id", 1003L);
+        invoice.setCompany(scopedCompany);
+        invoice.setSalesOrder(order);
+        invoice.setInvoiceNumber("INV-1003");
+        invoice.setStatus("ISSUED");
+
+        RawMaterialPurchase purchase = new RawMaterialPurchase();
+        ReflectionTestUtils.setField(purchase, "id", 1004L);
+        purchase.setCompany(scopedCompany);
+        purchase.setInvoiceNumber("PINV-1004");
+        purchase.setStatus("POSTED");
+
+        PartnerSettlementAllocation invoiceAllocation = new PartnerSettlementAllocation();
+        ReflectionTestUtils.setField(invoiceAllocation, "id", 1005L);
+        invoiceAllocation.setInvoice(invoice);
+        invoiceAllocation.setIdempotencyKey("settlement-invoice");
+
+        PartnerSettlementAllocation purchaseAllocation = new PartnerSettlementAllocation();
+        ReflectionTestUtils.setField(purchaseAllocation, "id", 1006L);
+        purchaseAllocation.setPurchase(purchase);
+        purchaseAllocation.setIdempotencyKey("settlement-purchase");
+
+        when(settlementAllocationRepository.findByCompanyAndInvoiceOrderByCreatedAtDesc(scopedCompany, invoice))
+                .thenReturn(List.of(invoiceAllocation));
+        when(settlementAllocationRepository.findByCompanyAndPurchaseOrderByCreatedAtDesc(scopedCompany, purchase))
+                .thenReturn(List.of(purchaseAllocation));
+
+        LinkedBusinessReferenceDto invoiceDrivingDocument = ReflectionTestUtils.invokeMethod(service, "resolveDrivingDocument", invoice, null, List.of());
+        LinkedBusinessReferenceDto purchaseDrivingDocument = ReflectionTestUtils.invokeMethod(service, "resolveDrivingDocument", null, purchase, List.of());
+        LinkedBusinessReferenceDto allocationDrivingDocument = ReflectionTestUtils.invokeMethod(service, "resolveDrivingDocument", null, null, List.of(invoiceAllocation));
+        LinkedBusinessReferenceDto purchaseAllocationDrivingDocument = ReflectionTestUtils.invokeMethod(service, "resolveDrivingDocument", null, null, List.of(purchaseAllocation));
+
+        assertThat(invoiceDrivingDocument.documentType()).isEqualTo("INVOICE");
+        assertThat(purchaseDrivingDocument.documentType()).isEqualTo("PURCHASE_INVOICE");
+        assertThat(allocationDrivingDocument.documentType()).isEqualTo("INVOICE");
+        assertThat(purchaseAllocationDrivingDocument.documentType()).isEqualTo("PURCHASE_INVOICE");
+
+        @SuppressWarnings("unchecked")
+        List<LinkedBusinessReferenceDto> invoiceChain = ReflectionTestUtils.invokeMethod(
+                service,
+                "buildReferenceChain",
+                entry,
+                invoice,
+                null,
+                List.of(invoiceAllocation),
+                invoiceDrivingDocument);
+        @SuppressWarnings("unchecked")
+        List<LinkedBusinessReferenceDto> purchaseChain = ReflectionTestUtils.invokeMethod(
+                service,
+                "buildReferenceChain",
+                entry,
+                null,
+                purchase,
+                List.of(purchaseAllocation),
+                purchaseDrivingDocument);
+
+        assertThat(invoiceChain).extracting(LinkedBusinessReferenceDto::relationType)
+                .contains("DRIVING_DOCUMENT", "SOURCE_ORDER", "DISPATCH", "SETTLEMENT", "ACCOUNTING_ENTRY");
+        assertThat(purchaseChain).extracting(LinkedBusinessReferenceDto::relationType)
+                .contains("DRIVING_DOCUMENT", "SETTLEMENT", "ACCOUNTING_ENTRY");
+
+        Object reversedError = ReflectionTestUtils.invokeMethod(service, "assessConsistency", entry, List.of(), BigDecimal.ONE, BigDecimal.ONE);
+        assertThat((String) ReflectionTestUtils.invokeMethod(reversedError, "status")).isEqualTo("ERROR");
+
+        entry.setStatus("REVERSED");
+        Object stillError = ReflectionTestUtils.invokeMethod(service, "assessConsistency", entry, List.of(), BigDecimal.TEN, BigDecimal.ONE);
+        assertThat((String) ReflectionTestUtils.invokeMethod(stillError, "status")).isEqualTo("ERROR");
+    }
+
+    @Test
+    void specificationHelpers_coverBlankReferenceAndModulePrefixBranches() {
+        Class<?> coreClass = service.getClass().getSuperclass();
+        @SuppressWarnings("rawtypes")
+        jakarta.persistence.criteria.Root root = org.mockito.Mockito.mock(jakarta.persistence.criteria.Root.class);
+        @SuppressWarnings("rawtypes")
+        jakarta.persistence.criteria.CriteriaQuery query = org.mockito.Mockito.mock(jakarta.persistence.criteria.CriteriaQuery.class);
+        jakarta.persistence.criteria.CriteriaBuilder cb = org.mockito.Mockito.mock(jakarta.persistence.criteria.CriteriaBuilder.class);
+        @SuppressWarnings("rawtypes")
+        jakarta.persistence.criteria.Path path = org.mockito.Mockito.mock(jakarta.persistence.criteria.Path.class);
+        @SuppressWarnings("rawtypes")
+        jakarta.persistence.criteria.Expression upper = org.mockito.Mockito.mock(jakarta.persistence.criteria.Expression.class);
+        jakarta.persistence.criteria.Predicate predicate = org.mockito.Mockito.mock(jakarta.persistence.criteria.Predicate.class);
+
+        when(root.get(any(String.class))).thenReturn((jakarta.persistence.criteria.Path) path);
+        when(cb.upper(path)).thenReturn(upper);
+        org.mockito.Mockito.lenient().when(cb.equal(any(), any())).thenReturn(predicate);
+        org.mockito.Mockito.lenient().when(cb.like(org.mockito.ArgumentMatchers.<jakarta.persistence.criteria.Expression<String>>any(), any(String.class))).thenReturn(predicate);
+        when(cb.conjunction()).thenReturn(predicate);
+        when(cb.or(any(jakarta.persistence.criteria.Predicate[].class))).thenReturn(predicate);
+
+        try {
+            java.lang.reflect.Method byStatusMethod = coreClass.getDeclaredMethod("byStatus", String.class);
+            java.lang.reflect.Method byReferenceMethod = coreClass.getDeclaredMethod("byReference", String.class);
+            java.lang.reflect.Method byModuleMethod = coreClass.getDeclaredMethod("byModule", String.class);
+            byStatusMethod.setAccessible(true);
+            byReferenceMethod.setAccessible(true);
+            byModuleMethod.setAccessible(true);
+
+            @SuppressWarnings("unchecked")
+            Specification<JournalEntry> blankStatus = (Specification<JournalEntry>) byStatusMethod.invoke(service, " ");
+            @SuppressWarnings("unchecked")
+            Specification<JournalEntry> populatedStatus = (Specification<JournalEntry>) byStatusMethod.invoke(service, " posted ");
+            @SuppressWarnings("unchecked")
+            Specification<JournalEntry> blankReference = (Specification<JournalEntry>) byReferenceMethod.invoke(service, new Object[]{null});
+            @SuppressWarnings("unchecked")
+            Specification<JournalEntry> populatedReference = (Specification<JournalEntry>) byReferenceMethod.invoke(service, "inv");
+            @SuppressWarnings("unchecked")
+            Specification<JournalEntry> blankModule = (Specification<JournalEntry>) byModuleMethod.invoke(service, "  ");
+            @SuppressWarnings("unchecked")
+            Specification<JournalEntry> unknownModule = (Specification<JournalEntry>) byModuleMethod.invoke(service, "unknown");
+            @SuppressWarnings("unchecked")
+            Specification<JournalEntry> salesModule = (Specification<JournalEntry>) byModuleMethod.invoke(service, "sales");
+
+            blankStatus.toPredicate(root, query, cb);
+            populatedStatus.toPredicate(root, query, cb);
+            blankReference.toPredicate(root, query, cb);
+            populatedReference.toPredicate(root, query, cb);
+            blankModule.toPredicate(root, query, cb);
+            unknownModule.toPredicate(root, query, cb);
+            salesModule.toPredicate(root, query, cb);
+            org.mockito.Mockito.verify(cb, org.mockito.Mockito.atLeast(3)).conjunction();
+            org.mockito.Mockito.verify(cb, org.mockito.Mockito.atLeastOnce())
+                    .like(org.mockito.ArgumentMatchers.<jakarta.persistence.criteria.Expression<String>>any(), any(String.class));
+            org.mockito.Mockito.verify(cb, org.mockito.Mockito.atLeastOnce()).or(any(jakarta.persistence.criteria.Predicate[].class));
+        } catch (ReflectiveOperationException ex) {
+            throw new RuntimeException(ex);
+        }
     }
 
     private static JournalLine line(String accountCode, String debitAmount, String creditAmount) {

@@ -185,4 +185,23 @@ class BusinessDocumentTruthsTest {
         assertThat(reference.lifecycle().accountingStatus()).isEqualTo("POSTED");
         assertThat(BusinessDocumentTruths.settlementLifecycle(null).accountingStatus()).isEqualTo("PENDING");
     }
+
+    @Test
+    void lifecycleHelpers_coverNullBlankAndDefaultBranches() {
+        JournalEntry draftJournal = new JournalEntry();
+        draftJournal.setStatus(" ");
+
+        RawMaterialPurchase linkedPurchase = new RawMaterialPurchase();
+        linkedPurchase.setStatus(" ");
+
+        assertThat(BusinessDocumentTruths.goodsReceiptLifecycle(null, linkedPurchase).workflowStatus()).isEqualTo("RECEIVED");
+        assertThat(BusinessDocumentTruths.goodsReceiptLifecycle(null, linkedPurchase).accountingStatus()).isEqualTo("PENDING");
+        assertThat(BusinessDocumentTruths.purchaseLifecycle(null).workflowStatus()).isEqualTo("POSTED");
+        assertThat(BusinessDocumentTruths.purchaseLifecycle(null).accountingStatus()).isEqualTo("PENDING");
+        assertThat(BusinessDocumentTruths.journalLifecycle(null).workflowStatus()).isEqualTo("DRAFT");
+        assertThat(BusinessDocumentTruths.journalLifecycle(null).accountingStatus()).isEqualTo("PENDING");
+        assertThat(BusinessDocumentTruths.invoiceLifecycle("   ", draftJournal).accountingStatus()).isEqualTo("NOT_ELIGIBLE");
+        assertThat(BusinessDocumentTruths.invoiceLifecycle("cancelled", null).accountingStatus()).isEqualTo("REVERSED");
+        assertThat(BusinessDocumentTruths.invoiceLifecycle("issued", draftJournal).accountingStatus()).isEqualTo("PENDING");
+    }
 }

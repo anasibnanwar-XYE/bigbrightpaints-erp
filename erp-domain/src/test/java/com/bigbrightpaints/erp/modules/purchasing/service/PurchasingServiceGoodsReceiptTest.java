@@ -5,6 +5,7 @@ import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocationRepository;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodService;
 import com.bigbrightpaints.erp.modules.accounting.service.GstService;
@@ -70,6 +71,8 @@ class PurchasingServiceGoodsReceiptTest {
     @Mock
     private RawMaterialPurchaseRepository purchaseRepository;
     @Mock
+    private PartnerSettlementAllocationRepository settlementAllocationRepository;
+    @Mock
     private PurchaseOrderRepository purchaseOrderRepository;
     @Mock
     private RawMaterialRepository rawMaterialRepository;
@@ -123,7 +126,8 @@ class PurchasingServiceGoodsReceiptTest {
                 accountingPeriodService,
                 gstService,
                 purchaseOrderStatusHistoryRepository,
-                new ResourcelessTransactionManager()
+                new ResourcelessTransactionManager(),
+                settlementAllocationRepository
         );
 
         company = new Company();

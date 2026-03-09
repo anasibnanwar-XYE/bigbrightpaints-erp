@@ -26,6 +26,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -283,6 +284,23 @@ class PurchaseResponseMapperTest {
     }
 
     @Test
+    void toPurchaseResponse_skipsSettlementLookupWhenRepositoryIsMissingButCompanyExists() {
+        PurchaseResponseMapper noSettlementMapper = new PurchaseResponseMapper();
+
+        RawMaterialPurchase purchase = new RawMaterialPurchase();
+        ReflectionTestUtils.setField(purchase, "id", 83L);
+        purchase.setCompany(company);
+        purchase.setSupplier(supplier);
+        purchase.setInvoiceNumber("PINV-83");
+        purchase.setStatus("POSTED");
+        purchase.getLines().add(purchaseLine(purchase));
+
+        assertThat(noSettlementMapper.toPurchaseResponse(purchase).linkedReferences())
+                .extracting(LinkedBusinessReferenceDto::relationType)
+                .containsExactly("SELF");
+    }
+
+    @Test
     void helperMethods_coverLinkedPurchaseFallbackBranches() {
         GoodsReceipt receipt = new GoodsReceipt();
         ReflectionTestUtils.setField(receipt, "id", 910L);
@@ -298,6 +316,81 @@ class PurchaseResponseMapperTest {
         assertThat(noSettlementMapper.toGoodsReceiptResponse(linkedOnlyReceipt, null).linkedReferences())
                 .extracting(LinkedBusinessReferenceDto::relationType)
                 .containsExactlyInAnyOrder("PURCHASE_ORDER", "SELF");
+    }
+
+    @Test
+    void helperMethods_coverResolveLinkedPurchaseSuccessAndMissingReceiptIds() {
+        GoodsReceipt receipt = goodsReceipt(930L, "GRN-930");
+        RawMaterialPurchase purchase = new RawMaterialPurchase();
+        ReflectionTestUtils.setField(purchase, "id", 931L);
+        purchase.setCompany(company);
+        purchase.setInvoiceNumber("PINV-931");
+        purchase.setGoodsReceipt(receipt);
+        when(purchaseRepository.findByCompanyAndGoodsReceipt(company, receipt)).thenReturn(Optional.of(purchase));
+
+        assertThat((Object) ReflectionTestUtils.invokeMethod(mapper, "resolveLinkedPurchase", receipt)).isSameAs(purchase);
+
+        GoodsReceipt noIdReceipt = goodsReceipt(null, "GRN-NO-ID");
+        @SuppressWarnings("unchecked")
+        Map<Long, RawMaterialPurchase> emptyLookup = ReflectionTestUtils.invokeMethod(mapper, "resolveLinkedPurchases", List.of(noIdReceipt));
+        assertThat(emptyLookup).isEmpty();
+    }
+
+    @Test
+    void helperMethods_coverNullAllocationsAndLinkedPurchaseWithoutJournal() {
+        RawMaterialPurchase purchase = new RawMaterialPurchase();
+        ReflectionTestUtils.setField(purchase, "id", 941L);
+        purchase.setCompany(company);
+        purchase.setInvoiceNumber("PINV-941");
+        purchase.setStatus("POSTED");
+        purchase.getLines().add(purchaseLine(purchase));
+
+        when(settlementAllocationRepository.findByCompanyAndPurchaseOrderByCreatedAtDesc(company, purchase)).thenReturn(null);
+
+        assertThat(mapper.toPurchaseResponse(purchase).linkedReferences())
+                .extracting(LinkedBusinessReferenceDto::relationType)
+                .containsExactly("SELF");
+
+        GoodsReceipt receipt = new GoodsReceipt();
+        ReflectionTestUtils.setField(receipt, "id", 942L);
+        receipt.setReceiptNumber("GRN-942");
+        receipt.getLines().add(new GoodsReceiptLine());
+
+        RawMaterialPurchase linkedPurchase = new RawMaterialPurchase();
+        ReflectionTestUtils.setField(linkedPurchase, "id", 943L);
+        linkedPurchase.setInvoiceNumber("PINV-943");
+        linkedPurchase.setStatus("POSTED");
+
+        assertThat(mapper.toGoodsReceiptResponse(receipt, linkedPurchase).linkedReferences())
+                .extracting(LinkedBusinessReferenceDto::relationType)
+                .containsExactlyInAnyOrder("PURCHASE_INVOICE", "SELF");
+    }
+
+    @Test
+    void mappingHelpers_coverNullMetadataBranches() {
+        RawMaterialPurchase purchase = new RawMaterialPurchase();
+        ReflectionTestUtils.setField(purchase, "id", 951L);
+        purchase.setInvoiceNumber("PINV-951");
+        purchase.setStatus("DRAFT");
+        purchase.getLines().add(new RawMaterialPurchaseLine());
+
+        RawMaterialPurchaseResponse purchaseResponse = mapper.toPurchaseResponse(purchase);
+        assertThat(purchaseResponse.supplierId()).isNull();
+        assertThat(purchaseResponse.purchaseOrderId()).isNull();
+        assertThat(purchaseResponse.goodsReceiptId()).isNull();
+        assertThat(purchaseResponse.journalEntryId()).isNull();
+
+        PurchaseOrder order = new PurchaseOrder();
+        ReflectionTestUtils.setField(order, "id", 952L);
+        order.setOrderNumber("PO-952");
+        order.setStatus("DRAFT");
+        PurchaseOrderLine line = new PurchaseOrderLine();
+        line.setPurchaseOrder(order);
+        line.setLineTotal(new BigDecimal("12.00"));
+        order.getLines().add(line);
+
+        assertThat(mapper.toPurchaseOrderResponse(order).supplierId()).isNull();
+        assertThat(mapper.toPurchaseOrderLineResponse(line).rawMaterialId()).isNull();
     }
 
     private GoodsReceipt goodsReceipt(Long id, String receiptNumber) {
