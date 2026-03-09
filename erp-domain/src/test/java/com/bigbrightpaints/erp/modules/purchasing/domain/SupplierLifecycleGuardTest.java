@@ -2,6 +2,7 @@ package com.bigbrightpaints.erp.modules.purchasing.domain;
 
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -9,6 +10,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+@Tag("critical")
 class SupplierLifecycleGuardTest {
 
     @Test

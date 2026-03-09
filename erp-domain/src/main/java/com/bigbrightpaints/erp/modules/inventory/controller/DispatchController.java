@@ -16,6 +16,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.security.Principal;
 import java.util.List;
 
@@ -182,6 +183,23 @@ public class DispatchController {
         if (slip == null || !isOperationalFactoryView()) {
             return slip;
         }
+        List<PackagingSlipLineDto> redactedLines = slip.lines() == null
+                ? List.of()
+                : slip.lines().stream()
+                .map(line -> {
+                    BigDecimal redactedUnitCost = null;
+                    return new PackagingSlipLineDto(
+                            line.id(),
+                            line.batchPublicId(),
+                            line.batchCode(),
+                            line.productCode(),
+                            line.productName(),
+                            line.orderedQuantity(),
+                            line.shippedQuantity(),
+                            line.backorderQuantity(),
+                            line.quantity(), redactedUnitCost,
+                            line.notes()); })
+                .toList();
         return new PackagingSlipDto(
                 slip.id(),
                 slip.publicId(),
@@ -211,6 +229,7 @@ public class DispatchController {
         if (preview == null || !isOperationalFactoryView()) {
             return preview;
         }
+        BigDecimal factoryAvailableAmount = null;
         List<DispatchPreviewDto.LinePreview> lines = preview.lines() == null
                 ? List.of()
                 : preview.lines().stream()

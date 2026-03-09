@@ -2,6 +2,8 @@ package com.bigbrightpaints.erp.modules.inventory.service;
 
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.ReferenceNumberService;
+import com.bigbrightpaints.erp.modules.accounting.domain.Account;
+import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReference;
@@ -24,6 +26,7 @@ import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -36,6 +39,8 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -49,6 +54,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
+@Tag("critical")
 class RawMaterialServiceReceiptContextTest {
 
     @Mock
@@ -202,5 +208,65 @@ class RawMaterialServiceReceiptContextTest {
         verify(batchRepository, never()).save(any(RawMaterialBatch.class));
         verify(movementRepository, never()).save(any(RawMaterialMovement.class));
         verifyNoInteractions(accountingFacade);
+    }
+
+    @Test
+    @DisplayName("recordReceipt defaults purchase contexts to batch-linked AP posting when payable account exists")
+    void recordReceipt_defaultPurchaseContextPostsJournalAndUsesBatchReference() {
+        Account payable = new Account();
+        ReflectionTestUtils.setField(payable, "id", 301L);
+        supplier.setPayableAccount(payable);
+        when(companyClock.today(company)).thenReturn(LocalDate.of(2026, 3, 8));
+
+        JournalEntryDto entry = new JournalEntryDto(
+                501L,
+                null,
+                "BATCH-1",
+                LocalDate.of(2026, 3, 8),
+                "Raw material batch BATCH-1",
+                "POSTED",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                List.of(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+        when(accountingFacade.postPurchaseJournal(eq(10L), eq("BATCH-1"), eq(LocalDate.of(2026, 3, 8)), eq("Raw material batch BATCH-1"), any(), org.mockito.ArgumentMatchers.argThat(total -> total != null && total.compareTo(new BigDecimal("20.00")) == 0)))
+                .thenReturn(entry);
+
+        RawMaterialBatchRequest request = new RawMaterialBatchRequest(
+                "BATCH-1",
+                new BigDecimal("4.0000"),
+                "KG",
+                new BigDecimal("5.00"),
+                10L,
+                null,
+                null,
+                "Purchase receipt"
+        );
+
+        RawMaterialService.ReceiptResult result = rawMaterialService.recordReceipt(20L, request, null);
+
+        ArgumentCaptor<RawMaterialMovement> movementCaptor = ArgumentCaptor.forClass(RawMaterialMovement.class);
+        verify(movementRepository, org.mockito.Mockito.times(2)).save(movementCaptor.capture());
+        assertThat(movementCaptor.getAllValues().getFirst().getReferenceType()).isEqualTo(InventoryReference.RAW_MATERIAL_PURCHASE);
+        assertThat(movementCaptor.getAllValues().getFirst().getReferenceId()).isEqualTo("BATCH-1");
+        assertThat(movementCaptor.getAllValues().getLast().getJournalEntryId()).isEqualTo(501L);
+        assertThat(result.batch().getBatchCode()).isEqualTo("BATCH-1");
+        assertThat(result.journalEntryId()).isEqualTo(501L);
     }
 }

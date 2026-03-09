@@ -188,11 +188,7 @@ public class PurchaseInvoiceEngine {
             receiptUnits.put(materialId, line.getUnit());
             receiptLinesByMaterial.put(materialId, line);
         }
-        List<RawMaterialMovement> goodsReceiptMovements = requireGoodsReceiptMovementsReadyForInvoicing(
-                company,
-                goodsReceipt,
-                receiptLinesByMaterial
-        );
+        List<RawMaterialMovement> goodsReceiptMovements = requireGoodsReceiptMovementsReadyForInvoicing(company, goodsReceipt, receiptLinesByMaterial);
 
         boolean taxProvided = request.taxAmount() != null;
         Set<Long> invoiceMaterialIds = new HashSet<>();
@@ -505,17 +501,12 @@ public class PurchaseInvoiceEngine {
         return responseMapper.toPurchaseResponse(purchase);
     }
 
-    private List<RawMaterialMovement> requireGoodsReceiptMovementsReadyForInvoicing(Company company,
-                                                                                     GoodsReceipt goodsReceipt,
-                                                                                     Map<Long, GoodsReceiptLine> receiptLinesByMaterial) {
-        if (!StringUtils.hasText(goodsReceipt.getReceiptNumber())) {
-            throw new ApplicationException(ErrorCode.BUSINESS_CONSTRAINT_VIOLATION,
-                    "Goods receipt linkage is incomplete; purchase invoice requires a persisted goods receipt reference")
+    private List<RawMaterialMovement> requireGoodsReceiptMovementsReadyForInvoicing(Company company, GoodsReceipt goodsReceipt, Map<Long, GoodsReceiptLine> receiptLinesByMaterial) { if (!StringUtils.hasText(goodsReceipt.getReceiptNumber())) {
+            throw new ApplicationException(ErrorCode.BUSINESS_CONSTRAINT_VIOLATION, "Goods receipt linkage is incomplete; purchase invoice requires a persisted goods receipt reference")
                     .withDetail("goodsReceiptId", goodsReceipt.getId());
         }
         if (receiptLinesByMaterial.isEmpty()) {
-            throw new ApplicationException(ErrorCode.BUSINESS_CONSTRAINT_VIOLATION,
-                    "Goods receipt has no stock lines to anchor purchase invoice")
+            throw new ApplicationException(ErrorCode.BUSINESS_CONSTRAINT_VIOLATION, "Goods receipt has no stock lines to anchor purchase invoice")
                     .withDetail("goodsReceiptId", goodsReceipt.getId())
                     .withDetail("goodsReceiptNumber", goodsReceipt.getReceiptNumber());
         }
@@ -550,8 +541,7 @@ public class PurchaseInvoiceEngine {
             missingMovementMaterialIds.removeAll(movementMaterialIds);
             Set<Long> unexpectedMovementMaterialIds = new HashSet<>(movementMaterialIds);
             unexpectedMovementMaterialIds.removeAll(receiptMaterialIds);
-            throw new ApplicationException(ErrorCode.BUSINESS_CONSTRAINT_VIOLATION,
-                    "Goods receipt movement linkage drift detected; purchase invoice cannot post AP truth")
+            throw new ApplicationException(ErrorCode.BUSINESS_CONSTRAINT_VIOLATION, "Goods receipt movement linkage drift detected; purchase invoice cannot post AP truth")
                     .withDetail("goodsReceiptId", goodsReceipt.getId())
                     .withDetail("goodsReceiptNumber", goodsReceipt.getReceiptNumber())
                     .withDetail("missingMovementRawMaterialIds", missingMovementMaterialIds)
@@ -560,8 +550,7 @@ public class PurchaseInvoiceEngine {
 
         for (Map.Entry<Long, GoodsReceiptLine> entry : receiptLinesByMaterial.entrySet()) {
             if (entry.getValue().getRawMaterialBatch() == null) {
-                throw new ApplicationException(ErrorCode.BUSINESS_CONSTRAINT_VIOLATION,
-                        "Goods receipt line is missing batch linkage; invoice cannot create AP truth")
+                throw new ApplicationException(ErrorCode.BUSINESS_CONSTRAINT_VIOLATION, "Goods receipt line is missing batch linkage; invoice cannot create AP truth")
                         .withDetail("goodsReceiptId", goodsReceipt.getId())
                         .withDetail("goodsReceiptNumber", goodsReceipt.getReceiptNumber())
                         .withDetail("rawMaterialId", entry.getKey());
@@ -571,10 +560,7 @@ public class PurchaseInvoiceEngine {
         return receiptMovements;
     }
 
-    private void linkGoodsReceiptMovementsToJournal(List<RawMaterialMovement> receiptMovements,
-                                                    String receiptNumber,
-                                                    Long journalEntryId) {
-        if (journalEntryId == null || !StringUtils.hasText(receiptNumber)) {
+    private void linkGoodsReceiptMovementsToJournal(List<RawMaterialMovement> receiptMovements, String receiptNumber, Long journalEntryId) { if (journalEntryId == null || !StringUtils.hasText(receiptNumber)) {
             return;
         }
         if (receiptMovements.isEmpty()) {
