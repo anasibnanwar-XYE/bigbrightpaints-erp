@@ -7,6 +7,7 @@ import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMappingRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocation;
 import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocationRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
@@ -95,6 +96,8 @@ class PurchasingServiceTest {
     @Mock
     private JournalEntryRepository journalEntryRepository;
     @Mock
+    private JournalReferenceMappingRepository journalReferenceMappingRepository;
+    @Mock
     private CompanyEntityLookup companyEntityLookup;
     @Mock
     private ReferenceNumberService referenceNumberService;
@@ -128,6 +131,7 @@ class PurchasingServiceTest {
                 goodsReceiptRepository,
                 accountingFacade,
                 journalEntryRepository,
+                journalReferenceMappingRepository,
                 companyEntityLookup,
                 referenceNumberService,
                 companyClock,

@@ -9,6 +9,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalCorrectionType;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMappingRepository;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.GstService;
 import com.bigbrightpaints.erp.modules.accounting.service.ReferenceNumberService;
@@ -45,6 +46,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
@@ -64,6 +66,7 @@ class PurchaseReturnServiceTest {
     @Mock private RawMaterialMovementRepository movementRepository;
     @Mock private AccountingFacade accountingFacade;
     @Mock private JournalEntryRepository journalEntryRepository;
+    @Mock private JournalReferenceMappingRepository journalReferenceMappingRepository;
     @Mock private CompanyEntityLookup companyEntityLookup;
     @Mock private ReferenceNumberService referenceNumberService;
     @Mock private CompanyClock companyClock;
@@ -87,6 +90,7 @@ class PurchaseReturnServiceTest {
                 movementRepository,
                 accountingFacade,
                 journalEntryRepository,
+                journalReferenceMappingRepository,
                 companyEntityLookup,
                 referenceNumberService,
                 companyClock,
@@ -135,6 +139,8 @@ class PurchaseReturnServiceTest {
         lenient().when(companyEntityLookup.requireSupplier(company, 10L)).thenReturn(supplier);
         lenient().when(purchaseRepository.lockByCompanyAndId(company, 30L)).thenReturn(Optional.of(purchase));
         lenient().when(rawMaterialRepository.lockByCompanyAndId(company, 20L)).thenReturn(Optional.of(material));
+        lenient().when(journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(any(), any())).thenReturn(Optional.empty());
+        lenient().when(journalReferenceMappingRepository.reserveReferenceMapping(anyLong(), any(), any(), any(), any())).thenReturn(1);
         lenient().when(movementRepository.findByRawMaterialCompanyAndReferenceTypeAndReferenceId(eq(company), eq(com.bigbrightpaints.erp.modules.inventory.domain.InventoryReference.PURCHASE_RETURN), eq("PR-30")))
                 .thenReturn(List.of());
     }

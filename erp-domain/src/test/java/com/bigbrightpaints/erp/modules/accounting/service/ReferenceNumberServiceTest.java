@@ -115,7 +115,12 @@ class ReferenceNumberServiceTest {
         shortSupplier.setCode("SUP-01");
 
         String preview = referenceNumberService.purchaseReturnPreviewReference(shortCompany, shortSupplier);
-        assertEquals("PRN-PREVIEW-F1-SUP-01", preview);
+        String previewAgain = referenceNumberService.purchaseReturnPreviewReference(shortCompany, shortSupplier);
+        assertTrue(preview.startsWith("PRN-PREVIEW-F1-SUP-01-"));
+        assertTrue(previewAgain.startsWith("PRN-PREVIEW-F1-SUP-01-"));
+        assertTrue(!preview.equals(previewAgain));
+        assertTrue(preview.length() <= 64);
+        assertTrue(previewAgain.length() <= 64);
 
         Company longCompany = new Company();
         longCompany.setCode("COMPANY-CODE-WITH-VERY-LONG-TOKEN-TO-FORCE-PREVIEW-HASHING-1234567890");

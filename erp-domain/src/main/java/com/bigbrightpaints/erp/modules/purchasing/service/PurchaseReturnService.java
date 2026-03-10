@@ -4,10 +4,13 @@ import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
+import com.bigbrightpaints.erp.core.util.CompanyTime;
 import com.bigbrightpaints.erp.core.util.MoneyUtils;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalCorrectionType;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMapping;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalReferenceMappingRepository;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
@@ -40,9 +43,13 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 @Service
 public class PurchaseReturnService {
+
+    private static final String PURCHASE_RETURN_PREVIEW_PREFIX = "PRN-PREVIEW-";
+    private static final String JOURNAL_ENTRY_MAPPING_TYPE = "JOURNAL_ENTRY";
 
     private final CompanyContextService companyContextService;
     private final RawMaterialPurchaseRepository purchaseRepository;
@@ -51,6 +58,7 @@ public class PurchaseReturnService {
     private final RawMaterialMovementRepository movementRepository;
     private final AccountingFacade accountingFacade;
     private final JournalEntryRepository journalEntryRepository;
+    private final JournalReferenceMappingRepository journalReferenceMappingRepository;
     private final CompanyEntityLookup companyEntityLookup;
     private final ReferenceNumberService referenceNumberService;
     private final CompanyClock companyClock;
@@ -64,6 +72,7 @@ public class PurchaseReturnService {
                                  RawMaterialMovementRepository movementRepository,
                                  AccountingFacade accountingFacade,
                                  JournalEntryRepository journalEntryRepository,
+                                 JournalReferenceMappingRepository journalReferenceMappingRepository,
                                  CompanyEntityLookup companyEntityLookup,
                                  ReferenceNumberService referenceNumberService,
                                  CompanyClock companyClock,
@@ -76,6 +85,7 @@ public class PurchaseReturnService {
         this.movementRepository = movementRepository;
         this.accountingFacade = accountingFacade;
         this.journalEntryRepository = journalEntryRepository;
+        this.journalReferenceMappingRepository = journalReferenceMappingRepository;
         this.companyEntityLookup = companyEntityLookup;
         this.referenceNumberService = referenceNumberService;
         this.companyClock = companyClock;
@@ -163,7 +173,10 @@ public class PurchaseReturnService {
         BigDecimal taxAmount = computeReturnTax(purchase, material, quantity);
         BigDecimal totalAmount = currency(lineNet.add(taxAmount));
         String memo = returnMemo(material, supplier, request.reason());
-        String reference = resolvePostingReference(company, supplier, request.referenceNumber());
+        String providedReference = StringUtils.hasText(request.referenceNumber())
+                ? request.referenceNumber().trim()
+                : null;
+        String reference = resolvePostingReference(company, supplier, providedReference);
         LocalDate returnDate = request.returnDate() != null ? request.returnDate() : companyClock.today(company);
 
         List<RawMaterialMovement> existingMovements = movementRepository
@@ -171,8 +184,10 @@ public class PurchaseReturnService {
                         InventoryReference.PURCHASE_RETURN,
                         reference);
         if (!existingMovements.isEmpty()) {
-            return returnExistingPurchaseReturn(purchase, material, supplier, quantity, unitCost, reference,
+            JournalEntryDto replay = returnExistingPurchaseReturn(purchase, material, supplier, quantity, unitCost, reference,
                     returnDate, memo, existingMovements);
+            finalizePreviewReferenceMapping(company, providedReference, reference, replay != null ? replay.id() : null);
+            return replay;
         }
 
         supplier.requireTransactionalUsage("record purchase returns");
@@ -221,6 +236,7 @@ public class PurchaseReturnService {
                 totalAmount
         );
         ensureLinkedCorrectionJournal(companyContextService.requireCurrentCompany(), entry, purchase.getJournalEntry(), purchase.getInvoiceNumber());
+        finalizePreviewReferenceMapping(company, providedReference, reference, entry != null ? entry.id() : null);
 
         int updated = rawMaterialRepository.deductStockIfSufficient(material.getId(), quantity);
         if (updated == 0) {
@@ -441,10 +457,68 @@ public class PurchaseReturnService {
             return referenceNumberService.purchaseReturnReference(company, supplier);
         }
         String trimmed = providedReference.trim();
-        if (trimmed.regionMatches(true, 0, "PRN-PREVIEW-", 0, "PRN-PREVIEW-".length())) {
-            return referenceNumberService.purchaseReturnReference(company, supplier);
+        if (isPreviewReference(trimmed)) {
+            return resolvePreviewPostingReference(company, supplier, trimmed);
         }
         return trimmed;
+    }
+
+    private String resolvePreviewPostingReference(Company company, Supplier supplier, String previewReference) {
+        Optional<JournalReferenceMapping> existing = journalReferenceMappingRepository
+                .findByCompanyAndLegacyReferenceIgnoreCase(company, previewReference);
+        if (existing.isPresent() && StringUtils.hasText(existing.get().getCanonicalReference())) {
+            return existing.get().getCanonicalReference().trim();
+        }
+
+        String canonicalReference = referenceNumberService.purchaseReturnReference(company, supplier);
+        if (company == null || company.getId() == null) {
+            return canonicalReference;
+        }
+
+        journalReferenceMappingRepository.reserveReferenceMapping(
+                company.getId(),
+                previewReference,
+                canonicalReference,
+                JOURNAL_ENTRY_MAPPING_TYPE,
+                CompanyTime.now(company));
+
+        return journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(company, previewReference)
+                .map(JournalReferenceMapping::getCanonicalReference)
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .orElse(canonicalReference);
+    }
+
+    private void finalizePreviewReferenceMapping(Company company,
+                                                 String providedReference,
+                                                 String canonicalReference,
+                                                 Long journalEntryId) {
+        if (company == null || !isPreviewReference(providedReference) || !StringUtils.hasText(canonicalReference)) {
+            return;
+        }
+        journalReferenceMappingRepository.findByCompanyAndLegacyReferenceIgnoreCase(company, providedReference.trim())
+                .filter(mapping -> canonicalReference.equalsIgnoreCase(mapping.getCanonicalReference()))
+                .ifPresent(mapping -> {
+                    boolean changed = false;
+                    if (!JOURNAL_ENTRY_MAPPING_TYPE.equalsIgnoreCase(mapping.getEntityType())) {
+                        mapping.setEntityType(JOURNAL_ENTRY_MAPPING_TYPE);
+                        changed = true;
+                    }
+                    if (journalEntryId != null && !Objects.equals(mapping.getEntityId(), journalEntryId)) {
+                        mapping.setEntityId(journalEntryId);
+                        changed = true;
+                    }
+                    if (changed) {
+                        journalReferenceMappingRepository.save(mapping);
+                    }
+                });
+    }
+
+    private boolean isPreviewReference(String reference) {
+        return StringUtils.hasText(reference)
+                && reference.regionMatches(true, 0,
+                PURCHASE_RETURN_PREVIEW_PREFIX, 0,
+                PURCHASE_RETURN_PREVIEW_PREFIX.length());
     }
 
     private void validateReturnReplay(RawMaterial material,

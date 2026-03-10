@@ -207,6 +207,46 @@ class PurchaseReturnIdempotencyRegressionIT extends AbstractIntegrationTest {
     }
 
     @Test
+    void purchaseReturnPreviewReferenceStaysIdempotentAcrossPostingRetries() {
+        PurchaseReturnRequest previewRequest = new PurchaseReturnRequest(
+                supplier.getId(),
+                purchase.getId(),
+                material.getId(),
+                new BigDecimal("4.00"),
+                new BigDecimal("5.00"),
+                null,
+                firstReturnDate,
+                "Damaged"
+        );
+
+        String previewReference = purchasingService.previewPurchaseReturn(previewRequest).referenceNumber();
+        PurchaseReturnRequest postingRequest = new PurchaseReturnRequest(
+                supplier.getId(),
+                purchase.getId(),
+                material.getId(),
+                new BigDecimal("4.00"),
+                new BigDecimal("5.00"),
+                previewReference,
+                firstReturnDate,
+                "Damaged"
+        );
+
+        JournalEntryDto first = purchasingService.recordPurchaseReturn(postingRequest);
+        JournalEntryDto replay = purchasingService.recordPurchaseReturn(postingRequest);
+
+        List<RawMaterialMovement> movements = movementRepository
+                .findByRawMaterialCompanyAndReferenceTypeAndReferenceId(company,
+                        InventoryReference.PURCHASE_RETURN,
+                        journalEntryRepository.findById(first.id()).orElseThrow().getReferenceNumber());
+
+        assertThat(replay.id()).isEqualTo(first.id());
+        assertThat(movements).hasSize(1);
+        assertThat(movements).allMatch(movement -> movement.getJournalEntryId().equals(first.id()));
+        assertThat(purchaseRepository.findById(purchase.getId()).orElseThrow().getOutstandingAmount())
+                .isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
     void purchaseReturnReplaySucceedsAfterSupplierBecomesReferenceOnly() {
         PurchaseReturnRequest request = new PurchaseReturnRequest(
                 supplier.getId(),

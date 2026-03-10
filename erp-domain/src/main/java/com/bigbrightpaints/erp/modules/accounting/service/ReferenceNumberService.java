@@ -129,13 +129,14 @@ public class ReferenceNumberService {
     }
 
     public String purchaseReturnPreviewReference(Company company, Supplier supplier) {
-        String companyCode = sanitize(company != null ? company.getCode() : null);
-        String supplierCode = sanitize(supplier != null ? supplier.getCode() : null);
-        String preview = "PRN-PREVIEW-%s-%s".formatted(companyCode, supplierCode);
+        String companyCode = compactToken(sanitize(company != null ? company.getCode() : null), 16);
+        String supplierCode = compactToken(sanitize(supplier != null ? supplier.getCode() : null), 16);
+        String previewNonce = hashToken(UUID.randomUUID().toString());
+        String preview = "PRN-PREVIEW-%s-%s-%s".formatted(companyCode, supplierCode, previewNonce);
         if (preview.length() <= JOURNAL_REFERENCE_MAX) {
             return preview;
         }
-        return "PRN-PREVIEW-" + hashToken(companyCode + "-" + supplierCode);
+        return "PRN-PREVIEW-" + hashToken(companyCode + "-" + supplierCode + "-" + previewNonce);
     }
 
     public String inventoryAdjustmentReference(Company company, String adjustmentType) {
