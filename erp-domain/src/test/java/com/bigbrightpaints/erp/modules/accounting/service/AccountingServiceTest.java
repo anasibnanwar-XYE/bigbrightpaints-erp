@@ -7889,6 +7889,117 @@ class AccountingServiceTest {
     }
 
     @Test
+    void settleSupplierInvoices_concurrentReplayWithoutExplicitReferenceReusesReservedCanonicalReference() {
+        Supplier supplier = new Supplier();
+        supplier.setName("Supplier");
+        supplier.setStatus(SupplierStatus.ACTIVE);
+        ReflectionTestUtils.setField(supplier, "id", 1L);
+
+        Account payable = new Account();
+        payable.setCompany(company);
+        payable.setCode("AP-RACE");
+        payable.setType(AccountType.LIABILITY);
+        ReflectionTestUtils.setField(payable, "id", 10L);
+        supplier.setPayableAccount(payable);
+
+        Account cash = new Account();
+        cash.setCompany(company);
+        cash.setCode("BANK-RACE");
+        cash.setType(AccountType.ASSET);
+        ReflectionTestUtils.setField(cash, "id", 20L);
+
+        RawMaterialPurchase purchase = new RawMaterialPurchase();
+        purchase.setCompany(company);
+        purchase.setSupplier(supplier);
+        purchase.setTotalAmount(new BigDecimal("100.00"));
+        purchase.setOutstandingAmount(new BigDecimal("100.00"));
+        ReflectionTestUtils.setField(purchase, "id", 801L);
+
+        JournalEntry purchasePosting = new JournalEntry();
+        ReflectionTestUtils.setField(purchasePosting, "id", 821L);
+        purchasePosting.setSupplier(supplier);
+        purchasePosting.getLines().add(journalLine(purchasePosting, payable, "purchase 801", BigDecimal.ZERO, new BigDecimal("100.00")));
+        purchase.setJournalEntry(purchasePosting);
+
+        JournalEntry existingEntry = new JournalEntry();
+        ReflectionTestUtils.setField(existingEntry, "id", 913L);
+        existingEntry.setSupplier(supplier);
+        existingEntry.setReferenceNumber("SUP-SETTLE-CANONICAL-1");
+        existingEntry.setMemo("Concurrent supplier settlement replay");
+        existingEntry.getLines().add(journalLine(existingEntry, payable, "Concurrent supplier settlement replay", new BigDecimal("100.00"), BigDecimal.ZERO));
+        existingEntry.getLines().add(journalLine(existingEntry, cash, "Concurrent supplier settlement replay", BigDecimal.ZERO, new BigDecimal("100.00")));
+
+        PartnerSettlementAllocation existingRow = new PartnerSettlementAllocation();
+        existingRow.setCompany(company);
+        existingRow.setPartnerType(com.bigbrightpaints.erp.modules.accounting.domain.PartnerType.SUPPLIER);
+        existingRow.setSupplier(supplier);
+        existingRow.setPurchase(purchase);
+        existingRow.setJournalEntry(existingEntry);
+        existingRow.setSettlementDate(LocalDate.of(2024, 5, 5));
+        existingRow.setAllocationAmount(new BigDecimal("100.00"));
+        existingRow.setDiscountAmount(BigDecimal.ZERO);
+        existingRow.setWriteOffAmount(BigDecimal.ZERO);
+        existingRow.setFxDifferenceAmount(BigDecimal.ZERO);
+        existingRow.setIdempotencyKey("IDEMP-SUP-SETTLE-RACE");
+
+        String reservedReference = "RESERVED-" + org.springframework.util.DigestUtils.md5DigestAsHex(
+                "idemp-sup-settle-race".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        JournalReferenceMapping reservedMapping = new JournalReferenceMapping();
+        reservedMapping.setCompany(company);
+        reservedMapping.setLegacyReference("idemp-sup-settle-race");
+        reservedMapping.setCanonicalReference(reservedReference);
+        reservedMapping.setEntityType("SUPPLIER_SETTLEMENT");
+        reservedMapping.setEntityId(null);
+
+        when(supplierRepository.lockByCompanyAndId(eq(company), eq(1L))).thenReturn(Optional.of(supplier));
+        when(companyEntityLookup.requireAccount(eq(company), eq(20L))).thenReturn(cash);
+        when(journalReferenceMappingRepository.findAllByCompanyAndLegacyReferenceIgnoreCase(eq(company), eq("idemp-sup-settle-race")))
+                .thenReturn(List.of(), List.of(), List.of(reservedMapping), List.of(reservedMapping));
+        when(settlementAllocationRepository.findByCompanyAndIdempotencyKeyIgnoreCaseOrderByCreatedAtAscIdAsc(
+                eq(company), eq("IDEMP-SUP-SETTLE-RACE")))
+                .thenReturn(List.of(), List.of(existingRow));
+        when(journalReferenceResolver.findExistingEntry(eq(company), eq(reservedReference))).thenReturn(Optional.empty());
+        when(journalReferenceResolver.findExistingEntry(eq(company), eq("IDEMP-SUP-SETTLE-RACE")))
+                .thenReturn(Optional.of(existingEntry));
+
+        SupplierSettlementRequest request = new SupplierSettlementRequest(
+                1L,
+                20L,
+                null,
+                null,
+                null,
+                null,
+                LocalDate.of(2024, 5, 5),
+                null,
+                "Concurrent supplier settlement replay",
+                "IDEMP-SUP-SETTLE-RACE",
+                Boolean.FALSE,
+                List.of(new SettlementAllocationRequest(
+                        null,
+                        801L,
+                        new BigDecimal("100.00"),
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        null
+                ))
+        );
+
+        PartnerSettlementResponse response = accountingService.settleSupplierInvoices(request);
+
+        assertThat(response.journalEntry()).isNotNull();
+        assertThat(response.journalEntry().id()).isEqualTo(913L);
+        assertThat(response.journalEntry().referenceNumber()).isEqualTo("SUP-SETTLE-CANONICAL-1");
+        verify(referenceNumberService, never()).supplierPaymentReference(eq(company), eq(supplier));
+        verify(journalReferenceMappingRepository).save(reservedMapping);
+        assertThat(reservedMapping.getCanonicalReference()).isEqualTo("SUP-SETTLE-CANONICAL-1");
+        assertThat(reservedMapping.getEntityId()).isEqualTo(913L);
+        verify(journalReferenceMappingRepository, never())
+                .reserveReferenceMapping(any(), any(), any(), any(), any());
+        verify(journalEntryRepository, never()).save(any());
+    }
+
+    @Test
     void settleSupplierInvoices_rejectsOnAccountAllocationWithAdjustments() {
         AccountingService service = spy(accountingService);
 

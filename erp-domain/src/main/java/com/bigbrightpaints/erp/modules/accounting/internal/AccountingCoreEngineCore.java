@@ -2356,9 +2356,6 @@ public abstract class AccountingCoreEngineCore {
         Supplier supplier = supplierRepository.lockByCompanyAndId(company, request.supplierId())
                 .orElseThrow(() -> new ApplicationException(ErrorCode.VALIDATION_INVALID_REFERENCE, "Supplier not found"));
         Account payableAccount = requireSupplierPayable(supplier);
-        String generatedReference = !StringUtils.hasText(request.referenceNumber())
-                ? referenceNumberService.supplierPaymentReference(company, supplier)
-                : null;
         String trimmedIdempotencyKey = resolveSupplierSettlementIdempotencyKey(request);
         List<SettlementAllocationRequest> allocations = resolveSupplierSettlementAllocations(company, supplier, request, trimmedIdempotencyKey);
         boolean replayCandidate = hasExistingIdempotencyMapping(company, trimmedIdempotencyKey)
@@ -2377,8 +2374,13 @@ public abstract class AccountingCoreEngineCore {
         if (settlementOverrideRequested) {
             requireAdminExceptionReason("Settlement override", request.adminOverride(), request.memo());
         }
-        String reference = resolveSupplierSettlementReference(company, supplier, request, trimmedIdempotencyKey, generatedReference);
+        String reference = resolveSupplierSettlementReference(company, supplier, request, trimmedIdempotencyKey);
         IdempotencyReservation reservation = reserveReferenceMapping(company, trimmedIdempotencyKey, reference, ENTITY_TYPE_SUPPLIER_SETTLEMENT);
+        if (reservation.leader()
+                && !StringUtils.hasText(request.referenceNumber())
+                && isReservedReference(reference)) {
+            reference = referenceNumberService.supplierPaymentReference(company, supplier);
+        }
 
         if (!reservation.leader()) {
             JournalEntry existingEntry = awaitJournalEntry(company, reference, trimmedIdempotencyKey);
@@ -3591,8 +3593,7 @@ public abstract class AccountingCoreEngineCore {
     private String resolveSupplierSettlementReference(Company company,
                                                       Supplier supplier,
                                                       SupplierSettlementRequest request,
-                                                      String idempotencyKey,
-                                                      String generatedReference) {
+                                                      String idempotencyKey) {
         if (request != null && StringUtils.hasText(request.referenceNumber())) {
             return request.referenceNumber().trim();
         }
@@ -3602,9 +3603,7 @@ public abstract class AccountingCoreEngineCore {
             if (mapping.isPresent() && StringUtils.hasText(mapping.get().getCanonicalReference())) {
                 return mapping.get().getCanonicalReference().trim();
             }
-        }
-        if (StringUtils.hasText(generatedReference)) {
-            return generatedReference.trim();
+            return reservedManualReference(key);
         }
         return referenceNumberService.supplierPaymentReference(company, supplier);
     }
