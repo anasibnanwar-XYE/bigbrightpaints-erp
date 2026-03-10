@@ -154,7 +154,7 @@ class DealerControllerSecurityIT extends AbstractIntegrationTest {
     }
 
     @Test
-    @DisplayName("Admin gets not-found for missing dealer read endpoints")
+    @DisplayName("Admin gets strict not-found for missing dealer read endpoints")
     void adminGetsNotFoundForMissingDealerReadEndpoints() {
         HttpHeaders headers = authHeaders(ADMIN_EMAIL, PASSWORD);
         long missingDealerId = 999_999_999L;
@@ -175,9 +175,9 @@ class DealerControllerSecurityIT extends AbstractIntegrationTest {
                 new HttpEntity<>(headers),
                 Map.class);
 
-        assertThat(ledger.getStatusCode()).isIn(HttpStatus.NOT_FOUND, HttpStatus.BAD_REQUEST);
-        assertThat(invoices.getStatusCode()).isIn(HttpStatus.NOT_FOUND, HttpStatus.BAD_REQUEST);
-        assertThat(aging.getStatusCode()).isIn(HttpStatus.NOT_FOUND, HttpStatus.BAD_REQUEST);
+        assertThat(ledger.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(invoices.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(aging.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
     private HttpHeaders authHeaders(String email, String password) {

@@ -482,6 +482,14 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
         FinishedGoodBatch soonerAfterFirst = finishedGoodBatchRepository.findById(soonerExpiry.getId()).orElseThrow();
         FinishedGoodBatch laterAfterFirst = finishedGoodBatchRepository.findById(laterExpiry.getId()).orElseThrow();
         FinishedGood finishedGoodAfterFirst = finishedGoodRepository.findById(fg.getId()).orElseThrow();
+        List<InventoryReservation> activeReservationsAfterFirst = inventoryReservationRepository
+                .findByFinishedGoodCompanyAndReferenceTypeAndReferenceId(
+                        company,
+                        InventoryReference.SALES_ORDER,
+                        order.getId().toString())
+                .stream()
+                .filter(reservation -> !"CANCELLED".equalsIgnoreCase(reservation.getStatus()))
+                .toList();
 
         FinishedGoodsService.InventoryReservationResult replay = finishedGoodsService.reserveForOrder(order);
         FinishedGoodBatch soonerAfterReplay = finishedGoodBatchRepository.findById(soonerExpiry.getId()).orElseThrow();
@@ -499,6 +507,12 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
         assertThat(laterAfterReplay.getQuantityAvailable()).isEqualByComparingTo(BigDecimal.ZERO);
         assertThat(finishedGoodAfterFirst.getReservedStock()).isEqualByComparingTo(new BigDecimal("4"));
         assertThat(finishedGoodAfterReplay.getReservedStock()).isEqualByComparingTo(new BigDecimal("4"));
+        assertThat(activeReservationsAfterFirst).hasSize(2);
+        assertThat(activeReservationsAfterFirst)
+                .extracting(reservation -> reservation.getFinishedGoodBatch().getId())
+                .containsExactlyInAnyOrder(soonerExpiry.getId(), laterExpiry.getId());
+        assertThat(activeReservationsAfterFirst)
+                .allSatisfy(reservation -> assertThat(reservation.getReservedQuantity()).isEqualByComparingTo(new BigDecimal("2")));
 
         List<InventoryReservation> activeReservations = inventoryReservationRepository
                 .findByFinishedGoodCompanyAndReferenceTypeAndReferenceId(
@@ -509,6 +523,11 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
                 .filter(reservation -> !"CANCELLED".equalsIgnoreCase(reservation.getStatus()))
                 .toList();
         assertThat(activeReservations).hasSize(2);
+        assertThat(activeReservations)
+                .extracting(reservation -> reservation.getFinishedGoodBatch().getId())
+                .containsExactlyInAnyOrder(soonerExpiry.getId(), laterExpiry.getId());
+        assertThat(activeReservations)
+                .allSatisfy(reservation -> assertThat(reservation.getReservedQuantity()).isEqualByComparingTo(new BigDecimal("2")));
         BigDecimal reservedTotal = activeReservations.stream()
                 .map(reservation -> reservation.getReservedQuantity() != null
                         ? reservation.getReservedQuantity()

@@ -1052,7 +1052,7 @@ public class OrderFulfillmentE2ETest extends AbstractIntegrationTest {
 
     private PackagingSlip reserveSlip(Company company, Long orderId) {
         SalesOrder order = salesOrderRepository.findById(orderId).orElseThrow();
-        CompanyContextHolder.setCompanyId(company.getCode());
+        CompanyContextHolder.setCompanyCode(company.getCode());
         try {
             PackagingSlip existing = packagingSlipRepository.findByCompanyAndSalesOrderId(company, orderId).orElse(null);
             if (existing != null) {
