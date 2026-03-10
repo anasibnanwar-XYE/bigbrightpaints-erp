@@ -2,7 +2,7 @@
   "milestone": "recovery-review",
   "round": 1,
   "status": "pass",
-  "scopeNote": "Recovery-review is clean on the current propagated stack because the re-anchored review evidence now resolves on the current branch, so the restored pass state is auditable rather than a stale clean summary carried forward from pre-restack history.",
+  "scopeNote": "Recovery-review is clean on the current propagated stack because the re-anchored review evidence now resolves on the current branch, including the latest PR #102 traceability re-check for the three previously stale review-artifact commit anchors, so the restored pass state is auditable rather than a stale clean summary carried forward from pre-restack history.",
   "validatorsRun": {
     "test": {
       "passed": true,
@@ -37,7 +37,7 @@
   "appliedUpdates": [
     {
       "target": ".factory/validation/recovery-review/scrutiny/reviews/*.json",
-      "description": "Re-anchored the aggregate recovery-review traceability chain to the current propagated commits, including the docs-only PR #102 shareout review on resolvable commit `1eb52bef6d674e5c2224eb5d09a5c17c60aa4c62`, so the milestone pass now reflects a re-established auditable stack rather than a stale clean summary from before restack churn was closed.",
+      "description": "Re-anchored the aggregate recovery-review traceability chain to the current propagated commits, replacing the three stale non-ancestor review anchors with reachable propagated commits: final-hardening `373e705819bdebb6e7166b1ce1528eb3cebf1f39`, portal `42d93ea5a3182308d50dddf3db634492f72ffd8c`, and the docs-only PR #102 shareout review `3e1ac865c2c4110d60d25cf50634e63362b9b753`, so the milestone pass now reflects a re-established auditable stack rather than a stale clean summary from before restack churn was closed.",
       "source": "review-traceability"
     },
     {
