@@ -20,15 +20,19 @@ import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.annotation.Transactional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 @Transactional
+@Tag("critical")
 class FinishedGoodsReservationEngineTest extends AbstractIntegrationTest {
 
     @Autowired
@@ -144,6 +148,123 @@ class FinishedGoodsReservationEngineTest extends AbstractIntegrationTest {
                 .isEqualByComparingTo(BigDecimal.ZERO);
     }
 
+    @Test
+    void synchronizeReservationsForSlip_returnsFalseWhenSlipHasNoLines() {
+        PackagingSlip slip = new PackagingSlip();
+
+        assertThat(synchronizeReservationsForSlip(slip, new SalesOrder())).isFalse();
+    }
+
+    @Test
+    void synchronizeReservationsForSlip_returnsFalseWhenSlipLineBatchMetadataIsMissing() {
+        PackagingSlip slip = new PackagingSlip();
+        PackagingSlipLine line = new PackagingSlipLine();
+        line.setPackagingSlip(slip);
+        line.setQuantity(BigDecimal.ONE);
+        slip.getLines().add(line);
+
+        assertThat(synchronizeReservationsForSlip(slip, new SalesOrder())).isFalse();
+    }
+
+    @Test
+    void synchronizeReservationsForSlip_returnsFalseWhenActiveReservationBatchShapeDrifts() {
+        Company company = seedCompany("RES-SYNC-DRIFT");
+        FinishedGood finishedGood = createFinishedGood(company, "FG-RES-SYNC-DRIFT", new BigDecimal("4"), BigDecimal.ZERO);
+        FinishedGoodBatch slipBatch = createBatch(finishedGood, "BATCH-RES-SYNC-DRIFT-SLIP", new BigDecimal("2"), new BigDecimal("2"), new BigDecimal("8"));
+        FinishedGoodBatch reservationBatch = createBatch(finishedGood, "BATCH-RES-SYNC-DRIFT-RES", new BigDecimal("2"), new BigDecimal("2"), new BigDecimal("9"));
+        SalesOrder order = createOrder(company, "SO-RES-SYNC-DRIFT-" + UUID.randomUUID(), finishedGood.getProductCode(), BigDecimal.ONE);
+
+        PackagingSlip slip = createSlip(company, order, "RESERVED", slipBatch, BigDecimal.ONE);
+        createReservation(order, finishedGood, reservationBatch, BigDecimal.ONE);
+
+        assertThat(synchronizeReservationsForSlip(slip, order)).isFalse();
+    }
+
+    @Test
+    void reserveForOrder_rebuildsReservationsFromSlipWhenActiveRowsAreMissing() {
+        Company company = seedCompany("RES-SYNC-REBUILD");
+        FinishedGood finishedGood = createFinishedGood(company, "FG-RES-SYNC-REBUILD", new BigDecimal("3"), BigDecimal.ZERO);
+        FinishedGoodBatch batch = createBatch(finishedGood, "BATCH-RES-SYNC-REBUILD", new BigDecimal("3"), new BigDecimal("3"), new BigDecimal("8"));
+        SalesOrder order = createOrder(company, "SO-RES-SYNC-REBUILD-" + UUID.randomUUID(), finishedGood.getProductCode(), BigDecimal.ONE);
+
+        PackagingSlip slip = createSlip(company, order, "RESERVED", batch, BigDecimal.ONE);
+
+        FinishedGoodsService.InventoryReservationResult replay = finishedGoodsService.reserveForOrder(order);
+
+        List<InventoryReservation> reservations = reservationsFor(company, order.getId());
+        assertThat(replay.shortages()).isEmpty();
+        assertThat(reservations).hasSize(1);
+        assertThat(reservations.getFirst().getFinishedGoodBatch().getId()).isEqualTo(batch.getId());
+        assertThat(reservations.getFirst().getReservedQuantity()).isEqualByComparingTo(BigDecimal.ONE);
+        assertThat(packagingSlipRepository.findByIdAndCompany(slip.getId(), company).orElseThrow().getStatus()).isEqualTo("RESERVED");
+        assertThat(finishedGoodRepository.findById(finishedGood.getId()).orElseThrow().getReservedStock())
+                .isEqualByComparingTo(BigDecimal.ONE);
+    }
+
+    @Test
+    void applySynchronizedAllocation_transitionsFulfilledPartialAndBackorderStates() {
+        PackagingSlip reservedSlip = new PackagingSlip();
+        reservedSlip.setStatus("RESERVED");
+
+        InventoryReservation fulfilled = new InventoryReservation();
+        fulfilled.setQuantity(new BigDecimal("5"));
+        fulfilled.setReservedQuantity(new BigDecimal("5"));
+        fulfilled.setFulfilledQuantity(new BigDecimal("5"));
+        fulfilled.setStatus("RESERVED");
+
+        applySynchronizedAllocation(fulfilled, new BigDecimal("5"), reservedSlip);
+
+        assertThat(fulfilled.getStatus()).isEqualTo("FULFILLED");
+        assertThat(zeroIfNull(fulfilled.getReservedQuantity())).isEqualByComparingTo(BigDecimal.ZERO);
+
+        InventoryReservation partial = new InventoryReservation();
+        partial.setQuantity(new BigDecimal("5"));
+        partial.setReservedQuantity(new BigDecimal("5"));
+        partial.setFulfilledQuantity(new BigDecimal("2"));
+        partial.setStatus("RESERVED");
+
+        applySynchronizedAllocation(partial, new BigDecimal("5"), reservedSlip);
+
+        assertThat(partial.getStatus()).isEqualTo("PARTIAL");
+        assertThat(partial.getReservedQuantity()).isEqualByComparingTo(new BigDecimal("3"));
+
+        PackagingSlip backorderSlip = new PackagingSlip();
+        backorderSlip.setStatus("BACKORDER");
+        backorderSlip.setBackorder(true);
+        InventoryReservation backorder = new InventoryReservation();
+        backorder.setQuantity(new BigDecimal("5"));
+        backorder.setReservedQuantity(new BigDecimal("5"));
+        backorder.setFulfilledQuantity(BigDecimal.ZERO);
+        backorder.setStatus("RESERVED");
+
+        applySynchronizedAllocation(backorder, new BigDecimal("5"), backorderSlip);
+
+        assertThat(backorder.getStatus()).isEqualTo("BACKORDER");
+        assertThat(backorder.getReservedQuantity()).isEqualByComparingTo(new BigDecimal("5"));
+    }
+
+    @Test
+    void terminalReplayAndActiveReservationHelpersFailClosedForNonTerminalInputs() {
+        Company company = seedCompany("RES-TERMINAL-HELPERS");
+        FinishedGood finishedGood = createFinishedGood(company, "FG-RES-TERMINAL-HELPERS", new BigDecimal("2"), BigDecimal.ZERO);
+        FinishedGoodBatch batch = createBatch(finishedGood, "BATCH-RES-TERMINAL-HELPERS", new BigDecimal("2"), new BigDecimal("2"), new BigDecimal("7"));
+
+        PackagingSlip dispatchedSlip = new PackagingSlip();
+        dispatchedSlip.setStatus("DISPATCHED");
+
+        InventoryReservation partialReservation = new InventoryReservation();
+        partialReservation.setFinishedGoodBatch(batch);
+        partialReservation.setStatus("PARTIAL");
+        partialReservation.setQuantity(BigDecimal.ONE);
+
+        assertThat(isTerminalDispatchReplay(dispatchedSlip, List.of(partialReservation), Map.of(batch.getId(), BigDecimal.ONE))).isFalse();
+        assertThat(isActiveReservation(null)).isFalse();
+
+        InventoryReservation fulfilledReservation = new InventoryReservation();
+        fulfilledReservation.setStatus("FULFILLED");
+        assertThat(isActiveReservation(fulfilledReservation)).isFalse();
+    }
+
     private Company seedCompany(String code) {
         Company company = dataSeeder.ensureCompany(code, code + " Ltd");
         CompanyContextHolder.setCompanyId(company.getCode());
@@ -256,5 +377,39 @@ class FinishedGoodsReservationEngineTest extends AbstractIntegrationTest {
 
     private BigDecimal zeroIfNull(BigDecimal value) {
         return value != null ? value : BigDecimal.ZERO;
+    }
+
+    private boolean synchronizeReservationsForSlip(PackagingSlip slip, SalesOrder order) {
+        return Boolean.TRUE.equals(ReflectionTestUtils.invokeMethod(
+                reservationEngine(),
+                "synchronizeReservationsForSlip",
+                slip,
+                order));
+    }
+
+    private void applySynchronizedAllocation(InventoryReservation reservation,
+                                             BigDecimal allocation,
+                                             PackagingSlip slip) {
+        ReflectionTestUtils.invokeMethod(reservationEngine(), "applySynchronizedAllocation", reservation, allocation, slip);
+    }
+
+    private boolean isTerminalDispatchReplay(PackagingSlip slip,
+                                             List<InventoryReservation> reservations,
+                                             Map<Long, BigDecimal> expectedByBatchId) {
+        return Boolean.TRUE.equals(ReflectionTestUtils.invokeMethod(
+                reservationEngine(),
+                "isTerminalDispatchReplay",
+                slip,
+                reservations,
+                expectedByBatchId));
+    }
+
+    private boolean isActiveReservation(InventoryReservation reservation) {
+        return Boolean.TRUE.equals(ReflectionTestUtils.invokeMethod(reservationEngine(), "isActiveReservation", reservation));
+    }
+
+    private FinishedGoodsReservationEngine reservationEngine() {
+        Object workflowEngine = ReflectionTestUtils.getField(finishedGoodsService, "workflowEngine");
+        return (FinishedGoodsReservationEngine) ReflectionTestUtils.getField(workflowEngine, "reservationEngine");
     }
 }

@@ -35,6 +35,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Propagation;
@@ -306,6 +307,7 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
     }
 
     @Test
+    @Tag("critical")
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     void reserveForOrderUsesStableBatchIdTieBreakWhenWacBatchesShareExpiryAndManufacturedAt() {
         Company company = seedCompany("WAC-FEFO-TIE");
@@ -370,6 +372,7 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
     }
 
     @Test
+    @Tag("critical")
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     void reserveForOrderTreatsLegacyWeightedAverageAliasAsWac_underTurkishLocale() {
         Locale previous = Locale.getDefault();
@@ -447,6 +450,7 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
     }
 
     @Test
+    @Tag("critical")
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     void reserveForOrderWacShortageReplayKeepsStableReservationsAndDoesNotDoubleDeplete() {
         Company company = seedCompany("WAC-REPLAY-SHORT");
