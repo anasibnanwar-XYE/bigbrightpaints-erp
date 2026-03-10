@@ -79,8 +79,15 @@ public class FinishedGoodsReservationEngine {
                 .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils
                         .invalidInput("Sales order not found: " + order.getId()));
 
-        PackagingSlip slip = packagingSlipRepository.findAndLockPrimaryBySalesOrderId(order.getId(), company)
-                .orElseGet(() -> createPrimarySlip(managedOrder));
+        List<PackagingSlip> lockedSlips = packagingSlipRepository.findAllByCompanyAndSalesOrderIdForUpdate(company, order.getId());
+        PackagingSlip slip = lockedSlips.stream()
+                .filter(existing -> !existing.isBackorder())
+                .findFirst()
+                .orElseGet(() -> lockedSlips.stream()
+                        .filter(PackagingSlip::isBackorder)
+                        .filter(existing -> slipLinesMatchOrder(existing, managedOrder))
+                        .findFirst()
+                        .orElseGet(() -> createPrimarySlip(managedOrder)));
 
         if ("CANCELLED".equalsIgnoreCase(slip.getStatus())) {
             releaseReservationsForOrder(managedOrder.getId());
@@ -92,8 +99,10 @@ public class FinishedGoodsReservationEngine {
 
         if (!slip.getLines().isEmpty()) {
             if (slipLinesMatchOrder(slip, managedOrder)) {
-                updateSlipStatusBasedOnAvailability(slip, List.of());
-                return new FinishedGoodsService.InventoryReservationResult(toSlipDto(slip), List.of());
+                if (synchronizeReservationsForSlip(slip, managedOrder)) {
+                    updateSlipStatusBasedOnAvailability(slip, List.of());
+                    return new FinishedGoodsService.InventoryReservationResult(toSlipDto(slip), List.of());
+                }
             }
             releaseReservationsForOrder(order.getId());
             slip.getLines().clear();
@@ -112,6 +121,72 @@ public class FinishedGoodsReservationEngine {
         packagingSlipRepository.save(slip);
         updateSlipStatusBasedOnAvailability(slip, shortages);
         return new FinishedGoodsService.InventoryReservationResult(toSlipDto(slip), List.copyOf(shortages));
+    }
+
+    private boolean synchronizeReservationsForSlip(PackagingSlip slip, SalesOrder order) {
+        if (slip.getLines() == null || slip.getLines().isEmpty()) {
+            return false;
+        }
+
+        Map<Long, BigDecimal> expectedByBatchId = new HashMap<>();
+        for (PackagingSlipLine line : slip.getLines()) {
+            FinishedGoodBatch batch = line.getFinishedGoodBatch();
+            if (batch == null || batch.getId() == null) {
+                return false;
+            }
+            expectedByBatchId.merge(batch.getId(), inventoryValuationService.safeQuantity(line.getQuantity()), BigDecimal::add);
+        }
+
+        List<InventoryReservation> activeReservations = inventoryReservationRepository
+                .findByFinishedGoodCompanyAndReferenceTypeAndReferenceId(
+                        slip.getCompany(),
+                        InventoryReference.SALES_ORDER,
+                        order.getId().toString())
+                .stream()
+                .filter(this::isActiveReservation)
+                .toList();
+
+        if (activeReservations.isEmpty()) {
+            rebuildReservationsFromSlip(slip, order.getId());
+            return true;
+        }
+
+        Map<Long, InventoryReservation> reservationsByBatchId = new HashMap<>();
+        for (InventoryReservation reservation : activeReservations) {
+            FinishedGoodBatch batch = reservation.getFinishedGoodBatch();
+            if (batch == null || batch.getId() == null) {
+                return false;
+            }
+            if (reservationsByBatchId.putIfAbsent(batch.getId(), reservation) != null) {
+                return false;
+            }
+        }
+
+        if (!reservationsByBatchId.keySet().equals(expectedByBatchId.keySet())) {
+            return false;
+        }
+
+        Map<Long, FinishedGood> touchedGoods = new HashMap<>();
+        Map<Long, FinishedGoodBatch> touchedBatches = new HashMap<>();
+        for (Map.Entry<Long, InventoryReservation> entry : reservationsByBatchId.entrySet()) {
+            Long batchId = entry.getKey();
+            InventoryReservation reservation = entry.getValue();
+            BigDecimal allocation = expectedByBatchId.get(batchId);
+            reservation.setQuantity(allocation);
+            reservation.setReservedQuantity(allocation);
+            reservation.setStatus("RESERVED");
+
+            FinishedGood finishedGood = reservation.getFinishedGood();
+            if (finishedGood != null && finishedGood.getId() != null) {
+                touchedGoods.computeIfAbsent(finishedGood.getId(), id -> lockFinishedGood(slip.getCompany(), id));
+            }
+            touchedBatches.computeIfAbsent(batchId, id -> finishedGoodBatchRepository.lockById(id).orElseThrow(() ->
+                    com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Finished good batch not found: " + id)));
+        }
+
+        inventoryReservationRepository.saveAll(activeReservations);
+        recalculateReservationState(touchedGoods, touchedBatches);
+        return true;
     }
 
     @Transactional
@@ -238,6 +313,12 @@ public class FinishedGoodsReservationEngine {
         }
 
         List<InventoryReservation> saved = inventoryReservationRepository.saveAll(rebuilt);
+        recalculateReservationState(touchedGoods, touchedBatches);
+        return saved;
+    }
+
+    private void recalculateReservationState(Map<Long, FinishedGood> touchedGoods,
+                                             Map<Long, FinishedGoodBatch> touchedBatches) {
         if (!touchedGoods.isEmpty()) {
             for (FinishedGood fg : touchedGoods.values()) {
                 BigDecimal reservedTotal = inventoryReservationRepository.findByFinishedGood(fg).stream()
@@ -258,7 +339,12 @@ public class FinishedGoodsReservationEngine {
             }
             finishedGoodBatchRepository.saveAll(touchedBatches.values());
         }
-        return saved;
+    }
+
+    private boolean isActiveReservation(InventoryReservation reservation) {
+        return reservation != null
+                && !"CANCELLED".equalsIgnoreCase(reservation.getStatus())
+                && !"FULFILLED".equalsIgnoreCase(reservation.getStatus());
     }
 
     public BigDecimal resolveReservedQuantity(InventoryReservation reservation) {
