@@ -5417,6 +5417,10 @@ public abstract class AccountingCoreEngineCore {
                 : null;
         fingerprint.append("|unapplied=")
                 .append(unappliedApplication != null ? unappliedApplication.name() : "null");
+        if (orderedPayments.isEmpty()) {
+            fingerprint.append("|cashAccountId=")
+                    .append(request != null && request.cashAccountId() != null ? request.cashAccountId() : "null");
+        }
         for (SettlementPaymentRequest payment : orderedPayments) {
             fingerprint.append("|pay=")
                     .append(payment.accountId() != null ? payment.accountId() : "null")

@@ -36,29 +36,29 @@
 
 ## Additional Scope: `recovery-followup.corrections-control-comment-recheck-and-closure`
 - Packet target: `recovery/05-corrections-control` rechecked on the latest stacked head.
-- High-risk paths touched: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/service/SalesReturnService.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/sales/service/SalesReturnServiceTest.java`, and this checkpoint.
-- Why this is R2: the packet rechecks the live PR #99 corrections/control replay thread and narrows sales-return replay relinking so keyed retries repair only the intended current line-scoped return movements, without overwriting historical journal links on unrelated legacy invoice-level return movements.
+- High-risk paths touched: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/internal/AccountingCoreEngineCore.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingServiceTest.java`, and this checkpoint.
+- Why this is R2: the packet rechecks the newest live PR #99 corrections/control thread and narrows the change to header-level dealer-settlement idempotency so derived keys distinguish the selected cash account when requests omit explicit `idempotencyKey`, `referenceNumber`, `allocations`, and `payments`, preventing cross-account replay collisions on the accounting control path.
 
 ### Additional Risk Trigger
-- Triggered by the newest live PR #99 review thread on sales-return replay relinking against legacy invoice-level return movements.
-- Contract surfaces affected: sales-return replay relinking, correction-journal repair on replay, preservation of legacy invoice-level return journal links, and focused regression coverage for the strict/current return-linkage contract.
-- Main risks being controlled: keyed retries mutating unrelated historical return-movement `journalEntryId` values, and accidental narrowing that would stop the intended current line-scoped return movements from reconnecting to the replayed correction journal.
+- Triggered by the newest live PR #99 review thread on header-level dealer-settlement idempotency across different cash accounts.
+- Contract surfaces affected: derived dealer-settlement header fingerprints, replay/collision handling for omitted-key dealer settlements, and focused regression coverage for cash-account-sensitive header identity.
+- Main risks being controlled: same dealer/date/amount submissions on different cash accounts collapsing to one idempotency key, replaying or conflicting against the wrong canonical settlement, and accidental widening that would disturb the earlier replay-relink and coverage fixes already carried on the branch.
 
 ### Additional Approval / Escalation
 - Mode: orchestrator.
 - Human escalation required: no.
-- Basis: the fix is compatibility-preserving within the approved corrections/control scope, adds no migration behavior, and keeps the replay repair limited to the current canonical sales-return references.
+- Basis: the fix is compatibility-preserving within the approved corrections/control scope, adds no migration behavior, and keeps the change limited to the dealer header-settlement fingerprint derivation used on the existing replay path.
 
 ### Additional Rollback Owner
 - Owner: corrections/control recovery worker.
-- Rollback method: revert the feature commit, then rerun `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='SalesReturnServiceTest,AccountingServiceTest,AccountingPeriodServicePolicyTest,PurchaseReturnServiceTest' test`, `cd erp-domain && MIGRATION_SET=v2 mvn -T8 test -Pgate-fast -Djacoco.skip=true`, `bash ci/check-enterprise-policy.sh`, and `bash ci/check-codex-review-guidelines.sh` before re-review.
+- Rollback method: revert the feature commit, then rerun `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AccountingServiceTest,SalesReturnServiceTest,AccountingPeriodServicePolicyTest,PurchaseReturnServiceTest' test`, `cd erp-domain && MIGRATION_SET=v2 mvn -T8 test -Pgate-fast -Djacoco.skip=true`, `bash ci/check-enterprise-policy.sh`, and `bash ci/check-codex-review-guidelines.sh` before re-review.
 
 ### Additional Expiry
 - Valid until: 2026-03-14.
-- Re-evaluate if: later packets introduce a migration/backfill for legacy sales-return movements, or if new return replay logic needs to relink anything broader than the current line-scoped references.
+- Re-evaluate if: later packets change dealer header-settlement semantic identity again, widen header settlement payment sources beyond the current single cash-account fallback, or introduce migration-backed settlement fingerprint backfills.
 
 ### Additional Verification Evidence
-- Commands run: `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='SalesReturnServiceTest' test`; `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='SalesReturnServiceTest,AccountingServiceTest,AccountingPeriodServicePolicyTest,PurchaseReturnServiceTest' test`; `cd erp-domain && MIGRATION_SET=v2 mvn -T8 test -Pgate-fast -Djacoco.skip=true`; `bash ci/check-enterprise-policy.sh`; `bash ci/check-codex-review-guidelines.sh`; `gh pr checks 99 --repo anasibnanwar-XYE/bigbrightpaints-erp || true`.
-- Result summary: the focused replay regression now proves keyed sales-return retries relink only the intended current line-scoped return movements while leaving unrelated legacy invoice-level return-movement journal links untouched; correction-journal repair remains intact; the broader corrections/control validation suite stays green; and PR #99 checks were re-read on the latest propagated head.
-- Artifacts/links: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/service/SalesReturnService.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/sales/service/SalesReturnServiceTest.java`.
+- Commands run: `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AccountingServiceTest#buildDealerHeaderSettlementIdempotencyKey_distinguishesCashAccountWhenPaymentsAndAllocationsAreOmitted,AccountingServiceTest#buildDealerSettlementIdempotencyKey_distinguishesImplicitCashAccountWhenPaymentsOmitted,AccountingServiceTest#settleDealerInvoices_headerLevelReplayWithoutProvidedKeyReusesCanonicalAllocations' test`; `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AccountingServiceTest,SalesReturnServiceTest,AccountingPeriodServicePolicyTest,PurchaseReturnServiceTest' test`; `cd erp-domain && MIGRATION_SET=v2 mvn -T8 test -Pgate-fast -Djacoco.skip=true`; `bash ci/check-enterprise-policy.sh`; `bash ci/check-codex-review-guidelines.sh`; `gh pr checks 99 --repo anasibnanwar-XYE/bigbrightpaints-erp || true`.
+- Result summary: the dealer header-settlement fingerprint now binds the explicit cash account even when both `allocations` and `payments` are omitted, so same dealer/date/amount submissions on different cash accounts derive distinct idempotency keys; the existing replay path still reuses the canonical allocation result for true duplicates; the broader corrections/control validation suite stays green; and PR #99 checks were re-read on the latest propagated head.
+- Artifacts/links: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/internal/AccountingCoreEngineCore.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingServiceTest.java`.
 - Migration guidance note: no `db/migration_v2` files changed in this packet, so no migration-runbook update was required.

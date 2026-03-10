@@ -5808,6 +5808,49 @@ class AccountingServiceTest {
     }
 
     @Test
+    void buildDealerHeaderSettlementIdempotencyKey_distinguishesCashAccountWhenPaymentsAndAllocationsAreOmitted() {
+        DealerSettlementRequest cashRequest = new DealerSettlementRequest(
+                1L,
+                20L,
+                null,
+                null,
+                null,
+                null,
+                new BigDecimal("100.00"),
+                null,
+                LocalDate.of(2024, 5, 1),
+                null,
+                "Header dealer settlement",
+                null,
+                Boolean.FALSE,
+                null,
+                null
+        );
+        DealerSettlementRequest bankRequest = new DealerSettlementRequest(
+                1L,
+                21L,
+                null,
+                null,
+                null,
+                null,
+                new BigDecimal("100.00"),
+                null,
+                LocalDate.of(2024, 5, 1),
+                null,
+                "Header dealer settlement",
+                null,
+                Boolean.FALSE,
+                null,
+                null
+        );
+
+        String cashKey = ReflectionTestUtils.invokeMethod(accountingService, "buildDealerHeaderSettlementIdempotencyKey", cashRequest);
+        String bankKey = ReflectionTestUtils.invokeMethod(accountingService, "buildDealerHeaderSettlementIdempotencyKey", bankRequest);
+
+        assertThat(cashKey).isNotEqualTo(bankKey);
+    }
+
+    @Test
     void resolveDealerSettlementIdempotencyKey_rejectsLegacyReplayWhenImplicitCashAccountDiffers() {
         DealerSettlementRequest originalOrderRequest = new DealerSettlementRequest(
                 1L,
