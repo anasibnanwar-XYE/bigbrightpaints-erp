@@ -719,7 +719,6 @@ public class SalesReturnService {
         Set<String> expectedReferences = request.lines().stream()
                 .flatMap(line -> StreamReferenceHelper.salesReturnReferences(invoiceNumber, line.invoiceLineId(), returnKey).stream())
                 .collect(Collectors.toSet());
-        expectedReferences.add(invoiceNumber);
         boolean changed = false;
         for (InventoryMovement movement : existingMovements) {
             if (!expectedReferences.contains(movement.getReferenceId())) {

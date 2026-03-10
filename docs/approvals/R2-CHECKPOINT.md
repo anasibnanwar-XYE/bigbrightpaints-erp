@@ -36,29 +36,29 @@
 
 ## Additional Scope: `recovery-followup.corrections-control-comment-recheck-and-closure`
 - Packet target: `recovery/05-corrections-control` rechecked on the latest stacked head.
-- High-risk paths touched: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/internal/AccountingPeriodServiceCore.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingPeriodServicePolicyTest.java`, and this checkpoint.
-- Why this is R2: the packet changes month-end control behavior in accounting so upgraded tenants can close periods with legitimate legacy `CRN-` / `PRN-` return journals that predate persisted correction-linkage metadata, while preserving the stricter current correction-linkage contract for newly created journals.
+- High-risk paths touched: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/service/SalesReturnService.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/sales/service/SalesReturnServiceTest.java`, and this checkpoint.
+- Why this is R2: the packet rechecks the live PR #99 corrections/control replay thread and narrows sales-return replay relinking so keyed retries repair only the intended current line-scoped return movements, without overwriting historical journal links on unrelated legacy invoice-level return movements.
 
 ### Additional Risk Trigger
-- Triggered by the newly surfaced PR #99 review thread on historical return-journal period-close compatibility.
-- Contract surfaces affected: correction-linkage gap detection during period close, legacy return-journal compatibility, and focused policy regression coverage.
-- Main risks being controlled: false period-close blockers on upgraded tenants with historical automated return journals, and accidental widening that would let partially populated modern correction metadata evade the close-control contract.
+- Triggered by the newest live PR #99 review thread on sales-return replay relinking against legacy invoice-level return movements.
+- Contract surfaces affected: sales-return replay relinking, correction-journal repair on replay, preservation of legacy invoice-level return journal links, and focused regression coverage for the strict/current return-linkage contract.
+- Main risks being controlled: keyed retries mutating unrelated historical return-movement `journalEntryId` values, and accidental narrowing that would stop the intended current line-scoped return movements from reconnecting to the replayed correction journal.
 
 ### Additional Approval / Escalation
 - Mode: orchestrator.
 - Human escalation required: no.
-- Basis: the fix is compatibility-preserving within the approved corrections/control scope, adds no migration behavior, and does not widen tenant privileges or posting authority.
+- Basis: the fix is compatibility-preserving within the approved corrections/control scope, adds no migration behavior, and keeps the replay repair limited to the current canonical sales-return references.
 
 ### Additional Rollback Owner
 - Owner: corrections/control recovery worker.
-- Rollback method: revert the feature commit, then rerun `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AccountingPeriodServicePolicyTest,AccountingServiceTest,SalesReturnServiceTest,PurchaseReturnServiceTest' test`, `bash ci/check-enterprise-policy.sh`, and `bash ci/check-codex-review-guidelines.sh` before re-review.
+- Rollback method: revert the feature commit, then rerun `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='SalesReturnServiceTest,AccountingServiceTest,AccountingPeriodServicePolicyTest,PurchaseReturnServiceTest' test`, `cd erp-domain && MIGRATION_SET=v2 mvn -T8 test -Pgate-fast -Djacoco.skip=true`, `bash ci/check-enterprise-policy.sh`, and `bash ci/check-codex-review-guidelines.sh` before re-review.
 
 ### Additional Expiry
 - Valid until: 2026-03-14.
-- Re-evaluate if: later packets introduce a migration/backfill for legacy correction linkage, or if new return-journal creation paths stop persisting full correction metadata.
+- Re-evaluate if: later packets introduce a migration/backfill for legacy sales-return movements, or if new return replay logic needs to relink anything broader than the current line-scoped references.
 
 ### Additional Verification Evidence
-- Commands run: `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest=AccountingPeriodServicePolicyTest test`; `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AccountingPeriodServicePolicyTest,AccountingServiceTest,SalesReturnServiceTest,PurchaseReturnServiceTest' test`; `bash ci/check-enterprise-policy.sh`; `bash ci/check-codex-review-guidelines.sh`; `gh pr checks 99 --repo anasibnanwar-XYE/bigbrightpaints-erp || true`.
-- Result summary: the new policy regression proves prefix-only historical sales and purchase return journals with no persisted correction metadata no longer count as period-close correction-linkage gaps when they are clearly legacy automated return journals, while existing strict checks still fail partially populated modern correction metadata; enterprise policy and codex review gates remain green; and PR #99 checks were re-read on the latest green head.
-- Artifacts/links: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/internal/AccountingPeriodServiceCore.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingPeriodServicePolicyTest.java`.
+- Commands run: `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='SalesReturnServiceTest' test`; `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='SalesReturnServiceTest,AccountingServiceTest,AccountingPeriodServicePolicyTest,PurchaseReturnServiceTest' test`; `cd erp-domain && MIGRATION_SET=v2 mvn -T8 test -Pgate-fast -Djacoco.skip=true`; `bash ci/check-enterprise-policy.sh`; `bash ci/check-codex-review-guidelines.sh`; `gh pr checks 99 --repo anasibnanwar-XYE/bigbrightpaints-erp || true`.
+- Result summary: the focused replay regression now proves keyed sales-return retries relink only the intended current line-scoped return movements while leaving unrelated legacy invoice-level return-movement journal links untouched; correction-journal repair remains intact; the broader corrections/control validation suite stays green; and PR #99 checks were re-read on the latest propagated head.
+- Artifacts/links: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/service/SalesReturnService.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/sales/service/SalesReturnServiceTest.java`.
 - Migration guidance note: no `db/migration_v2` files changed in this packet, so no migration-runbook update was required.

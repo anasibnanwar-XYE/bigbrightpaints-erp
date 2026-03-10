@@ -1082,11 +1082,13 @@ class SalesReturnServiceTest {
         invoiceScopedMovement.setFinishedGood(fg);
         invoiceScopedMovement.setReferenceType("SALES_RETURN");
         invoiceScopedMovement.setReferenceId("INV-RELINK-1");
+        invoiceScopedMovement.setJournalEntryId(911L);
 
         InventoryMovement lineScopedMovement = new InventoryMovement();
         lineScopedMovement.setFinishedGood(fg);
         lineScopedMovement.setReferenceType("SALES_RETURN");
         lineScopedMovement.setReferenceId("INV-RELINK-1:79");
+        lineScopedMovement.setJournalEntryId(912L);
 
         JournalEntry replayEntry = new JournalEntry();
         setField(replayEntry, "id", 122L);
@@ -1132,8 +1134,13 @@ class SalesReturnServiceTest {
         verify(inventoryMovementRepository).saveAll(argThat(movements -> {
             List<InventoryMovement> saved = (List<InventoryMovement>) movements;
             return saved.size() == 2
-                    && saved.stream().allMatch(movement -> Objects.equals(movement.getJournalEntryId(), 122L));
+                    && saved.stream().anyMatch(movement -> "INV-RELINK-1:79".equals(movement.getReferenceId())
+                    && Objects.equals(movement.getJournalEntryId(), 122L))
+                    && saved.stream().anyMatch(movement -> "INV-RELINK-1".equals(movement.getReferenceId())
+                    && Objects.equals(movement.getJournalEntryId(), 911L));
         }));
+        assertThat(invoiceScopedMovement.getJournalEntryId()).isEqualTo(911L);
+        assertThat(lineScopedMovement.getJournalEntryId()).isEqualTo(122L);
         verify(finishedGoodRepository, never()).save(any(FinishedGood.class));
         verify(finishedGoodBatchRepository, never()).save(any(FinishedGoodBatch.class));
         verify(accountingFacade, never()).postInventoryAdjustment(anyString(), anyString(), anyLong(), anyMap(), anyBoolean(), anyBoolean(), anyString());
@@ -1826,10 +1833,14 @@ class SalesReturnServiceTest {
     }
 
     @Test
-    void relinkExistingReturnMovements_updatesMatchingInvoiceAndLineScopedReferencesOnly() {
+    void relinkExistingReturnMovements_updatesOnlyLineScopedReferencesForRequestedReturnKey() {
         InventoryMovement invoiceScoped = new InventoryMovement();
         invoiceScoped.setReferenceId("INV-RELINK-OK");
         invoiceScoped.setJournalEntryId(11L);
+
+        InventoryMovement directLineScoped = new InventoryMovement();
+        directLineScoped.setReferenceId("INV-RELINK-OK:55");
+        directLineScoped.setJournalEntryId(14L);
 
         InventoryMovement lineScoped = new InventoryMovement();
         lineScoped.setReferenceId("INV-RELINK-OK:55:RET-KEY-9");
@@ -1846,7 +1857,7 @@ class SalesReturnServiceTest {
         when(inventoryMovementRepository.findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdStartingWithOrderByCreatedAtAsc(
                 company,
                 "SALES_RETURN",
-                "INV-RELINK-OK:")).thenReturn(List.of(lineScoped, unrelated));
+                "INV-RELINK-OK:")).thenReturn(List.of(directLineScoped, lineScoped, unrelated));
 
         ReflectionTestUtils.invokeMethod(
                 salesReturnService,
@@ -1857,10 +1868,20 @@ class SalesReturnServiceTest {
                 99L,
                 "KEY-9");
 
-        assertThat(invoiceScoped.getJournalEntryId()).isEqualTo(99L);
+        assertThat(invoiceScoped.getJournalEntryId()).isEqualTo(11L);
+        assertThat(directLineScoped.getJournalEntryId()).isEqualTo(99L);
         assertThat(lineScoped.getJournalEntryId()).isEqualTo(99L);
         assertThat(unrelated.getJournalEntryId()).isEqualTo(13L);
-        verify(inventoryMovementRepository).saveAll(any());
+        verify(inventoryMovementRepository).saveAll(argThat(movements -> {
+            List<InventoryMovement> saved = (List<InventoryMovement>) movements;
+            return saved.size() == 4
+                    && saved.stream().anyMatch(movement -> "INV-RELINK-OK".equals(movement.getReferenceId())
+                    && Objects.equals(movement.getJournalEntryId(), 11L))
+                    && saved.stream().anyMatch(movement -> "INV-RELINK-OK:55".equals(movement.getReferenceId())
+                    && Objects.equals(movement.getJournalEntryId(), 99L))
+                    && saved.stream().anyMatch(movement -> "INV-RELINK-OK:55:RET-KEY-9".equals(movement.getReferenceId())
+                    && Objects.equals(movement.getJournalEntryId(), 99L));
+        }));
     }
 
     @Test
