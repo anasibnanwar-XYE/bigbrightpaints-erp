@@ -270,14 +270,19 @@ public class PurchaseReturnService {
                 gstBreakdown,
                 totalAmount
         );
-        ensureLinkedCorrectionJournal(companyContextService.requireCurrentCompany(), entry, purchase.getJournalEntry(), purchase.getInvoiceNumber());
-        if (entry != null) {
-            Long entryId = entry.id();
+        JournalEntry replayJournal = validateReplayJournalBinding(
+                companyContextService.requireCurrentCompany(),
+                purchase,
+                reference,
+                existingMovements,
+                entry);
+        ensureLinkedCorrectionJournal(replayJournal, purchase.getJournalEntry(), purchase.getInvoiceNumber());
+        if (replayJournal != null) {
+            Long replayJournalId = replayJournal.getId();
             boolean needsLink = existingMovements.stream()
-                    .anyMatch(movement -> movement.getJournalEntryId() == null
-                            || !movement.getJournalEntryId().equals(entryId));
+                    .anyMatch(movement -> movement.getJournalEntryId() == null);
             if (needsLink) {
-                existingMovements.forEach(movement -> movement.setJournalEntryId(entryId));
+                existingMovements.forEach(movement -> movement.setJournalEntryId(replayJournalId));
                 movementRepository.saveAll(existingMovements);
             }
         }
@@ -310,33 +315,125 @@ public class PurchaseReturnService {
             return;
         }
         journalEntryRepository.findByCompanyAndId(company, entryDto.id())
-                .ifPresent(entry -> {
-                    boolean changed = false;
-                    if (entry.getCorrectionType() != JournalCorrectionType.REVERSAL) {
-                        entry.setCorrectionType(JournalCorrectionType.REVERSAL);
-                        changed = true;
-                    }
-                    if (!"PURCHASE_RETURN".equalsIgnoreCase(entry.getCorrectionReason())) {
-                        entry.setCorrectionReason("PURCHASE_RETURN");
-                        changed = true;
-                    }
-                    if (!"PURCHASING_RETURN".equalsIgnoreCase(entry.getSourceModule())) {
-                        entry.setSourceModule("PURCHASING_RETURN");
-                        changed = true;
-                    }
-                    if (entry.getReversalOf() == null
-                            || !Objects.equals(entry.getReversalOf().getId(), sourceEntry.getId())) {
-                        entry.setReversalOf(sourceEntry);
-                        changed = true;
-                    }
-                    if (!Objects.equals(purchaseInvoiceNumber, entry.getSourceReference())) {
-                        entry.setSourceReference(purchaseInvoiceNumber);
-                        changed = true;
-                    }
-                    if (changed) {
-                        journalEntryRepository.save(entry);
-                    }
-                });
+                .ifPresent(entry -> ensureLinkedCorrectionJournal(entry, sourceEntry, purchaseInvoiceNumber));
+    }
+
+    private void ensureLinkedCorrectionJournal(JournalEntry entry,
+                                               JournalEntry sourceEntry,
+                                               String purchaseInvoiceNumber) {
+        if (entry == null || entry.getId() == null || sourceEntry == null || sourceEntry.getId() == null) {
+            return;
+        }
+        boolean changed = false;
+        if (entry.getCorrectionType() != JournalCorrectionType.REVERSAL) {
+            entry.setCorrectionType(JournalCorrectionType.REVERSAL);
+            changed = true;
+        }
+        if (!"PURCHASE_RETURN".equalsIgnoreCase(entry.getCorrectionReason())) {
+            entry.setCorrectionReason("PURCHASE_RETURN");
+            changed = true;
+        }
+        if (!"PURCHASING_RETURN".equalsIgnoreCase(entry.getSourceModule())) {
+            entry.setSourceModule("PURCHASING_RETURN");
+            changed = true;
+        }
+        if (entry.getReversalOf() == null
+                || !Objects.equals(entry.getReversalOf().getId(), sourceEntry.getId())) {
+            entry.setReversalOf(sourceEntry);
+            changed = true;
+        }
+        if (!Objects.equals(purchaseInvoiceNumber, entry.getSourceReference())) {
+            entry.setSourceReference(purchaseInvoiceNumber);
+            changed = true;
+        }
+        if (changed) {
+            journalEntryRepository.save(entry);
+        }
+    }
+
+    private JournalEntry validateReplayJournalBinding(Company company,
+                                                      RawMaterialPurchase purchase,
+                                                      String reference,
+                                                      List<RawMaterialMovement> existingMovements,
+                                                      JournalEntryDto entryDto) {
+        Long replayJournalId = entryDto != null ? entryDto.id() : null;
+        Long movementJournalId = resolveMovementReplayJournalId(reference, existingMovements);
+        if (movementJournalId != null && replayJournalId != null && !Objects.equals(movementJournalId, replayJournalId)) {
+            throwReplayBindingConflict(reference, purchase, movementJournalId, replayJournalId);
+        }
+        Long authoritativeJournalId = movementJournalId != null ? movementJournalId : replayJournalId;
+        if (authoritativeJournalId == null) {
+            return null;
+        }
+        JournalEntry replayJournal = journalEntryRepository.findByCompanyAndId(company, authoritativeJournalId)
+                .orElseThrow(() -> replayBindingConflict(reference, purchase)
+                        .withDetail("journalEntryId", authoritativeJournalId));
+        assertReplayJournalMatchesPurchase(reference, purchase, replayJournal);
+        return replayJournal;
+    }
+
+    private Long resolveMovementReplayJournalId(String reference,
+                                                List<RawMaterialMovement> existingMovements) {
+        List<Long> journalEntryIds = existingMovements.stream()
+                .map(RawMaterialMovement::getJournalEntryId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (journalEntryIds.size() > 1) {
+            throw replayBindingConflict(reference, null)
+                    .withDetail("journalEntryIds", journalEntryIds);
+        }
+        return journalEntryIds.isEmpty() ? null : journalEntryIds.getFirst();
+    }
+
+    private void assertReplayJournalMatchesPurchase(String reference,
+                                                    RawMaterialPurchase purchase,
+                                                    JournalEntry replayJournal) {
+        if (replayJournal == null) {
+            return;
+        }
+        Long sourceJournalId = purchase != null && purchase.getJournalEntry() != null
+                ? purchase.getJournalEntry().getId()
+                : null;
+        boolean hasEstablishedCorrectionProvenance = replayJournal.getCorrectionType() != null
+                || replayJournal.getReversalOf() != null
+                || "PURCHASE_RETURN".equalsIgnoreCase(replayJournal.getCorrectionReason())
+                || "PURCHASING_RETURN".equalsIgnoreCase(replayJournal.getSourceModule());
+        if (replayJournal.getReversalOf() != null
+                && replayJournal.getReversalOf().getId() != null
+                && !Objects.equals(replayJournal.getReversalOf().getId(), sourceJournalId)) {
+            throwReplayBindingConflict(reference, purchase, replayJournal.getId(), replayJournal.getId());
+        }
+        if (hasEstablishedCorrectionProvenance
+                && StringUtils.hasText(replayJournal.getSourceReference())
+                && !Objects.equals(replayJournal.getSourceReference(), purchase.getInvoiceNumber())) {
+            throwReplayBindingConflict(reference, purchase, replayJournal.getId(), replayJournal.getId());
+        }
+    }
+
+    private void throwReplayBindingConflict(String reference,
+                                            RawMaterialPurchase purchase,
+                                            Long existingJournalId,
+                                            Long replayJournalId) {
+        throw replayBindingConflict(reference, purchase)
+                .withDetail("existingJournalEntryId", existingJournalId)
+                .withDetail("replayedJournalEntryId", replayJournalId);
+    }
+
+    private ApplicationException replayBindingConflict(String reference, RawMaterialPurchase purchase) {
+        ApplicationException exception = new ApplicationException(
+                ErrorCode.CONCURRENCY_CONFLICT,
+                "Purchase return reference already linked to a different historical return")
+                .withDetail("reference", reference);
+        if (purchase != null) {
+            if (purchase.getId() != null) {
+                exception.withDetail("purchaseId", purchase.getId());
+            }
+            if (StringUtils.hasText(purchase.getInvoiceNumber())) {
+                exception.withDetail("purchaseInvoiceNumber", purchase.getInvoiceNumber());
+            }
+        }
+        return exception;
     }
 
     private String resolvePostingReference(Company company, Supplier supplier, String providedReference) {

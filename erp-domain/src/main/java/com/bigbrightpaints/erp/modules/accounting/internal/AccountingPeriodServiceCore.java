@@ -1201,9 +1201,14 @@ public class AccountingPeriodServiceCore {
             return false;
         }
         String normalized = reference.trim().toUpperCase();
-        return normalized.startsWith("CRN-")
+        return isCorrectionReference(normalized)
                 || normalized.startsWith("DN-")
                 || normalized.startsWith("PRN-");
+    }
+
+    private boolean isCorrectionReference(String normalizedReference) {
+        return normalizedReference.startsWith("CRN-")
+                && !normalizedReference.contains("-COGS-");
     }
 
     private boolean isMissingCorrectionLinkage(JournalEntry entry) {

@@ -361,6 +361,349 @@ class PurchaseReturnServiceTest {
     }
 
     @Test
+    void recordPurchaseReturn_replayRejectsReferenceMappedToDifferentHistoricalJournal() {
+        RawMaterialMovement existingMovement = new RawMaterialMovement();
+        existingMovement.setRawMaterial(material);
+        existingMovement.setReferenceType(InventoryReference.PURCHASE_RETURN);
+        existingMovement.setReferenceId("PR-30");
+        existingMovement.setQuantity(new BigDecimal("1.0000"));
+        existingMovement.setUnitCost(new BigDecimal("5.00"));
+        existingMovement.setJournalEntryId(901L);
+        when(movementRepository.findByRawMaterialCompanyAndReferenceTypeAndReferenceId(company, InventoryReference.PURCHASE_RETURN, "PR-30"))
+                .thenReturn(List.of(existingMovement));
+        when(accountingFacade.postPurchaseReturn(eq(10L), eq("PR-30"), eq(LocalDate.of(2026, 3, 9)), any(), any(), any(), any(), eq(new BigDecimal("5.00"))))
+                .thenReturn(stubEntry(902L));
+
+        assertThatThrownBy(() -> purchaseReturnService.recordPurchaseReturn(new PurchaseReturnRequest(
+                10L,
+                30L,
+                20L,
+                new BigDecimal("1.0000"),
+                new BigDecimal("5.00"),
+                "PR-30",
+                LocalDate.of(2026, 3, 9),
+                "Damaged"
+        )))
+                .isInstanceOfSatisfying(ApplicationException.class, ex -> {
+                    assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.CONCURRENCY_CONFLICT);
+                    assertThat(ex).hasMessageContaining("different historical return");
+                });
+
+        verify(journalEntryRepository, never()).save(any(JournalEntry.class));
+        verify(movementRepository, never()).saveAll(any());
+        verify(rawMaterialRepository, never()).deductStockIfSufficient(any(), any());
+    }
+
+    @Test
+    void recordPurchaseReturn_replayRejectsJournalAlreadyLinkedToDifferentPurchase() {
+        RawMaterialMovement existingMovement = new RawMaterialMovement();
+        existingMovement.setRawMaterial(material);
+        existingMovement.setReferenceType(InventoryReference.PURCHASE_RETURN);
+        existingMovement.setReferenceId("PR-30");
+        existingMovement.setQuantity(new BigDecimal("1.0000"));
+        existingMovement.setUnitCost(new BigDecimal("5.00"));
+        when(movementRepository.findByRawMaterialCompanyAndReferenceTypeAndReferenceId(company, InventoryReference.PURCHASE_RETURN, "PR-30"))
+                .thenReturn(List.of(existingMovement));
+        when(accountingFacade.postPurchaseReturn(eq(10L), eq("PR-30"), eq(LocalDate.of(2026, 3, 9)), any(), any(), any(), any(), eq(new BigDecimal("5.00"))))
+                .thenReturn(stubEntry(903L));
+
+        JournalEntry conflictingReplay = new JournalEntry();
+        ReflectionTestUtils.setField(conflictingReplay, "id", 903L);
+        conflictingReplay.setCorrectionType(JournalCorrectionType.REVERSAL);
+        conflictingReplay.setCorrectionReason("PURCHASE_RETURN");
+        conflictingReplay.setSourceModule("PURCHASING_RETURN");
+        conflictingReplay.setSourceReference("PINV-OTHER");
+        when(journalEntryRepository.findByCompanyAndId(company, 903L)).thenReturn(Optional.of(conflictingReplay));
+
+        assertThatThrownBy(() -> purchaseReturnService.recordPurchaseReturn(new PurchaseReturnRequest(
+                10L,
+                30L,
+                20L,
+                new BigDecimal("1.0000"),
+                new BigDecimal("5.00"),
+                "PR-30",
+                LocalDate.of(2026, 3, 9),
+                "Damaged"
+        )))
+                .isInstanceOfSatisfying(ApplicationException.class, ex -> {
+                    assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.CONCURRENCY_CONFLICT);
+                    assertThat(ex).hasMessageContaining("different historical return");
+                });
+
+        verify(movementRepository, never()).saveAll(any());
+        verify(journalEntryRepository, never()).save(any(JournalEntry.class));
+    }
+
+    @Test
+    void recordPurchaseReturn_replayKeepsExistingMovementJournalLinkWhenAlreadyAligned() {
+        RawMaterialMovement existingMovement = new RawMaterialMovement();
+        existingMovement.setRawMaterial(material);
+        existingMovement.setReferenceType(InventoryReference.PURCHASE_RETURN);
+        existingMovement.setReferenceId("PR-30");
+        existingMovement.setQuantity(new BigDecimal("1.0000"));
+        existingMovement.setUnitCost(new BigDecimal("5.00"));
+        existingMovement.setJournalEntryId(911L);
+        when(movementRepository.findByRawMaterialCompanyAndReferenceTypeAndReferenceId(company, InventoryReference.PURCHASE_RETURN, "PR-30"))
+                .thenReturn(List.of(existingMovement));
+        when(accountingFacade.postPurchaseReturn(eq(10L), eq("PR-30"), eq(LocalDate.of(2026, 3, 9)), any(), any(), any(), any(), eq(new BigDecimal("5.00"))))
+                .thenReturn(stubEntry(911L));
+        JournalEntry alignedReplay = new JournalEntry();
+        ReflectionTestUtils.setField(alignedReplay, "id", 911L);
+        when(journalEntryRepository.findByCompanyAndId(company, 911L)).thenReturn(Optional.of(alignedReplay));
+
+        JournalEntryDto result = purchaseReturnService.recordPurchaseReturn(new PurchaseReturnRequest(
+                10L,
+                30L,
+                20L,
+                new BigDecimal("1.0000"),
+                new BigDecimal("5.00"),
+                "PR-30",
+                LocalDate.of(2026, 3, 9),
+                "Damaged"
+        ));
+
+        assertThat(result.id()).isEqualTo(911L);
+        verify(movementRepository, never()).saveAll(any());
+    }
+
+    @Test
+    void validateReplayJournalBinding_returnsNullWhenReplayJournalIdsAreAbsent() {
+        RawMaterialMovement existingMovement = new RawMaterialMovement();
+        existingMovement.setRawMaterial(material);
+
+        JournalEntry replayJournal = ReflectionTestUtils.invokeMethod(
+                purchaseReturnService,
+                "validateReplayJournalBinding",
+                company,
+                purchase,
+                "PR-30",
+                List.of(existingMovement),
+                emptyEntry());
+
+        assertThat(replayJournal).isNull();
+        verify(journalEntryRepository, never()).findByCompanyAndId(any(), any());
+    }
+
+    @Test
+    void validateReplayJournalBinding_usesExistingMovementJournalWhenFacadeReturnsNullId() {
+        RawMaterialMovement existingMovement = new RawMaterialMovement();
+        existingMovement.setRawMaterial(material);
+        existingMovement.setJournalEntryId(901L);
+        JournalEntry replay = new JournalEntry();
+        ReflectionTestUtils.setField(replay, "id", 901L);
+        when(journalEntryRepository.findByCompanyAndId(company, 901L)).thenReturn(Optional.of(replay));
+
+        JournalEntry replayJournal = ReflectionTestUtils.invokeMethod(
+                purchaseReturnService,
+                "validateReplayJournalBinding",
+                company,
+                purchase,
+                "PR-30",
+                List.of(existingMovement),
+                emptyEntry());
+
+        assertThat(replayJournal).isSameAs(replay);
+    }
+
+    @Test
+    void validateReplayJournalBinding_usesFacadeJournalWhenMovementJournalIsMissing() {
+        JournalEntry replay = new JournalEntry();
+        ReflectionTestUtils.setField(replay, "id", 906L);
+        when(journalEntryRepository.findByCompanyAndId(company, 906L)).thenReturn(Optional.of(replay));
+
+        JournalEntry replayJournal = ReflectionTestUtils.invokeMethod(
+                purchaseReturnService,
+                "validateReplayJournalBinding",
+                company,
+                purchase,
+                "PR-30",
+                List.of(new RawMaterialMovement()),
+                stubEntry(906L));
+
+        assertThat(replayJournal).isSameAs(replay);
+    }
+
+    @Test
+    void validateReplayJournalBinding_acceptsMatchingMovementAndFacadeJournalIds() {
+        RawMaterialMovement existingMovement = new RawMaterialMovement();
+        existingMovement.setRawMaterial(material);
+        existingMovement.setJournalEntryId(907L);
+        JournalEntry replay = new JournalEntry();
+        ReflectionTestUtils.setField(replay, "id", 907L);
+        when(journalEntryRepository.findByCompanyAndId(company, 907L)).thenReturn(Optional.of(replay));
+
+        JournalEntry replayJournal = ReflectionTestUtils.invokeMethod(
+                purchaseReturnService,
+                "validateReplayJournalBinding",
+                company,
+                purchase,
+                "PR-30",
+                List.of(existingMovement),
+                stubEntry(907L));
+
+        assertThat(replayJournal).isSameAs(replay);
+    }
+
+    @Test
+    void validateReplayJournalBinding_rejectsMultipleMovementJournalIds() {
+        RawMaterialMovement first = new RawMaterialMovement();
+        first.setRawMaterial(material);
+        first.setJournalEntryId(901L);
+        RawMaterialMovement second = new RawMaterialMovement();
+        second.setRawMaterial(material);
+        second.setJournalEntryId(902L);
+
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(
+                purchaseReturnService,
+                "validateReplayJournalBinding",
+                company,
+                purchase,
+                "PR-30",
+                List.of(first, second),
+                emptyEntry()))
+                .isInstanceOfSatisfying(ApplicationException.class, ex -> {
+                    assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.CONCURRENCY_CONFLICT);
+                    assertThat(ex).hasMessageContaining("different historical return");
+                });
+    }
+
+    @Test
+    void validateReplayJournalBinding_rejectsMovementAndFacadeJournalMismatchDirectly() {
+        RawMaterialMovement existingMovement = new RawMaterialMovement();
+        existingMovement.setRawMaterial(material);
+        existingMovement.setJournalEntryId(901L);
+
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(
+                purchaseReturnService,
+                "validateReplayJournalBinding",
+                company,
+                purchase,
+                "PR-30",
+                List.of(existingMovement),
+                stubEntry(902L)))
+                .isInstanceOfSatisfying(ApplicationException.class, ex -> {
+                    assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.CONCURRENCY_CONFLICT);
+                    assertThat(ex).hasMessageContaining("different historical return");
+                });
+    }
+
+    @Test
+    void validateReplayJournalBinding_rejectsMissingAuthoritativeJournalEntity() {
+        RawMaterialMovement existingMovement = new RawMaterialMovement();
+        existingMovement.setRawMaterial(material);
+        existingMovement.setJournalEntryId(901L);
+        when(journalEntryRepository.findByCompanyAndId(company, 901L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(
+                purchaseReturnService,
+                "validateReplayJournalBinding",
+                company,
+                purchase,
+                "PR-30",
+                List.of(existingMovement),
+                emptyEntry()))
+                .isInstanceOfSatisfying(ApplicationException.class, ex -> {
+                    assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.CONCURRENCY_CONFLICT);
+                    assertThat(ex).hasMessageContaining("different historical return");
+                });
+    }
+
+    @Test
+    void assertReplayJournalMatchesPurchase_rejectsDifferentSourceJournal() {
+        JournalEntry conflictingReplay = new JournalEntry();
+        ReflectionTestUtils.setField(conflictingReplay, "id", 904L);
+        conflictingReplay.setCorrectionType(JournalCorrectionType.REVERSAL);
+        JournalEntry otherSource = new JournalEntry();
+        ReflectionTestUtils.setField(otherSource, "id", 999L);
+        conflictingReplay.setReversalOf(otherSource);
+
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(
+                purchaseReturnService,
+                "assertReplayJournalMatchesPurchase",
+                "PR-30",
+                purchase,
+                conflictingReplay))
+                .isInstanceOfSatisfying(ApplicationException.class, ex -> {
+                    assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.CONCURRENCY_CONFLICT);
+                    assertThat(ex).hasMessageContaining("different historical return");
+                });
+    }
+
+    @Test
+    void assertReplayJournalMatchesPurchase_acceptsNullAndAlignedReplayMetadata() {
+        ReflectionTestUtils.invokeMethod(
+                purchaseReturnService,
+                "assertReplayJournalMatchesPurchase",
+                "PR-30",
+                purchase,
+                null);
+
+        JournalEntry alignedBySourceReference = new JournalEntry();
+        ReflectionTestUtils.setField(alignedBySourceReference, "id", 908L);
+        alignedBySourceReference.setCorrectionType(JournalCorrectionType.REVERSAL);
+        alignedBySourceReference.setSourceReference("PINV-30");
+        ReflectionTestUtils.invokeMethod(
+                purchaseReturnService,
+                "assertReplayJournalMatchesPurchase",
+                "PR-30",
+                purchase,
+                alignedBySourceReference);
+
+        JournalEntry alignedByReversal = new JournalEntry();
+        ReflectionTestUtils.setField(alignedByReversal, "id", 909L);
+        alignedByReversal.setSourceModule("PURCHASING_RETURN");
+        JournalEntry sameSource = new JournalEntry();
+        ReflectionTestUtils.setField(sameSource, "id", 50L);
+        alignedByReversal.setReversalOf(sameSource);
+        ReflectionTestUtils.invokeMethod(
+                purchaseReturnService,
+                "assertReplayJournalMatchesPurchase",
+                "PR-30",
+                purchase,
+                alignedByReversal);
+
+        JournalEntry establishedWithoutSourceReference = new JournalEntry();
+        ReflectionTestUtils.setField(establishedWithoutSourceReference, "id", 910L);
+        establishedWithoutSourceReference.setCorrectionReason("PURCHASE_RETURN");
+        ReflectionTestUtils.invokeMethod(
+                purchaseReturnService,
+                "assertReplayJournalMatchesPurchase",
+                "PR-30",
+                purchase,
+                establishedWithoutSourceReference);
+
+        RawMaterialPurchase purchaseWithoutJournal = new RawMaterialPurchase();
+        purchaseWithoutJournal.setInvoiceNumber("PINV-30");
+        ReflectionTestUtils.invokeMethod(
+                purchaseReturnService,
+                "assertReplayJournalMatchesPurchase",
+                "PR-30",
+                purchaseWithoutJournal,
+                establishedWithoutSourceReference);
+
+        ReflectionTestUtils.invokeMethod(
+                purchaseReturnService,
+                "assertReplayJournalMatchesPurchase",
+                "PR-30",
+                null,
+                new JournalEntry());
+    }
+
+    @Test
+    void assertReplayJournalMatchesPurchase_allowsUnestablishedLegacyReplayMetadata() {
+        JournalEntry legacyReplay = new JournalEntry();
+        ReflectionTestUtils.setField(legacyReplay, "id", 905L);
+        legacyReplay.setSourceReference("PINV-OTHER");
+
+        ReflectionTestUtils.invokeMethod(
+                purchaseReturnService,
+                "assertReplayJournalMatchesPurchase",
+                "PR-30",
+                purchase,
+                legacyReplay);
+    }
+
+    @Test
     void recordPurchaseReturn_previewPlaceholderGeneratesCanonicalPostingReference() {
         when(allocationService.remainingReturnableQuantity(purchase, material)).thenReturn(new BigDecimal("4.0000"));
         when(referenceNumberService.purchaseReturnReference(company, supplier)).thenReturn("PRN-POLICY-0007");
@@ -717,6 +1060,60 @@ class PurchaseReturnServiceTest {
         verify(journalEntryRepository, never()).findByCompanyAndId(any(), org.mockito.ArgumentMatchers.anyLong());
     }
 
+    @Test
+    void ensureLinkedCorrectionJournal_skipsNullAndIncompleteReplayInputs() {
+        ReflectionTestUtils.invokeMethod(
+                purchaseReturnService,
+                "ensureLinkedCorrectionJournal",
+                company,
+                null,
+                purchase.getJournalEntry(),
+                "PINV-30");
+
+        ReflectionTestUtils.invokeMethod(
+                purchaseReturnService,
+                "ensureLinkedCorrectionJournal",
+                company,
+                emptyEntry(),
+                purchase.getJournalEntry(),
+                "PINV-30");
+
+        ReflectionTestUtils.invokeMethod(
+                purchaseReturnService,
+                "ensureLinkedCorrectionJournal",
+                company,
+                stubEntry(904L),
+                null,
+                "PINV-30");
+
+        verify(journalEntryRepository, never()).findByCompanyAndId(any(), org.mockito.ArgumentMatchers.anyLong());
+        verify(journalEntryRepository, never()).save(any(JournalEntry.class));
+
+        ReflectionTestUtils.invokeMethod(
+                purchaseReturnService,
+                "ensureLinkedCorrectionJournal",
+                (JournalEntry) null,
+                purchase.getJournalEntry(),
+                "PINV-30");
+
+        JournalEntry transientEntry = new JournalEntry();
+        ReflectionTestUtils.invokeMethod(
+                purchaseReturnService,
+                "ensureLinkedCorrectionJournal",
+                transientEntry,
+                purchase.getJournalEntry(),
+                "PINV-30");
+
+        ReflectionTestUtils.invokeMethod(
+                purchaseReturnService,
+                "ensureLinkedCorrectionJournal",
+                transientEntry,
+                null,
+                "PINV-30");
+
+        verify(journalEntryRepository, never()).save(any(JournalEntry.class));
+    }
+
     private JournalEntryDto stubEntry(long id) {
         return new JournalEntryDto(
                 id,
@@ -743,7 +1140,35 @@ class PurchaseReturnServiceTest {
                 null,
                 null,
                 null,
-                null
-        );
+                null);
+    }
+
+    private JournalEntryDto emptyEntry() {
+        return new JournalEntryDto(
+                null,
+                null,
+                null,
+                LocalDate.now(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                List.of(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
     }
 }

@@ -108,6 +108,28 @@ class ReferenceNumberServiceTest {
     }
 
     @Test
+    void purchaseReturnPreviewReference_usesReadableShortValueAndHashesLongTokens() {
+        Company shortCompany = new Company();
+        shortCompany.setCode("F1");
+        Supplier shortSupplier = new Supplier();
+        shortSupplier.setCode("SUP-01");
+
+        String preview = referenceNumberService.purchaseReturnPreviewReference(shortCompany, shortSupplier);
+        assertEquals("PRN-PREVIEW-F1-SUP-01", preview);
+
+        Company longCompany = new Company();
+        longCompany.setCode("COMPANY-CODE-WITH-VERY-LONG-TOKEN-TO-FORCE-PREVIEW-HASHING-1234567890");
+        Supplier longSupplier = new Supplier();
+        longSupplier.setCode("SUPPLIER-CODE-WITH-VERY-LONG-TOKEN-TO-FORCE-PREVIEW-HASHING-1234567890");
+
+        String hashedPreview = referenceNumberService.purchaseReturnPreviewReference(longCompany, longSupplier);
+
+        assertTrue(hashedPreview.startsWith("PRN-PREVIEW-"));
+        assertTrue(hashedPreview.length() <= 64);
+        assertTrue(!hashedPreview.contains("COMPANY-CODE-WITH-VERY-LONG") && !hashedPreview.contains("SUPPLIER-CODE-WITH-VERY-LONG"));
+    }
+
+    @Test
     void purchaseReferenceIsBoundedForLongInvoiceNumbers() {
         Company company = new Company();
         company.setCode("CRIT-AXES");

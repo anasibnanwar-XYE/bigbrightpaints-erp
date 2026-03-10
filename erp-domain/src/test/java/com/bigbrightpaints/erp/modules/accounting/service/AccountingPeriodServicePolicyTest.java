@@ -242,6 +242,9 @@ class AccountingPeriodServicePolicyTest {
         JournalEntry prefixed = new JournalEntry();
         prefixed.setReferenceNumber("  prn-2026-0001  ");
 
+        JournalEntry cogsReversal = new JournalEntry();
+        cogsReversal.setReferenceNumber("CRN-INV-1-COGS-0");
+
         JournalEntry linked = new JournalEntry();
         linked.setCorrectionType(JournalCorrectionType.REVERSAL);
         linked.setCorrectionReason("SALES_RETURN");
@@ -251,7 +254,7 @@ class AccountingPeriodServicePolicyTest {
         when(journalEntryRepository.findByCompanyAndEntryDateBetweenOrderByEntryDateAsc(
                 company,
                 period.getStartDate(),
-                period.getEndDate())).thenReturn(List.of(prefixed, linked));
+                period.getEndDate())).thenReturn(List.of(prefixed, cogsReversal, linked));
 
         assertThat((Long) ReflectionTestUtils.invokeMethod(coreService, "countCorrectionLinkageGaps", company, period))
                 .isEqualTo(1L);
@@ -259,6 +262,8 @@ class AccountingPeriodServicePolicyTest {
                 .isFalse();
         assertThat((Boolean) ReflectionTestUtils.invokeMethod(coreService, "isCorrectionJournal", prefixed))
                 .isTrue();
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(coreService, "isCorrectionJournal", cogsReversal))
+                .isFalse();
         assertThat((Boolean) ReflectionTestUtils.invokeMethod(coreService, "isMissingCorrectionLinkage", linked))
                 .isFalse();
     }
@@ -702,6 +707,16 @@ class AccountingPeriodServicePolicyTest {
         prefixed.setReferenceNumber(" prn-2026-001 ");
         assertThat((Boolean) ReflectionTestUtils.invokeMethod(coreService, "isCorrectionJournal", prefixed))
                 .isTrue();
+
+        JournalEntry correction = new JournalEntry();
+        correction.setReferenceNumber(" CRN-INV-1 ");
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(coreService, "isCorrectionJournal", correction))
+                .isTrue();
+
+        JournalEntry salesReturnCogs = new JournalEntry();
+        salesReturnCogs.setReferenceNumber(" CRN-INV-1-COGS-1 ");
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(coreService, "isCorrectionJournal", salesReturnCogs))
+                .isFalse();
 
         JournalEntry plain = new JournalEntry();
         plain.setReferenceNumber("SALE-001");
