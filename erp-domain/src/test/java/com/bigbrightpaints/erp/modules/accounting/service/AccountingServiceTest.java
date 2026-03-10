@@ -647,6 +647,160 @@ class AccountingServiceTest {
     }
 
     @Test
+    void reverseJournalEntry_linksClosedPeriodPostingExceptionUsingReversalAuthorizationKey() {
+        LocalDate today = LocalDate.of(2024, 4, 4);
+        when(companyClock.today(company)).thenReturn(today);
+
+        AccountingPeriod closedPeriod = new AccountingPeriod();
+        closedPeriod.setYear(today.getYear());
+        closedPeriod.setMonth(today.getMonthValue());
+        closedPeriod.setStatus(AccountingPeriodStatus.CLOSED);
+        when(accountingPeriodService.requirePostablePeriod(eq(company), eq(today), any(), any(), any(), eq(true)))
+                .thenReturn(closedPeriod);
+
+        JournalEntry original = new JournalEntry();
+        ReflectionTestUtils.setField(original, "id", 505L);
+        original.setStatus("POSTED");
+        original.setReferenceNumber("REV-CLOSED-LINK-1");
+        original.setEntryDate(today);
+
+        Account cash = new Account();
+        ReflectionTestUtils.setField(cash, "id", 711L);
+        cash.setCompany(company);
+        cash.setCode("CASH-REV");
+        cash.setName("Cash");
+        cash.setType(AccountType.ASSET);
+
+        Account revenue = new Account();
+        ReflectionTestUtils.setField(revenue, "id", 712L);
+        revenue.setCompany(company);
+        revenue.setCode("REV-REV");
+        revenue.setName("Revenue");
+        revenue.setType(AccountType.REVENUE);
+
+        original.getLines().add(journalLine(original, cash, "Cash", new BigDecimal("10.00"), BigDecimal.ZERO));
+        original.getLines().add(journalLine(original, revenue, "Revenue", BigDecimal.ZERO, new BigDecimal("10.00")));
+
+        JournalEntry reversal = new JournalEntry();
+        ReflectionTestUtils.setField(reversal, "id", 905L);
+        reversal.setReferenceNumber("REV-REV-CLOSED-LINK-1");
+
+        when(companyEntityLookup.requireJournalEntry(company, 505L)).thenReturn(original);
+        when(companyEntityLookup.requireJournalEntry(company, 905L)).thenReturn(reversal);
+        when(referenceNumberService.reversalReference("REV-CLOSED-LINK-1")).thenReturn("REV-REV-CLOSED-LINK-1");
+        when(journalEntryRepository.findByCompanyAndReferenceNumber(eq(company), eq("REV-REV-CLOSED-LINK-1")))
+                .thenReturn(Optional.empty());
+        when(accountRepository.lockByCompanyAndId(eq(company), eq(711L))).thenReturn(Optional.of(cash));
+        when(accountRepository.lockByCompanyAndId(eq(company), eq(712L))).thenReturn(Optional.of(revenue));
+        when(accountRepository.updateBalanceAtomic(eq(company), any(), any())).thenReturn(1);
+        when(journalEntryRepository.save(any(JournalEntry.class))).thenAnswer(invocation -> {
+            JournalEntry saved = invocation.getArgument(0);
+            if (saved.getId() == null) {
+                ReflectionTestUtils.setField(saved, "id", 905L);
+            }
+            return saved;
+        });
+
+        ClosedPeriodPostingExceptionService closedPeriodService = org.mockito.Mockito.mock(ClosedPeriodPostingExceptionService.class);
+        ReflectionTestUtils.setField(accountingService, "closedPeriodPostingExceptionService", closedPeriodService);
+
+        JournalEntryReversalRequest request = new JournalEntryReversalRequest(
+                today,
+                false,
+                "Closed-period reversal",
+                "Closed-period reversal memo",
+                Boolean.TRUE
+        );
+
+        JournalEntryDto result = accountingService.reverseJournalEntry(505L, request);
+
+        assertThat(result.id()).isEqualTo(905L);
+        verify(closedPeriodService).linkJournalEntry(
+                eq(company),
+                eq("JOURNAL_REVERSAL"),
+                eq("REV-CLOSED-LINK-1"),
+                argThat(entry -> Objects.equals(entry.getId(), 905L) && entry.getAccountingPeriod() == closedPeriod)
+        );
+    }
+
+    @Test
+    void reverseJournalEntry_voidOnlyLinksClosedPeriodPostingExceptionUsingReversalAuthorizationKey() {
+        LocalDate today = LocalDate.of(2024, 4, 5);
+        when(companyClock.today(company)).thenReturn(today);
+
+        AccountingPeriod closedPeriod = new AccountingPeriod();
+        closedPeriod.setYear(today.getYear());
+        closedPeriod.setMonth(today.getMonthValue());
+        closedPeriod.setStatus(AccountingPeriodStatus.CLOSED);
+        when(accountingPeriodService.requirePostablePeriod(eq(company), eq(today), any(), any(), any(), eq(true)))
+                .thenReturn(closedPeriod);
+
+        JournalEntry original = new JournalEntry();
+        ReflectionTestUtils.setField(original, "id", 506L);
+        original.setStatus("POSTED");
+        original.setReferenceNumber("REV-CLOSED-LINK-2");
+        original.setEntryDate(today);
+
+        Account expense = new Account();
+        ReflectionTestUtils.setField(expense, "id", 713L);
+        expense.setCompany(company);
+        expense.setCode("EXP-REV");
+        expense.setName("Expense");
+        expense.setType(AccountType.EXPENSE);
+
+        Account cash = new Account();
+        ReflectionTestUtils.setField(cash, "id", 714L);
+        cash.setCompany(company);
+        cash.setCode("CASH-VOID");
+        cash.setName("Cash");
+        cash.setType(AccountType.ASSET);
+
+        original.getLines().add(journalLine(original, expense, "Expense", new BigDecimal("15.00"), BigDecimal.ZERO));
+        original.getLines().add(journalLine(original, cash, "Cash", BigDecimal.ZERO, new BigDecimal("15.00")));
+
+        JournalEntry reversal = new JournalEntry();
+        ReflectionTestUtils.setField(reversal, "id", 906L);
+        reversal.setReferenceNumber("REV-REV-CLOSED-LINK-2");
+
+        when(companyEntityLookup.requireJournalEntry(company, 506L)).thenReturn(original);
+        when(companyEntityLookup.requireJournalEntry(company, 906L)).thenReturn(reversal);
+        when(referenceNumberService.reversalReference("REV-CLOSED-LINK-2")).thenReturn("REV-REV-CLOSED-LINK-2");
+        when(journalEntryRepository.findByCompanyAndReferenceNumber(eq(company), eq("REV-REV-CLOSED-LINK-2")))
+                .thenReturn(Optional.empty());
+        when(accountRepository.lockByCompanyAndId(eq(company), eq(713L))).thenReturn(Optional.of(expense));
+        when(accountRepository.lockByCompanyAndId(eq(company), eq(714L))).thenReturn(Optional.of(cash));
+        when(accountRepository.updateBalanceAtomic(eq(company), any(), any())).thenReturn(1);
+        when(journalEntryRepository.save(any(JournalEntry.class))).thenAnswer(invocation -> {
+            JournalEntry saved = invocation.getArgument(0);
+            if (saved.getId() == null) {
+                ReflectionTestUtils.setField(saved, "id", 906L);
+            }
+            return saved;
+        });
+
+        ClosedPeriodPostingExceptionService closedPeriodService = org.mockito.Mockito.mock(ClosedPeriodPostingExceptionService.class);
+        ReflectionTestUtils.setField(accountingService, "closedPeriodPostingExceptionService", closedPeriodService);
+
+        JournalEntryReversalRequest request = new JournalEntryReversalRequest(
+                today,
+                true,
+                "Closed-period void",
+                "Closed-period void memo",
+                Boolean.TRUE
+        );
+
+        JournalEntryDto result = accountingService.reverseJournalEntry(506L, request);
+
+        assertThat(result.id()).isEqualTo(906L);
+        verify(closedPeriodService).linkJournalEntry(
+                eq(company),
+                eq("JOURNAL_REVERSAL"),
+                eq("REV-CLOSED-LINK-2"),
+                argThat(entry -> Objects.equals(entry.getId(), 906L) && entry.getAccountingPeriod() == closedPeriod)
+        );
+    }
+
+    @Test
     void createJournalEntry_rejectsDealerWithoutReceivableAccount() {
         LocalDate today = LocalDate.of(2024, 3, 15);
         when(companyClock.today(company)).thenReturn(today);

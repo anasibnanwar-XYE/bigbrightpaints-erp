@@ -993,7 +993,12 @@ public abstract class AccountingCoreEngineCore {
                 entry.getDealer() != null ? entry.getDealer().getId() : null,
                 entry.getSupplier() != null ? entry.getSupplier().getId() : null,
                 request != null ? request.adminOverride() : null,
-                reversedLines
+                reversedLines,
+                null,
+                null,
+                "JOURNAL_REVERSAL",
+                entry.getReferenceNumber(),
+                null
         );
         if (request != null && request.voidOnly()) {
             Instant now = CompanyTime.now(company);

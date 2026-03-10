@@ -972,6 +972,9 @@ public class SalesReturnService {
             if (!StringUtils.hasText(returnKey)) {
                 return List.of(base);
             }
+            if (invoiceLineId != null) {
+                return List.of(base + SALES_RETURN_KEY_SEPARATOR + returnKey);
+            }
             return List.of(base, base + SALES_RETURN_KEY_SEPARATOR + returnKey);
         }
     }

@@ -2,10 +2,10 @@
 
 ## Scope
 - Feature: `recovery-review.corrections-control-migration-closure`
-- Follow-up packet: `recovery-followup.corrections-comment-closure-after-green-rerun`
+- Follow-up packet: `recovery-followup.corrections-control-comment-recheck-and-closure`
 - Branch: `recovery/05-corrections-control`
-- High-risk paths touched: accounting controller/core services, sales return service, purchase return service, `db/migration_v2/V161__manual_journal_attachments_and_closed_period_exceptions.sql`, and the focused accounting/control regression suites; the latest follow-up narrows to `AccountingCoreEngineCore` supplier-settlement replay ordering plus `AccountingServiceTest`.
-- Why this is R2: the recovery packet closes PR #99 by hardening correction provenance, stabilizing header-level settlement replay on one canonical key path, failing closed on unsupported legacy return state, and carrying the non-destructive corrections/control schema change with explicit governance evidence. The latest follow-up keeps the same high-risk accounting scope while tightening the concurrent duplicate supplier-settlement path so omitted-reference retries reserve one canonical settlement reference instead of failing with `CONCURRENCY_CONFLICT`.
+- High-risk paths touched: accounting controller/core services, sales return service, purchase return service, `db/migration_v2/V161__manual_journal_attachments_and_closed_period_exceptions.sql`, and the focused accounting/control regression suites; the latest follow-up narrows to `SalesReturnService`, `AccountingCoreEngineCore`, and their focused regression tests.
+- Why this is R2: the recovery packet closes PR #99 by hardening correction provenance, stabilizing header-level settlement replay on one canonical key path, failing closed on unsupported legacy return state, and carrying the non-destructive corrections/control schema change with explicit governance evidence. The latest follow-up keeps the same high-risk accounting scope while isolating keyed sales-return replay relinks from legacy unkeyed line references and ensuring closed-period reversal/void override rows stay linked to the resulting journals for audit traceability.
 
 ## Risk Trigger
 - Triggered by edits under `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/service/`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/purchasing/`, and `erp-domain/src/main/resources/db/migration_v2/`.
@@ -36,18 +36,18 @@
 
 ## Additional Scope: `recovery-followup.corrections-control-comment-recheck-and-closure`
 - Packet target: `recovery/05-corrections-control` rechecked on the latest stacked head.
-- High-risk paths touched: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/internal/AccountingCoreEngineCore.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingServiceTest.java`, and this checkpoint.
-- Why this is R2: the packet rechecks the newest live PR #99 corrections/control thread and narrows the change to header-level dealer-settlement idempotency so derived keys distinguish the selected cash account when requests omit explicit `idempotencyKey`, `referenceNumber`, `allocations`, and `payments`, preventing cross-account replay collisions on the accounting control path.
+- High-risk paths touched: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/service/SalesReturnService.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/internal/AccountingCoreEngineCore.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/sales/service/SalesReturnServiceTest.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingServiceTest.java`, and this checkpoint.
+- Why this is R2: the packet rechecks the newest live PR #99 corrections/control threads and narrows the change to two audit-critical fixes: keyed sales-return replays now relink only the replayed keyed return movements, and closed-period reversal/void flows now keep their one-hour override rows linked to the resulting journal entries.
 
 ### Additional Risk Trigger
-- Triggered by the newest live PR #99 review thread on header-level dealer-settlement idempotency across different cash accounts.
-- Contract surfaces affected: derived dealer-settlement header fingerprints, replay/collision handling for omitted-key dealer settlements, and focused regression coverage for cash-account-sensitive header identity.
-- Main risks being controlled: same dealer/date/amount submissions on different cash accounts collapsing to one idempotency key, replaying or conflicting against the wrong canonical settlement, and accidental widening that would disturb the earlier replay-relink and coverage fixes already carried on the branch.
+- Triggered by the newest live PR #99 review threads on keyed sales-return replay relinking and closed-period reversal authorization linkage.
+- Contract surfaces affected: sales-return replay relink isolation, reversal/void closed-period override audit linkage, and the focused regression coverage that guards both behaviors.
+- Main risks being controlled: replayed keyed returns overwriting legacy unkeyed movement `journalEntryId` values, successful closed-period reversal/void flows leaving their override rows orphaned from the resulting journal record, and accidental widening that would disturb the earlier settlement, period-close, and replay fixes already carried on the branch.
 
 ### Additional Approval / Escalation
 - Mode: orchestrator.
 - Human escalation required: no.
-- Basis: the fix is compatibility-preserving within the approved corrections/control scope, adds no migration behavior, and keeps the change limited to the dealer header-settlement fingerprint derivation used on the existing replay path.
+- Basis: the fix is compatibility-preserving within the approved corrections/control scope, adds no migration behavior, and keeps the change limited to replay/audit linkage on the existing sales-return and journal-reversal paths.
 
 ### Additional Rollback Owner
 - Owner: corrections/control recovery worker.
@@ -55,10 +55,10 @@
 
 ### Additional Expiry
 - Valid until: 2026-03-14.
-- Re-evaluate if: later packets change dealer header-settlement semantic identity again, widen header settlement payment sources beyond the current single cash-account fallback, or introduce migration-backed settlement fingerprint backfills.
+- Re-evaluate if: later packets change sales-return replay keying again, add new reversal authorization document types, or introduce migration-backed linkage/backfill work for closed-period override rows.
 
 ### Additional Verification Evidence
-- Commands run: `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AccountingServiceTest#buildDealerHeaderSettlementIdempotencyKey_distinguishesCashAccountWhenPaymentsAndAllocationsAreOmitted,AccountingServiceTest#buildDealerSettlementIdempotencyKey_distinguishesImplicitCashAccountWhenPaymentsOmitted,AccountingServiceTest#settleDealerInvoices_headerLevelReplayWithoutProvidedKeyReusesCanonicalAllocations' test`; `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AccountingServiceTest,SalesReturnServiceTest,AccountingPeriodServicePolicyTest,PurchaseReturnServiceTest' test`; `cd erp-domain && MIGRATION_SET=v2 mvn -T8 test -Pgate-fast -Djacoco.skip=true`; `bash ci/check-enterprise-policy.sh`; `bash ci/check-codex-review-guidelines.sh`; `gh pr checks 99 --repo anasibnanwar-XYE/bigbrightpaints-erp || true`.
-- Result summary: the dealer header-settlement fingerprint now binds the explicit cash account even when both `allocations` and `payments` are omitted, so same dealer/date/amount submissions on different cash accounts derive distinct idempotency keys; the existing replay path still reuses the canonical allocation result for true duplicates; the broader corrections/control validation suite stays green; and PR #99 checks were re-read on the latest propagated head.
-- Artifacts/links: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/internal/AccountingCoreEngineCore.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingServiceTest.java`.
+- Commands run: `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='SalesReturnServiceTest#relinkExistingReturnMovements_updatesOnlyKeyedLineScopedReferencesForRequestedReturnKey,SalesReturnServiceTest#salesReturnReferences_handleMissingInvoiceAndMissingReturnKey,AccountingServiceTest#reverseJournalEntry_linksClosedPeriodPostingExceptionUsingReversalAuthorizationKey,AccountingServiceTest#reverseJournalEntry_voidOnlyLinksClosedPeriodPostingExceptionUsingReversalAuthorizationKey' test`; `cd erp-domain && MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest='AccountingServiceTest,SalesReturnServiceTest,AccountingPeriodServicePolicyTest,PurchaseReturnServiceTest' test`; `cd erp-domain && MIGRATION_SET=v2 mvn -T8 test -Pgate-fast -Djacoco.skip=true`; `bash ci/check-enterprise-policy.sh`; `bash ci/check-codex-review-guidelines.sh`; `gh pr checks 99 --repo anasibnanwar-XYE/bigbrightpaints-erp || true`.
+- Result summary: keyed sales-return replays now relink only the replayed keyed `invoice:line:RET-*` references and leave legacy unkeyed line movements untouched, while reversal/void postings created under a closed-period exception now carry the reversal authorization key through journal creation so the corresponding override row links back to the resulting journal for audit traceability; the broader corrections/control validation suite stays green; and PR #99 checks were re-read on the latest propagated head.
+- Artifacts/links: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/service/SalesReturnService.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/internal/AccountingCoreEngineCore.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/sales/service/SalesReturnServiceTest.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/accounting/service/AccountingServiceTest.java`.
 - Migration guidance note: no `db/migration_v2` files changed in this packet, so no migration-runbook update was required.
