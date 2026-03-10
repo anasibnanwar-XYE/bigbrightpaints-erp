@@ -28,10 +28,12 @@ import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryReversalRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.InventoryRevaluationRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.ManualJournalRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementResponse;
+import com.bigbrightpaints.erp.modules.accounting.dto.PayrollBatchPaymentRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.PayrollPaymentRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.SettlementAllocationRequest;
-import com.bigbrightpaints.erp.modules.accounting.dto.SettlementAllocationApplication;
+import com.bigbrightpaints.erp.modules.accounting.dto.SettlementAllocationRequest.SettlementAllocationApplication;
 import com.bigbrightpaints.erp.modules.accounting.dto.SettlementPaymentRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.SupplierPaymentRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.SupplierSettlementRequest;
@@ -83,6 +85,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -90,7 +93,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
@@ -208,6 +213,7 @@ class AccountingServiceTest {
         environment = new MockEnvironment();
         ReflectionTestUtils.setField(accountingService, "environment", environment);
         company = new Company();
+        ReflectionTestUtils.setField(company, "id", 1L);
         company.setBaseCurrency("INR");
         lenient().when(companyContextService.requireCurrentCompany()).thenReturn(company);
         lenient().when(systemSettingsService.isPeriodLockEnforced()).thenReturn(true);
@@ -968,6 +974,193 @@ class AccountingServiceTest {
         JournalEntryDto result = accountingService.createJournalEntry(request);
         assertThat(result).isNotNull();
         assertThat(result.referenceNumber()).isEqualTo("NO-AR-AP");
+    }
+
+    @Test
+    void createManualJournal_trimsAttachmentsAndRequestsPostablePeriodOverride() {
+        LocalDate today = LocalDate.of(2024, 4, 10);
+        when(companyClock.today(company)).thenReturn(today);
+        AccountingPeriod period = openPeriod(today);
+        when(accountingPeriodService.requirePostablePeriod(eq(company), eq(today), eq("MANUAL"), eq("MANUAL-1"), eq("Manual adjustment"), eq(true)))
+                .thenReturn(period);
+        when(journalEntryRepository.findByCompanyAndReferenceNumber(eq(company), eq("MANUAL-1")))
+                .thenReturn(Optional.empty());
+        when(journalReferenceResolver.findExistingEntry(company, "MANUAL-1")).thenReturn(Optional.empty());
+        doReturn(1).when(journalReferenceMappingRepository)
+                .reserveManualReference(anyLong(), anyString(), anyString(), eq("JOURNAL_ENTRY"), any());
+        when(journalEntryRepository.save(any())).thenAnswer(invocation -> {
+            JournalEntry entry = invocation.getArgument(0);
+            ReflectionTestUtils.setField(entry, "id", 1501L);
+            return entry;
+        });
+        when(accountRepository.updateBalanceAtomic(eq(company), any(), any())).thenReturn(1);
+
+        Account cash = new Account();
+        ReflectionTestUtils.setField(cash, "id", 41L);
+        cash.setCompany(company);
+        cash.setCode("CASH-MANUAL");
+        cash.setType(AccountType.ASSET);
+
+        Account expense = new Account();
+        ReflectionTestUtils.setField(expense, "id", 42L);
+        expense.setCompany(company);
+        expense.setCode("EXP-MANUAL");
+        expense.setType(AccountType.EXPENSE);
+
+        when(accountRepository.lockByCompanyAndId(eq(company), eq(41L))).thenReturn(Optional.of(cash));
+        when(accountRepository.lockByCompanyAndId(eq(company), eq(42L))).thenReturn(Optional.of(expense));
+
+        ManualJournalRequest request = new ManualJournalRequest(
+                today,
+                "  Manual adjustment  ",
+                "  MANUAL-1  ",
+                true,
+                List.of(
+                        new ManualJournalRequest.LineRequest(42L, new BigDecimal("25.00"), " Expense ", ManualJournalRequest.EntryType.DEBIT),
+                        new ManualJournalRequest.LineRequest(41L, new BigDecimal("25.00"), null, ManualJournalRequest.EntryType.CREDIT)
+                ),
+                List.of(" doc-1 ", "", "doc-1", " doc-2 ")
+        );
+
+        JournalEntryDto result = accountingService.createManualJournal(request);
+
+        assertThat(result.id()).isEqualTo(1501L);
+        verify(journalEntryRepository).save(argThat(entry -> Objects.equals(entry.getId(), 1501L)
+                && Objects.equals(entry.getSourceModule(), "MANUAL")
+                && Objects.equals(entry.getSourceReference(), "MANUAL-1")
+                && Objects.equals(entry.getMemo(), "Manual adjustment")
+                && Objects.equals(entry.getAttachmentReferences(), "doc-1\ndoc-2")
+                && entry.getAccountingPeriod() == period));
+    }
+
+    @Test
+    void processPayrollBatchPayment_rejectsNegativeNetPay() {
+        Account cash = new Account();
+        ReflectionTestUtils.setField(cash, "id", 51L);
+        cash.setType(AccountType.ASSET);
+        cash.setActive(true);
+        Account expense = new Account();
+        ReflectionTestUtils.setField(expense, "id", 52L);
+        expense.setType(AccountType.EXPENSE);
+        expense.setActive(true);
+        when(companyEntityLookup.requireAccount(company, 51L)).thenReturn(cash);
+        when(companyEntityLookup.requireAccount(company, 52L)).thenReturn(expense);
+
+        PayrollBatchPaymentRequest request = new PayrollBatchPaymentRequest(
+                LocalDate.of(2026, 3, 10),
+                51L,
+                52L,
+                null,
+                null,
+                null,
+                null,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                "PAYROLL-BAD-1",
+                "Payroll batch",
+                List.of(new PayrollBatchPaymentRequest.PayrollLine(
+                        "Worker A",
+                        1,
+                        new BigDecimal("100.00"),
+                        new BigDecimal("120.00"),
+                        null,
+                        null,
+                        "advance overflow"
+                ))
+        );
+
+        assertThatThrownBy(() -> accountingService.processPayrollBatchPayment(request))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Net pay cannot be negative")
+                .hasMessageContaining("Worker A");
+    }
+
+    @Test
+    void processPayrollBatchPayment_persistsRunAndBalancedJournalWithoutLiabilityAccounts() {
+        LocalDate runDate = LocalDate.of(2026, 3, 10);
+        when(companyClock.today(company)).thenReturn(runDate);
+        when(referenceNumberService.payrollPaymentReference(company)).thenReturn("PAYROLL-BATCH-1");
+        when(journalEntryRepository.findByCompanyAndReferenceNumber(eq(company), eq("PAYROLL-BATCH-1")))
+                .thenReturn(Optional.empty());
+        AccountingPeriod period = openPeriod(runDate);
+        when(accountingPeriodService.requirePostablePeriod(eq(company), eq(runDate), any(), any(), any(), anyBoolean()))
+                .thenReturn(period);
+        when(accountRepository.updateBalanceAtomic(eq(company), any(), any())).thenReturn(1);
+
+        Account cash = new Account();
+        ReflectionTestUtils.setField(cash, "id", 61L);
+        cash.setCompany(company);
+        cash.setCode("BANK-1");
+        cash.setType(AccountType.ASSET);
+        cash.setActive(true);
+
+        Account expense = new Account();
+        ReflectionTestUtils.setField(expense, "id", 62L);
+        expense.setCompany(company);
+        expense.setCode("PAY-EXP");
+        expense.setType(AccountType.EXPENSE);
+        expense.setActive(true);
+
+        when(companyEntityLookup.requireAccount(company, 61L)).thenReturn(cash);
+        when(companyEntityLookup.requireAccount(company, 62L)).thenReturn(expense);
+        when(accountRepository.lockByCompanyAndId(eq(company), eq(61L))).thenReturn(Optional.of(cash));
+        when(accountRepository.lockByCompanyAndId(eq(company), eq(62L))).thenReturn(Optional.of(expense));
+        when(payrollRunRepository.save(any(PayrollRun.class))).thenAnswer(invocation -> {
+            PayrollRun run = invocation.getArgument(0);
+            if (run.getId() == null) {
+                ReflectionTestUtils.setField(run, "id", 801L);
+            }
+            return run;
+        });
+        when(payrollRunLineRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(journalEntryRepository.save(any(JournalEntry.class))).thenAnswer(invocation -> {
+            JournalEntry entry = invocation.getArgument(0);
+            if (entry.getId() == null) {
+                ReflectionTestUtils.setField(entry, "id", 1601L);
+            }
+            return entry;
+        });
+        JournalEntry payrollJournal = new JournalEntry();
+        ReflectionTestUtils.setField(payrollJournal, "id", 1601L);
+        when(companyEntityLookup.requireJournalEntry(company, 1601L)).thenReturn(payrollJournal);
+
+        PayrollBatchPaymentRequest request = new PayrollBatchPaymentRequest(
+                runDate,
+                61L,
+                62L,
+                null,
+                null,
+                null,
+                null,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                null,
+                "  Monthly payroll  ",
+                List.of(
+                        new PayrollBatchPaymentRequest.PayrollLine("Worker A", 2, new BigDecimal("100.00"), BigDecimal.ZERO, null, null, "shift A"),
+                        new PayrollBatchPaymentRequest.PayrollLine("Worker B", 1, new BigDecimal("80.00"), new BigDecimal("10.00"), null, null, "shift B")
+                )
+        );
+
+        var response = accountingService.processPayrollBatchPayment(request);
+
+        assertThat(response.payrollRunId()).isEqualTo(801L);
+        assertThat(response.grossAmount()).isEqualByComparingTo("280.00");
+        assertThat(response.totalAdvances()).isEqualByComparingTo("10.00");
+        assertThat(response.netPayAmount()).isEqualByComparingTo("270.00");
+        assertThat(response.payrollJournalId()).isEqualTo(1601L);
+        assertThat(response.employerContribJournalId()).isNull();
+        assertThat(response.lines()).hasSize(2);
+        verify(journalEntryRepository).save(argThat(entry -> Objects.equals(entry.getId(), 1601L)
+                && Objects.equals(entry.getReferenceNumber(), "PAYROLL-BATCH-1")
+                && Objects.equals(entry.getMemo(), "Monthly payroll")
+                && entry.getLines().size() == 2
+                && entry.getLines().get(0).getDebit().compareTo(new BigDecimal("270.00")) == 0
+                && entry.getLines().get(1).getCredit().compareTo(new BigDecimal("270.00")) == 0));
     }
 
     @Test

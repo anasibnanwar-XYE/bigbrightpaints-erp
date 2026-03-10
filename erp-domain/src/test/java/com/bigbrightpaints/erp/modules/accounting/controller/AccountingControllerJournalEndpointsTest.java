@@ -10,6 +10,7 @@ import com.bigbrightpaints.erp.modules.accounting.dto.SalesReturnRequest;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
 import com.bigbrightpaints.erp.modules.accounting.service.JournalEntryService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesReturnService;
+import org.junit.jupiter.api.Tag;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import org.junit.jupiter.api.Test;
 
@@ -23,6 +24,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
+@Tag("critical")
 class AccountingControllerJournalEndpointsTest {
 
     @Test

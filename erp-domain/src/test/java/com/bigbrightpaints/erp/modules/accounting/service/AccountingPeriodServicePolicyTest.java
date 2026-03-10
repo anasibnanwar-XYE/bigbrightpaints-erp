@@ -39,6 +39,7 @@ import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -57,6 +58,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
+@Tag("critical")
 class AccountingPeriodServicePolicyTest {
 
     @Mock private AccountingPeriodRepository accountingPeriodRepository;
@@ -78,6 +80,7 @@ class AccountingPeriodServicePolicyTest {
     @Mock private AccountingFacade accountingFacade;
     @Mock private PeriodCloseHook periodCloseHook;
     @Mock private AccountingPeriodSnapshotService snapshotService;
+    @Mock private ClosedPeriodPostingExceptionService closedPeriodPostingExceptionService;
 
     private AccountingPeriodService service;
     private AccountingPeriodServiceCore coreService;
@@ -105,6 +108,7 @@ class AccountingPeriodServicePolicyTest {
                 snapshotService
         );
         coreService = service;
+        ReflectionTestUtils.setField(coreService, "closedPeriodPostingExceptionService", closedPeriodPostingExceptionService);
         SecurityContextHolder.clearContext();
     }
 
@@ -356,6 +360,65 @@ class AccountingPeriodServicePolicyTest {
         assertThatThrownBy(() -> service.approvePeriodClose(12L, new PeriodCloseRequestActionRequest("period close", false)))
                 .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Documents missing journal links in this period (1)");
+    }
+
+    @Test
+    void requirePostablePeriod_returnsOpenPeriodWithoutOverrideWorkflow() {
+        Company company = company(1L, "POLICY");
+        AccountingPeriod period = openPeriod(company, 2026, 3);
+        when(accountingPeriodRepository.findByCompanyAndYearAndMonth(company, 2026, 3)).thenReturn(Optional.of(period));
+
+        AccountingPeriod resolved = coreService.requirePostablePeriod(
+                company,
+                LocalDate.of(2026, 3, 15),
+                "MANUAL",
+                "MAN-1",
+                "reason",
+                false
+        );
+
+        assertThat(resolved).isSameAs(period);
+        verify(accountingPeriodRepository, never()).save(any(AccountingPeriod.class));
+        verify(closedPeriodPostingExceptionService, never()).authorize(any(), any(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void requirePostablePeriod_lockedPeriodFailsClosedWithoutOverride() {
+        Company company = company(1L, "POLICY");
+        AccountingPeriod period = openPeriod(company, 2026, 3);
+        period.setStatus(AccountingPeriodStatus.LOCKED);
+        when(accountingPeriodRepository.findByCompanyAndYearAndMonth(company, 2026, 3)).thenReturn(Optional.of(period));
+
+        assertThatThrownBy(() -> coreService.requirePostablePeriod(
+                company,
+                LocalDate.of(2026, 3, 15),
+                "MANUAL",
+                "MAN-2",
+                "late entry",
+                false
+        ))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("admin one-hour posting exception is required");
+    }
+
+    @Test
+    void requirePostablePeriod_lockedPeriodDelegatesToExceptionAuthorizationWhenOverrideRequested() {
+        Company company = company(1L, "POLICY");
+        AccountingPeriod period = openPeriod(company, 2026, 3);
+        period.setStatus(AccountingPeriodStatus.CLOSED);
+        when(accountingPeriodRepository.findByCompanyAndYearAndMonth(company, 2026, 3)).thenReturn(Optional.of(period));
+
+        AccountingPeriod resolved = coreService.requirePostablePeriod(
+                company,
+                LocalDate.of(2026, 3, 15),
+                "MANUAL",
+                "MAN-3",
+                "authorized adjustment",
+                true
+        );
+
+        assertThat(resolved).isSameAs(period);
+        verify(closedPeriodPostingExceptionService).authorize(company, period, "MANUAL", "MAN-3", "authorized adjustment");
     }
 
     @Test

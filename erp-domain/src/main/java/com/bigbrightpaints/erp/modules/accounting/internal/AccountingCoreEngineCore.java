@@ -16,6 +16,7 @@ import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.core.util.MoneyUtils;
 import com.bigbrightpaints.erp.modules.accounting.domain.*;
 import com.bigbrightpaints.erp.modules.accounting.dto.*;
+import com.bigbrightpaints.erp.modules.accounting.dto.SettlementAllocationRequest.SettlementAllocationApplication;
 import com.bigbrightpaints.erp.modules.accounting.event.AccountCacheInvalidatedEvent;
 import com.bigbrightpaints.erp.modules.accounting.service.AbstractPartnerLedgerService;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingEventTrailAlertRoutingPolicy;
@@ -3186,7 +3187,8 @@ public abstract class AccountingCoreEngineCore {
                     request.fxRate(),
                     request.sourceModule(),
                     request.sourceReference(),
-                    StringUtils.hasText(request.journalType()) ? request.journalType() : JournalEntryType.MANUAL.name()
+                    StringUtils.hasText(request.journalType()) ? request.journalType() : JournalEntryType.MANUAL.name(),
+                    request.attachmentReferences()
             ));
         } catch (RuntimeException ex) {
             if (!StringUtils.hasText(rawKey) || !isRetryableManualConcurrencyFailure(ex)) {

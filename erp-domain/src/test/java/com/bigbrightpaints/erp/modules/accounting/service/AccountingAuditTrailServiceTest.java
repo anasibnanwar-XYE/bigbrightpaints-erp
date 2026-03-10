@@ -18,6 +18,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAlloca
 import com.bigbrightpaints.erp.modules.accounting.domain.PartnerType;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingTransactionAuditDetailDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingTransactionAuditListItemDto;
+import com.bigbrightpaints.erp.modules.accounting.dto.SettlementAllocationRequest.SettlementAllocationApplication;
 import com.bigbrightpaints.erp.modules.accounting.event.AccountingEvent;
 import com.bigbrightpaints.erp.modules.accounting.event.AccountingEventRepository;
 import com.bigbrightpaints.erp.modules.accounting.event.AccountingEventType;
@@ -801,6 +802,51 @@ class AccountingAuditTrailServiceTest {
 
         assertThat(filteredChain).extracting(LinkedBusinessReferenceDto::relationType)
                 .containsExactly("ACCOUNTING_ENTRY");
+    }
+
+    @Test
+    void decodeSettlementAuditMemo_parsesTaggedAndDocumentAllocations() {
+        PartnerSettlementAllocation onAccount = new PartnerSettlementAllocation();
+        onAccount.setMemo("  [SETTLEMENT-APPLICATION:FUTURE_APPLICATION]  Carry forward  ");
+
+        Object decodedOnAccount = ReflectionTestUtils.invokeMethod(service, "decodeSettlementAuditMemo", onAccount);
+
+        assertThat((Object) ReflectionTestUtils.invokeMethod(decodedOnAccount, "applicationType"))
+                .isEqualTo(SettlementAllocationApplication.FUTURE_APPLICATION);
+        assertThat((Object) ReflectionTestUtils.invokeMethod(decodedOnAccount, "memo"))
+                .isEqualTo("Carry forward");
+
+        PartnerSettlementAllocation linkedDocument = new PartnerSettlementAllocation();
+        linkedDocument.setMemo("  linked invoice memo  ");
+        linkedDocument.setInvoice(new Invoice());
+
+        Object decodedDocument = ReflectionTestUtils.invokeMethod(service, "decodeSettlementAuditMemo", linkedDocument);
+
+        assertThat((Object) ReflectionTestUtils.invokeMethod(decodedDocument, "applicationType"))
+                .isEqualTo(SettlementAllocationApplication.DOCUMENT);
+        assertThat((Object) ReflectionTestUtils.invokeMethod(decodedDocument, "memo"))
+                .isEqualTo("linked invoice memo");
+    }
+
+    @Test
+    void decodeSettlementAuditMemo_fallsBackToOnAccountForUnknownOrBlankTokens() {
+        PartnerSettlementAllocation malformed = new PartnerSettlementAllocation();
+        malformed.setMemo("[SETTLEMENT-APPLICATION:UNKNOWN]  ");
+
+        Object decodedMalformed = ReflectionTestUtils.invokeMethod(service, "decodeSettlementAuditMemo", malformed);
+
+        assertThat((Object) ReflectionTestUtils.invokeMethod(decodedMalformed, "applicationType"))
+                .isEqualTo(SettlementAllocationApplication.ON_ACCOUNT);
+        assertThat((Object) ReflectionTestUtils.invokeMethod(decodedMalformed, "memo")).isNull();
+
+        PartnerSettlementAllocation untagged = new PartnerSettlementAllocation();
+        untagged.setMemo("   ");
+
+        Object decodedUntagged = ReflectionTestUtils.invokeMethod(service, "decodeSettlementAuditMemo", untagged);
+
+        assertThat((Object) ReflectionTestUtils.invokeMethod(decodedUntagged, "applicationType"))
+                .isEqualTo(SettlementAllocationApplication.ON_ACCOUNT);
+        assertThat((Object) ReflectionTestUtils.invokeMethod(decodedUntagged, "memo")).isNull();
     }
 
     @Test

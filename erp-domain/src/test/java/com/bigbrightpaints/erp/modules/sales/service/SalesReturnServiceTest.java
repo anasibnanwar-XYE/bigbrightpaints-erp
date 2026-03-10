@@ -26,6 +26,7 @@ import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -56,6 +57,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
+@Tag("critical")
 class SalesReturnServiceTest {
 
     @Mock
@@ -921,6 +923,115 @@ class SalesReturnServiceTest {
         assertThat(capturedReturnLines.get(711L)).isEqualByComparingTo("100");
         assertThat(capturedReturnLines.get(701L)).isEqualByComparingTo("-10");
         assertThat(capturedReturnLines.get(800L)).isEqualByComparingTo("9");
+    }
+
+    @Test
+    void previewReturn_requiresAtLeastOneLine() {
+        Invoice invoice = new Invoice();
+        invoice.setCompany(company);
+        invoice.setInvoiceNumber("INV-NO-LINES");
+        attachPostedJournal(invoice, 920L);
+        setField(invoice, "id", 90L);
+        when(invoiceRepository.lockByCompanyAndId(company, 90L)).thenReturn(Optional.of(invoice));
+
+        assertThatThrownBy(() -> salesReturnService.previewReturn(new SalesReturnRequest(90L, "preview", List.of())))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Return lines are required");
+    }
+
+    @Test
+    void processReturn_replayRelinksExistingReturnMovementsAndCorrectionJournal() {
+        Dealer dealer = new Dealer();
+        dealer.setCompany(company);
+        dealer.setName("Replay Partner");
+        Account receivable = new Account();
+        setField(receivable, "id", 74L);
+        dealer.setReceivableAccount(receivable);
+        setField(dealer, "id", 11L);
+
+        Invoice invoice = new Invoice();
+        invoice.setCompany(company);
+        invoice.setDealer(dealer);
+        invoice.setInvoiceNumber("INV-RELINK-1");
+        attachPostedJournal(invoice, 909L);
+        setField(invoice, "id", 32L);
+
+        InvoiceLine line = new InvoiceLine();
+        line.setInvoice(invoice);
+        line.setProductCode("FG-RELINK");
+        line.setQuantity(BigDecimal.ONE);
+        line.setUnitPrice(new BigDecimal("100"));
+        line.setTaxableAmount(new BigDecimal("100"));
+        line.setTaxAmount(BigDecimal.ZERO);
+        line.setLineTotal(new BigDecimal("100"));
+        setField(line, "id", 79L);
+        invoice.getLines().add(line);
+
+        FinishedGood fg = new FinishedGood();
+        fg.setCompany(company);
+        fg.setProductCode("FG-RELINK");
+        fg.setRevenueAccountId(714L);
+        setField(fg, "id", 25L);
+
+        InventoryMovement invoiceScopedMovement = new InventoryMovement();
+        invoiceScopedMovement.setFinishedGood(fg);
+        invoiceScopedMovement.setReferenceType("SALES_RETURN");
+        invoiceScopedMovement.setReferenceId("INV-RELINK-1");
+
+        InventoryMovement lineScopedMovement = new InventoryMovement();
+        lineScopedMovement.setFinishedGood(fg);
+        lineScopedMovement.setReferenceType("SALES_RETURN");
+        lineScopedMovement.setReferenceId("INV-RELINK-1:79");
+
+        JournalEntry replayEntry = new JournalEntry();
+        setField(replayEntry, "id", 122L);
+
+        when(invoiceRepository.lockByCompanyAndId(company, 32L)).thenReturn(Optional.of(invoice));
+        when(finishedGoodRepository.lockByCompanyAndProductCode(company, "FG-RELINK")).thenReturn(Optional.of(fg));
+        when(inventoryMovementRepository.existsByFinishedGood_CompanyAndReferenceTypeAndReferenceIdContainingIgnoreCase(
+                eq(company),
+                eq("SALES_RETURN"),
+                anyString()
+        )).thenReturn(true);
+        when(accountingFacade.postSalesReturn(
+                eq(dealer.getId()),
+                eq("INV-RELINK-1"),
+                anyMap(),
+                argThat(total -> total.compareTo(new BigDecimal("100")) == 0),
+                eq("Replay relink")
+        )).thenReturn(stubEntry(122L));
+        when(journalEntryRepository.findByCompanyAndId(company, 122L)).thenReturn(Optional.of(replayEntry));
+        when(inventoryMovementRepository.findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
+                eq(company),
+                eq("SALES_RETURN"),
+                eq("INV-RELINK-1")
+        )).thenReturn(List.of(invoiceScopedMovement));
+        when(inventoryMovementRepository.findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdStartingWithOrderByCreatedAtAsc(
+                eq(company),
+                eq("SALES_RETURN"),
+                eq("INV-RELINK-1:")
+        )).thenReturn(List.of(lineScopedMovement));
+
+        JournalEntryDto result = salesReturnService.processReturn(new SalesReturnRequest(
+                32L,
+                "Replay relink",
+                List.of(new SalesReturnRequest.ReturnLine(79L, BigDecimal.ONE))
+        ));
+
+        assertThat(result.id()).isEqualTo(122L);
+        verify(journalEntryRepository).save(argThat(entry -> Objects.equals(entry.getId(), 122L)
+                && entry.getReversalOf() != null
+                && Objects.equals(entry.getReversalOf().getId(), 909L)
+                && Objects.equals(entry.getSourceReference(), "INV-RELINK-1")
+                && Objects.equals(entry.getCorrectionReason(), "SALES_RETURN")));
+        verify(inventoryMovementRepository).saveAll(argThat(movements -> {
+            List<InventoryMovement> saved = (List<InventoryMovement>) movements;
+            return saved.size() == 2
+                    && saved.stream().allMatch(movement -> Objects.equals(movement.getJournalEntryId(), 122L));
+        }));
+        verify(finishedGoodRepository, never()).save(any(FinishedGood.class));
+        verify(finishedGoodBatchRepository, never()).save(any(FinishedGoodBatch.class));
+        verify(accountingFacade, never()).postInventoryAdjustment(anyString(), anyString(), anyLong(), anyMap(), anyBoolean(), anyBoolean(), anyString());
     }
 
     private JournalEntryDto stubEntry(long id) {

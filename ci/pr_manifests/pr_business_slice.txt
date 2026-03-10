@@ -1,5 +1,6 @@
 com.bigbrightpaints.erp.truthsuite.o2c.TS_O2CDispatchCanonicalPostingTest
 com.bigbrightpaints.erp.truthsuite.crossmodule.TS_CrossModuleLinkageContractTest
+com.bigbrightpaints.erp.truthsuite.inventory.TS_InventoryDispatchStateRuntimeCoverageTest
 BusinessDocumentTruthsTest
 DispatchArtifactPathsTest
 DispatchConfirmRequestTest
@@ -10,6 +11,7 @@ DeliveryChallanPdfServiceTest
 FinishedGoodsDispatchEngineCoverageTest
 InventoryValuationServiceTest
 InvoiceServiceTest
+PurchaseReturnIdempotencyRegressionIT
 PurchaseInvoiceEngineLifecycleTest
 PurchaseOrderServiceTest
 PurchasingServiceTest
@@ -19,6 +21,9 @@ PurchaseResponseMapperTest
 PurchasingServiceGoodsReceiptTest
 RawMaterialServiceReceiptContextTest
 SalesControllerIdempotencyHeaderTest
+com.bigbrightpaints.erp.codered.CR_PurchasingGrnPeriodCloseTest
+com.bigbrightpaints.erp.codered.CR_PurchasingToApAccountingTest
+com.bigbrightpaints.erp.codered.CR_SalesDispatchInvoiceAccounting
 SalesCoreEngineCoverageTest
 SalesReturnServiceTest
 SalesFulfillmentServiceTest

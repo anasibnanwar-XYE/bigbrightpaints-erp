@@ -4,9 +4,10 @@ import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
 import com.bigbrightpaints.erp.modules.accounting.dto.AutoSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementResponse;
-import com.bigbrightpaints.erp.modules.accounting.dto.SettlementAllocationApplication;
 import com.bigbrightpaints.erp.modules.accounting.dto.SupplierPaymentRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.SupplierSettlementRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.SettlementAllocationRequest.SettlementAllocationApplication;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -20,7 +21,15 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+@Tag("critical")
 class SettlementServiceTest {
+
+    @Test
+    void settlementAllocationApplication_marksUnappliedStates() {
+        assertThat(SettlementAllocationApplication.DOCUMENT.isUnapplied()).isFalse();
+        assertThat(SettlementAllocationApplication.ON_ACCOUNT.isUnapplied()).isTrue();
+        assertThat(SettlementAllocationApplication.FUTURE_APPLICATION.isUnapplied()).isTrue();
+    }
 
     @Test
     void recordSupplierPayment_normalizesTrimmedTextAndAmount() {
