@@ -1,15 +1,15 @@
 {
   "featureId": "recovery-review.portal-boundary-comment-closure",
-  "reviewedAt": "2026-03-09T06:10:00+05:30",
-  "commitId": "dbf66b8903a3f52357d54039bd3a9da345e520f8",
+  "reviewedAt": "2026-03-10T18:39:38Z",
+  "commitId": "47d051ec40424a784e6c51f93c50096c68f5ebfe",
   "transcriptSkeletonReviewed": true,
   "diffReviewed": true,
   "status": "pass",
   "codeReview": {
-    "summary": "Manual scrutiny review confirmed the portal recovery fixes are appropriately fail-closed and branch-local: super-admin tenant workflow denial, deterministic dealer portal read-only handling, aligned denial payloads, and tighter RBAC assertions are all covered by the focused portal suite and a green gate-fast rerun.",
+    "summary": "Manual scrutiny re-check confirmed the current propagated portal-boundary evidence is traceable on resolvable commit `47d051ec40424a784e6c51f93c50096c68f5ebfe` (`fix(portal): close PR100 review gaps`). That rebased commit remains the closest auditable anchor for the reviewed fail-closed portal packet: super-admin tenant workflow denial, deterministic dealer read-only handling, aligned denial payloads, and tighter RBAC assertions are all visible from the touched runtime/test files and reproducible with the focused portal suite plus gate-fast rerun recorded for this review.",
     "issues": []
   },
   "sharedStateObservations": [],
   "addressesFailureFrom": null,
-  "summary": "Pass. PR #100 portal-boundary review gaps were closed with deterministic fail-closed behavior and passing focused plus gate-fast validation."
+  "summary": "Pass. Re-anchored the portal-boundary recovery review to resolvable commit `47d051ec40424a784e6c51f93c50096c68f5ebfe`, preserving an auditable trace to the reviewed fail-closed portal packet on the propagated stack."
 }
