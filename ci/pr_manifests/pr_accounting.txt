@@ -25,3 +25,6 @@ AdminApprovalRbacIT
 ClosedPeriodPostingExceptionServiceTest
 ReferenceNumberServiceTest
 SettlementServiceTest
+ValidationSeedDataInitializerTest
+FinishedGoodsReservationEngineTest
+FinishedGoodsServiceTest
