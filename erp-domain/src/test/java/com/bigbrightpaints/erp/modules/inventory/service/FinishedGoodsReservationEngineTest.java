@@ -30,6 +30,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.annotation.Transactional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @Transactional
 @Tag("critical")
@@ -225,6 +226,34 @@ class FinishedGoodsReservationEngineTest extends AbstractIntegrationTest {
                 });
         assertThat(finishedGoodRepository.findById(finishedGood.getId()).orElseThrow().getReservedStock())
                 .isEqualByComparingTo(new BigDecimal("5"));
+    }
+
+    @Test
+    void reserveForOrder_rejectsAmbiguousPrimarySlipSelection() {
+        Company company = seedCompany("RES-AMBIG-PRIMARY");
+        FinishedGood finishedGood = createFinishedGood(company, "FG-RES-AMBIG-PRIMARY", new BigDecimal("10"), BigDecimal.ZERO);
+        FinishedGoodBatch batch = createBatch(
+                finishedGood,
+                "BATCH-RES-AMBIG-PRIMARY",
+                new BigDecimal("10"),
+                new BigDecimal("10"),
+                new BigDecimal("11"));
+        SalesOrder order = createOrder(company, "SO-RES-AMBIG-PRIMARY-" + UUID.randomUUID(), finishedGood.getProductCode(), new BigDecimal("5"));
+
+        createSlip(company, order, "RESERVED", batch, new BigDecimal("2"), new BigDecimal("3"));
+        createSlip(company, order, "PS-CANCELLED-" + UUID.randomUUID().toString().substring(0, 8), "CANCELLED", batch, new BigDecimal("2"), new BigDecimal("3"));
+
+        assertThatThrownBy(() -> finishedGoodsService.reserveForOrder(order))
+                .hasMessageContaining("Ambiguous primary packaging slip state for order " + order.getId());
+
+        assertThat(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, order.getId()))
+                .hasSize(2)
+                .allMatch(existing -> !existing.isBackorder());
+        assertThat(reservationsFor(company, order.getId())).isEmpty();
+        assertThat(finishedGoodRepository.findById(finishedGood.getId()).orElseThrow().getReservedStock())
+                .isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(finishedGoodBatchRepository.findById(batch.getId()).orElseThrow().getQuantityAvailable())
+                .isEqualByComparingTo(new BigDecimal("10"));
     }
 
     @Test
@@ -438,7 +467,7 @@ class FinishedGoodsReservationEngineTest extends AbstractIntegrationTest {
                                      String status,
                                      FinishedGoodBatch batch,
                                      BigDecimal quantity) {
-        return createSlip(company, order, status, batch, new BigDecimal[] {quantity});
+        return createSlip(company, order, order.getOrderNumber() + "-PS", status, batch, new BigDecimal[] {quantity});
     }
 
     private PackagingSlip createSlip(Company company,
@@ -446,10 +475,19 @@ class FinishedGoodsReservationEngineTest extends AbstractIntegrationTest {
                                      String status,
                                      FinishedGoodBatch batch,
                                      BigDecimal... quantities) {
+        return createSlip(company, order, order.getOrderNumber() + "-PS", status, batch, quantities);
+    }
+
+    private PackagingSlip createSlip(Company company,
+                                     SalesOrder order,
+                                     String slipNumber,
+                                     String status,
+                                     FinishedGoodBatch batch,
+                                     BigDecimal... quantities) {
         PackagingSlip slip = new PackagingSlip();
         slip.setCompany(company);
         slip.setSalesOrder(order);
-        slip.setSlipNumber(order.getOrderNumber() + "-PS");
+        slip.setSlipNumber(slipNumber);
         slip.setStatus(status);
         slip.setBackorder("BACKORDER".equalsIgnoreCase(status));
 
