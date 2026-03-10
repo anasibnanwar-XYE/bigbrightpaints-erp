@@ -1,7 +1,7 @@
 {
   "featureId": "recovery-review.corrections-control-migration-closure",
   "reviewedAt": "2026-03-09T06:10:00+05:30",
-  "commitId": "0e3b86b2",
+  "commitId": "86890527b289b94ca70a2e1e8fe8621b66161d97",
   "transcriptSkeletonReviewed": true,
   "diffReviewed": true,
   "status": "pass",
@@ -11,5 +11,5 @@
   },
   "sharedStateObservations": [],
   "addressesFailureFrom": null,
-  "summary": "Pass. Corrections/control replay, provenance, and migration-governance recovery work is coherently covered and validated on commit 0e3b86b2."
+  "summary": "Pass. Corrections/control replay, provenance, and migration-governance recovery work is coherently covered and validated on a reachable recovery/05 closure commit."
 }

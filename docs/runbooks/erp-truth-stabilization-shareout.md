@@ -9,7 +9,7 @@ This is the single engineer-facing handoff for the ERP truth-stabilization missi
 - Mission scope was completed against the approved **definition-of-done** baseline in `.factory/library/erp-definition-of-done.md`.
 - Mission validation state shows **38/38 assertions passed** across O2C, P2P, accounting/control, portal boundaries, cross-area linkage/costing/tenant isolation, and final-hardening validation.
 - The shipped result is a workflow-first ERP boundary model: commercial intent stays separate from stock/accounting truth, GRN stays stock-only, purchase invoice stays AP-only, posted documents correct through linked flows, and portal surfaces now fail-closed around role and tenant boundaries.
-- Final validation evidence combined a repeatable seeded runtime reset, live API probes on role-scoped surfaces, focused abuse/replay probes, and passing compile/test/lint scrutiny artifacts.
+- Final validation evidence combined a repo-local seeded runtime reset flow, live API probes on role-scoped surfaces, focused abuse/replay probes, and recorded compile/test/lint scrutiny artifacts.
 
 ## Approved Scope And Delivered Coverage
 
@@ -19,7 +19,7 @@ This is the single engineer-facing handoff for the ERP truth-stabilization missi
 | P2P | Supplier payable provisioning + lifecycle control, stock-only GRN, AP-only purchase invoice, linkage drift fail-closed, replay-safe supplier settlement and corrections | `VAL-P2P-001` through `VAL-P2P-007` passed |
 | Accounting / control | Journal provenance, separate workflow vs accounting state, manual-journal controls, admin-only exceptions, close blockers, linked correction flows | `VAL-CTRL-001` through `VAL-CTRL-008` passed |
 | Portal boundaries | Explicit role-action matrix, dealer read-only own-record scope, super-admin isolation, business-language blockers, fail-closed tenant boundaries | `VAL-PORTAL-001` through `VAL-PORTAL-004`, `VAL-CROSS-003` passed |
-| Final-hardening | Repeatable seeded runtime, real-user-style probes, abuse probes, calculation reconciliation, replay/concurrency proof | `VAL-FINAL-001` through `VAL-FINAL-004` passed |
+| Final-hardening | Seeded runtime reset flow, real-user-style probes, abuse probes, calculation reconciliation, replay/concurrency proof | `VAL-FINAL-001` through `VAL-FINAL-004` passed |
 
 ## What Shipped For O2C
 
@@ -104,9 +104,9 @@ Cleanup was part of the shipped scope, not a later backlog item. The remediation
 
 ## Final Validation Evidence
 
-The final-hardening package did not rely on narrative claims alone. It left repeatable validation evidence across runtime, abuse, replay, and suite coverage.
+The final-hardening package did not rely on narrative claims alone. It left traceable validation evidence across runtime, abuse, replay, and suite coverage.
 
-### 1. Repeatable seeded runtime
+### 1. Seeded runtime reset flow
 
 - Canonical reset command (from the repo root): `bash scripts/reset_final_validation_runtime.sh`
 - Runtime resets the compose stack on mission-safe ports, rebuilds the app with `prod,flyway-v2,mock,validation-seed`, recreates the DB volume, and reseeds deterministic actors.
