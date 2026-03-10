@@ -509,6 +509,57 @@ class AccountingPeriodServicePolicyTest {
                 .hasMessageContaining("ROLE_ADMIN authority required");
     }
 
+    @Test
+    void requirePostablePeriod_rejectsOverrideWhenWorkflowIsUnavailable() {
+        Company company = company(1L, "POLICY");
+        AccountingPeriod period = openPeriod(company, 2026, 3);
+        period.setStatus(AccountingPeriodStatus.CLOSED);
+        ReflectionTestUtils.setField(coreService, "closedPeriodPostingExceptionService", null);
+        when(accountingPeriodRepository.findByCompanyAndYearAndMonth(company, 2026, 3)).thenReturn(Optional.of(period));
+
+        assertThatThrownBy(() -> coreService.requirePostablePeriod(
+                company,
+                LocalDate.of(2026, 3, 15),
+                "MANUAL",
+                "JRN-1",
+                "override",
+                true))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("workflow is not configured");
+    }
+
+    @Test
+    void isCorrectionJournal_handlesNullsAndPrefixFallbacks() {
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(coreService, "isCorrectionJournal", new Object[]{null}))
+                .isFalse();
+
+        JournalEntry prefixed = new JournalEntry();
+        prefixed.setReferenceNumber(" prn-2026-001 ");
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(coreService, "isCorrectionJournal", prefixed))
+                .isTrue();
+
+        JournalEntry plain = new JournalEntry();
+        plain.setReferenceNumber("SALE-001");
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(coreService, "isCorrectionJournal", plain))
+                .isFalse();
+    }
+
+    @Test
+    void isMissingCorrectionLinkage_flagsAnyMissingField() {
+        JournalEntry incomplete = new JournalEntry();
+        incomplete.setCorrectionType(JournalCorrectionType.REVERSAL);
+        incomplete.setCorrectionReason("SALES_RETURN");
+        incomplete.setSourceModule("SALES_RETURN");
+
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(coreService, "isMissingCorrectionLinkage", incomplete))
+                .isTrue();
+
+        incomplete.setSourceReference("INV-100");
+
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(coreService, "isMissingCorrectionLinkage", incomplete))
+                .isFalse();
+    }
+
     private Company company(Long id, String code) {
         Company company = new Company();
         company.setCode(code);

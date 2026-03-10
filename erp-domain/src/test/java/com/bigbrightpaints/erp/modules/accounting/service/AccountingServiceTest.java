@@ -9013,6 +9013,495 @@ class AccountingServiceTest {
         assertThat(counts).containsEntry(signature, 2);
     }
 
+    @Test
+    void resolveDealerHeaderSettlementAmount_rejectsHeaderAmountMismatchWithPayments() {
+        DealerSettlementRequest request = new DealerSettlementRequest(
+                1L,
+                20L,
+                null,
+                null,
+                null,
+                null,
+                new BigDecimal("100.00"),
+                null,
+                LocalDate.of(2026, 3, 10),
+                null,
+                "Mismatch",
+                null,
+                Boolean.FALSE,
+                null,
+                List.of(new SettlementPaymentRequest(20L, new BigDecimal("90.00"), "BANK"))
+        );
+
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "resolveDealerHeaderSettlementAmount",
+                request))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("must match the total payment amount");
+    }
+
+    @Test
+    void resolveDealerHeaderSettlementAmount_usesPaymentTotalWhenHeaderAmountMissing() {
+        DealerSettlementRequest request = new DealerSettlementRequest(
+                1L,
+                20L,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                LocalDate.of(2026, 3, 10),
+                null,
+                "Payment total",
+                null,
+                Boolean.FALSE,
+                null,
+                List.of(
+                        new SettlementPaymentRequest(20L, new BigDecimal("40.00"), "BANK"),
+                        new SettlementPaymentRequest(21L, new BigDecimal("15.50"), "CASH")
+                )
+        );
+
+        BigDecimal resolved = ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "resolveDealerHeaderSettlementAmount",
+                request);
+
+        assertThat(resolved).isEqualByComparingTo("55.50");
+    }
+
+    @Test
+    void buildDealerHeaderSettlementAllocations_rejectsExcessAmountWithoutUnappliedChoice() {
+        Dealer dealer = new Dealer();
+        ReflectionTestUtils.setField(dealer, "id", 1L);
+
+        Invoice invoice = new Invoice();
+        ReflectionTestUtils.setField(invoice, "id", 701L);
+        invoice.setOutstandingAmount(new BigDecimal("100.00"));
+
+        when(invoiceRepository.lockOpenInvoicesForSettlement(company, dealer)).thenReturn(List.of(invoice));
+
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "buildDealerHeaderSettlementAllocations",
+                company,
+                dealer,
+                new BigDecimal("125.00"),
+                null))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("exceeds open invoice outstanding total");
+    }
+
+    @Test
+    void buildDealerHeaderSettlementAllocations_carriesFutureApplicationRemainder() {
+        Dealer dealer = new Dealer();
+        ReflectionTestUtils.setField(dealer, "id", 1L);
+
+        Invoice invoice = new Invoice();
+        ReflectionTestUtils.setField(invoice, "id", 702L);
+        invoice.setOutstandingAmount(new BigDecimal("100.00"));
+
+        when(invoiceRepository.lockOpenInvoicesForSettlement(company, dealer)).thenReturn(List.of(invoice));
+
+        @SuppressWarnings("unchecked")
+        List<SettlementAllocationRequest> allocations = (List<SettlementAllocationRequest>) ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "buildDealerHeaderSettlementAllocations",
+                company,
+                dealer,
+                new BigDecimal("125.00"),
+                SettlementAllocationApplication.FUTURE_APPLICATION);
+
+        assertThat(allocations).hasSize(2);
+        assertThat(allocations.get(0).invoiceId()).isEqualTo(702L);
+        assertThat(allocations.get(1).invoiceId()).isNull();
+        assertThat(allocations.get(1).applicationType()).isEqualTo(SettlementAllocationApplication.FUTURE_APPLICATION);
+        assertThat(allocations.get(1).appliedAmount()).isEqualByComparingTo("25.00");
+        assertThat(allocations.get(1).memo()).isEqualTo("Header-level future application");
+    }
+
+    @Test
+    void buildSupplierHeaderSettlementAllocations_requiresUnappliedHandlingWhenPurchasesMissing() {
+        Supplier supplier = new Supplier();
+        ReflectionTestUtils.setField(supplier, "id", 1L);
+
+        when(rawMaterialPurchaseRepository.lockOpenPurchasesForSettlement(company, supplier)).thenReturn(List.of());
+
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "buildSupplierHeaderSettlementAllocations",
+                company,
+                supplier,
+                new BigDecimal("40.00"),
+                null))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("No open purchases are available");
+    }
+
+    @Test
+    void normalizeRequestedUnappliedApplication_rejectsDocumentApplication() {
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "normalizeRequestedUnappliedApplication",
+                SettlementAllocationApplication.DOCUMENT))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("must be ON_ACCOUNT or FUTURE_APPLICATION");
+    }
+
+    @Test
+    void replayAllocations_decodesTaggedUnappliedRowsAndDocumentRows() {
+        Invoice invoice = new Invoice();
+        ReflectionTestUtils.setField(invoice, "id", 901L);
+
+        PartnerSettlementAllocation documentRow = new PartnerSettlementAllocation();
+        documentRow.setInvoice(invoice);
+        documentRow.setAllocationAmount(new BigDecimal("80.00"));
+        documentRow.setDiscountAmount(new BigDecimal("5.00"));
+        documentRow.setWriteOffAmount(BigDecimal.ZERO);
+        documentRow.setFxDifferenceAmount(BigDecimal.ZERO);
+        documentRow.setMemo("Visible memo");
+
+        PartnerSettlementAllocation unappliedRow = new PartnerSettlementAllocation();
+        unappliedRow.setAllocationAmount(new BigDecimal("20.00"));
+        unappliedRow.setDiscountAmount(BigDecimal.ZERO);
+        unappliedRow.setWriteOffAmount(BigDecimal.ZERO);
+        unappliedRow.setFxDifferenceAmount(BigDecimal.ZERO);
+        unappliedRow.setMemo("[SETTLEMENT-APPLICATION:FUTURE_APPLICATION] Carry forward");
+
+        when(settlementAllocationRepository.findByCompanyAndIdempotencyKeyIgnoreCaseOrderByCreatedAtAscIdAsc(
+                company,
+                "REPLAY-SETTLEMENT")).thenReturn(List.of(documentRow, unappliedRow));
+
+        @SuppressWarnings("unchecked")
+        List<SettlementAllocationRequest> replayed = (List<SettlementAllocationRequest>) ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "replayAllocations",
+                company,
+                "REPLAY-SETTLEMENT");
+
+        assertThat(replayed).hasSize(2);
+        assertThat(replayed.get(0).invoiceId()).isEqualTo(901L);
+        assertThat(replayed.get(0).applicationType()).isEqualTo(SettlementAllocationApplication.DOCUMENT);
+        assertThat(replayed.get(0).memo()).isEqualTo("Visible memo");
+        assertThat(replayed.get(1).purchaseId()).isNull();
+        assertThat(replayed.get(1).applicationType()).isEqualTo(SettlementAllocationApplication.FUTURE_APPLICATION);
+        assertThat(replayed.get(1).memo()).isEqualTo("Carry forward");
+    }
+
+    @Test
+    void validateDealerSettlementAllocations_rejectsDuplicateUnappliedRows() {
+        List<SettlementAllocationRequest> allocations = List.of(
+                new SettlementAllocationRequest(
+                        null,
+                        null,
+                        new BigDecimal("10.00"),
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        SettlementAllocationApplication.ON_ACCOUNT,
+                        "First"),
+                new SettlementAllocationRequest(
+                        null,
+                        null,
+                        new BigDecimal("5.00"),
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        SettlementAllocationApplication.ON_ACCOUNT,
+                        "Second")
+        );
+
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "validateDealerSettlementAllocations",
+                allocations))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("duplicate unapplied allocation rows");
+    }
+
+    @Test
+    void validateSupplierSettlementAllocations_rejectsUnappliedPurchaseReference() {
+        List<SettlementAllocationRequest> allocations = List.of(new SettlementAllocationRequest(
+                null,
+                55L,
+                new BigDecimal("10.00"),
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                SettlementAllocationApplication.ON_ACCOUNT,
+                "Invalid"));
+
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "validateSupplierSettlementAllocations",
+                allocations))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Unapplied supplier settlement rows cannot reference a purchase");
+    }
+
+    @Test
+    void resolveSettlementApplicationType_defaultsAcrossRequestAndPersistedAllocations() {
+        SettlementAllocationRequest explicit = new SettlementAllocationRequest(
+                null,
+                null,
+                new BigDecimal("10.00"),
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                SettlementAllocationApplication.FUTURE_APPLICATION,
+                "Future"
+        );
+        SettlementAllocationRequest implicitDocument = new SettlementAllocationRequest(
+                77L,
+                null,
+                new BigDecimal("10.00"),
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                null,
+                "Invoice"
+        );
+        SettlementAllocationRequest implicitOnAccount = new SettlementAllocationRequest(
+                null,
+                null,
+                new BigDecimal("10.00"),
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                null,
+                "Carry"
+        );
+
+        PartnerSettlementAllocation persisted = new PartnerSettlementAllocation();
+        persisted.setMemo("[SETTLEMENT-APPLICATION:FUTURE_APPLICATION] Carry");
+
+        assertThat((Object) ReflectionTestUtils.invokeMethod(accountingService, "resolveSettlementApplicationType", explicit))
+                .isEqualTo(SettlementAllocationApplication.FUTURE_APPLICATION);
+        assertThat((Object) ReflectionTestUtils.invokeMethod(accountingService, "resolveSettlementApplicationType", implicitDocument))
+                .isEqualTo(SettlementAllocationApplication.DOCUMENT);
+        assertThat((Object) ReflectionTestUtils.invokeMethod(accountingService, "resolveSettlementApplicationType", implicitOnAccount))
+                .isEqualTo(SettlementAllocationApplication.ON_ACCOUNT);
+        assertThat((Object) ReflectionTestUtils.invokeMethod(accountingService, "resolveSettlementApplicationType", persisted))
+                .isEqualTo(SettlementAllocationApplication.FUTURE_APPLICATION);
+    }
+
+    @Test
+    void encodeAndDecodeSettlementAllocationMemo_roundTripsUnappliedAndDocumentCases() {
+        String encoded = ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "encodeSettlementAllocationMemo",
+                SettlementAllocationApplication.FUTURE_APPLICATION,
+                "  Carry forward  ");
+        Object decoded = ReflectionTestUtils.invokeMethod(accountingService, "decodeSettlementAllocationMemo", encoded);
+        Object malformed = ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "decodeSettlementAllocationMemo",
+                "[SETTLEMENT-APPLICATION:INVALID memo");
+
+        assertThat(encoded).isEqualTo("[SETTLEMENT-APPLICATION:FUTURE_APPLICATION] Carry forward");
+        assertThat((Object) ReflectionTestUtils.invokeMethod(decoded, "applicationType"))
+                .isEqualTo(SettlementAllocationApplication.FUTURE_APPLICATION);
+        assertThat((Object) ReflectionTestUtils.invokeMethod(decoded, "memo")).isEqualTo("Carry forward");
+        assertThat((Object) ReflectionTestUtils.invokeMethod(accountingService, "encodeSettlementAllocationMemo", SettlementAllocationApplication.DOCUMENT, "  Visible  "))
+                .isEqualTo("Visible");
+        assertThat((Object) ReflectionTestUtils.invokeMethod(malformed, "applicationType"))
+                .isEqualTo(SettlementAllocationApplication.ON_ACCOUNT);
+    }
+
+    @Test
+    void validateOptionalHeaderSettlementAmount_rejectsAllocationMismatch() {
+        List<SettlementAllocationRequest> allocations = List.of(
+                new SettlementAllocationRequest(1L, null, new BigDecimal("25.00"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, null, "A"),
+                new SettlementAllocationRequest(2L, null, new BigDecimal("25.00"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, null, "B")
+        );
+
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "validateOptionalHeaderSettlementAmount",
+                "dealer",
+                new BigDecimal("60.00"),
+                allocations))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("must add up to the request amount");
+    }
+
+    @Test
+    void validateDealerSettlementAllocations_rejectsDuplicateInvoiceAndUnappliedInvoiceReference() {
+        List<SettlementAllocationRequest> duplicateInvoiceAllocations = List.of(
+                new SettlementAllocationRequest(44L, null, new BigDecimal("10.00"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, null, "A"),
+                new SettlementAllocationRequest(44L, null, new BigDecimal("5.00"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, null, "B")
+        );
+        List<SettlementAllocationRequest> unappliedWithInvoice = List.of(
+                new SettlementAllocationRequest(44L, null, new BigDecimal("10.00"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, SettlementAllocationApplication.ON_ACCOUNT, "Invalid")
+        );
+
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "validateDealerSettlementAllocations",
+                duplicateInvoiceAllocations))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("duplicate invoice allocations");
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "validateDealerSettlementAllocations",
+                unappliedWithInvoice))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("cannot reference an invoice");
+    }
+
+    @Test
+    void validateSupplierSettlementAllocations_rejectsInvoiceDuplicateAndMissingPurchaseBranches() {
+        List<SettlementAllocationRequest> invoiceAllocation = List.of(
+                new SettlementAllocationRequest(11L, null, new BigDecimal("10.00"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, null, "Invalid")
+        );
+        List<SettlementAllocationRequest> duplicatePurchase = List.of(
+                new SettlementAllocationRequest(null, 55L, new BigDecimal("10.00"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, null, "A"),
+                new SettlementAllocationRequest(null, 55L, new BigDecimal("5.00"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, null, "B")
+        );
+        List<SettlementAllocationRequest> missingPurchase = List.of(
+                new SettlementAllocationRequest(null, null, new BigDecimal("10.00"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, SettlementAllocationApplication.DOCUMENT, "Missing")
+        );
+
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(accountingService, "validateSupplierSettlementAllocations", invoiceAllocation))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("cannot allocate to invoices");
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(accountingService, "validateSupplierSettlementAllocations", duplicatePurchase))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("duplicate purchase allocations");
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(accountingService, "validateSupplierSettlementAllocations", missingPurchase))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Purchase allocation is required");
+    }
+
+    @Test
+    void requireAdminExceptionReason_enforcesOverrideAuthorityAndTrimsReason() {
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "requireAdminExceptionReason",
+                "Settlement override",
+                Boolean.FALSE,
+                "memo"))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("requires an explicit admin override");
+
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+                "accounting.user",
+                "n/a",
+                List.of(new SimpleGrantedAuthority("ROLE_ACCOUNTING"))));
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "requireAdminExceptionReason",
+                "Settlement override",
+                Boolean.TRUE,
+                "memo"))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("admin-only");
+
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+                "policy.admin",
+                "n/a",
+                List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
+        assertThat((Object) ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "requireAdminExceptionReason",
+                "Settlement override",
+                Boolean.TRUE,
+                "  approved reason  "))
+                .isEqualTo("approved reason");
+    }
+
+    @Test
+    void ensureCorrectionJournalProvenance_updatesChangedFieldsAndSkipsCleanEntry() {
+        JournalEntry source = new JournalEntry();
+        ReflectionTestUtils.setField(source, "id", 77L);
+
+        JournalEntry changedEntry = new JournalEntry();
+        ReflectionTestUtils.setField(changedEntry, "id", 88L);
+        changedEntry.setCorrectionReason("OLD");
+        changedEntry.setSourceModule("OLD");
+        changedEntry.setSourceReference("OLD");
+
+        ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "ensureCorrectionJournalProvenance",
+                changedEntry,
+                source,
+                "SALES_RETURN",
+                "SALES_RETURN",
+                "INV-1");
+
+        verify(journalEntryRepository).save(changedEntry);
+        assertThat(changedEntry.getCorrectionType()).isEqualTo(JournalCorrectionType.REVERSAL);
+        assertThat(changedEntry.getReversalOf()).isSameAs(source);
+        assertThat(changedEntry.getSourceReference()).isEqualTo("INV-1");
+
+        JournalEntry cleanEntry = new JournalEntry();
+        cleanEntry.setCorrectionType(JournalCorrectionType.REVERSAL);
+        cleanEntry.setCorrectionReason("SALES_RETURN");
+        cleanEntry.setSourceModule("SALES_RETURN");
+        cleanEntry.setSourceReference("INV-1");
+        cleanEntry.setReversalOf(source);
+
+        ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "ensureCorrectionJournalProvenance",
+                cleanEntry,
+                source,
+                "SALES_RETURN",
+                "SALES_RETURN",
+                "INV-1");
+
+        verify(journalEntryRepository, times(1)).save(any(JournalEntry.class));
+    }
+
+    @Test
+    void settlementFingerprintHelpers_coverImplicitCashAndAllocationDigests() {
+        DealerSettlementRequest request = new DealerSettlementRequest(
+                1L,
+                20L,
+                null,
+                null,
+                null,
+                null,
+                new BigDecimal("25.00"),
+                null,
+                LocalDate.of(2026, 3, 10),
+                null,
+                "memo",
+                null,
+                Boolean.FALSE,
+                List.of(new SettlementAllocationRequest(null, null, new BigDecimal("25.00"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, null, "Carry")),
+                null
+        );
+
+        @SuppressWarnings("unchecked")
+        List<SettlementPaymentRequest> implicitPayments = (List<SettlementPaymentRequest>) ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "orderedDealerSettlementPaymentsForFingerprint",
+                request,
+                java.util.Comparator.comparing(SettlementPaymentRequest::accountId, java.util.Comparator.nullsLast(Long::compareTo)),
+                true);
+        String headerKey = ReflectionTestUtils.invokeMethod(accountingService, "buildDealerHeaderSettlementIdempotencyKey", request);
+
+        Map<String, Integer> requestCounts = ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "allocationSignatureCountsFromRequests",
+                List.of(
+                        new SettlementAllocationRequest(null, null, new BigDecimal("25.00"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, null, "Carry"),
+                        new SettlementAllocationRequest(null, null, new BigDecimal("25.00"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, null, "Carry")
+                ));
+        String digest = ReflectionTestUtils.invokeMethod(accountingService, "allocationSignatureDigest", requestCounts);
+
+        assertThat(implicitPayments).singleElement().satisfies(payment -> {
+            assertThat(payment.accountId()).isEqualTo(20L);
+            assertThat(payment.amount()).isEqualByComparingTo("25.00");
+        });
+        assertThat(headerKey).startsWith("DEALER-SETTLEMENT-");
+        assertThat(digest).contains("#2").contains("application=ON_ACCOUNT");
+    }
+
     private void assertPartnerReplayDetails(ApplicationException ex,
                                             String idempotencyKey,
                                             String partnerType,

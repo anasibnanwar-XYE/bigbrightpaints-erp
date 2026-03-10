@@ -32,6 +32,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
@@ -100,7 +101,7 @@ class SalesReturnServiceTest {
         );
         company = new Company();
         company.setTimezone("UTC");
-        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        lenient().when(companyContextService.requireCurrentCompany()).thenReturn(company);
         lenient().when(companyAccountingSettingsService.requireTaxAccounts())
                 .thenReturn(new CompanyAccountingSettingsService.TaxAccountConfiguration(900L, 800L, null));
         lenient().when(journalEntryRepository.findByCompanyAndId(any(), anyLong())).thenReturn(Optional.empty());
@@ -1032,6 +1033,103 @@ class SalesReturnServiceTest {
         verify(finishedGoodRepository, never()).save(any(FinishedGood.class));
         verify(finishedGoodBatchRepository, never()).save(any(FinishedGoodBatch.class));
         verify(accountingFacade, never()).postInventoryAdjustment(anyString(), anyString(), anyLong(), anyMap(), anyBoolean(), anyBoolean(), anyString());
+    }
+
+    @Test
+    void previewReturn_rejectsMissingInvoiceLineBeforePreviewing() {
+        Dealer dealer = new Dealer();
+        dealer.setCompany(company);
+
+        Invoice invoice = new Invoice();
+        invoice.setCompany(company);
+        invoice.setDealer(dealer);
+        invoice.setInvoiceNumber("INV-MISSING-LINE");
+        attachPostedJournal(invoice, 930L);
+        setField(invoice, "id", 130L);
+
+        when(invoiceRepository.lockByCompanyAndId(company, 130L)).thenReturn(Optional.of(invoice));
+
+        assertThatThrownBy(() -> salesReturnService.previewReturn(new SalesReturnRequest(
+                130L,
+                "Preview",
+                List.of(new SalesReturnRequest.ReturnLine(999L, BigDecimal.ONE))
+        )))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Invoice line not found: 999");
+    }
+
+    @Test
+    void ensurePostedInvoice_rejectsMissingJournalAndBlankStatus() {
+        Invoice missingJournal = new Invoice();
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(
+                salesReturnService,
+                "ensurePostedInvoice",
+                missingJournal))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Only posted invoices can be corrected through sales return");
+
+        Invoice blankStatus = new Invoice();
+        attachPostedJournal(blankStatus, 931L);
+        blankStatus.setStatus("   ");
+
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(
+                salesReturnService,
+                "ensurePostedInvoice",
+                blankStatus))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Only posted invoices can be corrected through sales return");
+    }
+
+    @Test
+    void relinkExistingReturnMovements_skipsWhenJournalEntryMissingOrReferencesDoNotMatch() {
+        InventoryMovement unrelated = new InventoryMovement();
+        unrelated.setReferenceId("INV-RELINK-X:55:OTHER");
+        unrelated.setJournalEntryId(41L);
+
+        when(inventoryMovementRepository.findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
+                eq(company),
+                eq("SALES_RETURN"),
+                eq("INV-RELINK-X")
+        )).thenReturn(List.of(unrelated));
+        when(inventoryMovementRepository.findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdStartingWithOrderByCreatedAtAsc(
+                eq(company),
+                eq("SALES_RETURN"),
+                eq("INV-RELINK-X:")
+        )).thenReturn(List.of());
+
+        ReflectionTestUtils.invokeMethod(
+                salesReturnService,
+                "relinkExistingReturnMovements",
+                company,
+                "INV-RELINK-X",
+                new SalesReturnRequest(1L, "No-op", List.of(new SalesReturnRequest.ReturnLine(55L, BigDecimal.ONE))),
+                null,
+                "KEY-1");
+        ReflectionTestUtils.invokeMethod(
+                salesReturnService,
+                "relinkExistingReturnMovements",
+                company,
+                "INV-RELINK-X",
+                new SalesReturnRequest(1L, "No-op", List.of(new SalesReturnRequest.ReturnLine(55L, BigDecimal.ONE))),
+                99L,
+                "KEY-1");
+
+        verify(inventoryMovementRepository, never()).saveAll(any());
+    }
+
+    @Test
+    void salesReturnReferences_handleMissingInvoiceAndMissingReturnKey() throws Exception {
+        Class<?> helper = Class.forName("com.bigbrightpaints.erp.modules.sales.service.SalesReturnService$StreamReferenceHelper");
+        var method = helper.getDeclaredMethod("salesReturnReferences", String.class, Long.class, String.class);
+        method.setAccessible(true);
+
+        @SuppressWarnings("unchecked")
+        List<String> empty = (List<String>) method.invoke(null, "   ", null, "KEY");
+        @SuppressWarnings("unchecked")
+        List<String> single = (List<String>) method.invoke(null, "INV-1", 55L, "   ");
+
+        assertThat(empty).isEmpty();
+        assertThat(single).containsExactly("INV-1:55");
     }
 
     private JournalEntryDto stubEntry(long id) {

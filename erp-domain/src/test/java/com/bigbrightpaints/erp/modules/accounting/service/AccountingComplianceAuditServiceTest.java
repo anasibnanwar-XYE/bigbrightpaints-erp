@@ -83,6 +83,20 @@ class AccountingComplianceAuditServiceTest {
     }
 
     @Test
+    void recordJournalCreation_includesTrimmedSourceReferenceAndAttachments() {
+        Company company = company(84L, "BBP");
+        JournalEntry entry = journalEntry(106L, "MANJ-2026-0002", JournalEntryType.MANUAL);
+        entry.setSourceReference("  MANUAL-IDEMP-1  ");
+        entry.setAttachmentReferences("  ATT-1,ATT-2  ");
+
+        service.recordJournalCreation(company, entry);
+
+        AuditActionEventCommand command = captureCommand();
+        assertThat(command.metadata()).containsEntry("sourceReference", "MANUAL-IDEMP-1");
+        assertThat(command.metadata()).containsEntry("attachmentReferences", "ATT-1,ATT-2");
+    }
+
+    @Test
     void recordJournalReversal_includesBeforeAndAfterState() {
         Company company = company(79L, "BBP");
         JournalEntry original = journalEntry(103L, "INV-2026-0091", JournalEntryType.AUTOMATED);

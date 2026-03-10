@@ -131,8 +131,8 @@ class PurchaseReturnServiceTest {
         line.setLineTotal(new BigDecimal("20.00"));
         purchase.getLines().add(line);
 
-        when(companyContextService.requireCurrentCompany()).thenReturn(company);
-        when(companyEntityLookup.requireSupplier(company, 10L)).thenReturn(supplier);
+        lenient().when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        lenient().when(companyEntityLookup.requireSupplier(company, 10L)).thenReturn(supplier);
         lenient().when(purchaseRepository.lockByCompanyAndId(company, 30L)).thenReturn(Optional.of(purchase));
         lenient().when(rawMaterialRepository.lockByCompanyAndId(company, 20L)).thenReturn(Optional.of(material));
         lenient().when(movementRepository.findByRawMaterialCompanyAndReferenceTypeAndReferenceId(eq(company), eq(com.bigbrightpaints.erp.modules.inventory.domain.InventoryReference.PURCHASE_RETURN), eq("PR-30")))
@@ -305,6 +305,108 @@ class PurchaseReturnServiceTest {
         verify(rawMaterialRepository, never()).deductStockIfSufficient(any(), any());
         verify(allocationService, never()).applyPurchaseReturnQuantity(any(), any(), any());
         verify(allocationService, never()).applyPurchaseReturnToOutstanding(any(), any());
+    }
+
+    @Test
+    void previewPurchaseReturn_rejectsMaterialMissingFromPurchase() {
+        RawMaterial otherMaterial = new RawMaterial();
+        ReflectionTestUtils.setField(otherMaterial, "id", 21L);
+        otherMaterial.setName("Pigment");
+        when(rawMaterialRepository.lockByCompanyAndId(company, 21L)).thenReturn(Optional.of(otherMaterial));
+
+        assertThatThrownBy(() -> purchaseReturnService.previewPurchaseReturn(new PurchaseReturnRequest(
+                10L,
+                30L,
+                21L,
+                new BigDecimal("1.0000"),
+                new BigDecimal("5.00"),
+                "PR-31",
+                LocalDate.of(2026, 3, 9),
+                "Damaged"
+        )))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Purchase does not include raw material Pigment");
+    }
+
+    @Test
+    void previewPurchaseReturn_rejectsQuantityBeyondRemainingReturnable() {
+        when(allocationService.remainingReturnableQuantity(purchase, material)).thenReturn(new BigDecimal("0.5000"));
+
+        assertThatThrownBy(() -> purchaseReturnService.previewPurchaseReturn(new PurchaseReturnRequest(
+                10L,
+                30L,
+                20L,
+                new BigDecimal("1.0000"),
+                new BigDecimal("5.00"),
+                "PR-31",
+                LocalDate.of(2026, 3, 9),
+                "Damaged"
+        )))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("exceeds remaining returnable quantity");
+    }
+
+    @Test
+    void ensurePostedPurchase_allowsNullButRejectsBlankStatus() {
+        ReflectionTestUtils.invokeMethod(purchaseReturnService, "ensurePostedPurchase", new Object[]{null});
+
+        RawMaterialPurchase blankStatusPurchase = new RawMaterialPurchase();
+        JournalEntry posted = new JournalEntry();
+        ReflectionTestUtils.setField(posted, "id", 77L);
+        blankStatusPurchase.setJournalEntry(posted);
+        blankStatusPurchase.setStatus("   ");
+
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(
+                purchaseReturnService,
+                "ensurePostedPurchase",
+                blankStatusPurchase))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Only posted purchases can be corrected through purchase return");
+    }
+
+    @Test
+    void ensureLinkedCorrectionJournal_skipsWhenIdentifiersMissing() {
+        ReflectionTestUtils.invokeMethod(
+                purchaseReturnService,
+                "ensureLinkedCorrectionJournal",
+                company,
+                stubEntry(901L),
+                new JournalEntry(),
+                "PINV-30");
+        ReflectionTestUtils.invokeMethod(
+                purchaseReturnService,
+                "ensureLinkedCorrectionJournal",
+                company,
+                new JournalEntryDto(
+                        null,
+                        null,
+                        null,
+                        LocalDate.now(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        List.of(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null),
+                purchase.getJournalEntry(),
+                "PINV-30");
+
+        verify(journalEntryRepository, never()).save(any(JournalEntry.class));
     }
 
     private JournalEntryDto stubEntry(long id) {
