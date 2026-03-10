@@ -104,9 +104,9 @@ class DealerPortalControllerSecurityIT extends AbstractIntegrationTest {
         assertThat(new BigDecimal(String.valueOf(data.get("totalOutstanding"))))
                 .isEqualByComparingTo("1180.00");
         assertThat(new BigDecimal(String.valueOf(data.get("creditUsed"))))
-                .isGreaterThanOrEqualTo(new BigDecimal("1180.00"));
+                .isEqualByComparingTo("6180.00");
         assertThat(new BigDecimal(String.valueOf(data.get("availableCredit"))))
-                .isLessThan(new BigDecimal("100000.00"));
+                .isEqualByComparingTo("93820.00");
     }
 
     @Test
