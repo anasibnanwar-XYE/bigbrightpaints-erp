@@ -80,8 +80,15 @@ public class FinishedGoodsReservationEngine {
                         .invalidInput("Sales order not found: " + order.getId()));
 
         List<PackagingSlip> lockedSlips = packagingSlipRepository.findAllByCompanyAndSalesOrderIdForUpdate(company, order.getId());
-        PackagingSlip slip = lockedSlips.stream()
+        List<PackagingSlip> primarySlips = lockedSlips.stream()
                 .filter(existing -> !existing.isBackorder())
+                .toList();
+        if (primarySlips.size() > 1) {
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils
+                    .invalidState("Ambiguous primary packaging slip state for order " + order.getId());
+        }
+
+        PackagingSlip slip = primarySlips.stream()
                 .findFirst()
                 .orElseGet(() -> lockedSlips.stream()
                         .filter(PackagingSlip::isBackorder)
