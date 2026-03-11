@@ -1,15 +1,15 @@
 {
   "featureId": "recovery-review.portal-boundary-comment-closure",
   "reviewedAt": "2026-03-10T18:39:38Z",
-  "commitId": "ad58bbaa48fd7505c41167f85c1e7baaaf1ddce5",
+  "commitId": "9933ec4f82d0b95453218cfb2c1c375c5c916cd6",
   "transcriptSkeletonReviewed": true,
   "diffReviewed": true,
   "status": "pass",
   "codeReview": {
-    "summary": "Manual scrutiny re-check confirmed the current propagated portal-boundary evidence is traceable on resolvable, branch-reachable commit `ad58bbaa48fd7505c41167f85c1e7baaaf1ddce5` (`fix(portal): close PR100 review gaps`). That reachable propagated commit remains the closest auditable anchor for the reviewed fail-closed portal packet: super-admin tenant workflow denial, deterministic dealer read-only handling, aligned denial payloads, and tighter RBAC assertions are all visible from the touched runtime/test files and reproducible with the focused portal suite plus gate-fast rerun recorded for this review.",
+    "summary": "Manual scrutiny re-check confirmed the current propagated portal-boundary evidence is traceable on branch-reachable commit `9933ec4f82d0b95453218cfb2c1c375c5c916cd6` (`fix(portal): close remaining PR #100 live comments`). That reachable portal-specific descendant preserves the reviewed fail-closed portal packet and its later live-comment closure: tenant-attached super-admin audit workflows are denied on the tenant path, first-boot RBAC synchronization is ordered after role seeding, dealer denial envelopes stay deterministic, and the focused portal/auth suites recorded for this review still exercise the touched paths.",
     "issues": []
   },
   "sharedStateObservations": [],
   "addressesFailureFrom": null,
-  "summary": "Pass. Re-anchored the portal-boundary recovery review to reachable propagated commit `ad58bbaa48fd7505c41167f85c1e7baaaf1ddce5`, preserving an auditable trace to the reviewed fail-closed portal packet on the propagated stack."
+  "summary": "Pass. Re-anchored the portal-boundary recovery review to reachable propagated commit `9933ec4f82d0b95453218cfb2c1c375c5c916cd6`, preserving an auditable trace to the reviewed fail-closed portal packet on the current stack."
 }

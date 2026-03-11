@@ -1,15 +1,15 @@
 {
   "featureId": "recovery-review.corrections-control-migration-closure",
   "reviewedAt": "2026-03-09T06:10:00+05:30",
-  "commitId": "826fefe672f48752336dc043f27f9c173be8009f",
+  "commitId": "09dc2b8bf301613f0dd9ca456d55f3c50abedbbd",
   "transcriptSkeletonReviewed": true,
   "diffReviewed": true,
   "status": "pass",
   "codeReview": {
-    "summary": "Manual scrutiny review found the corrections/control recovery packet stayed tightly aligned to PR #99: legacy replay and reversal provenance paths were hardened, migration/R2 governance evidence was updated in the same packet, and the focused accounting/purchasing/sales-return regression surface passed cleanly without introducing new scope. The review now anchors to branch-reachable commit `826fefe672f48752336dc043f27f9c173be8009f` (`fix(accounting): close corrections-control comment gaps`) so the shareout packet no longer points at a stale pre-restack closure id.",
+    "summary": "Manual scrutiny review found the corrections/control recovery packet stayed tightly aligned to PR #99, and the current propagated stack now carries that reviewed work on reachable descendant commit `09dc2b8bf301613f0dd9ca456d55f3c50abedbbd` (`fix(accounting): close PR #99 stale review threads`) instead of the stale pre-restack closure id. That reachable current-stack anchor preserves the earlier migration/R2 closure plus the legacy replay, reversal provenance, supplier-settlement, and purchase-return follow-ups that kept the branch review-clean.",
     "issues": []
   },
   "sharedStateObservations": [],
   "addressesFailureFrom": null,
-  "summary": "Pass. Corrections/control replay, provenance, and migration-governance recovery work is coherently covered and validated on branch-reachable commit `826fefe672f48752336dc043f27f9c173be8009f`."
+  "summary": "Pass. Corrections/control replay, provenance, and migration-governance recovery work remains auditable on branch-reachable commit `09dc2b8bf301613f0dd9ca456d55f3c50abedbbd`, which is the current propagated descendant of the earlier closure packet."
 }

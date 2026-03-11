@@ -37,7 +37,7 @@
   "appliedUpdates": [
     {
       "target": ".factory/validation/recovery-review/scrutiny/reviews/*.json",
-      "description": "Re-anchored every stale non-ancestor recovery-review artifact to a current-stack reachable commit id: O2C `140ae266b089673dbdbe724b60946827c6afffe9`, P2P `7b442c757a8cb4c55809d6235c56de18777506a0`, corrections/control `826fefe672f48752336dc043f27f9c173be8009f`, portal `ad58bbaa48fd7505c41167f85c1e7baaaf1ddce5`, final-hardening `f30d9bbabc5ad37137d4d601fad5c6e63b6b270a`, and the docs-only PR #102 shareout review `a16a5dac5ede13fdd7ba07ad1aecb9c5ad095f74`; the shared-ci baseline and truth-rails anchors were already reachable and remained unchanged. The milestone pass therefore reflects the live propagated ancestry rather than a stale clean summary from an older restack state.",
+      "description": "Re-anchored every stale non-ancestor recovery-review artifact to a current-stack reachable commit id: O2C `140ae266b089673dbdbe724b60946827c6afffe9`, P2P `610e63dee94edb542797195bf33242a2c48cd8cf`, corrections/control `09dc2b8bf301613f0dd9ca456d55f3c50abedbbd`, portal `9933ec4f82d0b95453218cfb2c1c375c5c916cd6`, final-hardening `c4e30c64c72e243f24923eec61f53d8852ebf540`, and the docs-only PR #102 shareout review `4f9ba95c5b1788e792d3c964915adbb8aab5ac6b`; the shared-ci baseline and truth-rails anchors were already reachable and remained unchanged. The milestone pass therefore reflects the live propagated ancestry rather than a stale clean summary from an older restack state.",
       "source": "review-traceability"
     },
     {
