@@ -729,6 +729,7 @@ class InvoiceServiceTest {
         legacySlip.setStatus("DISPATCHED");
 
         when(invoiceRepository.findByCompanyAndId(company, 1812L)).thenReturn(Optional.of(invoice));
+        when(invoiceRepository.findAllByCompanyAndSalesOrderId(company, 1811L)).thenReturn(List.of(invoice));
         when(packagingSlipRepository.findAllByCompanyAndSalesOrderIdIn(company, List.of(1811L)))
                 .thenReturn(List.of(legacySlip));
         when(settlementAllocationRepository.findByCompanyAndInvoice_IdInOrderByCreatedAtDesc(company, List.of(1812L)))
@@ -738,6 +739,48 @@ class InvoiceServiceTest {
                 .filteredOn(reference -> "DISPATCH".equals(reference.relationType()))
                 .extracting(LinkedBusinessReferenceDto::documentNumber)
                 .containsExactly("PS-1813");
+    }
+
+    @Test
+    void getInvoice_omitsSingleLegacyDispatchReferenceWhenOrderHasMultipleInvoices() {
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+
+        SalesOrder order = new SalesOrder();
+        ReflectionTestUtils.setField(order, "id", 1821L);
+        order.setCompany(company);
+        order.setOrderNumber("SO-1821");
+
+        Invoice invoice = new Invoice();
+        ReflectionTestUtils.setField(invoice, "id", 1822L);
+        invoice.setCompany(company);
+        invoice.setSalesOrder(order);
+        invoice.setInvoiceNumber("INV-1822");
+        invoice.setStatus("ISSUED");
+
+        Invoice otherInvoice = new Invoice();
+        ReflectionTestUtils.setField(otherInvoice, "id", 1823L);
+        otherInvoice.setCompany(company);
+        otherInvoice.setSalesOrder(order);
+        otherInvoice.setInvoiceNumber("INV-1823");
+        otherInvoice.setStatus("ISSUED");
+
+        PackagingSlip legacySlip = new PackagingSlip();
+        ReflectionTestUtils.setField(legacySlip, "id", 1824L);
+        legacySlip.setSalesOrder(order);
+        legacySlip.setSlipNumber("PS-1824");
+        legacySlip.setStatus("DISPATCHED");
+
+        when(invoiceRepository.findByCompanyAndId(company, 1822L)).thenReturn(Optional.of(invoice));
+        when(invoiceRepository.findAllByCompanyAndSalesOrderId(company, 1821L))
+                .thenReturn(List.of(invoice, otherInvoice));
+        when(packagingSlipRepository.findAllByCompanyAndSalesOrderIdIn(company, List.of(1821L)))
+                .thenReturn(List.of(legacySlip));
+        when(settlementAllocationRepository.findByCompanyAndInvoice_IdInOrderByCreatedAtDesc(company, List.of(1822L)))
+                .thenReturn(List.of());
+
+        assertThat(invoiceService.getInvoice(1822L).linkedReferences())
+                .filteredOn(reference -> "DISPATCH".equals(reference.relationType()))
+                .isEmpty();
     }
 
     @Test

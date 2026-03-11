@@ -4,6 +4,7 @@ import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.BusinessDocumentTruths;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
+import com.bigbrightpaints.erp.core.util.LegacyDispatchInvoiceLinkMatcher;
 import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocation;
 import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocationRepository;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
@@ -349,20 +350,30 @@ public class InvoiceService {
     }
 
     private boolean isSlipLinkedToInvoice(PackagingSlip slip, Invoice invoice, List<PackagingSlip> candidateSlips) {
-        if (slip == null || invoice == null) {
-            return false;
+        return LegacyDispatchInvoiceLinkMatcher.isSlipLinkedToInvoice(
+                slip,
+                invoice,
+                candidateSlips,
+                resolveSalesOrderInvoiceCount(invoice));
+    }
+
+    private int resolveSalesOrderInvoiceCount(Invoice invoice) {
+        if (invoice == null
+                || invoice.getCompany() == null
+                || invoice.getSalesOrder() == null
+                || invoice.getSalesOrder().getId() == null) {
+            return 0;
         }
-        boolean hasExplicitInvoiceLinks = candidateSlips != null
-                && candidateSlips.stream().anyMatch(candidate -> candidate != null && candidate.getInvoiceId() != null);
-        if (hasExplicitInvoiceLinks) {
-            return slip.getInvoiceId() != null
-                    && invoice.getId() != null
-                    && slip.getInvoiceId().equals(invoice.getId());
-        }
-        long candidateCount = candidateSlips == null
+        List<Invoice> orderInvoices = invoiceRepository.findAllByCompanyAndSalesOrderId(
+                invoice.getCompany(),
+                invoice.getSalesOrder().getId());
+        int knownCount = orderInvoices == null
                 ? 0
-                : candidateSlips.stream().filter(Objects::nonNull).count();
-        return candidateCount == 1;
+                : (int) orderInvoices.stream().filter(Objects::nonNull).count();
+        if (knownCount > 0) {
+            return knownCount;
+        }
+        return invoice.getId() != null ? 1 : 0;
     }
 
     private record LinkedReferenceContext(Map<Long, List<PackagingSlip>> packagingSlipsBySalesOrderId, Map<Long, List<PartnerSettlementAllocation>> settlementAllocationsByInvoiceId) {
