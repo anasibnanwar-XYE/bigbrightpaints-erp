@@ -177,6 +177,17 @@ class AccountingPeriodServiceTest {
     }
 
     @Test
+    void reopenPeriod_requiresAuthenticatedSuperAdmin() {
+        SecurityContextHolder.clearContext();
+
+        assertThatThrownBy(() -> service.reopenPeriod(20L, null))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("SUPER_ADMIN authority required");
+        verify(accountingPeriodRepository, never()).save(any(AccountingPeriod.class));
+        verify(snapshotService, never()).deleteSnapshotForPeriod(any(), any());
+    }
+
+    @Test
     void reopenPeriod_requiresReasonWhenRequestMissing() {
         Company company = company(1L, "ACME");
         AccountingPeriod period = openPeriod(company, 2026, 2);
@@ -235,6 +246,17 @@ class AccountingPeriodServiceTest {
         assertThatThrownBy(() -> service.closePeriod(30L, null))
                 .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("submit /request-close and approve");
+    }
+
+    @Test
+    void approvePeriodClose_requiresAdminRole() {
+        authenticate("accounting.user", "ROLE_ACCOUNTING");
+
+        assertThatThrownBy(() -> service.approvePeriodClose(
+                31L,
+                new PeriodCloseRequestActionRequest("close", true)))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("ROLE_ADMIN authority required");
     }
 
     @Test
@@ -391,6 +413,17 @@ class AccountingPeriodServiceTest {
         assertThatThrownBy(() -> service.approvePeriodClose(34L, new PeriodCloseRequestActionRequest("month close", false)))
                 .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Trial balance is not balanced");
+    }
+
+    @Test
+    void rejectPeriodClose_requiresAdminRole() {
+        authenticate("accounting.user", "ROLE_ACCOUNTING");
+
+        assertThatThrownBy(() -> service.rejectPeriodClose(
+                35L,
+                new PeriodCloseRequestActionRequest("not ready", false)))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("ROLE_ADMIN authority required");
     }
 
     @Test

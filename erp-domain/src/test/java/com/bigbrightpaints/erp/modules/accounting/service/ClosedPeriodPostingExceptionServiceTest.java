@@ -85,6 +85,17 @@ class ClosedPeriodPostingExceptionServiceTest {
     }
 
     @Test
+    void authorize_rejectsMissingAuthentication() {
+        Company company = company();
+        AccountingPeriod period = period(company);
+        SecurityContextHolder.clearContext();
+
+        assertThatThrownBy(() -> service.authorize(company, period, "JOURNAL", "JE-100", "override"))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("explicit admin exception");
+    }
+
+    @Test
     void authorize_requiresNormalizedFields() {
         Company company = company();
         AccountingPeriod period = period(company);
@@ -102,6 +113,33 @@ class ClosedPeriodPostingExceptionServiceTest {
     }
 
     @Test
+    void authorize_createsNewExceptionWhenLatestMatchIsExpired() {
+        Company company = company();
+        AccountingPeriod period = period(company);
+        ClosedPeriodPostingException expired = new ClosedPeriodPostingException();
+        expired.setExpiresAt(Instant.now().minusSeconds(60));
+        when(repository.findByCompanyAndDocumentTypeIgnoreCaseAndDocumentReferenceIgnoreCaseOrderByApprovedAtDescIdDesc(
+                company,
+                "SALES_RETURN",
+                "SR-1002")).thenReturn(List.of(expired));
+        when(repository.save(org.mockito.ArgumentMatchers.any(ClosedPeriodPostingException.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        authenticate("admin.user", "ROLE_ADMIN");
+
+        ClosedPeriodPostingException saved = service.authorize(
+                company,
+                period,
+                " SALES_RETURN ",
+                " SR-1002 ",
+                " expired exception replaced ");
+
+        assertThat(saved).isNotSameAs(expired);
+        assertThat(saved.getDocumentReference()).isEqualTo("SR-1002");
+        assertThat(saved.getReason()).isEqualTo("expired exception replaced");
+        assertThat(saved.getApprovedBy()).isEqualTo("admin.user");
+    }
+
+    @Test
     void linkJournalEntry_updatesLatestMatchingException() {
         Company company = company();
         ClosedPeriodPostingException existing = new ClosedPeriodPostingException();
@@ -116,6 +154,20 @@ class ClosedPeriodPostingExceptionServiceTest {
 
         assertThat(existing.getJournalEntry()).isSameAs(journalEntry);
         verify(repository).save(existing);
+    }
+
+    @Test
+    void linkJournalEntry_skipsWhenNoMatchingExceptionExists() {
+        Company company = company();
+        JournalEntry journalEntry = new JournalEntry();
+        when(repository.findByCompanyAndDocumentTypeIgnoreCaseAndDocumentReferenceIgnoreCaseOrderByApprovedAtDescIdDesc(
+                company,
+                "JOURNAL",
+                "JE-404")).thenReturn(List.of());
+
+        service.linkJournalEntry(company, "JOURNAL", "JE-404", journalEntry);
+
+        verify(repository, never()).save(org.mockito.ArgumentMatchers.any());
     }
 
     @Test
