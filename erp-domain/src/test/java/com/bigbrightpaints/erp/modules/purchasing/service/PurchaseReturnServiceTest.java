@@ -5,6 +5,8 @@ import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
 import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.domain.Account;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.GstService;
 import com.bigbrightpaints.erp.modules.accounting.service.ReferenceNumberService;
@@ -52,6 +54,7 @@ class PurchaseReturnServiceTest {
     @Mock private RawMaterialBatchRepository rawMaterialBatchRepository;
     @Mock private RawMaterialMovementRepository movementRepository;
     @Mock private AccountingFacade accountingFacade;
+    @Mock private JournalEntryRepository journalEntryRepository;
     @Mock private CompanyEntityLookup companyEntityLookup;
     @Mock private ReferenceNumberService referenceNumberService;
     @Mock private CompanyClock companyClock;
@@ -73,6 +76,7 @@ class PurchaseReturnServiceTest {
                 rawMaterialBatchRepository,
                 movementRepository,
                 accountingFacade,
+                journalEntryRepository,
                 companyEntityLookup,
                 referenceNumberService,
                 companyClock,
@@ -101,6 +105,11 @@ class PurchaseReturnServiceTest {
         ReflectionTestUtils.setField(purchase, "id", 30L);
         purchase.setCompany(company);
         purchase.setSupplier(supplier);
+        purchase.setStatus("POSTED");
+        JournalEntry journalEntry = new JournalEntry();
+        ReflectionTestUtils.setField(journalEntry, "id", 300L);
+        journalEntry.setStatus("POSTED");
+        purchase.setJournalEntry(journalEntry);
         purchase.setTaxAmount(BigDecimal.ZERO);
         RawMaterialPurchaseLine line = new RawMaterialPurchaseLine();
         line.setPurchase(purchase);

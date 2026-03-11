@@ -2434,6 +2434,7 @@ public abstract class AccountingCoreEngineCore {
             return buildSupplierSettlementResponse(existingAllocations);
         }
 
+        supplier.requireTransactionalUsage("settle supplier invoices");
         SettlementLineDraft lineDraft = buildSupplierSettlementLines(company, request, payableAccount, totals, memo, true);
 
         LocalDate entryDate = request.settlementDate() != null ? request.settlementDate() : currentDate(company);

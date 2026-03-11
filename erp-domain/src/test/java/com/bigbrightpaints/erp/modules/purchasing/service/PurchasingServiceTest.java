@@ -16,9 +16,11 @@ import com.bigbrightpaints.erp.modules.accounting.service.GstService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryType;
+import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReference;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovement;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
 import com.bigbrightpaints.erp.modules.inventory.service.RawMaterialService;
@@ -145,6 +147,7 @@ class PurchasingServiceTest {
         supplier.setCode("SUP001");
         supplier.setName("Test Supplier");
         supplier.setCompany(company);
+        supplier.setStatus("ACTIVE");
         supplier.setPayableAccount(payableAccount);
 
         rawMaterial = new RawMaterial();
@@ -1075,6 +1078,7 @@ class PurchasingServiceTest {
         privateBatch.setCostPerUnit(new BigDecimal("3.00"));
         privateReceiptLine.setRawMaterialBatch(privateBatch);
         receipt.getLines().add(privateReceiptLine);
+        stubGoodsReceiptMovements(receipt, receipt.getLines());
 
         when(goodsReceiptRepository.lockByCompanyAndId(company, 307L)).thenReturn(Optional.of(receipt));
         when(purchaseRepository.findByCompanyAndGoodsReceipt(company, receipt)).thenReturn(Optional.empty());
@@ -1114,6 +1118,7 @@ class PurchasingServiceTest {
                                           BigDecimal costPerUnit) {
         PurchaseOrder order = buildPurchaseOrder(orderId, supplier, rawMaterial, quantity, costPerUnit);
         GoodsReceipt receipt = buildGoodsReceipt(receiptId, order, rawMaterial, quantity, costPerUnit);
+        stubGoodsReceiptMovements(receipt, List.of(receipt.getLines().getFirst()));
         when(goodsReceiptRepository.lockByCompanyAndId(company, receiptId)).thenReturn(Optional.of(receipt));
         when(purchaseRepository.findByCompanyAndGoodsReceipt(company, receipt)).thenReturn(Optional.empty());
         return receipt;
@@ -1140,9 +1145,30 @@ class PurchasingServiceTest {
                                                      BigDecimal costPerUnit) {
         PurchaseOrder order = buildPurchaseOrder(orderId, supplier, material, quantity, costPerUnit);
         GoodsReceipt receipt = buildGoodsReceipt(receiptId, order, material, quantity, costPerUnit);
+        stubGoodsReceiptMovements(receipt, List.of(receipt.getLines().getFirst()));
         when(goodsReceiptRepository.lockByCompanyAndId(company, receiptId)).thenReturn(Optional.of(receipt));
         when(purchaseRepository.findByCompanyAndGoodsReceipt(company, receipt)).thenReturn(Optional.empty());
         return receipt;
+    }
+
+    private void stubGoodsReceiptMovements(GoodsReceipt receipt, List<GoodsReceiptLine> receiptLines) {
+        List<RawMaterialMovement> movements = receiptLines.stream()
+                .map(line -> {
+                    RawMaterialMovement movement = new RawMaterialMovement();
+                    movement.setRawMaterial(line.getRawMaterial());
+                    movement.setRawMaterialBatch(line.getRawMaterialBatch());
+                    movement.setReferenceType(InventoryReference.GOODS_RECEIPT);
+                    movement.setReferenceId(receipt.getReceiptNumber());
+                    movement.setMovementType("IN");
+                    movement.setQuantity(line.getQuantity());
+                    movement.setUnitCost(line.getCostPerUnit());
+                    return movement;
+                })
+                .toList();
+        when(movementRepository.findByRawMaterialCompanyAndReferenceTypeAndReferenceId(
+                company,
+                InventoryReference.GOODS_RECEIPT,
+                receipt.getReceiptNumber())).thenReturn(movements);
     }
 
     private RawMaterial buildRawMaterial(Long materialId,
