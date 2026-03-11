@@ -78,8 +78,8 @@ class ClosedPeriodPostingExceptionServiceTest {
         assertThat(exception.getApprovedBy()).isEqualTo("admin.user");
         assertThat(exception.getApprovedAt()).isEqualTo(FIXED_NOW);
         assertThat(exception.getExpiresAt()).isEqualTo(FIXED_NOW.plusSeconds(3600));
-        assertThat(exception.getUsedBy()).isEqualTo("admin.user");
-        assertThat(exception.getUsedAt()).isEqualTo(FIXED_NOW);
+        assertThat(exception.getUsedBy()).isNull();
+        assertThat(exception.getUsedAt()).isNull();
     }
 
     @Test
@@ -158,10 +158,13 @@ class ClosedPeriodPostingExceptionServiceTest {
     }
 
     @Test
-    void linkJournalEntry_updatesFirstMatchingExceptionOnlyWhenInputsPresent() {
+    void linkJournalEntry_marksExceptionUsedAfterSuccessfulJournalLink() {
+        installFixedClock();
         Company company = company();
         ClosedPeriodPostingException exception = new ClosedPeriodPostingException();
+        exception.setApprovedBy("admin.user");
         JournalEntry journalEntry = new JournalEntry();
+        authenticate("accounting.admin", "ROLE_ADMIN");
         when(repository.findByCompanyAndDocumentTypeIgnoreCaseAndDocumentReferenceIgnoreCaseOrderByApprovedAtDescIdDesc(
                 company,
                 "SALES_RETURN",
@@ -173,6 +176,8 @@ class ClosedPeriodPostingExceptionServiceTest {
         ArgumentCaptor<ClosedPeriodPostingException> captor = ArgumentCaptor.forClass(ClosedPeriodPostingException.class);
         verify(repository).save(captor.capture());
         assertThat(captor.getValue().getJournalEntry()).isSameAs(journalEntry);
+        assertThat(captor.getValue().getUsedBy()).isEqualTo("accounting.admin");
+        assertThat(captor.getValue().getUsedAt()).isEqualTo(FIXED_NOW);
     }
 
     @Test

@@ -162,14 +162,99 @@ class AccountingControllerJournalEndpointsTest {
     }
 
     @Test
-    void listSalesReturns_usesSalesReturnReferencePrefix() {
+    void listSalesReturns_filtersOutNonCreditNoteEntries() {
         AccountingService accountingService = mock(AccountingService.class);
         JournalEntryService journalEntryService = mock(JournalEntryService.class);
         AccountingController controller = newController(accountingService, journalEntryService, null);
-        when(journalEntryService.listJournalEntriesByReferencePrefix("CRN-")).thenReturn(List.of());
 
-        controller.listSalesReturns();
+        JournalEntryDto salesReturn = new JournalEntryDto(
+                1L,
+                null,
+                "CRN-INV-100",
+                LocalDate.of(2026, 3, 10),
+                "Return",
+                "POSTED",
+                55L,
+                "Dealer A",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                "REVERSAL",
+                "SALES_RETURN",
+                null,
+                List.of(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+        JournalEntryDto cogsReversal = new JournalEntryDto(
+                2L,
+                null,
+                "CRN-INV-100-COGS-0",
+                LocalDate.of(2026, 3, 10),
+                "COGS reversal",
+                "POSTED",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                List.of(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+        JournalEntryDto unrelatedCreditNote = new JournalEntryDto(
+                3L,
+                null,
+                "CRN-ORPHAN-1",
+                LocalDate.of(2026, 3, 10),
+                "Orphan credit note",
+                "POSTED",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                List.of(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+        when(journalEntryService.listJournalEntriesByReferencePrefix("CRN-"))
+                .thenReturn(List.of(salesReturn, cogsReversal, unrelatedCreditNote));
 
+        ApiResponse<List<JournalEntryDto>> body = controller.listSalesReturns().getBody();
+
+        assertThat(body).isNotNull();
+        assertThat(body.data()).containsExactly(salesReturn);
         verify(journalEntryService).listJournalEntriesByReferencePrefix("CRN-");
         verifyNoMoreInteractions(journalEntryService);
     }

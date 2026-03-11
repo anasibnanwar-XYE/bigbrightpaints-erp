@@ -50,6 +50,7 @@ import org.springframework.util.StringUtils;
 
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.BiFunction;
@@ -894,8 +895,12 @@ public class AccountingController {
     @GetMapping("/sales/returns")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING','ROLE_SALES')")
     public ResponseEntity<ApiResponse<List<JournalEntryDto>>> listSalesReturns() {
+        List<JournalEntryDto> salesReturns = journalEntryService.listJournalEntriesByReferencePrefix("CRN-")
+                .stream()
+                .filter(this::isSalesReturnCreditNote)
+                .toList();
         return ResponseEntity.ok(ApiResponse.success("Sales returns",
-                journalEntryService.listJournalEntriesByReferencePrefix("CRN-")));
+                salesReturns));
     }
 
     @PostMapping("/sales/returns/preview")
@@ -908,6 +913,17 @@ public class AccountingController {
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
     public ResponseEntity<ApiResponse<JournalEntryDto>> recordSalesReturn(@Valid @RequestBody SalesReturnRequest request) {
         return ResponseEntity.ok(ApiResponse.success("Credit note posted", salesReturnService.processReturn(request)));
+    }
+
+    private boolean isSalesReturnCreditNote(JournalEntryDto entry) {
+        if (entry == null || !StringUtils.hasText(entry.referenceNumber())) {
+            return false;
+        }
+        String normalizedReference = entry.referenceNumber().trim().toUpperCase(Locale.ROOT);
+        if (!normalizedReference.startsWith("CRN-") || normalizedReference.contains("-COGS-")) {
+            return false;
+        }
+        return entry.dealerId() != null || "SALES_RETURN".equalsIgnoreCase(entry.correctionReason());
     }
 
     @GetMapping("/periods")
