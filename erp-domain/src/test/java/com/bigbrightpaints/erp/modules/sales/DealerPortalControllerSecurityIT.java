@@ -317,6 +317,54 @@ class DealerPortalControllerSecurityIT extends AbstractIntegrationTest {
     }
 
     @Test
+    @DisplayName("Dealer portal excludes cash orders from pending-credit exposure totals")
+    void dealerPortalOrders_excludesCashOrdersFromPendingExposure() {
+        Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();
+        SalesOrder cashOrder = upsertOrder(
+                company,
+                dealerA,
+                "SO-PORTAL-A-CASH",
+                "PENDING_PRODUCTION",
+                new BigDecimal("2600.00")
+        );
+        cashOrder.setPaymentMode("CASH");
+        salesOrderRepository.saveAndFlush(cashOrder);
+
+        HttpHeaders dealerHeaders = authHeaders(DEALER_A_EMAIL, PASSWORD);
+        ResponseEntity<Map> dealerOrdersResponse = rest.exchange(
+                "/api/v1/dealer-portal/orders",
+                HttpMethod.GET,
+                new HttpEntity<>(dealerHeaders),
+                Map.class
+        );
+
+        assertThat(dealerOrdersResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<?, ?> dealerOrdersData = (Map<?, ?>) dealerOrdersResponse.getBody().get("data");
+        assertThat(((Number) dealerOrdersData.get("pendingOrderCount")).longValue()).isEqualTo(1L);
+        assertThat(new BigDecimal(String.valueOf(dealerOrdersData.get("pendingOrderExposure"))))
+                .isEqualByComparingTo("5000.00");
+        List<?> orders = (List<?>) dealerOrdersData.get("orders");
+        Map<?, ?> cashOrderMap = orders.stream()
+                .map(Map.class::cast)
+                .filter(order -> cashOrder.getOrderNumber().equals(order.get("orderNumber")))
+                .findFirst()
+                .orElseThrow();
+        assertThat((Boolean) cashOrderMap.get("pendingCreditExposure")).isFalse();
+
+        ResponseEntity<Map> dealerDashboardResponse = rest.exchange(
+                "/api/v1/dealer-portal/dashboard",
+                HttpMethod.GET,
+                new HttpEntity<>(dealerHeaders),
+                Map.class
+        );
+        assertThat(dealerDashboardResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<?, ?> dealerDashboardData = (Map<?, ?>) dealerDashboardResponse.getBody().get("data");
+        assertThat(((Number) dealerDashboardData.get("pendingOrderCount")).longValue()).isEqualTo(1L);
+        assertThat(new BigDecimal(String.valueOf(dealerDashboardData.get("pendingOrderExposure"))))
+                .isEqualByComparingTo("5000.00");
+    }
+
+    @Test
     @DisplayName("Dealer portal pending exposure follows sales-order invoice linkage")
     void dealerPortalOrders_pendingExposureUsesSalesOrderInvoiceLinkageEvenWhenInvoiceDealerDrifts() {
         Company company = companyRepository.findByCodeIgnoreCase(COMPANY_CODE).orElseThrow();

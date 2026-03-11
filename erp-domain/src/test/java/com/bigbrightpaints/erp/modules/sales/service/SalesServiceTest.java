@@ -3574,6 +3574,52 @@ class SalesServiceTest {
     }
 
     @Test
+    void updateOrderPreservesExistingPaymentModeWhenRequestOmitsIt() {
+        setupProduct("SKU3-UPD-KEEP", BigDecimal.valueOf(200), BigDecimal.ZERO);
+        FinishedGood finishedGood = buildFinishedGood("SKU3-UPD-KEEP");
+        finishedGood.setRevenueAccountId(5L);
+        when(finishedGoodRepository.findByCompanyAndProductCode(company, "SKU3-UPD-KEEP"))
+                .thenReturn(Optional.of(finishedGood));
+
+        Dealer dealer = dealerWithCreditLimit(431L, BigDecimal.valueOf(1000));
+        SalesOrder existing = new SalesOrder();
+        setField(existing, "id", 4303L);
+        existing.setCompany(company);
+        existing.setDealer(dealer);
+        existing.setStatus("BOOKED");
+        existing.setPaymentMode("CASH");
+        existing.setCurrency("INR");
+        existing.setGstTreatment("NONE");
+        existing.setGstInclusive(false);
+        existing.setGstRate(BigDecimal.ZERO);
+        existing.setSubtotalAmount(BigDecimal.valueOf(200));
+        existing.setGstTotal(BigDecimal.ZERO);
+        existing.setGstRoundingAdjustment(BigDecimal.ZERO);
+        existing.setTotalAmount(BigDecimal.valueOf(200));
+
+        when(companyEntityLookup.requireSalesOrder(company, 4303L)).thenReturn(existing);
+        when(dealerRepository.lockByCompanyAndId(company, dealer.getId())).thenReturn(Optional.of(dealer));
+        when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, 4303L)).thenReturn(List.of());
+
+        SalesOrderRequest request = new SalesOrderRequest(
+                null,
+                BigDecimal.valueOf(200),
+                "INR",
+                null,
+                List.of(new SalesOrderItemRequest("SKU3-UPD-KEEP", "Desc", BigDecimal.ONE, BigDecimal.valueOf(200), null)),
+                "NONE",
+                null,
+                null,
+                null,
+                null);
+
+        SalesOrderDto dto = salesService.updateOrder(4303L, request);
+
+        assertEquals("CASH", dto.paymentMode());
+        verify(dealerLedgerService, never()).currentBalance(431L);
+    }
+
+    @Test
     void updateOrderMovesReservedOrdersBackToPendingProductionWhenShortageAppears() {
         setupProduct("SKU-UPD-SHORT", BigDecimal.valueOf(100), BigDecimal.ZERO);
         FinishedGood finishedGood = buildFinishedGood("SKU-UPD-SHORT");
@@ -3616,7 +3662,7 @@ class SalesServiceTest {
 
         assertEquals("PENDING_PRODUCTION", dto.status());
         verify(finishedGoodsService).releaseReservationsForOrder(4301L);
-        verify(factoryTaskRepository).saveAll(any());
+        verify(factoryTaskRepository, org.mockito.Mockito.times(2)).saveAll(any());
     }
 
     @Test

@@ -923,7 +923,9 @@ public class SalesCoreEngine {
         assertOrderMutable(order, "update");
         GstTreatment gstTreatment = resolveGstTreatment(request.gstTreatment());
         BigDecimal orderLevelRate = resolveOrderLevelRate(order.getCompany(), gstTreatment, request.gstRate());
-        String paymentMode = normalizeOrderPaymentMode(request.paymentMode());
+        String paymentMode = StringUtils.hasText(request.paymentMode())
+                ? normalizeOrderPaymentMode(request.paymentMode())
+                : normalizeOrderPaymentMode(order.getPaymentMode());
         boolean gstInclusive = Boolean.TRUE.equals(request.gstInclusive());
         Long dealerId = request.dealerId() != null
                 ? request.dealerId()
@@ -972,17 +974,25 @@ public class SalesCoreEngine {
             Company company,
             SalesOrder order,
             SalesProformaBoundaryService.CommercialAssessment assessment) {
-        if (order == null || order.getId() == null || assessment == null) {
+        if (company == null || order == null || order.getId() == null || assessment == null) {
             return assessment;
         }
-        if (!assessment.shortages().isEmpty()) {
+
+        SalesProformaBoundaryService.CommercialAssessment currentAssessment = assessment;
+        if (!currentAssessment.shortages().isEmpty()) {
+            if (ORDER_STATUS_DRAFT.equals(canonicalOrderStatus(order.getStatus()))) {
+                return currentAssessment;
+            }
             finishedGoodsService.releaseReservationsForOrder(order.getId());
-            return assessment;
+            currentAssessment = salesProformaBoundaryService.assessCommercialAvailability(company, order);
+            if (!currentAssessment.shortages().isEmpty()) {
+                return currentAssessment;
+            }
         }
 
         FinishedGoodsService.InventoryReservationResult reservation = finishedGoodsService.reserveForOrder(order);
         if (reservation == null || reservation.shortages() == null || reservation.shortages().isEmpty()) {
-            return assessment;
+            return currentAssessment;
         }
 
         finishedGoodsService.releaseReservationsForOrder(order.getId());

@@ -123,7 +123,7 @@ class SalesCoreEngineCoverageTest {
     }
 
     @Test
-    void syncFactoryDispatchReadiness_releasesReservationsForExistingAndRebuiltShortages() throws Exception {
+    void syncFactoryDispatchReadiness_reassessesAvailabilityAfterReleasingExistingReservations() throws Exception {
         Method method = SalesCoreEngine.class.getDeclaredMethod(
                 "syncFactoryDispatchReadiness",
                 Company.class,
@@ -149,8 +149,51 @@ class SalesCoreEngineCoverageTest {
         SalesProformaBoundaryService.CommercialAssessment reservedAssessment =
                 new SalesProformaBoundaryService.CommercialAssessment("RESERVED", List.of());
 
-        assertThat(method.invoke(engine, company, order, shortageAssessment)).isEqualTo(shortageAssessment);
+        com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood finishedGood =
+                new com.bigbrightpaints.erp.modules.inventory.domain.FinishedGood();
+        finishedGood.setProductCode("FG-1");
+        when(finishedGoodRepository.findByCompanyAndProductCode(company, "FG-1"))
+                .thenReturn(java.util.Optional.of(finishedGood));
+        com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatch batch =
+                new com.bigbrightpaints.erp.modules.inventory.domain.FinishedGoodBatch();
+        batch.setQuantityAvailable(BigDecimal.ONE);
+        when(finishedGoodBatchRepository.findByFinishedGoodOrderByManufacturedAtAsc(finishedGood))
+                .thenReturn(List.of(batch));
+        when(factoryTaskRepository.findByCompanyAndSalesOrderId(company, 41L)).thenReturn(List.of());
+        when(finishedGoodsService.reserveForOrder(order))
+                .thenReturn(new FinishedGoodsService.InventoryReservationResult(null, List.of()));
+
+        assertThat(method.invoke(engine, company, order, shortageAssessment)).isEqualTo(reservedAssessment);
         verify(finishedGoodsService).releaseReservationsForOrder(41L);
+        verify(finishedGoodsService).reserveForOrder(order);
+    }
+
+    @Test
+    void syncFactoryDispatchReadiness_releasesReservationsWhenRebuiltReservationStillShowsShortage() throws Exception {
+        Method method = SalesCoreEngine.class.getDeclaredMethod(
+                "syncFactoryDispatchReadiness",
+                Company.class,
+                SalesOrder.class,
+                SalesProformaBoundaryService.CommercialAssessment.class);
+        method.setAccessible(true);
+
+        Company company = new Company();
+        SalesOrder order = new SalesOrder();
+        order.setCompany(company);
+        ReflectionTestUtils.setField(order, "id", 41L);
+        SalesOrderItem item = new SalesOrderItem();
+        item.setSalesOrder(order);
+        item.setProductCode("FG-1");
+        item.setDescription("Primer");
+        item.setQuantity(BigDecimal.ONE);
+        order.getItems().add(item);
+
+        FinishedGoodsService.InventoryShortage shortage =
+                new FinishedGoodsService.InventoryShortage("FG-1", BigDecimal.ONE, "Primer");
+        SalesProformaBoundaryService.CommercialAssessment shortageAssessment =
+                new SalesProformaBoundaryService.CommercialAssessment("PENDING_PRODUCTION", List.of(shortage));
+        SalesProformaBoundaryService.CommercialAssessment reservedAssessment =
+                new SalesProformaBoundaryService.CommercialAssessment("RESERVED", List.of());
 
         when(finishedGoodsService.reserveForOrder(order))
                 .thenReturn(new FinishedGoodsService.InventoryReservationResult(
@@ -164,7 +207,7 @@ class SalesCoreEngineCoverageTest {
 
         assertThat(method.invoke(engine, company, order, reservedAssessment)).isEqualTo(shortageAssessment);
         verify(finishedGoodsService).reserveForOrder(order);
-        verify(finishedGoodsService, org.mockito.Mockito.times(2)).releaseReservationsForOrder(41L);
+        verify(finishedGoodsService).releaseReservationsForOrder(41L);
     }
 
     @Test
