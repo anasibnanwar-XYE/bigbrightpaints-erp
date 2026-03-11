@@ -797,6 +797,65 @@ class SalesReturnServiceTest {
     }
 
     @Test
+    void previewReturn_rejectsMissingLines() {
+        Dealer dealer = new Dealer();
+        dealer.setCompany(company);
+        Account receivable = new Account();
+        setField(receivable, "id", 84L);
+        dealer.setReceivableAccount(receivable);
+
+        Invoice invoice = new Invoice();
+        invoice.setCompany(company);
+        invoice.setDealer(dealer);
+        invoice.setInvoiceNumber("INV-NO-LINES");
+        attachPostedJournal(invoice, 910L);
+        setField(invoice, "id", 141L);
+
+        when(invoiceRepository.lockByCompanyAndId(company, 141L)).thenReturn(Optional.of(invoice));
+
+        assertThatThrownBy(() -> salesReturnService.previewReturn(new SalesReturnRequest(
+                141L,
+                "No lines",
+                List.of()
+        )))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Return lines are required");
+    }
+
+    @Test
+    void previewReturn_rejectsUnknownInvoiceLine() {
+        Dealer dealer = new Dealer();
+        dealer.setCompany(company);
+        Account receivable = new Account();
+        setField(receivable, "id", 85L);
+        dealer.setReceivableAccount(receivable);
+
+        Invoice invoice = new Invoice();
+        invoice.setCompany(company);
+        invoice.setDealer(dealer);
+        invoice.setInvoiceNumber("INV-MISSING-LINE");
+        attachPostedJournal(invoice, 911L);
+        setField(invoice, "id", 142L);
+
+        InvoiceLine line = new InvoiceLine();
+        line.setInvoice(invoice);
+        line.setProductCode("FG-MISSING");
+        line.setQuantity(BigDecimal.ONE);
+        setField(line, "id", 212L);
+        invoice.getLines().add(line);
+
+        when(invoiceRepository.lockByCompanyAndId(company, 142L)).thenReturn(Optional.of(invoice));
+
+        assertThatThrownBy(() -> salesReturnService.previewReturn(new SalesReturnRequest(
+                142L,
+                "Unknown line",
+                List.of(new SalesReturnRequest.ReturnLine(999L, BigDecimal.ONE))
+        )))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Invoice line not found: 999");
+    }
+
+    @Test
     void previewReturn_capsRemainingQuantityAtZeroWhenRequestConsumesBalance() {
         Dealer dealer = new Dealer();
         dealer.setCompany(company);
@@ -879,6 +938,193 @@ class SalesReturnServiceTest {
             assertThat(linePreview.inventoryUnitCost()).isEqualByComparingTo("20.0000");
             assertThat(linePreview.inventoryValue()).isEqualByComparingTo("10.00");
         });
+    }
+
+    @Test
+    void processReturn_rejectsInvoiceWithoutDealerReceivableContext() {
+        Invoice invoice = new Invoice();
+        invoice.setCompany(company);
+        invoice.setInvoiceNumber("INV-NO-DEALER");
+        attachPostedJournal(invoice, 912L);
+        setField(invoice, "id", 160L);
+
+        when(invoiceRepository.lockByCompanyAndId(company, 160L)).thenReturn(Optional.of(invoice));
+
+        assertThatThrownBy(() -> salesReturnService.processReturn(new SalesReturnRequest(
+                160L,
+                "Dealer context missing",
+                List.of(new SalesReturnRequest.ReturnLine(1L, BigDecimal.ONE))
+        )))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("missing dealer receivable context");
+    }
+
+    @Test
+    void processReturn_rejectsZeroValuedReturnAmount() {
+        Dealer dealer = new Dealer();
+        dealer.setCompany(company);
+        Account receivable = new Account();
+        setField(receivable, "id", 86L);
+        dealer.setReceivableAccount(receivable);
+        setField(dealer, "id", 10L);
+
+        Invoice invoice = new Invoice();
+        invoice.setCompany(company);
+        invoice.setDealer(dealer);
+        invoice.setInvoiceNumber("INV-ZERO");
+        attachPostedJournal(invoice, 913L);
+        setField(invoice, "id", 161L);
+
+        InvoiceLine line = new InvoiceLine();
+        line.setInvoice(invoice);
+        line.setProductCode("FG-ZERO");
+        line.setQuantity(BigDecimal.ONE);
+        line.setUnitPrice(BigDecimal.ZERO);
+        line.setTaxableAmount(BigDecimal.ZERO);
+        line.setTaxAmount(BigDecimal.ZERO);
+        line.setLineTotal(BigDecimal.ZERO);
+        setField(line, "id", 213L);
+        invoice.getLines().add(line);
+
+        FinishedGood fg = new FinishedGood();
+        fg.setCompany(company);
+        fg.setProductCode("FG-ZERO");
+        fg.setRevenueAccountId(714L);
+        setField(fg, "id", 214L);
+
+        when(invoiceRepository.lockByCompanyAndId(company, 161L)).thenReturn(Optional.of(invoice));
+        when(finishedGoodRepository.lockByCompanyAndProductCode(company, "FG-ZERO")).thenReturn(Optional.of(fg));
+        when(inventoryMovementRepository.findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
+                eq(company),
+                eq("SALES_RETURN"),
+                eq("INV-ZERO")
+        )).thenReturn(List.of());
+        when(inventoryMovementRepository.findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdStartingWithOrderByCreatedAtAsc(
+                eq(company),
+                eq("SALES_RETURN"),
+                eq("INV-ZERO:")
+        )).thenReturn(List.of());
+
+        assertThatThrownBy(() -> salesReturnService.processReturn(new SalesReturnRequest(
+                161L,
+                "Zero value",
+                List.of(new SalesReturnRequest.ReturnLine(213L, BigDecimal.ONE))
+        )))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Return amount must be greater than zero");
+    }
+
+    @Test
+    void processReturn_rejectsMissingDiscountAccountWhenReturnIncludesDiscount() {
+        Dealer dealer = new Dealer();
+        dealer.setCompany(company);
+        Account receivable = new Account();
+        setField(receivable, "id", 87L);
+        dealer.setReceivableAccount(receivable);
+        setField(dealer, "id", 11L);
+
+        Invoice invoice = new Invoice();
+        invoice.setCompany(company);
+        invoice.setDealer(dealer);
+        invoice.setInvoiceNumber("INV-DISCOUNT");
+        attachPostedJournal(invoice, 914L);
+        setField(invoice, "id", 162L);
+
+        InvoiceLine line = new InvoiceLine();
+        line.setInvoice(invoice);
+        line.setProductCode("FG-DISCOUNT");
+        line.setQuantity(BigDecimal.ONE);
+        line.setUnitPrice(new BigDecimal("100"));
+        line.setDiscountAmount(new BigDecimal("10"));
+        line.setTaxableAmount(new BigDecimal("90"));
+        line.setTaxAmount(BigDecimal.ZERO);
+        line.setLineTotal(new BigDecimal("90"));
+        setField(line, "id", 214L);
+        invoice.getLines().add(line);
+
+        FinishedGood fg = new FinishedGood();
+        fg.setCompany(company);
+        fg.setProductCode("FG-DISCOUNT");
+        fg.setRevenueAccountId(715L);
+        fg.setDiscountAccountId(null);
+        setField(fg, "id", 215L);
+
+        when(invoiceRepository.lockByCompanyAndId(company, 162L)).thenReturn(Optional.of(invoice));
+        when(finishedGoodRepository.lockByCompanyAndProductCode(company, "FG-DISCOUNT")).thenReturn(Optional.of(fg));
+        when(inventoryMovementRepository.findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
+                eq(company),
+                eq("SALES_RETURN"),
+                eq("INV-DISCOUNT")
+        )).thenReturn(List.of());
+        when(inventoryMovementRepository.findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdStartingWithOrderByCreatedAtAsc(
+                eq(company),
+                eq("SALES_RETURN"),
+                eq("INV-DISCOUNT:")
+        )).thenReturn(List.of());
+
+        assertThatThrownBy(() -> salesReturnService.processReturn(new SalesReturnRequest(
+                162L,
+                "Discount correction",
+                List.of(new SalesReturnRequest.ReturnLine(214L, BigDecimal.ONE))
+        )))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Discount account is required");
+    }
+
+    @Test
+    void processReturn_rejectsTaxAccountMismatchAgainstConfiguredOutputTax() {
+        Dealer dealer = new Dealer();
+        dealer.setCompany(company);
+        Account receivable = new Account();
+        setField(receivable, "id", 88L);
+        dealer.setReceivableAccount(receivable);
+        setField(dealer, "id", 12L);
+
+        Invoice invoice = new Invoice();
+        invoice.setCompany(company);
+        invoice.setDealer(dealer);
+        invoice.setInvoiceNumber("INV-TAX-MISMATCH");
+        attachPostedJournal(invoice, 915L);
+        setField(invoice, "id", 163L);
+
+        InvoiceLine line = new InvoiceLine();
+        line.setInvoice(invoice);
+        line.setProductCode("FG-TAX");
+        line.setQuantity(BigDecimal.ONE);
+        line.setUnitPrice(new BigDecimal("100"));
+        line.setTaxableAmount(new BigDecimal("100"));
+        line.setTaxAmount(new BigDecimal("18"));
+        line.setLineTotal(new BigDecimal("118"));
+        setField(line, "id", 215L);
+        invoice.getLines().add(line);
+
+        FinishedGood fg = new FinishedGood();
+        fg.setCompany(company);
+        fg.setProductCode("FG-TAX");
+        fg.setRevenueAccountId(716L);
+        fg.setTaxAccountId(999L);
+        setField(fg, "id", 216L);
+
+        when(invoiceRepository.lockByCompanyAndId(company, 163L)).thenReturn(Optional.of(invoice));
+        when(finishedGoodRepository.lockByCompanyAndProductCode(company, "FG-TAX")).thenReturn(Optional.of(fg));
+        when(inventoryMovementRepository.findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
+                eq(company),
+                eq("SALES_RETURN"),
+                eq("INV-TAX-MISMATCH")
+        )).thenReturn(List.of());
+        when(inventoryMovementRepository.findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdStartingWithOrderByCreatedAtAsc(
+                eq(company),
+                eq("SALES_RETURN"),
+                eq("INV-TAX-MISMATCH:")
+        )).thenReturn(List.of());
+
+        assertThatThrownBy(() -> salesReturnService.processReturn(new SalesReturnRequest(
+                163L,
+                "Tax mismatch",
+                List.of(new SalesReturnRequest.ReturnLine(215L, BigDecimal.ONE))
+        )))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("tax account must match GST output account");
     }
 
     @Test

@@ -457,6 +457,73 @@ class AccountingServiceTest {
     }
 
     @Test
+    void createJournalEntry_manualSourcePreservesAttachmentsAndLinksClosedPeriodException() {
+        ClosedPeriodPostingExceptionService exceptionService = org.mockito.Mockito.mock(ClosedPeriodPostingExceptionService.class);
+        ReflectionTestUtils.setField(accountingService, "closedPeriodPostingExceptionService", exceptionService);
+
+        LocalDate today = LocalDate.of(2024, 2, 2);
+        AccountingPeriod closedPeriod = openPeriod(today);
+        closedPeriod.setStatus(AccountingPeriodStatus.CLOSED);
+        when(companyClock.today(company)).thenReturn(today);
+        when(accountingPeriodService.requirePostablePeriod(eq(company), eq(today), any(), any(), any(), anyBoolean()))
+                .thenReturn(closedPeriod);
+
+        Account debitAccount = new Account();
+        debitAccount.setCompany(company);
+        debitAccount.setActive(true);
+        debitAccount.setType(AccountType.ASSET);
+        debitAccount.setBalance(BigDecimal.ZERO);
+        ReflectionTestUtils.setField(debitAccount, "id", 11L);
+
+        Account creditAccount = new Account();
+        creditAccount.setCompany(company);
+        creditAccount.setActive(true);
+        creditAccount.setType(AccountType.LIABILITY);
+        creditAccount.setBalance(BigDecimal.ZERO);
+        ReflectionTestUtils.setField(creditAccount, "id", 12L);
+
+        when(accountRepository.lockByCompanyAndId(eq(company), eq(11L))).thenReturn(Optional.of(debitAccount));
+        when(accountRepository.lockByCompanyAndId(eq(company), eq(12L))).thenReturn(Optional.of(creditAccount));
+        when(accountRepository.updateBalanceAtomic(eq(company), any(), any())).thenReturn(1);
+        when(journalEntryRepository.save(any(JournalEntry.class))).thenAnswer(invocation -> {
+            JournalEntry entry = invocation.getArgument(0);
+            ReflectionTestUtils.setField(entry, "id", 4002L);
+            return entry;
+        });
+
+        JournalEntryRequest request = new JournalEntryRequest(
+                "MAN-ATT-1",
+                today,
+                "Manual attachment proof",
+                null,
+                null,
+                Boolean.FALSE,
+                List.of(
+                        new JournalEntryRequest.JournalLineRequest(11L, "Debit", new BigDecimal("25.00"), BigDecimal.ZERO),
+                        new JournalEntryRequest.JournalLineRequest(12L, "Credit", BigDecimal.ZERO, new BigDecimal("25.00"))
+                ),
+                null,
+                null,
+                "MANUAL",
+                "MAN-ATT-1",
+                null,
+                List.of(" scan-1 ", "", "scan-2", "scan-1")
+        );
+
+        JournalEntryDto result = accountingService.createJournalEntry(request);
+
+        assertThat(result.id()).isEqualTo(4002L);
+
+        ArgumentCaptor<JournalEntry> entryCaptor = ArgumentCaptor.forClass(JournalEntry.class);
+        verify(journalEntryRepository).save(entryCaptor.capture());
+        JournalEntry saved = entryCaptor.getValue();
+        assertThat(saved.getSourceModule()).isEqualTo("MANUAL");
+        assertThat(saved.getAttachmentReferences()).isEqualTo("scan-1\nscan-2");
+        assertThat(saved.getAccountingPeriod()).isSameAs(closedPeriod);
+        verify(exceptionService).linkJournalEntry(company, "MANUAL", "MAN-ATT-1", saved);
+    }
+
+    @Test
     void settleSupplierInvoices_requiresReasonWhenAdminOverrideRequested() {
         Supplier supplier = new Supplier();
         supplier.setStatus(SupplierStatus.ACTIVE);

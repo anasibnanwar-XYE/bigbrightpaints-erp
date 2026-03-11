@@ -302,7 +302,7 @@
                     <skip>${jacoco.skip}</skip>
                     <append>false</append>
                     <excludes>
-                        <exclude>**/*Application*</exclude>
+                        <exclude>**/ErpDomainApplication*</exclude>
                         <exclude>**/*MapperImpl*</exclude>
                         <!-- Optional: exclude only if exceptions are truly trivial in this repo. -->
                         <!-- <exclude>**/*Exception*</exclude> -->

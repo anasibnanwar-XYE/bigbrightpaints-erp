@@ -265,6 +265,70 @@ class PurchaseReturnServiceTest {
     }
 
     @Test
+    void previewPurchaseReturn_rejectsPurchaseForDifferentSupplier() {
+        Supplier otherSupplier = new Supplier();
+        ReflectionTestUtils.setField(otherSupplier, "id", 11L);
+        otherSupplier.setCompany(company);
+        otherSupplier.setName("Supplier 11");
+        purchase.setSupplier(otherSupplier);
+
+        assertThatThrownBy(() -> purchaseReturnService.previewPurchaseReturn(new PurchaseReturnRequest(
+                10L,
+                30L,
+                20L,
+                BigDecimal.ONE,
+                new BigDecimal("5.00"),
+                "PR-30",
+                LocalDate.of(2026, 3, 9),
+                "Damaged"
+        )))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Purchase does not belong to the supplier");
+    }
+
+    @Test
+    void previewPurchaseReturn_rejectsMaterialNotPresentInPurchase() {
+        RawMaterial otherMaterial = new RawMaterial();
+        ReflectionTestUtils.setField(otherMaterial, "id", 21L);
+        otherMaterial.setCompany(company);
+        otherMaterial.setName("Solvent");
+        when(rawMaterialRepository.lockByCompanyAndId(company, 21L)).thenReturn(Optional.of(otherMaterial));
+
+        assertThatThrownBy(() -> purchaseReturnService.previewPurchaseReturn(new PurchaseReturnRequest(
+                10L,
+                30L,
+                21L,
+                BigDecimal.ONE,
+                new BigDecimal("5.00"),
+                "PR-30",
+                LocalDate.of(2026, 3, 9),
+                "Damaged"
+        )))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Purchase does not include raw material Solvent");
+    }
+
+    @Test
+    void previewPurchaseReturn_rejectsQuantityBeyondRemainingReturnableQuantity() {
+        when(allocationService.remainingReturnableQuantity(purchase, material)).thenReturn(new BigDecimal("0.7500"));
+
+        assertThatThrownBy(() -> purchaseReturnService.previewPurchaseReturn(new PurchaseReturnRequest(
+                10L,
+                30L,
+                20L,
+                BigDecimal.ONE,
+                new BigDecimal("5.00"),
+                "PR-30",
+                LocalDate.of(2026, 3, 9),
+                "Damaged"
+        )))
+                .isInstanceOfSatisfying(ApplicationException.class, ex -> {
+                    assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT);
+                    assertThat(ex).hasMessageContaining("exceeds remaining returnable quantity");
+                });
+    }
+
+    @Test
     void recordPurchaseReturn_replayRelinksExistingMovementsAndCorrectionMetadata() {
         Account payable = new Account();
         ReflectionTestUtils.setField(payable, "id", 40L);
@@ -319,6 +383,81 @@ class PurchaseReturnServiceTest {
         verify(journalEntryRepository).save(postedReturnEntry);
         verify(movementRepository).saveAll(List.of(existingMovement));
         verify(rawMaterialRepository, never()).deductStockIfSufficient(any(), any());
+        verify(allocationService, never()).applyPurchaseReturnQuantity(any(), any(), any());
+    }
+
+    @Test
+    void recordPurchaseReturn_replayRejectsMovementDriftAgainstRequestedMaterial() {
+        Account payable = new Account();
+        ReflectionTestUtils.setField(payable, "id", 40L);
+        supplier.setPayableAccount(payable);
+
+        RawMaterial otherMaterial = new RawMaterial();
+        ReflectionTestUtils.setField(otherMaterial, "id", 21L);
+        otherMaterial.setCompany(company);
+        otherMaterial.setName("Solvent");
+
+        com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovement existingMovement =
+                new com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovement();
+        existingMovement.setRawMaterial(otherMaterial);
+        existingMovement.setReferenceId("PR-30");
+        existingMovement.setReferenceType(com.bigbrightpaints.erp.modules.inventory.domain.InventoryReference.PURCHASE_RETURN);
+        existingMovement.setQuantity(BigDecimal.ONE);
+        existingMovement.setUnitCost(new BigDecimal("5.00"));
+
+        when(movementRepository.findByRawMaterialCompanyAndReferenceTypeAndReferenceId(
+                company,
+                com.bigbrightpaints.erp.modules.inventory.domain.InventoryReference.PURCHASE_RETURN,
+                "PR-30"
+        )).thenReturn(List.of(existingMovement));
+
+        assertThatThrownBy(() -> purchaseReturnService.recordPurchaseReturn(new PurchaseReturnRequest(
+                10L,
+                30L,
+                20L,
+                BigDecimal.ONE,
+                new BigDecimal("5.00"),
+                "PR-30",
+                LocalDate.of(2026, 3, 9),
+                "Damaged"
+        )))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Purchase return reference already used with different payload");
+
+        verifyNoInteractions(accountingFacade);
+    }
+
+    @Test
+    void recordPurchaseReturn_rejectsOnHandShortfallAfterPosting() {
+        Account payable = new Account();
+        ReflectionTestUtils.setField(payable, "id", 40L);
+        supplier.setPayableAccount(payable);
+        when(allocationService.remainingReturnableQuantity(purchase, material)).thenReturn(new BigDecimal("3.0000"));
+        when(accountingFacade.postPurchaseReturn(
+                eq(10L),
+                eq("PR-30"),
+                eq(LocalDate.of(2026, 3, 9)),
+                eq("Damaged - Resin to Supplier 10"),
+                eq(Map.of(200L, new BigDecimal("5.00"))),
+                eq(null),
+                eq(null),
+                eq(new BigDecimal("5.00"))
+        )).thenReturn(journalEntryDto(901L, "PR-30", LocalDate.of(2026, 3, 9), "Damaged - Resin to Supplier 10"));
+        when(rawMaterialRepository.deductStockIfSufficient(20L, BigDecimal.ONE)).thenReturn(0);
+
+        assertThatThrownBy(() -> purchaseReturnService.recordPurchaseReturn(new PurchaseReturnRequest(
+                10L,
+                30L,
+                20L,
+                BigDecimal.ONE,
+                new BigDecimal("5.00"),
+                "PR-30",
+                LocalDate.of(2026, 3, 9),
+                "Damaged"
+        )))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Cannot return more than on-hand inventory for Resin");
+
         verify(allocationService, never()).applyPurchaseReturnQuantity(any(), any(), any());
     }
 
