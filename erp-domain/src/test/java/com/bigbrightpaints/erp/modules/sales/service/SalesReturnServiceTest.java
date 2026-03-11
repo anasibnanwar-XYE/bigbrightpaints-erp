@@ -338,6 +338,45 @@ class SalesReturnServiceTest {
     }
 
     @Test
+    void previewReturn_rejectsInvoiceWithoutPostedJournal() {
+        Invoice invoice = new Invoice();
+        invoice.setCompany(company);
+        invoice.setInvoiceNumber("INV-NO-JOURNAL");
+        invoice.setStatus("POSTED");
+        setField(invoice, "id", 121L);
+
+        when(invoiceRepository.lockByCompanyAndId(company, 121L)).thenReturn(Optional.of(invoice));
+
+        assertThatThrownBy(() -> salesReturnService.previewReturn(new SalesReturnRequest(
+                121L,
+                "Preview guard",
+                List.of(new SalesReturnRequest.ReturnLine(1L, BigDecimal.ONE))
+        )))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Only posted invoices can be corrected through sales return");
+    }
+
+    @Test
+    void previewReturn_rejectsVoidedInvoiceMutationPath() {
+        Invoice invoice = new Invoice();
+        invoice.setCompany(company);
+        invoice.setInvoiceNumber("INV-VOID-1");
+        attachPostedJournal(invoice, 910L);
+        invoice.setStatus("VOID");
+        setField(invoice, "id", 122L);
+
+        when(invoiceRepository.lockByCompanyAndId(company, 122L)).thenReturn(Optional.of(invoice));
+
+        assertThatThrownBy(() -> salesReturnService.previewReturn(new SalesReturnRequest(
+                122L,
+                "Preview void",
+                List.of(new SalesReturnRequest.ReturnLine(1L, BigDecimal.ONE))
+        )))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Only posted invoices can be corrected through sales return");
+    }
+
+    @Test
     void processReturn_rejectsWhenPriorReturnsExceedInvoiceQuantity() {
         Dealer dealer = new Dealer();
         dealer.setCompany(company);
@@ -538,6 +577,92 @@ class SalesReturnServiceTest {
     }
 
     @Test
+    void previewReturn_allocatesLegacyReturnToEarliestLineBeforeRemainingValidation() {
+        SalesOrder salesOrder = new SalesOrder();
+        setField(salesOrder, "id", 501L);
+
+        Invoice invoice = new Invoice();
+        invoice.setCompany(company);
+        invoice.setSalesOrder(salesOrder);
+        invoice.setInvoiceNumber("INV-LEGACY-ALLOC");
+        attachPostedJournal(invoice, 911L);
+        setField(invoice, "id", 123L);
+
+        InvoiceLine firstLine = new InvoiceLine();
+        firstLine.setInvoice(invoice);
+        firstLine.setProductCode("FG-ALLOC");
+        firstLine.setQuantity(BigDecimal.ONE);
+        firstLine.setUnitPrice(new BigDecimal("100"));
+        firstLine.setTaxableAmount(new BigDecimal("100"));
+        firstLine.setTaxAmount(BigDecimal.ZERO);
+        firstLine.setLineTotal(new BigDecimal("100"));
+        setField(firstLine, "id", 201L);
+        invoice.getLines().add(firstLine);
+
+        InvoiceLine secondLine = new InvoiceLine();
+        secondLine.setInvoice(invoice);
+        secondLine.setProductCode("FG-ALLOC");
+        secondLine.setQuantity(BigDecimal.ONE);
+        secondLine.setUnitPrice(new BigDecimal("100"));
+        secondLine.setTaxableAmount(new BigDecimal("100"));
+        secondLine.setTaxAmount(BigDecimal.ZERO);
+        secondLine.setLineTotal(new BigDecimal("100"));
+        setField(secondLine, "id", 202L);
+        invoice.getLines().add(secondLine);
+
+        FinishedGood fg = new FinishedGood();
+        fg.setCompany(company);
+        fg.setProductCode("FG-ALLOC");
+        setField(fg, "id", 301L);
+
+        InventoryMovement dispatchMovement = new InventoryMovement();
+        dispatchMovement.setFinishedGood(fg);
+        dispatchMovement.setReferenceType(InventoryReference.SALES_ORDER);
+        dispatchMovement.setReferenceId("501");
+        dispatchMovement.setMovementType("DISPATCH");
+        dispatchMovement.setQuantity(new BigDecimal("2"));
+        dispatchMovement.setUnitCost(new BigDecimal("50"));
+
+        InventoryMovement legacyReturn = new InventoryMovement();
+        legacyReturn.setFinishedGood(fg);
+        legacyReturn.setReferenceType("SALES_RETURN");
+        legacyReturn.setReferenceId("INV-LEGACY-ALLOC");
+        legacyReturn.setQuantity(BigDecimal.ONE);
+
+        when(invoiceRepository.lockByCompanyAndId(company, 123L)).thenReturn(Optional.of(invoice));
+        when(finishedGoodRepository.lockByCompanyAndProductCode(company, "FG-ALLOC")).thenReturn(Optional.of(fg));
+        when(inventoryMovementRepository.findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
+                eq(company),
+                eq(InventoryReference.SALES_ORDER),
+                eq("501")
+        )).thenReturn(List.of(dispatchMovement));
+        when(inventoryMovementRepository.findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
+                eq(company),
+                eq("SALES_RETURN"),
+                eq("INV-LEGACY-ALLOC")
+        )).thenReturn(List.of(legacyReturn));
+        when(inventoryMovementRepository.findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdStartingWithOrderByCreatedAtAsc(
+                eq(company),
+                eq("SALES_RETURN"),
+                eq("INV-LEGACY-ALLOC:")
+        )).thenReturn(List.of());
+
+        SalesReturnPreviewDto preview = salesReturnService.previewReturn(new SalesReturnRequest(
+                123L,
+                "Legacy allocation",
+                List.of(new SalesReturnRequest.ReturnLine(202L, BigDecimal.ONE))
+        ));
+
+        assertThat(preview.totalReturnAmount()).isEqualByComparingTo("100.00");
+        assertThat(preview.totalInventoryValue()).isEqualByComparingTo("50.00");
+        assertThat(preview.lines()).singleElement().satisfies(linePreview -> {
+            assertThat(linePreview.invoiceLineId()).isEqualTo(202L);
+            assertThat(linePreview.remainingQuantityAfterReturn()).isEqualByComparingTo("0.00");
+            assertThat(linePreview.inventoryUnitCost()).isEqualByComparingTo("50.0000");
+        });
+    }
+
+    @Test
     void processReturn_ignoresUnrelatedInvoicePrefixMovements() {
         Dealer dealer = new Dealer();
         dealer.setCompany(company);
@@ -672,6 +797,95 @@ class SalesReturnServiceTest {
     }
 
     @Test
+    void processReturn_replayWithAlignedMetadataSkipsPersistence() {
+        Dealer dealer = new Dealer();
+        dealer.setCompany(company);
+        dealer.setName("Replay Partner");
+        Account receivable = new Account();
+        setField(receivable, "id", 83L);
+        dealer.setReceivableAccount(receivable);
+        setField(dealer, "id", 13L);
+
+        Invoice invoice = new Invoice();
+        invoice.setCompany(company);
+        invoice.setDealer(dealer);
+        invoice.setInvoiceNumber("INV-REPLAY-CLEAN");
+        JournalEntry sourceJournal = new JournalEntry();
+        setField(sourceJournal, "id", 9062L);
+        sourceJournal.setStatus("POSTED");
+        invoice.setJournalEntry(sourceJournal);
+        invoice.setStatus("POSTED");
+        setField(invoice, "id", 131L);
+
+        InvoiceLine line = new InvoiceLine();
+        line.setInvoice(invoice);
+        line.setProductCode("FG-REPLAY-CLEAN");
+        line.setQuantity(BigDecimal.ONE);
+        line.setUnitPrice(new BigDecimal("100"));
+        line.setTaxableAmount(new BigDecimal("100"));
+        line.setTaxAmount(BigDecimal.ZERO);
+        line.setLineTotal(new BigDecimal("100"));
+        setField(line, "id", 178L);
+        invoice.getLines().add(line);
+
+        FinishedGood fg = new FinishedGood();
+        fg.setCompany(company);
+        fg.setProductCode("FG-REPLAY-CLEAN");
+        fg.setRevenueAccountId(714L);
+        setField(fg, "id", 224L);
+
+        JournalEntry replayJournal = new JournalEntry();
+        setField(replayJournal, "id", 1202L);
+        replayJournal.setStatus("POSTED");
+        replayJournal.setCorrectionType(JournalCorrectionType.REVERSAL);
+        replayJournal.setCorrectionReason("SALES_RETURN");
+        replayJournal.setSourceModule("SALES_RETURN");
+        replayJournal.setSourceReference("INV-REPLAY-CLEAN");
+
+        SalesReturnRequest request = new SalesReturnRequest(
+                131L,
+                "Replay clean",
+                List.of(new SalesReturnRequest.ReturnLine(178L, BigDecimal.ONE))
+        );
+        String returnKey = invokeBuildReturnIdempotencyKey(invoice, request);
+
+        InventoryMovement matchingMovement = new InventoryMovement();
+        matchingMovement.setReferenceType("SALES_RETURN");
+        matchingMovement.setReferenceId("INV-REPLAY-CLEAN:178:RET-" + returnKey);
+        matchingMovement.setJournalEntryId(1202L);
+
+        when(invoiceRepository.lockByCompanyAndId(company, 131L)).thenReturn(Optional.of(invoice));
+        when(finishedGoodRepository.lockByCompanyAndProductCode(company, "FG-REPLAY-CLEAN")).thenReturn(Optional.of(fg));
+        when(inventoryMovementRepository.existsByFinishedGood_CompanyAndReferenceTypeAndReferenceIdContainingIgnoreCase(
+                eq(company),
+                eq("SALES_RETURN"),
+                anyString()
+        )).thenReturn(true);
+        when(accountingFacade.postSalesReturn(
+                eq(dealer.getId()),
+                eq("INV-REPLAY-CLEAN"),
+                anyMap(),
+                argThat(total -> total.compareTo(new BigDecimal("100")) == 0),
+                eq("Replay clean")
+        )).thenReturn(stubEntry(1202L));
+        when(journalEntryRepository.findByCompanyAndId(company, 1202L)).thenReturn(Optional.of(replayJournal));
+        when(inventoryMovementRepository.findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdStartingWithOrderByCreatedAtAsc(
+                eq(company),
+                eq("SALES_RETURN"),
+                eq("INV-REPLAY-CLEAN:")
+        )).thenReturn(List.of(matchingMovement));
+
+        JournalEntryDto result = salesReturnService.processReturn(request);
+
+        assertThat(result.id()).isEqualTo(1202L);
+        verify(journalEntryRepository, never()).save(replayJournal);
+        verify(inventoryMovementRepository, never()).saveAll(any());
+        verify(finishedGoodRepository, never()).save(any(FinishedGood.class));
+        verify(finishedGoodBatchRepository, never()).save(any(FinishedGoodBatch.class));
+        verify(accountingFacade, never()).postInventoryAdjustment(anyString(), anyString(), anyLong(), anyMap(), anyBoolean(), anyBoolean(), anyString());
+    }
+
+    @Test
     void processReturn_replayRelinksMatchingReturnMovementsAndCorrectionMetadata() {
         Dealer dealer = new Dealer();
         dealer.setCompany(company);
@@ -770,33 +984,6 @@ class SalesReturnServiceTest {
         verify(finishedGoodRepository, never()).save(any(FinishedGood.class));
     }
 
-    @Test
-    void previewReturn_rejectsInvoiceWithoutPostedJournal() {
-        Dealer dealer = new Dealer();
-        dealer.setCompany(company);
-        Account receivable = new Account();
-        setField(receivable, "id", 83L);
-        dealer.setReceivableAccount(receivable);
-
-        Invoice invoice = new Invoice();
-        invoice.setCompany(company);
-        invoice.setDealer(dealer);
-        invoice.setInvoiceNumber("INV-NO-JOURNAL");
-        invoice.setStatus("POSTED");
-        setField(invoice, "id", 140L);
-
-        when(invoiceRepository.lockByCompanyAndId(company, 140L)).thenReturn(Optional.of(invoice));
-
-        assertThatThrownBy(() -> salesReturnService.previewReturn(new SalesReturnRequest(
-                140L,
-                "Preview missing journal",
-                List.of(new SalesReturnRequest.ReturnLine(1L, BigDecimal.ONE))
-        )))
-                .isInstanceOf(ApplicationException.class)
-                .hasMessageContaining("Only posted invoices can be corrected through sales return");
-    }
-
-    @Test
     void previewReturn_rejectsMissingLines() {
         Dealer dealer = new Dealer();
         dealer.setCompany(company);

@@ -265,6 +265,26 @@ class PurchaseReturnServiceTest {
     }
 
     @Test
+    void previewPurchaseReturn_rejectsVoidedPurchaseStatus() {
+        purchase.setStatus("VOID");
+
+        assertThatThrownBy(() -> purchaseReturnService.previewPurchaseReturn(new PurchaseReturnRequest(
+                10L,
+                30L,
+                20L,
+                BigDecimal.ONE,
+                new BigDecimal("5.00"),
+                "PR-30",
+                LocalDate.of(2026, 3, 9),
+                "Damaged"
+        )))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Only posted purchases can be corrected through purchase return");
+
+        verifyNoInteractions(accountingFacade);
+    }
+
+    @Test
     void previewPurchaseReturn_rejectsPurchaseForDifferentSupplier() {
         Supplier otherSupplier = new Supplier();
         ReflectionTestUtils.setField(otherSupplier, "id", 11L);
@@ -382,6 +402,64 @@ class PurchaseReturnServiceTest {
         assertThat(existingMovement.getJournalEntryId()).isEqualTo(901L);
         verify(journalEntryRepository).save(postedReturnEntry);
         verify(movementRepository).saveAll(List.of(existingMovement));
+        verify(rawMaterialRepository, never()).deductStockIfSufficient(any(), any());
+        verify(allocationService, never()).applyPurchaseReturnQuantity(any(), any(), any());
+    }
+
+    @Test
+    void recordPurchaseReturn_replayWithAlignedJournalAndMovementSkipsPersistence() {
+        Account payable = new Account();
+        ReflectionTestUtils.setField(payable, "id", 40L);
+        supplier.setPayableAccount(payable);
+        purchase.setInvoiceNumber("PI-30");
+
+        JournalEntry postedReturnEntry = new JournalEntry();
+        ReflectionTestUtils.setField(postedReturnEntry, "id", 901L);
+        postedReturnEntry.setCorrectionType(JournalCorrectionType.REVERSAL);
+        postedReturnEntry.setCorrectionReason("PURCHASE_RETURN");
+        postedReturnEntry.setSourceModule("PURCHASING_RETURN");
+        postedReturnEntry.setSourceReference("PI-30");
+
+        com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovement existingMovement =
+                new com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovement();
+        existingMovement.setRawMaterial(material);
+        existingMovement.setReferenceId("PR-30");
+        existingMovement.setReferenceType(com.bigbrightpaints.erp.modules.inventory.domain.InventoryReference.PURCHASE_RETURN);
+        existingMovement.setQuantity(BigDecimal.ONE);
+        existingMovement.setUnitCost(new BigDecimal("5.00"));
+        existingMovement.setJournalEntryId(901L);
+
+        when(movementRepository.findByRawMaterialCompanyAndReferenceTypeAndReferenceId(
+                company,
+                com.bigbrightpaints.erp.modules.inventory.domain.InventoryReference.PURCHASE_RETURN,
+                "PR-30"
+        )).thenReturn(List.of(existingMovement));
+        when(accountingFacade.postPurchaseReturn(
+                eq(10L),
+                eq("PR-30"),
+                eq(LocalDate.of(2026, 3, 9)),
+                eq("Damaged - Resin to Supplier 10"),
+                eq(Map.of(200L, new BigDecimal("5.00"))),
+                eq(null),
+                eq(null),
+                eq(new BigDecimal("5.00"))
+        )).thenReturn(journalEntryDto(901L, "PR-30", LocalDate.of(2026, 3, 9), "Damaged - Resin to Supplier 10"));
+        when(journalEntryRepository.findByCompanyAndId(company, 901L)).thenReturn(Optional.of(postedReturnEntry));
+
+        JournalEntryDto result = purchaseReturnService.recordPurchaseReturn(new PurchaseReturnRequest(
+                10L,
+                30L,
+                20L,
+                BigDecimal.ONE,
+                new BigDecimal("5.00"),
+                "PR-30",
+                LocalDate.of(2026, 3, 9),
+                "Damaged"
+        ));
+
+        assertThat(result.id()).isEqualTo(901L);
+        verify(journalEntryRepository, never()).save(postedReturnEntry);
+        verify(movementRepository, never()).saveAll(any());
         verify(rawMaterialRepository, never()).deductStockIfSufficient(any(), any());
         verify(allocationService, never()).applyPurchaseReturnQuantity(any(), any(), any());
     }
