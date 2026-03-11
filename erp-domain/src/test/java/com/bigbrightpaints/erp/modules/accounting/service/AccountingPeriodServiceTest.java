@@ -260,6 +260,17 @@ class AccountingPeriodServiceTest {
     }
 
     @Test
+    void approvePeriodClose_requiresAuthenticatedAdmin() {
+        SecurityContextHolder.clearContext();
+
+        assertThatThrownBy(() -> service.approvePeriodClose(
+                31L,
+                new PeriodCloseRequestActionRequest("close", true)))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("ROLE_ADMIN authority required");
+    }
+
+    @Test
     void approvePeriodClose_closesAndCapturesSnapshotWhenNetIncomeZero() {
         Company company = company(1L, "ACME");
         AccountingPeriod period = openPeriod(company, 2026, 2);
@@ -289,6 +300,32 @@ class AccountingPeriodServiceTest {
         verify(periodCloseHook).onPeriodCloseLocked(company, period);
         verify(snapshotService).captureSnapshot(company, period, "checker.user");
         verify(journalEntryRepository, never()).findByCompanyAndReferenceNumber(any(), anyString());
+    }
+
+    @Test
+    void approvePeriodClose_allowsSuperAdminAuthority() {
+        Company company = company(1L, "ACME");
+        AccountingPeriod period = openPeriod(company, 2026, 2);
+        ReflectionTestUtils.setField(period, "id", 310L);
+        PeriodCloseRequest pending = pendingCloseRequest(company, period, 510L, "maker.user");
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(accountingPeriodRepository.lockByCompanyAndId(company, 310L)).thenReturn(Optional.of(period), Optional.of(period));
+        when(periodCloseRequestRepository.lockByCompanyAndAccountingPeriodAndStatus(
+                company, period, PeriodCloseRequestStatus.PENDING)).thenReturn(Optional.of(pending));
+        when(goodsReceiptRepository.countByCompanyAndReceiptDateBetweenAndStatusNot(
+                company, period.getStartDate(), period.getEndDate(), GoodsReceiptStatus.INVOICED)).thenReturn(0L);
+        when(journalLineRepository.summarizeByAccountType(company, period.getStartDate(), period.getEndDate()))
+                .thenReturn(List.of());
+        when(accountingPeriodRepository.save(period)).thenReturn(period);
+        when(periodCloseRequestRepository.save(pending)).thenReturn(pending);
+        when(accountingPeriodRepository.findByCompanyAndYearAndMonth(company, 2026, 3))
+                .thenReturn(Optional.of(openPeriod(company, 2026, 3)));
+        authenticate("super.admin", "ROLE_SUPER_ADMIN");
+
+        assertThat(service.approvePeriodClose(310L, new PeriodCloseRequestActionRequest("  super close  ", true)).status())
+                .isEqualTo("CLOSED");
+        assertThat(pending.getReviewedBy()).isEqualTo("super.admin");
+        verify(snapshotService).captureSnapshot(company, period, "super.admin");
     }
 
     @Test
