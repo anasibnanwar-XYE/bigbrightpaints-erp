@@ -167,4 +167,33 @@ class PurchaseReturnServiceTest {
         verifyNoInteractions(accountingFacade, allocationService);
         verify(rawMaterialRepository, never()).deductStockIfSufficient(any(), any());
     }
+
+    @Test
+    void recordPurchaseReturn_checksRemainingQuantityAfterTransactionalSupplierPasses() {
+        Account payable = new Account();
+        ReflectionTestUtils.setField(payable, "id", 40L);
+        supplier.setPayableAccount(payable);
+        when(allocationService.remainingReturnableQuantity(purchase, material)).thenReturn(BigDecimal.ZERO);
+
+        PurchaseReturnRequest request = new PurchaseReturnRequest(
+                10L,
+                30L,
+                20L,
+                new BigDecimal("1.0000"),
+                new BigDecimal("5.00"),
+                "PR-30",
+                LocalDate.of(2026, 3, 9),
+                "Damaged"
+        );
+
+        assertThatThrownBy(() -> purchaseReturnService.recordPurchaseReturn(request))
+                .isInstanceOfSatisfying(ApplicationException.class, ex -> {
+                    assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT);
+                    assertThat(ex).hasMessageContaining("already been returned");
+                });
+
+        verify(allocationService).remainingReturnableQuantity(purchase, material);
+        verifyNoInteractions(accountingFacade);
+        verify(rawMaterialRepository, never()).deductStockIfSufficient(any(), any());
+    }
 }
