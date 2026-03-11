@@ -3,6 +3,7 @@ package com.bigbrightpaints.erp.modules.accounting.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -647,6 +648,57 @@ class AccountingAuditTrailServiceTest {
     }
 
     @Test
+    void transactionDetail_skipsInvoiceCountLookupWhenDispatchLinksAreExplicit() {
+        Company company = new Company();
+        company.setCode("BBP");
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+
+        JournalEntry entry = new JournalEntry();
+        setField(entry, "id", 196L);
+        entry.setReferenceNumber("INV-BBP-196");
+        entry.setEntryDate(LocalDate.of(2026, 2, 16));
+        entry.setStatus("POSTED");
+        entry.getLines().add(line("AR", "500.00", "0.00"));
+        entry.getLines().add(line("REV", "0.00", "500.00"));
+
+        SalesOrder order = new SalesOrder();
+        setField(order, "id", 396L);
+        order.setOrderNumber("SO-396");
+
+        Invoice invoice = new Invoice();
+        setField(invoice, "id", 597L);
+        invoice.setCompany(company);
+        invoice.setInvoiceNumber("INV-597");
+        invoice.setStatus("ISSUED");
+        invoice.setSalesOrder(order);
+        invoice.setJournalEntry(entry);
+
+        PackagingSlip explicitSlip = new PackagingSlip();
+        setField(explicitSlip, "id", 697L);
+        explicitSlip.setSalesOrder(order);
+        explicitSlip.setSlipNumber("PS-697");
+        explicitSlip.setStatus("DISPATCHED");
+        explicitSlip.setInvoiceId(597L);
+
+        when(journalEntryRepository.findByCompanyAndId(company, 196L)).thenReturn(Optional.of(entry));
+        when(settlementAllocationRepository.findByCompanyAndJournalEntryOrderByCreatedAtAsc(company, entry)).thenReturn(List.of());
+        when(invoiceRepository.findByCompanyAndJournalEntry(company, entry)).thenReturn(Optional.of(invoice));
+        when(rawMaterialPurchaseRepository.findByCompanyAndJournalEntry(company, entry)).thenReturn(Optional.empty());
+        when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, 396L))
+                .thenReturn(List.of(explicitSlip));
+        when(settlementAllocationRepository.findByCompanyAndInvoiceOrderByCreatedAtDesc(company, invoice)).thenReturn(List.of());
+        when(accountingEventRepository.findByJournalEntryIdOrderByEventTimestampAsc(196L)).thenReturn(List.of());
+
+        AccountingTransactionAuditDetailDto detail = service.transactionDetail(196L);
+
+        assertThat(detail.linkedReferenceChain())
+                .filteredOn(reference -> "DISPATCH".equals(reference.relationType()))
+                .extracting(LinkedBusinessReferenceDto::documentNumber)
+                .containsExactly("PS-697");
+        verify(invoiceRepository, org.mockito.Mockito.never()).findAllByCompanyAndSalesOrderId(any(), any());
+    }
+
+    @Test
     void transactionDetail_keepsLegacyDispatchWhenHistoricalInvoicesAreNotCurrent() {
         Company company = new Company();
         company.setCode("BBP");
@@ -703,6 +755,34 @@ class AccountingAuditTrailServiceTest {
                     .extracting(LinkedBusinessReferenceDto::documentNumber)
                     .containsExactly("PS-696");
         }
+    }
+
+    @Test
+    void helperMethods_resolveCurrentSalesOrderInvoiceCount_usesCurrentStatusFallbackOnly() {
+        Invoice currentInvoice = new Invoice();
+        currentInvoice.setStatus("ISSUED");
+        SalesOrder currentOrder = new SalesOrder();
+        setField(currentOrder, "id", 901L);
+        currentInvoice.setSalesOrder(currentOrder);
+        Company currentCompany = new Company();
+        currentInvoice.setCompany(currentCompany);
+        when(invoiceRepository.findAllByCompanyAndSalesOrderId(currentCompany, 901L)).thenReturn(null);
+
+        Invoice historicalInvoice = new Invoice();
+        historicalInvoice.setStatus("VOID");
+        SalesOrder historicalOrder = new SalesOrder();
+        setField(historicalOrder, "id", 902L);
+        historicalInvoice.setSalesOrder(historicalOrder);
+        Company historicalCompany = new Company();
+        historicalInvoice.setCompany(historicalCompany);
+        when(invoiceRepository.findAllByCompanyAndSalesOrderId(historicalCompany, 902L)).thenReturn(null);
+
+        assertThat((Integer) ReflectionTestUtils.invokeMethod(service, "resolveCurrentSalesOrderInvoiceCount", currentInvoice))
+                .isEqualTo(1);
+        assertThat((Integer) ReflectionTestUtils.invokeMethod(service, "resolveCurrentSalesOrderInvoiceCount", historicalInvoice))
+                .isZero();
+        assertThat((Integer) ReflectionTestUtils.invokeMethod(service, "resolveCurrentSalesOrderInvoiceCount", new Object[]{null}))
+                .isZero();
     }
 
     @Test
