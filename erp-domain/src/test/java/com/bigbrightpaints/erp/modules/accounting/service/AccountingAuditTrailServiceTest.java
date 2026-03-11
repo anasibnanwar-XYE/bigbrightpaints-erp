@@ -647,6 +647,65 @@ class AccountingAuditTrailServiceTest {
     }
 
     @Test
+    void transactionDetail_keepsLegacyDispatchWhenHistoricalInvoicesAreNotCurrent() {
+        Company company = new Company();
+        company.setCode("BBP");
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+
+        JournalEntry entry = new JournalEntry();
+        setField(entry, "id", 195L);
+        entry.setReferenceNumber("INV-BBP-195");
+        entry.setEntryDate(LocalDate.of(2026, 2, 16));
+        entry.setStatus("POSTED");
+        entry.getLines().add(line("AR", "500.00", "0.00"));
+        entry.getLines().add(line("REV", "0.00", "500.00"));
+
+        SalesOrder order = new SalesOrder();
+        setField(order, "id", 395L);
+        order.setOrderNumber("SO-395");
+        order.setStatus("INVOICED");
+
+        Invoice invoice = new Invoice();
+        setField(invoice, "id", 596L);
+        invoice.setCompany(company);
+        invoice.setInvoiceNumber("INV-596");
+        invoice.setStatus("ISSUED");
+        invoice.setSalesOrder(order);
+        invoice.setJournalEntry(entry);
+
+        PackagingSlip legacySlip = new PackagingSlip();
+        setField(legacySlip, "id", 696L);
+        legacySlip.setSalesOrder(order);
+        legacySlip.setSlipNumber("PS-696");
+        legacySlip.setStatus("DISPATCHED");
+
+        when(journalEntryRepository.findByCompanyAndId(company, 195L)).thenReturn(Optional.of(entry));
+        when(settlementAllocationRepository.findByCompanyAndJournalEntryOrderByCreatedAtAsc(company, entry)).thenReturn(List.of());
+        when(invoiceRepository.findByCompanyAndJournalEntry(company, entry)).thenReturn(Optional.of(invoice));
+        when(rawMaterialPurchaseRepository.findByCompanyAndJournalEntry(company, entry)).thenReturn(Optional.empty());
+        when(packagingSlipRepository.findAllByCompanyAndSalesOrderId(company, 395L))
+                .thenReturn(List.of(legacySlip));
+        when(settlementAllocationRepository.findByCompanyAndInvoiceOrderByCreatedAtDesc(company, invoice)).thenReturn(List.of());
+        when(accountingEventRepository.findByJournalEntryIdOrderByEventTimestampAsc(195L)).thenReturn(List.of());
+
+        for (String historicalStatus : List.of("DRAFT", "VOID", "REVERSED")) {
+            Invoice historicalInvoice = new Invoice();
+            historicalInvoice.setCompany(company);
+            historicalInvoice.setSalesOrder(order);
+            historicalInvoice.setStatus(historicalStatus);
+            when(invoiceRepository.findAllByCompanyAndSalesOrderId(company, 395L))
+                    .thenReturn(List.of(invoice, historicalInvoice));
+
+            AccountingTransactionAuditDetailDto detail = service.transactionDetail(195L);
+
+            assertThat(detail.linkedReferenceChain())
+                    .filteredOn(reference -> "DISPATCH".equals(reference.relationType()))
+                    .extracting(LinkedBusinessReferenceDto::documentNumber)
+                    .containsExactly("PS-696");
+        }
+    }
+
+    @Test
     void transactionDetail_settlementDrivingInvoiceUsesSourceInvoiceJournalEntryId() {
         Company company = new Company();
         company.setCode("BBP");

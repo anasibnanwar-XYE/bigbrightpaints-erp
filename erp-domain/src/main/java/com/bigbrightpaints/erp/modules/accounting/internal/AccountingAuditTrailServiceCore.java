@@ -347,9 +347,12 @@ public class AccountingAuditTrailServiceCore {
         if (invoice != null) {
             if (invoice.getSalesOrder() != null) {
                 List<PackagingSlip> slips = packagingSlipRepository.findAllByCompanyAndSalesOrderId(invoice.getCompany(), invoice.getSalesOrder().getId());
+                int salesOrderInvoiceCount = LegacyDispatchInvoiceLinkMatcher.hasExplicitInvoiceLinks(slips)
+                        ? 0
+                        : resolveCurrentSalesOrderInvoiceCount(invoice);
                 chain.add(BusinessDocumentTruths.reference("SOURCE_ORDER", "SALES_ORDER", invoice.getSalesOrder().getId(), invoice.getSalesOrder().getOrderNumber(), BusinessDocumentTruths.salesOrderLifecycle(invoice.getSalesOrder()), invoice.getSalesOrder().getSalesJournalEntryId()));
                 for (PackagingSlip slip : slips) {
-                    if (!isSlipLinkedToInvoice(slip, invoice, slips)) {
+                    if (!isSlipLinkedToInvoice(slip, invoice, slips, salesOrderInvoiceCount)) {
                         continue;
                     }
                     chain.add(BusinessDocumentTruths.reference("DISPATCH", "PACKAGING_SLIP", slip.getId(), slip.getSlipNumber(), BusinessDocumentTruths.packagingSlipLifecycle(slip), slip.getCogsJournalEntryId() != null ? slip.getCogsJournalEntryId() : slip.getJournalEntryId()));
@@ -391,15 +394,18 @@ public class AccountingAuditTrailServiceCore {
         }
     }
 
-    private boolean isSlipLinkedToInvoice(PackagingSlip slip, Invoice invoice, List<PackagingSlip> candidateSlips) {
+    private boolean isSlipLinkedToInvoice(PackagingSlip slip,
+                                          Invoice invoice,
+                                          List<PackagingSlip> candidateSlips,
+                                          int salesOrderInvoiceCount) {
         return LegacyDispatchInvoiceLinkMatcher.isSlipLinkedToInvoice(
                 slip,
                 invoice,
                 candidateSlips,
-                resolveSalesOrderInvoiceCount(invoice));
+                salesOrderInvoiceCount);
     }
 
-    private int resolveSalesOrderInvoiceCount(Invoice invoice) {
+    private int resolveCurrentSalesOrderInvoiceCount(Invoice invoice) {
         if (invoice == null
                 || invoice.getCompany() == null
                 || invoice.getSalesOrder() == null
@@ -409,13 +415,11 @@ public class AccountingAuditTrailServiceCore {
         List<Invoice> orderInvoices = invoiceRepository.findAllByCompanyAndSalesOrderId(
                 invoice.getCompany(),
                 invoice.getSalesOrder().getId());
-        int knownCount = orderInvoices == null
-                ? 0
-                : (int) orderInvoices.stream().filter(Objects::nonNull).count();
+        int knownCount = LegacyDispatchInvoiceLinkMatcher.countCurrentInvoices(orderInvoices);
         if (knownCount > 0) {
             return knownCount;
         }
-        return invoice.getId() != null ? 1 : 0;
+        return LegacyDispatchInvoiceLinkMatcher.isCurrentInvoiceStatus(invoice.getStatus()) ? 1 : 0;
     }
 
     private Specification<JournalEntry> byCompany(Company company) {

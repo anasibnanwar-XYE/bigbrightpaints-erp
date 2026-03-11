@@ -563,6 +563,8 @@ class InvoiceServiceTest {
 
         when(packagingSlipRepository.findAllByCompanyAndSalesOrderIdIn(company, List.of(101L, 102L)))
                 .thenReturn(List.of(firstSlip, secondSlip));
+        when(invoiceRepository.findByCompanyAndSalesOrder_IdIn(company, List.of(101L, 102L)))
+                .thenReturn(List.of(firstInvoice, secondInvoice));
 
         com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocation allocation =
                 new com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAllocation();
@@ -583,8 +585,10 @@ class InvoiceServiceTest {
                 .contains("SOURCE_ORDER", "DISPATCH", "SETTLEMENT");
 
         verify(packagingSlipRepository).findAllByCompanyAndSalesOrderIdIn(company, List.of(101L, 102L));
+        verify(invoiceRepository).findByCompanyAndSalesOrder_IdIn(company, List.of(101L, 102L));
         verify(settlementAllocationRepository).findByCompanyAndInvoice_IdInOrderByCreatedAtDesc(company, List.of(11L, 12L));
         verify(packagingSlipRepository, org.mockito.Mockito.never()).findAllByCompanyAndSalesOrderId(any(), anyLong());
+        verify(invoiceRepository, org.mockito.Mockito.never()).findAllByCompanyAndSalesOrderId(any(), anyLong());
         verify(settlementAllocationRepository, org.mockito.Mockito.never()).findByCompanyAndInvoiceOrderByCreatedAtDesc(any(), any());
     }
 
@@ -617,12 +621,15 @@ class InvoiceServiceTest {
         slip.setSlipNumber("PS-702");
         slip.setStatus("DISPATCHED");
         when(packagingSlipRepository.findAllByCompanyAndSalesOrderIdIn(company, List.of(701L))).thenReturn(List.of(slip));
+        when(invoiceRepository.findByCompanyAndSalesOrder_IdIn(company, List.of(701L))).thenReturn(List.of(invoice));
         when(settlementAllocationRepository.findByCompanyAndInvoice_IdInOrderByCreatedAtDesc(company, List.of(81L))).thenReturn(List.of());
 
         List<InvoiceDto> invoices = invoiceService.listDealerInvoices(901L, 0, 25);
 
         assertThat(invoices).singleElement().extracting(InvoiceDto::invoiceNumber).isEqualTo("INV-81");
         verify(packagingSlipRepository).findAllByCompanyAndSalesOrderIdIn(company, List.of(701L));
+        verify(invoiceRepository).findByCompanyAndSalesOrder_IdIn(company, List.of(701L));
+        verify(invoiceRepository, org.mockito.Mockito.never()).findAllByCompanyAndSalesOrderId(any(), anyLong());
     }
 
     @Test
@@ -729,7 +736,7 @@ class InvoiceServiceTest {
         legacySlip.setStatus("DISPATCHED");
 
         when(invoiceRepository.findByCompanyAndId(company, 1812L)).thenReturn(Optional.of(invoice));
-        when(invoiceRepository.findAllByCompanyAndSalesOrderId(company, 1811L)).thenReturn(List.of(invoice));
+        when(invoiceRepository.findByCompanyAndSalesOrder_IdIn(company, List.of(1811L))).thenReturn(List.of(invoice));
         when(packagingSlipRepository.findAllByCompanyAndSalesOrderIdIn(company, List.of(1811L)))
                 .thenReturn(List.of(legacySlip));
         when(settlementAllocationRepository.findByCompanyAndInvoice_IdInOrderByCreatedAtDesc(company, List.of(1812L)))
@@ -771,7 +778,7 @@ class InvoiceServiceTest {
         legacySlip.setStatus("DISPATCHED");
 
         when(invoiceRepository.findByCompanyAndId(company, 1822L)).thenReturn(Optional.of(invoice));
-        when(invoiceRepository.findAllByCompanyAndSalesOrderId(company, 1821L))
+        when(invoiceRepository.findByCompanyAndSalesOrder_IdIn(company, List.of(1821L)))
                 .thenReturn(List.of(invoice, otherInvoice));
         when(packagingSlipRepository.findAllByCompanyAndSalesOrderIdIn(company, List.of(1821L)))
                 .thenReturn(List.of(legacySlip));
@@ -781,6 +788,49 @@ class InvoiceServiceTest {
         assertThat(invoiceService.getInvoice(1822L).linkedReferences())
                 .filteredOn(reference -> "DISPATCH".equals(reference.relationType()))
                 .isEmpty();
+    }
+
+    @Test
+    void getInvoice_keepsSingleLegacyDispatchReferenceWhenHistoricalInvoicesAreNotCurrent() {
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+
+        SalesOrder order = new SalesOrder();
+        ReflectionTestUtils.setField(order, "id", 1831L);
+        order.setCompany(company);
+        order.setOrderNumber("SO-1831");
+
+        Invoice invoice = new Invoice();
+        ReflectionTestUtils.setField(invoice, "id", 1832L);
+        invoice.setCompany(company);
+        invoice.setSalesOrder(order);
+        invoice.setInvoiceNumber("INV-1832");
+        invoice.setStatus("ISSUED");
+
+        PackagingSlip legacySlip = new PackagingSlip();
+        ReflectionTestUtils.setField(legacySlip, "id", 1833L);
+        legacySlip.setSalesOrder(order);
+        legacySlip.setSlipNumber("PS-1833");
+        legacySlip.setStatus("DISPATCHED");
+
+        when(invoiceRepository.findByCompanyAndId(company, 1832L)).thenReturn(Optional.of(invoice));
+        when(packagingSlipRepository.findAllByCompanyAndSalesOrderIdIn(company, List.of(1831L)))
+                .thenReturn(List.of(legacySlip));
+        when(settlementAllocationRepository.findByCompanyAndInvoice_IdInOrderByCreatedAtDesc(company, List.of(1832L)))
+                .thenReturn(List.of());
+
+        for (String historicalStatus : List.of("DRAFT", "VOID", "REVERSED")) {
+            Invoice historicalInvoice = new Invoice();
+            historicalInvoice.setCompany(company);
+            historicalInvoice.setSalesOrder(order);
+            historicalInvoice.setStatus(historicalStatus);
+            when(invoiceRepository.findByCompanyAndSalesOrder_IdIn(company, List.of(1831L)))
+                    .thenReturn(List.of(invoice, historicalInvoice));
+
+            assertThat(invoiceService.getInvoice(1832L).linkedReferences())
+                    .filteredOn(reference -> "DISPATCH".equals(reference.relationType()))
+                    .extracting(LinkedBusinessReferenceDto::documentNumber)
+                    .containsExactly("PS-1833");
+        }
     }
 
     @Test

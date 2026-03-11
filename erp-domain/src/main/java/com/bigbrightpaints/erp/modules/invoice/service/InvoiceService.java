@@ -297,9 +297,11 @@ public class InvoiceService {
         if (salesOrder != null) {
             List<PackagingSlip> slips = linkedReferenceContext.packagingSlipsBySalesOrderId()
                     .getOrDefault(salesOrder.getId(), List.of());
+            int salesOrderInvoiceCount = linkedReferenceContext.currentInvoiceCountsBySalesOrderId()
+                    .getOrDefault(salesOrder.getId(), defaultCurrentInvoiceCount(invoice));
             linkedReferences.add(BusinessDocumentTruths.reference("SOURCE_ORDER", "SALES_ORDER", salesOrder.getId(), salesOrder.getOrderNumber(), BusinessDocumentTruths.salesOrderLifecycle(salesOrder), salesOrder.getSalesJournalEntryId()));
             for (PackagingSlip slip : slips) {
-                if (!isSlipLinkedToInvoice(slip, invoice, slips)) {
+                if (!isSlipLinkedToInvoice(slip, invoice, slips, salesOrderInvoiceCount)) {
                     continue;
                 }
                 linkedReferences.add(BusinessDocumentTruths.reference("DISPATCH", "PACKAGING_SLIP", slip.getId(), slip.getSlipNumber(), BusinessDocumentTruths.packagingSlipLifecycle(slip), slip.getCogsJournalEntryId() != null ? slip.getCogsJournalEntryId() : slip.getJournalEntryId()));
@@ -335,6 +337,24 @@ public class InvoiceService {
                 : packagingSlipRepository.findAllByCompanyAndSalesOrderIdIn(company, salesOrderIds).stream()
                 .filter(slip -> slip.getSalesOrder() != null && slip.getSalesOrder().getId() != null)
                 .collect(Collectors.groupingBy(slip -> slip.getSalesOrder().getId()));
+        List<Long> salesOrderIdsNeedingInvoiceCount = packagingSlipsBySalesOrderId.entrySet().stream()
+                .filter(entry -> !entry.getValue().isEmpty())
+                .filter(entry -> !LegacyDispatchInvoiceLinkMatcher.hasExplicitInvoiceLinks(entry.getValue()))
+                .map(Map.Entry::getKey)
+                .toList();
+        List<Invoice> salesOrderInvoices = salesOrderIdsNeedingInvoiceCount.isEmpty()
+                ? List.of()
+                : invoiceRepository.findByCompanyAndSalesOrder_IdIn(company, salesOrderIdsNeedingInvoiceCount);
+        Map<Long, Integer> currentInvoiceCountsBySalesOrderId = salesOrderIdsNeedingInvoiceCount.isEmpty()
+                ? Map.of()
+                : salesOrderInvoices == null
+                ? Map.of()
+                : salesOrderInvoices.stream()
+                .filter(Objects::nonNull)
+                .filter(orderInvoice -> orderInvoice.getSalesOrder() != null && orderInvoice.getSalesOrder().getId() != null)
+                .collect(Collectors.groupingBy(
+                        orderInvoice -> orderInvoice.getSalesOrder().getId(),
+                        Collectors.collectingAndThen(Collectors.toList(), LegacyDispatchInvoiceLinkMatcher::countCurrentInvoices)));
 
         List<Long> invoiceIds = invoices.stream()
                 .map(Invoice::getId)
@@ -346,37 +366,27 @@ public class InvoiceService {
                 .filter(allocation -> allocation.getInvoice() != null && allocation.getInvoice().getId() != null)
                 .collect(Collectors.groupingBy(allocation -> allocation.getInvoice().getId()));
 
-        return new LinkedReferenceContext(packagingSlipsBySalesOrderId, settlementAllocationsByInvoiceId);
+        return new LinkedReferenceContext(packagingSlipsBySalesOrderId, settlementAllocationsByInvoiceId, currentInvoiceCountsBySalesOrderId);
     }
 
-    private boolean isSlipLinkedToInvoice(PackagingSlip slip, Invoice invoice, List<PackagingSlip> candidateSlips) {
+    private boolean isSlipLinkedToInvoice(PackagingSlip slip,
+                                          Invoice invoice,
+                                          List<PackagingSlip> candidateSlips,
+                                          int salesOrderInvoiceCount) {
         return LegacyDispatchInvoiceLinkMatcher.isSlipLinkedToInvoice(
                 slip,
                 invoice,
                 candidateSlips,
-                resolveSalesOrderInvoiceCount(invoice));
+                salesOrderInvoiceCount);
     }
 
-    private int resolveSalesOrderInvoiceCount(Invoice invoice) {
-        if (invoice == null
-                || invoice.getCompany() == null
-                || invoice.getSalesOrder() == null
-                || invoice.getSalesOrder().getId() == null) {
-            return 0;
-        }
-        List<Invoice> orderInvoices = invoiceRepository.findAllByCompanyAndSalesOrderId(
-                invoice.getCompany(),
-                invoice.getSalesOrder().getId());
-        int knownCount = orderInvoices == null
-                ? 0
-                : (int) orderInvoices.stream().filter(Objects::nonNull).count();
-        if (knownCount > 0) {
-            return knownCount;
-        }
-        return invoice.getId() != null ? 1 : 0;
+    private int defaultCurrentInvoiceCount(Invoice invoice) {
+        return invoice != null && LegacyDispatchInvoiceLinkMatcher.isCurrentInvoiceStatus(invoice.getStatus()) ? 1 : 0;
     }
 
-    private record LinkedReferenceContext(Map<Long, List<PackagingSlip>> packagingSlipsBySalesOrderId, Map<Long, List<PartnerSettlementAllocation>> settlementAllocationsByInvoiceId) {
-        private static LinkedReferenceContext empty() { return new LinkedReferenceContext(Map.of(), Map.of()); }
+    private record LinkedReferenceContext(Map<Long, List<PackagingSlip>> packagingSlipsBySalesOrderId,
+                                          Map<Long, List<PartnerSettlementAllocation>> settlementAllocationsByInvoiceId,
+                                          Map<Long, Integer> currentInvoiceCountsBySalesOrderId) {
+        private static LinkedReferenceContext empty() { return new LinkedReferenceContext(Map.of(), Map.of(), Map.of()); }
     }
 }
