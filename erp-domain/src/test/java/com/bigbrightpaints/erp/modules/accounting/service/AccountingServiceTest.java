@@ -14,6 +14,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodStatus;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalCorrectionType;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
+import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryType;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLine;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntryRepository;
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
@@ -24,10 +25,13 @@ import com.bigbrightpaints.erp.modules.accounting.dto.AutoSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerSettlementRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.DealerReceiptSplitRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryReversalRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.InventoryRevaluationRequest;
+import com.bigbrightpaints.erp.modules.accounting.dto.JournalListItemDto;
+import com.bigbrightpaints.erp.modules.accounting.dto.ManualJournalRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.PartnerSettlementResponse;
 import com.bigbrightpaints.erp.modules.accounting.dto.PayrollPaymentRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.SettlementAllocationRequest;
@@ -260,6 +264,199 @@ class AccountingServiceTest {
 
         assertThat(listed).hasSize(1);
         assertThat(listed.get(0).referenceNumber()).isEqualTo("TEST-INV-2026-00091");
+    }
+
+    @Test
+    void listJournalEntries_rejectsDealerAndSupplierBothProvided() {
+        assertThatThrownBy(() -> accountingService.listJournalEntries(10L, 20L, 0, 50))
+                .isInstanceOfSatisfying(ApplicationException.class, ex -> {
+                    assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT);
+                    assertThat(ex).hasMessageContaining("Only one of dealerId or supplierId can be provided");
+                });
+    }
+
+    @Test
+    void listJournals_rejectsInvalidDateRange() {
+        LocalDate fromDate = LocalDate.of(2026, 3, 5);
+        LocalDate toDate = LocalDate.of(2026, 3, 4);
+
+        assertThatThrownBy(() -> accountingService.listJournals(fromDate, toDate, null, null))
+                .isInstanceOfSatisfying(ApplicationException.class, ex -> {
+                    assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_INVALID_DATE);
+                    assertThat(ex).hasMessageContaining("fromDate cannot be after toDate");
+                    assertThat(ex.getDetails())
+                            .containsEntry("fromDate", fromDate)
+                            .containsEntry("toDate", toDate);
+                });
+    }
+
+    @Test
+    void listJournals_filtersByDateTypeAndSourceModule() {
+        JournalEntry matching = new JournalEntry();
+        ReflectionTestUtils.setField(matching, "id", 902L);
+        matching.setCompany(company);
+        matching.setReferenceNumber("JRN-MAN-1");
+        matching.setEntryDate(LocalDate.of(2026, 3, 5));
+        matching.setMemo("Manual match");
+        matching.setStatus("POSTED");
+        matching.setJournalType(JournalEntryType.MANUAL);
+        matching.setSourceModule("MANUAL");
+        matching.setSourceReference("MAN-SRC-1");
+        matching.getLines().add(journalLine(matching, account(501L, "CASH", AccountType.ASSET), "Debit", new BigDecimal("125.00"), BigDecimal.ZERO));
+        matching.getLines().add(journalLine(matching, account(502L, "REV", AccountType.REVENUE), "Credit", BigDecimal.ZERO, new BigDecimal("125.00")));
+
+        JournalEntry wrongType = new JournalEntry();
+        ReflectionTestUtils.setField(wrongType, "id", 903L);
+        wrongType.setCompany(company);
+        wrongType.setReferenceNumber("JRN-AUTO-1");
+        wrongType.setEntryDate(LocalDate.of(2026, 3, 5));
+        wrongType.setJournalType(JournalEntryType.AUTOMATED);
+        wrongType.setSourceModule("MANUAL");
+
+        JournalEntry wrongModule = new JournalEntry();
+        ReflectionTestUtils.setField(wrongModule, "id", 904L);
+        wrongModule.setCompany(company);
+        wrongModule.setReferenceNumber("JRN-MAN-2");
+        wrongModule.setEntryDate(LocalDate.of(2026, 3, 5));
+        wrongModule.setJournalType(JournalEntryType.MANUAL);
+        wrongModule.setSourceModule("SALES");
+
+        JournalEntry wrongDate = new JournalEntry();
+        ReflectionTestUtils.setField(wrongDate, "id", 905L);
+        wrongDate.setCompany(company);
+        wrongDate.setReferenceNumber("JRN-MAN-3");
+        wrongDate.setEntryDate(LocalDate.of(2026, 2, 28));
+        wrongDate.setJournalType(JournalEntryType.MANUAL);
+        wrongDate.setSourceModule("MANUAL");
+
+        when(journalEntryRepository.findByCompanyOrderByEntryDateDesc(company))
+                .thenReturn(List.of(matching, wrongType, wrongModule, wrongDate));
+
+        List<JournalListItemDto> listed = accountingService.listJournals(
+                LocalDate.of(2026, 3, 1),
+                LocalDate.of(2026, 3, 31),
+                " manual ",
+                " manual "
+        );
+
+        assertThat(listed).singleElement().satisfies(item -> {
+            assertThat(item.id()).isEqualTo(902L);
+            assertThat(item.referenceNumber()).isEqualTo("JRN-MAN-1");
+            assertThat(item.journalType()).isEqualTo("MANUAL");
+            assertThat(item.sourceModule()).isEqualTo("MANUAL");
+            assertThat(item.totalDebit()).isEqualByComparingTo("125.00");
+            assertThat(item.totalCredit()).isEqualByComparingTo("125.00");
+        });
+    }
+
+    @Test
+    void createStandardJournal_buildsAutomatedJournalRequestFromResolvedLines() {
+        AccountingService serviceSpy = spy(accountingService);
+        ArgumentCaptor<JournalEntryRequest> requestCaptor = ArgumentCaptor.forClass(JournalEntryRequest.class);
+        doReturn(stubEntry(501L)).when(serviceSpy).createJournalEntry(requestCaptor.capture());
+
+        JournalEntryDto result = serviceSpy.createStandardJournal(new JournalCreationRequest(
+                new BigDecimal("125.00"),
+                null,
+                null,
+                "  Standard entry  ",
+                " sales ",
+                " SRC-125 ",
+                null,
+                List.of(
+                        new JournalCreationRequest.LineRequest(501L, new BigDecimal("125.00"), BigDecimal.ZERO, " Debit line "),
+                        new JournalCreationRequest.LineRequest(502L, BigDecimal.ZERO, new BigDecimal("125.00"), " Credit line ")
+                ),
+                LocalDate.of(2026, 3, 5),
+                77L,
+                null,
+                true,
+                List.of("att-1", "att-2")
+        ));
+
+        JournalEntryRequest forwarded = requestCaptor.getValue();
+        assertThat(result.id()).isEqualTo(501L);
+        assertThat(forwarded.referenceNumber()).isEqualTo("SRC-125");
+        assertThat(forwarded.entryDate()).isEqualTo(LocalDate.of(2026, 3, 5));
+        assertThat(forwarded.memo()).isEqualTo("Standard entry");
+        assertThat(forwarded.dealerId()).isEqualTo(77L);
+        assertThat(forwarded.adminOverride()).isTrue();
+        assertThat(forwarded.sourceModule()).isEqualTo("sales");
+        assertThat(forwarded.sourceReference()).isEqualTo("SRC-125");
+        assertThat(forwarded.journalType()).isEqualTo(JournalEntryType.AUTOMATED.name());
+        assertThat(forwarded.attachmentReferences()).containsExactly("att-1", "att-2");
+        assertThat(forwarded.lines()).containsExactly(
+                new JournalEntryRequest.JournalLineRequest(501L, " Debit line ", new BigDecimal("125.00"), BigDecimal.ZERO),
+                new JournalEntryRequest.JournalLineRequest(502L, " Credit line ", BigDecimal.ZERO, new BigDecimal("125.00"))
+        );
+    }
+
+    @Test
+    void createManualJournal_buildsManualEntryRequestAndDefaultsLineNarration() {
+        AccountingService serviceSpy = spy(accountingService);
+        ArgumentCaptor<JournalEntryRequest> requestCaptor = ArgumentCaptor.forClass(JournalEntryRequest.class);
+        doReturn(stubEntry(601L)).when(serviceSpy).createManualJournalEntry(requestCaptor.capture(), eq("MAN-KEY-1"));
+
+        JournalEntryDto result = serviceSpy.createManualJournal(new ManualJournalRequest(
+                LocalDate.of(2026, 3, 6),
+                "  Manual reason  ",
+                "MAN-KEY-1",
+                true,
+                List.of(
+                        new ManualJournalRequest.LineRequest(601L, new BigDecimal("50.00"), null, ManualJournalRequest.EntryType.DEBIT),
+                        new ManualJournalRequest.LineRequest(602L, new BigDecimal("50.00"), "  Cash offset  ", ManualJournalRequest.EntryType.CREDIT)
+                ),
+                List.of("att-manual")
+        ));
+
+        JournalEntryRequest forwarded = requestCaptor.getValue();
+        assertThat(result.id()).isEqualTo(601L);
+        assertThat(forwarded.referenceNumber()).isNull();
+        assertThat(forwarded.entryDate()).isEqualTo(LocalDate.of(2026, 3, 6));
+        assertThat(forwarded.memo()).isEqualTo("Manual reason");
+        assertThat(forwarded.adminOverride()).isTrue();
+        assertThat(forwarded.sourceModule()).isEqualTo("MANUAL");
+        assertThat(forwarded.sourceReference()).isEqualTo("MAN-KEY-1");
+        assertThat(forwarded.journalType()).isEqualTo(JournalEntryType.MANUAL.name());
+        assertThat(forwarded.attachmentReferences()).containsExactly("att-manual");
+        assertThat(forwarded.lines()).containsExactly(
+                new JournalEntryRequest.JournalLineRequest(601L, "Manual reason", new BigDecimal("50.00"), BigDecimal.ZERO),
+                new JournalEntryRequest.JournalLineRequest(602L, "Cash offset", BigDecimal.ZERO, new BigDecimal("50.00"))
+        );
+    }
+
+    @Test
+    void createManualJournalEntry_returnsExistingWhenIdempotencyReferenceAlreadyExists() {
+        JournalEntry existing = new JournalEntry();
+        ReflectionTestUtils.setField(existing, "id", 701L);
+        existing.setCompany(company);
+        existing.setReferenceNumber("MAN-EXIST-1");
+        existing.setEntryDate(LocalDate.of(2026, 3, 7));
+        existing.setMemo("Existing manual");
+        existing.setStatus("POSTED");
+
+        when(journalEntryRepository.findByCompanyAndReferenceNumber(company, "MAN-EXIST-1"))
+                .thenReturn(Optional.of(existing));
+
+        JournalEntryDto result = accountingService.createManualJournalEntry(new JournalEntryRequest(
+                null,
+                LocalDate.of(2026, 3, 7),
+                "Existing manual",
+                null,
+                null,
+                true,
+                List.of(new JournalEntryRequest.JournalLineRequest(701L, "line", new BigDecimal("10.00"), BigDecimal.ZERO)),
+                null,
+                null,
+                "MANUAL",
+                "MAN-EXIST-1",
+                JournalEntryType.MANUAL.name(),
+                List.of()
+        ), "MAN-EXIST-1");
+
+        assertThat(result.id()).isEqualTo(701L);
+        assertThat(result.referenceNumber()).isEqualTo("MAN-EXIST-1");
+        verify(journalReferenceResolver, never()).findExistingEntry(any(), any());
     }
 
     @Test
@@ -9039,6 +9236,16 @@ class AccountingServiceTest {
                 .contains(existingAppliedMarker);
         assertThat(String.valueOf(ex.getDetails().get("requestAllocationSignatureDigest")))
                 .contains(requestAppliedMarker);
+    }
+
+    private Account account(Long id, String code, AccountType type) {
+        Account account = new Account();
+        ReflectionTestUtils.setField(account, "id", id);
+        account.setCode(code);
+        account.setName(code);
+        account.setType(type);
+        account.setCompany(company);
+        return account;
     }
 
     private AccountingPeriod openPeriod(LocalDate date) {
