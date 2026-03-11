@@ -98,7 +98,7 @@ class SalesReturnServiceTest {
         );
         company = new Company();
         company.setTimezone("UTC");
-        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        lenient().when(companyContextService.requireCurrentCompany()).thenReturn(company);
         lenient().when(companyAccountingSettingsService.requireTaxAccounts())
                 .thenReturn(new CompanyAccountingSettingsService.TaxAccountConfiguration(900L, 800L, null));
         lenient().when(journalEntryRepository.findByCompanyAndId(any(), anyLong())).thenReturn(Optional.empty());
@@ -374,6 +374,151 @@ class SalesReturnServiceTest {
         )))
                 .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Only posted invoices can be corrected through sales return");
+    }
+
+    @Test
+    void ensurePostedInvoice_allowsNullInvoice() {
+        invokeEnsurePostedInvoice(null);
+    }
+
+    @Test
+    void validateReturnQuantities_rejectsUnknownInvoiceLine() {
+        Invoice invoice = new Invoice();
+        invoice.setCompany(company);
+        invoice.setInvoiceNumber("INV-DIRECT-UNKNOWN");
+
+        assertThatThrownBy(() -> invokeValidateReturnQuantities(
+                company,
+                invoice,
+                new SalesReturnRequest(
+                        null,
+                        "Direct validation",
+                        List.of(new SalesReturnRequest.ReturnLine(999L, BigDecimal.ONE))
+                ),
+                Map.of(),
+                new java.util.HashMap<>()
+        ))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Invoice line not found: 999");
+    }
+
+    @Test
+    void validateReturnQuantities_rejectsQuantityBeyondInvoicedAmount() {
+        Invoice invoice = new Invoice();
+        invoice.setCompany(company);
+        invoice.setInvoiceNumber("INV-DIRECT-QTY");
+
+        InvoiceLine line = new InvoiceLine();
+        line.setInvoice(invoice);
+        line.setProductCode("FG-DIRECT");
+        line.setQuantity(BigDecimal.ONE);
+        setField(line, "id", 301L);
+        invoice.getLines().add(line);
+
+        assertThatThrownBy(() -> invokeValidateReturnQuantities(
+                company,
+                invoice,
+                new SalesReturnRequest(
+                        null,
+                        "Direct quantity",
+                        List.of(new SalesReturnRequest.ReturnLine(301L, new BigDecimal("2")))
+                ),
+                Map.of(301L, line),
+                new java.util.HashMap<>()
+        ))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Return quantity exceeds invoiced amount for FG-DIRECT");
+    }
+
+    @Test
+    void validateReturnQuantities_rejectsRemainingAmountAfterLegacyAllocationSkipsStaleMappings() {
+        Invoice invoice = new Invoice();
+        invoice.setCompany(company);
+        invoice.setInvoiceNumber("INV-DIRECT-LEGACY");
+
+        InvoiceLine requestedLine = new InvoiceLine();
+        requestedLine.setInvoice(invoice);
+        requestedLine.setProductCode("FG-DIRECT");
+        requestedLine.setQuantity(new BigDecimal("3"));
+        setField(requestedLine, "id", 401L);
+        invoice.getLines().add(requestedLine);
+
+        InvoiceLine staleInvoiceLine = new InvoiceLine();
+        staleInvoiceLine.setInvoice(invoice);
+        staleInvoiceLine.setProductCode("FG-DIRECT");
+        staleInvoiceLine.setQuantity(BigDecimal.ONE);
+        setField(staleInvoiceLine, "id", 402L);
+        invoice.getLines().add(staleInvoiceLine);
+
+        InvoiceLine ghostLine = new InvoiceLine();
+        ghostLine.setInvoice(invoice);
+        ghostLine.setProductCode("FG-GHOST");
+        ghostLine.setQuantity(BigDecimal.ONE);
+        setField(ghostLine, "id", 450L);
+
+        FinishedGood directFg = new FinishedGood();
+        directFg.setCompany(company);
+        directFg.setProductCode("FG-DIRECT");
+        setField(directFg, "id", 501L);
+
+        FinishedGood ghostFg = new FinishedGood();
+        ghostFg.setCompany(company);
+        ghostFg.setProductCode("FG-GHOST");
+        setField(ghostFg, "id", 502L);
+
+        InventoryMovement legacyAlloc = new InventoryMovement();
+        legacyAlloc.setFinishedGood(directFg);
+        legacyAlloc.setReferenceType("SALES_RETURN");
+        legacyAlloc.setReferenceId("INV-DIRECT-LEGACY");
+        legacyAlloc.setQuantity(new BigDecimal("2"));
+
+        InventoryMovement fullyReturnedLine = new InventoryMovement();
+        fullyReturnedLine.setFinishedGood(directFg);
+        fullyReturnedLine.setReferenceType("SALES_RETURN");
+        fullyReturnedLine.setReferenceId("INV-DIRECT-LEGACY:401");
+        fullyReturnedLine.setQuantity(new BigDecimal("3"));
+
+        InventoryMovement ghostReturnedLine = new InventoryMovement();
+        ghostReturnedLine.setFinishedGood(ghostFg);
+        ghostReturnedLine.setReferenceType("SALES_RETURN");
+        ghostReturnedLine.setReferenceId("INV-DIRECT-LEGACY:450");
+        ghostReturnedLine.setQuantity(BigDecimal.ONE);
+
+        InventoryMovement unknownReturnedLine = new InventoryMovement();
+        unknownReturnedLine.setFinishedGood(ghostFg);
+        unknownReturnedLine.setReferenceType("SALES_RETURN");
+        unknownReturnedLine.setReferenceId("INV-DIRECT-LEGACY:999");
+        unknownReturnedLine.setQuantity(BigDecimal.ONE);
+
+        when(finishedGoodRepository.lockByCompanyAndProductCode(company, "FG-DIRECT")).thenReturn(Optional.of(directFg));
+        when(inventoryMovementRepository.findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
+                eq(company),
+                eq("SALES_RETURN"),
+                eq("INV-DIRECT-LEGACY")
+        )).thenReturn(List.of(legacyAlloc));
+        when(inventoryMovementRepository.findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdStartingWithOrderByCreatedAtAsc(
+                eq(company),
+                eq("SALES_RETURN"),
+                eq("INV-DIRECT-LEGACY:")
+        )).thenReturn(List.of(fullyReturnedLine, ghostReturnedLine, unknownReturnedLine));
+
+        java.util.Map<Long, InvoiceLine> invoiceLines = new java.util.LinkedHashMap<>();
+        invoiceLines.put(401L, requestedLine);
+        invoiceLines.put(450L, ghostLine);
+
+        assertThatThrownBy(() -> invokeValidateReturnQuantities(
+                company,
+                invoice,
+                new SalesReturnRequest(
+                        null,
+                        "Legacy validation",
+                        List.of(new SalesReturnRequest.ReturnLine(401L, BigDecimal.ONE))
+                ),
+                invoiceLines,
+                new java.util.HashMap<>()
+        ))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("remaining invoiced amount for FG-DIRECT");
     }
 
     @Test
@@ -1662,6 +1807,43 @@ class SalesReturnServiceTest {
             );
             method.setAccessible(true);
             return (String) method.invoke(salesReturnService, invoice, request);
+        } catch (ReflectiveOperationException ex) {
+            throw new RuntimeException(ex);
+        }
+    }
+
+    private void invokeEnsurePostedInvoice(Invoice invoice) {
+        try {
+            var method = SalesReturnService.class.getDeclaredMethod("ensurePostedInvoice", Invoice.class);
+            method.setAccessible(true);
+            method.invoke(salesReturnService, invoice);
+        } catch (ReflectiveOperationException ex) {
+            throw new RuntimeException(ex);
+        }
+    }
+
+    private void invokeValidateReturnQuantities(Company company,
+                                                Invoice invoice,
+                                                SalesReturnRequest request,
+                                                Map<Long, InvoiceLine> invoiceLines,
+                                                Map<String, FinishedGood> finishedGoodsByCode) {
+        try {
+            var method = SalesReturnService.class.getDeclaredMethod(
+                    "validateReturnQuantities",
+                    Company.class,
+                    Invoice.class,
+                    SalesReturnRequest.class,
+                    Map.class,
+                    Map.class
+            );
+            method.setAccessible(true);
+            method.invoke(salesReturnService, company, invoice, request, invoiceLines, finishedGoodsByCode);
+        } catch (java.lang.reflect.InvocationTargetException ex) {
+            Throwable cause = ex.getCause();
+            if (cause instanceof RuntimeException runtime) {
+                throw runtime;
+            }
+            throw new RuntimeException(cause);
         } catch (ReflectiveOperationException ex) {
             throw new RuntimeException(ex);
         }
