@@ -131,7 +131,9 @@ public class DispatchController {
                 request.vehicleNumber(),
                 request.challanReference()
         );
-        DispatchMetadataValidator.validate(accountingRequest);
+        if (shouldEnforceDispatchMetadata(accountingRequest, request.packagingSlipId())) {
+            DispatchMetadataValidator.validate(accountingRequest);
+        }
         salesDispatchReconciliationService.confirmDispatch(accountingRequest);
         DispatchConfirmationResponse response = toDispatchConfirmationView(
                 finishedGoodsService.getDispatchConfirmation(request.packagingSlipId()));
@@ -158,6 +160,22 @@ public class DispatchController {
             @RequestParam String status) {
         PackagingSlipDto slip = finishedGoodsService.updateSlipStatus(slipId, status);
         return ResponseEntity.ok(ApiResponse.success(toPackagingSlipView(slip)));
+    }
+
+    private boolean shouldEnforceDispatchMetadata(DispatchConfirmRequest request, Long packagingSlipId) {
+        return DispatchMetadataValidator.hasRequiredMetadata(request) || !isDispatchedSlipReplay(packagingSlipId);
+    }
+
+    private boolean isDispatchedSlipReplay(Long packagingSlipId) {
+        if (packagingSlipId == null) {
+            return false;
+        }
+        try {
+            PackagingSlipDto slip = finishedGoodsService.getPackagingSlip(packagingSlipId);
+            return slip != null && "DISPATCHED".equalsIgnoreCase(slip.status());
+        } catch (RuntimeException ex) {
+            return false;
+        }
     }
 
     private PackagingSlipDto toPackagingSlipView(PackagingSlipDto slip) {

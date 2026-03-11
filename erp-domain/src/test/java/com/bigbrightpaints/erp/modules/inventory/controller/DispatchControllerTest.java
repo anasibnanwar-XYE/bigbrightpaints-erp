@@ -130,6 +130,76 @@ class DispatchControllerTest {
     }
 
     @Test
+    void confirmDispatch_allowsDispatchedSlipReplayBeforeMetadataEnforcement() {
+        DispatchController controller = new DispatchController(
+                finishedGoodsService,
+                salesDispatchReconciliationService,
+                deliveryChallanPdfService);
+        setFactoryAuthentication();
+
+        DispatchConfirmationRequest request = new DispatchConfirmationRequest(
+                10L,
+                List.of(new DispatchConfirmationRequest.LineConfirmation(100L, new BigDecimal("2.50"), "Replay")),
+                "Replay notes",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+        when(finishedGoodsService.getPackagingSlip(10L)).thenReturn(new PackagingSlipDto(
+                10L,
+                UUID.randomUUID(),
+                7L,
+                "SO-7",
+                "Dealer",
+                "PS-10",
+                "DISPATCHED",
+                Instant.now(),
+                Instant.now(),
+                "factory.user",
+                Instant.now(),
+                "notes",
+                111L,
+                222L,
+                List.of(),
+                null,
+                null,
+                null,
+                null,
+                "DC-PS-10",
+                "/api/v1/dispatch/slip/10/challan/pdf"
+        ));
+        when(finishedGoodsService.getDispatchConfirmation(10L)).thenReturn(new DispatchConfirmationResponse(
+                10L,
+                "PS-10",
+                "DISPATCHED",
+                Instant.now(),
+                "factory.user",
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                1L,
+                2L,
+                List.of(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                "DC-PS-10",
+                "/api/v1/dispatch/slip/10/challan/pdf"
+        ));
+
+        ResponseEntity<ApiResponse<DispatchConfirmationResponse>> response = controller.confirmDispatch(request, () -> "factory.user");
+
+        assertThat(response.getStatusCode().value()).isEqualTo(200);
+        verify(finishedGoodsService).getPackagingSlip(10L);
+        verify(salesDispatchReconciliationService).confirmDispatch(org.mockito.ArgumentMatchers.any(DispatchConfirmRequest.class));
+    }
+
+    @Test
     void factoryViews_areRedactedForPreviewAndSlipDetails() {
         DispatchController controller = new DispatchController(
                 finishedGoodsService,
