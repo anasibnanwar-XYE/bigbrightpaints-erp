@@ -9848,6 +9848,12 @@ class AccountingServiceTest {
         Boolean differentCurrency = ReflectionTestUtils.invokeMethod(accountingService, "sameCurrency", "INR", null);
         Boolean sameFxRate = ReflectionTestUtils.invokeMethod(accountingService, "sameFxRate", null, BigDecimal.ONE);
         Boolean differentFxRate = ReflectionTestUtils.invokeMethod(accountingService, "sameFxRate", BigDecimal.ONE, new BigDecimal("1.01"));
+        String noAttachments = ReflectionTestUtils.invokeMethod(accountingService, "joinAttachmentReferences", new Object[]{null});
+        String blankOnlyAttachments = ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "joinAttachmentReferences",
+                List.of("   ", "")
+        );
         String joinedAttachments = ReflectionTestUtils.invokeMethod(
                 accountingService,
                 "joinAttachmentReferences",
@@ -9864,16 +9870,22 @@ class AccountingServiceTest {
         JournalEntry emptyPostingEntry = new JournalEntry();
         String fallbackType = ReflectionTestUtils.invokeMethod(accountingService, "resolvePostingDocumentType", emptyPostingEntry);
         String fallbackReference = ReflectionTestUtils.invokeMethod(accountingService, "resolvePostingDocumentReference", emptyPostingEntry);
+        String nullFallbackType = ReflectionTestUtils.invokeMethod(accountingService, "resolvePostingDocumentType", new Object[]{null});
+        String nullReferenceFallback = ReflectionTestUtils.invokeMethod(accountingService, "resolvePostingDocumentReference", new Object[]{null});
 
         assertThat(sameCurrency).isTrue();
         assertThat(differentCurrency).isFalse();
         assertThat(sameFxRate).isTrue();
         assertThat(differentFxRate).isFalse();
+        assertThat(noAttachments).isNull();
+        assertThat(blankOnlyAttachments).isNull();
         assertThat(joinedAttachments).isEqualTo("scan-1\nscan-2");
         assertThat(documentType).isEqualTo("MANUAL");
         assertThat(documentReference).isEqualTo("REF-1");
         assertThat(fallbackType).isEqualTo("JOURNAL_ENTRY");
         assertThat(fallbackReference).isNull();
+        assertThat(nullFallbackType).isEqualTo("JOURNAL_ENTRY");
+        assertThat(nullReferenceFallback).isNull();
 
         assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(
                 accountingService,
@@ -9997,6 +10009,24 @@ class AccountingServiceTest {
         ReflectionTestUtils.invokeMethod(
                 accountingService,
                 "ensureCorrectionJournalProvenance",
+                null,
+                source,
+                "AUTO_REVERSAL",
+                "ACCRUAL",
+                "SRC-9001"
+        );
+        ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "ensureCorrectionJournalProvenance",
+                correction,
+                null,
+                "AUTO_REVERSAL",
+                "ACCRUAL",
+                "SRC-9001"
+        );
+        ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "ensureCorrectionJournalProvenance",
                 correction,
                 source,
                 "AUTO_REVERSAL",
@@ -10010,6 +10040,25 @@ class AccountingServiceTest {
         assertThat(correction.getSourceModule()).isEqualTo("ACCRUAL");
         assertThat(correction.getSourceReference()).isEqualTo("SRC-9001");
         verify(journalEntryRepository).save(correction);
+
+        JournalEntry alignedCorrection = new JournalEntry();
+        alignedCorrection.setReversalOf(source);
+        alignedCorrection.setCorrectionType(JournalCorrectionType.REVERSAL);
+        alignedCorrection.setCorrectionReason("AUTO_REVERSAL");
+        alignedCorrection.setSourceModule("ACCRUAL");
+        alignedCorrection.setSourceReference("SRC-9001");
+
+        ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "ensureCorrectionJournalProvenance",
+                alignedCorrection,
+                source,
+                "AUTO_REVERSAL",
+                "ACCRUAL",
+                "SRC-9001"
+        );
+
+        verify(journalEntryRepository, never()).save(alignedCorrection);
     }
 
     @Test
@@ -10751,6 +10800,42 @@ class AccountingServiceTest {
         verify(settlementAllocationRepository, never()).findByCompanyAndIdempotencyKeyIgnoreCaseOrderByCreatedAtAscIdAsc(
                 company, "DLR-REF-881");
 
+        when(settlementAllocationRepository.findByCompanyAndIdempotencyKeyIgnoreCaseOrderByCreatedAtAscIdAsc(
+                eq(company), eq("DLR-REF-882")))
+                .thenReturn(List.of(dealerReplay));
+
+        DealerSettlementRequest dealerReferenceFallbackRequest = new DealerSettlementRequest(
+                881L,
+                200L,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                LocalDate.of(2024, 6, 12),
+                "DLR-REF-882",
+                "dealer replay",
+                "   ",
+                Boolean.FALSE,
+                null,
+                null
+        );
+
+        @SuppressWarnings("unchecked")
+        List<SettlementAllocationRequest> dealerReferenceAllocations = ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "resolveDealerSettlementAllocations",
+                company,
+                dealer,
+                dealerReferenceFallbackRequest
+        );
+
+        assertThat(dealerReferenceAllocations).singleElement().satisfies(allocation -> {
+            assertThat(allocation.invoiceId()).isEqualTo(88101L);
+            assertThat(allocation.memo()).isEqualTo("dealer replay");
+        });
+
         Supplier supplier = supplier(882L, "Supplier Replay", account(8821L, "AP-8821", AccountType.LIABILITY));
         RawMaterialPurchase purchase = purchase(88201L, "PUR-88201", supplier,
                 new BigDecimal("35.00"), new BigDecimal("35.00"), "POSTED");
@@ -10876,6 +10961,13 @@ class AccountingServiceTest {
                 new BigDecimal("25.00"),
                 List.of()
         );
+        ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "validateOptionalHeaderSettlementAmount",
+                "dealer",
+                new BigDecimal("25.00"),
+                null
+        );
 
         assertThat((SettlementAllocationApplication) ReflectionTestUtils.invokeMethod(
                 accountingService,
@@ -10926,6 +11018,231 @@ class AccountingServiceTest {
         assertThat((SettlementAllocationApplication) ReflectionTestUtils.invokeMethod(blankDecoded, "applicationType"))
                 .isEqualTo(SettlementAllocationApplication.ON_ACCOUNT);
         assertThat((String) ReflectionTestUtils.invokeMethod(blankDecoded, "memo")).isNull();
+    }
+
+    @Test
+    void helperMethods_coverReceiptReservationAndRetryGuards() {
+        assertThat((String) ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "reservedManualReference",
+                new Object[]{null}
+        )).isEqualTo("RESERVED");
+        assertThat((String) ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "reservedManualReference",
+                "legacy-key"
+        )).startsWith("RESERVED-");
+
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "isReservedReference",
+                new Object[]{null}
+        )).isFalse();
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "isReservedReference",
+                "   "
+        )).isFalse();
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "isReservedReference",
+                " reserved-aBc "
+        )).isTrue();
+
+        assertThat((String) ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "resolveReceiptIdempotencyKey",
+                "  PROVIDED-KEY  ",
+                "  FALLBACK-REF  ",
+                "dealer receipt"
+        )).isEqualTo("PROVIDED-KEY");
+        assertThat((String) ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "resolveReceiptIdempotencyKey",
+                "   ",
+                "  FALLBACK-REF  ",
+                "dealer receipt"
+        )).isEqualTo("FALLBACK-REF");
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "resolveReceiptIdempotencyKey",
+                "   ",
+                "  ",
+                "dealer receipt"
+        ))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Idempotency key or reference number is required for dealer receipt");
+
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "isRetryableManualConcurrencyFailure",
+                new RuntimeException(new DataIntegrityViolationException("duplicate"))
+        )).isTrue();
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "isRetryableManualConcurrencyFailure",
+                new RuntimeException(new org.hibernate.AssertionFailure("assertion"))
+        )).isTrue();
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "isRetryableManualConcurrencyFailure",
+                new RuntimeException("plain")
+        )).isFalse();
+    }
+
+    @Test
+    void helperMethods_coverLegacyMappingSelectionAndReplayResolution() {
+        assertThat((Optional<?>) ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "findLatestLegacyReferenceMapping",
+                null,
+                "legacy-map"
+        )).isEmpty();
+        assertThat((Optional<?>) ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "findLatestLegacyReferenceMapping",
+                company,
+                "   "
+        )).isEmpty();
+
+        JournalReferenceMapping olderWithoutEntity = new JournalReferenceMapping();
+        ReflectionTestUtils.setField(olderWithoutEntity, "id", 1L);
+        ReflectionTestUtils.setField(olderWithoutEntity, "createdAt", java.time.Instant.parse("2024-06-01T00:00:00Z"));
+        olderWithoutEntity.setCanonicalReference("LEGACY-OLD");
+
+        JournalReferenceMapping olderWithEntity = new JournalReferenceMapping();
+        ReflectionTestUtils.setField(olderWithEntity, "id", 2L);
+        ReflectionTestUtils.setField(olderWithEntity, "createdAt", java.time.Instant.parse("2024-06-02T00:00:00Z"));
+        olderWithEntity.setCanonicalReference("LEGACY-ENTITY-OLD");
+        olderWithEntity.setEntityId(200L);
+
+        JournalReferenceMapping newerWithEntity = new JournalReferenceMapping();
+        ReflectionTestUtils.setField(newerWithEntity, "id", 3L);
+        ReflectionTestUtils.setField(newerWithEntity, "createdAt", java.time.Instant.parse("2024-06-03T00:00:00Z"));
+        newerWithEntity.setCanonicalReference("LEGACY-ENTITY-NEW");
+        newerWithEntity.setEntityId(201L);
+
+        when(journalReferenceMappingRepository.findAllByCompanyAndLegacyReferenceIgnoreCase(company, "legacy-map"))
+                .thenReturn(List.of(olderWithoutEntity, olderWithEntity, newerWithEntity));
+
+        @SuppressWarnings("unchecked")
+        Optional<JournalReferenceMapping> selected = ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "findLatestLegacyReferenceMapping",
+                company,
+                "legacy-map"
+        );
+        assertThat(selected).contains(newerWithEntity);
+
+        Supplier supplier = supplier(990L, "Supplier Legacy", account(9901L, "AP-9901", AccountType.LIABILITY));
+        when(referenceNumberService.supplierPaymentReference(company, supplier)).thenReturn("SUP-FALLBACK-990");
+
+        assertThat((String) ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "resolveSupplierPaymentReference",
+                company,
+                supplier,
+                "  SUP-PROVIDED  ",
+                "legacy-map"
+        )).isEqualTo("SUP-PROVIDED");
+        assertThat((String) ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "resolveSupplierPaymentReference",
+                company,
+                supplier,
+                null,
+                "legacy-map"
+        )).isEqualTo("LEGACY-ENTITY-NEW");
+        assertThat((String) ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "resolveSupplierPaymentReference",
+                company,
+                supplier,
+                "   ",
+                "   "
+        )).isEqualTo("SUP-FALLBACK-990");
+
+        SupplierSettlementRequest supplierSettlementRequest = new SupplierSettlementRequest(
+                supplier.getId(),
+                300L,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                LocalDate.of(2024, 6, 30),
+                null,
+                "supplier legacy",
+                "legacy-map",
+                Boolean.FALSE,
+                null
+        );
+        assertThat((String) ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "resolveSupplierSettlementReference",
+                company,
+                supplier,
+                supplierSettlementRequest,
+                "legacy-map"
+        )).isEqualTo("LEGACY-ENTITY-NEW");
+
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "hasExistingIdempotencyMapping",
+                company,
+                "   "
+        )).isFalse();
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "hasExistingIdempotencyMapping",
+                company,
+                "legacy-map"
+        )).isTrue();
+
+        PartnerSettlementAllocation exactOnlyAllocation = new PartnerSettlementAllocation();
+        when(settlementAllocationRepository.findByCompanyAndIdempotencyKeyIgnoreCaseOrderByCreatedAtAscIdAsc(company, "ALLOC-EXACT"))
+                .thenReturn(List.of());
+        when(settlementAllocationRepository.findByCompanyAndIdempotencyKey(company, "ALLOC-EXACT"))
+                .thenReturn(List.of(exactOnlyAllocation));
+
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "hasExistingSettlementAllocations",
+                company,
+                "ALLOC-EXACT"
+        )).isTrue();
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "hasExistingSettlementAllocations",
+                company,
+                "   "
+        )).isFalse();
+
+        JournalEntry mappingEntry = journalEntry(9910L, "MAP-9910");
+        JournalEntry allocationEntry = journalEntry(9911L, "ALLOC-9911");
+        PartnerSettlementAllocation mismatchAllocation = new PartnerSettlementAllocation();
+        mismatchAllocation.setJournalEntry(allocationEntry);
+
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "resolveReplayJournalEntry",
+                "ALLOC-EXACT",
+                mappingEntry,
+                List.of(mismatchAllocation)
+        ))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Idempotency mapping points to a different journal than settled allocations");
+
+        PartnerSettlementAllocation matchedAllocation = new PartnerSettlementAllocation();
+        matchedAllocation.setJournalEntry(mappingEntry);
+        assertThat((JournalEntry) ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "resolveReplayJournalEntry",
+                "ALLOC-EXACT",
+                mappingEntry,
+                List.of(matchedAllocation)
+        )).isSameAs(mappingEntry);
     }
 
     private Account account(Long id, String code, AccountType type) {

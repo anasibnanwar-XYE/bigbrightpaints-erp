@@ -290,6 +290,41 @@ class PurchasingServiceTest {
     }
 
     @Test
+    @DisplayName("listPurchases with supplier filter delegates to invoice service overload")
+    void listPurchases_supplierFilter_delegatesToInvoiceService() {
+        PurchaseInvoiceService invoiceService = mock(PurchaseInvoiceService.class);
+        ReflectionTestUtils.setField(purchasingService, "purchaseInvoiceService", invoiceService);
+
+        RawMaterialPurchaseResponse filtered = new RawMaterialPurchaseResponse(
+                301L,
+                null,
+                "PINV-301",
+                LocalDate.of(2026, 3, 1),
+                BigDecimal.TEN,
+                BigDecimal.ZERO,
+                BigDecimal.TEN,
+                "POSTED",
+                "memo",
+                10L,
+                "SUP001",
+                "Test Supplier",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                List.of(),
+                null,
+                List.of()
+        );
+        when(invoiceService.listPurchases(10L)).thenReturn(List.of(filtered));
+
+        assertThat(purchasingService.listPurchases(10L)).containsExactly(filtered);
+        verify(invoiceService).listPurchases(10L);
+    }
+
+    @Test
     @DisplayName("recordPurchaseReturn uses atomic deduction to prevent negative stock")
     void recordPurchaseReturn_insufficientStock_throws() {
         activateSupplier();

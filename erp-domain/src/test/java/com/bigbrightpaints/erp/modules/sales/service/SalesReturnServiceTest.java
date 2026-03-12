@@ -2012,6 +2012,126 @@ class SalesReturnServiceTest {
         verify(inventoryMovementRepository, never()).saveAll(any());
     }
 
+    @Test
+    void validateReturnQuantities_skipsNullProductAndMissingFinishedGoodIdentityInLegacyHistory() {
+        Invoice invoice = new Invoice();
+        invoice.setCompany(company);
+        invoice.setInvoiceNumber("INV-LEGACY-SKIP");
+
+        InvoiceLine requestedLine = new InvoiceLine();
+        requestedLine.setInvoice(invoice);
+        requestedLine.setProductCode("FG-LEGACY");
+        requestedLine.setQuantity(new BigDecimal("2"));
+        setField(requestedLine, "id", 701L);
+        invoice.getLines().add(requestedLine);
+
+        InvoiceLine nullProductLine = new InvoiceLine();
+        nullProductLine.setInvoice(invoice);
+        nullProductLine.setProductCode(null);
+        nullProductLine.setQuantity(BigDecimal.ONE);
+        setField(nullProductLine, "id", 702L);
+        invoice.getLines().add(nullProductLine);
+
+        FinishedGood requestedFg = new FinishedGood();
+        requestedFg.setCompany(company);
+        requestedFg.setProductCode("FG-LEGACY");
+
+        FinishedGood historyFg = new FinishedGood();
+        historyFg.setCompany(company);
+        historyFg.setProductCode("FG-LEGACY-HISTORY");
+        setField(historyFg, "id", 801L);
+
+        InventoryMovement legacyHeader = new InventoryMovement();
+        legacyHeader.setFinishedGood(historyFg);
+        legacyHeader.setReferenceType("SALES_RETURN");
+        legacyHeader.setReferenceId("INV-LEGACY-SKIP");
+        legacyHeader.setQuantity(BigDecimal.ZERO);
+
+        InventoryMovement requestedLineHistory = new InventoryMovement();
+        requestedLineHistory.setFinishedGood(historyFg);
+        requestedLineHistory.setReferenceType("SALES_RETURN");
+        requestedLineHistory.setReferenceId("INV-LEGACY-SKIP:701");
+        requestedLineHistory.setQuantity(new BigDecimal("0.5"));
+
+        InventoryMovement nullProductHistory = new InventoryMovement();
+        nullProductHistory.setFinishedGood(historyFg);
+        nullProductHistory.setReferenceType("SALES_RETURN");
+        nullProductHistory.setReferenceId("INV-LEGACY-SKIP:702");
+        nullProductHistory.setQuantity(new BigDecimal("0.25"));
+
+        when(finishedGoodRepository.lockByCompanyAndProductCode(company, "FG-LEGACY")).thenReturn(Optional.of(requestedFg));
+        when(inventoryMovementRepository.findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
+                eq(company),
+                eq("SALES_RETURN"),
+                eq("INV-LEGACY-SKIP")
+        )).thenReturn(List.of(legacyHeader));
+        when(inventoryMovementRepository.findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdStartingWithOrderByCreatedAtAsc(
+                eq(company),
+                eq("SALES_RETURN"),
+                eq("INV-LEGACY-SKIP:")
+        )).thenReturn(List.of(requestedLineHistory, nullProductHistory));
+
+        java.util.Map<Long, InvoiceLine> invoiceLines = new java.util.LinkedHashMap<>();
+        invoiceLines.put(701L, requestedLine);
+        invoiceLines.put(702L, nullProductLine);
+
+        invokeValidateReturnQuantities(
+                company,
+                invoice,
+                new SalesReturnRequest(
+                        null,
+                        "Legacy skips",
+                        List.of(new SalesReturnRequest.ReturnLine(701L, BigDecimal.ONE))
+                ),
+                invoiceLines,
+                new java.util.HashMap<>()
+        );
+    }
+
+    @Test
+    void relinkExistingReturnMovements_noopsForMissingRequestStateOrEmptyHistory() {
+        invokeRelinkExistingReturnMovements(company, "INV-NO-RELINK", null, 991L, "RETKEY");
+
+        invokeRelinkExistingReturnMovements(
+                company,
+                "INV-NO-RELINK",
+                new SalesReturnRequest(10L, "No lines", List.of()),
+                991L,
+                "RETKEY"
+        );
+
+        when(inventoryMovementRepository.findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdStartingWithOrderByCreatedAtAsc(
+                company,
+                "SALES_RETURN",
+                "INV-NO-RELINK:"
+        )).thenReturn(List.of());
+
+        invokeRelinkExistingReturnMovements(
+                company,
+                "INV-NO-RELINK",
+                new SalesReturnRequest(
+                        10L,
+                        "Empty history",
+                        List.of(new SalesReturnRequest.ReturnLine(55L, BigDecimal.ONE))
+                ),
+                991L,
+                "RETKEY"
+        );
+
+        verify(inventoryMovementRepository).findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdStartingWithOrderByCreatedAtAsc(
+                company,
+                "SALES_RETURN",
+                "INV-NO-RELINK:"
+        );
+        verify(inventoryMovementRepository, never()).saveAll(any());
+    }
+
+    @Test
+    void quantityValue_returnsZeroForNull() {
+        assertThat(invokeQuantityValue(null)).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(invokeQuantityValue(new BigDecimal("2.5"))).isEqualByComparingTo("2.5");
+    }
+
     private JournalEntryDto stubEntry(long id) {
         return journalEntryDto(id, null, LocalDate.now(), null);
     }
@@ -2142,6 +2262,16 @@ class SalesReturnServiceTest {
             );
             method.setAccessible(true);
             method.invoke(salesReturnService, company, invoiceNumber, request, journalEntryId, returnKey);
+        } catch (ReflectiveOperationException ex) {
+            throw new RuntimeException(ex);
+        }
+    }
+
+    private BigDecimal invokeQuantityValue(BigDecimal value) {
+        try {
+            var method = SalesReturnService.class.getDeclaredMethod("quantityValue", BigDecimal.class);
+            method.setAccessible(true);
+            return (BigDecimal) method.invoke(salesReturnService, value);
         } catch (ReflectiveOperationException ex) {
             throw new RuntimeException(ex);
         }
