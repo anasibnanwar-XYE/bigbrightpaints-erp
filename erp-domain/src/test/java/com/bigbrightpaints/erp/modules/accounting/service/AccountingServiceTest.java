@@ -10700,6 +10700,139 @@ class AccountingServiceTest {
     }
 
     @Test
+    void settlementHeaderHelpers_replaySelection_prefersDealerIdempotencyKeyAndSupplierReferenceFallback() {
+        Dealer dealer = dealer(881L, "Dealer Replay", account(8811L, "AR-8811", AccountType.ASSET));
+        Invoice invoice = invoice(88101L, dealer, "INV-88101", new BigDecimal("45.00"));
+
+        PartnerSettlementAllocation dealerReplay = new PartnerSettlementAllocation();
+        dealerReplay.setCompany(company);
+        dealerReplay.setInvoice(invoice);
+        dealerReplay.setAllocationAmount(new BigDecimal("45.00"));
+        dealerReplay.setDiscountAmount(BigDecimal.ZERO);
+        dealerReplay.setWriteOffAmount(BigDecimal.ZERO);
+        dealerReplay.setFxDifferenceAmount(BigDecimal.ZERO);
+        dealerReplay.setMemo("  dealer replay  ");
+
+        when(settlementAllocationRepository.findByCompanyAndIdempotencyKeyIgnoreCaseOrderByCreatedAtAscIdAsc(
+                eq(company), eq("DEALER-IDEMP-881")))
+                .thenReturn(List.of(dealerReplay));
+
+        DealerSettlementRequest dealerRequest = new DealerSettlementRequest(
+                881L,
+                200L,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                LocalDate.of(2024, 6, 12),
+                "DLR-REF-881",
+                "dealer replay",
+                "DEALER-IDEMP-881",
+                Boolean.FALSE,
+                null,
+                null
+        );
+
+        @SuppressWarnings("unchecked")
+        List<SettlementAllocationRequest> dealerAllocations = ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "resolveDealerSettlementAllocations",
+                company,
+                dealer,
+                dealerRequest
+        );
+
+        assertThat(dealerAllocations).singleElement().satisfies(allocation -> {
+            assertThat(allocation.invoiceId()).isEqualTo(88101L);
+            assertThat(allocation.memo()).isEqualTo("dealer replay");
+        });
+        verify(settlementAllocationRepository, never()).findByCompanyAndIdempotencyKeyIgnoreCaseOrderByCreatedAtAscIdAsc(
+                company, "DLR-REF-881");
+
+        Supplier supplier = supplier(882L, "Supplier Replay", account(8821L, "AP-8821", AccountType.LIABILITY));
+        RawMaterialPurchase purchase = purchase(88201L, "PUR-88201", supplier,
+                new BigDecimal("35.00"), new BigDecimal("35.00"), "POSTED");
+
+        PartnerSettlementAllocation supplierReplay = new PartnerSettlementAllocation();
+        supplierReplay.setCompany(company);
+        supplierReplay.setPurchase(purchase);
+        supplierReplay.setAllocationAmount(new BigDecimal("35.00"));
+        supplierReplay.setDiscountAmount(BigDecimal.ZERO);
+        supplierReplay.setWriteOffAmount(BigDecimal.ZERO);
+        supplierReplay.setFxDifferenceAmount(BigDecimal.ZERO);
+        supplierReplay.setMemo("  supplier replay  ");
+
+        when(settlementAllocationRepository.findByCompanyAndIdempotencyKeyIgnoreCaseOrderByCreatedAtAscIdAsc(
+                eq(company), eq("SUP-REF-882")))
+                .thenReturn(List.of(supplierReplay));
+
+        SupplierSettlementRequest supplierRequest = new SupplierSettlementRequest(
+                882L,
+                300L,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                LocalDate.of(2024, 6, 12),
+                "SUP-REF-882",
+                "supplier replay",
+                "   ",
+                Boolean.FALSE,
+                null
+        );
+
+        @SuppressWarnings("unchecked")
+        List<SettlementAllocationRequest> supplierAllocations = ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "resolveSupplierSettlementAllocations",
+                company,
+                supplier,
+                supplierRequest
+        );
+
+        assertThat(supplierAllocations).singleElement().satisfies(allocation -> {
+            assertThat(allocation.purchaseId()).isEqualTo(88201L);
+            assertThat(allocation.memo()).isEqualTo("supplier replay");
+        });
+    }
+
+    @Test
+    void settlementHeaderHelpers_ignoreNullPaymentRowsWhenSummingDealerHeaderAmount() {
+        DealerSettlementRequest request = new DealerSettlementRequest(
+                883L,
+                200L,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                LocalDate.of(2024, 6, 13),
+                "DLR-HDR-NULL-PAY",
+                "dealer header",
+                null,
+                Boolean.FALSE,
+                null,
+                java.util.Arrays.asList(
+                        null,
+                        new SettlementPaymentRequest(200L, new BigDecimal("12.50"), "cash")
+                )
+        );
+
+        BigDecimal resolvedAmount = ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "resolveDealerHeaderSettlementAmount",
+                request
+        );
+
+        assertThat(resolvedAmount).isEqualByComparingTo("12.50");
+    }
+
+    @Test
     void settlementHeaderHelpers_validateOptionalAmountsAndMemoCodec() {
         assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(
                 accountingService,
@@ -10719,6 +10852,30 @@ class AccountingServiceTest {
         ))
                 .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("must add up to the request amount");
+
+        ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "validateOptionalHeaderSettlementAmount",
+                "dealer",
+                null,
+                List.of(new SettlementAllocationRequest(
+                        9002L,
+                        null,
+                        new BigDecimal("25.00"),
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        SettlementAllocationApplication.DOCUMENT,
+                        "noop"
+                ))
+        );
+        ReflectionTestUtils.invokeMethod(
+                accountingService,
+                "validateOptionalHeaderSettlementAmount",
+                "dealer",
+                new BigDecimal("25.00"),
+                List.of()
+        );
 
         assertThat((SettlementAllocationApplication) ReflectionTestUtils.invokeMethod(
                 accountingService,

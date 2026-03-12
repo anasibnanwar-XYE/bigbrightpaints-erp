@@ -1003,6 +1003,27 @@ class AccountingAuditTrailServiceTest {
     }
 
     @Test
+    void helperMethods_decodeSettlementAuditMemo_defaultsDocumentForNullAllocation() {
+        Object decoded = ReflectionTestUtils.invokeMethod(service, "decodeSettlementAuditMemo", new Object[]{null});
+
+        assertThat((SettlementAllocationApplication) ReflectionTestUtils.invokeMethod(decoded, "applicationType"))
+                .isEqualTo(SettlementAllocationApplication.DOCUMENT);
+        assertThat((String) ReflectionTestUtils.invokeMethod(decoded, "memo")).isNull();
+    }
+
+    @Test
+    void helperMethods_decodeSettlementAuditMemo_trimsBlankUnappliedMemoToNull() {
+        PartnerSettlementAllocation allocation = new PartnerSettlementAllocation();
+        allocation.setMemo("   ");
+
+        Object decoded = ReflectionTestUtils.invokeMethod(service, "decodeSettlementAuditMemo", allocation);
+
+        assertThat((SettlementAllocationApplication) ReflectionTestUtils.invokeMethod(decoded, "applicationType"))
+                .isEqualTo(SettlementAllocationApplication.ON_ACCOUNT);
+        assertThat((String) ReflectionTestUtils.invokeMethod(decoded, "memo")).isNull();
+    }
+
+    @Test
     void transactionDetail_documentSettlementRowsStayDocumentTyped() {
         Company company = new Company();
         company.setCode("BBP");

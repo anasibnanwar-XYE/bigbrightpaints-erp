@@ -123,9 +123,9 @@ class PurchaseReturnServiceTest {
         line.setLineTotal(new BigDecimal("20.00"));
         purchase.getLines().add(line);
 
-        when(companyContextService.requireCurrentCompany()).thenReturn(company);
-        when(companyEntityLookup.requireSupplier(company, 10L)).thenReturn(supplier);
-        when(purchaseRepository.lockByCompanyAndId(company, 30L)).thenReturn(Optional.of(purchase));
+        lenient().when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        lenient().when(companyEntityLookup.requireSupplier(company, 10L)).thenReturn(supplier);
+        lenient().when(purchaseRepository.lockByCompanyAndId(company, 30L)).thenReturn(Optional.of(purchase));
         lenient().when(rawMaterialRepository.lockByCompanyAndId(company, 20L)).thenReturn(Optional.of(material));
         lenient().when(movementRepository.findByRawMaterialCompanyAndReferenceTypeAndReferenceId(eq(company), eq(com.bigbrightpaints.erp.modules.inventory.domain.InventoryReference.PURCHASE_RETURN), eq("PR-30")))
                 .thenReturn(List.of());
@@ -245,6 +245,26 @@ class PurchaseReturnServiceTest {
     }
 
     @Test
+    void previewPurchaseReturn_honorsExplicitReferenceAndReturnDate() {
+        purchase.setInvoiceNumber("PI-30");
+        when(allocationService.remainingReturnableQuantity(purchase, material)).thenReturn(new BigDecimal("3.0000"));
+
+        PurchaseReturnPreviewDto preview = purchaseReturnService.previewPurchaseReturn(new PurchaseReturnRequest(
+                10L,
+                30L,
+                20L,
+                BigDecimal.ONE,
+                new BigDecimal("5.00"),
+                " PR-EXPLICIT-30 ",
+                LocalDate.of(2026, 3, 11),
+                "Damaged"
+        ));
+
+        assertThat(preview.returnDate()).isEqualTo(LocalDate.of(2026, 3, 11));
+        assertThat(preview.referenceNumber()).isEqualTo("PR-EXPLICIT-30");
+    }
+
+    @Test
     void previewPurchaseReturn_rejectsPurchaseWithoutPostedJournal() {
         purchase.setJournalEntry(null);
 
@@ -262,6 +282,24 @@ class PurchaseReturnServiceTest {
                 .hasMessageContaining("Only posted purchases can be corrected through purchase return");
 
         verifyNoInteractions(accountingFacade);
+    }
+
+    @Test
+    void previewPurchaseReturn_rejectsPurchaseWithoutSupplierAssociation() {
+        purchase.setSupplier(null);
+
+        assertThatThrownBy(() -> purchaseReturnService.previewPurchaseReturn(new PurchaseReturnRequest(
+                10L,
+                30L,
+                20L,
+                BigDecimal.ONE,
+                new BigDecimal("5.00"),
+                "PR-30",
+                LocalDate.of(2026, 3, 9),
+                "Damaged"
+        )))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Purchase does not belong to the supplier");
     }
 
     @Test
@@ -326,6 +364,24 @@ class PurchaseReturnServiceTest {
         )))
                 .isInstanceOf(ApplicationException.class)
                 .hasMessageContaining("Purchase does not include raw material Solvent");
+    }
+
+    @Test
+    void previewPurchaseReturn_rejectsWhenPurchaseLinesLackLinkedMaterial() {
+        purchase.getLines().getFirst().setRawMaterial(null);
+
+        assertThatThrownBy(() -> purchaseReturnService.previewPurchaseReturn(new PurchaseReturnRequest(
+                10L,
+                30L,
+                20L,
+                BigDecimal.ONE,
+                new BigDecimal("5.00"),
+                "PR-30",
+                LocalDate.of(2026, 3, 9),
+                "Damaged"
+        )))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Purchase does not include raw material Resin");
     }
 
     @Test
@@ -537,6 +593,41 @@ class PurchaseReturnServiceTest {
                 .hasMessageContaining("Cannot return more than on-hand inventory for Resin");
 
         verify(allocationService, never()).applyPurchaseReturnQuantity(any(), any(), any());
+    }
+
+    @Test
+    void purchaseReturnHelpers_noopWhenReplayOrPostedPurchaseContextIsMissing() {
+        ReflectionTestUtils.invokeMethod(purchaseReturnService, "ensurePostedPurchase", new Object[]{null});
+
+        ReflectionTestUtils.invokeMethod(
+                purchaseReturnService,
+                "ensureLinkedCorrectionJournal",
+                company,
+                null,
+                new JournalEntry(),
+                "PI-NOOP"
+        );
+        ReflectionTestUtils.invokeMethod(
+                purchaseReturnService,
+                "ensureLinkedCorrectionJournal",
+                company,
+                journalEntryDto(null, "PR-NOOP", LocalDate.now(), "noop"),
+                new JournalEntry(),
+                "PI-NOOP"
+        );
+
+        JournalEntry sourceWithoutId = new JournalEntry();
+        ReflectionTestUtils.invokeMethod(
+                purchaseReturnService,
+                "ensureLinkedCorrectionJournal",
+                company,
+                journalEntryDto(999L, "PR-NOOP", LocalDate.now(), "noop"),
+                sourceWithoutId,
+                "PI-NOOP"
+        );
+
+        verify(journalEntryRepository, never()).findByCompanyAndId(any(), any());
+        verify(journalEntryRepository, never()).save(any());
     }
 
     private JournalEntryDto journalEntryDto(Long id, String reference, LocalDate entryDate, String memo) {

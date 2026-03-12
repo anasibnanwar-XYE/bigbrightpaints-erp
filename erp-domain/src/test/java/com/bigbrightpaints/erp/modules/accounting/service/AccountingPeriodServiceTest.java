@@ -738,6 +738,37 @@ class AccountingPeriodServiceTest {
     }
 
     @Test
+    void correctionLinkageHelpers_coverEmptyBlankAndCnReferencePaths() {
+        Company company = company(1L, "ACME");
+        AccountingPeriod period = openPeriod(company, 2026, 2);
+
+        when(journalEntryRepository.findByCompanyAndEntryDateBetweenOrderByEntryDateAsc(
+                company, period.getStartDate(), period.getEndDate())).thenReturn(List.of());
+
+        assertThat((Long) ReflectionTestUtils.invokeMethod(
+                service,
+                "countCorrectionLinkageGaps",
+                company,
+                period
+        )).isZero();
+
+        JournalEntry blankReference = new JournalEntry();
+        blankReference.setReferenceNumber("   ");
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "isCorrectionJournal", blankReference)).isFalse();
+
+        JournalEntry cnReference = new JournalEntry();
+        cnReference.setReferenceNumber(" cn-2201 ");
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "isCorrectionJournal", cnReference)).isTrue();
+
+        JournalEntry missingReason = new JournalEntry();
+        missingReason.setCorrectionType(com.bigbrightpaints.erp.modules.accounting.domain.JournalCorrectionType.REVERSAL);
+        missingReason.setCorrectionReason(" ");
+        missingReason.setSourceModule("SALES_RETURN");
+        missingReason.setSourceReference("SR-2201");
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "isMissingCorrectionLinkage", missingReason)).isTrue();
+    }
+
+    @Test
     void getMonthEndChecklist_ignoresCorrectionEntriesWithCompleteLinkage() {
         Company company = company(1L, "ACME");
         AccountingPeriod period = openPeriod(company, 2026, 2);
