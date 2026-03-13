@@ -202,71 +202,41 @@ class AccountingControllerJournalEndpointsTest {
     }
 
     @Test
-    void listSalesReturns_returnsAllCrnJournalEntriesWithoutControllerFiltering() {
+    void listSalesReturns_filtersOutCogsAndOrphanedCreditNotes() {
         AccountingService accountingService = mock(AccountingService.class);
         JournalEntryService journalEntryService = mock(JournalEntryService.class);
         AccountingController controller = newController(accountingService, journalEntryService, null);
-        JournalEntryDto salesReturn = new JournalEntryDto(
+        JournalEntryDto legacySalesReturn = journalEntry(
                 301L,
-                null,
                 "CRN-100",
-                LocalDate.of(2026, 3, 1),
-                "Sales return",
-                "POSTED",
+                11L,
                 null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                List.of(),
-                null,
-                null,
-                null,
-                null,
-                null,
-                null
-        );
-        JournalEntryDto cogsEntry = new JournalEntryDto(
+                "Sales return");
+        JournalEntryDto correctionLinkedSalesReturn = journalEntry(
                 302L,
+                "CRN-101",
                 null,
+                "SALES_RETURN",
+                "Correction-linked sales return");
+        JournalEntryDto cogsEntry = journalEntry(
+                303L,
                 "CRN-100-COGS-0",
-                LocalDate.of(2026, 3, 1),
-                "COGS reversal",
-                "POSTED",
                 null,
                 null,
+                "COGS reversal");
+        JournalEntryDto orphanedCreditNote = journalEntry(
+                304L,
+                "CRN-ORPHAN-1",
                 null,
                 null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                List.of(),
-                null,
-                null,
-                null,
-                null,
-                null,
-                null
-        );
+                "Orphaned credit note");
         when(journalEntryService.listJournalEntriesByReferencePrefix("CRN-"))
-                .thenReturn(List.of(salesReturn, cogsEntry));
+                .thenReturn(List.of(legacySalesReturn, correctionLinkedSalesReturn, cogsEntry, orphanedCreditNote));
 
         ApiResponse<List<JournalEntryDto>> body = controller.listSalesReturns().getBody();
 
         assertThat(body).isNotNull();
-        assertThat(body.data()).containsExactly(salesReturn, cogsEntry);
+        assertThat(body.data()).containsExactly(legacySalesReturn, correctionLinkedSalesReturn);
     }
 
     @Test
@@ -730,6 +700,40 @@ class AccountingControllerJournalEndpointsTest {
                 null,
                 null,
                 List.<JournalLineDto>of(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+    }
+
+    private JournalEntryDto journalEntry(Long id,
+                                         String referenceNumber,
+                                         Long dealerId,
+                                         String correctionReason,
+                                         String memo) {
+        return new JournalEntryDto(
+                id,
+                null,
+                referenceNumber,
+                LocalDate.of(2026, 3, 1),
+                memo,
+                "POSTED",
+                dealerId,
+                dealerId != null ? "Dealer " + dealerId : null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                correctionReason,
+                null,
+                List.of(),
                 null,
                 null,
                 null,

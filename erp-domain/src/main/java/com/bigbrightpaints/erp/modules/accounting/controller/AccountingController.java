@@ -894,8 +894,11 @@ public class AccountingController {
     @GetMapping("/sales/returns")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING','ROLE_SALES')")
     public ResponseEntity<ApiResponse<List<JournalEntryDto>>> listSalesReturns() {
-        return ResponseEntity.ok(ApiResponse.success("Sales returns",
-            journalEntryService.listJournalEntriesByReferencePrefix("CRN-")));
+        List<JournalEntryDto> salesReturns = journalEntryService.listJournalEntriesByReferencePrefix("CRN-")
+                .stream()
+                .filter(this::isSalesReturnCreditNote)
+                .toList();
+        return ResponseEntity.ok(ApiResponse.success("Sales returns", salesReturns));
     }
 
     @PostMapping("/sales/returns/preview")
@@ -931,6 +934,17 @@ public class AccountingController {
         return ResponseEntity.ok(ApiResponse.success(
                 "Accounting period updated",
                 accountingPeriodService.updatePeriod(periodId, request)));
+    }
+
+    private boolean isSalesReturnCreditNote(JournalEntryDto entry) {
+        if (entry == null || !StringUtils.hasText(entry.referenceNumber())) {
+            return false;
+        }
+        String normalizedReference = entry.referenceNumber().trim().toUpperCase();
+        if (!normalizedReference.startsWith("CRN-") || normalizedReference.contains("-COGS-")) {
+            return false;
+        }
+        return entry.dealerId() != null || "SALES_RETURN".equalsIgnoreCase(entry.correctionReason());
     }
 
     @PostMapping("/periods/{periodId}/close")

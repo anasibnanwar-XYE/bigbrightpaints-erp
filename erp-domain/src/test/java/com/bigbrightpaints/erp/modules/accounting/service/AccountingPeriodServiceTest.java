@@ -33,8 +33,10 @@ import com.bigbrightpaints.erp.modules.invoice.domain.InvoiceRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.GoodsReceiptStatus;
 import com.bigbrightpaints.erp.modules.purchasing.domain.GoodsReceiptRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
+import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
 import com.bigbrightpaints.erp.modules.reports.dto.TrialBalanceDto;
 import com.bigbrightpaints.erp.modules.reports.service.ReportService;
+import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -1155,6 +1157,24 @@ class AccountingPeriodServiceTest {
         return entry;
     }
 
+    private Dealer dealer(Company company, Long id, String code) {
+        Dealer dealer = new Dealer();
+        dealer.setCompany(company);
+        dealer.setCode(code);
+        dealer.setName(code + " Dealer");
+        ReflectionTestUtils.setField(dealer, "id", id);
+        return dealer;
+    }
+
+    private Supplier supplier(Company company, Long id, String code) {
+        Supplier supplier = new Supplier();
+        supplier.setCompany(company);
+        supplier.setCode(code);
+        supplier.setName(code + " Supplier");
+        ReflectionTestUtils.setField(supplier, "id", id);
+        return supplier;
+    }
+
     private PeriodCloseRequest pendingCloseRequest(Company company,
                                                    AccountingPeriod period,
                                                    Long requestId,
@@ -1193,7 +1213,7 @@ class AccountingPeriodServiceTest {
     }
 
     @Test
-    void countCorrectionLinkageGaps_countsReferenceOnlyReturnJournalsMissingMetadata() {
+    void countCorrectionLinkageGaps_ignoresLegacyReturnJournalsWhenDealerOrSupplierLinkExists() {
         Company company = company(1L, "ACME");
         AccountingPeriod period = openPeriod(company, 2026, 3);
 
@@ -1202,32 +1222,47 @@ class AccountingPeriodServiceTest {
         salesReturn.setReferenceNumber("CRN-INV-REF-ONLY");
         salesReturn.setEntryDate(period.getStartDate().plusDays(1));
         salesReturn.setStatus("POSTED");
+        salesReturn.setDealer(dealer(company, 10L, "DLR-10"));
 
         JournalEntry purchaseReturn = new JournalEntry();
         purchaseReturn.setCompany(company);
         purchaseReturn.setReferenceNumber("PRN-RMP-REF-ONLY");
         purchaseReturn.setEntryDate(period.getStartDate().plusDays(2));
         purchaseReturn.setStatus("POSTED");
+        purchaseReturn.setSupplier(supplier(company, 20L, "SUP-20"));
 
-        JournalEntry completeCorrection = new JournalEntry();
-        completeCorrection.setCompany(company);
-        completeCorrection.setReferenceNumber("DN-2001");
-        completeCorrection.setEntryDate(period.getStartDate().plusDays(3));
-        completeCorrection.setStatus("POSTED");
-        completeCorrection.setCorrectionType(com.bigbrightpaints.erp.modules.accounting.domain.JournalCorrectionType.REVERSAL);
-        completeCorrection.setCorrectionReason("PRICE_ADJUSTMENT");
-        completeCorrection.setSourceModule("PURCHASING");
-        completeCorrection.setSourceReference("RMP-2001");
+        JournalEntry malformedCorrection = new JournalEntry();
+        malformedCorrection.setCompany(company);
+        malformedCorrection.setReferenceNumber("DN-2001");
+        malformedCorrection.setEntryDate(period.getStartDate().plusDays(3));
+        malformedCorrection.setStatus("POSTED");
+        malformedCorrection.setCorrectionType(com.bigbrightpaints.erp.modules.accounting.domain.JournalCorrectionType.REVERSAL);
+        malformedCorrection.setCorrectionReason("PRICE_ADJUSTMENT");
+        malformedCorrection.setSourceModule("PURCHASING");
 
         when(journalEntryRepository.findByCompanyAndEntryDateBetweenOrderByEntryDateAsc(
                 company,
                 period.getStartDate(),
                 period.getEndDate()
-        )).thenReturn(List.of(salesReturn, purchaseReturn, completeCorrection));
+        )).thenReturn(List.of(salesReturn, purchaseReturn, malformedCorrection));
 
         long gaps = ReflectionTestUtils.invokeMethod(service, "countCorrectionLinkageGaps", company, period);
 
-        assertThat(gaps).isEqualTo(2L);
+        assertThat(gaps).isEqualTo(1L);
+    }
+
+    @Test
+    void isMissingCorrectionLinkage_flagsLegacyReturnJournalsWithoutDealerOrSupplierAssociation() {
+        JournalEntry orphanedSalesReturn = new JournalEntry();
+        orphanedSalesReturn.setReferenceNumber("CRN-ORPHAN-1");
+
+        JournalEntry orphanedPurchaseReturn = new JournalEntry();
+        orphanedPurchaseReturn.setReferenceNumber("PRN-ORPHAN-1");
+
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "isMissingCorrectionLinkage", orphanedSalesReturn))
+                .isTrue();
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "isMissingCorrectionLinkage", orphanedPurchaseReturn))
+                .isTrue();
     }
 
     private com.bigbrightpaints.erp.modules.accounting.dto.GstReconciliationDto gstReconciliation(BigDecimal netTotal) {

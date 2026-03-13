@@ -108,7 +108,7 @@ The final-hardening package did not rely on narrative claims alone. It left repe
 
 ### 1. Repeatable seeded runtime
 
-- Canonical reset command: `bash /home/realnigga/Desktop/Mission-control/scripts/reset_final_validation_runtime.sh`
+- Canonical reset command: `bash scripts/reset_final_validation_runtime.sh`
 - Runtime resets the compose stack on mission-safe ports, rebuilds the app with `prod,flyway-v2,mock,validation-seed`, recreates the DB volume, and reseeds deterministic actors.
 - Seeded actors covered the main proof surfaces: `MOCK` admin/accounting/sales, factory, and dealer; `RIVAL` admin/dealer; and a platform `SUPER_ADMIN` actor.
 
