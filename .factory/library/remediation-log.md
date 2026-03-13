@@ -45,3 +45,21 @@ Track cleanup, duplicate-truth removals, dead-code retirement, and production-re
 - `GoodsReceiptService` — must stay stock-truth only and replay-safe.
 - `PurchaseInvoiceEngine` — needs clean GRN linkage without overlapping AP truth.
 - `InventoryAccountingEventListener` — duplicate-posting and side-channel accounting risk must be contained early.
+
+## 2026-03-08 — `o2c-truth.dealer-credit-and-proforma-boundary`
+
+- **Area:** dealer onboarding plus O2C commercial boundary handling in `DealerService` and `SalesCoreEngine`
+- **Risk addressed:** proforma creation was still reserving stock immediately, cash orders were treated like credit exposure, and shortage handling created one-off factory tasks without a clean refresh path.
+- **Cleanup/remediation performed:** kept dealer onboarding on the tenant-safe `DealerService` provisioning flow, made credit posture use outstanding plus pending order exposure for credit-backed proformas, normalized payment modes to explicit `CREDIT`/`CASH`/`HYBRID`, removed in-create/update reservation side effects, and replaced duplicate shortage task creation with refreshable production-requirement syncing.
+- **Duplicate-truth or dead-code impact:** retired the old create/update shortage branch that reserved inventory during commercial proforma edits and removed the separate pending-task cleanup path that no longer matched the new requirement-sync behavior.
+- **Evidence:** `DealerServiceTest`, `SalesServiceTest`, `ErpInvariantsSuiteIT`, and the broader `mvn -T8 test -Pgate-fast -Djacoco.skip=true` gate all pass with the new commercial-only proforma flow.
+- **Follow-up:** dispatch/final-invoicing packet should keep using dispatch-time reservation/slip creation as the fulfillment boundary while preserving the new payment-mode field and production-requirement semantics.
+
+## 2026-03-08 — `o2c-truth.phase-one-cost-carry-forward`
+
+- **Area:** finished-goods dispatch valuation, COGS/profitability carry-forward, and report parity around reserved finished goods.
+- **Risk addressed:** phase-one manufacturing already carried production plus packaging cost into `FinishedGoodBatch.unitCost`, but dispatch still re-derived cost from the active costing method, allowing weighted-average blending to override the reserved batch's carried cost and misstate COGS/profitability.
+- **Cleanup/remediation performed:** changed dispatch valuation to prefer the reserved/dispatched batch unit cost whenever a concrete batch is known, preserved weighted-average fallback only for non-batch paths, added end-to-end coverage proving packaging carry-forward reaches dispatch/P&L, and aligned report inventory low-stock parity so reserved-over-stock drift is no longer hidden by reserved-quantity clamping.
+- **Duplicate-truth or dead-code impact:** removed the conflicting dispatch-side costing branch that recomputed COGS from period costing policy even after reservation had already chosen a concrete batch with an actual carried cost.
+- **Evidence:** `FinishedGoodsServiceTest#confirmDispatchUsesReservedBatchActualCostWhenPeriodDefaultsToWeightedAverage`, `FinishedGoodsServiceTest#dispatchUsesReservedBatchActualCostUnderLegacyWeightedAverageAliasUnderTurkishLocale`, `FactoryPackagingCostingIT`, `ReportInventoryParityIT`, `InventorySmokeIT`, `ErpInvariantsSuiteIT`, and `mvn -T8 test -Pgate-fast -Djacoco.skip=true` all pass.
+- **Follow-up:** future costing packets should keep period-close or revaluation adjustments updating batch truth upstream instead of introducing new dispatch-time costing branches.

@@ -166,7 +166,62 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void dispatchUsesLegacyWeightedAverageAliasUnderTurkishLocale() {
+    void confirmDispatchUsesReservedBatchActualCostWhenPeriodDefaultsToWeightedAverage() {
+        Company company = seedCompany("WAC-CONFIRM-BATCH-ACTUAL");
+        FinishedGood fg = createFinishedGood(company, "FG-WAC-CONFIRM-BATCH-ACTUAL", new BigDecimal("20"), new BigDecimal("5"), "WAC");
+
+        FinishedGoodBatch reservedBatch = createBatch(
+                fg,
+                "BATCH-WAC-CONFIRM-ACTUAL-A",
+                new BigDecimal("10"),
+                new BigDecimal("5"),
+                new BigDecimal("20"));
+        reservedBatch.setManufacturedAt(Instant.now().minusSeconds(7200));
+        reservedBatch = finishedGoodBatchRepository.saveAndFlush(reservedBatch);
+
+        FinishedGoodBatch otherBatch = createBatch(
+                fg,
+                "BATCH-WAC-CONFIRM-ACTUAL-B",
+                new BigDecimal("10"),
+                new BigDecimal("10"),
+                new BigDecimal("40"));
+        otherBatch.setManufacturedAt(Instant.now().minusSeconds(3600));
+        finishedGoodBatchRepository.saveAndFlush(otherBatch);
+
+        SalesOrder order = createOrder(
+                company,
+                "SO-WAC-CBA-" + UUID.randomUUID().toString().substring(0, 8),
+                fg.getProductCode(),
+                new BigDecimal("5"));
+        PackagingSlip slip = createSlip(company, order, "RESERVED", reservedBatch, new BigDecimal("5"));
+        createReservation(order, fg, reservedBatch, new BigDecimal("5"));
+
+        PackagingSlipLine line = slip.getLines().getFirst();
+        DispatchConfirmationRequest request = new DispatchConfirmationRequest(
+                slip.getId(),
+                List.of(new DispatchConfirmationRequest.LineConfirmation(line.getId(), new BigDecimal("5"), null)),
+                null,
+                null,
+                null);
+
+        finishedGoodsService.confirmDispatch(request, "tester");
+
+        PackagingSlip refreshedSlip = packagingSlipRepository.findByIdAndCompany(slip.getId(), company).orElseThrow();
+        assertThat(refreshedSlip.getLines().getFirst().getUnitCost()).isEqualByComparingTo(new BigDecimal("20"));
+
+        InventoryMovement dispatchMovement = inventoryMovementRepository
+                .findByReferenceTypeAndReferenceIdOrderByCreatedAtAsc(InventoryReference.SALES_ORDER, order.getId().toString())
+                .stream()
+                .filter(mv -> "DISPATCH".equalsIgnoreCase(mv.getMovementType()))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(dispatchMovement.getUnitCost()).isEqualByComparingTo(new BigDecimal("20"));
+        assertThat(dispatchMovement.getUnitCost()).isNotEqualByComparingTo(new BigDecimal("30"));
+    }
+
+    @Test
+    void dispatchUsesReservedBatchActualCostUnderLegacyWeightedAverageAliasUnderTurkishLocale() {
         Locale previous = Locale.getDefault();
         Locale.setDefault(Locale.forLanguageTag("tr-TR"));
         try {
@@ -205,7 +260,7 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
                     .findFirst()
                     .orElseThrow();
 
-            assertThat(dispatchMovement.getUnitCost()).isEqualByComparingTo(new BigDecimal("30"));
+            assertThat(dispatchMovement.getUnitCost()).isEqualByComparingTo(new BigDecimal("20"));
         } finally {
             Locale.setDefault(previous);
         }
@@ -486,6 +541,7 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
     @Test
     void stockSummaryUsesBatchValuationUnitCostForFifoGoods() {
         Company company = seedCompany("FIFO-PARITY");
+        upsertCurrentPeriodCostingMethod(company, CostingMethod.FIFO);
         BigDecimal baselineValue = inventoryValuationService.currentSnapshot(company).totalValue();
         FinishedGood fg = createFinishedGood(company, "FG-FIFO-PARITY", new BigDecimal("5"), BigDecimal.ZERO, "FIFO");
         FinishedGoodBatch older = createBatch(fg, "FIFO-PARITY-OLD", new BigDecimal("2"), new BigDecimal("2"), new BigDecimal("5"));
@@ -1135,6 +1191,77 @@ class FinishedGoodsServiceTest extends AbstractIntegrationTest {
         assertThat(followUpBackorder.getLines()).hasSize(1);
         assertThat(followUpBackorder.getLines().getFirst().getOrderedQuantity())
                 .isEqualByComparingTo(new BigDecimal("2"));
+    }
+
+    @Test
+    void confirmDispatch_trimsLogisticsMetadataAndReturnsChallanArtifacts() {
+        Company company = seedCompany("DISPATCH-LOGISTICS");
+        FinishedGood fg = createFinishedGood(company, "FG-LOGISTICS", new BigDecimal("5"), new BigDecimal("5"), "FIFO");
+        FinishedGoodBatch batch = createBatch(fg, "BATCH-LOGISTICS", new BigDecimal("5"), BigDecimal.ZERO, new BigDecimal("9"));
+        SalesOrder order = createOrder(company, "SO-LOGISTICS-" + UUID.randomUUID(), fg.getProductCode(), new BigDecimal("5"));
+        PackagingSlip slip = createSlip(company, order, "RESERVED", batch, new BigDecimal("5"));
+        createReservation(order, fg, batch, new BigDecimal("5"));
+
+        PackagingSlipLine line = slip.getLines().getFirst();
+        DispatchConfirmationRequest request = new DispatchConfirmationRequest(
+                slip.getId(),
+                List.of(new DispatchConfirmationRequest.LineConfirmation(line.getId(), new BigDecimal("5"), "delivered")),
+                " delivered successfully ",
+                "tester",
+                null,
+                "  FastMove Logistics  ",
+                "  Ayaan  ",
+                "  MH12AB1234  ",
+                "  LR-7788  ");
+
+        var response = finishedGoodsService.confirmDispatch(request, "tester");
+
+        PackagingSlip refreshed = packagingSlipRepository.findByIdAndCompany(slip.getId(), company).orElseThrow();
+        assertThat(refreshed.getStatus()).isEqualTo("DISPATCHED");
+        assertThat(refreshed.getTransporterName()).isEqualTo("FastMove Logistics");
+        assertThat(refreshed.getDriverName()).isEqualTo("Ayaan");
+        assertThat(refreshed.getVehicleNumber()).isEqualTo("MH12AB1234");
+        assertThat(refreshed.getChallanReference()).isEqualTo("LR-7788");
+        assertThat(response.transporterName()).isEqualTo("FastMove Logistics");
+        assertThat(response.driverName()).isEqualTo("Ayaan");
+        assertThat(response.vehicleNumber()).isEqualTo("MH12AB1234");
+        assertThat(response.challanReference()).isEqualTo("LR-7788");
+        assertThat(response.deliveryChallanNumber()).isEqualTo("DC-" + refreshed.getSlipNumber());
+        assertThat(response.deliveryChallanPdfPath())
+                .isEqualTo("/api/v1/dispatch/slip/" + refreshed.getId() + "/challan/pdf");
+    }
+
+    @Test
+    void confirmDispatch_withZeroShipmentLeavesSlipPendingStockAndClearsBlankLogistics() {
+        Company company = seedCompany("DISPATCH-ZERO-SHIP");
+        FinishedGood fg = createFinishedGood(company, "FG-ZERO-SHIP", new BigDecimal("5"), new BigDecimal("5"), "FIFO");
+        FinishedGoodBatch batch = createBatch(fg, "BATCH-ZERO-SHIP", new BigDecimal("5"), BigDecimal.ZERO, new BigDecimal("9"));
+        SalesOrder order = createOrder(company, "SO-ZERO-SHIP-" + UUID.randomUUID(), fg.getProductCode(), new BigDecimal("5"));
+        PackagingSlip slip = createSlip(company, order, "RESERVED", batch, new BigDecimal("5"));
+        createReservation(order, fg, batch, new BigDecimal("5"));
+
+        PackagingSlipLine line = slip.getLines().getFirst();
+        DispatchConfirmationRequest request = new DispatchConfirmationRequest(
+                slip.getId(),
+                List.of(new DispatchConfirmationRequest.LineConfirmation(line.getId(), BigDecimal.ZERO, null)),
+                "nothing shipped",
+                "tester",
+                null,
+                "   ",
+                "   ",
+                "   ",
+                "   ");
+
+        var response = finishedGoodsService.confirmDispatch(request, "tester");
+
+        PackagingSlip refreshed = packagingSlipRepository.findByIdAndCompany(slip.getId(), company).orElseThrow();
+        assertThat(refreshed.getStatus()).isEqualTo("PENDING_STOCK");
+        assertThat(refreshed.getTransporterName()).isNull();
+        assertThat(refreshed.getDriverName()).isNull();
+        assertThat(refreshed.getVehicleNumber()).isNull();
+        assertThat(refreshed.getChallanReference()).isNull();
+        assertThat(response.totalShippedAmount()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(response.deliveryChallanNumber()).isEqualTo("DC-" + refreshed.getSlipNumber());
     }
 
     @Test
