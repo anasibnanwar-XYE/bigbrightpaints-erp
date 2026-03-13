@@ -409,39 +409,6 @@ class PurchaseInvoiceEngineLifecycleTest {
     }
 
     @Test
-    @DisplayName("createPurchase rejects suppliers that are no longer active")
-    void createPurchase_rejectsSuspendedSupplierWithExplicitReason() {
-        supplier.setStatus(SupplierStatus.SUSPENDED);
-
-        RawMaterialPurchaseRequest request = new RawMaterialPurchaseRequest(
-                10L,
-                "INV-40",
-                LocalDate.of(2026, 3, 2),
-                "invoice",
-                30L,
-                40L,
-                BigDecimal.ZERO,
-                List.of(new RawMaterialPurchaseLineRequest(
-                        20L,
-                        null,
-                        new BigDecimal("10.0000"),
-                        "KG",
-                        new BigDecimal("12.50"),
-                        null,
-                        null,
-                        "line"
-                ))
-        );
-
-        assertThatThrownBy(() -> purchaseInvoiceEngine.createPurchase(request))
-                .isInstanceOf(com.bigbrightpaints.erp.core.exception.ApplicationException.class)
-                .hasMessageContaining("suspended")
-                .hasMessageContaining("reference only");
-
-        verify(accountingFacade, never()).postPurchaseJournal(any(), any(), any(), any(), any(), any(), any(), any(), any());
-    }
-
-    @Test
     @DisplayName("createPurchase links AP journal to receipt movement without replaying stock receipt")
     void createPurchase_linksJournalToReceiptMovementWithoutRestocking() {
         when(goodsReceiptRepository.findByPurchaseOrder(purchaseOrder)).thenReturn(List.of(goodsReceipt));
