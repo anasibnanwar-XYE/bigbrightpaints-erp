@@ -3701,7 +3701,7 @@ class SalesServiceTest {
         assertEquals("PENDING_PRODUCTION", dto.status());
         verify(finishedGoodsService, never()).releaseReservationsForOrder(4301L);
         verify(finishedGoodsService, never()).reserveForOrder(existing);
-        verify(factoryTaskRepository, org.mockito.Mockito.times(2)).saveAll(any());
+        verify(factoryTaskRepository).saveAll(any());
     }
 
     @Test
