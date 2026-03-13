@@ -1105,6 +1105,172 @@ class SalesReturnServiceTest {
     }
 
     @Test
+    void processReturn_allocatesLegacyBalanceAfterSkippingFullyReturnedAndUnrequestedLines() {
+        Dealer dealer = new Dealer();
+        dealer.setCompany(company);
+        dealer.setName("Legacy Partner");
+        Account receivable = new Account();
+        setField(receivable, "id", 73L);
+        dealer.setReceivableAccount(receivable);
+        setField(dealer, "id", 13L);
+
+        SalesOrder salesOrder = new SalesOrder();
+        setField(salesOrder, "id", 503L);
+
+        Invoice invoice = new Invoice();
+        invoice.setCompany(company);
+        invoice.setDealer(dealer);
+        invoice.setSalesOrder(salesOrder);
+        invoice.setInvoiceNumber("INV-LEGACY-PROCESS");
+        attachPostedJournal(invoice, 906L);
+        setField(invoice, "id", 125L);
+
+        InvoiceLine firstLine = new InvoiceLine();
+        firstLine.setInvoice(invoice);
+        firstLine.setProductCode("FG-ALLOC");
+        firstLine.setQuantity(BigDecimal.ONE);
+        firstLine.setUnitPrice(new BigDecimal("100"));
+        firstLine.setTaxableAmount(new BigDecimal("100"));
+        firstLine.setTaxAmount(BigDecimal.ZERO);
+        firstLine.setLineTotal(new BigDecimal("100"));
+        setField(firstLine, "id", 221L);
+        invoice.getLines().add(firstLine);
+
+        InvoiceLine secondLine = new InvoiceLine();
+        secondLine.setInvoice(invoice);
+        secondLine.setProductCode("FG-ALLOC");
+        secondLine.setQuantity(new BigDecimal("3"));
+        secondLine.setUnitPrice(new BigDecimal("100"));
+        secondLine.setTaxableAmount(new BigDecimal("300"));
+        secondLine.setTaxAmount(BigDecimal.ZERO);
+        secondLine.setLineTotal(new BigDecimal("300"));
+        setField(secondLine, "id", 222L);
+        invoice.getLines().add(secondLine);
+
+        InvoiceLine unrelatedLine = new InvoiceLine();
+        unrelatedLine.setInvoice(invoice);
+        unrelatedLine.setProductCode("FG-OTHER");
+        unrelatedLine.setQuantity(BigDecimal.ONE);
+        unrelatedLine.setUnitPrice(new BigDecimal("25"));
+        unrelatedLine.setTaxableAmount(new BigDecimal("25"));
+        unrelatedLine.setTaxAmount(BigDecimal.ZERO);
+        unrelatedLine.setLineTotal(new BigDecimal("25"));
+        setField(unrelatedLine, "id", 223L);
+        invoice.getLines().add(unrelatedLine);
+
+        FinishedGood allocFg = new FinishedGood();
+        allocFg.setCompany(company);
+        allocFg.setProductCode("FG-ALLOC");
+        allocFg.setValuationAccountId(511L);
+        allocFg.setCogsAccountId(611L);
+        allocFg.setRevenueAccountId(711L);
+        setField(allocFg, "id", 321L);
+
+        FinishedGood otherFg = new FinishedGood();
+        otherFg.setCompany(company);
+        otherFg.setProductCode("FG-OTHER");
+        setField(otherFg, "id", 322L);
+
+        InventoryMovement dispatchMovement = new InventoryMovement();
+        dispatchMovement.setFinishedGood(allocFg);
+        dispatchMovement.setReferenceType(InventoryReference.SALES_ORDER);
+        dispatchMovement.setReferenceId("503");
+        dispatchMovement.setMovementType("DISPATCH");
+        dispatchMovement.setQuantity(new BigDecimal("4"));
+        dispatchMovement.setUnitCost(new BigDecimal("50"));
+
+        InventoryMovement legacyAlloc = new InventoryMovement();
+        legacyAlloc.setFinishedGood(allocFg);
+        legacyAlloc.setReferenceType("SALES_RETURN");
+        legacyAlloc.setReferenceId("INV-LEGACY-PROCESS");
+        legacyAlloc.setQuantity(new BigDecimal("2"));
+
+        InventoryMovement fullyReturnedLine = new InventoryMovement();
+        fullyReturnedLine.setFinishedGood(allocFg);
+        fullyReturnedLine.setReferenceType("SALES_RETURN");
+        fullyReturnedLine.setReferenceId("INV-LEGACY-PROCESS:221");
+        fullyReturnedLine.setQuantity(BigDecimal.ONE);
+
+        InventoryMovement unrelatedProductLineReturned = new InventoryMovement();
+        unrelatedProductLineReturned.setFinishedGood(otherFg);
+        unrelatedProductLineReturned.setReferenceType("SALES_RETURN");
+        unrelatedProductLineReturned.setReferenceId("INV-LEGACY-PROCESS:223");
+        unrelatedProductLineReturned.setQuantity(BigDecimal.ONE);
+
+        InventoryMovement unknownLineReturned = new InventoryMovement();
+        unknownLineReturned.setFinishedGood(otherFg);
+        unknownLineReturned.setReferenceType("SALES_RETURN");
+        unknownLineReturned.setReferenceId("INV-LEGACY-PROCESS:999");
+        unknownLineReturned.setQuantity(BigDecimal.ONE);
+
+        when(invoiceRepository.lockByCompanyAndId(company, 125L)).thenReturn(Optional.of(invoice));
+        when(finishedGoodRepository.lockByCompanyAndProductCode(company, "FG-ALLOC")).thenReturn(Optional.of(allocFg));
+        when(finishedGoodRepository.lockByCompanyAndId(company, 321L)).thenReturn(Optional.of(allocFg));
+        when(finishedGoodRepository.findByCompanyAndId(company, 321L)).thenReturn(Optional.of(allocFg));
+        when(finishedGoodRepository.save(any(FinishedGood.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(finishedGoodBatchRepository.save(any(FinishedGoodBatch.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(batchNumberService.nextFinishedGoodBatchCode(any(), any())).thenReturn("RET-BATCH-ALLOC");
+        when(inventoryMovementRepository.save(any(InventoryMovement.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(inventoryMovementRepository.findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
+                eq(company),
+                eq(InventoryReference.SALES_ORDER),
+                eq("503"))
+        ).thenReturn(List.of(dispatchMovement));
+        when(inventoryMovementRepository.findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdOrderByCreatedAtAsc(
+                eq(company),
+                eq("SALES_RETURN"),
+                eq("INV-LEGACY-PROCESS"))
+        ).thenReturn(List.of(legacyAlloc));
+        when(inventoryMovementRepository.findByFinishedGood_CompanyAndReferenceTypeAndReferenceIdStartingWithOrderByCreatedAtAsc(
+                eq(company),
+                eq("SALES_RETURN"),
+                eq("INV-LEGACY-PROCESS:"))
+        ).thenReturn(List.of(fullyReturnedLine, unrelatedProductLineReturned, unknownLineReturned));
+
+        when(accountingFacade.postSalesReturn(
+                eq(dealer.getId()),
+                eq("INV-LEGACY-PROCESS"),
+                anyMap(),
+                any(BigDecimal.class),
+                eq("Legacy process allocation")
+        )).thenReturn(stubEntry(1300L));
+        when(accountingFacade.postInventoryAdjustment(
+                anyString(),
+                anyString(),
+                anyLong(),
+                anyMap(),
+                anyBoolean(),
+                anyBoolean(),
+                anyString())
+        ).thenReturn(stubEntry(1301L));
+
+        JournalEntryDto result = salesReturnService.processReturn(new SalesReturnRequest(
+                125L,
+                "Legacy process allocation",
+                List.of(new SalesReturnRequest.ReturnLine(222L, BigDecimal.ONE))
+        ));
+
+        assertThat(result.id()).isEqualTo(1300L);
+        verify(accountingFacade).postSalesReturn(
+                eq(dealer.getId()),
+                eq("INV-LEGACY-PROCESS"),
+                anyMap(),
+                argThat(total -> total.compareTo(new BigDecimal("100")) == 0),
+                eq("Legacy process allocation")
+        );
+        verify(accountingFacade).postInventoryAdjustment(
+                eq("SALES_RETURN_COGS"),
+                eq("CRN-INV-LEGACY-PROCESS-COGS-0"),
+                eq(611L),
+                argThat(lines -> lines.containsKey(511L)
+                        && new BigDecimal("50").compareTo(lines.get(511L)) == 0),
+                eq(true),
+                eq(false),
+                contains("COGS reversal")
+        );
+    }
+
+    @Test
     void processReturn_replaySkipsRestockAndReusesAccountingReplay() {
         Dealer dealer = new Dealer();
         dealer.setCompany(company);

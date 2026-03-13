@@ -240,6 +240,24 @@ class AccountingControllerJournalEndpointsTest {
     }
 
     @Test
+    void listSalesReturns_filtersNullBlankAndNonCrnEntries() {
+        AccountingService accountingService = mock(AccountingService.class);
+        JournalEntryService journalEntryService = mock(JournalEntryService.class);
+        AccountingController controller = newController(accountingService, journalEntryService, null);
+        JournalEntryDto blankReference = journalEntry(305L, "   ", 12L, null, "Blank reference");
+        JournalEntryDto nonCrnReference = journalEntry(306L, "DN-200", 12L, "SALES_RETURN", "Wrong prefix");
+        JournalEntryDto validSalesReturn = journalEntry(307L, "CRN-200", 12L, null, "Valid sales return");
+
+        when(journalEntryService.listJournalEntriesByReferencePrefix("CRN-"))
+                .thenReturn(java.util.Arrays.asList(null, blankReference, nonCrnReference, validSalesReturn));
+
+        ApiResponse<List<JournalEntryDto>> body = controller.listSalesReturns().getBody();
+
+        assertThat(body).isNotNull();
+        assertThat(body.data()).containsExactly(validSalesReturn);
+    }
+
+    @Test
     void previewSalesReturn_delegatesToSalesReturnService() {
         AccountingService accountingService = mock(AccountingService.class);
         SalesReturnService salesReturnService = mock(SalesReturnService.class);
