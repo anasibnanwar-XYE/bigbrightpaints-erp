@@ -16,9 +16,11 @@ import com.bigbrightpaints.erp.modules.accounting.service.GstService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.inventory.domain.InventoryType;
+import com.bigbrightpaints.erp.modules.inventory.domain.InventoryReference;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterial;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatch;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialBatchRepository;
+import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovement;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialMovementRepository;
 import com.bigbrightpaints.erp.modules.inventory.domain.RawMaterialRepository;
 import com.bigbrightpaints.erp.modules.inventory.service.RawMaterialService;
@@ -33,6 +35,7 @@ import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchase;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseLine;
 import com.bigbrightpaints.erp.modules.purchasing.domain.RawMaterialPurchaseRepository;
 import com.bigbrightpaints.erp.modules.purchasing.domain.Supplier;
+import com.bigbrightpaints.erp.modules.purchasing.dto.PurchaseReturnPreviewDto;
 import com.bigbrightpaints.erp.modules.purchasing.dto.PurchaseReturnRequest;
 import com.bigbrightpaints.erp.modules.purchasing.dto.RawMaterialPurchaseLineRequest;
 import com.bigbrightpaints.erp.modules.purchasing.dto.RawMaterialPurchaseRequest;
@@ -59,6 +62,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 import static org.mockito.Mockito.lenient;
@@ -144,6 +148,7 @@ class PurchasingServiceTest {
         supplier.setCode("SUP001");
         supplier.setName("Test Supplier");
         supplier.setCompany(company);
+        supplier.setStatus("ACTIVE");
         supplier.setPayableAccount(payableAccount);
 
         rawMaterial = new RawMaterial();
@@ -156,6 +161,7 @@ class PurchasingServiceTest {
 
         lenient().when(referenceNumberService.purchaseReference(any(), any(), any())).thenReturn("RMP-TEST-0001");
         lenient().when(referenceNumberService.purchaseReturnReference(any(), any())).thenReturn("PRN-TEST-0001");
+        lenient().when(journalEntryRepository.findByCompanyAndId(any(), anyLong())).thenReturn(Optional.empty());
     }
 
     @Test
@@ -285,13 +291,85 @@ class PurchasingServiceTest {
     }
 
     @Test
+    @DisplayName("listPurchases with supplier filter delegates to invoice service overload")
+    void listPurchases_supplierFilter_delegatesToInvoiceService() {
+        PurchaseInvoiceService invoiceService = mock(PurchaseInvoiceService.class);
+        ReflectionTestUtils.setField(purchasingService, "purchaseInvoiceService", invoiceService);
+
+        RawMaterialPurchaseResponse filtered = new RawMaterialPurchaseResponse(
+                301L,
+                null,
+                "PINV-301",
+                LocalDate.of(2026, 3, 1),
+                BigDecimal.TEN,
+                BigDecimal.ZERO,
+                BigDecimal.TEN,
+                "POSTED",
+                "memo",
+                10L,
+                "SUP001",
+                "Test Supplier",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                List.of(),
+                null,
+                List.of()
+        );
+        when(invoiceService.listPurchases(10L)).thenReturn(List.of(filtered));
+
+        assertThat(purchasingService.listPurchases(10L)).containsExactly(filtered);
+        verify(invoiceService).listPurchases(10L);
+    }
+
+    @Test
+    @DisplayName("previewPurchaseReturn delegates to purchase return service")
+    void previewPurchaseReturn_delegatesToPurchaseReturnService() {
+        PurchaseReturnService purchaseReturnService = mock(PurchaseReturnService.class);
+        ReflectionTestUtils.setField(purchasingService, "purchaseReturnService", purchaseReturnService);
+
+        PurchaseReturnRequest request = new PurchaseReturnRequest(
+                10L,
+                40L,
+                20L,
+                BigDecimal.valueOf(5),
+                BigDecimal.valueOf(5),
+                null,
+                null,
+                "Preview"
+        );
+        PurchaseReturnPreviewDto preview = new PurchaseReturnPreviewDto(
+                40L,
+                "PINV-040",
+                20L,
+                "Test Material",
+                BigDecimal.valueOf(5),
+                BigDecimal.valueOf(5),
+                BigDecimal.valueOf(25),
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                LocalDate.of(2026, 3, 6),
+                "PRN-040"
+        );
+        when(purchaseReturnService.previewPurchaseReturn(request)).thenReturn(preview);
+
+        assertThat(purchasingService.previewPurchaseReturn(request)).isSameAs(preview);
+        verify(purchaseReturnService).previewPurchaseReturn(request);
+    }
+
+    @Test
     @DisplayName("recordPurchaseReturn uses atomic deduction to prevent negative stock")
     void recordPurchaseReturn_insufficientStock_throws() {
+        activateSupplier();
         when(companyContextService.requireCurrentCompany()).thenReturn(company);
         when(companyEntityLookup.requireSupplier(company, 10L)).thenReturn(supplier);
         RawMaterialPurchase purchase = new RawMaterialPurchase();
         ReflectionTestUtils.setField(purchase, "id", 30L);
         purchase.setSupplier(supplier);
+        attachPostedJournal(purchase, 930L);
         purchase.setTotalAmount(BigDecimal.valueOf(1000));
         purchase.setOutstandingAmount(BigDecimal.valueOf(1000));
         RawMaterialPurchaseLine purchaseLine = new RawMaterialPurchaseLine();
@@ -329,11 +407,13 @@ class PurchasingServiceTest {
     @Test
     @DisplayName("recordPurchaseReturn succeeds with atomic deduction when stock sufficient")
     void recordPurchaseReturn_sufficientStock_succeeds() {
+        activateSupplier();
         when(companyContextService.requireCurrentCompany()).thenReturn(company);
         when(companyEntityLookup.requireSupplier(company, 10L)).thenReturn(supplier);
         RawMaterialPurchase purchase = new RawMaterialPurchase();
         ReflectionTestUtils.setField(purchase, "id", 40L);
         purchase.setSupplier(supplier);
+        attachPostedJournal(purchase, 931L);
         purchase.setTotalAmount(BigDecimal.valueOf(100));
         purchase.setOutstandingAmount(BigDecimal.valueOf(100));
         RawMaterialPurchaseLine purchaseLine = new RawMaterialPurchaseLine();
@@ -387,11 +467,13 @@ class PurchasingServiceTest {
     @Test
     @DisplayName("recordPurchaseReturn rejects quantity above remaining returnable quantity")
     void recordPurchaseReturn_quantityExceedsRemaining_throws() {
+        activateSupplier();
         when(companyContextService.requireCurrentCompany()).thenReturn(company);
         when(companyEntityLookup.requireSupplier(company, 10L)).thenReturn(supplier);
         RawMaterialPurchase purchase = new RawMaterialPurchase();
         ReflectionTestUtils.setField(purchase, "id", 50L);
         purchase.setSupplier(supplier);
+        attachPostedJournal(purchase, 932L);
         purchase.setTotalAmount(BigDecimal.valueOf(100));
         purchase.setOutstandingAmount(BigDecimal.valueOf(100));
         RawMaterialPurchaseLine purchaseLine = new RawMaterialPurchaseLine();
@@ -428,11 +510,13 @@ class PurchasingServiceTest {
     @Test
     @DisplayName("recordPurchaseReturn rejects return when amount exceeds outstanding payable")
     void recordPurchaseReturn_amountExceedsOutstanding_throws() {
+        activateSupplier();
         when(companyContextService.requireCurrentCompany()).thenReturn(company);
         when(companyEntityLookup.requireSupplier(company, 10L)).thenReturn(supplier);
         RawMaterialPurchase purchase = new RawMaterialPurchase();
         ReflectionTestUtils.setField(purchase, "id", 60L);
         purchase.setSupplier(supplier);
+        attachPostedJournal(purchase, 933L);
         purchase.setTotalAmount(BigDecimal.valueOf(20));
         purchase.setOutstandingAmount(BigDecimal.valueOf(5));
         RawMaterialPurchaseLine purchaseLine = new RawMaterialPurchaseLine();
@@ -482,11 +566,13 @@ class PurchasingServiceTest {
     @Test
     @DisplayName("recordPurchaseReturn compares outstanding at currency precision")
     void recordPurchaseReturn_currencyPrecisionComparison_allowsRoundedMatch() {
+        activateSupplier();
         when(companyContextService.requireCurrentCompany()).thenReturn(company);
         when(companyEntityLookup.requireSupplier(company, 10L)).thenReturn(supplier);
         RawMaterialPurchase purchase = new RawMaterialPurchase();
         ReflectionTestUtils.setField(purchase, "id", 61L);
         purchase.setSupplier(supplier);
+        attachPostedJournal(purchase, 934L);
         purchase.setTotalAmount(new BigDecimal("10.00"));
         purchase.setOutstandingAmount(new BigDecimal("10.00"));
         RawMaterialPurchaseLine purchaseLine = new RawMaterialPurchaseLine();
@@ -1063,6 +1149,7 @@ class PurchasingServiceTest {
         privateBatch.setCostPerUnit(new BigDecimal("3.00"));
         privateReceiptLine.setRawMaterialBatch(privateBatch);
         receipt.getLines().add(privateReceiptLine);
+        stubGoodsReceiptMovements(receipt, receipt.getLines());
 
         when(goodsReceiptRepository.lockByCompanyAndId(company, 307L)).thenReturn(Optional.of(receipt));
         when(purchaseRepository.findByCompanyAndGoodsReceipt(company, receipt)).thenReturn(Optional.empty());
@@ -1102,6 +1189,7 @@ class PurchasingServiceTest {
                                           BigDecimal costPerUnit) {
         PurchaseOrder order = buildPurchaseOrder(orderId, supplier, rawMaterial, quantity, costPerUnit);
         GoodsReceipt receipt = buildGoodsReceipt(receiptId, order, rawMaterial, quantity, costPerUnit);
+        stubGoodsReceiptMovements(receipt, List.of(receipt.getLines().getFirst()));
         when(goodsReceiptRepository.lockByCompanyAndId(company, receiptId)).thenReturn(Optional.of(receipt));
         when(purchaseRepository.findByCompanyAndGoodsReceipt(company, receipt)).thenReturn(Optional.empty());
         return receipt;
@@ -1128,9 +1216,30 @@ class PurchasingServiceTest {
                                                      BigDecimal costPerUnit) {
         PurchaseOrder order = buildPurchaseOrder(orderId, supplier, material, quantity, costPerUnit);
         GoodsReceipt receipt = buildGoodsReceipt(receiptId, order, material, quantity, costPerUnit);
+        stubGoodsReceiptMovements(receipt, List.of(receipt.getLines().getFirst()));
         when(goodsReceiptRepository.lockByCompanyAndId(company, receiptId)).thenReturn(Optional.of(receipt));
         when(purchaseRepository.findByCompanyAndGoodsReceipt(company, receipt)).thenReturn(Optional.empty());
         return receipt;
+    }
+
+    private void stubGoodsReceiptMovements(GoodsReceipt receipt, List<GoodsReceiptLine> receiptLines) {
+        List<RawMaterialMovement> movements = receiptLines.stream()
+                .map(line -> {
+                    RawMaterialMovement movement = new RawMaterialMovement();
+                    movement.setRawMaterial(line.getRawMaterial());
+                    movement.setRawMaterialBatch(line.getRawMaterialBatch());
+                    movement.setReferenceType(InventoryReference.GOODS_RECEIPT);
+                    movement.setReferenceId(receipt.getReceiptNumber());
+                    movement.setMovementType("IN");
+                    movement.setQuantity(line.getQuantity());
+                    movement.setUnitCost(line.getCostPerUnit());
+                    return movement;
+                })
+                .toList();
+        when(movementRepository.findByRawMaterialCompanyAndReferenceTypeAndReferenceId(
+                company,
+                InventoryReference.GOODS_RECEIPT,
+                receipt.getReceiptNumber())).thenReturn(movements);
     }
 
     private RawMaterial buildRawMaterial(Long materialId,
@@ -1235,5 +1344,17 @@ class PurchasingServiceTest {
                 "tester",
                 "tester"
         );
+    }
+
+    private void attachPostedJournal(RawMaterialPurchase purchase, long journalId) {
+        JournalEntry journalEntry = new JournalEntry();
+        ReflectionTestUtils.setField(journalEntry, "id", journalId);
+        journalEntry.setStatus("POSTED");
+        purchase.setJournalEntry(journalEntry);
+        purchase.setStatus("POSTED");
+    }
+
+    private void activateSupplier() {
+        supplier.setStatus("ACTIVE");
     }
 }

@@ -526,7 +526,10 @@ class TS_RuntimeAccountingReplayConflictExecutableCoverageTest {
                 new BigDecimal("3.00"),
                 new BigDecimal("1.00"),
                 new BigDecimal("2.00"),
-                BigDecimal.ZERO
+                BigDecimal.ZERO,
+                false,
+                null,
+                null
         );
 
         ReflectionTestUtils.invokeMethod(
@@ -543,7 +546,10 @@ class TS_RuntimeAccountingReplayConflictExecutableCoverageTest {
                 BigDecimal.ZERO,
                 BigDecimal.ZERO,
                 BigDecimal.ZERO,
-                BigDecimal.ZERO
+                BigDecimal.ZERO,
+                false,
+                null,
+                null
         );
     }
 
@@ -921,7 +927,10 @@ class TS_RuntimeAccountingReplayConflictExecutableCoverageTest {
                 BigDecimal.ZERO,
                 BigDecimal.ZERO,
                 BigDecimal.ZERO,
-                BigDecimal.ZERO);
+                BigDecimal.ZERO,
+                true,
+                "Settlement override memo",
+                "policy.admin");
     }
 
     @Test

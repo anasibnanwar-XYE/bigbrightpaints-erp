@@ -25,6 +25,7 @@ import com.bigbrightpaints.erp.modules.accounting.dto.PeriodCloseRequestDto;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingComplianceAuditService;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodSnapshotService;
+import com.bigbrightpaints.erp.modules.accounting.service.ClosedPeriodPostingExceptionService;
 import com.bigbrightpaints.erp.modules.accounting.service.PeriodCloseHook;
 import com.bigbrightpaints.erp.modules.accounting.service.ReconciliationService;
 import com.bigbrightpaints.erp.modules.accounting.service.ReconciliationServiceCore;
@@ -100,6 +101,9 @@ public class AccountingPeriodServiceCore {
 
     @Autowired(required = false)
     private AccountingComplianceAuditService accountingComplianceAuditService;
+
+    @Autowired(required = false)
+    private ClosedPeriodPostingExceptionService closedPeriodPostingExceptionService;
 
     public AccountingPeriodServiceCore(AccountingPeriodRepository accountingPeriodRepository,
                                    CompanyContextService companyContextService,
@@ -577,6 +581,31 @@ public class AccountingPeriodServiceCore {
                     ErrorCode.VALIDATION_INVALID_INPUT,
                     "Accounting period " + period.getLabel() + " is locked/closed");
         }
+        return period;
+    }
+
+    public AccountingPeriod requirePostablePeriod(Company company,
+                                                  LocalDate referenceDate,
+                                                  String documentType,
+                                                  String documentReference,
+                                                  String reason,
+                                                  boolean overrideRequested) {
+        AccountingPeriod period = lockOrCreatePeriod(company, referenceDate);
+        if (period.getStatus() == AccountingPeriodStatus.OPEN) {
+            return period;
+        }
+        if (!overrideRequested) {
+            throw new ApplicationException(
+                    ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Accounting period " + period.getLabel()
+                            + " is locked/closed; an admin one-hour posting exception is required for this document");
+        }
+        if (closedPeriodPostingExceptionService == null) {
+            throw new ApplicationException(
+                    ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Closed-period posting exception workflow is not configured");
+        }
+        closedPeriodPostingExceptionService.authorize(company, period, documentType, documentReference, reason);
         return period;
     }
 
@@ -1142,7 +1171,47 @@ public class AccountingPeriodServiceCore {
                 period.getStartDate(),
                 period.getEndDate(),
                 List.of(PayrollRun.PayrollStatus.POSTED, PayrollRun.PayrollStatus.PAID));
-        return invoiceUnlinked + purchaseUnlinked + payrollUnlinked;
+        long correctionLinkageGaps = countCorrectionLinkageGaps(company, period);
+        return invoiceUnlinked + purchaseUnlinked + payrollUnlinked + correctionLinkageGaps;
+    }
+
+    private long countCorrectionLinkageGaps(Company company, AccountingPeriod period) {
+        List<JournalEntry> periodEntries = journalEntryRepository.findByCompanyAndEntryDateBetweenOrderByEntryDateAsc(
+                company,
+                period.getStartDate(),
+                period.getEndDate());
+        if (periodEntries == null || periodEntries.isEmpty()) {
+            return 0;
+        }
+        return periodEntries.stream()
+                .filter(this::isCorrectionJournal)
+                .filter(this::isMissingCorrectionLinkage)
+                .count();
+    }
+
+    private boolean isCorrectionJournal(JournalEntry entry) {
+        if (entry == null) {
+            return false;
+        }
+        if (entry.getCorrectionType() != null || entry.getReversalOf() != null) {
+            return true;
+        }
+        String reference = entry.getReferenceNumber();
+        if (!StringUtils.hasText(reference)) {
+            return false;
+        }
+        String normalized = reference.trim().toUpperCase();
+        return normalized.startsWith("CRN-")
+                || normalized.startsWith("CN-")
+                || normalized.startsWith("DN-")
+                || normalized.startsWith("PRN-");
+    }
+
+    private boolean isMissingCorrectionLinkage(JournalEntry entry) {
+        return entry.getCorrectionType() == null
+                || !StringUtils.hasText(entry.getCorrectionReason())
+                || !StringUtils.hasText(entry.getSourceModule())
+                || !StringUtils.hasText(entry.getSourceReference());
     }
 
     private PeriodCloseRequestDto toPeriodCloseRequestDto(PeriodCloseRequest request) {

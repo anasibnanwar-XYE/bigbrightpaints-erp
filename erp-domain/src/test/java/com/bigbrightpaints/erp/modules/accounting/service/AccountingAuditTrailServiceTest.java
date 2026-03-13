@@ -1,7 +1,9 @@
 package com.bigbrightpaints.erp.modules.accounting.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -19,6 +21,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.PartnerSettlementAlloca
 import com.bigbrightpaints.erp.modules.accounting.domain.PartnerType;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingTransactionAuditDetailDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountingTransactionAuditListItemDto;
+import com.bigbrightpaints.erp.modules.accounting.dto.SettlementAllocationApplication;
 import com.bigbrightpaints.erp.modules.accounting.event.AccountingEvent;
 import com.bigbrightpaints.erp.modules.accounting.event.AccountingEventRepository;
 import com.bigbrightpaints.erp.modules.accounting.event.AccountingEventType;
@@ -223,6 +226,18 @@ class AccountingAuditTrailServiceTest {
     }
 
     @Test
+    void transactionDetail_throwsWhenEntryNotFound() {
+        Company company = new Company();
+        company.setCode("BBP");
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(journalEntryRepository.findByCompanyAndId(company, 404L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.transactionDetail(404L))
+                .isInstanceOf(com.bigbrightpaints.erp.core.exception.ApplicationException.class)
+                .hasMessageContaining("Journal entry not found");
+    }
+
+    @Test
     void transactionDetail_classifiesSupplierPrefixedReferenceAsSettlement() {
         Company company = new Company();
         company.setCode("BBP");
@@ -319,6 +334,35 @@ class AccountingAuditTrailServiceTest {
         AccountingTransactionAuditListItemDto row = result.content().getFirst();
         assertThat(row.module()).isEqualTo("SETTLEMENT");
         assertThat(row.transactionType()).isEqualTo("SETTLEMENT_SUPPLIER");
+    }
+
+    @Test
+    void listTransactions_normalizesNegativePageAndOversizeSize() {
+        Company company = new Company();
+        company.setCode("BBP");
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+
+        JournalEntry entry = new JournalEntry();
+        setField(entry, "id", 860L);
+        entry.setReferenceNumber("GEN-860");
+        entry.setEntryDate(LocalDate.of(2026, 2, 12));
+        entry.setStatus("POSTED");
+
+        when(journalEntryRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), org.mockito.ArgumentMatchers.<PageRequest>argThat(pageable ->
+                pageable.getPageNumber() == 0 && pageable.getPageSize() == 200)))
+                .thenReturn(new PageImpl<>(List.of(entry)));
+        when(journalLineRepository.summarizeTotalsByCompanyAndJournalEntryIds(eq(company), eq(List.of(860L))))
+                .thenReturn(List.of(totals(860L, "0.00", "0.00")));
+        when(invoiceRepository.findByCompanyAndJournalEntry_IdIn(eq(company), eq(List.of(860L)))).thenReturn(List.of());
+        when(rawMaterialPurchaseRepository.findByCompanyAndJournalEntry_IdIn(eq(company), eq(List.of(860L)))).thenReturn(List.of());
+        when(settlementAllocationRepository.findByCompanyAndJournalEntry_IdIn(eq(company), eq(List.of(860L)))).thenReturn(List.of());
+
+        PageResponse<AccountingTransactionAuditListItemDto> result = service.listTransactions(
+                null, null, null, null, null, -4, 500);
+
+        assertThat(result.page()).isEqualTo(0);
+        assertThat(result.size()).isEqualTo(200);
+        assertThat(result.content()).hasSize(1);
     }
 
     @Test
@@ -885,6 +929,261 @@ class AccountingAuditTrailServiceTest {
         assertThat(detail.drivingDocument().documentType()).isEqualTo("PURCHASE_INVOICE");
         assertThat(detail.drivingDocument().documentId()).isEqualTo(311L);
         assertThat(detail.drivingDocument().journalEntryId()).isEqualTo(211L);
+    }
+
+    @Test
+    void transactionDetail_onAccountSettlementMemoDecodesApplicationTokenAndVisibleMemo() {
+        Company company = new Company();
+        company.setCode("BBP");
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+
+        JournalEntry settlementEntry = new JournalEntry();
+        setField(settlementEntry, "id", 112L);
+        settlementEntry.setReferenceNumber("SUP-SET-112");
+        settlementEntry.setEntryDate(LocalDate.of(2026, 2, 18));
+        settlementEntry.setStatus("POSTED");
+        settlementEntry.getLines().add(line("CASH", "75.00", "0.00"));
+        settlementEntry.getLines().add(line("AP", "0.00", "75.00"));
+
+        PartnerSettlementAllocation allocation = new PartnerSettlementAllocation();
+        setField(allocation, "id", 412L);
+        allocation.setCompany(company);
+        allocation.setPartnerType(PartnerType.SUPPLIER);
+        allocation.setJournalEntry(settlementEntry);
+        allocation.setAllocationAmount(new BigDecimal("75.00"));
+        allocation.setMemo(" [SETTLEMENT-APPLICATION:ON_ACCOUNT]   future order hold  ");
+        allocation.setIdempotencyKey("settlement-412");
+
+        when(journalEntryRepository.findByCompanyAndId(company, 112L)).thenReturn(Optional.of(settlementEntry));
+        when(settlementAllocationRepository.findByCompanyAndJournalEntryOrderByCreatedAtAsc(company, settlementEntry))
+                .thenReturn(List.of(allocation));
+        when(invoiceRepository.findByCompanyAndJournalEntry(company, settlementEntry)).thenReturn(Optional.empty());
+        when(rawMaterialPurchaseRepository.findByCompanyAndJournalEntry(company, settlementEntry)).thenReturn(Optional.empty());
+        when(accountingEventRepository.findByJournalEntryIdOrderByEventTimestampAsc(112L)).thenReturn(List.of());
+
+        AccountingTransactionAuditDetailDto detail = service.transactionDetail(112L);
+
+        assertThat(detail.settlementAllocations()).hasSize(1);
+        AccountingTransactionAuditDetailDto.SettlementAllocation row = detail.settlementAllocations().getFirst();
+        assertThat(row.applicationType()).isEqualTo(SettlementAllocationApplication.ON_ACCOUNT.name());
+        assertThat(row.memo()).isEqualTo("future order hold");
+    }
+
+    @Test
+    void transactionDetail_invalidSettlementApplicationTokenFallsBackToOnAccount() {
+        Company company = new Company();
+        company.setCode("BBP");
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+
+        JournalEntry settlementEntry = new JournalEntry();
+        setField(settlementEntry, "id", 113L);
+        settlementEntry.setReferenceNumber("SUP-SET-113");
+        settlementEntry.setEntryDate(LocalDate.of(2026, 2, 19));
+        settlementEntry.setStatus("POSTED");
+        settlementEntry.getLines().add(line("CASH", "40.00", "0.00"));
+        settlementEntry.getLines().add(line("AP", "0.00", "40.00"));
+
+        PartnerSettlementAllocation allocation = new PartnerSettlementAllocation();
+        setField(allocation, "id", 413L);
+        allocation.setCompany(company);
+        allocation.setPartnerType(PartnerType.SUPPLIER);
+        allocation.setJournalEntry(settlementEntry);
+        allocation.setAllocationAmount(new BigDecimal("40.00"));
+        allocation.setMemo("[SETTLEMENT-APPLICATION:BOGUS]  keep on account  ");
+        allocation.setIdempotencyKey("settlement-413");
+
+        when(journalEntryRepository.findByCompanyAndId(company, 113L)).thenReturn(Optional.of(settlementEntry));
+        when(settlementAllocationRepository.findByCompanyAndJournalEntryOrderByCreatedAtAsc(company, settlementEntry))
+                .thenReturn(List.of(allocation));
+        when(invoiceRepository.findByCompanyAndJournalEntry(company, settlementEntry)).thenReturn(Optional.empty());
+        when(rawMaterialPurchaseRepository.findByCompanyAndJournalEntry(company, settlementEntry)).thenReturn(Optional.empty());
+        when(accountingEventRepository.findByJournalEntryIdOrderByEventTimestampAsc(113L)).thenReturn(List.of());
+
+        AccountingTransactionAuditDetailDto detail = service.transactionDetail(113L);
+
+        assertThat(detail.settlementAllocations()).hasSize(1);
+        AccountingTransactionAuditDetailDto.SettlementAllocation row = detail.settlementAllocations().getFirst();
+        assertThat(row.applicationType()).isEqualTo(SettlementAllocationApplication.ON_ACCOUNT.name());
+        assertThat(row.memo()).isEqualTo("keep on account");
+    }
+
+    @Test
+    void transactionDetail_settlementApplicationTokenWithoutClosingBracketFallsBackToOnAccount() {
+        Company company = new Company();
+        company.setCode("BBP");
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+
+        JournalEntry settlementEntry = new JournalEntry();
+        setField(settlementEntry, "id", 115L);
+        settlementEntry.setReferenceNumber("SUP-SET-115");
+        settlementEntry.setEntryDate(LocalDate.of(2026, 2, 21));
+        settlementEntry.setStatus("POSTED");
+        settlementEntry.getLines().add(line("CASH", "35.00", "0.00"));
+        settlementEntry.getLines().add(line("AP", "0.00", "35.00"));
+
+        PartnerSettlementAllocation allocation = new PartnerSettlementAllocation();
+        setField(allocation, "id", 415L);
+        allocation.setCompany(company);
+        allocation.setPartnerType(PartnerType.SUPPLIER);
+        allocation.setJournalEntry(settlementEntry);
+        allocation.setAllocationAmount(new BigDecimal("35.00"));
+        allocation.setMemo(" [SETTLEMENT-APPLICATION:FUTURE_APPLICATION keep unapplied ");
+        allocation.setIdempotencyKey("settlement-415");
+
+        when(journalEntryRepository.findByCompanyAndId(company, 115L)).thenReturn(Optional.of(settlementEntry));
+        when(settlementAllocationRepository.findByCompanyAndJournalEntryOrderByCreatedAtAsc(company, settlementEntry))
+                .thenReturn(List.of(allocation));
+        when(invoiceRepository.findByCompanyAndJournalEntry(company, settlementEntry)).thenReturn(Optional.empty());
+        when(rawMaterialPurchaseRepository.findByCompanyAndJournalEntry(company, settlementEntry)).thenReturn(Optional.empty());
+        when(accountingEventRepository.findByJournalEntryIdOrderByEventTimestampAsc(115L)).thenReturn(List.of());
+
+        AccountingTransactionAuditDetailDto detail = service.transactionDetail(115L);
+
+        assertThat(detail.settlementAllocations()).hasSize(1);
+        AccountingTransactionAuditDetailDto.SettlementAllocation row = detail.settlementAllocations().getFirst();
+        assertThat(row.applicationType()).isEqualTo(SettlementAllocationApplication.ON_ACCOUNT.name());
+        assertThat(row.memo()).isEqualTo("[SETTLEMENT-APPLICATION:FUTURE_APPLICATION keep unapplied");
+    }
+
+    @Test
+    void helperMethods_decodeSettlementAuditMemo_defaultsDocumentForNullAllocation() {
+        Object decoded = ReflectionTestUtils.invokeMethod(service, "decodeSettlementAuditMemo", new Object[]{null});
+
+        assertThat((SettlementAllocationApplication) ReflectionTestUtils.invokeMethod(decoded, "applicationType"))
+                .isEqualTo(SettlementAllocationApplication.DOCUMENT);
+        assertThat((String) ReflectionTestUtils.invokeMethod(decoded, "memo")).isNull();
+    }
+
+    @Test
+    void helperMethods_decodeSettlementAuditMemo_trimsBlankUnappliedMemoToNull() {
+        PartnerSettlementAllocation allocation = new PartnerSettlementAllocation();
+        allocation.setMemo("   ");
+
+        Object decoded = ReflectionTestUtils.invokeMethod(service, "decodeSettlementAuditMemo", allocation);
+
+        assertThat((SettlementAllocationApplication) ReflectionTestUtils.invokeMethod(decoded, "applicationType"))
+                .isEqualTo(SettlementAllocationApplication.ON_ACCOUNT);
+        assertThat((String) ReflectionTestUtils.invokeMethod(decoded, "memo")).isNull();
+    }
+
+    @Test
+    void helperMethods_decodeSettlementAuditMemo_keepsDocumentTypeForPurchaseLinkedAllocations() {
+        PartnerSettlementAllocation allocation = new PartnerSettlementAllocation();
+        allocation.setMemo("  purchase linked memo  ");
+        allocation.setPurchase(new RawMaterialPurchase());
+
+        Object decoded = ReflectionTestUtils.invokeMethod(service, "decodeSettlementAuditMemo", allocation);
+
+        assertThat((SettlementAllocationApplication) ReflectionTestUtils.invokeMethod(decoded, "applicationType"))
+                .isEqualTo(SettlementAllocationApplication.DOCUMENT);
+        assertThat((String) ReflectionTestUtils.invokeMethod(decoded, "memo")).isEqualTo("purchase linked memo");
+    }
+
+    @Test
+    void helperMethods_decodeSettlementAuditMemo_fallsBackToOnAccountForMalformedPrefix() {
+        PartnerSettlementAllocation allocation = new PartnerSettlementAllocation();
+        allocation.setMemo("[SETTLEMENT-APPLICATION:ON_ACCOUNT carry forward");
+
+        Object decoded = ReflectionTestUtils.invokeMethod(service, "decodeSettlementAuditMemo", allocation);
+
+        assertThat((SettlementAllocationApplication) ReflectionTestUtils.invokeMethod(decoded, "applicationType"))
+                .isEqualTo(SettlementAllocationApplication.ON_ACCOUNT);
+        assertThat((String) ReflectionTestUtils.invokeMethod(decoded, "memo"))
+                .isEqualTo("[SETTLEMENT-APPLICATION:ON_ACCOUNT carry forward");
+    }
+
+    @Test
+    void helperMethods_decodeSettlementAuditMemo_treatsPlainMemoAsOnAccount() {
+        PartnerSettlementAllocation allocation = new PartnerSettlementAllocation();
+        allocation.setMemo("  carry forward plain memo  ");
+
+        Object decoded = ReflectionTestUtils.invokeMethod(service, "decodeSettlementAuditMemo", allocation);
+
+        assertThat((SettlementAllocationApplication) ReflectionTestUtils.invokeMethod(decoded, "applicationType"))
+                .isEqualTo(SettlementAllocationApplication.ON_ACCOUNT);
+        assertThat((String) ReflectionTestUtils.invokeMethod(decoded, "memo")).isEqualTo("carry forward plain memo");
+    }
+
+    @Test
+    void transactionDetail_mapsSettlementRowsWithNullPartnerContext() {
+        Company company = new Company();
+        company.setCode("BBP");
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+
+        JournalEntry settlementEntry = new JournalEntry();
+        setField(settlementEntry, "id", 116L);
+        settlementEntry.setReferenceNumber("SET-NULL-PARTNER");
+        settlementEntry.setEntryDate(LocalDate.of(2026, 2, 21));
+        settlementEntry.setStatus("POSTED");
+        settlementEntry.getLines().add(line("CASH", "10.00", "0.00"));
+        settlementEntry.getLines().add(line("AP", "0.00", "10.00"));
+
+        PartnerSettlementAllocation allocation = new PartnerSettlementAllocation();
+        setField(allocation, "id", 416L);
+        allocation.setCompany(company);
+        allocation.setJournalEntry(settlementEntry);
+        allocation.setAllocationAmount(new BigDecimal("10.00"));
+        allocation.setMemo("plain memo");
+
+        when(journalEntryRepository.findByCompanyAndId(company, 116L)).thenReturn(Optional.of(settlementEntry));
+        when(settlementAllocationRepository.findByCompanyAndJournalEntryOrderByCreatedAtAsc(company, settlementEntry))
+                .thenReturn(List.of(allocation));
+        when(invoiceRepository.findByCompanyAndJournalEntry(company, settlementEntry)).thenReturn(Optional.empty());
+        when(rawMaterialPurchaseRepository.findByCompanyAndJournalEntry(company, settlementEntry)).thenReturn(Optional.empty());
+        when(accountingEventRepository.findByJournalEntryIdOrderByEventTimestampAsc(116L)).thenReturn(List.of());
+
+        AccountingTransactionAuditDetailDto detail = service.transactionDetail(116L);
+
+        assertThat(detail.settlementAllocations()).singleElement().satisfies(row -> {
+            assertThat(row.partnerType()).isNull();
+            assertThat(row.dealerId()).isNull();
+            assertThat(row.supplierId()).isNull();
+            assertThat(row.memo()).isEqualTo("plain memo");
+        });
+    }
+
+    @Test
+    void transactionDetail_documentSettlementRowsStayDocumentTyped() {
+        Company company = new Company();
+        company.setCode("BBP");
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+
+        JournalEntry settlementEntry = new JournalEntry();
+        setField(settlementEntry, "id", 114L);
+        settlementEntry.setReferenceNumber("SUP-SET-114");
+        settlementEntry.setEntryDate(LocalDate.of(2026, 2, 20));
+        settlementEntry.setStatus("POSTED");
+        settlementEntry.getLines().add(line("CASH", "60.00", "0.00"));
+        settlementEntry.getLines().add(line("AP", "0.00", "60.00"));
+
+        RawMaterialPurchase purchase = new RawMaterialPurchase();
+        setField(purchase, "id", 314L);
+        purchase.setCompany(company);
+
+        PartnerSettlementAllocation allocation = new PartnerSettlementAllocation();
+        setField(allocation, "id", 414L);
+        allocation.setCompany(company);
+        allocation.setPartnerType(PartnerType.SUPPLIER);
+        allocation.setJournalEntry(settlementEntry);
+        allocation.setPurchase(purchase);
+        allocation.setAllocationAmount(new BigDecimal("60.00"));
+        allocation.setMemo("  settle oldest purchase  ");
+        allocation.setIdempotencyKey("settlement-414");
+
+        when(journalEntryRepository.findByCompanyAndId(company, 114L)).thenReturn(Optional.of(settlementEntry));
+        when(settlementAllocationRepository.findByCompanyAndJournalEntryOrderByCreatedAtAsc(company, settlementEntry))
+                .thenReturn(List.of(allocation));
+        when(invoiceRepository.findByCompanyAndJournalEntry(company, settlementEntry)).thenReturn(Optional.empty());
+        when(rawMaterialPurchaseRepository.findByCompanyAndJournalEntry(company, settlementEntry)).thenReturn(Optional.empty());
+        when(accountingEventRepository.findByJournalEntryIdOrderByEventTimestampAsc(114L)).thenReturn(List.of());
+
+        AccountingTransactionAuditDetailDto detail = service.transactionDetail(114L);
+
+        assertThat(detail.settlementAllocations()).hasSize(1);
+        AccountingTransactionAuditDetailDto.SettlementAllocation row = detail.settlementAllocations().getFirst();
+        assertThat(row.applicationType()).isEqualTo(SettlementAllocationApplication.DOCUMENT.name());
+        assertThat(row.memo()).isEqualTo("settle oldest purchase");
+        assertThat(row.purchaseId()).isEqualTo(314L);
     }
 
     @Test

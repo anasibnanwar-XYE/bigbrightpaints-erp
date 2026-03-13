@@ -542,7 +542,11 @@ public class AccountingController {
                 request.adminOverride(),
                 request.lines(),
                 request.currency(),
-                request.fxRate()
+                request.fxRate(),
+                null,
+                null,
+                null,
+                request.attachmentReferences()
         );
         return ResponseEntity.ok(ApiResponse.success("Journal entry posted",
                 accountingService.createManualJournalEntry(sanitized, idempotencyKey)));
@@ -716,6 +720,8 @@ public class AccountingController {
                         resolvedRequest.writeOffAccountId(),
                         resolvedRequest.fxGainAccountId(),
                         resolvedRequest.fxLossAccountId(),
+                        resolvedRequest.amount(),
+                        resolvedRequest.unappliedAmountApplication(),
                         resolvedRequest.settlementDate(),
                         resolvedRequest.referenceNumber(),
                         resolvedRequest.memo(),
@@ -777,6 +783,8 @@ public class AccountingController {
                         resolvedRequest.writeOffAccountId(),
                         resolvedRequest.fxGainAccountId(),
                         resolvedRequest.fxLossAccountId(),
+                        resolvedRequest.amount(),
+                        resolvedRequest.unappliedAmountApplication(),
                         resolvedRequest.settlementDate(),
                         resolvedRequest.referenceNumber(),
                         resolvedRequest.memo(),
@@ -886,9 +894,14 @@ public class AccountingController {
     @GetMapping("/sales/returns")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING','ROLE_SALES')")
     public ResponseEntity<ApiResponse<List<JournalEntryDto>>> listSalesReturns() {
-        // Returns are stored as credit note journal entries - filter by reference prefix
-        return ResponseEntity.ok(ApiResponse.success("Sales returns", 
-            journalEntryService.listJournalEntriesByReferencePrefix("CN-")));
+        return ResponseEntity.ok(ApiResponse.success("Sales returns",
+            journalEntryService.listJournalEntriesByReferencePrefix("CRN-")));
+    }
+
+    @PostMapping("/sales/returns/preview")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    public ResponseEntity<ApiResponse<SalesReturnPreviewDto>> previewSalesReturn(@Valid @RequestBody SalesReturnRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Sales return preview", salesReturnService.previewReturn(request)));
     }
 
     @PostMapping("/sales/returns")
@@ -937,7 +950,7 @@ public class AccountingController {
     }
 
     @PostMapping("/periods/{periodId}/approve-close")
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<ApiResponse<AccountingPeriodDto>> approvePeriodClose(@PathVariable Long periodId,
                                                                                 @RequestBody(required = false) PeriodCloseRequestActionRequest request) {
         return ResponseEntity.ok(ApiResponse.success(
@@ -946,7 +959,7 @@ public class AccountingController {
     }
 
     @PostMapping("/periods/{periodId}/reject-close")
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING')")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<ApiResponse<PeriodCloseRequestDto>> rejectPeriodClose(@PathVariable Long periodId,
                                                                                  @RequestBody(required = false) PeriodCloseRequestActionRequest request) {
         return ResponseEntity.ok(ApiResponse.success(

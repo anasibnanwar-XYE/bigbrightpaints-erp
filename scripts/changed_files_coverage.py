@@ -59,12 +59,22 @@ TYPE_DECL_RE = re.compile(
 )
 INTERFACE_DECL_RE = re.compile(r"^\s*(?:public\s+)?(?:sealed\s+|non-sealed\s+)?(?:abstract\s+)?interface\s+\w+")
 FIELD_DECL_RE = re.compile(
-    r"^\s*(?:(?:private|protected|public)\s+)?(?:static\s+)?(?:final\s+)?[\w<>\[\], ?.]+\s+\w+\s*(?:=\s*.+)?;$"
+    r"^\s*(?:(?:private|protected|public)\s+)?(?:static\s+|final\s+|transient\s+|volatile\s+)*[\w<>\[\].,@? ]+\s+\w+\s*(?:=\s*.+)?;$"
 )
-LOCAL_DECL_RE = re.compile(r"^\s*[\w<>\[\], ?.]+\s+\w+\s*=\s*.+$")
+LOCAL_DECL_RE = re.compile(r"^\s*(?:final\s+)?[\w<>\[\].,@? ]+\s+\w+\s*(?:=\s*.+)?;$")
 RECORD_COMPONENT_RE = re.compile(r"^\s*(?:@[\w.()\", =]+\s+)?[\w<>\[\], ?.]+\s+\w+\s*\)?$")
 QUERY_TEXT_RE = re.compile(r"^\s*(?:and|or|select|from|where|group by|order by|having)\b", re.IGNORECASE)
 BARE_IDENTIFIER_RE = re.compile(r"^\s*[A-Za-z_][A-Za-z0-9_]*\s*$")
+METHOD_DECL_OPEN_RE = re.compile(
+    r"^\s*(?:public\s+|protected\s+|private\s+|static\s+|default\s+|abstract\s+|final\s+|sealed\s+|non-sealed\s+|synchronized\s+)*[\w<>\[\].,@?]+\s+\w+\s*\($"
+)
+PARAMETER_FRAGMENT_RE = re.compile(
+    r"^\s*(?:@\w[\w.]*?(?:\([^)]*\))?\s+)*(?:[\w<>\[\].,@?]+\s+)+\w+\s*,?$"
+)
+CALL_ARGUMENT_FRAGMENT_RE = re.compile(r"^\s*(?:[\w.<>?]+|null|true|false)\s*,?$")
+LITERAL_FIELD_INIT_RE = re.compile(
+    r"^\s*(?:public\s+|protected\s+|private\s+)(?:static\s+|final\s+|transient\s+|volatile\s+)*[\w<>\[\].,@?]+\s+\w+\s*=\s*(?:\".*\"|\d[\d._]*|true|false|null)\s*;$"
+)
 CONTROL_FLOW_PREFIXES = ("if ", "for ", "while ", "switch ", "catch ", "return ", "throw ", "new ")
 PACKAGE_DECL_RE = re.compile(r"^\s*package\s+([\w.]+)\s*;")
 
@@ -181,8 +191,15 @@ def resolve_jacoco_line_map(
     return jacoco.get(package_relative_path)
 
 
-def is_structural_source_line(text: str, is_interface_file: bool) -> bool:
+def is_structural_source_line(
+    text: str,
+    is_interface_file: bool,
+    previous_text: str = "",
+    next_text: str = "",
+) -> bool:
     stripped = text.strip()
+    prev_stripped = previous_text.strip()
+    next_stripped = next_text.strip()
     if not stripped:
         return True
     if stripped.startswith("//") or stripped.startswith("/*") or stripped.startswith("*") or stripped == "*/":
@@ -190,6 +207,8 @@ def is_structural_source_line(text: str, is_interface_file: bool) -> bool:
     if stripped.startswith("package ") or stripped.startswith("import "):
         return True
     if stripped.startswith("@"):
+        return True
+    if stripped in {"try {", "else {", "} else {", "finally {", "} finally {", "})", "});"}:
         return True
     if stripped in {"{", "}", ";", "};"}:
         return True
@@ -199,7 +218,9 @@ def is_structural_source_line(text: str, is_interface_file: bool) -> bool:
         return True
     if FIELD_DECL_RE.match(stripped):
         return True
-    if LOCAL_DECL_RE.match(stripped) and "(" not in stripped:
+    if LITERAL_FIELD_INIT_RE.match(stripped):
+        return True
+    if LOCAL_DECL_RE.match(stripped) and not stripped.startswith(CONTROL_FLOW_PREFIXES):
         return True
     if QUERY_TEXT_RE.match(stripped):
         return True
@@ -211,7 +232,34 @@ def is_structural_source_line(text: str, is_interface_file: bool) -> bool:
         return True
     if stripped.endswith("(") and not stripped.startswith(CONTROL_FLOW_PREFIXES) and "=" not in stripped:
         return True
-    if stripped.endswith(",") and not stripped.startswith(CONTROL_FLOW_PREFIXES) and "=" not in stripped:
+    if stripped.endswith("=") and previous_text and " class " not in previous_text:
+        return True
+    if stripped.startswith("\"") and prev_stripped.endswith("="):
+        return True
+    if stripped.endswith(",") and not stripped.startswith(CONTROL_FLOW_PREFIXES) and "->" not in stripped:
+        return True
+    if PARAMETER_FRAGMENT_RE.match(stripped) and not stripped.startswith(CONTROL_FLOW_PREFIXES):
+        return True
+    if is_interface_file and METHOD_DECL_OPEN_RE.match(stripped):
+        return True
+    if (
+        CALL_ARGUMENT_FRAGMENT_RE.match(stripped)
+        and (prev_stripped.endswith("(") or prev_stripped.endswith(","))
+        and next_stripped in {");", "));", ")", ") {", "){", "};"}
+    ):
+        return True
+    if (
+        stripped.endswith(")")
+        and (prev_stripped.endswith("(") or prev_stripped.endswith(","))
+        and next_stripped[:1] in {":", ")", ".", ";"}
+        and not stripped.startswith(CONTROL_FLOW_PREFIXES)
+    ):
+        return True
+    if (
+        "\"" in stripped
+        and (prev_stripped.endswith("(") or prev_stripped.endswith(",") or prev_stripped.endswith("="))
+        and next_stripped[:1] in {")", ".", ";", ":"}
+    ):
         return True
     if (
         stripped.endswith("{")
@@ -281,7 +329,12 @@ def main() -> int:
         for ln in sorted(changed_lines):
             stats = line_map.get(ln)
             if stats is None:
-                if 1 <= ln <= len(lines) and is_structural_source_line(lines[ln - 1], is_interface_file):
+                if 1 <= ln <= len(lines) and is_structural_source_line(
+                    lines[ln - 1],
+                    is_interface_file,
+                    lines[ln - 2] if ln > 1 else "",
+                    lines[ln] if ln < len(lines) else "",
+                ):
                     f_structural_lines += 1
                 else:
                     f_unmapped_lines += 1
