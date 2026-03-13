@@ -32,6 +32,7 @@ import java.util.UUID;
 public class CompanyContextFilter extends OncePerRequestFilter {
 
     private static final Logger log = LoggerFactory.getLogger(CompanyContextFilter.class);
+    private static final String AUDIT_API_PREFIX = "/api/v1/audit";
     private static final String COMPANY_API_PREFIX = "/api/v1/companies/";
     private static final String LIFECYCLE_STATE_SUFFIX = "/lifecycle-state";
     private static final String TENANT_METRICS_SUFFIX = "/tenant-metrics";
@@ -39,6 +40,37 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     private static final String SUPPORT_ADMIN_PASSWORD_RESET_SUFFIX = "/support/admin-password-reset";
     private static final String CONTROL_PLANE_AUTH_DENIED_MESSAGE =
             "Access denied to company control request";
+    private static final String SUPER_ADMIN_PLATFORM_ONLY_MESSAGE =
+            "Super Admin is limited to platform control-plane operations and cannot execute tenant business workflows";
+    private static final Set<String> SUPER_ADMIN_TENANT_BUSINESS_PREFIXES = Set.of(
+            "/api/v1/dealer-portal",
+            "/api/v1/portal",
+            "/api/v1/sales",
+            "/api/v1/credit",
+            "/api/v1/dealers",
+            "/api/v1/invoices",
+            "/api/v1/reports",
+            "/api/v1/exports",
+            "/api/v1/support",
+            "/api/v1/factory",
+            "/api/v1/production",
+            "/api/v1/hr",
+            "/api/v1/payroll",
+            "/api/v1/inventory",
+            "/api/v1/finished-goods",
+            "/api/v1/purchasing",
+            "/api/v1/suppliers",
+            "/api/v1/catalog",
+            "/api/v1/raw-materials",
+            "/api/v1/raw-material-batches",
+            "/api/v1/migration",
+            "/api/v1/orchestrator",
+            "/api/v1/dispatch");
+    private static final Set<String> SUPER_ADMIN_TENANT_ADMIN_WORKFLOW_PREFIXES = Set.of(
+            "/api/v1/admin/approvals",
+            "/api/v1/admin/exports",
+            "/api/v1/admin/notify",
+            "/api/v1/admin/users");
     private static final Set<String> PUBLIC_PASSWORD_RESET_ENDPOINTS = Set.of(
             "/api/v1/auth/password/forgot",
             "/api/v1/auth/password/forgot/superadmin",
@@ -61,7 +93,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
         TenantRuntimeEnforcementService.TenantRequestAdmission admission =
                 TenantRuntimeEnforcementService.TenantRequestAdmission.notTracked();
         try {
-            String runtimePath = resolveApplicationPath(request);
+            String runtimePath = normalizePath(resolveApplicationPath(request));
             if (isPublicPasswordResetRequest(runtimePath, request.getMethod())) {
                 filterChain.doFilter(request, response);
                 return;
@@ -71,6 +103,10 @@ public class CompanyContextFilter extends OncePerRequestFilter {
                     hasTenantRuntimePolicyControlAuthority(runtimePath, request.getMethod());
             if (lifecycleControlRequest && !hasAuthenticatedPrincipal()) {
                 denyControlPlaneRequest(response);
+                return;
+            }
+            if (hasSuperAdminAuthority() && isTenantBusinessRequestBlockedForSuperAdmin(runtimePath)) {
+                writeAccessDenied(response, "SUPER_ADMIN_PLATFORM_ONLY", SUPER_ADMIN_PLATFORM_ONLY_MESSAGE);
                 return;
             }
             String headerCompanyCode = request.getHeader("X-Company-Code");
@@ -149,6 +185,12 @@ public class CompanyContextFilter extends OncePerRequestFilter {
                 }
             }
             if (companyCode != null) {
+                if (isTenantAuditWorkflowRequest(runtimePath) && hasSuperAdminAuthority()) {
+                    writeAccessDenied(response,
+                            "SUPER_ADMIN_TENANT_WORKFLOW_DENIED",
+                            "Access denied to tenant audit workflow for platform-only super admin");
+                    return;
+                }
                 CompanyLifecycleState lifecycleState = companyService.resolveLifecycleStateByCode(companyCode);
                 // Recovery endpoints for non-active tenants are intended for super-admin operators
                 // even when they are not explicitly attached to the tenant membership list.
@@ -258,6 +300,39 @@ public class CompanyContextFilter extends OncePerRequestFilter {
         return false;
     }
 
+    private boolean isTenantBusinessRequestBlockedForSuperAdmin(String requestPath) {
+        String normalizedPath = normalizePath(requestPath);
+        if (!StringUtils.hasText(normalizedPath)) {
+            return false;
+        }
+        boolean matchesTenantAdminWorkflowPrefix = SUPER_ADMIN_TENANT_ADMIN_WORKFLOW_PREFIXES.stream()
+                .anyMatch(prefix -> normalizedPath.equals(prefix) || normalizedPath.startsWith(prefix + "/"));
+        if (matchesTenantAdminWorkflowPrefix) {
+            return true;
+        }
+        boolean matchesBusinessPrefix = SUPER_ADMIN_TENANT_BUSINESS_PREFIXES.stream()
+                .anyMatch(prefix -> normalizedPath.equals(prefix) || normalizedPath.startsWith(prefix + "/"));
+        if (matchesBusinessPrefix) {
+            if (normalizedPath.equals("/api/v1/orchestrator") || normalizedPath.startsWith("/api/v1/orchestrator/")) {
+                return !isSuperAdminAllowedOrchestratorControlPath(normalizedPath);
+            }
+            return true;
+        }
+        if (normalizedPath.equals("/api/v1/accounting") || normalizedPath.startsWith("/api/v1/accounting/")) {
+            return !isSuperAdminAllowedAccountingControlPath(normalizedPath);
+        }
+        return false;
+    }
+
+    private boolean isSuperAdminAllowedOrchestratorControlPath(String normalizedPath) {
+        return normalizedPath.equals("/api/v1/orchestrator/health")
+                || normalizedPath.startsWith("/api/v1/orchestrator/health/");
+    }
+
+    private boolean isSuperAdminAllowedAccountingControlPath(String normalizedPath) {
+        return normalizedPath.matches("^/api/v1/accounting/periods/[^/]+/reopen$");
+    }
+
     private boolean hasAuthority(Authentication authentication, String authority) {
         if (authentication == null || !authentication.isAuthenticated() || !StringUtils.hasText(authority)) {
             return false;
@@ -358,13 +433,14 @@ public class CompanyContextFilter extends OncePerRequestFilter {
     private void writeAccessDenied(HttpServletResponse response,
                                    String reason,
                                    String reasonDetail) throws IOException {
+        String userMessage = "Access denied";
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("code", ErrorCode.AUTH_INSUFFICIENT_PERMISSIONS.getCode());
-        data.put("message", ErrorCode.AUTH_INSUFFICIENT_PERMISSIONS.getDefaultMessage());
+        data.put("message", userMessage);
         data.put("reason", reason);
         data.put("reasonDetail", reasonDetail);
         data.put("traceId", UUID.randomUUID().toString());
-        writeControlledError(response, HttpServletResponse.SC_FORBIDDEN, "Access denied", data);
+        writeControlledError(response, HttpServletResponse.SC_FORBIDDEN, userMessage, data);
     }
 
     private void writeRuntimeAdmissionDenied(HttpServletResponse response,
@@ -448,7 +524,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        String path = resolveApplicationPath(request);
+        String path = normalizePath(resolveApplicationPath(request));
         if (!StringUtils.hasText(path)) {
             return false;
         }
@@ -463,11 +539,27 @@ public class CompanyContextFilter extends OncePerRequestFilter {
         return PUBLIC_PASSWORD_RESET_ENDPOINTS.contains(normalizedPath);
     }
 
+    private boolean isTenantAuditWorkflowRequest(String path) {
+        String normalizedPath = normalizePath(path);
+        return StringUtils.hasText(normalizedPath) && normalizedPath.startsWith(AUDIT_API_PREFIX);
+    }
+
     private String normalizePath(String path) {
         if (!StringUtils.hasText(path)) {
             return path;
         }
         String normalizedPath = path.trim();
+        String[] segments = normalizedPath.split("/", -1);
+        StringBuilder sanitizedPath = new StringBuilder(normalizedPath.length());
+        for (int i = 0; i < segments.length; i++) {
+            if (i > 0) {
+                sanitizedPath.append('/');
+            }
+            String segment = segments[i];
+            int matrixParamIndex = segment.indexOf(';');
+            sanitizedPath.append(matrixParamIndex >= 0 ? segment.substring(0, matrixParamIndex) : segment);
+        }
+        normalizedPath = sanitizedPath.toString();
         while (normalizedPath.endsWith("/") && normalizedPath.length() > 1) {
             normalizedPath = normalizedPath.substring(0, normalizedPath.length() - 1);
         }
