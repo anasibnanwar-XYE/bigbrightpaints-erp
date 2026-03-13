@@ -11,6 +11,7 @@ import com.bigbrightpaints.erp.modules.accounting.dto.PayrollPaymentRequest;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
 import com.bigbrightpaints.erp.modules.factory.dto.ProductionBatchRequest;
+import com.bigbrightpaints.erp.modules.factory.dto.ProductionPlanRequest;
 import com.bigbrightpaints.erp.modules.factory.service.FactoryService;
 import com.bigbrightpaints.erp.modules.hr.service.HrService;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
@@ -357,6 +358,20 @@ class IntegrationCoordinatorTest {
         assertThrows(ApplicationException.class,
                 () -> disabled.updateProductionStatus("101", COMPANY_ID));
         verify(factoryService, never()).updatePlanStatus(any(), anyString());
+    }
+
+    @Test
+    void queueProductionBuildsNextDayPlanWithoutCurrentCompanyLookup() {
+        integrationCoordinator.queueProduction("101", COMPANY_ID);
+
+        verify(companyClock).today(null);
+        verify(factoryService).createPlan(argThat((ProductionPlanRequest request) ->
+                request != null
+                        && request.planNumber().equals("PLAN-101")
+                        && request.productName().equals("Order 101")
+                        && request.quantity() == 1.0
+                        && request.plannedDate().equals(LocalDate.of(2024, 1, 2))
+                        && request.notes().equals("Auto-generated from orchestrator")));
     }
 
     @Test
