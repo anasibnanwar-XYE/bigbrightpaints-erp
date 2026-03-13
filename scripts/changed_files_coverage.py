@@ -68,6 +68,9 @@ BARE_IDENTIFIER_RE = re.compile(r"^\s*[A-Za-z_][A-Za-z0-9_]*\s*$")
 METHOD_DECL_OPEN_RE = re.compile(
     r"^\s*(?:public\s+|protected\s+|private\s+|static\s+|default\s+|abstract\s+|final\s+|sealed\s+|non-sealed\s+|synchronized\s+)*[\w<>\[\].,@?]+\s+\w+\s*\($"
 )
+METHOD_DECL_SEMICOLON_RE = re.compile(
+    r"^\s*(?:public\s+|protected\s+|private\s+|static\s+|default\s+|abstract\s+|final\s+|sealed\s+|non-sealed\s+|synchronized\s+)*[\w<>\[\].,@?]+\s+\w+\s*\([^;{}]*\)\s*(?:throws\s+[\w<>\[\].,@? ]+)?\s*;$"
+)
 PARAMETER_FRAGMENT_RE = re.compile(
     r"^\s*(?:@\w[\w.]*?(?:\([^)]*\))?\s+)*(?:[\w<>\[\].,@?]+\s+)+\w+\s*,?$"
 )
@@ -111,11 +114,11 @@ def merge_line_stats(
     incoming_mi, incoming_ci, incoming_mb, incoming_cb = incoming
 
     total_line = max(current_mi + current_ci, incoming_mi + incoming_ci)
-    covered_line = max(current_ci, incoming_ci)
+    covered_line = min(total_line, current_ci + incoming_ci)
     missed_line = max(total_line - covered_line, 0)
 
     total_branch = max(current_mb + current_cb, incoming_mb + incoming_cb)
-    covered_branch = max(current_cb, incoming_cb)
+    covered_branch = min(total_branch, current_cb + incoming_cb)
     missed_branch = max(total_branch - covered_branch, 0)
 
     return missed_line, covered_line, missed_branch, covered_branch
@@ -269,11 +272,16 @@ def is_structural_source_line(
         and "->" not in stripped
     ):
         return True
-    if stripped.endswith(");") and not stripped.startswith(CONTROL_FLOW_PREFIXES) and "=" not in stripped:
+    if (
+        stripped.endswith(");")
+        and (prev_stripped.endswith("(") or prev_stripped.endswith(","))
+        and not stripped.startswith(CONTROL_FLOW_PREFIXES)
+        and "=" not in stripped
+    ):
         return True
     if RECORD_COMPONENT_RE.match(stripped) and "=" not in stripped and "{" not in stripped:
         return True
-    if is_interface_file and ";" in stripped and "{" not in stripped:
+    if is_interface_file and METHOD_DECL_SEMICOLON_RE.match(stripped):
         return True
     return False
 

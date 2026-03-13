@@ -11,6 +11,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 RISK_ROUTER_PATH = REPO_ROOT / "scripts" / "ci_risk_router.py"
 CHANGED_COVERAGE_PATH = REPO_ROOT / "scripts" / "changed_files_coverage.py"
 PR_CI_PARITY_PATH = REPO_ROOT / "scripts" / "pr_ci_parity.py"
+MERGE_JACOCO_PATH = REPO_ROOT / "scripts" / "merge_jacoco_xml.py"
 
 
 def load_module(module_name: str, file_path: Path):
@@ -25,6 +26,7 @@ def load_module(module_name: str, file_path: Path):
 ci_risk_router = load_module("ci_risk_router", RISK_ROUTER_PATH)
 changed_files_coverage = load_module("changed_files_coverage", CHANGED_COVERAGE_PATH)
 pr_ci_parity = load_module("pr_ci_parity", PR_CI_PARITY_PATH)
+merge_jacoco_xml = load_module("merge_jacoco_xml", MERGE_JACOCO_PATH)
 
 
 class CiRiskRouterTest(unittest.TestCase):
@@ -112,9 +114,13 @@ class CiRiskRouterTest(unittest.TestCase):
 
 
 class ChangedFilesCoverageTest(unittest.TestCase):
-    def test_branch_merge_is_conservative(self):
+    def test_branch_merge_caps_duplicate_shard_coverage(self):
         merged = changed_files_coverage.merge_line_stats((0, 1, 1, 1), (0, 1, 1, 1))
-        self.assertEqual((0, 1, 1, 1), merged)
+        self.assertEqual((0, 1, 0, 2), merged)
+
+    def test_branch_merge_unions_split_shard_coverage(self):
+        merged = changed_files_coverage.merge_line_stats((0, 1, 2, 0), (0, 1, 0, 2))
+        self.assertEqual((0, 1, 0, 2), merged)
 
     def test_structural_classifier_accepts_java_declarations_and_continuations(self):
         self.assertTrue(changed_files_coverage.is_structural_source_line("public final class Demo {", False))
@@ -137,13 +143,27 @@ class ChangedFilesCoverageTest(unittest.TestCase):
         )
         self.assertTrue(changed_files_coverage.is_structural_source_line("Invoice invoice,", False))
         self.assertTrue(changed_files_coverage.is_structural_source_line("int salesOrderInvoiceCount) {", False))
-        self.assertTrue(changed_files_coverage.is_structural_source_line("salesOrderInvoiceCount);", False))
+        self.assertTrue(
+            changed_files_coverage.is_structural_source_line(
+                "salesOrderInvoiceCount);",
+                False,
+                "        return LegacyDispatchInvoiceLinkMatcher.isSlipLinkedToInvoice(",
+            )
+        )
         self.assertTrue(changed_files_coverage.is_structural_source_line("RawMaterialPurchase::getCompany,", False))
         self.assertTrue(changed_files_coverage.is_structural_source_line("and upper(trim(o.status)) in :statuses", False))
         self.assertTrue(changed_files_coverage.is_structural_source_line('"Cannot auto-create packing slip"', False))
         self.assertTrue(changed_files_coverage.is_structural_source_line("try {", False))
         self.assertTrue(changed_files_coverage.is_structural_source_line("lines", False))
         self.assertFalse(changed_files_coverage.is_structural_source_line("if (invoice == null) {", False))
+        self.assertTrue(changed_files_coverage.is_structural_source_line("void save(Entity entity);", True))
+        self.assertFalse(changed_files_coverage.is_structural_source_line("service.save(entity);", True))
+
+
+class MergeJacocoXmlTest(unittest.TestCase):
+    def test_merge_line_unions_split_shard_coverage(self):
+        merged = merge_jacoco_xml.merge_line((0, 1, 2, 0), (0, 1, 0, 2))
+        self.assertEqual((0, 1, 0, 2), merged)
 
     def test_package_declaration_fallback_maps_misplaced_source_file(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

@@ -24,11 +24,11 @@ def merge_line(
     incoming_mi, incoming_ci, incoming_mb, incoming_cb = incoming
 
     total_line = max(current_mi + current_ci, incoming_mi + incoming_ci)
-    covered_line = max(current_ci, incoming_ci)
+    covered_line = min(total_line, current_ci + incoming_ci)
     missed_line = max(total_line - covered_line, 0)
 
     total_branch = max(current_mb + current_cb, incoming_mb + incoming_cb)
-    covered_branch = max(current_cb, incoming_cb)
+    covered_branch = min(total_branch, current_cb + incoming_cb)
     missed_branch = max(total_branch - covered_branch, 0)
 
     return missed_line, covered_line, missed_branch, covered_branch
