@@ -541,6 +541,30 @@ public class OrchestratorControllerIT extends AbstractIntegrationTest {
     }
 
     @Test
+    void factory_dispatch_endpoint_is_gone_with_canonical_path_and_no_outbox_side_effects() {
+        String token = loginToken();
+        HttpHeaders headers = authHeaders(token);
+        long outboxBefore = outboxEventRepository.count();
+
+        Map<String, Object> body = Map.of(
+                "batchId", "BATCH-1",
+                "requestedBy", ORCH_EMAIL,
+                "postingAmount", new BigDecimal("100.00")
+        );
+
+        ResponseEntity<Map> response = rest.exchange(
+                "/api/v1/orchestrator/factory/dispatch/BATCH-1",
+                HttpMethod.POST,
+                new HttpEntity<>(body, headers),
+                Map.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.GONE);
+        assertThat(response.getBody()).containsKey("message");
+        assertThat(response.getBody()).containsEntry("canonicalPath", "/api/v1/sales/dispatch/confirm");
+        assertThat(outboxEventRepository.count()).isEqualTo(outboxBefore);
+    }
+
+    @Test
     void payroll_run_is_disabled_by_default_in_code_red() {
         String token = loginToken();
         HttpHeaders headers = authHeaders(token);
@@ -578,18 +602,17 @@ public class OrchestratorControllerIT extends AbstractIntegrationTest {
                 "status", "DISPATCHED",
                 "notes", "test");
 
-        ResponseEntity<Map> response = rest.exchange(
+        ResponseEntity<String> response = rest.exchange(
                 "/api/v1/orchestrator/orders/" + seededOrderId + "/fulfillment",
                 HttpMethod.POST,
                 new HttpEntity<>(body, headers),
-                Map.class);
+                String.class);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
-        assertThat(response.getBody()).containsEntry("success", false);
-        Object payload = response.getBody().get("data");
-        assertThat(payload).isInstanceOf(Map.class);
-        Map<?, ?> error = (Map<?, ?>) payload;
-        assertThat(error.get("code")).isEqualTo("BUS_001");
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody())
+                .contains("BUS_001")
+                .contains("/api/v1/sales/dispatch/confirm");
     }
 
     @Test

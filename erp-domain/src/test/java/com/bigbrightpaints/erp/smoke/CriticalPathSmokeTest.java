@@ -275,14 +275,16 @@ public class CriticalPathSmokeTest extends AbstractIntegrationTest {
     @Test
     @DisplayName("11. Dispatch Order - Success (Check Endpoint)")
     void dispatchOrderEndpointAvailable() {
-        // Test that the orchestrator dispatch endpoint is available
-        // Actual dispatch requires existing batch/account configuration
-        Map<String, Object> dispatchReq = Map.of("requestedBy", "smoke-test");
+        Map<String, Object> dispatchReq = Map.of(
+                "batchId", "TEST-BATCH-1",
+                "requestedBy", "smoke-test",
+                "postingAmount", new BigDecimal("100.00"));
         ResponseEntity<Map> response = rest.exchange("/api/v1/orchestrator/factory/dispatch/{batchId}",
                 HttpMethod.POST, new HttpEntity<>(dispatchReq, headers), Map.class, "TEST-BATCH-1");
 
-        // Should fail validation or batch lookup, but endpoint should exist
-        assertThat(response.getStatusCode()).isIn(HttpStatus.BAD_REQUEST, HttpStatus.UNPROCESSABLE_ENTITY, HttpStatus.NOT_FOUND);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.GONE);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody()).containsEntry("canonicalPath", "/api/v1/sales/dispatch/confirm");
     }
 
     @Test

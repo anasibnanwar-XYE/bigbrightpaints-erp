@@ -17,7 +17,6 @@ import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrderRepository;
 import com.bigbrightpaints.erp.modules.sales.service.SalesDispatchReconciliationService;
-import com.bigbrightpaints.erp.modules.sales.service.SalesJournalService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesOrderCrudService;
 import com.bigbrightpaints.erp.shared.dto.LinkedBusinessReferenceDto;
 import java.time.LocalDate;
@@ -57,8 +56,6 @@ class InvoiceServiceTest {
     private SalesOrderRepository salesOrderRepository;
     @Mock
     private InvoiceNumberService invoiceNumberService;
-    @Mock
-    private SalesJournalService salesJournalService;
     @Mock
     private CompanyEntityLookup companyEntityLookup;
     @Mock
@@ -109,7 +106,6 @@ class InvoiceServiceTest {
         assertThrows(ApplicationException.class, () -> invoiceService.issueInvoiceForOrder(orderId));
 
         verifyNoInteractions(invoiceNumberService);
-        verifyNoInteractions(salesJournalService);
     }
 
     @Test
@@ -326,7 +322,6 @@ class InvoiceServiceTest {
 
         assertThat(ex.getMessage()).contains("Multiple packing slips exist for order; issue invoices per dispatch");
         verifyNoInteractions(invoiceNumberService);
-        verifyNoInteractions(salesJournalService);
     }
     @Test
     void issueInvoiceForOrder_existingInvoiceDoesNotReplayDispatchWhenSingleActiveSlipExists() {
@@ -389,7 +384,6 @@ class InvoiceServiceTest {
         verify(salesOrderRepository).save(order);
         verifyNoInteractions(salesDispatchReconciliationService);
         verifyNoInteractions(invoiceNumberService);
-        verifyNoInteractions(salesJournalService);
     }
 
     @Test

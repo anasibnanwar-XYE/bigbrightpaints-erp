@@ -7,25 +7,19 @@ import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
-import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.PayrollPaymentRequest;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
-import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
 import com.bigbrightpaints.erp.modules.factory.dto.ProductionBatchRequest;
 import com.bigbrightpaints.erp.modules.factory.service.FactoryService;
 import com.bigbrightpaints.erp.modules.hr.service.HrService;
-import com.bigbrightpaints.erp.modules.invoice.service.InvoiceService;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.InventoryReservationResult;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.InventoryShortage;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
-import com.bigbrightpaints.erp.modules.sales.service.SalesJournalService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesService;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
-import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
 import com.bigbrightpaints.erp.modules.reports.service.ReportService;
 import com.bigbrightpaints.erp.orchestrator.config.OrchestratorFeatureFlags;
 import com.bigbrightpaints.erp.orchestrator.repository.OrderAutoApprovalState;
@@ -73,11 +67,7 @@ class IntegrationCoordinatorTest {
     @Mock
     private FinishedGoodsService finishedGoodsService;
     @Mock
-    private InvoiceService invoiceService;
-    @Mock
     private AccountingService accountingService;
-    @Mock
-    private SalesJournalService salesJournalService;
     @Mock
     private HrService hrService;
     @Mock
@@ -86,12 +76,6 @@ class IntegrationCoordinatorTest {
     private OrderAutoApprovalStateRepository orderAutoApprovalStateRepository;
     @Mock
     private AccountingFacade accountingFacade;
-    @Mock
-    private CompanyEntityLookup companyEntityLookup;
-    @Mock
-    private CompanyDefaultAccountsService companyDefaultAccountsService;
-    @Mock
-    private CompanyContextService companyContextService;
     @Mock
     private CompanyClock companyClock;
 
@@ -106,26 +90,18 @@ class IntegrationCoordinatorTest {
                 salesService,
                 factoryService,
                 finishedGoodsService,
-                invoiceService,
                 accountingService,
-                salesJournalService,
                 hrService,
                 reportService,
                 orderAutoApprovalStateRepository,
                 accountingFacade,
-                companyEntityLookup,
-                companyDefaultAccountsService,
-                companyContextService,
                 companyClock,
                 new OrchestratorFeatureFlags(true, true),
-                new NoOpTransactionManager(),
-                10L,
-                20L);
+                new NoOpTransactionManager());
 
         company = new Company();
         company.setCode(COMPANY_ID);
         company.setTimezone("UTC");
-        lenient().when(companyContextService.requireCurrentCompany()).thenReturn(company);
         lenient().when(companyClock.today(any())).thenReturn(LocalDate.of(2024, 1, 1));
         order = new SalesOrder();
         order.setCompany(company);
@@ -204,23 +180,26 @@ class IntegrationCoordinatorTest {
 
     @Test
     void updateFulfillmentDispatchFailsClosed() {
-        assertThrows(ApplicationException.class,
+        ApplicationException ex = assertThrows(ApplicationException.class,
                 () -> integrationCoordinator.updateFulfillment(String.valueOf(ORDER_ID), "DISPATCHED", COMPANY_ID));
-        verify(salesService).hasDispatchConfirmation(ORDER_ID);
+
+        assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.BUSINESS_INVALID_STATE);
+        assertThat(ex.getDetails())
+                .containsEntry("canonicalPath", "/api/v1/sales/dispatch/confirm")
+                .containsEntry("requestedStatus", "DISPATCHED");
+        verify(salesService, never()).hasDispatchConfirmation(anyLong());
+        verify(salesService, never()).getOrderWithItems(anyLong());
         verify(salesService, never()).updateOrchestratorWorkflowStatus(eq(ORDER_ID), anyString());
     }
 
     @Test
-    void updateFulfillmentDispatchAcknowledgesWhenDispatchConfirmed() {
-        order.setStatus("SHIPPED");
-        when(salesService.hasDispatchConfirmation(ORDER_ID)).thenReturn(true);
-        when(salesService.getOrderWithItems(ORDER_ID)).thenReturn(order);
+    void updateFulfillmentDispatchStillFailsClosedWhenDispatchAlreadyConfirmed() {
+        ApplicationException ex = assertThrows(ApplicationException.class,
+                () -> integrationCoordinator.updateFulfillment(String.valueOf(ORDER_ID), "DISPATCHED", COMPANY_ID));
 
-        IntegrationCoordinator.AutoApprovalResult result =
-                integrationCoordinator.updateFulfillment(String.valueOf(ORDER_ID), "DISPATCHED", COMPANY_ID);
-
-        assertThat(result.orderStatus()).isEqualTo("SHIPPED");
-        assertThat(result.awaitingProduction()).isFalse();
+        assertThat(ex.getDetails()).containsEntry("canonicalPath", "/api/v1/sales/dispatch/confirm");
+        verify(salesService, never()).hasDispatchConfirmation(anyLong());
+        verify(salesService, never()).getOrderWithItems(anyLong());
         verify(salesService, never()).updateOrchestratorWorkflowStatus(eq(ORDER_ID), anyString());
     }
 
@@ -361,32 +340,19 @@ class IntegrationCoordinatorTest {
     }
 
     @Test
-    void createAccountingEntryFailsClosedInCodeRed() {
-        assertThrows(IllegalStateException.class, () ->
-                integrationCoordinator.createAccountingEntry(String.valueOf(ORDER_ID), COMPANY_ID));
-    }
-
-    @Test
     void updateProductionStatusFailsClosedWhenFactoryDispatchDisabled() {
         IntegrationCoordinator disabled = new IntegrationCoordinator(
                 salesService,
                 factoryService,
                 finishedGoodsService,
-                invoiceService,
                 accountingService,
-                salesJournalService,
                 hrService,
                 reportService,
                 orderAutoApprovalStateRepository,
                 accountingFacade,
-                companyEntityLookup,
-                companyDefaultAccountsService,
-                companyContextService,
                 companyClock,
                 new OrchestratorFeatureFlags(true, false),
-                new NoOpTransactionManager(),
-                10L,
-                20L);
+                new NoOpTransactionManager());
 
         assertThrows(ApplicationException.class,
                 () -> disabled.updateProductionStatus("101", COMPANY_ID));
@@ -399,21 +365,14 @@ class IntegrationCoordinatorTest {
                 salesService,
                 factoryService,
                 finishedGoodsService,
-                invoiceService,
                 accountingService,
-                salesJournalService,
                 hrService,
                 reportService,
                 orderAutoApprovalStateRepository,
                 accountingFacade,
-                companyEntityLookup,
-                companyDefaultAccountsService,
-                companyContextService,
                 companyClock,
                 new OrchestratorFeatureFlags(false, true),
-                new NoOpTransactionManager(),
-                10L,
-                20L);
+                new NoOpTransactionManager());
 
         assertThrows(ApplicationException.class,
                 () -> disabled.generatePayroll(LocalDate.now(), new BigDecimal("1000"), COMPANY_ID));
@@ -426,63 +385,20 @@ class IntegrationCoordinatorTest {
                 salesService,
                 factoryService,
                 finishedGoodsService,
-                invoiceService,
                 accountingService,
-                salesJournalService,
                 hrService,
                 reportService,
                 orderAutoApprovalStateRepository,
                 accountingFacade,
-                companyEntityLookup,
-                companyDefaultAccountsService,
-                companyContextService,
                 companyClock,
                 new OrchestratorFeatureFlags(false, true),
-                new NoOpTransactionManager(),
-                10L,
-                20L);
+                new NoOpTransactionManager());
 
         assertThrows(ApplicationException.class,
                 () -> disabled.recordPayrollPayment(1L, new BigDecimal("1000"), 1L, 2L, COMPANY_ID));
         verify(accountingFacade, never()).recordPayrollPayment(any());
     }
 
-    @Test
-    void postDispatchJournalPropagatesTraceAndIdempotencyInMemo() {
-        integrationCoordinator.postDispatchJournal(
-                "B-900",
-                COMPANY_ID,
-                new BigDecimal("120.00"),
-                "trace-dispatch-900",
-                "idem-dispatch-900");
-
-        verify(accountingFacade).createStandardJournal(argThat(request ->
-                request != null
-                        && "DISPATCH-B-900".equals(request.sourceReference())
-                        && LocalDate.of(2024, 1, 1).equals(request.entryDate())
-                        && request.narration() != null
-                        && request.narration().contains("Dispatch journal for batch B-900")
-                        && request.narration().contains("[trace=trace-dispatch-900]")
-                        && request.narration().contains("[idem=idem-dispatch-900]")
-                        && request.debitAccount().equals(10L)
-                        && request.creditAccount().equals(20L)
-                        && request.amount().compareTo(new BigDecimal("120.00")) == 0
-                        && Boolean.FALSE.equals(request.adminOverride())));
-    }
-
-    @Test
-    void postDispatchJournalRejectsControlCharsInCorrelationIdentifiers() {
-        assertThrows(ApplicationException.class, () -> integrationCoordinator.postDispatchJournal(
-                "B-900",
-                COMPANY_ID,
-                new BigDecimal("120.00"),
-                "trace-dispatch-\n900",
-                "idem-dispatch-900"));
-
-        verify(accountingFacade, never()).createStandardJournal(any(JournalCreationRequest.class));
-    }
-
-    @Test
     void reserveInventoryCorrelationAnnotatesProductionArtifactsAndAttachesTrace() {
         order.setOrderNumber("SO-42");
         InventoryShortage shortage = new InventoryShortage("SKU-1", new BigDecimal("3"), "Red Paint");
