@@ -39,6 +39,7 @@ import com.bigbrightpaints.erp.modules.purchasing.domain.SupplierRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 import com.bigbrightpaints.erp.modules.sales.service.SalesReturnService;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -54,6 +55,7 @@ import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 import org.mockito.ArgumentCaptor;
 
+@Tag("critical")
 class AccountingControllerJournalEndpointsTest {
 
     @Test
