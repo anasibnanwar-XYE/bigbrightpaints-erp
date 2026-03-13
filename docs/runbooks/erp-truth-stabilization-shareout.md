@@ -10,6 +10,7 @@ This is the single engineer-facing handoff for the ERP truth-stabilization missi
 - Mission validation state shows **38/38 assertions passed** across O2C, P2P, accounting/control, portal boundaries, cross-area linkage/costing/tenant isolation, and final-hardening validation.
 - The shipped result is a workflow-first ERP boundary model: commercial intent stays separate from stock/accounting truth, GRN stays stock-only, purchase invoice stays AP-only, posted documents correct through linked flows, and portal surfaces now fail closed around role and tenant boundaries.
 - Final validation evidence combined a repeatable seeded runtime reset, live API probes on role-scoped surfaces, focused abuse/replay probes, and passing compile/test/lint scrutiny artifacts.
+- Final integration landed through PR109, which merged into `Factory-droid` as commit `7ea0c484f627243baae9ea6edad8b194b0bbcadb`; the same cleaned head was then promoted to remote `main`, so the authoritative branch now matches the delivered mission result.
 
 ## Approved Scope And Delivered Coverage
 

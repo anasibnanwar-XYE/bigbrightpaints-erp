@@ -22,13 +22,13 @@
 
 ## Rollback Owner
 - Owner: Factory-droid integration worker
-- Rollback method: revert `35f256cb`, rerun `mvn -B -ntp -DskipTests compile` from `erp-domain`, rerun `python3 -m unittest testing.ci.test_pr_review_ci_packet`, rerun `ENTERPRISE_DIFF_BASE=56598edf1735aaa5fea41b10eda7e6a060f93f4e bash ci/check-enterprise-policy.sh`, and rerun the PR109 CI workflow before re-review.
+- Rollback method: revert merge commit `7ea0c484f627243baae9ea6edad8b194b0bbcadb`, rerun `mvn -B -ntp -DskipTests compile` from `erp-domain`, rerun `python3 -m unittest testing.ci.test_pr_review_ci_packet`, rerun `ENTERPRISE_DIFF_BASE=56598edf1735aaa5fea41b10eda7e6a060f93f4e bash ci/check-enterprise-policy.sh`, and rerun the final-integration CI workflow before re-review.
 
 ## Expiry
 - Valid until: 2026-03-16
-- Re-evaluate if: current `Factory-droid` moves again before merge, additional high-risk runtime files are added to the integration packet, or any remote CI failure points to a runtime regression rather than branch ancestry/governance.
+- Re-evaluate if: current `Factory-droid` or `main` diverges from merge commit `7ea0c484f627243baae9ea6edad8b194b0bbcadb`, additional high-risk runtime files are added in follow-up packets, or any post-merge CI failure points to a runtime regression rather than branch ancestry/governance.
 
 ## Verification Evidence
 - Verification bundle: final integration branch rebuilt from current `Factory-droid`, validated stack files overlaid from `35f256cb`, local compile, local CI-packet regression proof, local enterprise-policy repro/fix, and live fork PR/Actions execution on PR109.
-- Result summary: the final integration branch is now based directly on `Factory-droid` and PR109 is `MERGEABLE`. Local proof passed with `mvn -B -ntp -DskipTests compile` in `erp-domain` and `python3 -m unittest testing.ci.test_pr_review_ci_packet` (`15` tests, `OK`). The policy failure was reproduced locally with `ENTERPRISE_DIFF_BASE=56598edf1735aaa5fea41b10eda7e6a060f93f4e bash ci/check-enterprise-policy.sh` and resolved by updating this same-diff checkpoint. Remote Actions are now running on PR109 head `35f256cb7a1b6e7d78b96aa60df99969988d3eee`, including push-triggered run `23044636428` and manual final-integration run `23044639601`.
+- Result summary: the final integration branch was based directly on `Factory-droid`, PR109 went fully green, and it merged into `Factory-droid` at `2026-03-13T15:21:15Z` as commit `7ea0c484f627243baae9ea6edad8b194b0bbcadb`. Local proof passed with `mvn -B -ntp -DskipTests compile` in `erp-domain`, `python3 -m unittest testing.ci.test_pr_review_ci_packet` (`15` tests, `OK`), and the final changed-coverage closure pass that lifted `pr-changed-coverage` and `pr-merge-gate`. The same cleaned head was then promoted to remote `main`, so both authoritative branches now point to `7ea0c484f627243baae9ea6edad8b194b0bbcadb`.
 - Artifacts/links: `docs/approvals/R2-CHECKPOINT.md`, `ci/pr_manifests/pr_business_slice.txt`, `scripts/changed_files_coverage.py`, `testing/ci/test_pr_review_ci_packet.py`, `erp-domain/src/main/java/com/bigbrightpaints/erp/core/util/LegacyDispatchInvoiceLinkMatcher.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/core/util/LegacyDispatchInvoiceLinkMatcherTest.java`.
