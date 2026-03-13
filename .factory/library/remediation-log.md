@@ -124,7 +124,7 @@ Track cleanup, duplicate-truth removals, dead-code retirement, and production-re
 - **P2P stabilized:** supplier provisioning now creates payable truth up front, GRN remains stock-only, purchase invoice remains AP-only, and linkage drift fails closed instead of recreating receipt truth.
 - **Control stabilized:** settlements are header-level and replay-safe, manual journals are controlled adjustments only, posted documents are corrected through linked flows, and period/approval exceptions are explicit and auditable.
 - **Portal stabilized:** dealer surfaces are read-only and own-record scoped, sales/factory/accounting/admin boundaries are explicit, super-admin is platform-only, and cross-tenant attempts fail closed without data leakage.
-- **Still pending outside this log roll-up:** none for the truth-stabilization mission baseline; follow-up work is now post-landing operational cleanup rather than mission-scope completion.
+- **Still pending outside this log roll-up:** full mission-level DoD completion should be tracked separately from this landing packet; this roll-up records what was merged and stabilized here, not blanket completion of every mission milestone.
 
 ## 2026-03-13 — `final-hardening.integration-and-authoritative-branch-promotion`
 
@@ -133,4 +133,4 @@ Track cleanup, duplicate-truth removals, dead-code retirement, and production-re
 - **Cleanup/remediation performed:** integrated the validated recovery stack through final integration PR109, closed the last `pr-changed-coverage` gap with targeted proof additions, merged the resulting packet into `Factory-droid`, and then fast-forwarded remote `main` to the same merged head so the cleaned truth-stabilization line became authoritative.
 - **Duplicate-truth or dead-code impact:** retired the stale “old main as baseline” branch truth in the fork by promoting the merged `Factory-droid` head directly to `main`; branch authority now matches the cleaned runtime and docs state instead of preserving a second drifted baseline.
 - **Evidence:** PR109 merged as commit `7ea0c484f627243baae9ea6edad8b194b0bbcadb`; `pr-business-slice`, `pr-accounting`, `pr-changed-coverage`, and `pr-merge-gate` all passed on the final head; remote `Factory-droid` and remote `main` both now point to `7ea0c484f627243baae9ea6edad8b194b0bbcadb`.
-- **Follow-up:** keep future work on `main`/`Factory-droid` from this unified head and treat remaining cleanup as normal post-mission maintenance, not as unfinished truth-stabilization scope.
+- **Follow-up:** keep future work on `main`/`Factory-droid` from this unified head, and treat any claim of full mission-level DoD completion as requiring separate explicit sign-off beyond this packet-level landing record.

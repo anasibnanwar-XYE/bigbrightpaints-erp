@@ -2,12 +2,12 @@
 
 ## Purpose
 
-This is the single engineer-facing handoff for the ERP truth-stabilization mission. It summarizes what actually shipped against the approved O2C/P2P definition-of-done scope, what accounting/control and portal-boundary work shipped with it, what cleanup/removal work landed in touched areas, and what final-hardening validation evidence proved the result is stable.
+This is the single engineer-facing handoff for the ERP truth-stabilization packet that landed on `Factory-droid` and then `main`. It summarizes what shipped relative to the approved O2C/P2P definition-of-done scope, what accounting/control and portal-boundary work shipped with it, what cleanup/removal work landed in touched areas, and what validation evidence proved the delivered packet is stable.
 
 ## Executive Summary
 
-- Mission scope was completed against the approved **definition-of-done** baseline in `.factory/library/erp-definition-of-done.md`.
-- Mission validation state shows **38/38 assertions passed** across O2C, P2P, accounting/control, portal boundaries, cross-area linkage/costing/tenant isolation, and final-hardening validation.
+- This packet advances the approved **definition-of-done** baseline in `.factory/library/erp-definition-of-done.md`, but should not be read as a blanket claim that the entire mission-level DoD is complete.
+- Packet validation evidence shows **38/38 assertions passed** across the touched O2C, P2P, accounting/control, portal-boundary, cross-area linkage/costing/tenant-isolation, and final-hardening proof surfaces exercised by this landing set.
 - The shipped result is a workflow-first ERP boundary model: commercial intent stays separate from stock/accounting truth, GRN stays stock-only, purchase invoice stays AP-only, posted documents correct through linked flows, and portal surfaces now fail closed around role and tenant boundaries.
 - Final validation evidence combined a repeatable seeded runtime reset, live API probes on role-scoped surfaces, focused abuse/replay probes, and passing compile/test/lint scrutiny artifacts.
 - Final integration landed through PR109, which merged into `Factory-droid` as commit `7ea0c484f627243baae9ea6edad8b194b0bbcadb`; the same cleaned head was then promoted to remote `main`, so the authoritative branch now matches the delivered mission result.
@@ -170,4 +170,4 @@ The curated final-hardening suite specifically covered O2C fulfillment, sales re
 
 ## Bottom Line
 
-The shipped ERP now matches the approved O2C/P2P-centered definition-of-done scope: O2C and P2P truth boundaries are explicit, accounting/control flows are auditable instead of implicit, portal boundaries fail closed, duplicate-truth paths were removed from touched areas, and the final-hardening validation evidence shows the result is stable under normal use, correction flows, abuse probes, and replay/concurrency pressure.
+The shipped packet materially strengthens the approved O2C/P2P-centered definition-of-done baseline: P2P truth boundaries were refactored and stabilized, the touched O2C/accounting/control/portal paths were cleaned up around that work, duplicate-truth paths were removed from touched areas, and the final validation evidence shows this delivered packet is stable under normal use, correction flows, abuse probes, and replay/concurrency pressure. It should not be treated as a formal statement that every mission-level DoD milestone is fully complete.
