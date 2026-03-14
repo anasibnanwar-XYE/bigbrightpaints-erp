@@ -20,7 +20,7 @@ Final backend-facing handoff for frontend-v2 consumers after the merged `truth-r
 - The factory operational dispatch surface is `GET /api/v1/dispatch/preview/{slipId}` plus `POST /api/v1/dispatch/confirm`.
 - The accounting/admin financial posting surface is `POST /api/v1/sales/dispatch/confirm` plus `POST /api/v1/sales/dispatch/reconcile-order-markers`.
 - The legacy orchestrator batch-dispatch surface `POST /api/v1/orchestrator/factory/dispatch/{batchId}` is no longer a posting path; it now fails closed with `410 Gone` and `canonicalPath=/api/v1/dispatch/confirm`.
-- The orchestrator fulfillment endpoint must not be used to force `SHIPPED`/`DISPATCHED`/`FULFILLED`/`COMPLETED`; those requests now fail closed with `BUS_001` and direct callers back to `/api/v1/sales/dispatch/confirm`.
+- The orchestrator fulfillment endpoint must not be used to force `SHIPPED`/`DISPATCHED`/`FULFILLED`/`COMPLETED`; those requests now fail closed with `BUS_001` and direct callers back to `/api/v1/dispatch/confirm`.
 - Factory-facing dispatch responses must be treated as operational-only: logistics metadata and challan access are exposed, while pricing/accounting fields are intentionally redacted.
 - Delivery challan output is available from the dispatch flow and replay stays idempotent.
 
