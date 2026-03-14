@@ -499,6 +499,8 @@
                                 <include>**/truthsuite/**/*Test.java</include>
                                 <include>**/truthsuite/**/*IT.java</include>
                                 <include>**/truthsuite/**/*Suite.java</include>
+                                <include>**/e2e/sales/OrderFulfillmentE2ETest.java</include>
+                                <include>**/codered/CR_SalesDispatchInvoiceAccounting.java</include>
                             </includes>
                         </configuration>
                     </plugin>
@@ -569,6 +571,7 @@
                                 <include>**/modules/sales/domain/SalesOrderTest.java</include>
                                 <include>**/modules/sales/dto/DispatchConfirmRequestTest.java</include>
                                 <include>**/modules/sales/dto/SalesOrderRequestTest.java</include>
+                                <include>**/orchestrator/service/IntegrationCoordinatorTest.java</include>
                                 <include>**/modules/sales/service/SalesCoreEngineCoverageTest.java</include>
                                 <include>**/modules/sales/service/SalesFulfillmentServiceTest.java</include>
                                 <include>**/modules/sales/service/SalesProformaBoundaryServiceTest.java</include>

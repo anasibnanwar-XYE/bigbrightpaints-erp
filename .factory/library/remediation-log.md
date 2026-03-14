@@ -118,6 +118,15 @@ Track cleanup, duplicate-truth removals, dead-code retirement, and production-re
 - **Evidence:** updated docs cited against `PortalRoleActionMatrix`, `DealerPortalController`, `DealerPortalControllerSecurityIT`, `DealerPortalControllerExportAuditTest`, `DispatchOperationalBoundaryIT`, `SalesControllerIT`, `SuperAdminTenantWorkflowIsolationIT`, `.factory/library/environment.md`, and `.factory/services.yaml`.
 - **Follow-up:** the `final-hardening` milestone should add runtime/adversarial evidence, but frontend-facing contract docs should remain on the merged backend truth captured here unless a later code packet changes them.
 
+## 2026-03-14 — `remove-orchestrator-dispatch-journal`
+
+- **Area:** orchestrator O2C dispatch containment and duplicate-truth retirement.
+- **Risk addressed:** the orchestrator layer could still create standalone `DISPATCH-*` journals outside the canonical packaging-slip/invoice chain, leaving two different dispatch accounting truths and stale config/health wiring for a dead posting path.
+- **Cleanup/remediation performed:** removed `IntegrationCoordinator.postDispatchJournal`, `IntegrationCoordinator.createAccountingEntry`, the orphaned private journal helper, `SalesJournalService`, and `DispatchMappingHealthIndicator`; changed `CommandDispatcher.dispatchBatch` to fail closed with the factory operational `/api/v1/dispatch/confirm` pointer; and tightened orchestrator fulfillment updates so dispatch-like statuses now fail closed instead of acknowledging legacy dispatch state.
+- **Duplicate-truth or dead-code impact:** retired the only remaining orchestrator-owned dispatch journal writer plus its `erp.dispatch.*` mapping hooks, deleted the temporary characterization test that froze the wrong behavior, and replaced it with regression coverage proving no orchestrator `DISPATCH-*` journal creation path remains.
+- **Evidence:** `IntegrationCoordinator.java`, `CommandDispatcher.java`, `OrchestratorControllerIT`, `CriticalPathSmokeTest`, `TS_O2COrchestratorDispatchRemovalRegressionTest`, and `mvn -Djacoco.skip=true -Dtest='OrchestratorControllerIT,IntegrationCoordinatorTest,CommandDispatcherTest,TS_RuntimeOrchestratorExecutableCoverageTest,TS_O2COrchestratorDispatchRemovalRegressionTest,CriticalPathSmokeTest' test`.
+- **Follow-up:** the gate-core/guard packet should now harden CI so any future orchestrator dispatch posting reintroduction fails guardrails and changed-files coverage.
+
 ## Mission Roll-Up (as of 2026-03-08)
 
 - **O2C stabilized:** dealer provisioning, explicit payment modes, commercial-only pre-dispatch behavior, dispatch-owned invoicing, delivery challan output, replay safety, and batch-actual plus packaging cost carry-forward are documented and merged.

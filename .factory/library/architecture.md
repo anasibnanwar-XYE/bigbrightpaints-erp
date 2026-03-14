@@ -46,5 +46,6 @@ Each module follows: `domain/` (entities + repos), `service/`, `controller/`, `d
 - Highest-risk O2C/P2P hotspots are `SalesCoreEngine`, `InvoiceService`, `GoodsReceiptService`, `PurchaseInvoiceEngine`, `InventoryAccountingEventListener`, `SupplierService`, and `DealerService`.
 - For this mission, workflow state and accounting state must stay separate in touched documents.
 - Posting truth must have one canonical trigger per touched workflow boundary; duplicate-truth listeners and dead fallback paths should be removed when a feature makes them obsolete.
+- O2C dispatch posting has one allowed accounting path: `SalesCoreEngine.confirmDispatch -> AccountingFacade.postCogsJournal/postSalesJournal`. Orchestrator batch-dispatch and fulfillment endpoints must fail closed or redirect callers to the canonical sales dispatch confirm endpoint; they must never mint `DISPATCH-*` journals.
 - The mission normalizes linked business references across order or proforma, production requirement, packaging slip, dispatch, invoice, journal, settlement, return, note, and reversal artifacts.
 - Flyway `migration_v2` is the only valid migration track for this mission.

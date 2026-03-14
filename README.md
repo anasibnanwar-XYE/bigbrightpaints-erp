@@ -115,7 +115,7 @@ MIGRATION_SET=v2 mvn test -Djacoco.skip=true -Dtest='*Inventory*Test,*Inventory*
 ### CI-aligned gate scripts (repo root)
 ```bash
 bash scripts/gate_fast.sh
-bash scripts/gate_core.sh
+bash scripts/gate_core.sh       # includes O2C E2E coverage (OrderFulfillmentE2ETest, dispatch-invoice-accounting gates)
 bash scripts/gate_release.sh
 bash scripts/gate_reconciliation.sh
 ```
@@ -198,6 +198,9 @@ Key backend patterns used across modules:
 - **Engine pattern:** focused workflow engines orchestrate complex business transitions
 - **Shared idempotency framework:** signature + reservation + replay detection utilities under `core.idempotency`
 - **Outbox/event publication pattern:** reliable cross-module event delivery through orchestrator services
+
+**O2C dispatch posting path:**
+`SalesCoreEngine.confirmDispatch` → `AccountingFacade` is the sole canonical dispatch-to-accounting trigger for the order-to-cash flow. Orchestrator dispatch endpoints are fail-closed and do not post journals independently.
 
 ---
 
