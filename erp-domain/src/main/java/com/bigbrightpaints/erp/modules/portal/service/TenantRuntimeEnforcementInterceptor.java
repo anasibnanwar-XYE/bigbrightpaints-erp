@@ -81,10 +81,10 @@ public class TenantRuntimeEnforcementInterceptor implements HandlerInterceptor {
         if (!StringUtils.hasText(normalizedCompanyCode) && StringUtils.hasText(admission.companyCode())) {
             normalizedCompanyCode = admission.companyCode().trim();
         }
-        TenantRuntimeEnforcementService.TenantRuntimeSnapshot snapshot = StringUtils.hasText(normalizedCompanyCode)
-                ? tenantRuntimeEnforcementService.snapshot(normalizedCompanyCode)
-                : null;
         if (isQuotaRejection(admission)) {
+            TenantRuntimeEnforcementService.TenantRuntimeSnapshot snapshot = requiresQuotaSnapshot(admission)
+                    ? snapshotOrNull(normalizedCompanyCode)
+                    : null;
             return new ApplicationException(ErrorCode.BUSINESS_LIMIT_EXCEEDED, admission.message())
                     .withDetail("companyCode", normalizedCompanyCode)
                     .withDetail("quotaType", admission.limitType())
@@ -93,6 +93,9 @@ public class TenantRuntimeEnforcementInterceptor implements HandlerInterceptor {
                     .withDetail("policyReference", policyReference(snapshot, admission))
                     .withDetail("path", normalizedPath);
         }
+        TenantRuntimeEnforcementService.TenantRuntimeSnapshot snapshot = requiresStateSnapshot(admission)
+                ? snapshotOrNull(normalizedCompanyCode)
+                : null;
         return new ApplicationException(ErrorCode.BUSINESS_INVALID_STATE, admission.message())
                 .withDetail("companyCode", normalizedCompanyCode)
                 .withDetail("holdState", holdState(snapshot, admission))
@@ -103,6 +106,27 @@ public class TenantRuntimeEnforcementInterceptor implements HandlerInterceptor {
 
     private boolean isQuotaRejection(TenantRuntimeEnforcementService.TenantRequestAdmission admission) {
         return StringUtils.hasText(admission.limitType()) && !"TENANT_STATE".equalsIgnoreCase(admission.limitType().trim());
+    }
+
+    private boolean requiresQuotaSnapshot(TenantRuntimeEnforcementService.TenantRequestAdmission admission) {
+        return !StringUtils.hasText(admission.auditChainId());
+    }
+
+    private boolean requiresStateSnapshot(TenantRuntimeEnforcementService.TenantRequestAdmission admission) {
+        return !StringUtils.hasText(admission.observedValue())
+                || !StringUtils.hasText(admission.tenantReasonCode())
+                || !StringUtils.hasText(admission.auditChainId());
+    }
+
+    private TenantRuntimeEnforcementService.TenantRuntimeSnapshot snapshotOrNull(String companyCode) {
+        if (!StringUtils.hasText(companyCode)) {
+            return null;
+        }
+        try {
+            return tenantRuntimeEnforcementService.snapshot(companyCode);
+        } catch (RuntimeException ex) {
+            return null;
+        }
     }
 
     private String holdState(TenantRuntimeEnforcementService.TenantRuntimeSnapshot snapshot,

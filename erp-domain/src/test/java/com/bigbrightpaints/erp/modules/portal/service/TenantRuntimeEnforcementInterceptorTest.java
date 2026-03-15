@@ -240,18 +240,6 @@ class TenantRuntimeEnforcementInterceptorTest {
                 "ACTIVE",
                 "policy-hold");
         when(tenantRuntimeEnforcementService.beginRequest(any(), any(), any(), any(), eq(false))).thenReturn(rejected);
-        when(tenantRuntimeEnforcementService.snapshot("ACME")).thenReturn(snapshot(
-                TenantRuntimeEnforcementService.TenantRuntimeState.HOLD,
-                "MAINTENANCE_WINDOW",
-                "policy-hold",
-                Instant.parse("2026-02-20T10:16:05Z"),
-                500,
-                5000,
-                200,
-                0,
-                1,
-                0,
-                0L));
 
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/portal/orders");
 
@@ -267,6 +255,7 @@ class TenantRuntimeEnforcementInterceptorTest {
                             .containsEntry("policyReference", "policy-hold")
                             .containsEntry("path", "/api/v1/portal/orders");
                 });
+        verify(tenantRuntimeEnforcementService, never()).snapshot("ACME");
     }
 
     @Test
@@ -286,18 +275,6 @@ class TenantRuntimeEnforcementInterceptorTest {
                 "not-a-number",
                 "policy-rpm");
         when(tenantRuntimeEnforcementService.beginRequest(any(), any(), any(), any(), eq(false))).thenReturn(rejected);
-        when(tenantRuntimeEnforcementService.snapshot("ACME")).thenReturn(snapshot(
-                TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE,
-                "POLICY_ACTIVE",
-                "policy-rpm",
-                Instant.parse("2026-02-20T10:16:05Z"),
-                500,
-                1,
-                200,
-                2,
-                1,
-                0,
-                0L));
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/reports/inventory");
 
@@ -310,6 +287,7 @@ class TenantRuntimeEnforcementInterceptorTest {
                             .containsEntry("quotaValue", 0)
                             .containsEntry("observed", 0);
                 });
+        verify(tenantRuntimeEnforcementService, never()).snapshot("ACME");
     }
 
     @Test
@@ -329,18 +307,6 @@ class TenantRuntimeEnforcementInterceptorTest {
                 "1",
                 "policy-rpm");
         when(tenantRuntimeEnforcementService.beginRequest(any(), any(), any(), any(), eq(false))).thenReturn(rejected);
-        when(tenantRuntimeEnforcementService.snapshot("ACME")).thenReturn(snapshot(
-                TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE,
-                "POLICY_ACTIVE",
-                "policy-rpm",
-                Instant.parse("2026-02-20T10:16:05Z"),
-                500,
-                1,
-                200,
-                2,
-                1,
-                0,
-                0L));
 
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/reports/inventory");
 
@@ -357,6 +323,7 @@ class TenantRuntimeEnforcementInterceptorTest {
                             .containsEntry("policyReference", "policy-rpm")
                             .containsEntry("path", "/api/v1/reports/inventory");
                 });
+        verify(tenantRuntimeEnforcementService, never()).snapshot("ACME");
     }
 
     @Test
@@ -379,7 +346,7 @@ class TenantRuntimeEnforcementInterceptorTest {
     }
 
     @Test
-    void admissionException_usesAdmissionCompanyAndStateDetailsWhenSnapshotLookupIsUnavailable() {
+    void admissionException_usesAdmissionCompanyAndStateDetailsWithoutSnapshotLookup() {
         interceptor = new TenantRuntimeEnforcementInterceptor(companyContextService, tenantRuntimeEnforcementService);
         TenantRuntimeEnforcementService.TenantRequestAdmission rejected = admission(
                 false,
@@ -408,7 +375,7 @@ class TenantRuntimeEnforcementInterceptorTest {
                 .containsEntry("holdReason", "SECURITY_REVIEW")
                 .containsEntry("policyReference", "chain-id")
                 .containsEntry("path", "/api/v1/portal/orders");
-        verify(tenantRuntimeEnforcementService).snapshot("ACME");
+        verifyNoInteractions(tenantRuntimeEnforcementService);
     }
 
     @Test
@@ -446,7 +413,7 @@ class TenantRuntimeEnforcementInterceptorTest {
     }
 
     @Test
-    void admissionException_usesAdmissionHoldStateWhenSnapshotStateIsMissing() {
+    void admissionException_usesSnapshotReasonWhenAdmissionReasonIsMissing() {
         interceptor = new TenantRuntimeEnforcementInterceptor(companyContextService, tenantRuntimeEnforcementService);
         TenantRuntimeEnforcementService.TenantRequestAdmission rejected = admission(
                 false,
@@ -454,12 +421,12 @@ class TenantRuntimeEnforcementInterceptorTest {
                 423,
                 "Tenant is currently on hold",
                 "TENANT_ON_HOLD",
-                "MAINTENANCE_WINDOW",
+                "   ",
                 "TENANT_STATE",
                 "HOLD",
                 "ACTIVE");
         when(tenantRuntimeEnforcementService.snapshot("ACME")).thenReturn(snapshot(
-                null,
+                TenantRuntimeEnforcementService.TenantRuntimeState.BLOCKED,
                 "MAINTENANCE_WINDOW",
                 "policy-hold",
                 Instant.parse("2026-02-20T10:16:05Z"),
@@ -504,18 +471,6 @@ class TenantRuntimeEnforcementInterceptorTest {
                 "HOLD",
                 "ACTIVE",
                 "policy-denied");
-        when(tenantRuntimeEnforcementService.snapshot("ACME")).thenReturn(snapshot(
-                TenantRuntimeEnforcementService.TenantRuntimeState.BLOCKED,
-                "SECURITY_REVIEW",
-                "policy-current",
-                Instant.parse("2026-02-20T10:16:05Z"),
-                500,
-                5000,
-                200,
-                0,
-                1,
-                0,
-                0L));
 
         RuntimeException exception = ReflectionTestUtils.invokeMethod(
                 interceptor,
@@ -532,6 +487,41 @@ class TenantRuntimeEnforcementInterceptorTest {
                 .containsEntry("holdState", "HOLD")
                 .containsEntry("holdReason", "MAINTENANCE_WINDOW")
                 .containsEntry("policyReference", "policy-denied")
+                .containsEntry("path", "/api/v1/portal/orders");
+        verifyNoInteractions(tenantRuntimeEnforcementService);
+    }
+
+    @Test
+    void admissionException_degradesToNullFallbackStateDetailsWhenSnapshotLookupFails() {
+        interceptor = new TenantRuntimeEnforcementInterceptor(companyContextService, tenantRuntimeEnforcementService);
+        TenantRuntimeEnforcementService.TenantRequestAdmission rejected = admission(
+                false,
+                "ACME",
+                423,
+                "Tenant is currently on hold",
+                "TENANT_ON_HOLD",
+                "   ",
+                "TENANT_STATE",
+                "HOLD",
+                "ACTIVE",
+                "   ");
+        when(tenantRuntimeEnforcementService.snapshot("ACME")).thenThrow(new IllegalStateException("db offline"));
+
+        RuntimeException exception = ReflectionTestUtils.invokeMethod(
+                interceptor,
+                "admissionException",
+                "ACME",
+                "/api/v1/portal/orders",
+                rejected);
+
+        assertThat(exception).isInstanceOf(ApplicationException.class);
+        ApplicationException applicationException = (ApplicationException) exception;
+        assertThat(applicationException.getErrorCode()).isEqualTo(ErrorCode.BUSINESS_INVALID_STATE);
+        assertThat(applicationException.getDetails())
+                .containsEntry("companyCode", "ACME")
+                .containsEntry("holdState", "HOLD")
+                .containsEntry("holdReason", null)
+                .containsEntry("policyReference", null)
                 .containsEntry("path", "/api/v1/portal/orders");
         verify(tenantRuntimeEnforcementService).snapshot("ACME");
     }
