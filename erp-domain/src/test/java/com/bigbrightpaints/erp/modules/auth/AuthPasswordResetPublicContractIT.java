@@ -3,6 +3,8 @@ package com.bigbrightpaints.erp.modules.auth;
 import com.bigbrightpaints.erp.core.notification.EmailService;
 import com.bigbrightpaints.erp.modules.auth.domain.PasswordResetToken;
 import com.bigbrightpaints.erp.modules.auth.domain.PasswordResetTokenRepository;
+import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
+import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -13,6 +15,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.mock.mockito.SpyBean;
@@ -30,6 +33,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.doAnswer;
 
@@ -48,6 +53,9 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
 
     @SpyBean
     private PasswordResetTokenRepository passwordResetTokenRepository;
+
+    @Autowired
+    private UserAccountRepository userAccountRepository;
 
     @BeforeEach
     void seedSuperAdmin() {
@@ -128,7 +136,7 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void forgotEndpoint_preservesAntiEnumerationWhenTokenPersistenceFails() {
+    void forgotEndpoint_returnsControlledNonSuccessForKnownUserWhenTokenPersistenceFails() {
         doThrow(new DataAccessResourceFailureException("db unavailable"))
                 .when(passwordResetTokenRepository)
                 .saveAndFlush(any(PasswordResetToken.class));
@@ -136,16 +144,68 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
         ResponseEntity<Map> knownUserResponse = postForgot(SUPERADMIN_EMAIL, "ANY-TENANT");
         ResponseEntity<Map> unknownUserResponse = postForgot("unknown.superadmin@bbp.com", "ANY-TENANT");
 
-        assertThat(knownUserResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(knownUserResponse.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
         assertThat(unknownUserResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(knownUserResponse.getBody()).isNotNull();
         assertThat(unknownUserResponse.getBody()).isNotNull();
-        assertThat(knownUserResponse.getBody().get("success")).isEqualTo(true);
-        assertThat(unknownUserResponse.getBody().get("success")).isEqualTo(true);
+        assertThat(knownUserResponse.getBody().get("success")).isEqualTo(false);
         assertThat(knownUserResponse.getBody().get("message"))
-                .isEqualTo("If the email exists, a reset link has been sent");
+                .isEqualTo("Password reset temporarily unavailable");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> knownData = (Map<String, Object>) knownUserResponse.getBody().get("data");
+        assertThat(knownData).isNotNull();
+        assertThat(knownData.get("code")).isEqualTo("SYS_003");
+        assertThat(knownData).containsKey("traceId");
+        assertThat(unknownUserResponse.getBody().get("success")).isEqualTo(true);
         assertThat(unknownUserResponse.getBody().get("message"))
                 .isEqualTo("If the email exists, a reset link has been sent");
+    }
+
+    @Test
+    void forgotEndpoint_keepsDisabledUsersMaskedWhenPersistenceFails() {
+        UserAccount disabledUser = userAccountRepository.findByEmailIgnoreCase(SUPERADMIN_EMAIL).orElseThrow();
+        disabledUser.setEnabled(false);
+        userAccountRepository.saveAndFlush(disabledUser);
+
+        doThrow(new DataAccessResourceFailureException("db unavailable"))
+                .when(passwordResetTokenRepository)
+                .saveAndFlush(any(PasswordResetToken.class));
+
+        ResponseEntity<Map> disabledUserResponse = postForgot(SUPERADMIN_EMAIL, "ANY-TENANT");
+
+        assertThat(disabledUserResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(disabledUserResponse.getBody()).isNotNull();
+        assertThat(disabledUserResponse.getBody().get("success")).isEqualTo(true);
+        assertThat(disabledUserResponse.getBody().get("message"))
+                .isEqualTo("If the email exists, a reset link has been sent");
+    }
+
+    @Test
+    void forgotPersistenceFailure_keepsPreExistingResetTokenUsableAndDoesNotDispatchEmail() {
+        String targetEmail = "preexisting.reset.user@bbp.com";
+        UserAccount user = dataSeeder.ensureUser(
+                targetEmail,
+                "Admin@12345",
+                "Preexisting Reset User",
+                PRIMARY_COMPANY,
+                List.of("ROLE_SUPER_ADMIN"));
+        String preExistingToken = "preexisting-reset-token";
+        passwordResetTokenRepository.saveAndFlush(
+                new PasswordResetToken(user, preExistingToken, Instant.now().plusSeconds(600)));
+
+        doThrow(new DataAccessResourceFailureException("db unavailable"))
+                .when(passwordResetTokenRepository)
+                .saveAndFlush(any(PasswordResetToken.class));
+
+        ResponseEntity<Map> forgotResponse = postForgot(targetEmail, "ANY-TENANT");
+
+        assertThat(forgotResponse.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+        verify(emailService, never()).sendPasswordResetEmailRequired(eq(targetEmail), eq("Preexisting Reset User"), anyString());
+
+        ResponseEntity<Map> resetResponse = postReset(preExistingToken, "NewPass123!");
+        assertThat(resetResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(resetResponse.getBody()).isNotNull();
+        assertThat(resetResponse.getBody().get("success")).isEqualTo(true);
     }
 
     @Test

@@ -270,6 +270,13 @@ public class PasswordResetService {
             }
             if (suppressFailures) {
                 logMaskedPublicResetFailure(operation, correlationId, maskedEmail, ex, issuedResetToken, cleanupFailure);
+                if (isPublicResetPersistenceFailure(ex, issuedResetToken) || cleanupFailure != null) {
+                    RuntimeException effectiveFailure = cleanupFailure != null ? cleanupFailure : ex;
+                    throw new ApplicationException(
+                            ErrorCode.SYSTEM_DATABASE_ERROR,
+                            "Password reset temporarily unavailable",
+                            effectiveFailure);
+                }
                 return false;
             }
             log.warn(

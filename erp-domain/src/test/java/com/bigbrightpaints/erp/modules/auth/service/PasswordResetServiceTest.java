@@ -222,7 +222,7 @@ class PasswordResetServiceTest {
     }
 
     @Test
-    void requestResetMasksTokenPersistenceFailureToPreserveAntiEnumeration() {
+    void requestResetReturnsControlledNonSuccessWhenTokenPersistenceFailsForKnownUser() {
         UserAccount user = new UserAccount("user@example.com", "hash", "User");
         user.setEnabled(true);
         when(userAccountRepository.findByEmailIgnoreCase("user@example.com"))
@@ -231,7 +231,12 @@ class PasswordResetServiceTest {
                 .when(tokenRepository)
                 .saveAndFlush(any(PasswordResetToken.class));
 
-        assertDoesNotThrow(() -> passwordResetService.requestReset("user@example.com"));
+        ApplicationException exception = assertThrows(
+                ApplicationException.class,
+                () -> passwordResetService.requestReset("user@example.com"));
+
+        assertEquals(ErrorCode.SYSTEM_DATABASE_ERROR, exception.getErrorCode());
+        assertEquals("Password reset temporarily unavailable", exception.getUserMessage());
 
         verify(tokenRepository).deleteByUser(user);
         verify(tokenRepository).saveAndFlush(any(PasswordResetToken.class));
@@ -240,7 +245,7 @@ class PasswordResetServiceTest {
     }
 
     @Test
-    void requestResetMasksCleanupPersistenceFailureToPreserveAntiEnumeration() {
+    void requestResetReturnsControlledNonSuccessWhenCleanupPersistenceFails() {
         UserAccount user = new UserAccount("user@example.com", "hash", "User");
         user.setEnabled(true);
         when(userAccountRepository.findByEmailIgnoreCase("user@example.com"))
@@ -252,7 +257,12 @@ class PasswordResetServiceTest {
                 .when(tokenRepository)
                 .deleteByTokenDigest(anyString());
 
-        assertDoesNotThrow(() -> passwordResetService.requestReset("user@example.com"));
+        ApplicationException exception = assertThrows(
+                ApplicationException.class,
+                () -> passwordResetService.requestReset("user@example.com"));
+
+        assertEquals(ErrorCode.SYSTEM_DATABASE_ERROR, exception.getErrorCode());
+        assertEquals("Password reset temporarily unavailable", exception.getUserMessage());
 
         verify(tokenRepository).saveAndFlush(any(PasswordResetToken.class));
         verify(tokenRepository).deleteByTokenDigest(anyString());
