@@ -120,3 +120,10 @@ Testing surface: tools, URLs, setup steps, isolation notes, known quirks.
   - `GET /api/v1/auth/me` for immediate deny/re-allow
   - a runtime-intercepted endpoint such as `GET /api/v1/portal/dashboard`
   - `GET /api/v1/admin/tenant-runtime/metrics` for tenant-scoped read parity
+- `GET /api/v1/admin/tenant-runtime/metrics` is itself runtime-gated for blocked tenants in the seeded lane01 runtime. If a tenant is BLOCKED, expect `403 TENANT_BLOCKED`; verify the blocked state with auth/login denial first, then recover the tenant before reading metrics again.
+
+## Flow Validator Guidance: cli
+- Lane 01 CLI validators are read-only with respect to repository contents: run manifest/router or targeted Maven commands, but do not edit source files or validation artifacts.
+- Reuse the already-prepared repo root `/home/realnigga/Desktop/Mission-control`; do not create alternate clones or reset the shared runtime.
+- It is safe to run CLI validation in parallel with a single runtime/API validator, but do not start additional compose services or a second backend instance on `5433/8081/9090`.
+- Capture the exact command lines, whether the manifest includes the expected runtime-policy classes, and any router output proving `run_auth_tenant=true` for lane01-relevant changes.
