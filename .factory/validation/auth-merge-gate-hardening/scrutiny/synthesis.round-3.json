@@ -1,7 +1,7 @@
 {
   "milestone": "auth-merge-gate-hardening",
-  "round": 4,
-  "status": "pass",
+  "round": 3,
+  "status": "fail",
   "validatorsRun": {
     "test": {
       "passed": true,
@@ -21,11 +21,19 @@
   },
   "reviewsSummary": {
     "total": 1,
-    "passed": 1,
-    "failed": 0,
-    "failedFeatures": []
+    "passed": 0,
+    "failed": 1,
+    "failedFeatures": [
+      "auth-forgot-dispatch-after-commit"
+    ]
   },
-  "blockingIssues": [],
+  "blockingIssues": [
+    {
+      "featureId": "auth-forgot-dispatch-after-commit",
+      "severity": "blocking",
+      "description": "The after-commit dispatch change fixes the prior email-before-commit leak, but restorePublicResetStateAfterDispatchFailure() can still strand the user without any usable reset token if post-commit cleanup of the new token fails, and the updated AuthPasswordResetPublicContractIT assertion now codifies that regressed state instead of preserving prior-token usability."
+    }
+  ],
   "appliedUpdates": [],
   "suggestedGuidanceUpdates": [
     {
@@ -44,7 +52,7 @@
   "rejectedObservations": [
     {
       "observation": "Update .factory/library/auth-hardening.md to say the forgot-password persistence-failure hardening is complete.",
-      "reason": "rejected because shared knowledge remains out of scope for this scrutiny rerun, even though the underlying AUTH-09 repair now passes review."
+      "reason": "rejected because the underlying AUTH-09 fix track still has a blocking persistence-ordering defect; shared knowledge should not be refreshed until the product defect is fully closed."
     },
     {
       "observation": "Update .factory/library/auth-hardening.md to remove the retired backfill/raw-token fallback rollout notes.",
@@ -55,5 +63,5 @@
       "reason": "rejected for this run because the observation is factual but would require a documentation-only shared-knowledge edit outside the requested scrutiny-validation scope."
     }
   ],
-  "previousRound": ".factory/validation/auth-merge-gate-hardening/scrutiny/synthesis.round-3.json"
+  "previousRound": ".factory/validation/auth-merge-gate-hardening/scrutiny/synthesis.round-2.json"
 }
