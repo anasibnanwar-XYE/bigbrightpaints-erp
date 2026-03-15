@@ -1,34 +1,34 @@
 # R2 Checkpoint
 
 ## Scope
-- Feature: `factory-droid.integration.validated-recovery-stack`
-- Branch: `recovery/08-engineer-shareout`
-- High-risk paths touched: current-state integration across `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/accounting/**`, `erp-domain/src/main/java/com/bigbrightpaints/erp/core/security/**`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/inventory/**`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/invoice/**`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/purchasing/**`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/sales/**`, the paired regression/test surface under `erp-domain/src/test/java/**`, CI manifest/governance files, and this approval record.
-- Why this is R2: the packet integrates the already validated recovery stack onto the current `Factory-droid` branch tip so the final branch-as-trunk certification can run against real current ancestry; it changes accounting, auth, inventory, sales, and purchasing runtime truth in one packet and therefore requires explicit same-diff approval evidence.
+- Feature: `o2c-dispatch-canonicalization`
+- Branch: `codex/pr111-followups`
+- High-risk paths touched: `erp-domain/src/main/java/com/bigbrightpaints/erp/orchestrator/**`
+- Why this is R2: this follow-up changes the merged orchestrator dispatch-canonicalization contract in a high-risk area by altering prod readiness behavior, CI guard enforcement, and fulfillment canonical-path guidance, so enterprise policy requires same-diff approval evidence for the corrected runtime contract.
 
 ## Risk Trigger
-- Triggered by integrating the repaired PR96-PR105 runtime surface onto `Factory-droid` with high-risk edits under accounting, security, purchasing, invoice, inventory, and sales modules.
-- Contract surfaces affected: invoice-to-dispatch truth rails, settlement and period-close correction flow, portal/security boundaries, reservation replay truth, sales/purchase return handling, and the PR business-slice / changed-coverage governance used to certify the branch.
-- Main risks being controlled: dropping a validated fix while rebasing onto current `Factory-droid`, silently regressing accounting replay or return behavior during the integration lift, and merging a high-risk branch packet without same-diff approval evidence tied to the actual final integration head.
+- Triggered by post-merge regressions left behind after dispatch canonicalization: stale readiness membership for deleted `dispatchMapping`, stale correlation guard assertions for the removed orchestrator dispatch workflow, and fulfillment guidance that pointed order callers at the packaging-slip-first dispatch endpoint.
+- Contract change: prod readiness now includes only live health contributors, the correlation guard validates only surviving orchestrator flows, and dispatch-like fulfillment rejections now point to the order-capable sales dispatch confirm route.
+- Canonical posting rule remains unchanged: `SalesCoreEngine.confirmDispatch -> AccountingFacade` is the sole commercial-to-accounting trigger for dispatch truth.
 
 ## Approval Authority
 - Mode: orchestrator
 - Approver: ERP truth-stabilization mission orchestration
-- Basis: controlled integration of an already validated stacked recovery branch into the current `Factory-droid` base; no compatibility bridge or second runtime path is introduced.
+- Basis: follow-up remediation that closes post-merge regressions without restoring any removed dispatch posting path, adding new privileges, or widening tenant scope.
 
 ## Escalation Decision
 - Human escalation required: no
-- Reason: the packet is a current-state integration of already reviewed fixes onto the live branch tip, with local compile and CI-governance proof rerun before remote certification; it does not add new tenant scope, migration behavior, or user-facing fallback modes.
+- Reason: the follow-up preserves the canonical dispatch design and only corrects runtime/configuration guidance and guard behavior; it does not introduce new privileges, tenant boundary changes, or destructive migration risk.
 
 ## Rollback Owner
 - Owner: Factory-droid integration worker
-- Rollback method: revert merge commit `7ea0c484f627243baae9ea6edad8b194b0bbcadb`, rerun `mvn -B -ntp -DskipTests compile` from `erp-domain`, rerun `python3 -m unittest testing.ci.test_pr_review_ci_packet`, rerun `ENTERPRISE_DIFF_BASE=56598edf1735aaa5fea41b10eda7e6a060f93f4e bash ci/check-enterprise-policy.sh`, and rerun the final-integration CI workflow before re-review.
+- Rollback method: revert follow-up commits `cb688e6f`, `1ba4eba3`, and `4ddf5956`, rerun `cd erp-domain && mvn -B -ntp -Dtest=CR_ProductionMonitoringContractTest test`, rerun `bash scripts/guard_orchestrator_correlation_contract.sh`, rerun `bash scripts/guard_workflow_canonical_paths.sh`, rerun `cd erp-domain && mvn -B -ntp -Dtest=IntegrationCoordinatorTest test`, rerun `cd erp-domain && mvn -B -ntp -Dtest=OrchestratorControllerIT test`, and rerun `bash ci/check-enterprise-policy.sh` before re-review.
 
 ## Expiry
-- Valid until: 2026-03-16
-- Re-evaluate if: current `Factory-droid` or `main` diverges from merge commit `7ea0c484f627243baae9ea6edad8b194b0bbcadb`, additional high-risk runtime files are added in follow-up packets, or any post-merge CI failure points to a runtime regression rather than branch ancestry/governance.
+- Valid until: 2026-03-28
+- Re-evaluate if: additional high-risk orchestrator files are added to this follow-up, readiness health membership changes again, canonical fulfillment routing changes again, or any validator disproves the fail-closed/canonical-only dispatch contract.
 
 ## Verification Evidence
-- Verification bundle: final integration branch rebuilt from current `Factory-droid`, validated stack files overlaid from `35f256cb`, local compile, local CI-packet regression proof, local enterprise-policy repro/fix, and live fork PR/Actions execution on PR109.
-- Result summary: the final integration branch was based directly on `Factory-droid`, PR109 went fully green, and it merged into `Factory-droid` at `2026-03-13T15:21:15Z` as commit `7ea0c484f627243baae9ea6edad8b194b0bbcadb`. Local proof passed with `mvn -B -ntp -DskipTests compile` in `erp-domain`, `python3 -m unittest testing.ci.test_pr_review_ci_packet` (`15` tests, `OK`), and the final changed-coverage closure pass that lifted `pr-changed-coverage` and `pr-merge-gate`. The same cleaned head was then promoted to remote `main`, so both authoritative branches now point to `7ea0c484f627243baae9ea6edad8b194b0bbcadb`.
-- Artifacts/links: `docs/approvals/R2-CHECKPOINT.md`, `ci/pr_manifests/pr_business_slice.txt`, `scripts/changed_files_coverage.py`, `testing/ci/test_pr_review_ci_packet.py`, `erp-domain/src/main/java/com/bigbrightpaints/erp/core/util/LegacyDispatchInvoiceLinkMatcher.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/core/util/LegacyDispatchInvoiceLinkMatcherTest.java`.
+- Commands run: `cd erp-domain && mvn -B -ntp -Dtest=CR_ProductionMonitoringContractTest test` (`4` tests, `0` failures/errors), `bash scripts/guard_orchestrator_correlation_contract.sh` (`OK`), `bash scripts/guard_workflow_canonical_paths.sh` (`OK`), `cd erp-domain && mvn -B -ntp -Dtest=IntegrationCoordinatorTest test` (`25` tests, `0` failures/errors), `cd erp-domain && mvn -B -ntp -Dtest=OrchestratorControllerIT test` (`24` tests, `0` failures/errors with Colima-backed Testcontainers), `bash ci/check-enterprise-policy.sh` (`pending rerun after this same-diff R2 update`).
+- Result summary: the follow-up removes the stale prod readiness member for the deleted dispatch indicator, aligns the correlation guard with the removed orchestrator dispatch workflow, preserves fail-closed batch dispatch behavior, and redirects fulfillment callers to the order-capable `/api/v1/sales/dispatch/confirm` path while keeping canonical dispatch posting exclusively `SalesCoreEngine.confirmDispatch -> AccountingFacade`.
+- Artifacts/links: `docs/approvals/R2-CHECKPOINT.md`, `erp-domain/src/main/resources/application-prod.yml`, `scripts/guard_orchestrator_correlation_contract.sh`, `scripts/guard_workflow_canonical_paths.sh`, `erp-domain/src/test/java/com/bigbrightpaints/erp/codered/CR_ProductionMonitoringContractTest.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/orchestrator/service/IntegrationCoordinatorTest.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/orchestrator/OrchestratorControllerIT.java`.

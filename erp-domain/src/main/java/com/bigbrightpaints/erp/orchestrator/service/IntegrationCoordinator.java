@@ -4,16 +4,13 @@ import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.core.exception.ApplicationException;
 import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.util.CompanyClock;
-import com.bigbrightpaints.erp.core.util.CompanyEntityLookup;
 import com.bigbrightpaints.erp.modules.accounting.dto.AccountDto;
-import com.bigbrightpaints.erp.modules.accounting.dto.JournalCreationRequest;
 import com.bigbrightpaints.erp.modules.accounting.dto.JournalEntryDto;
 import com.bigbrightpaints.erp.modules.accounting.dto.PayrollPaymentRequest;
-import com.bigbrightpaints.erp.modules.accounting.domain.JournalEntry;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingFacade;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingService;
-import com.bigbrightpaints.erp.modules.accounting.service.CompanyDefaultAccountsService;
-import com.bigbrightpaints.erp.modules.company.service.CompanyContextService;
+import com.bigbrightpaints.erp.modules.company.domain.Company;
+import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
 import com.bigbrightpaints.erp.modules.factory.dto.FactoryDashboardDto;
 import com.bigbrightpaints.erp.modules.factory.dto.FactoryTaskDto;
 import com.bigbrightpaints.erp.modules.factory.dto.FactoryTaskRequest;
@@ -25,7 +22,6 @@ import com.bigbrightpaints.erp.modules.factory.service.FactoryService;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.InventoryReservationResult;
 import com.bigbrightpaints.erp.modules.inventory.service.FinishedGoodsService.InventoryShortage;
-import com.bigbrightpaints.erp.modules.invoice.service.InvoiceService;
 import com.bigbrightpaints.erp.modules.hr.dto.EmployeeDto;
 import com.bigbrightpaints.erp.modules.hr.dto.PayrollRunDto;
 import com.bigbrightpaints.erp.modules.hr.service.HrService;
@@ -36,9 +32,7 @@ import com.bigbrightpaints.erp.modules.reports.service.ReportService;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
 import com.bigbrightpaints.erp.modules.sales.dto.DealerDto;
 import com.bigbrightpaints.erp.modules.sales.dto.SalesOrderDto;
-import com.bigbrightpaints.erp.modules.sales.service.SalesJournalService;
 import com.bigbrightpaints.erp.modules.sales.service.SalesService;
-import com.bigbrightpaints.erp.modules.sales.util.SalesOrderReference;
 import com.bigbrightpaints.erp.orchestrator.config.OrchestratorFeatureFlags;
 import com.bigbrightpaints.erp.orchestrator.repository.OrderAutoApprovalState;
 import com.bigbrightpaints.erp.orchestrator.repository.OrderAutoApprovalStateRepository;
@@ -54,7 +48,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -72,64 +65,39 @@ public class IntegrationCoordinator {
     private final SalesService salesService;
     private final FactoryService factoryService;
     private final FinishedGoodsService finishedGoodsService;
-    private final InvoiceService invoiceService;
     private final AccountingService accountingService;
-    private final SalesJournalService salesJournalService;
     private final HrService hrService;
     private final ReportService reportService;
     private final OrderAutoApprovalStateRepository orderAutoApprovalStateRepository;
     private final AccountingFacade accountingFacade;
-    private final CompanyEntityLookup companyEntityLookup;
-    private final CompanyDefaultAccountsService companyDefaultAccountsService;
-    private final CompanyContextService companyContextService;
+    private final CompanyRepository companyRepository;
     private final CompanyClock companyClock;
     private final OrchestratorFeatureFlags featureFlags;
-    private final Long dispatchDebitAccountId;
-    private final Long dispatchCreditAccountId;
     private final TransactionTemplate txTemplate;
-    private static final AtomicBoolean dispatchAccountWarningLogged = new AtomicBoolean(false);
 
     public IntegrationCoordinator(SalesService salesService,
                                   FactoryService factoryService,
                                   FinishedGoodsService finishedGoodsService,
-                                  InvoiceService invoiceService,
                                   AccountingService accountingService,
-                                  SalesJournalService salesJournalService,
                                   HrService hrService,
                                   ReportService reportService,
                                   OrderAutoApprovalStateRepository orderAutoApprovalStateRepository,
                                   AccountingFacade accountingFacade,
-                                  CompanyEntityLookup companyEntityLookup,
-                                  CompanyDefaultAccountsService companyDefaultAccountsService,
-                                  CompanyContextService companyContextService,
+                                  CompanyRepository companyRepository,
                                   CompanyClock companyClock,
                                   OrchestratorFeatureFlags featureFlags,
-                                  PlatformTransactionManager txManager,
-                                  @Value("${erp.dispatch.debit-account-id:0}") Long dispatchDebitAccountId,
-                                  @Value("${erp.dispatch.credit-account-id:0}") Long dispatchCreditAccountId) {
+                                  PlatformTransactionManager txManager) {
         this.salesService = salesService;
         this.factoryService = factoryService;
         this.finishedGoodsService = finishedGoodsService;
-        this.invoiceService = invoiceService;
         this.accountingService = accountingService;
-        this.salesJournalService = salesJournalService;
         this.hrService = hrService;
         this.reportService = reportService;
         this.orderAutoApprovalStateRepository = orderAutoApprovalStateRepository;
         this.accountingFacade = accountingFacade;
-        this.companyEntityLookup = companyEntityLookup;
-        this.companyDefaultAccountsService = companyDefaultAccountsService;
-        this.companyContextService = companyContextService;
+        this.companyRepository = companyRepository;
         this.companyClock = companyClock;
         this.featureFlags = featureFlags;
-        this.dispatchDebitAccountId = normalizeAccount(dispatchDebitAccountId);
-        this.dispatchCreditAccountId = normalizeAccount(dispatchCreditAccountId);
-        if (this.dispatchDebitAccountId == null || this.dispatchCreditAccountId == null) {
-            if (dispatchAccountWarningLogged.compareAndSet(false, true)) {
-                log.warn("Dispatch debit/credit accounts not configured; COGS postings for dispatch mapping will be skipped. " +
-                        "Set erp.dispatch.debit-account-id and erp.dispatch.credit-account-id to enable dispatch journals.");
-            }
-        }
         TransactionTemplate template = new TransactionTemplate(txManager);
         template.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         this.txTemplate = template;
@@ -167,22 +135,17 @@ public class IntegrationCoordinator {
 
     @Transactional
     public void queueProduction(String orderId, String companyId) {
-        runWithCompanyContext(companyId, () -> {
+        Company company = requireCompany(companyId, "queueProduction");
+        runWithCompanyContext(company.getCode(), () -> {
             ProductionPlanRequest request = new ProductionPlanRequest(
                     "PLAN-" + orderId,
                     "Order " + orderId,
                     1.0,
-                    companyClock.today(companyContextService.requireCurrentCompany()).plusDays(1),
+                    companyClock.today(company).plusDays(1),
                     "Auto-generated from orchestrator");
             factoryService.createPlan(request);
             log.info("Queued production plan for order {}", orderId);
         });
-    }
-
-    @Transactional
-    public Long createAccountingEntry(String orderId, String companyId) {
-        throw new IllegalStateException(
-                "Order-truth journal posting is disabled (CODE-RED). Use dispatch confirmation for invoicing/posting.");
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -319,15 +282,11 @@ public class IntegrationCoordinator {
                 case "DISPATCHED":
                 case "FULFILLED":
                 case "COMPLETED":
-                    if (!salesService.hasDispatchConfirmation(id)) {
-                        throw new ApplicationException(
-                                ErrorCode.BUSINESS_INVALID_STATE,
-                                "Orchestrator cannot mark orders SHIPPED/DISPATCHED. Use the canonical dispatch confirm endpoint."
-                        ).withDetail("canonicalPath", "/api/v1/sales/dispatch/confirm")
-                                .withDetail("requestedStatus", requestedStatus);
-                    }
-                    SalesOrder order = salesService.getOrderWithItems(id);
-                    return new AutoApprovalResult(order.getStatus(), false);
+                    throw new ApplicationException(
+                            ErrorCode.BUSINESS_INVALID_STATE,
+                            "Orchestrator cannot update dispatch-like statuses. Use /api/v1/sales/dispatch/confirm."
+                    ).withDetail("canonicalPath", "/api/v1/sales/dispatch/confirm")
+                            .withDetail("requestedStatus", requestedStatus);
                 default:
                     throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
                             "Unsupported fulfillment status: " + requestedStatus);
@@ -355,34 +314,6 @@ public class IntegrationCoordinator {
                     correlationMemo("Auto release for dispatch " + batchId, traceId, idempotencyKey));
             factoryService.logBatch(null, request);
             log.info("Logged release batch {}{}", batchId, correlation);
-        });
-    }
-
-    @Transactional
-    public void postDispatchJournal(String batchId,
-                                    String companyId,
-                                    BigDecimal amount) {
-        postDispatchJournal(batchId, companyId, amount, null, null);
-    }
-
-    @Transactional
-    public void postDispatchJournal(String batchId,
-                                    String companyId,
-                                    BigDecimal amount,
-                                    String traceId,
-                                    String idempotencyKey) {
-        requireFactoryDispatchEnabled();
-        runWithCompanyContext(companyId, () -> {
-            Long debitAccountId = dispatchDebitAccountId;
-            Long creditAccountId = dispatchCreditAccountId;
-            if (debitAccountId == null || creditAccountId == null) {
-                var defaults = companyDefaultAccountsService.requireDefaults();
-                debitAccountId = defaults.cogsAccountId();
-                creditAccountId = defaults.inventoryAccountId();
-                log.warn("Dispatch accounts not configured; using company default COGS/Inventory for batch {}", batchId);
-            }
-            String memo = correlationMemo("Dispatch journal for batch " + batchId, traceId, idempotencyKey);
-            postJournal("DISPATCH-" + batchId, amount, memo, debitAccountId, creditAccountId);
         });
     }
 
@@ -676,35 +607,25 @@ public class IntegrationCoordinator {
         }
     }
 
-    private void postJournal(String reference,
-                             BigDecimal amount,
-                             String memo,
-                             Long debitAccountId,
-                             Long creditAccountId) {
-        if (debitAccountId == null || creditAccountId == null) {
-            log.warn("Skipping {} journal; account mapping missing", reference);
-            return;
+    private Company requireCompany(String companyId, String operation) {
+        String normalizedCompanyId = normalizeCompanyId(companyId);
+        if (normalizedCompanyId == null) {
+            throw new ApplicationException(
+                    ErrorCode.VALIDATION_INVALID_INPUT,
+                    "Missing companyId")
+                    .withDetail("field", "companyId")
+                    .withDetail("operation", operation);
         }
-        if (amount == null || amount.compareTo(BigDecimal.ZERO) == 0) {
-            log.warn("Skipping {} journal; amount is zero", reference);
-            return;
-        }
-        BigDecimal postingAmount = amount.abs();
-        JournalCreationRequest request = new JournalCreationRequest(
-                postingAmount,
-                debitAccountId,
-                creditAccountId,
-                StringUtils.hasText(memo) ? memo : "Orchestrator journal " + reference,
-                "ORCHESTRATOR",
-                reference,
-                null,
-                null,
-                companyClock.today(companyContextService.requireCurrentCompany()),
-                null,
-                null,
-                Boolean.FALSE
-        );
-        accountingFacade.createStandardJournal(request);
+        return companyRepository.findByCodeIgnoreCase(normalizedCompanyId)
+                .or(() -> parseLong(normalizedCompanyId)
+                        .flatMap(companyRepository::findById))
+                .orElseThrow(() -> new ApplicationException(
+                        ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Unknown companyId")
+                        .withDetail("field", "companyId")
+                        .withDetail("operation", operation)
+                        .withDetail("safeIdentifier",
+                                CorrelationIdentifierSanitizer.safeIdentifierForLog(normalizedCompanyId)));
     }
 
     private String correlationMemo(String baseMemo, String traceId, String idempotencyKey) {
@@ -787,8 +708,4 @@ public class IntegrationCoordinator {
     }
 
     public record AutoApprovalResult(String orderStatus, boolean awaitingProduction) {}
-
-    private Long normalizeAccount(Long accountId) {
-        return accountId != null && accountId > 0 ? accountId : null;
-    }
 }

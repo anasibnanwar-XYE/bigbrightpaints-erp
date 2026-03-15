@@ -127,3 +127,26 @@ Testing surface: tools, URLs, setup steps, isolation notes, known quirks.
 - Reuse the already-prepared repo root `/home/realnigga/Desktop/Mission-control`; do not create alternate clones or reset the shared runtime.
 - It is safe to run CLI validation in parallel with a single runtime/API validator, but do not start additional compose services or a second backend instance on `5433/8081/9090`.
 - Capture the exact command lines, whether the manifest includes the expected runtime-policy classes, and any router output proving `run_auth_tenant=true` for lane01-relevant changes.
+
+## O2C Dispatch Canonicalization Packet Guidance
+
+### Validation Surface
+- **Primary:** Maven test suites (`gate-fast`, `gate-core`, targeted test runs)
+- **Secondary:** `curl` against running backend on `localhost:8081` if runtime probes needed
+- Runtime app is NOT required for most assertions in this packet — they are provable through test output and source inspection
+
+### Validation Concurrency
+- **Max concurrent validators:** 3
+- **Rationale:** 16 cores, 15GB RAM (~10GB available). Maven test runs are CPU/memory intensive on this codebase. Conservative limit preserves headroom for test JVMs + Docker services if needed.
+
+### Key Test Suites for O2C Dispatch Assertions
+- **Replay safety:** `CR_SalesDispatchInvoiceAccounting`, `ErpInvariantsSuiteIT`, new truthsuite/o2c/ characterization tests
+- **Listener containment:** `InventoryAccountingEventListenerIT`, new truthsuite/o2c/ tests
+- **Proforma boundary:** `SalesServiceTest`, new truthsuite/o2c/ tests
+- **Provenance linkage:** `TS_CrossModuleLinkageContractTest`, `TS_InventoryCogsLinkageScanContractTest`
+- **Factory view redaction:** `DispatchOperationalBoundaryIT`, `DispatchControllerTest`
+- **Invoice boundary:** `InvoiceServiceTest`
+- **Endpoint equivalence:** `OrderFulfillmentE2ETest`, `DispatchControllerTest`
+- **Orchestrator removal:** New regression tests proving removed paths are gone
+- **Gate-fast:** `cd erp-domain && MIGRATION_SET=v2 mvn test -Pgate-fast -Djacoco.skip=true`
+- **Gate-core:** `cd erp-domain && MIGRATION_SET=v2 mvn test -Pgate-core -Djacoco.skip=true`
