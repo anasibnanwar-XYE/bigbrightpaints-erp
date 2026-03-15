@@ -1,6 +1,6 @@
 {
   "milestone": "auth-merge-gate-hardening",
-  "round": 3,
+  "round": 2,
   "status": "fail",
   "validatorsRun": {
     "test": {
@@ -20,18 +20,18 @@
     }
   },
   "reviewsSummary": {
-    "total": 1,
-    "passed": 0,
+    "total": 4,
+    "passed": 3,
     "failed": 1,
     "failedFeatures": [
-      "auth-forgot-dispatch-after-commit"
+      "auth-forgot-cleanup-failure-preservation"
     ]
   },
   "blockingIssues": [
     {
-      "featureId": "auth-forgot-dispatch-after-commit",
+      "featureId": "auth-forgot-cleanup-failure-preservation",
       "severity": "blocking",
-      "description": "The after-commit dispatch change fixes the prior email-before-commit leak, but restorePublicResetStateAfterDispatchFailure() can still strand the user without any usable reset token if post-commit cleanup of the new token fails, and the updated AuthPasswordResetPublicContractIT assertion now codifies that regressed state instead of preserving prior-token usability."
+      "description": "The cleanup-failure fix resolves the prior token-loss bug, but PasswordResetService.dispatchResetEmailMaskedPublic() now sends the forgot-password email inside the token transaction before superseded-token cleanup and commit. A later persistence failure can still return the controlled 503/SYS_003 contract after the new reset token was already emailed, so VAL-AUTH-003 remains unmet."
     }
   ],
   "appliedUpdates": [],
@@ -63,5 +63,5 @@
       "reason": "rejected for this run because the observation is factual but would require a documentation-only shared-knowledge edit outside the requested scrutiny-validation scope."
     }
   ],
-  "previousRound": ".factory/validation/auth-merge-gate-hardening/scrutiny/synthesis.round-2.json"
+  "previousRound": ".factory/validation/auth-merge-gate-hardening/scrutiny/synthesis.round-1.json"
 }
