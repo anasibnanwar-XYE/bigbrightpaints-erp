@@ -408,6 +408,85 @@ class TenantRuntimeEnforcementInterceptorTest {
     }
 
     @Test
+    void admissionException_leavesFallbackStateDetailsNullWhenAdmissionMetadataIsBlank() {
+        interceptor = new TenantRuntimeEnforcementInterceptor(companyContextService, tenantRuntimeEnforcementService);
+        TenantRuntimeEnforcementService.TenantRequestAdmission rejected = admission(
+                false,
+                "   ",
+                423,
+                "Tenant is currently on hold",
+                "TENANT_ON_HOLD",
+                "   ",
+                "TENANT_STATE",
+                "   ",
+                "ACTIVE",
+                "   ");
+
+        RuntimeException exception = ReflectionTestUtils.invokeMethod(
+                interceptor,
+                "admissionException",
+                "   ",
+                "/api/v1/portal/orders",
+                rejected);
+
+        assertThat(exception).isInstanceOf(ApplicationException.class);
+        ApplicationException applicationException = (ApplicationException) exception;
+        assertThat(applicationException.getErrorCode()).isEqualTo(ErrorCode.BUSINESS_INVALID_STATE);
+        assertThat(applicationException.getDetails())
+                .containsEntry("companyCode", null)
+                .containsEntry("holdState", null)
+                .containsEntry("holdReason", null)
+                .containsEntry("policyReference", null)
+                .containsEntry("path", "/api/v1/portal/orders");
+        verifyNoInteractions(tenantRuntimeEnforcementService);
+    }
+
+    @Test
+    void admissionException_usesAdmissionHoldStateWhenSnapshotStateIsMissing() {
+        interceptor = new TenantRuntimeEnforcementInterceptor(companyContextService, tenantRuntimeEnforcementService);
+        TenantRuntimeEnforcementService.TenantRequestAdmission rejected = admission(
+                false,
+                "ACME",
+                423,
+                "Tenant is currently on hold",
+                "TENANT_ON_HOLD",
+                "MAINTENANCE_WINDOW",
+                "TENANT_STATE",
+                "HOLD",
+                "ACTIVE");
+        when(tenantRuntimeEnforcementService.snapshot("ACME")).thenReturn(snapshot(
+                null,
+                "MAINTENANCE_WINDOW",
+                "policy-hold",
+                Instant.parse("2026-02-20T10:16:05Z"),
+                500,
+                5000,
+                200,
+                0,
+                1,
+                0,
+                0L));
+
+        RuntimeException exception = ReflectionTestUtils.invokeMethod(
+                interceptor,
+                "admissionException",
+                "ACME",
+                "/api/v1/portal/orders",
+                rejected);
+
+        assertThat(exception).isInstanceOf(ApplicationException.class);
+        ApplicationException applicationException = (ApplicationException) exception;
+        assertThat(applicationException.getErrorCode()).isEqualTo(ErrorCode.BUSINESS_INVALID_STATE);
+        assertThat(applicationException.getDetails())
+                .containsEntry("companyCode", "ACME")
+                .containsEntry("holdState", "HOLD")
+                .containsEntry("holdReason", "MAINTENANCE_WINDOW")
+                .containsEntry("policyReference", "policy-hold")
+                .containsEntry("path", "/api/v1/portal/orders");
+        verify(tenantRuntimeEnforcementService).snapshot("ACME");
+    }
+
+    @Test
     void afterCompletion_ignoresRequestsWithoutInterceptorFallbackAdmission() {
         interceptor = new TenantRuntimeEnforcementInterceptor(companyContextService, tenantRuntimeEnforcementService);
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/portal/dashboard");
@@ -465,6 +544,30 @@ class TenantRuntimeEnforcementInterceptorTest {
                                                                              String limitType,
                                                                              String observedValue,
                                                                              String limitValue) {
+        return admission(
+                admitted,
+                companyCode,
+                statusCode,
+                message,
+                reasonCode,
+                tenantReasonCode,
+                limitType,
+                observedValue,
+                limitValue,
+                "chain-id");
+    }
+
+    @SuppressWarnings("unchecked")
+    private TenantRuntimeEnforcementService.TenantRequestAdmission admission(boolean admitted,
+                                                                             String companyCode,
+                                                                             int statusCode,
+                                                                             String message,
+                                                                             String reasonCode,
+                                                                             String tenantReasonCode,
+                                                                             String limitType,
+                                                                             String observedValue,
+                                                                             String limitValue,
+                                                                             String auditChainId) {
         try {
             Constructor<TenantRuntimeEnforcementService.TenantRequestAdmission> ctor =
                     (Constructor<TenantRuntimeEnforcementService.TenantRequestAdmission>) Arrays.stream(
@@ -476,7 +579,7 @@ class TenantRuntimeEnforcementInterceptorTest {
             return ctor.newInstance(
                     admitted,
                     companyCode,
-                    "chain-id",
+                    auditChainId,
                     null,
                     statusCode,
                     message,
