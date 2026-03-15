@@ -78,7 +78,7 @@ class TS_RuntimePasswordResetServiceExecutableCoverageTest {
         invokeRequest(service, "corr-blank-token-123", null, null);
 
         verify(lifecycleTemplate).execute(any());
-        verify(tokenRepository, never()).deleteByToken(anyString());
+        verify(tokenRepository, never()).deleteByTokenDigest(anyString());
         verify(emailService, never()).sendSimpleEmail(anyString(), anyString(), anyString());
     }
 

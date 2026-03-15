@@ -111,6 +111,12 @@ public class CompanyContextFilter extends OncePerRequestFilter {
             }
             String headerCompanyCode = request.getHeader("X-Company-Code");
             String legacyHeaderCompanyId = request.getHeader("X-Company-Id");
+            if (!StringUtils.hasText(headerCompanyCode) && StringUtils.hasText(legacyHeaderCompanyId)) {
+                writeAccessDenied(response,
+                        "COMPANY_CONTEXT_LEGACY_HEADER_UNSUPPORTED",
+                        "Use X-Company-Code for company context binding");
+                return;
+            }
             if (StringUtils.hasText(headerCompanyCode) && StringUtils.hasText(legacyHeaderCompanyId)
                     && !headerCompanyCode.trim().equalsIgnoreCase(legacyHeaderCompanyId.trim())) {
                 log.warn("Rejecting mismatched company headers. X-Company-Code={}, X-Company-Id={}, path={}",
@@ -118,9 +124,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
                 writeAccessDenied(response, "COMPANY_HEADER_MISMATCH", "Company headers do not match");
                 return;
             }
-            String requestedCompany = StringUtils.hasText(headerCompanyCode)
-                    ? headerCompanyCode
-                    : legacyHeaderCompanyId;
+            String requestedCompany = headerCompanyCode;
             Object claimsAttr = request.getAttribute("jwtClaims");
             if (claimsAttr instanceof Claims claims) {
                 String tokenCompanyCode = claims.get("companyCode", String.class);
@@ -132,24 +136,21 @@ public class CompanyContextFilter extends OncePerRequestFilter {
                     writeAccessDenied(response, "COMPANY_CLAIM_MISMATCH", "Token company claims do not match");
                     return;
                 }
-                String resolvedTokenCompany = StringUtils.hasText(tokenCompanyCode)
-                        ? tokenCompanyCode
-                        : legacyTokenCompanyId;
-                if (!StringUtils.hasText(resolvedTokenCompany)) {
+                if (!StringUtils.hasText(tokenCompanyCode)) {
                     log.warn("Rejecting authenticated request without company claim. path={}", request.getRequestURI());
                     writeAccessDenied(response, "COMPANY_CONTEXT_MISSING", "Authenticated token missing company context");
                     return;
                 }
                 if (StringUtils.hasText(requestedCompany)
-                        && !resolvedTokenCompany.trim().equalsIgnoreCase(requestedCompany.trim())) {
+                        && !tokenCompanyCode.trim().equalsIgnoreCase(requestedCompany.trim())) {
                     log.warn("Rejecting company header mismatch. tokenCompanyCode={}, headerCompanyCode={}, path={}",
-                            resolvedTokenCompany, requestedCompany, request.getRequestURI());
+                            tokenCompanyCode, requestedCompany, request.getRequestURI());
                     writeAccessDenied(response,
                             "COMPANY_CONTEXT_MISMATCH",
                             "Company header does not match authenticated company context");
                     return;
                 }
-                requestedCompany = resolvedTokenCompany;
+                requestedCompany = tokenCompanyCode;
             } else {
                 // Do not allow unauthenticated requests to set tenant context via header.
                 if (StringUtils.hasText(requestedCompany)) {

@@ -371,7 +371,7 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
 
         verify(tokenRepo).deleteByUser(superAdmin);
         verify(tokenRepo).saveAndFlush(any(PasswordResetToken.class));
-        verify(tokenRepo, never()).deleteByToken(anyString());
+        verify(tokenRepo, never()).deleteByTokenDigest(anyString());
         verify(emailService).sendSimpleEmail(eq("superadmin@example.com"), eq("Reset your BigBright ERP password"), anyString());
     }
 
@@ -435,7 +435,7 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
                 .doesNotThrowAnyException();
         verify(persistenceFailureTokenRepo).deleteByUser(superAdmin);
         verify(persistenceFailureTokenRepo).saveAndFlush(any(PasswordResetToken.class));
-        verify(persistenceFailureTokenRepo, never()).deleteByToken(anyString());
+        verify(persistenceFailureTokenRepo, never()).deleteByTokenDigest(anyString());
         verifyNoInteractions(persistenceFailureEmailService);
     }
 
@@ -448,7 +448,7 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
         when(userRepo.findByEmailIgnoreCase("superadmin@example.com")).thenReturn(Optional.of(superAdmin));
         doThrow(new DataAccessResourceFailureException("cleanup failed"))
                 .when(tokenRepo)
-                .deleteByToken(anyString());
+                .deleteByTokenDigest(anyString());
         doThrow(new RuntimeException("smtp down"))
                 .when(emailService)
                 .sendSimpleEmail(eq("superadmin@example.com"), eq("Reset your BigBright ERP password"), anyString());
@@ -466,7 +466,7 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
 
         verify(tokenRepo).deleteByUser(superAdmin);
         verify(tokenRepo).saveAndFlush(any(PasswordResetToken.class));
-        verify(tokenRepo).deleteByToken(anyString());
+        verify(tokenRepo).deleteByTokenDigest(anyString());
         verify(emailService).sendSimpleEmail(eq("superadmin@example.com"), eq("Reset your BigBright ERP password"), anyString());
     }
 
@@ -510,7 +510,7 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
         PasswordResetTokenRepository tokenRepository = mock(PasswordResetTokenRepository.class);
         doThrow(new DataAccessResourceFailureException("cleanup failed"))
                 .when(tokenRepository)
-                .deleteByToken("token-123");
+                .deleteByTokenDigest(anyString());
 
         PasswordResetService service = new PasswordResetService(
                 mock(UserAccountRepository.class),
@@ -524,7 +524,7 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
 
         assertThatCode(() -> invokeCleanupFailedSuperAdminResetToken(service, null, "token-123"))
                 .doesNotThrowAnyException();
-        verify(tokenRepository).deleteByToken("token-123");
+        verify(tokenRepository).deleteByTokenDigest(anyString());
     }
 
     @Test
@@ -542,7 +542,7 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
 
         assertThatCode(() -> invokeCleanupFailedSuperAdminResetToken(service, superAdminUser("superadmin@example.com"), "token-123"))
                 .doesNotThrowAnyException();
-        verify(tokenRepository).deleteByToken("token-123");
+        verify(tokenRepository).deleteByTokenDigest(anyString());
     }
 
     @Test
@@ -578,7 +578,7 @@ class TS_RuntimeCompanyContextFilterExecutableCoverageTest {
         assertThatCode(() -> service.requestResetForSuperAdmin("missing@example.com")).doesNotThrowAnyException();
 
         verify(tokenRepo, never()).deleteByUser(any(UserAccount.class));
-        verify(tokenRepo, never()).deleteByToken(anyString());
+        verify(tokenRepo, never()).deleteByTokenDigest(anyString());
         verify(tokenRepo, never()).saveAndFlush(any(PasswordResetToken.class));
         verifyNoInteractions(emailService);
     }

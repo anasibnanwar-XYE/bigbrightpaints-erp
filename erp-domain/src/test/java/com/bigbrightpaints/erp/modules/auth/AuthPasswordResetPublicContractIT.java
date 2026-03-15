@@ -1,11 +1,14 @@
 package com.bigbrightpaints.erp.modules.auth;
 
+import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
 import com.bigbrightpaints.erp.core.notification.EmailService;
 import com.bigbrightpaints.erp.modules.auth.domain.PasswordResetToken;
 import com.bigbrightpaints.erp.modules.auth.domain.PasswordResetTokenRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -15,7 +18,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.mock.mockito.SpyBean;
@@ -28,6 +30,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -56,6 +59,9 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
 
     @Autowired
     private UserAccountRepository userAccountRepository;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @BeforeEach
     void seedSuperAdmin() {
@@ -191,7 +197,10 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
                 List.of("ROLE_SUPER_ADMIN"));
         String preExistingToken = "preexisting-reset-token";
         passwordResetTokenRepository.saveAndFlush(
-                new PasswordResetToken(user, preExistingToken, Instant.now().plusSeconds(600)));
+                PasswordResetToken.digestOnly(
+                        user,
+                        passwordResetDigest(preExistingToken),
+                        Instant.now().plusSeconds(600)));
 
         doThrow(new DataAccessResourceFailureException("db unavailable"))
                 .when(passwordResetTokenRepository)
@@ -206,6 +215,95 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
         assertThat(resetResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(resetResponse.getBody()).isNotNull();
         assertThat(resetResponse.getBody().get("success")).isEqualTo(true);
+    }
+
+    @Test
+    void resetEndpoint_rejectsLegacyRawTokenStoredRows() {
+        String targetEmail = "legacy.reset.user@bbp.com";
+        UserAccount user = dataSeeder.ensureUser(
+                targetEmail,
+                "Admin@12345",
+                "Legacy Reset User",
+                PRIMARY_COMPANY,
+                List.of("ROLE_SUPER_ADMIN"));
+        String rawLegacyToken = "legacy-raw-reset-token";
+        passwordResetTokenRepository.saveAndFlush(
+                new PasswordResetToken(user, rawLegacyToken, Instant.now().plusSeconds(600)));
+
+        ResponseEntity<Map> resetResponse = postReset(rawLegacyToken, "NewPass123!");
+
+        assertThat(resetResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(resetResponse.getBody()).isNotNull();
+        assertThat(resetResponse.getBody().get("message")).isEqualTo("Invalid or expired token");
+    }
+
+    @Test
+    void canonicalRecoveryFlow_forgotResetLoginRefreshAndMe_succeeds_withDigestBackedResetToken() {
+        UserAccount user = userAccountRepository.findByEmailIgnoreCase(SUPERADMIN_EMAIL).orElseThrow();
+        user.setEnabled(true);
+        user.setLockedUntil(null);
+        user.setFailedLoginAttempts(0);
+        userAccountRepository.saveAndFlush(user);
+
+        ResponseEntity<Map> forgotResponse = postForgot(SUPERADMIN_EMAIL, PRIMARY_COMPANY);
+        assertThat(forgotResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        String resetToken = "canonical-flow-reset-token";
+        Instant now = Instant.now();
+        String digest = passwordResetDigest(resetToken);
+        jdbcTemplate.update(
+                "insert into password_reset_tokens (user_id, token, token_digest, expires_at, created_at, version) values (?, null, ?, ?, ?, 0)",
+                user.getId(),
+                digest,
+                Timestamp.from(now.plusSeconds(600)),
+                Timestamp.from(now));
+        Integer digestRowCount = jdbcTemplate.queryForObject(
+                "select count(*) from password_reset_tokens where token_digest = ?",
+                Integer.class,
+                digest);
+        assertThat(digestRowCount).isEqualTo(1);
+        ResponseEntity<Map> resetResponse = postReset(resetToken, "CanonReset123!");
+        assertThat(resetResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        ResponseEntity<Map> loginResponse = rest.exchange(
+                "/api/v1/auth/login",
+                HttpMethod.POST,
+                new HttpEntity<>(Map.of(
+                        "email", SUPERADMIN_EMAIL,
+                        "password", "CanonReset123!",
+                        "companyCode", PRIMARY_COMPANY), jsonHeaders()),
+                Map.class);
+        assertThat(loginResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(loginResponse.getBody()).isNotNull();
+        String refreshToken = loginResponse.getBody().get("refreshToken").toString();
+
+        ResponseEntity<Map> refreshResponse = rest.exchange(
+                "/api/v1/auth/refresh-token",
+                HttpMethod.POST,
+                new HttpEntity<>(Map.of(
+                        "refreshToken", refreshToken,
+                        "companyCode", PRIMARY_COMPANY), jsonHeaders()),
+                Map.class);
+        assertThat(refreshResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(refreshResponse.getBody()).isNotNull();
+        String refreshedAccessToken = refreshResponse.getBody().get("accessToken").toString();
+
+        HttpHeaders meHeaders = new HttpHeaders();
+        meHeaders.setBearerAuth(refreshedAccessToken);
+        meHeaders.set("X-Company-Code", PRIMARY_COMPANY);
+        ResponseEntity<Map> meResponse = rest.exchange(
+                "/api/v1/auth/me",
+                HttpMethod.GET,
+                new HttpEntity<>(meHeaders),
+                Map.class);
+
+        assertThat(meResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(meResponse.getBody()).isNotNull();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> meData = (Map<String, Object>) meResponse.getBody().get("data");
+        assertThat(meData).isNotNull();
+        assertThat(meData.get("companyCode")).isEqualTo(PRIMARY_COMPANY);
+        assertThat(meData.get("email")).isEqualTo(SUPERADMIN_EMAIL);
     }
 
     @Test
@@ -266,5 +364,15 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
                         "newPassword", newPassword,
                         "confirmPassword", newPassword), headers),
                 Map.class);
+    }
+
+    private HttpHeaders jsonHeaders() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        return headers;
+    }
+
+    private String passwordResetDigest(String token) {
+        return IdempotencyUtils.sha256Hex("password-reset-token:" + token);
     }
 }

@@ -126,41 +126,46 @@ class PasswordResetServiceTest {
     void resetPasswordThrowsWhenTokenExpired() {
         UserAccount user = new UserAccount("user@example.com", "hash", "User");
         user.setEnabled(true);
-        PasswordResetToken expired = new PasswordResetToken(user, "token", Instant.now().minusSeconds(10));
-        when(tokenRepository.findByToken("token")).thenReturn(Optional.of(expired));
+        String rawToken = "token";
+        PasswordResetToken expired = PasswordResetToken.digestOnly(
+                user,
+                AuthTokenDigests.passwordResetTokenDigest(rawToken),
+                Instant.now().minusSeconds(10));
+        when(tokenRepository.findByTokenDigest(AuthTokenDigests.passwordResetTokenDigest(rawToken)))
+                .thenReturn(Optional.of(expired));
 
         assertThrows(ApplicationException.class,
-                () -> passwordResetService.resetPassword("token", "NewPass123", "NewPass123"));
+                () -> passwordResetService.resetPassword(rawToken, "NewPass123", "NewPass123"));
 
         verify(passwordService, never()).resetPassword(any(), any(), any());
     }
 
     @Test
-    void resetPasswordAcceptsLegacyRawTokenDuringTransition() {
+    void resetPasswordRejectsLegacyRawTokenRows() {
         UserAccount user = new UserAccount("user@example.com", "hash", "User");
         user.setEnabled(true);
-        PasswordResetToken legacy = new PasswordResetToken(user, "legacy-token", Instant.now().plusSeconds(300));
-        when(tokenRepository.findByToken("legacy-token")).thenReturn(Optional.of(legacy));
 
-        passwordResetService.resetPassword("legacy-token", "NewPass123!", "NewPass123!");
+        assertThrows(ApplicationException.class,
+                () -> passwordResetService.resetPassword("legacy-token", "NewPass123!", "NewPass123!"));
 
-        verify(passwordService).resetPassword(user, "NewPass123!", "NewPass123!");
-        verify(tokenBlacklistService).revokeAllUserTokens("user@example.com");
-        verify(refreshTokenService).revokeAllForUser("user@example.com");
-        verify(tokenRepository).save(legacy);
-        verify(tokenRepository).deleteByUser(user);
+        verify(passwordService, never()).resetPassword(any(), any(), any());
     }
 
     @Test
-    void resetPasswordRejectsAlreadyUsedLegacyTokenDuringTransition() {
+    void resetPasswordRejectsAlreadyUsedDigestToken() {
         UserAccount user = new UserAccount("user@example.com", "hash", "User");
         user.setEnabled(true);
-        PasswordResetToken used = new PasswordResetToken(user, "used-token", Instant.now().plusSeconds(300));
+        String rawToken = "used-token";
+        PasswordResetToken used = PasswordResetToken.digestOnly(
+                user,
+                AuthTokenDigests.passwordResetTokenDigest(rawToken),
+                Instant.now().plusSeconds(300));
         used.markUsed();
-        when(tokenRepository.findByToken("used-token")).thenReturn(Optional.of(used));
+        when(tokenRepository.findByTokenDigest(AuthTokenDigests.passwordResetTokenDigest(rawToken)))
+                .thenReturn(Optional.of(used));
 
         assertThrows(ApplicationException.class,
-                () -> passwordResetService.resetPassword("used-token", "NewPass123!", "NewPass123!"));
+                () -> passwordResetService.resetPassword(rawToken, "NewPass123!", "NewPass123!"));
 
         verify(passwordService, never()).resetPassword(any(), any(), any());
     }
@@ -385,7 +390,7 @@ class PasswordResetServiceTest {
         assertDoesNotThrow(() -> passwordResetService.requestResetForSuperAdmin("superadmin@example.com"));
 
         verify(tokenRepository, never()).deleteByUser(any());
-        verify(tokenRepository, never()).deleteByToken(anyString());
+        verify(tokenRepository, never()).deleteByTokenDigest(anyString());
         verify(tokenRepository, never()).saveAndFlush(any(PasswordResetToken.class));
         verify(emailService, never()).sendSimpleEmail(any(), any(), any());
     }
@@ -452,7 +457,7 @@ class PasswordResetServiceTest {
         doAnswer(invocation -> {
             cleanupInTx.set(TransactionSynchronizationManager.isActualTransactionActive());
             return null;
-        }).when(tokenRepository).deleteByToken(anyString());
+        }).when(tokenRepository).deleteByTokenDigest(anyString());
         doThrow(new RuntimeException("smtp down"))
                 .when(emailService)
                 .sendSimpleEmail(eq("superadmin@example.com"), any(), any());
@@ -461,7 +466,7 @@ class PasswordResetServiceTest {
 
         assertTrue(deleteByUserInTx.get(), "deleteByUser should execute inside an active transaction");
         assertTrue(saveAndFlushInTx.get(), "saveAndFlush should execute inside an active transaction");
-        assertTrue(cleanupInTx.get(), "cleanup deleteByToken should execute inside an active transaction");
+        assertTrue(cleanupInTx.get(), "cleanup deleteByTokenDigest should execute inside an active transaction");
     }
 
     @Test
@@ -561,7 +566,7 @@ class PasswordResetServiceTest {
                 .sendSimpleEmail(eq("superadmin@example.com"), any(), any());
         doThrow(new RuntimeException("cleanup token leaked"))
                 .when(tokenRepository)
-                .deleteByToken(anyString());
+                .deleteByTokenDigest(anyString());
 
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/auth/password/forgot/superadmin");
         request.addHeader("X-Correlation-Id", "corr-cleanup-123");
@@ -597,7 +602,7 @@ class PasswordResetServiceTest {
         inOrder.verify(tokenRepository).deleteByUser(superAdmin);
         inOrder.verify(tokenRepository).saveAndFlush(any(PasswordResetToken.class));
         inOrder.verify(emailService).sendSimpleEmail(eq("superadmin@example.com"), any(), any());
-        verify(tokenRepository, never()).deleteByToken(anyString());
+        verify(tokenRepository, never()).deleteByTokenDigest(anyString());
     }
 
     @Test
@@ -624,7 +629,7 @@ class PasswordResetServiceTest {
         }
 
         verify(tokenRepository).deleteByUser(superAdmin);
-        verify(tokenRepository, never()).deleteByToken(anyString());
+        verify(tokenRepository, never()).deleteByTokenDigest(anyString());
         verify(tokenRepository).saveAndFlush(any(PasswordResetToken.class));
         verify(emailService, never()).sendSimpleEmail(any(), any(), any());
     }
@@ -641,7 +646,7 @@ class PasswordResetServiceTest {
         assertDoesNotThrow(() -> passwordResetService.requestResetForSuperAdmin("superadmin@example.com"));
 
         verify(tokenRepository).deleteByUser(superAdmin);
-        verify(tokenRepository, never()).deleteByToken(anyString());
+        verify(tokenRepository, never()).deleteByTokenDigest(anyString());
         verify(tokenRepository).saveAndFlush(any(PasswordResetToken.class));
         verify(emailService, never()).sendSimpleEmail(any(), any(), any());
     }
@@ -659,7 +664,7 @@ class PasswordResetServiceTest {
         passwordResetService.requestResetForSuperAdmin("admin@example.com");
 
         verify(tokenRepository, never()).deleteByUser(any());
-        verify(tokenRepository, never()).deleteByToken(anyString());
+        verify(tokenRepository, never()).deleteByTokenDigest(anyString());
         verify(tokenRepository, never()).saveAndFlush(any(PasswordResetToken.class));
         verify(emailService, never()).sendSimpleEmail(any(), any(), any());
     }
@@ -695,8 +700,13 @@ class PasswordResetServiceTest {
     @Test
     void resetPasswordIgnoresTenantContextAndLogsGlobalIdentityScope() {
         UserAccount superAdmin = superAdminUser("superadmin@example.com");
-        PasswordResetToken token = new PasswordResetToken(superAdmin, "token-value", Instant.now().plusSeconds(600));
-        when(tokenRepository.findByToken("token-value")).thenReturn(Optional.of(token));
+        String rawToken = "token-value";
+        PasswordResetToken token = PasswordResetToken.digestOnly(
+                superAdmin,
+                AuthTokenDigests.passwordResetTokenDigest(rawToken),
+                Instant.now().plusSeconds(600));
+        when(tokenRepository.findByTokenDigest(AuthTokenDigests.passwordResetTokenDigest(rawToken)))
+                .thenReturn(Optional.of(token));
 
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/v1/auth/password/reset");
         request.addHeader("X-Correlation-Id", "corr-reset-scope-123");
@@ -704,7 +714,7 @@ class PasswordResetServiceTest {
         RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(request));
         try {
             List<String> messages = captureServiceLogMessages(
-                    () -> passwordResetService.resetPassword("token-value", "NewPass123", "NewPass123"));
+                    () -> passwordResetService.resetPassword(rawToken, "NewPass123", "NewPass123"));
             assertTrue(
                     messages.stream().anyMatch(message -> message.contains("event=password_reset.scope")
                             && message.contains("operation=reset_password")
@@ -746,7 +756,7 @@ class PasswordResetServiceTest {
             RequestContextHolder.resetRequestAttributes();
         }
         verify(lifecycleTemplate).execute(any());
-        verify(tokenRepository, never()).deleteByToken(anyString());
+        verify(tokenRepository, never()).deleteByTokenDigest(anyString());
         verify(emailService, never()).sendSimpleEmail(any(), any(), any());
     }
 
