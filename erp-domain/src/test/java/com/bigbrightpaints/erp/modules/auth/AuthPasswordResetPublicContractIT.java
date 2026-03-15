@@ -7,7 +7,6 @@ import com.bigbrightpaints.erp.modules.auth.domain.PasswordResetTokenRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
-import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -299,23 +298,31 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
         user.setFailedLoginAttempts(0);
         userAccountRepository.saveAndFlush(user);
 
+        List<String> deliveredTokens = Collections.synchronizedList(new ArrayList<>());
+        doAnswer(invocation -> {
+            deliveredTokens.add(invocation.getArgument(2, String.class));
+            return null;
+        }).when(emailService).sendPasswordResetEmailRequired(eq(SUPERADMIN_EMAIL), eq("Reset Super Admin"), anyString());
+
         ResponseEntity<Map> forgotResponse = postForgot(SUPERADMIN_EMAIL, PRIMARY_COMPANY);
         assertThat(forgotResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(deliveredTokens).hasSize(1);
+        String resetToken = deliveredTokens.getFirst();
 
-        String resetToken = "canonical-flow-reset-token";
-        Instant now = Instant.now();
         String digest = passwordResetDigest(resetToken);
-        jdbcTemplate.update(
-                "insert into password_reset_tokens (user_id, token, token_digest, expires_at, created_at, version) values (?, null, ?, ?, ?, 0)",
-                user.getId(),
-                digest,
-                Timestamp.from(now.plusSeconds(600)),
-                Timestamp.from(now));
         Integer digestRowCount = jdbcTemplate.queryForObject(
-                "select count(*) from password_reset_tokens where token_digest = ?",
+                "select count(*) from password_reset_tokens where user_id = ? and token_digest = ? and token is null",
                 Integer.class,
+                user.getId(),
                 digest);
+        Integer rawTokenRowCount = jdbcTemplate.queryForObject(
+                "select count(*) from password_reset_tokens where user_id = ? and token = ?",
+                Integer.class,
+                user.getId(),
+                resetToken);
         assertThat(digestRowCount).isEqualTo(1);
+        assertThat(rawTokenRowCount).isEqualTo(0);
+
         ResponseEntity<Map> resetResponse = postReset(resetToken, "CanonReset123!");
         assertThat(resetResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
 
