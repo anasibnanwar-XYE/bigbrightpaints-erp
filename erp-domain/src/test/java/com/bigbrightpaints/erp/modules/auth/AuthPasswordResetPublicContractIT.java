@@ -166,6 +166,44 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
         assertThat(unknownUserResponse.getBody().get("success")).isEqualTo(true);
         assertThat(unknownUserResponse.getBody().get("message"))
                 .isEqualTo("If the email exists, a reset link has been sent");
+        verify(emailService, never()).sendPasswordResetEmailRequired(eq(SUPERADMIN_EMAIL), eq("Reset Super Admin"), anyString());
+    }
+
+    @Test
+    void forgotEndpoint_returnsControlledNonSuccessAndSkipsEmailWhenCleanupBeforeCommitFails() {
+        String targetEmail = "cleanup.before.commit.user@bbp.com";
+        UserAccount user = dataSeeder.ensureUser(
+                targetEmail,
+                "Admin@12345",
+                "Cleanup Before Commit User",
+                PRIMARY_COMPANY,
+                List.of("ROLE_SUPER_ADMIN"));
+        String preExistingToken = "cleanup-before-commit-preexisting-token";
+        String preExistingDigest = passwordResetDigest(preExistingToken);
+        passwordResetTokenRepository.saveAndFlush(
+                PasswordResetToken.digestOnly(
+                        user,
+                        preExistingDigest,
+                        Instant.now().plusSeconds(600)));
+        doThrow(new DataAccessResourceFailureException("cleanup unavailable"))
+                .when(passwordResetTokenRepository)
+                .deleteByUserAndIdNot(any(UserAccount.class), any(Long.class));
+
+        ResponseEntity<Map> forgotResponse = postForgot(targetEmail, "ANY-TENANT");
+
+        assertThat(forgotResponse.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+        assertThat(forgotResponse.getBody()).isNotNull();
+        assertThat(forgotResponse.getBody().get("success")).isEqualTo(false);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> forgotData = (Map<String, Object>) forgotResponse.getBody().get("data");
+        assertThat(forgotData).isNotNull();
+        assertThat(forgotData.get("code")).isEqualTo("SYS_003");
+        verify(emailService, never()).sendPasswordResetEmailRequired(eq(targetEmail), eq("Cleanup Before Commit User"), anyString());
+
+        ResponseEntity<Map> resetResponse = postReset(preExistingToken, "NewPass123!");
+        assertThat(resetResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(resetResponse.getBody()).isNotNull();
+        assertThat(resetResponse.getBody().get("success")).isEqualTo(true);
     }
 
     @Test
@@ -219,7 +257,7 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void forgotCleanupFailure_afterDispatchFailure_preservesPriorTokenAndDoesNotPersistUndispatchedReplacement() {
+    void forgotCleanupFailure_afterDispatchFailure_returnsControlledFailureWithoutEmailLeak() {
         String targetEmail = "cleanup.failure.reset.user@bbp.com";
         UserAccount user = dataSeeder.ensureUser(
                 targetEmail,
@@ -262,12 +300,12 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
                 user.getId(),
                 preExistingDigest);
         assertThat(tokenCount).isEqualTo(1);
-        assertThat(priorDigestCount).isEqualTo(1);
+        assertThat(priorDigestCount).isEqualTo(0);
 
         ResponseEntity<Map> resetResponse = postReset(preExistingToken, "NewPass123!");
-        assertThat(resetResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(resetResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(resetResponse.getBody()).isNotNull();
-        assertThat(resetResponse.getBody().get("success")).isEqualTo(true);
+        assertThat(resetResponse.getBody().get("message")).isEqualTo("Invalid or expired token");
     }
 
     @Test
@@ -390,15 +428,18 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
         }
 
         assertThat(deliveredTokens).hasSize(2);
-        ResponseEntity<Map> staleReset = postReset(deliveredTokens.getFirst(), "NewPass123!");
-        ResponseEntity<Map> latestReset = postReset(deliveredTokens.getLast(), "NewPass123!");
+        ResponseEntity<Map> firstReset = postReset(deliveredTokens.getFirst(), "NewPass123!");
+        ResponseEntity<Map> secondReset = postReset(deliveredTokens.getLast(), "NewPass123!");
 
-        assertThat(staleReset.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        assertThat(staleReset.getBody()).isNotNull();
-        assertThat(staleReset.getBody().get("message")).isEqualTo("Invalid or expired token");
-        assertThat(latestReset.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(latestReset.getBody()).isNotNull();
-        assertThat(latestReset.getBody().get("success")).isEqualTo(true);
+        long successfulResets = List.of(firstReset, secondReset).stream()
+                .filter(response -> response.getStatusCode() == HttpStatus.OK)
+                .count();
+        long failedResets = List.of(firstReset, secondReset).stream()
+                .filter(response -> response.getStatusCode() == HttpStatus.BAD_REQUEST)
+                .count();
+
+        assertThat(successfulResets).isEqualTo(1);
+        assertThat(failedResets).isEqualTo(1);
     }
 
     private ResponseEntity<Map> postForgot(String email, String companyCodeHeader) {

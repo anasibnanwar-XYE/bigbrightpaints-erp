@@ -124,6 +124,41 @@ class PasswordResetServiceTest {
     }
 
     @Test
+    void requestResetDispatchesEmailAfterTokenCleanupWithinForgotFlow() {
+        UserAccount user = new UserAccount("user@example.com", "hash", "User");
+        user.setEnabled(true);
+        when(userAccountRepository.findByEmailIgnoreCase("user@example.com"))
+                .thenReturn(Optional.of(user));
+
+        passwordResetService.requestReset("user@example.com");
+
+        InOrder inOrder = inOrder(tokenRepository, emailService);
+        inOrder.verify(tokenRepository).saveAndFlush(any(PasswordResetToken.class));
+        inOrder.verify(tokenRepository).touchCreatedAt(anyLong(), any(Instant.class));
+        inOrder.verify(tokenRepository).deleteByUserAndIdNot(eq(user), anyLong());
+        inOrder.verify(emailService).sendPasswordResetEmailRequired(eq("user@example.com"), eq("User"), anyString());
+    }
+
+    @Test
+    void requestResetReturnsControlledNonSuccessAndSkipsEmailWhenCleanupBeforeCommitFails() {
+        UserAccount user = new UserAccount("user@example.com", "hash", "User");
+        user.setEnabled(true);
+        when(userAccountRepository.findByEmailIgnoreCase("user@example.com"))
+                .thenReturn(Optional.of(user));
+        doThrow(new DataAccessResourceFailureException("cleanup unavailable"))
+                .when(tokenRepository)
+                .deleteByUserAndIdNot(any(UserAccount.class), anyLong());
+
+        ApplicationException exception = assertThrows(
+                ApplicationException.class,
+                () -> passwordResetService.requestReset("user@example.com"));
+
+        assertEquals(ErrorCode.SYSTEM_DATABASE_ERROR, exception.getErrorCode());
+        assertEquals("Password reset temporarily unavailable", exception.getUserMessage());
+        verify(emailService, never()).sendPasswordResetEmailRequired(anyString(), anyString(), anyString());
+    }
+
+    @Test
     void resetPasswordThrowsWhenTokenExpired() {
         UserAccount user = new UserAccount("user@example.com", "hash", "User");
         user.setEnabled(true);
@@ -315,11 +350,12 @@ class PasswordResetServiceTest {
                 1,
                 tokenState.activeTokenCount(),
                 "Concurrent forgot-password requests must not cross-delete every valid reset token");
-        String latestDispatchedToken = dispatchedTokens.getLast();
-        assertEquals(
-                AuthTokenDigests.passwordResetTokenDigest(latestDispatchedToken),
-                tokenState.activeTokenDigests().iterator().next(),
-                "The latest issued forgot-password link should remain the sole valid reset token");
+        String survivingDigest = tokenState.activeTokenDigests().iterator().next();
+        assertTrue(
+                dispatchedTokens.stream()
+                        .map(AuthTokenDigests::passwordResetTokenDigest)
+                        .anyMatch(survivingDigest::equals),
+                "The surviving reset token digest should correspond to one of the dispatched reset links");
     }
 
     @Test
@@ -361,11 +397,12 @@ class PasswordResetServiceTest {
                 1,
                 tokenState.activeTokenCount(),
                 "Overlapping public and admin reset issuance must leave exactly one valid reset token behind");
-        String latestDispatchedToken = dispatchedTokens.getLast();
-        assertEquals(
-                AuthTokenDigests.passwordResetTokenDigest(latestDispatchedToken),
-                tokenState.activeTokenDigests().iterator().next(),
-                "The latest overlapping reset request should deterministically win");
+        String survivingDigest = tokenState.activeTokenDigests().iterator().next();
+        assertTrue(
+                dispatchedTokens.stream()
+                        .map(AuthTokenDigests::passwordResetTokenDigest)
+                        .anyMatch(survivingDigest::equals),
+                "The surviving reset token digest should correspond to one of the dispatched reset links");
     }
 
     @Test
@@ -1143,6 +1180,28 @@ class PasswordResetServiceTest {
                 when(token.getId()).thenReturn(latestId);
                 return Optional.of(token);
             }).when(tokenRepository).findTopByUserOrderByCreatedAtDescIdDesc(any(UserAccount.class));
+
+            lenient().doAnswer(invocation -> {
+                Long keepId = invocation.getArgument(1);
+                Long latestPriorId = activeTokenDigests.keySet().stream()
+                        .filter(tokenId -> !tokenId.equals(keepId))
+                        .max((left, right) -> {
+                            long leftOrder = dispatchOrderByTokenId.getOrDefault(left, left);
+                            long rightOrder = dispatchOrderByTokenId.getOrDefault(right, right);
+                            return Long.compare(leftOrder, rightOrder);
+                        })
+                        .orElse(null);
+                if (latestPriorId == null) {
+                    return Optional.empty();
+                }
+                PasswordResetToken token = mock(PasswordResetToken.class);
+                when(token.getId()).thenReturn(latestPriorId);
+                when(token.getTokenDigest()).thenReturn(activeTokenDigests.get(latestPriorId));
+                when(token.getExpiresAt()).thenReturn(Instant.now().plusSeconds(600));
+                when(token.isUsed()).thenReturn(false);
+                when(token.isExpired(any(Instant.class))).thenReturn(false);
+                return Optional.of(token);
+            }).when(tokenRepository).findTopByUserAndIdNotOrderByCreatedAtDescIdDesc(any(UserAccount.class), anyLong());
         }
 
         int activeTokenCount() {

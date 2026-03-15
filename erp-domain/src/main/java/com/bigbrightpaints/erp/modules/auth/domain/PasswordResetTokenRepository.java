@@ -23,6 +23,8 @@ public interface PasswordResetTokenRepository extends JpaRepository<PasswordRese
 
     Optional<PasswordResetToken> findTopByUserOrderByCreatedAtDescIdDesc(UserAccount user);
 
+    Optional<PasswordResetToken> findTopByUserAndIdNotOrderByCreatedAtDescIdDesc(UserAccount user, Long id);
+
     @Modifying
     @Query("update PasswordResetToken t set t.createdAt = :createdAt where t.id = :tokenId")
     int touchCreatedAt(@Param("tokenId") Long tokenId, @Param("createdAt") java.time.Instant createdAt);
