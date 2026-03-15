@@ -15,6 +15,7 @@ Use for backend features that change:
 - tenant-admin / super-admin / cross-tenant authorization boundaries
 - security-sensitive admin settings or security error contracts
 - compatibility-preserving hardening around frontend-sensitive auth/admin endpoints
+- CI-only router/manifest/contract packets for security-sensitive catching lanes when the feature intentionally changes verification surfaces rather than runtime product code
 
 ## Work Procedure
 
@@ -23,12 +24,12 @@ Use for backend features that change:
 2. Read `AGENTS.md`, `.factory/services.yaml`, `.factory/library/auth-hardening.md`, and `.factory/library/frontend-handoff.md` before planning changes.
 3. Read the mission `validation-contract.md` and note exactly which assertion IDs the feature must make testable.
 4. If the feature description names an exact catching lane, treat that lane as mandatory verification rather than optional follow-up.
-3. Read the relevant review evidence in:
+5. Read the relevant review evidence in:
    - `docs/code-review/flows/auth-identity.md`
    - `docs/code-review/flows/admin-governance.md`
    - `docs/code-review/risk-register.md`
-5. Enumerate all touched endpoints, DTOs, roles, tenant/company-boundary checks, token stores, and adjacent ERP-sensitive flows before coding.
-6. Explicitly note whether the feature is expected to preserve the current request/response shape. Default assumption: preserve it.
+6. Enumerate all touched endpoints, DTOs, roles, tenant/company-boundary checks, token stores, and adjacent ERP-sensitive flows before coding.
+7. Explicitly note whether the feature is expected to preserve the current request/response shape. Default assumption: preserve it.
 
 ### Step 2: Write characterization tests first
 1. Before implementation, add or update tests that lock in the current contract and reproduce the security or boundary problem.
@@ -37,20 +38,22 @@ Use for backend features that change:
 4. For token or session changes, write replay/revocation tests first.
 5. If the touched security/control area already has stale policy or regression coverage, realign that suite in the same packet instead of leaving it behind.
 6. If the feature removes a stale compatibility path, add regression coverage that proves the stale path is gone or no longer mutates state before implementation is considered complete.
-6. Run the targeted suite and confirm it fails before implementation.
+7. For CI-only routing or manifest packets, the characterization path may be router/manifest contract tests plus the exact shard command that reproduces the miss; do not invent unrelated runtime changes just to force a generic red/green flow.
+8. Run the targeted suite and confirm it fails before implementation.
 
 ### Step 3: Implement the minimal compatible fix
 1. Make the smallest change that closes the security gap without unnecessary API churn.
 2. Preserve request/response shapes unless the feature explicitly allows a documented change.
 3. Remove obsolete authz checks, stale override paths, unused compatibility branches, and dead security-related code in the touched area when they would otherwise leave production confusion behind.
 4. When a feature is about canonicalizing a control-plane path, do not leave a second public writer, helper allowlist entry, or OpenAPI contract behind in the touched surface.
-4. If a shape change is truly unavoidable:
+5. For CI-only routing packets, keep the diff limited to manifests, router logic, and regression tests that prove the intended catching lane now fires for the feature's file surface.
+6. If a shape change is truly unavoidable:
    - update `.factory/library/frontend-handoff.md` in the same session,
    - describe the exact contract delta,
    - include migration notes for the frontend,
    - mention it explicitly in the handoff summary.
-5. Keep company/tenant binding fail-closed.
-6. Prefer strengthening existing code paths over introducing parallel contracts unless the feature specifically requires a replacement path.
+7. Keep company/tenant binding fail-closed.
+8. Prefer strengthening existing code paths over introducing parallel contracts unless the feature specifically requires a replacement path.
 
 ### Step 4: Verify aggressively
 1. Run `cd erp-domain && mvn compile -q`.
