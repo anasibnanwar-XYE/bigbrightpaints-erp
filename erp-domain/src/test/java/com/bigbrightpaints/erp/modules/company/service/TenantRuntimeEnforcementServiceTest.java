@@ -140,6 +140,19 @@ class TenantRuntimeEnforcementServiceTest {
     }
 
     @Test
+    void snapshot_usesBootstrapReferenceAndConfiguredDefaults_whenPolicyIsUnset() {
+        TenantRuntimeEnforcementService.TenantRuntimeSnapshot snapshot = service.snapshot("ACME");
+
+        assertThat(snapshot.state()).isEqualTo(TenantRuntimeEnforcementService.TenantRuntimeState.ACTIVE);
+        assertThat(snapshot.reasonCode()).isEqualTo("POLICY_ACTIVE");
+        assertThat(snapshot.auditChainId()).isEqualTo("bootstrap");
+        assertThat(snapshot.updatedAt()).isNull();
+        assertThat(snapshot.maxConcurrentRequests()).isEqualTo(3);
+        assertThat(snapshot.maxRequestsPerMinute()).isEqualTo(3);
+        assertThat(snapshot.maxActiveUsers()).isEqualTo(3);
+    }
+
+    @Test
     void holdTenant_rejectsNewRequests_withLockedStatusAndAuditFailure() {
         TenantRuntimeEnforcementService.TenantRuntimeSnapshot holdSnapshot =
                 service.holdTenant("ACME", "compliance_review", "ops@bbp.com");
@@ -863,7 +876,7 @@ class TenantRuntimeEnforcementServiceTest {
         assertThat(invokeParsePositiveInt("0", 5)).isEqualTo(5);
         assertThat(invokeParsePositiveInt("bad", 5)).isEqualTo(5);
 
-        assertThat(invokeParseInstantOrNow("bad-instant")).isEqualTo(Instant.parse("2026-01-01T00:00:10Z"));
+        assertThat(invokeParseInstantOrNull("bad-instant")).isNull();
         Object missingPolicy = ReflectionTestUtils.invokeMethod(service, "loadPersistedPolicy", "   ");
         assertThat(missingPolicy).isNull();
     }
@@ -1158,9 +1171,7 @@ class TenantRuntimeEnforcementServiceTest {
         return value;
     }
 
-    private Instant invokeParseInstantOrNow(String rawValue) {
-        Instant value = ReflectionTestUtils.invokeMethod(service, "parseInstantOrNow", rawValue);
-        assertThat(value).isNotNull();
-        return value;
+    private Instant invokeParseInstantOrNull(String rawValue) {
+        return ReflectionTestUtils.invokeMethod(service, "parseInstantOrNull", rawValue);
     }
 }

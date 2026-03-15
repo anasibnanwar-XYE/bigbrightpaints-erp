@@ -94,7 +94,7 @@ public class TenantRuntimeEnforcementService {
                 policyControlRequest,
                 requestMethod);
         if (stateRejection != null) {
-            usageCounters.rejectedRequests.incrementAndGet();
+            incrementRejectedCount(usageCounters);
             auditRejection(stateRejection, actor, requestPath, requestMethod);
             return TenantRequestAdmission.rejected(stateRejection);
         }
@@ -109,7 +109,7 @@ public class TenantRuntimeEnforcementService {
         int requestsInMinute = incrementMinuteCount(usageCounters, minuteBucket);
         int maxRequestsPerMinute = policy.effectiveMaxRequestsPerMinute(defaultMaxRequestsPerMinute);
         if (requestsInMinute > maxRequestsPerMinute) {
-            usageCounters.rejectedRequests.incrementAndGet();
+            incrementRejectedCount(usageCounters);
             TenantRuntimeRejection rejection = new TenantRuntimeRejection(
                     normalizedCompany,
                     policy.state,
@@ -129,7 +129,7 @@ public class TenantRuntimeEnforcementService {
         int maxConcurrentRequests = policy.effectiveMaxConcurrentRequests(defaultMaxConcurrentRequests);
         if (inFlightNow > maxConcurrentRequests) {
             usageCounters.inFlightRequests.decrementAndGet();
-            usageCounters.rejectedRequests.incrementAndGet();
+            incrementRejectedCount(usageCounters);
             TenantRuntimeRejection rejection = new TenantRuntimeRejection(
                     normalizedCompany,
                     policy.state,
@@ -170,7 +170,7 @@ public class TenantRuntimeEnforcementService {
 
         TenantRuntimeRejection stateRejection = stateRejection(policy, normalizedCompany, false, "POST");
         if (stateRejection != null) {
-            usageCounters.rejectedRequests.incrementAndGet();
+            incrementRejectedCount(usageCounters);
             auditRejection(stateRejection, actor, scope, "POST");
             throw stateRejection.asAuthSecurityContractException();
         }
@@ -180,7 +180,7 @@ public class TenantRuntimeEnforcementService {
         long activeUsers = userAccountRepository.countDistinctByCompanies_IdAndEnabledTrue(company.getId());
         int maxActiveUsers = policy.effectiveMaxActiveUsers(defaultMaxActiveUsers);
         if (activeUsers > maxActiveUsers) {
-            usageCounters.rejectedRequests.incrementAndGet();
+            incrementRejectedCount(usageCounters);
             TenantRuntimeRejection rejection = new TenantRuntimeRejection(
                     normalizedCompany,
                     policy.state,
@@ -323,6 +323,7 @@ public class TenantRuntimeEnforcementService {
                         usageCounters.errorResponses.get(),
                         usageCounters.inFlightRequests.get(),
                         usageCounters.minuteRequestCount.get(),
+                        usageCounters.minuteRejectedCount.get(),
                         activeUsers));
     }
 
@@ -520,11 +521,30 @@ public class TenantRuntimeEnforcementService {
             if (previousBucket != minuteBucket) {
                 if (usageCounters.minuteBucket.compareAndSet(previousBucket, minuteBucket)) {
                     usageCounters.minuteRequestCount.set(0);
+                    usageCounters.minuteRejectedCount.set(0);
                 } else {
                     continue;
                 }
             }
             return usageCounters.minuteRequestCount.incrementAndGet();
+        }
+    }
+
+    private void incrementRejectedCount(TenantRuntimeCounters usageCounters) {
+        usageCounters.rejectedRequests.incrementAndGet();
+        long minuteBucket = CompanyTime.now().getEpochSecond() / 60L;
+        while (true) {
+            long previousBucket = usageCounters.minuteBucket.get();
+            if (previousBucket != minuteBucket) {
+                if (usageCounters.minuteBucket.compareAndSet(previousBucket, minuteBucket)) {
+                    usageCounters.minuteRequestCount.set(0);
+                    usageCounters.minuteRejectedCount.set(0);
+                } else {
+                    continue;
+                }
+            }
+            usageCounters.minuteRejectedCount.incrementAndGet();
+            return;
         }
     }
 
@@ -630,7 +650,7 @@ public class TenantRuntimeEnforcementService {
         String auditChainId = StringUtils.hasText(persistedPolicyReference)
                 ? persistedPolicyReference.trim()
                 : DEFAULT_POLICY_REFERENCE;
-        Instant updatedAt = parseInstantOrNow(persistedUpdatedAt);
+        Instant updatedAt = parseInstantOrNull(persistedUpdatedAt);
         return new TenantRuntimePolicy(
                 state,
                 reason,
@@ -649,8 +669,8 @@ public class TenantRuntimeEnforcementService {
                 defaultMaxConcurrentRequests,
                 defaultMaxRequestsPerMinute,
                 defaultMaxActiveUsers,
-                UUID.randomUUID().toString(),
-                CompanyTime.now(),
+                DEFAULT_POLICY_REFERENCE,
+                null,
                 0L);
     }
 
@@ -679,14 +699,14 @@ public class TenantRuntimeEnforcementService {
         }
     }
 
-    private Instant parseInstantOrNow(String rawValue) {
+    private Instant parseInstantOrNull(String rawValue) {
         if (!StringUtils.hasText(rawValue)) {
-            return CompanyTime.now();
+            return null;
         }
         try {
             return Instant.parse(rawValue.trim());
         } catch (RuntimeException ignored) {
-            return CompanyTime.now();
+            return null;
         }
     }
 
@@ -786,6 +806,7 @@ public class TenantRuntimeEnforcementService {
                                        long errorResponses,
                                        int inFlightRequests,
                                        int minuteRequestCount,
+                                       int minuteRejectedCount,
                                        long activeUsers) {
     }
 
@@ -995,6 +1016,7 @@ public class TenantRuntimeEnforcementService {
         private final AtomicLong errorResponses = new AtomicLong(0);
         private final AtomicLong minuteBucket = new AtomicLong(0);
         private final AtomicInteger minuteRequestCount = new AtomicInteger(0);
+        private final AtomicInteger minuteRejectedCount = new AtomicInteger(0);
     }
 
     private record TenantRuntimeRejection(String companyCode,

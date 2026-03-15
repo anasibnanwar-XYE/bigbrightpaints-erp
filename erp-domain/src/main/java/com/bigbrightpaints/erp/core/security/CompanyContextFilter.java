@@ -226,6 +226,7 @@ public class CompanyContextFilter extends OncePerRequestFilter {
                         writeRuntimeAdmissionDenied(response, admission);
                         return;
                     }
+                    request.setAttribute(TenantRuntimeRequestAttributes.CANONICAL_ADMISSION_APPLIED, Boolean.TRUE);
                 }
                 CompanyContextHolder.setCompanyCode(companyCode);
             }

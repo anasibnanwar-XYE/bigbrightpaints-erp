@@ -584,6 +584,6 @@ class TS_RuntimeTenantPolicyControlExecutableCoverageTest {
                 10,
                 100,
                 50,
-                new TenantRuntimeEnforcementService.TenantRuntimeMetrics(0, 0, 0, 0, 0, 0));
+                new TenantRuntimeEnforcementService.TenantRuntimeMetrics(0, 0, 0, 0, 0, 0, 0));
     }
 }
