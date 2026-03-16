@@ -517,6 +517,13 @@ public class PasswordResetService {
         return userAccountRepository.lockById(user.getId()).orElse(user);
     }
 
+    private UserAccount lockUserForResetTokenCleanup(Long userId) {
+        if (userId == null) {
+            return null;
+        }
+        return userAccountRepository.lockById(userId).orElse(null);
+    }
+
     private void cleanupIssuedResetToken(IssuedResetToken issuedResetToken,
                                          String correlationId,
                                          String maskedEmail) {
@@ -539,9 +546,11 @@ public class PasswordResetService {
         try {
             tokenAfterCommitCleanupTransactionTemplate.executeWithoutResult(status -> {
                 assertTokenLifecycleTransactionActive("cleanup_failed_dispatch", correlationId, maskedEmail);
+                UserAccount lockedUser = lockUserForResetTokenCleanup(
+                        dispatchPlan.priorTokenSnapshot() != null ? dispatchPlan.priorTokenSnapshot().userId() : null);
                 int deletedIssuedTokenCount = deletePersistedResetToken(dispatchPlan.issuedResetToken().rawToken());
                 if (deletedIssuedTokenCount > 0) {
-                    restorePriorResetTokenWithinActiveTransaction(dispatchPlan.priorTokenSnapshot());
+                    restorePriorResetTokenWithinActiveTransaction(lockedUser, dispatchPlan.priorTokenSnapshot());
                 }
             });
             return null;
@@ -585,6 +594,13 @@ public class PasswordResetService {
     }
 
     private void restorePriorResetTokenWithinActiveTransaction(PriorResetTokenSnapshot priorTokenSnapshot) {
+        UserAccount lockedUser = lockUserForResetTokenCleanup(
+                priorTokenSnapshot != null ? priorTokenSnapshot.userId() : null);
+        restorePriorResetTokenWithinActiveTransaction(lockedUser, priorTokenSnapshot);
+    }
+
+    private void restorePriorResetTokenWithinActiveTransaction(UserAccount lockedUser,
+                                                               PriorResetTokenSnapshot priorTokenSnapshot) {
         if (priorTokenSnapshot == null
                 || priorTokenSnapshot.userId() == null
                 || !StringUtils.hasText(priorTokenSnapshot.tokenDigest())
@@ -592,12 +608,11 @@ public class PasswordResetService {
                 || !priorTokenSnapshot.expiresAt().isAfter(Instant.now())) {
             return;
         }
-        UserAccount priorTokenUser = userAccountRepository.findById(priorTokenSnapshot.userId()).orElse(null);
-        if (priorTokenUser == null || !priorTokenUser.isEnabled()) {
+        if (lockedUser == null || !lockedUser.isEnabled()) {
             return;
         }
         PasswordResetToken restoredToken = PasswordResetToken.digestOnly(
-                priorTokenUser,
+                lockedUser,
                 priorTokenSnapshot.tokenDigest(),
                 priorTokenSnapshot.expiresAt());
         tokenRepository.saveAndFlush(restoredToken);

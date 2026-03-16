@@ -215,7 +215,6 @@ class TS_RuntimePasswordResetServiceExecutableCoverageTest {
         ReflectionTestUtils.setField(user, "id", 101L);
         when(userRepository.findByEmailIgnoreCase("user@example.com")).thenReturn(Optional.of(user));
         when(userRepository.lockById(101L)).thenReturn(Optional.of(user));
-        when(userRepository.findById(101L)).thenReturn(Optional.of(user));
 
         PasswordResetToken priorToken = PasswordResetToken.digestOnly(
                 user,
@@ -243,7 +242,8 @@ class TS_RuntimePasswordResetServiceExecutableCoverageTest {
                 .extracting(ex -> ((ApplicationException) ex).getErrorCode())
                 .isEqualTo(ErrorCode.SYSTEM_DATABASE_ERROR);
 
-        verify(userRepository).findById(101L);
+        verify(userRepository, atLeast(3)).lockById(101L);
+        verify(userRepository, never()).findById(101L);
         verify(tokenRepository, atLeast(2)).saveAndFlush(any(PasswordResetToken.class));
     }
 

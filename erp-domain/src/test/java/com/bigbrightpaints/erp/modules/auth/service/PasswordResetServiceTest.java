@@ -475,7 +475,6 @@ class PasswordResetServiceTest {
         ReflectionTestUtils.setField(priorToken, "id", 7L);
         when(tokenRepository.findTopByUserAndIdNotOrderByCreatedAtDescIdDesc(eq(user), anyLong()))
                 .thenReturn(Optional.of(priorToken));
-        when(userAccountRepository.findById(101L)).thenReturn(Optional.of(user));
 
         TransactionTemplate cleanupFallbackTemplate = new TransactionTemplate(new ResourcelessTransactionManager());
         cleanupFallbackTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRED);
@@ -503,7 +502,8 @@ class PasswordResetServiceTest {
                         .map(PasswordResetToken::getTokenDigest)
                         .anyMatch(priorTokenDigest::equals),
                 "Expected cleanup-failure fallback to restore the prior token digest");
-        verify(userAccountRepository).findById(101L);
+        verify(userAccountRepository, atLeast(3)).lockById(101L);
+        verify(userAccountRepository, never()).findById(101L);
         verify(tokenRepository).deleteByTokenDigest(anyString());
     }
 
@@ -561,7 +561,6 @@ class PasswordResetServiceTest {
         ReflectionTestUtils.setField(priorToken, "id", 7L);
         when(tokenRepository.findTopByUserAndIdNotOrderByCreatedAtDescIdDesc(eq(user), anyLong()))
                 .thenReturn(Optional.of(priorToken));
-        when(userAccountRepository.findById(101L)).thenReturn(Optional.of(user));
         ReflectionTestUtils.setField(passwordResetService, "tokenAfterCommitCleanupTransactionTemplate", requiredPropagationTemplate());
         doThrow(new RuntimeException("smtp down"))
                 .when(emailService)
@@ -577,8 +576,40 @@ class PasswordResetServiceTest {
                         .map(PasswordResetToken::getTokenDigest)
                         .anyMatch(priorTokenDigest::equals),
                 "Cleanup should restore the prior token when the issued token was actually deleted");
-        verify(userAccountRepository).findById(101L);
+        verify(userAccountRepository, atLeast(3)).lockById(101L);
+        verify(userAccountRepository, never()).findById(101L);
         verify(tokenRepository).deleteByTokenDigest(anyString());
+    }
+
+    @Test
+    void restorePublicResetStateAfterDispatchFailureLocksUserBeforeDeleteAndRestore() {
+        UserAccount user = new UserAccount("user@example.com", "hash", "User");
+        user.setEnabled(true);
+        ReflectionTestUtils.setField(user, "id", 101L);
+        when(userAccountRepository.lockById(101L)).thenReturn(Optional.of(user));
+        when(tokenRepository.deleteByTokenDigest(anyString())).thenReturn(1);
+
+        Object dispatchPlan = publicResetDispatchPlan(
+                issuedResetToken(41L, "raw-token"),
+                priorResetTokenSnapshot(
+                        101L,
+                        AuthTokenDigests.passwordResetTokenDigest("prior-reset-token"),
+                        Instant.now().plusSeconds(600)));
+
+        assertNull(ReflectionTestUtils.invokeMethod(
+                passwordResetService,
+                "restorePublicResetStateAfterDispatchFailure",
+                dispatchPlan,
+                "corr-lock-123",
+                "u***@example.com",
+                "forgot_password"));
+
+        InOrder inOrder = inOrder(userAccountRepository, tokenRepository);
+        inOrder.verify(userAccountRepository).lockById(101L);
+        inOrder.verify(tokenRepository).deleteByTokenDigest(anyString());
+        inOrder.verify(tokenRepository).saveAndFlush(argThat(token -> token != null
+                && AuthTokenDigests.passwordResetTokenDigest("prior-reset-token").equals(token.getTokenDigest())));
+        verify(userAccountRepository, never()).findById(101L);
     }
 
     private TransactionTemplate requiredPropagationTemplate() {
@@ -721,10 +752,10 @@ class PasswordResetServiceTest {
         UserAccount disabledUser = new UserAccount("disabled@example.com", "hash", "Disabled User");
         disabledUser.setEnabled(false);
         ReflectionTestUtils.setField(disabledUser, "id", 102L);
-        when(userAccountRepository.findById(102L)).thenReturn(Optional.of(disabledUser));
+        when(userAccountRepository.lockById(102L)).thenReturn(Optional.of(disabledUser));
         Object disabledSnapshot = priorResetTokenSnapshot(102L, AuthTokenDigests.passwordResetTokenDigest("disabled-prior"), Instant.now().plusSeconds(600));
         ReflectionTestUtils.invokeMethod(passwordResetService, "restorePriorResetTokenWithinActiveTransaction", disabledSnapshot);
-        when(userAccountRepository.findById(103L)).thenReturn(Optional.empty());
+        when(userAccountRepository.lockById(103L)).thenReturn(Optional.empty());
         ReflectionTestUtils.invokeMethod(
                 passwordResetService,
                 "restorePriorResetTokenWithinActiveTransaction",
