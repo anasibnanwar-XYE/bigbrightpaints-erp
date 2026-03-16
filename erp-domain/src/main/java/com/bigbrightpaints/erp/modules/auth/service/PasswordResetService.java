@@ -312,7 +312,7 @@ public class PasswordResetService {
                         user,
                         correlationId,
                         maskedEmail);
-                if (dispatchPlan == null || dispatchPlan.issuedResetToken() == null) {
+                if (dispatchPlan == null) {
                     return Boolean.FALSE;
                 }
                 registerPublicResetDispatchAfterCommit(
@@ -462,9 +462,6 @@ public class PasswordResetService {
             return null;
         }
         UserAccount lockedUser = lockUserForResetTokenCleanup(user);
-        if (lockedUser == null) {
-            return null;
-        }
         PriorResetTokenSnapshot priorTokenSnapshot = capturePriorResetTokenSnapshot(lockedUser, keepTokenId);
         tokenRepository.deleteByUserAndIdNot(lockedUser, keepTokenId);
         return priorTokenSnapshot;
@@ -536,14 +533,16 @@ public class PasswordResetService {
                                                                          String correlationId,
                                                                          String maskedEmail,
                                                                          String operation) {
-        if (dispatchPlan == null || dispatchPlan.issuedResetToken() == null) {
+        if (dispatchPlan == null) {
             return null;
         }
         try {
             tokenAfterCommitCleanupTransactionTemplate.executeWithoutResult(status -> {
                 assertTokenLifecycleTransactionActive("cleanup_failed_dispatch", correlationId, maskedEmail);
-                deletePersistedResetToken(dispatchPlan.issuedResetToken().rawToken());
-                restorePriorResetTokenWithinActiveTransaction(dispatchPlan.priorTokenSnapshot());
+                int deletedIssuedTokenCount = deletePersistedResetToken(dispatchPlan.issuedResetToken().rawToken());
+                if (deletedIssuedTokenCount > 0) {
+                    restorePriorResetTokenWithinActiveTransaction(dispatchPlan.priorTokenSnapshot());
+                }
             });
             return null;
         } catch (RuntimeException cleanupEx) {
@@ -695,9 +694,9 @@ public class PasswordResetService {
         throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState("Password reset token lifecycle operation requires an active transaction");
     }
 
-    private void deletePersistedResetToken(String tokenValue) {
+    private int deletePersistedResetToken(String tokenValue) {
         String tokenDigest = AuthTokenDigests.passwordResetTokenDigest(tokenValue);
-        tokenRepository.deleteByTokenDigest(tokenDigest);
+        return tokenRepository.deleteByTokenDigest(tokenDigest);
     }
 
     private String classifySuperAdminDispatchFailure(RuntimeException exception, String persistedToken) {

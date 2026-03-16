@@ -24,6 +24,7 @@ import com.bigbrightpaints.erp.modules.auth.domain.PasswordResetTokenRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.rbac.domain.Role;
+import java.lang.reflect.Constructor;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -237,6 +238,36 @@ class PasswordResetServiceTest {
     }
 
     @Test
+    void requestResetByAdminMasksRuntimeDispatchFailureAndDeletesIssuedToken() {
+        UserAccount adminManagedUser = new UserAccount("managed@example.com", "hash", "Managed User");
+        adminManagedUser.setEnabled(true);
+        doThrow(new RuntimeException("smtp down"))
+                .when(emailService)
+                .sendPasswordResetEmailRequired(eq("managed@example.com"), eq("Managed User"), anyString());
+
+        assertThrows(RuntimeException.class, () -> passwordResetService.requestResetByAdmin(adminManagedUser));
+
+        verify(tokenRepository).deleteByUser(adminManagedUser);
+        verify(tokenRepository).saveAndFlush(any(PasswordResetToken.class));
+        verify(tokenRepository).deleteByTokenDigest(anyString());
+    }
+
+    @Test
+    void requestResetByAdminDoesNotIssueTokenWhenResetIssuanceLockUnavailable() {
+        UserAccount adminManagedUser = new UserAccount("managed@example.com", "hash", "Managed User");
+        adminManagedUser.setEnabled(true);
+        ReflectionTestUtils.setField(adminManagedUser, "id", 101L);
+        when(userAccountRepository.lockById(101L)).thenReturn(Optional.empty());
+
+        passwordResetService.requestResetByAdmin(adminManagedUser);
+
+        verify(userAccountRepository).lockById(101L);
+        verify(tokenRepository, never()).deleteByUser(any());
+        verify(tokenRepository, never()).saveAndFlush(any(PasswordResetToken.class));
+        verify(emailService, never()).sendPasswordResetEmailRequired(anyString(), anyString(), anyString());
+    }
+
+    @Test
     void requestResetByAdminSkipsDisabledUsers() {
         UserAccount disabledUser = new UserAccount("disabled-managed@example.com", "hash", "Disabled User");
         disabledUser.setEnabled(false);
@@ -261,6 +292,24 @@ class PasswordResetServiceTest {
         verify(tokenRepository, never()).deleteByUserAndIdNot(any(), anyLong());
         verify(tokenRepository, never()).save(any(PasswordResetToken.class));
         verify(tokenRepository, never()).saveAndFlush(any(PasswordResetToken.class));
+        verify(emailService, never()).sendPasswordResetEmailRequired(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void requestResetSkipsEmailDispatchWhenPublicIssueTokenIsUnavailable() {
+        UserAccount user = new UserAccount("user@example.com", "hash", "User");
+        user.setEnabled(true);
+        ReflectionTestUtils.setField(user, "id", 101L);
+        when(userAccountRepository.findByEmailIgnoreCase("user@example.com"))
+                .thenReturn(Optional.of(user));
+        when(userAccountRepository.lockById(101L)).thenReturn(Optional.empty());
+
+        assertDoesNotThrow(() -> passwordResetService.requestReset("user@example.com"));
+
+        verify(userAccountRepository).lockById(101L);
+        verify(tokenRepository, never()).saveAndFlush(any(PasswordResetToken.class));
+        verify(tokenRepository, never()).touchCreatedAt(anyLong(), any(Instant.class));
+        verify(tokenRepository, never()).deleteByUserAndIdNot(any(UserAccount.class), anyLong());
         verify(emailService, never()).sendPasswordResetEmailRequired(anyString(), anyString(), anyString());
     }
 
@@ -456,10 +505,264 @@ class PasswordResetServiceTest {
         verify(tokenRepository).deleteByTokenDigest(anyString());
     }
 
+    @Test
+    void requestResetDoesNotRestorePriorTokenWhenIssuedTokenWasAlreadySuperseded() {
+        UserAccount user = new UserAccount("user@example.com", "hash", "User");
+        user.setEnabled(true);
+        ReflectionTestUtils.setField(user, "id", 101L);
+        when(userAccountRepository.findByEmailIgnoreCase("user@example.com"))
+                .thenReturn(Optional.of(user));
+        when(userAccountRepository.lockById(101L)).thenReturn(Optional.of(user));
+
+        String priorTokenDigest = AuthTokenDigests.passwordResetTokenDigest("prior-reset-token");
+        PasswordResetToken priorToken = PasswordResetToken.digestOnly(
+                user,
+                priorTokenDigest,
+                Instant.now().plusSeconds(600));
+        ReflectionTestUtils.setField(priorToken, "id", 7L);
+        when(tokenRepository.findTopByUserAndIdNotOrderByCreatedAtDescIdDesc(eq(user), anyLong()))
+                .thenReturn(Optional.of(priorToken));
+        ReflectionTestUtils.setField(passwordResetService, "tokenAfterCommitCleanupTransactionTemplate", requiredPropagationTemplate());
+
+        doThrow(new RuntimeException("smtp down"))
+                .when(emailService)
+                .sendPasswordResetEmailRequired(eq("user@example.com"), eq("User"), anyString());
+        when(tokenRepository.deleteByTokenDigest(anyString())).thenReturn(0);
+
+        assertDoesNotThrow(() -> passwordResetService.requestReset("user@example.com"));
+
+        verify(tokenRepository).deleteByTokenDigest(anyString());
+        verify(userAccountRepository, never()).findById(101L);
+        ArgumentCaptor<PasswordResetToken> tokenCaptor = ArgumentCaptor.forClass(PasswordResetToken.class);
+        verify(tokenRepository).saveAndFlush(tokenCaptor.capture());
+        assertTrue(
+                tokenCaptor.getAllValues().stream()
+                        .map(PasswordResetToken::getTokenDigest)
+                        .noneMatch(priorTokenDigest::equals),
+                "Cleanup should not resurrect a superseded prior token when the issued token was already gone");
+    }
+
+    @Test
+    void requestResetRestoresPriorTokenWhenDispatchCleanupDeletesIssuedToken() {
+        UserAccount user = new UserAccount("user@example.com", "hash", "User");
+        user.setEnabled(true);
+        ReflectionTestUtils.setField(user, "id", 101L);
+        when(userAccountRepository.findByEmailIgnoreCase("user@example.com"))
+                .thenReturn(Optional.of(user));
+        when(userAccountRepository.lockById(101L)).thenReturn(Optional.of(user));
+
+        String priorTokenDigest = AuthTokenDigests.passwordResetTokenDigest("prior-reset-token");
+        PasswordResetToken priorToken = PasswordResetToken.digestOnly(
+                user,
+                priorTokenDigest,
+                Instant.now().plusSeconds(600));
+        ReflectionTestUtils.setField(priorToken, "id", 7L);
+        when(tokenRepository.findTopByUserAndIdNotOrderByCreatedAtDescIdDesc(eq(user), anyLong()))
+                .thenReturn(Optional.of(priorToken));
+        when(userAccountRepository.findById(101L)).thenReturn(Optional.of(user));
+        ReflectionTestUtils.setField(passwordResetService, "tokenAfterCommitCleanupTransactionTemplate", requiredPropagationTemplate());
+        doThrow(new RuntimeException("smtp down"))
+                .when(emailService)
+                .sendPasswordResetEmailRequired(eq("user@example.com"), eq("User"), anyString());
+        when(tokenRepository.deleteByTokenDigest(anyString())).thenReturn(1);
+
+        assertDoesNotThrow(() -> passwordResetService.requestReset("user@example.com"));
+
+        ArgumentCaptor<PasswordResetToken> tokenCaptor = ArgumentCaptor.forClass(PasswordResetToken.class);
+        verify(tokenRepository, atLeast(2)).saveAndFlush(tokenCaptor.capture());
+        assertTrue(
+                tokenCaptor.getAllValues().stream()
+                        .map(PasswordResetToken::getTokenDigest)
+                        .anyMatch(priorTokenDigest::equals),
+                "Cleanup should restore the prior token when the issued token was actually deleted");
+        verify(userAccountRepository).findById(101L);
+        verify(tokenRepository).deleteByTokenDigest(anyString());
+    }
+
     private TransactionTemplate requiredPropagationTemplate() {
         TransactionTemplate template = new TransactionTemplate(new ResourcelessTransactionManager());
         template.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRED);
         return template;
+    }
+
+    @Test
+    void privateHelperGuardsFailClosedOutsideTransactionSynchronization() {
+        UserAccount user = new UserAccount("user@example.com", "hash", "User");
+        user.setEnabled(true);
+        Object dispatchPlan = publicResetDispatchPlan(issuedResetToken(41L, "raw-token"), null);
+
+        ApplicationException exception = assertThrows(
+                ApplicationException.class,
+                () -> ReflectionTestUtils.invokeMethod(
+                        passwordResetService,
+                        "registerPublicResetDispatchAfterCommit",
+                        user,
+                        dispatchPlan,
+                        "corr-guard-123",
+                        "u***@example.com",
+                        "forgot_password"));
+
+        assertEquals("Password reset email dispatch requires an active transaction synchronization context", exception.getUserMessage());
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            ApplicationException syncOnlyException = assertThrows(
+                    ApplicationException.class,
+                    () -> ReflectionTestUtils.invokeMethod(
+                            passwordResetService,
+                            "registerPublicResetDispatchAfterCommit",
+                            user,
+                            dispatchPlan,
+                            "corr-guard-123",
+                            "u***@example.com",
+                            "forgot_password"));
+            assertEquals(
+                    "Password reset email dispatch requires an active transaction synchronization context",
+                    syncOnlyException.getUserMessage());
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+        assertNull(requiredPropagationTemplate().execute(status -> ReflectionTestUtils.invokeMethod(
+                passwordResetService,
+                "cleanupSupersededPublicResetTokensWithinActiveTransaction",
+                null,
+                41L,
+                "corr-guard-123",
+                "u***@example.com")));
+        assertNull(requiredPropagationTemplate().execute(status -> ReflectionTestUtils.invokeMethod(
+                passwordResetService,
+                "cleanupSupersededPublicResetTokensWithinActiveTransaction",
+                user,
+                null,
+                "corr-guard-123",
+                "u***@example.com")));
+        assertNull(ReflectionTestUtils.invokeMethod(passwordResetService, "capturePriorResetTokenSnapshot", null, 41L));
+        assertNull(ReflectionTestUtils.invokeMethod(passwordResetService, "capturePriorResetTokenSnapshot", user, null));
+        requiredPropagationTemplate().executeWithoutResult(status -> ReflectionTestUtils.invokeMethod(
+                passwordResetService,
+                "touchIssuedResetTokenForDispatchOrderingWithinActiveTransaction",
+                null,
+                "corr-guard-123",
+                "u***@example.com"));
+        assertNull(ReflectionTestUtils.invokeMethod(passwordResetService, "lockUserForResetTokenCleanup", new Object[] {null}));
+        assertNull(ReflectionTestUtils.invokeMethod(
+                passwordResetService,
+                "restorePublicResetStateAfterDispatchFailure",
+                null,
+                "corr-guard-123",
+                "u***@example.com",
+                "forgot_password"));
+
+        verify(tokenRepository, never()).touchCreatedAt(anyLong(), any(Instant.class));
+        verify(emailService, never()).sendPasswordResetEmailRequired(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void privateHelperCoverageHandlesSnapshotAndRestoreBranches() {
+        UserAccount user = new UserAccount("user@example.com", "hash", "User");
+        user.setEnabled(true);
+        ReflectionTestUtils.setField(user, "id", 101L);
+
+        when(userAccountRepository.lockById(101L)).thenReturn(Optional.empty());
+        assertNull(requiredPropagationTemplate().execute(status -> ReflectionTestUtils.invokeMethod(
+                passwordResetService,
+                "cleanupSupersededPublicResetTokensWithinActiveTransaction",
+                user,
+                41L,
+                "corr-helper-123",
+                "u***@example.com")));
+
+        PasswordResetToken usedPriorToken = PasswordResetToken.digestOnly(
+                user,
+                AuthTokenDigests.passwordResetTokenDigest("used-prior"),
+                Instant.now().plusSeconds(600));
+        usedPriorToken.markUsed();
+        when(tokenRepository.findTopByUserAndIdNotOrderByCreatedAtDescIdDesc(user, 41L)).thenReturn(Optional.of(usedPriorToken));
+        assertNull(ReflectionTestUtils.invokeMethod(passwordResetService, "capturePriorResetTokenSnapshot", user, 41L));
+
+        PasswordResetToken expiredPriorToken = PasswordResetToken.digestOnly(
+                user,
+                AuthTokenDigests.passwordResetTokenDigest("expired-prior"),
+                Instant.now().minusSeconds(60));
+        when(tokenRepository.findTopByUserAndIdNotOrderByCreatedAtDescIdDesc(user, 44L)).thenReturn(Optional.of(expiredPriorToken));
+        assertNull(ReflectionTestUtils.invokeMethod(passwordResetService, "capturePriorResetTokenSnapshot", user, 44L));
+
+        PasswordResetToken blankDigestPriorToken = PasswordResetToken.digestOnly(user, "", Instant.now().plusSeconds(600));
+        when(tokenRepository.findTopByUserAndIdNotOrderByCreatedAtDescIdDesc(user, 42L)).thenReturn(Optional.of(blankDigestPriorToken));
+        assertNull(ReflectionTestUtils.invokeMethod(passwordResetService, "capturePriorResetTokenSnapshot", user, 42L));
+
+        UserAccount transientUser = new UserAccount("transient@example.com", "hash", "Transient User");
+        transientUser.setEnabled(true);
+        PasswordResetToken transientPriorToken = PasswordResetToken.digestOnly(
+                transientUser,
+                AuthTokenDigests.passwordResetTokenDigest("transient-prior"),
+                Instant.now().plusSeconds(600));
+        when(tokenRepository.findTopByUserAndIdNotOrderByCreatedAtDescIdDesc(transientUser, 43L))
+                .thenReturn(Optional.of(transientPriorToken));
+        assertNull(ReflectionTestUtils.invokeMethod(passwordResetService, "capturePriorResetTokenSnapshot", transientUser, 43L));
+        assertEquals(transientUser, ReflectionTestUtils.invokeMethod(passwordResetService, "lockUserForResetTokenCleanup", transientUser));
+
+        Object invalidSnapshot = priorResetTokenSnapshot(101L, "", Instant.now().plusSeconds(600));
+        ReflectionTestUtils.invokeMethod(passwordResetService, "restorePriorResetTokenWithinActiveTransaction", invalidSnapshot);
+        ReflectionTestUtils.invokeMethod(
+                passwordResetService,
+                "restorePriorResetTokenWithinActiveTransaction",
+                priorResetTokenSnapshot(null, AuthTokenDigests.passwordResetTokenDigest("missing-user-id"), Instant.now().plusSeconds(600)));
+        ReflectionTestUtils.invokeMethod(
+                passwordResetService,
+                "restorePriorResetTokenWithinActiveTransaction",
+                priorResetTokenSnapshot(101L, AuthTokenDigests.passwordResetTokenDigest("missing-expiry"), null));
+        ReflectionTestUtils.invokeMethod(
+                passwordResetService,
+                "restorePriorResetTokenWithinActiveTransaction",
+                priorResetTokenSnapshot(101L, AuthTokenDigests.passwordResetTokenDigest("expired-snapshot"), Instant.now().minusSeconds(60)));
+
+        UserAccount disabledUser = new UserAccount("disabled@example.com", "hash", "Disabled User");
+        disabledUser.setEnabled(false);
+        ReflectionTestUtils.setField(disabledUser, "id", 102L);
+        when(userAccountRepository.findById(102L)).thenReturn(Optional.of(disabledUser));
+        Object disabledSnapshot = priorResetTokenSnapshot(102L, AuthTokenDigests.passwordResetTokenDigest("disabled-prior"), Instant.now().plusSeconds(600));
+        ReflectionTestUtils.invokeMethod(passwordResetService, "restorePriorResetTokenWithinActiveTransaction", disabledSnapshot);
+        when(userAccountRepository.findById(103L)).thenReturn(Optional.empty());
+        ReflectionTestUtils.invokeMethod(
+                passwordResetService,
+                "restorePriorResetTokenWithinActiveTransaction",
+                priorResetTokenSnapshot(103L, AuthTokenDigests.passwordResetTokenDigest("missing-prior"), Instant.now().plusSeconds(600)));
+
+        TransactionTemplate failingCleanupTemplate = mock(TransactionTemplate.class);
+        doThrow(new RuntimeException("cleanup unavailable"))
+                .when(failingCleanupTemplate)
+                .executeWithoutResult(any());
+        ReflectionTestUtils.setField(passwordResetService, "tokenCleanupTransactionTemplate", failingCleanupTemplate);
+        Object validSnapshot = priorResetTokenSnapshot(101L, AuthTokenDigests.passwordResetTokenDigest("restorable-prior"), Instant.now().plusSeconds(600));
+
+        assertEquals(
+                Boolean.FALSE,
+                ReflectionTestUtils.invokeMethod(
+                        passwordResetService,
+                        "restorePriorResetTokenAfterCleanupFailure",
+                        validSnapshot,
+                        "corr-helper-123",
+                        "u***@example.com",
+                        "forgot_password"));
+
+        verify(tokenRepository, never()).saveAndFlush(argThat(token -> token != null
+                && AuthTokenDigests.passwordResetTokenDigest("restorable-prior").equals(token.getTokenDigest())));
+    }
+
+    @Test
+    void privateHelperCoverageClassifiesPersistenceFailures() {
+        assertEquals(
+                Boolean.TRUE,
+                ReflectionTestUtils.invokeMethod(
+                        passwordResetService,
+                        "isPublicResetPersistenceFailure",
+                        new ApplicationException(ErrorCode.SYSTEM_DATABASE_ERROR, "db unavailable")));
+        assertEquals(
+                Boolean.FALSE,
+                ReflectionTestUtils.invokeMethod(
+                        passwordResetService,
+                        "isPublicResetPersistenceFailure",
+                        new ApplicationException(ErrorCode.SYSTEM_CONFIGURATION_ERROR, "mail disabled")));
     }
 
     @Test
@@ -561,6 +864,27 @@ class PasswordResetServiceTest {
 
         verify(tokenRepository, never()).deleteByUser(any());
         verify(tokenRepository, never()).save(any(PasswordResetToken.class));
+        verify(tokenRepository, never()).saveAndFlush(any(PasswordResetToken.class));
+        verify(emailService, never()).sendPasswordResetEmailRequired(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void requestResetMasksMissingTransactionSynchronizationDuringDispatchRegistration() {
+        UserAccount user = new UserAccount("user@example.com", "hash", "User");
+        user.setEnabled(true);
+        when(userAccountRepository.findByEmailIgnoreCase("user@example.com"))
+                .thenReturn(Optional.of(user));
+
+        TransactionTemplate lifecycleTemplate = mock(TransactionTemplate.class);
+        when(lifecycleTemplate.execute(any())).thenAnswer(invocation -> {
+            TransactionCallback<?> callback = invocation.getArgument(0);
+            return callback.doInTransaction(null);
+        });
+        ReflectionTestUtils.setField(passwordResetService, "tokenLifecycleTransactionTemplate", lifecycleTemplate);
+
+        assertDoesNotThrow(() -> passwordResetService.requestReset("user@example.com"));
+
+        verify(lifecycleTemplate).execute(any());
         verify(tokenRepository, never()).saveAndFlush(any(PasswordResetToken.class));
         verify(emailService, never()).sendPasswordResetEmailRequired(anyString(), anyString(), anyString());
     }
@@ -1265,6 +1589,54 @@ class PasswordResetServiceTest {
                     .toList();
         } finally {
             serviceLogger.detachAppender(listAppender);
+        }
+    }
+
+    private Object issuedResetToken(Long id, String rawToken) {
+        return instantiatePasswordResetServiceRecord("IssuedResetToken", new Class<?>[] {Long.class, String.class}, id, rawToken);
+    }
+
+    private Object priorResetTokenSnapshot(Long userId, String tokenDigest, Instant expiresAt) {
+        return instantiatePasswordResetServiceRecord(
+                "PriorResetTokenSnapshot",
+                new Class<?>[] {Long.class, String.class, Instant.class},
+                userId,
+                tokenDigest,
+                expiresAt);
+    }
+
+    private Object publicResetDispatchPlan(Object issuedResetToken, Object priorTokenSnapshot) {
+        return instantiatePasswordResetServiceRecord(
+                "PublicResetDispatchPlan",
+                new Class<?>[] {issuedResetTokenClass(), priorResetTokenSnapshotClass()},
+                issuedResetToken,
+                priorTokenSnapshot);
+    }
+
+    private Object instantiatePasswordResetServiceRecord(String simpleName, Class<?>[] parameterTypes, Object... args) {
+        try {
+            Class<?> recordClass = Class.forName(PasswordResetService.class.getName() + "$" + simpleName);
+            Constructor<?> constructor = recordClass.getDeclaredConstructor(parameterTypes);
+            constructor.setAccessible(true);
+            return constructor.newInstance(args);
+        } catch (ReflectiveOperationException ex) {
+            throw new AssertionError("Failed to instantiate PasswordResetService." + simpleName, ex);
+        }
+    }
+
+    private Class<?> issuedResetTokenClass() {
+        try {
+            return Class.forName(PasswordResetService.class.getName() + "$IssuedResetToken");
+        } catch (ClassNotFoundException ex) {
+            throw new AssertionError(ex);
+        }
+    }
+
+    private Class<?> priorResetTokenSnapshotClass() {
+        try {
+            return Class.forName(PasswordResetService.class.getName() + "$PriorResetTokenSnapshot");
+        } catch (ClassNotFoundException ex) {
+            throw new AssertionError(ex);
         }
     }
 
