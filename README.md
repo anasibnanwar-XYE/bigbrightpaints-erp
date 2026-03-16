@@ -92,6 +92,12 @@ cd erp-domain
 MIGRATION_SET=v2 mvn test -Pgate-fast -Djacoco.skip=true
 ```
 
+Auth merge-gate regression suites are included in gate-fast. To run them directly:
+```bash
+cd erp-domain
+MIGRATION_SET=v2 mvn test -Djacoco.skip=true -Dtest=AuthPasswordResetPublicContractIT,AdminUserSecurityIT
+```
+
 ### Full suite
 ```bash
 cd erp-domain
