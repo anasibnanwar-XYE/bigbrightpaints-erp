@@ -341,6 +341,86 @@
       "cross_module_critical": false
     },
     {
+      "id": "test-catalog::o2c-ts-o2cdispatchprovenanceviewsandequivalencetest-java",
+      "test_path": "erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/o2c/TS_O2CDispatchProvenanceViewsAndEquivalenceTest.java",
+      "module": "o2c",
+      "owner": "lane03-sales-dispatch-orders",
+      "class": "critical",
+      "tags": [
+        "critical",
+        "reconciliation"
+      ],
+      "gate_membership": [
+        "gate-fast",
+        "gate-core",
+        "gate-release",
+        "gate-reconciliation",
+        "gate-quality"
+      ],
+      "accounting_math_critical": true,
+      "cross_module_critical": false
+    },
+    {
+      "id": "test-catalog::o2c-ts-o2cdispatchreplaysafetytest-java",
+      "test_path": "erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/o2c/TS_O2CDispatchReplaySafetyTest.java",
+      "module": "o2c",
+      "owner": "lane03-sales-dispatch-orders",
+      "class": "critical",
+      "tags": [
+        "critical",
+        "reconciliation"
+      ],
+      "gate_membership": [
+        "gate-fast",
+        "gate-core",
+        "gate-release",
+        "gate-reconciliation",
+        "gate-quality"
+      ],
+      "accounting_math_critical": true,
+      "cross_module_critical": false
+    },
+    {
+      "id": "test-catalog::o2c-ts-o2clistenerproformainvoiceboundarytest-java",
+      "test_path": "erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/o2c/TS_O2CListenerProformaInvoiceBoundaryTest.java",
+      "module": "o2c",
+      "owner": "lane03-sales-dispatch-orders",
+      "class": "critical",
+      "tags": [
+        "critical",
+        "reconciliation"
+      ],
+      "gate_membership": [
+        "gate-fast",
+        "gate-core",
+        "gate-release",
+        "gate-reconciliation",
+        "gate-quality"
+      ],
+      "accounting_math_critical": true,
+      "cross_module_critical": false
+    },
+    {
+      "id": "test-catalog::o2c-ts-o2corchestratordispatchremovalregressiontest-java",
+      "test_path": "erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/o2c/TS_O2COrchestratorDispatchRemovalRegressionTest.java",
+      "module": "o2c",
+      "owner": "lane03-sales-dispatch-orders",
+      "class": "critical",
+      "tags": [
+        "critical",
+        "reconciliation"
+      ],
+      "gate_membership": [
+        "gate-fast",
+        "gate-core",
+        "gate-release",
+        "gate-reconciliation",
+        "gate-quality"
+      ],
+      "accounting_math_critical": true,
+      "cross_module_critical": false
+    },
+    {
       "id": "test-catalog::o2c-ts-truthsuite-o2c-approval-runtimetest-java",
       "test_path": "erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/o2c/TS_truthsuite_o2c_Approval_RuntimeTest.java",
       "module": "o2c",

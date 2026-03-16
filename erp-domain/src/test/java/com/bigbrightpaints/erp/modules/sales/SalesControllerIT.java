@@ -13,6 +13,7 @@ import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.DealerRepository;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.client.TestRestTemplate;
@@ -25,6 +26,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+@Tag("critical")
 public class SalesControllerIT extends AbstractIntegrationTest {
 
     private static final String COMPANY_CODE = "ACME";
@@ -133,7 +135,7 @@ public class SalesControllerIT extends AbstractIntegrationTest {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token);
         headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.set("X-Company-Id", COMPANY_CODE);
+        headers.set("X-Company-Code", COMPANY_CODE);
         return headers;
     }
 
@@ -251,7 +253,7 @@ public class SalesControllerIT extends AbstractIntegrationTest {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token);
         headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.set("X-Company-Id", COMPANY_CODE);
+        headers.set("X-Company-Code", COMPANY_CODE);
 
         Map<String, Object> dealerReq = new HashMap<>();
         dealerReq.put("name", "Prime Dealer");
@@ -330,7 +332,7 @@ public class SalesControllerIT extends AbstractIntegrationTest {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token);
         headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.set("X-Company-Id", COMPANY_CODE);
+        headers.set("X-Company-Code", COMPANY_CODE);
 
         Map<String, Object> line = Map.of(
                 "shipQty", new BigDecimal("1.00")
@@ -362,7 +364,7 @@ public class SalesControllerIT extends AbstractIntegrationTest {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token);
         headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.set("X-Company-Id", COMPANY_CODE);
+        headers.set("X-Company-Code", COMPANY_CODE);
 
         Map<String, Object> line = Map.of(
                 "shipQty", new BigDecimal("1.00")

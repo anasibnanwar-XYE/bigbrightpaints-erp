@@ -26,7 +26,7 @@ Testing surface: tools, URLs, setup steps, isolation notes, known quirks.
 
 ## Validation Concurrency
 - **api**: max concurrent validators **1** unless each validator gets its own isolated runtime, because shared compose services and MailHog state can make assertions interfere.
-- **jvm-tests**: resource ceiling **2** on this host (~11.4 GB free on 2026-03-16, 16 CPUs), but use **1 validator at a time** against the shared checkout because concurrent Maven runs collide on `erp-domain/target`, Surefire reports, and `artifacts/gate-fast/` outputs. Raise to 2 only if each validator gets an isolated clone or separate build directory.
+- **jvm-tests**: use **1 validator at a time** against a shared checkout because concurrent Maven runs collide on `erp-domain/target`, Surefire reports, and `artifacts/gate-fast/` outputs. Raise concurrency only when each validator has an isolated clone or separate build directory.
 
 ## Setup Steps
 1. From the repository root, run `bash .factory/init.sh`.
@@ -89,3 +89,76 @@ Testing surface: tools, URLs, setup steps, isolation notes, known quirks.
 - Because the shared checkout is not isolated, run only the commands assigned in the prompt and assume no other Maven validator is running in parallel.
 - Treat `AuthTenantAuthorityIT` full-class failures outside the assigned auth-merge methods as pre-existing mission guidance; use the targeted methods or paired suites named in the prompt instead of broad exploratory reruns.
 - For gate/governance assertions, preserve the exact command output and artifact paths (`artifacts/gate-fast/**`, enterprise policy, Codex review guidelines) needed to map each assertion to evidence.
+
+## Lane 01 Tenant Runtime Canonicalization Packet Guidance
+
+### Validation Surface
+- **Primary:** targeted Maven suites plus the exact PR catching lane `pr-auth-tenant`
+- **Secondary:** `gate-fast` and `gate-core`
+- **Optional runtime proof:** `curl` against the compose-backed backend on `8081/9090` when a validator needs canonical company write -> auth or portal/report evidence
+
+### Validation Concurrency
+- **CLI validators:** max 3 concurrent validators
+- **Runtime validators:** max 1 concurrent validator (fixed ports `5433/8081/9090`)
+
+### Key Commands
+- `.factory/services.yaml -> commands.lane01-targeted`
+- `.factory/services.yaml -> commands.pr-auth-tenant`
+- `.factory/services.yaml -> commands.gate-fast`
+- `.factory/services.yaml -> commands.gate-core`
+- `.factory/services.yaml -> commands.lane01-router-check`
+
+### High-Signal Proof For This Packet
+- Canonical writer / control-plane binding:
+  - `CompanyControllerIT`
+  - `CompanyContextFilterControlPlaneBindingTest`
+  - `OpenApiSnapshotIT`
+- Same-node invalidation / recovery:
+  - `TenantRuntimeEnforcementServiceTest`
+  - `TS_RuntimeTenantRuntimeEnforcementTest`
+  - `TS_RuntimeTenantPolicyControlExecutableCoverageTest`
+- Canonical-write-driven auth/runtime proof:
+  - `TenantRuntimeEnforcementAuthIT`
+- Canonical-write-driven tenant-scoped read parity:
+  - `TenantRuntimePolicyServiceTest`
+  - `AdminSettingsControllerTenantRuntimeContractTest`
+- Canonical-write-driven portal/report proof:
+  - `PortalInsightsControllerIT`
+  - `ReportControllerSecurityIT`
+
+### Runtime Probe Guidance
+- Prefer `http://localhost:9090/actuator/health` for runtime readiness; if it is degraded, verify the target API endpoints on `8081` directly before treating the runtime as unavailable.
+- For manual API proof in this packet, start from a canonical company-path write and then probe:
+  - `GET /api/v1/auth/me` for immediate deny/re-allow
+  - a runtime-intercepted endpoint such as `GET /api/v1/portal/dashboard`
+  - `GET /api/v1/admin/tenant-runtime/metrics` for tenant-scoped read parity
+- `GET /api/v1/admin/tenant-runtime/metrics` is itself runtime-gated for blocked tenants in the seeded lane01 runtime. If a tenant is BLOCKED, expect `403 TENANT_BLOCKED`; verify the blocked state with auth/login denial first, then recover the tenant before reading metrics again.
+
+## Flow Validator Guidance: cli
+- Lane 01 CLI validators are read-only with respect to repository contents: run manifest/router or targeted Maven commands, but do not edit source files or validation artifacts.
+- Reuse the already-prepared repo root `/home/realnigga/Desktop/Mission-control`; do not create alternate clones or reset the shared runtime.
+- It is safe to run CLI validation in parallel with a single runtime/API validator, but do not start additional compose services or a second backend instance on `5433/8081/9090`.
+- Capture the exact command lines, whether the manifest includes the expected runtime-policy classes, and any router output proving `run_auth_tenant=true` for lane01-relevant changes.
+
+## O2C Dispatch Canonicalization Packet Guidance
+
+### Validation Surface
+- **Primary:** Maven test suites (`gate-fast`, `gate-core`, targeted test runs)
+- **Secondary:** `curl` against running backend on `localhost:8081` if runtime probes needed
+- Runtime app is NOT required for most assertions in this packet — they are provable through test output and source inspection
+
+### Validation Concurrency
+- **Max concurrent validators:** 3
+- **Rationale:** 16 cores, 15GB RAM (~10GB available). Maven test runs are CPU/memory intensive on this codebase. Conservative limit preserves headroom for test JVMs + Docker services if needed.
+
+### Key Test Suites for O2C Dispatch Assertions
+- **Replay safety:** `CR_SalesDispatchInvoiceAccounting`, `ErpInvariantsSuiteIT`, new truthsuite/o2c/ characterization tests
+- **Listener containment:** `InventoryAccountingEventListenerIT`, new truthsuite/o2c/ tests
+- **Proforma boundary:** `SalesServiceTest`, new truthsuite/o2c/ tests
+- **Provenance linkage:** `TS_CrossModuleLinkageContractTest`, `TS_InventoryCogsLinkageScanContractTest`
+- **Factory view redaction:** `DispatchOperationalBoundaryIT`, `DispatchControllerTest`
+- **Invoice boundary:** `InvoiceServiceTest`
+- **Endpoint equivalence:** `OrderFulfillmentE2ETest`, `DispatchControllerTest`
+- **Orchestrator removal:** New regression tests proving removed paths are gone
+- **Gate-fast:** `cd erp-domain && MIGRATION_SET=v2 mvn test -Pgate-fast -Djacoco.skip=true`
+- **Gate-core:** `cd erp-domain && MIGRATION_SET=v2 mvn test -Pgate-core -Djacoco.skip=true`

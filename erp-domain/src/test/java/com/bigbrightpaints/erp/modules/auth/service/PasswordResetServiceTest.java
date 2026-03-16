@@ -52,6 +52,7 @@ import org.springframework.batch.support.transaction.ResourcelessTransactionMana
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.CannotCreateTransactionException;
 import org.springframework.transaction.UnexpectedRollbackException;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionCallback;
@@ -254,6 +255,10 @@ class PasswordResetServiceTest {
         user.setEnabled(true);
         when(userAccountRepository.findByEmailIgnoreCase("user@example.com"))
                 .thenReturn(Optional.of(user));
+        ReflectionTestUtils.setField(
+                passwordResetService,
+                "tokenAfterCommitCleanupTransactionTemplate",
+                requiredPropagationTemplate());
         doThrow(new RuntimeException("smtp down"))
                 .when(emailService)
                 .sendPasswordResetEmailRequired(eq("user@example.com"), eq("User"), anyString());
@@ -262,6 +267,23 @@ class PasswordResetServiceTest {
 
         verify(tokenRepository).saveAndFlush(any(PasswordResetToken.class));
         verify(tokenRepository).deleteByTokenDigest(anyString());
+    }
+
+    @Test
+    void requestResetMasksUnexpectedRuntimeFailureWithoutMisclassifyingItAsDatabaseError() {
+        UserAccount user = new UserAccount("user@example.com", "hash", "User");
+        user.setEnabled(true);
+        when(userAccountRepository.findByEmailIgnoreCase("user@example.com"))
+                .thenReturn(Optional.of(user));
+        doThrow(new IllegalStateException("unexpected ordering failure"))
+                .when(tokenRepository)
+                .touchCreatedAt(anyLong(), any(Instant.class));
+
+        assertDoesNotThrow(() -> passwordResetService.requestReset("user@example.com"));
+
+        verify(tokenRepository).saveAndFlush(any(PasswordResetToken.class));
+        verify(tokenRepository).touchCreatedAt(anyLong(), any(Instant.class));
+        verify(emailService, never()).sendPasswordResetEmailRequired(anyString(), anyString(), anyString());
     }
 
     @Test
@@ -289,11 +311,39 @@ class PasswordResetServiceTest {
     }
 
     @Test
+    void requestResetReturnsControlledNonSuccessWhenLifecycleTransactionCannotStart() {
+        UserAccount user = new UserAccount("user@example.com", "hash", "User");
+        user.setEnabled(true);
+        when(userAccountRepository.findByEmailIgnoreCase("user@example.com"))
+                .thenReturn(Optional.of(user));
+
+        TransactionTemplate lifecycleTemplate = mock(TransactionTemplate.class);
+        when(lifecycleTemplate.execute(any()))
+                .thenThrow(new CannotCreateTransactionException("db unavailable"));
+        ReflectionTestUtils.setField(passwordResetService, "tokenLifecycleTransactionTemplate", lifecycleTemplate);
+
+        ApplicationException exception = assertThrows(
+                ApplicationException.class,
+                () -> passwordResetService.requestReset("user@example.com"));
+
+        assertEquals(ErrorCode.SYSTEM_DATABASE_ERROR, exception.getErrorCode());
+        assertEquals("Password reset temporarily unavailable", exception.getUserMessage());
+
+        verify(lifecycleTemplate).execute(any());
+        verify(tokenRepository, never()).saveAndFlush(any(PasswordResetToken.class));
+        verify(emailService, never()).sendPasswordResetEmailRequired(anyString(), anyString(), anyString());
+    }
+
+    @Test
     void requestResetReturnsControlledNonSuccessWhenCleanupPersistenceFails() {
         UserAccount user = new UserAccount("user@example.com", "hash", "User");
         user.setEnabled(true);
         when(userAccountRepository.findByEmailIgnoreCase("user@example.com"))
                 .thenReturn(Optional.of(user));
+        ReflectionTestUtils.setField(
+                passwordResetService,
+                "tokenAfterCommitCleanupTransactionTemplate",
+                requiredPropagationTemplate());
         doThrow(new RuntimeException("smtp down"))
                 .when(emailService)
                 .sendPasswordResetEmailRequired(eq("user@example.com"), eq("User"), anyString());
@@ -310,6 +360,15 @@ class PasswordResetServiceTest {
 
         verify(tokenRepository).saveAndFlush(any(PasswordResetToken.class));
         verify(tokenRepository).deleteByTokenDigest(anyString());
+    }
+
+    @Test
+    void requestResetConfiguresAfterCommitCleanupWithRequiresNewPropagation() {
+        TransactionTemplate afterCommitTemplate = (TransactionTemplate) ReflectionTestUtils.getField(
+                passwordResetService,
+                "tokenAfterCommitCleanupTransactionTemplate");
+
+        assertEquals(TransactionDefinition.PROPAGATION_REQUIRES_NEW, afterCommitTemplate.getPropagationBehavior());
     }
 
     @Test
@@ -334,6 +393,7 @@ class PasswordResetServiceTest {
         TransactionTemplate cleanupFallbackTemplate = new TransactionTemplate(new ResourcelessTransactionManager());
         cleanupFallbackTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRED);
         ReflectionTestUtils.setField(passwordResetService, "tokenCleanupTransactionTemplate", cleanupFallbackTemplate);
+        ReflectionTestUtils.setField(passwordResetService, "tokenAfterCommitCleanupTransactionTemplate", requiredPropagationTemplate());
 
         doThrow(new RuntimeException("smtp down"))
                 .when(emailService)
@@ -358,6 +418,12 @@ class PasswordResetServiceTest {
                 "Expected cleanup-failure fallback to restore the prior token digest");
         verify(userAccountRepository).findById(101L);
         verify(tokenRepository).deleteByTokenDigest(anyString());
+    }
+
+    private TransactionTemplate requiredPropagationTemplate() {
+        TransactionTemplate template = new TransactionTemplate(new ResourcelessTransactionManager());
+        template.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRED);
+        return template;
     }
 
     @Test

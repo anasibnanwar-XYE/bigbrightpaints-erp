@@ -34,6 +34,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -254,6 +255,22 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
         assertThat(resetResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(resetResponse.getBody()).isNotNull();
         assertThat(resetResponse.getBody().get("success")).isEqualTo(true);
+    }
+
+    @Test
+    void forgotEndpoint_keepsMaskedSuccessForKnownUserWhenUnexpectedRuntimeOccurs() {
+        doThrow(new IllegalStateException("unexpected ordering failure"))
+                .when(passwordResetTokenRepository)
+                .touchCreatedAt(anyLong(), any(Instant.class));
+
+        ResponseEntity<Map> forgotResponse = postForgot(SUPERADMIN_EMAIL, "ANY-TENANT");
+
+        assertThat(forgotResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(forgotResponse.getBody()).isNotNull();
+        assertThat(forgotResponse.getBody().get("success")).isEqualTo(true);
+        assertThat(forgotResponse.getBody().get("message"))
+                .isEqualTo("If the email exists, a reset link has been sent");
+        verify(emailService, never()).sendPasswordResetEmailRequired(eq(SUPERADMIN_EMAIL), eq("Reset Super Admin"), anyString());
     }
 
     @Test

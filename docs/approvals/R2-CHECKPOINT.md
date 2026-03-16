@@ -1,34 +1,49 @@
 # R2 Checkpoint
 
 ## Scope
-- Feature: `auth-merge-gate-regression-coverage`
-- Branch: `packet/lane01-tenant-runtime-canonicalization-pr`
-- High-risk paths touched: auth/admin regression security surfaces under `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/auth/AuthPasswordResetPublicContractIT.java` and `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/admin/AdminUserSecurityIT.java`, merge-gate profile selection in `erp-domain/pom.xml`, and this approval record.
-- Why this is R2: this packet strengthens merge-gate enforcement for AUTH-09 and ADMIN-14 regressions on auth/admin control boundaries, so approval evidence must be attached in the same diff to prove the gate catches these regressions before merge.
+- Feature: `auth-merge-gate-hardening`
+- Branch: `packet/lane02-auth-merge-gate-hardening`
+- High-risk paths touched: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/service/PasswordResetService.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/auth/service/PasswordResetServiceTest.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/auth/AuthPasswordResetPublicContractIT.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/admin/AdminUserSecurityIT.java`, `erp-domain/pom.xml`, and this approval record.
+- Why this is R2: this packet changes public password-reset failure handling and after-commit cleanup durability on a live auth surface, while also changing which auth/admin regressions are required in `pr-fast` and `gate-fast`.
 
 ## Risk Trigger
-- Triggered by security-sensitive auth/admin regression coverage updates that alter merge-gate execution membership.
-- Contract surfaces affected: public forgot-password persistence-failure contract (AUTH-09), tenant-admin foreign-user masked non-blocking lock behavior (ADMIN-14), and the gate-fast test lane.
-- Main risks being controlled: regressions silently dropping out of gate-fast scope, accidental flaky/quarantine routing, and missing high-risk governance evidence for auth/admin merge-gate updates.
+- Triggered by auth-sensitive public forgot-password behavior changes plus merge-gate membership updates for auth/admin regressions.
+- Contract surfaces affected: public forgot-password masked failure classification, after-commit token cleanup durability, AUTH-09 regression coverage, ADMIN-14 regression coverage, and the `pr-fast` / `gate-fast` merge lanes.
+- Failure mode if wrong: non-persistence failures could be mislabeled as `SYS_003`, cleanup after dispatch failure could be non-durable, or required auth/admin regressions could silently fall out of the merge gate.
 
 ## Approval Authority
 - Mode: orchestrator
 - Approver: ERP auth merge-gate hardening mission orchestration
-- Basis: compatibility-preserving hardening that does not widen tenant boundaries or privilege scope.
+- Basis: the packet hardens existing auth behavior and merge-gate coverage without widening tenant boundaries, expanding privileges, or introducing migration risk.
 
 ## Escalation Decision
 - Human escalation required: no
-- Reason: this packet only updates regression coverage eligibility and governance evidence; no privilege expansion, tenant-boundary widening, or migration risk is introduced.
+- Reason: the change preserves current-state auth contracts and tightens durability/coverage; it does not widen access or add destructive data-path risk.
 
 ## Rollback Owner
-- Owner: security backend worker (session `12cd9f51-a6f8-46ee-81a1-4c74c4b4c0e8`)
-- Rollback method: revert the packet commit, then rerun `cd erp-domain && MIGRATION_SET=v2 mvn -Pgate-fast -Djacoco.skip=true -Dtest=AuthPasswordResetPublicContractIT,AdminUserSecurityIT test`, `bash scripts/gate_fast.sh`, `bash ci/check-enterprise-policy.sh`, and `bash ci/check-codex-review-guidelines.sh`.
+- Owner: ERP-5 PR 116 remediation worker
+- Rollback method: revert the remediation commit set on `packet/lane02-auth-merge-gate-hardening`, then rerun `cd erp-domain && mvn -Dtest=PasswordResetServiceTest test`, `cd erp-domain && mvn test -Pgate-fast -Djacoco.skip=true`, `bash ci/check-architecture.sh`, `bash ci/check-enterprise-policy.sh`, and `bash ci/check-orchestrator-layer.sh`.
 
 ## Expiry
-- Valid until: 2026-03-23
-- Re-evaluate if: any auth/admin regression test path, gate-fast profile include list, or enterprise-policy requirements change before merge.
+- Valid until: 2026-03-24
+- Re-evaluate if: public reset behavior changes again, merge-gate membership changes again, or the validation evidence below is superseded before merge.
 
 ## Verification Evidence
-- Commands run: `cd erp-domain && MIGRATION_SET=v2 mvn -Pgate-fast -Djacoco.skip=true -Dtest=AuthPasswordResetPublicContractIT,AdminUserSecurityIT test` (pass: `Tests run: 25, Failures: 0, Errors: 0, Skipped: 0`); `bash scripts/gate_fast.sh` (pass with `catalog-validation.json`/`flake-guard.json`/`changed-coverage.json` emitted under `artifacts/gate-fast/` and gate summary `OK`); `bash ci/check-enterprise-policy.sh` (pass with high-risk enforcement line `high-risk paths changed; enforcing R2 enterprise controls`); `bash ci/check-codex-review-guidelines.sh` (pass with wrapper summary `codex-review-guidelines OK`).
-- Result summary: AUTH-09 and ADMIN-14 regression suites are now tagged `critical` and explicitly included in `pr-fast` + `gate-fast` surefire include lists, gate-fast executes both suites in the merge lane, and required policy/review gates complete successfully for this packet.
-- Artifacts/links: `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/auth/AuthPasswordResetPublicContractIT.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/admin/AdminUserSecurityIT.java`, `erp-domain/pom.xml`, `scripts/gate_fast.sh`, `ci/check-enterprise-policy.sh`, `ci/check-codex-review-guidelines.sh`, `docs/approvals/R2-CHECKPOINT.md`.
+- Commands run:
+  - `cd erp-domain && mvn compile -q`
+  - `cd erp-domain && mvn -Dtest=PasswordResetServiceTest,AuthPasswordResetPublicContractIT test`
+  - `cd erp-domain && mvn -Dtest=SalesControllerIT,AdminUserSecurityIT test`
+  - `cd erp-domain && mvn test -Pgate-fast -Djacoco.skip=true`
+  - `bash ci/check-architecture.sh`
+  - `bash ci/check-enterprise-policy.sh`
+  - `bash ci/check-orchestrator-layer.sh`
+- Result summary:
+  - `mvn compile -q`: passed on 2026-03-17 with exit 0.
+  - `mvn -Dtest=PasswordResetServiceTest,AuthPasswordResetPublicContractIT test`: passed on 2026-03-17 with `58` tests, `0` failures, `0` errors, `0` skipped, covering transaction-layer persistence failure classification plus masked-success handling for unexpected non-persistence runtime failures.
+  - `mvn -Dtest=SalesControllerIT,AdminUserSecurityIT test`: passed on 2026-03-17 with `25` tests, `0` failures, `0` errors, `0` skipped after syncing stale company-context and tenant-runtime-policy test expectations from the merged `origin/main` state.
+  - `mvn test -Pgate-fast -Djacoco.skip=true`: passed on 2026-03-17 with `728` tests, `0` failures, `0` errors, `0` skipped.
+  - `bash ci/check-architecture.sh`: passed on 2026-03-17 with `OK` plus compatibility-mode warnings for unresolved cross-module imports / missing legacy orchestrator catalog.
+  - `bash ci/check-enterprise-policy.sh`: passed on 2026-03-17 with `[enterprise-policy] OK`.
+  - `bash ci/check-orchestrator-layer.sh`: passed on 2026-03-17 with `[orchestrator-layer] OK` plus compatibility-mode warning for missing legacy orchestrator-layer contract files.
+- Artifacts/links:
+  - Current merged-branch validation was executed locally in `/Users/anas/Documents/Factory/symphony-workspaces/ERP-5/erp-domain` on `packet/lane02-auth-merge-gate-hardening` after resolving the `origin/main` merge conflicts and replaying the narrow PR 116 remediation.

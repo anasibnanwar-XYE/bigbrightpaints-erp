@@ -11,12 +11,14 @@ import com.bigbrightpaints.erp.modules.auth.domain.PasswordResetToken;
 import com.bigbrightpaints.erp.modules.auth.domain.PasswordResetTokenRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
+import org.springframework.dao.DataAccessException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.TransactionException;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -115,7 +117,7 @@ public class PasswordResetService {
         this.tokenCleanupTransactionTemplate = new TransactionTemplate(transactionManager);
         this.tokenCleanupTransactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         this.tokenAfterCommitCleanupTransactionTemplate = new TransactionTemplate(transactionManager);
-        this.tokenAfterCommitCleanupTransactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRED);
+        this.tokenAfterCommitCleanupTransactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     @Transactional
@@ -335,7 +337,7 @@ public class PasswordResetService {
                         "Password reset temporarily unavailable",
                         cleanupFailureException);
             }
-            if (isPublicResetPersistenceFailure(ex, null)) {
+            if (isPublicResetPersistenceFailure(ex)) {
                 throw new ApplicationException(
                         ErrorCode.SYSTEM_DATABASE_ERROR,
                         "Password reset temporarily unavailable",
@@ -614,7 +616,7 @@ public class PasswordResetService {
                                              IssuedResetToken issuedResetToken,
                                              RuntimeException cleanupFailure) {
         RuntimeException effectiveFailure = cleanupFailure != null ? cleanupFailure : dispatchFailure;
-        if (isPublicResetPersistenceFailure(dispatchFailure, issuedResetToken) || cleanupFailure != null) {
+        if (isPublicResetPersistenceFailure(dispatchFailure) || cleanupFailure != null) {
             log.error(
                     "event=password_reset.{}.masked policy={} correlationId={} email={} outcome=suppressed_failure reasonCode={} exceptionClass={}",
                     operation,
@@ -634,12 +636,22 @@ public class PasswordResetService {
                 effectiveFailure.getClass().getSimpleName());
     }
 
-    private boolean isPublicResetPersistenceFailure(RuntimeException exception, IssuedResetToken issuedResetToken) {
-        if (exception instanceof ApplicationException appException
-                && appException.getErrorCode() == ErrorCode.SYSTEM_CONFIGURATION_ERROR) {
-            return false;
+    private boolean isPublicResetPersistenceFailure(RuntimeException exception) {
+        Throwable cursor = exception;
+        while (cursor != null) {
+            if (cursor instanceof PublicResetCleanupFailureException) {
+                return true;
+            }
+            if (cursor instanceof ApplicationException appException
+                    && appException.getErrorCode() != ErrorCode.SYSTEM_CONFIGURATION_ERROR) {
+                return appException.getErrorCode() == ErrorCode.SYSTEM_DATABASE_ERROR;
+            }
+            if (cursor instanceof DataAccessException || cursor instanceof TransactionException) {
+                return true;
+            }
+            cursor = cursor.getCause();
         }
-        return issuedResetToken == null || !StringUtils.hasText(issuedResetToken.rawToken());
+        return false;
     }
 
     private void cleanupFailedSuperAdminResetToken(UserAccount user, String tokenValue, String correlationId) {
