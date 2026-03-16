@@ -161,6 +161,21 @@ class PasswordResetServiceTest {
     }
 
     @Test
+    void requestResetMasksUnexpectedNonPersistenceRuntimeFailuresWithoutDatabaseError() {
+        UserAccount user = new UserAccount("user@example.com", "hash", "User");
+        user.setEnabled(true);
+        when(userAccountRepository.findByEmailIgnoreCase("user@example.com"))
+                .thenReturn(Optional.of(user));
+        doThrow(new IllegalStateException("unexpected dispatch bug"))
+                .when(tokenRepository)
+                .touchCreatedAt(anyLong(), any(Instant.class));
+
+        assertDoesNotThrow(() -> passwordResetService.requestReset("user@example.com"));
+
+        verify(emailService, never()).sendPasswordResetEmailRequired(anyString(), anyString(), anyString());
+    }
+
+    @Test
     void resetPasswordThrowsWhenTokenExpired() {
         UserAccount user = new UserAccount("user@example.com", "hash", "User");
         user.setEnabled(true);
