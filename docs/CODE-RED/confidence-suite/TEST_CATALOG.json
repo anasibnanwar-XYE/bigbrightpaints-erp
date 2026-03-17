@@ -1386,6 +1386,24 @@
       "cross_module_critical": true
     },
     {
+      "id": "test-catalog::runtime-ts-runtimerefreshtokenserviceexecutablecoveragetest-java",
+      "test_path": "erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimeRefreshTokenServiceExecutableCoverageTest.java",
+      "module": "runtime",
+      "owner": "lane08-quality-governance",
+      "class": "critical",
+      "tags": [
+        "critical"
+      ],
+      "gate_membership": [
+        "gate-fast",
+        "gate-core",
+        "gate-release",
+        "gate-quality"
+      ],
+      "accounting_math_critical": false,
+      "cross_module_critical": true
+    },
+    {
       "id": "test-catalog::runtime-ts-runtimepayrollmarkpaidexecutablecoveragetest-java",
       "test_path": "erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimePayrollMarkPaidExecutableCoverageTest.java",
       "module": "runtime",
