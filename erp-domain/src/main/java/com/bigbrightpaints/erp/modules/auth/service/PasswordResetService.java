@@ -76,7 +76,7 @@ public class PasswordResetService {
     private record IssuedResetToken(Long id, String rawToken) {
     }
 
-    private record PriorResetTokenSnapshot(Long userId, String tokenDigest, Instant expiresAt) {
+    private record PriorResetTokenSnapshot(Long userId, String tokenDigest, Instant expiresAt, Instant deliveredAt) {
     }
 
     private record PublicResetDispatchPlan(IssuedResetToken issuedResetToken,
@@ -399,7 +399,13 @@ public class PasswordResetService {
                                 dispatchPlan.issuedResetToken(),
                                 dispatchPlan.priorTokenSnapshot());
                     }
+                    return;
                 }
+                markPublicResetTokenDelivered(
+                        dispatchPlan,
+                        correlationId,
+                        maskedEmail,
+                        operation);
             }
         });
     }
@@ -471,9 +477,13 @@ public class PasswordResetService {
         if (user == null || keepTokenId == null) {
             return null;
         }
-        PasswordResetToken priorToken = tokenRepository.findTopByUserAndIdNotOrderByCreatedAtDescIdDesc(user, keepTokenId)
+        PasswordResetToken priorToken = tokenRepository
+                .findTopDeliveredByUserAndIdNotOrderByDeliveredAtDescCreatedAtDescIdDesc(user, keepTokenId)
                 .orElse(null);
         if (priorToken == null || priorToken.isUsed() || priorToken.isExpired(Instant.now())) {
+            return null;
+        }
+        if (priorToken.getDeliveredAt() == null) {
             return null;
         }
         if (!StringUtils.hasText(priorToken.getTokenDigest())) {
@@ -482,7 +492,11 @@ public class PasswordResetService {
         if (user.getId() == null) {
             return null;
         }
-        return new PriorResetTokenSnapshot(user.getId(), priorToken.getTokenDigest(), priorToken.getExpiresAt());
+        return new PriorResetTokenSnapshot(
+                user.getId(),
+                priorToken.getTokenDigest(),
+                priorToken.getExpiresAt(),
+                priorToken.getDeliveredAt());
     }
 
     private void touchIssuedResetTokenForDispatchOrderingWithinActiveTransaction(Long tokenId,
@@ -493,6 +507,43 @@ public class PasswordResetService {
             return;
         }
         tokenRepository.touchCreatedAt(tokenId, Instant.now());
+    }
+
+    private void markPublicResetTokenDelivered(PublicResetDispatchPlan dispatchPlan,
+                                               String correlationId,
+                                               String maskedEmail,
+                                               String operation) {
+        IssuedResetToken issuedResetToken = dispatchPlan != null ? dispatchPlan.issuedResetToken() : null;
+        if (issuedResetToken == null || issuedResetToken.id() == null) {
+            return;
+        }
+        RuntimeException markerFailure;
+        try {
+            Boolean marked = tokenAfterCommitCleanupTransactionTemplate.execute(status -> {
+                assertTokenLifecycleTransactionActive("mark_delivered", correlationId, maskedEmail);
+                return tokenRepository.markDeliveredAt(issuedResetToken.id(), Instant.now()) > 0;
+            });
+            if (Boolean.TRUE.equals(marked)) {
+                return;
+            }
+            markerFailure = com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
+                    "Password reset delivery marker missing after dispatch");
+        } catch (RuntimeException deliveryMarkerEx) {
+            markerFailure = deliveryMarkerEx;
+        }
+
+        RuntimeException cleanupFailure = restorePublicResetStateAfterDispatchFailure(
+                dispatchPlan,
+                correlationId,
+                maskedEmail,
+                operation);
+        logMaskedPublicResetFailure(
+                operation,
+                correlationId,
+                maskedEmail,
+                markerFailure,
+                issuedResetToken,
+                cleanupFailure);
     }
 
     private UserAccount lockUserForResetIssuance(UserAccount user) {
@@ -612,6 +663,7 @@ public class PasswordResetService {
                 || priorTokenSnapshot.userId() == null
                 || !StringUtils.hasText(priorTokenSnapshot.tokenDigest())
                 || priorTokenSnapshot.expiresAt() == null
+                || priorTokenSnapshot.deliveredAt() == null
                 || !priorTokenSnapshot.expiresAt().isAfter(Instant.now())) {
             return;
         }
@@ -622,6 +674,7 @@ public class PasswordResetService {
                 lockedUser,
                 priorTokenSnapshot.tokenDigest(),
                 priorTokenSnapshot.expiresAt());
+        restoredToken.markDelivered(priorTokenSnapshot.deliveredAt());
         tokenRepository.saveAndFlush(restoredToken);
     }
 

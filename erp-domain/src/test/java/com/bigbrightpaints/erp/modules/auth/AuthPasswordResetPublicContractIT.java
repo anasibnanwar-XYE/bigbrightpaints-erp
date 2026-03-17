@@ -7,6 +7,7 @@ import com.bigbrightpaints.erp.modules.auth.domain.PasswordResetTokenRepository;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccount;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -41,6 +42,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
 
 @Tag("critical")
 class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
@@ -318,6 +320,159 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
         assertThat(resetResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(resetResponse.getBody()).isNotNull();
         assertThat(resetResponse.getBody().get("message")).isEqualTo("Invalid or expired token");
+    }
+
+    @Test
+    void forgotCleanupFailure_restoresLastDeliveredTokenNotNewestUndeliveredPriorToken() {
+        String targetEmail = "cleanup.failure.delivered.prior.user@bbp.com";
+        UserAccount user = dataSeeder.ensureUser(
+                targetEmail,
+                "Admin@12345",
+                "Cleanup Delivered Prior User",
+                PRIMARY_COMPANY,
+                List.of("ROLE_SUPER_ADMIN"));
+
+        String deliveredPriorToken = "cleanup-delivered-prior-token";
+        String deliveredPriorDigest = passwordResetDigest(deliveredPriorToken);
+        PasswordResetToken deliveredPrior = passwordResetTokenRepository.saveAndFlush(
+                PasswordResetToken.digestOnly(
+                        user,
+                        deliveredPriorDigest,
+                        Instant.now().plusSeconds(600)));
+        Instant deliveredAt = Instant.now().minusSeconds(180);
+        Instant deliveredCreatedAt = Instant.now().minusSeconds(180);
+        jdbcTemplate.update(
+                "update password_reset_tokens set delivered_at = ?, created_at = ? where id = ?",
+                Timestamp.from(deliveredAt),
+                Timestamp.from(deliveredCreatedAt),
+                deliveredPrior.getId());
+
+        String undeliveredPriorToken = "cleanup-undelivered-prior-token";
+        String undeliveredPriorDigest = passwordResetDigest(undeliveredPriorToken);
+        PasswordResetToken undeliveredPrior = passwordResetTokenRepository.saveAndFlush(
+                PasswordResetToken.digestOnly(
+                        user,
+                        undeliveredPriorDigest,
+                        Instant.now().plusSeconds(600)));
+        Instant undeliveredCreatedAt = Instant.now().minusSeconds(30);
+        jdbcTemplate.update(
+                "update password_reset_tokens set created_at = ? where id = ?",
+                Timestamp.from(undeliveredCreatedAt),
+                undeliveredPrior.getId());
+
+        doThrow(new RuntimeException("smtp down"))
+                .when(emailService)
+                .sendPasswordResetEmailRequired(eq(targetEmail), eq("Cleanup Delivered Prior User"), anyString());
+
+        ResponseEntity<Map> forgotResponse = postForgot(targetEmail, "ANY-TENANT");
+
+        assertThat(forgotResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(forgotResponse.getBody()).isNotNull();
+        assertThat(forgotResponse.getBody().get("success")).isEqualTo(true);
+        assertThat(forgotResponse.getBody().get("message"))
+                .isEqualTo("If the email exists, a reset link has been sent");
+
+        Integer activeTokenCount = jdbcTemplate.queryForObject(
+                "select count(*) from password_reset_tokens where user_id = ?",
+                Integer.class,
+                user.getId());
+        Integer deliveredPriorCount = jdbcTemplate.queryForObject(
+                "select count(*) from password_reset_tokens where user_id = ? and token_digest = ?",
+                Integer.class,
+                user.getId(),
+                deliveredPriorDigest);
+        Integer deliveredPriorMarkedCount = jdbcTemplate.queryForObject(
+                "select count(*) from password_reset_tokens where user_id = ? and token_digest = ? and delivered_at is not null",
+                Integer.class,
+                user.getId(),
+                deliveredPriorDigest);
+        Integer undeliveredPriorCount = jdbcTemplate.queryForObject(
+                "select count(*) from password_reset_tokens where user_id = ? and token_digest = ?",
+                Integer.class,
+                user.getId(),
+                undeliveredPriorDigest);
+        assertThat(activeTokenCount).isEqualTo(1);
+        assertThat(deliveredPriorCount).isEqualTo(1);
+        assertThat(deliveredPriorMarkedCount).isEqualTo(1);
+        assertThat(undeliveredPriorCount).isZero();
+
+        ResponseEntity<Map> deliveredResetResponse = postReset(deliveredPriorToken, "NewPass123!");
+        assertThat(deliveredResetResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(deliveredResetResponse.getBody()).isNotNull();
+        assertThat(deliveredResetResponse.getBody().get("success")).isEqualTo(true);
+
+        ResponseEntity<Map> undeliveredResetResponse = postReset(undeliveredPriorToken, "NewPass123!");
+        assertThat(undeliveredResetResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(undeliveredResetResponse.getBody()).isNotNull();
+        assertThat(undeliveredResetResponse.getBody().get("message")).isEqualTo("Invalid or expired token");
+    }
+
+    @Test
+    void forgotDeliveryMarkerFailure_restoresLastDeliveredTokenAndInvalidatesNewToken() {
+        String targetEmail = "delivery.marker.failure.user@bbp.com";
+        UserAccount user = dataSeeder.ensureUser(
+                targetEmail,
+                "Admin@12345",
+                "Delivery Marker Failure User",
+                PRIMARY_COMPANY,
+                List.of("ROLE_SUPER_ADMIN"));
+
+        String deliveredPriorToken = "delivery-marker-prior-token";
+        String deliveredPriorDigest = passwordResetDigest(deliveredPriorToken);
+        PasswordResetToken deliveredPrior = passwordResetTokenRepository.saveAndFlush(
+                PasswordResetToken.digestOnly(
+                        user,
+                        deliveredPriorDigest,
+                        Instant.now().plusSeconds(600)));
+        Instant deliveredAt = Instant.now().minusSeconds(180);
+        Instant deliveredCreatedAt = Instant.now().minusSeconds(180);
+        jdbcTemplate.update(
+                "update password_reset_tokens set delivered_at = ?, created_at = ? where id = ?",
+                Timestamp.from(deliveredAt),
+                Timestamp.from(deliveredCreatedAt),
+                deliveredPrior.getId());
+
+        List<String> deliveredTokens = Collections.synchronizedList(new ArrayList<>());
+        doAnswer(invocation -> {
+            deliveredTokens.add(invocation.getArgument(2, String.class));
+            return null;
+        }).when(emailService).sendPasswordResetEmailRequired(eq(targetEmail), eq("Delivery Marker Failure User"), anyString());
+        doReturn(0).when(passwordResetTokenRepository).markDeliveredAt(anyLong(), any(Instant.class));
+
+        ResponseEntity<Map> forgotResponse = postForgot(targetEmail, "ANY-TENANT");
+
+        assertThat(forgotResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(forgotResponse.getBody()).isNotNull();
+        assertThat(forgotResponse.getBody().get("success")).isEqualTo(true);
+        assertThat(deliveredTokens).hasSize(1);
+
+        Integer activeTokenCount = jdbcTemplate.queryForObject(
+                "select count(*) from password_reset_tokens where user_id = ?",
+                Integer.class,
+                user.getId());
+        Integer deliveredPriorCount = jdbcTemplate.queryForObject(
+                "select count(*) from password_reset_tokens where user_id = ? and token_digest = ?",
+                Integer.class,
+                user.getId(),
+                deliveredPriorDigest);
+        Integer deliveredPriorMarkedCount = jdbcTemplate.queryForObject(
+                "select count(*) from password_reset_tokens where user_id = ? and token_digest = ? and delivered_at is not null",
+                Integer.class,
+                user.getId(),
+                deliveredPriorDigest);
+        assertThat(activeTokenCount).isEqualTo(1);
+        assertThat(deliveredPriorCount).isEqualTo(1);
+        assertThat(deliveredPriorMarkedCount).isEqualTo(1);
+
+        ResponseEntity<Map> newResetResponse = postReset(deliveredTokens.getFirst(), "NewPass123!");
+        assertThat(newResetResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(newResetResponse.getBody()).isNotNull();
+        assertThat(newResetResponse.getBody().get("message")).isEqualTo("Invalid or expired token");
+
+        ResponseEntity<Map> priorResetResponse = postReset(deliveredPriorToken, "NewPass123!");
+        assertThat(priorResetResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(priorResetResponse.getBody()).isNotNull();
+        assertThat(priorResetResponse.getBody().get("success")).isEqualTo(true);
     }
 
     @Test

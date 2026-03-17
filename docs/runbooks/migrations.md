@@ -1,5 +1,14 @@
 # Migration Runbook
 
+## 2026-03-17 — `V158__password_reset_token_delivery_tracking.sql` and `migration_v2/V162__password_reset_token_delivery_tracking.sql`
+
+- **Purpose:** track whether a password-reset token was actually delivered so the forgot-password fallback path can restore only the last delivered token after dispatch or marker failures.
+- **Forward plan:** hard-cut invalidate legacy reset-token rows with unknown delivery state by deleting `password_reset_tokens`, add nullable `delivered_at`, then enable the delivered-only restore and delivery-marker rollback flow in `PasswordResetService`.
+- **Dry-run commands:**
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -B -ntp -Dtest='PasswordResetServiceTest,AuthPasswordResetPublicContractIT,TS_RuntimePasswordResetServiceExecutableCoverageTest' test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -B -ntp test -Pgate-fast -Djacoco.skip=true`
+- **Rollback strategy:** if the packet must be reverted before merge, deploy the previous backend build first, then run `DELETE FROM public.password_reset_tokens; ALTER TABLE public.password_reset_tokens DROP COLUMN IF EXISTS delivered_at;` in the same maintenance window so the reverted code does not inherit mixed delivery-state rows from the new schema.
+
 ## 2026-03-08 — `V159__sales_order_payment_mode.sql`
 
 - **Purpose:** persist explicit commercial payment mode on `sales_orders` so credit, cash, and hybrid proforma behavior stays durable across create, update, confirm, and dispatch flows.

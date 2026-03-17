@@ -106,6 +106,7 @@ class PasswordResetServiceTest {
             }
             return token;
         });
+        lenient().when(tokenRepository.markDeliveredAt(anyLong(), any(Instant.class))).thenReturn(1);
     }
 
     @Test
@@ -135,6 +136,7 @@ class PasswordResetServiceTest {
         user.setEnabled(true);
         when(userAccountRepository.findByEmailIgnoreCase("user@example.com"))
                 .thenReturn(Optional.of(user));
+        ReflectionTestUtils.setField(passwordResetService, "tokenAfterCommitCleanupTransactionTemplate", requiredPropagationTemplate());
 
         passwordResetService.requestReset("user@example.com");
 
@@ -143,6 +145,79 @@ class PasswordResetServiceTest {
         inOrder.verify(tokenRepository).touchCreatedAt(anyLong(), any(Instant.class));
         inOrder.verify(tokenRepository).deleteByUserAndIdNot(eq(user), anyLong());
         inOrder.verify(emailService).sendPasswordResetEmailRequired(eq("user@example.com"), eq("User"), anyString());
+        inOrder.verify(tokenRepository).markDeliveredAt(anyLong(), any(Instant.class));
+    }
+
+    @Test
+    void requestResetRestoresPriorTokenWhenDeliveryMarkerUpdateIsMissing() {
+        UserAccount user = new UserAccount("user@example.com", "hash", "User");
+        user.setEnabled(true);
+        ReflectionTestUtils.setField(user, "id", 101L);
+        when(userAccountRepository.findByEmailIgnoreCase("user@example.com"))
+                .thenReturn(Optional.of(user));
+        when(userAccountRepository.lockById(101L)).thenReturn(Optional.of(user));
+        ReflectionTestUtils.setField(passwordResetService, "tokenAfterCommitCleanupTransactionTemplate", requiredPropagationTemplate());
+
+        String priorTokenDigest = AuthTokenDigests.passwordResetTokenDigest("prior-reset-token");
+        PasswordResetToken priorToken = PasswordResetToken.digestOnly(
+                user,
+                priorTokenDigest,
+                Instant.now().plusSeconds(600));
+        Instant deliveredAt = Instant.now().minusSeconds(30);
+        ReflectionTestUtils.setField(priorToken, "id", 7L);
+        ReflectionTestUtils.setField(priorToken, "deliveredAt", deliveredAt);
+        when(tokenRepository.findTopDeliveredByUserAndIdNotOrderByDeliveredAtDescCreatedAtDescIdDesc(eq(user), anyLong()))
+                .thenReturn(Optional.of(priorToken));
+        when(tokenRepository.markDeliveredAt(anyLong(), any(Instant.class))).thenReturn(0);
+        when(tokenRepository.deleteByTokenDigest(anyString())).thenReturn(1);
+
+        assertDoesNotThrow(() -> passwordResetService.requestReset("user@example.com"));
+
+        ArgumentCaptor<PasswordResetToken> tokenCaptor = ArgumentCaptor.forClass(PasswordResetToken.class);
+        verify(tokenRepository, atLeast(2)).saveAndFlush(tokenCaptor.capture());
+        assertTrue(
+                tokenCaptor.getAllValues().stream()
+                        .anyMatch(token -> priorTokenDigest.equals(token.getTokenDigest())
+                                && deliveredAt.equals(token.getDeliveredAt())),
+                "Missing delivery markers must roll back to the last delivered reset token");
+        verify(tokenRepository).deleteByTokenDigest(anyString());
+    }
+
+    @Test
+    void requestResetRestoresPriorTokenWhenDeliveryMarkerUpdateThrows() {
+        UserAccount user = new UserAccount("user@example.com", "hash", "User");
+        user.setEnabled(true);
+        ReflectionTestUtils.setField(user, "id", 101L);
+        when(userAccountRepository.findByEmailIgnoreCase("user@example.com"))
+                .thenReturn(Optional.of(user));
+        when(userAccountRepository.lockById(101L)).thenReturn(Optional.of(user));
+        ReflectionTestUtils.setField(passwordResetService, "tokenAfterCommitCleanupTransactionTemplate", requiredPropagationTemplate());
+
+        String priorTokenDigest = AuthTokenDigests.passwordResetTokenDigest("prior-reset-token");
+        PasswordResetToken priorToken = PasswordResetToken.digestOnly(
+                user,
+                priorTokenDigest,
+                Instant.now().plusSeconds(600));
+        Instant deliveredAt = Instant.now().minusSeconds(30);
+        ReflectionTestUtils.setField(priorToken, "id", 7L);
+        ReflectionTestUtils.setField(priorToken, "deliveredAt", deliveredAt);
+        when(tokenRepository.findTopDeliveredByUserAndIdNotOrderByDeliveredAtDescCreatedAtDescIdDesc(eq(user), anyLong()))
+                .thenReturn(Optional.of(priorToken));
+        doThrow(new DataAccessResourceFailureException("marker unavailable"))
+                .when(tokenRepository)
+                .markDeliveredAt(anyLong(), any(Instant.class));
+        when(tokenRepository.deleteByTokenDigest(anyString())).thenReturn(1);
+
+        assertDoesNotThrow(() -> passwordResetService.requestReset("user@example.com"));
+
+        ArgumentCaptor<PasswordResetToken> tokenCaptor = ArgumentCaptor.forClass(PasswordResetToken.class);
+        verify(tokenRepository, atLeast(2)).saveAndFlush(tokenCaptor.capture());
+        assertTrue(
+                tokenCaptor.getAllValues().stream()
+                        .anyMatch(token -> priorTokenDigest.equals(token.getTokenDigest())
+                                && deliveredAt.equals(token.getDeliveredAt())),
+                "Marker exceptions must roll back to the last delivered reset token");
+        verify(tokenRepository).deleteByTokenDigest(anyString());
     }
 
     @Test
@@ -454,7 +529,8 @@ class PasswordResetServiceTest {
                 priorTokenDigest,
                 Instant.now().plusSeconds(600));
         ReflectionTestUtils.setField(priorToken, "id", 7L);
-        when(tokenRepository.findTopByUserAndIdNotOrderByCreatedAtDescIdDesc(eq(user), anyLong()))
+        ReflectionTestUtils.setField(priorToken, "deliveredAt", Instant.now().minusSeconds(30));
+        when(tokenRepository.findTopDeliveredByUserAndIdNotOrderByDeliveredAtDescCreatedAtDescIdDesc(eq(user), anyLong()))
                 .thenReturn(Optional.of(priorToken));
 
         TransactionTemplate cleanupFallbackTemplate = new TransactionTemplate(new ResourcelessTransactionManager());
@@ -498,7 +574,8 @@ class PasswordResetServiceTest {
                 priorTokenDigest,
                 Instant.now().plusSeconds(600));
         ReflectionTestUtils.setField(priorToken, "id", 7L);
-        when(tokenRepository.findTopByUserAndIdNotOrderByCreatedAtDescIdDesc(eq(user), anyLong()))
+        ReflectionTestUtils.setField(priorToken, "deliveredAt", Instant.now().minusSeconds(30));
+        when(tokenRepository.findTopDeliveredByUserAndIdNotOrderByDeliveredAtDescCreatedAtDescIdDesc(eq(user), anyLong()))
                 .thenReturn(Optional.of(priorToken));
         ReflectionTestUtils.setField(passwordResetService, "tokenAfterCommitCleanupTransactionTemplate", requiredPropagationTemplate());
 
@@ -535,7 +612,8 @@ class PasswordResetServiceTest {
                 priorTokenDigest,
                 Instant.now().plusSeconds(600));
         ReflectionTestUtils.setField(priorToken, "id", 7L);
-        when(tokenRepository.findTopByUserAndIdNotOrderByCreatedAtDescIdDesc(eq(user), anyLong()))
+        ReflectionTestUtils.setField(priorToken, "deliveredAt", Instant.now().minusSeconds(30));
+        when(tokenRepository.findTopDeliveredByUserAndIdNotOrderByDeliveredAtDescCreatedAtDescIdDesc(eq(user), anyLong()))
                 .thenReturn(Optional.of(priorToken));
         ReflectionTestUtils.setField(passwordResetService, "tokenAfterCommitCleanupTransactionTemplate", requiredPropagationTemplate());
         doThrow(new RuntimeException("smtp down"))
@@ -685,18 +763,24 @@ class PasswordResetServiceTest {
                 AuthTokenDigests.passwordResetTokenDigest("used-prior"),
                 Instant.now().plusSeconds(600));
         usedPriorToken.markUsed();
-        when(tokenRepository.findTopByUserAndIdNotOrderByCreatedAtDescIdDesc(user, 41L)).thenReturn(Optional.of(usedPriorToken));
+        ReflectionTestUtils.setField(usedPriorToken, "deliveredAt", Instant.now().minusSeconds(30));
+        when(tokenRepository.findTopDeliveredByUserAndIdNotOrderByDeliveredAtDescCreatedAtDescIdDesc(user, 41L))
+                .thenReturn(Optional.of(usedPriorToken));
         assertNull(ReflectionTestUtils.invokeMethod(passwordResetService, "capturePriorResetTokenSnapshot", user, 41L));
 
         PasswordResetToken expiredPriorToken = PasswordResetToken.digestOnly(
                 user,
                 AuthTokenDigests.passwordResetTokenDigest("expired-prior"),
                 Instant.now().minusSeconds(60));
-        when(tokenRepository.findTopByUserAndIdNotOrderByCreatedAtDescIdDesc(user, 44L)).thenReturn(Optional.of(expiredPriorToken));
+        ReflectionTestUtils.setField(expiredPriorToken, "deliveredAt", Instant.now().minusSeconds(30));
+        when(tokenRepository.findTopDeliveredByUserAndIdNotOrderByDeliveredAtDescCreatedAtDescIdDesc(user, 44L))
+                .thenReturn(Optional.of(expiredPriorToken));
         assertNull(ReflectionTestUtils.invokeMethod(passwordResetService, "capturePriorResetTokenSnapshot", user, 44L));
 
         PasswordResetToken blankDigestPriorToken = PasswordResetToken.digestOnly(user, "", Instant.now().plusSeconds(600));
-        when(tokenRepository.findTopByUserAndIdNotOrderByCreatedAtDescIdDesc(user, 42L)).thenReturn(Optional.of(blankDigestPriorToken));
+        ReflectionTestUtils.setField(blankDigestPriorToken, "deliveredAt", Instant.now().minusSeconds(30));
+        when(tokenRepository.findTopDeliveredByUserAndIdNotOrderByDeliveredAtDescCreatedAtDescIdDesc(user, 42L))
+                .thenReturn(Optional.of(blankDigestPriorToken));
         assertNull(ReflectionTestUtils.invokeMethod(passwordResetService, "capturePriorResetTokenSnapshot", user, 42L));
 
         UserAccount transientUser = new UserAccount("transient@example.com", "hash", "Transient User");
@@ -705,7 +789,8 @@ class PasswordResetServiceTest {
                 transientUser,
                 AuthTokenDigests.passwordResetTokenDigest("transient-prior"),
                 Instant.now().plusSeconds(600));
-        when(tokenRepository.findTopByUserAndIdNotOrderByCreatedAtDescIdDesc(transientUser, 43L))
+        ReflectionTestUtils.setField(transientPriorToken, "deliveredAt", Instant.now().minusSeconds(30));
+        when(tokenRepository.findTopDeliveredByUserAndIdNotOrderByDeliveredAtDescCreatedAtDescIdDesc(transientUser, 43L))
                 .thenReturn(Optional.of(transientPriorToken));
         assertNull(ReflectionTestUtils.invokeMethod(passwordResetService, "capturePriorResetTokenSnapshot", transientUser, 43L));
         assertEquals(transientUser, ReflectionTestUtils.invokeMethod(passwordResetService, "lockUserForResetTokenCleanup", transientUser));
@@ -720,6 +805,14 @@ class PasswordResetServiceTest {
                 passwordResetService,
                 "restorePriorResetTokenWithinActiveTransaction",
                 priorResetTokenSnapshot(101L, AuthTokenDigests.passwordResetTokenDigest("missing-expiry"), null));
+        ReflectionTestUtils.invokeMethod(
+                passwordResetService,
+                "restorePriorResetTokenWithinActiveTransaction",
+                priorResetTokenSnapshot(
+                        101L,
+                        AuthTokenDigests.passwordResetTokenDigest("missing-delivered-at"),
+                        Instant.now().plusSeconds(600),
+                        null));
         ReflectionTestUtils.invokeMethod(
                 passwordResetService,
                 "restorePriorResetTokenWithinActiveTransaction",
@@ -767,6 +860,7 @@ class PasswordResetServiceTest {
         ReflectionTestUtils.setField(user, "id", 101L);
         when(userAccountRepository.lockById(101L)).thenReturn(Optional.of(user));
         when(tokenRepository.deleteByTokenDigest(AuthTokenDigests.passwordResetTokenDigest("issued-token"))).thenReturn(1);
+        Instant deliveredAt = Instant.now().minusSeconds(60);
 
         assertEquals(
                 Boolean.TRUE,
@@ -777,7 +871,8 @@ class PasswordResetServiceTest {
                         priorResetTokenSnapshot(
                                 101L,
                                 AuthTokenDigests.passwordResetTokenDigest("prior-reset-token"),
-                                Instant.now().plusSeconds(600)),
+                                Instant.now().plusSeconds(600),
+                                deliveredAt),
                         "corr-fallback-restore-123",
                         "u***@example.com",
                         "forgot_password"));
@@ -786,7 +881,8 @@ class PasswordResetServiceTest {
         inOrder.verify(userAccountRepository).lockById(101L);
         inOrder.verify(tokenRepository).deleteByTokenDigest(AuthTokenDigests.passwordResetTokenDigest("issued-token"));
         inOrder.verify(tokenRepository).saveAndFlush(argThat(token -> token != null
-                && AuthTokenDigests.passwordResetTokenDigest("prior-reset-token").equals(token.getTokenDigest())));
+                && AuthTokenDigests.passwordResetTokenDigest("prior-reset-token").equals(token.getTokenDigest())
+                && deliveredAt.equals(token.getDeliveredAt())));
     }
 
     @Test
@@ -1664,12 +1760,17 @@ class PasswordResetServiceTest {
     }
 
     private Object priorResetTokenSnapshot(Long userId, String tokenDigest, Instant expiresAt) {
+        return priorResetTokenSnapshot(userId, tokenDigest, expiresAt, Instant.now().minusSeconds(30));
+    }
+
+    private Object priorResetTokenSnapshot(Long userId, String tokenDigest, Instant expiresAt, Instant deliveredAt) {
         return instantiatePasswordResetServiceRecord(
                 "PriorResetTokenSnapshot",
-                new Class<?>[] {Long.class, String.class, Instant.class},
+                new Class<?>[] {Long.class, String.class, Instant.class, Instant.class},
                 userId,
                 tokenDigest,
-                expiresAt);
+                expiresAt,
+                deliveredAt);
     }
 
     private Object publicResetDispatchPlan(Object issuedResetToken, Object priorTokenSnapshot) {
@@ -1745,6 +1846,8 @@ class PasswordResetServiceTest {
                 return 1;
             }).when(tokenRepository).touchCreatedAt(anyLong(), any(Instant.class));
 
+            lenient().doReturn(1).when(tokenRepository).markDeliveredAt(anyLong(), any(Instant.class));
+
             lenient().doAnswer(invocation -> {
                 Long latestId = activeTokenDigests.keySet().stream()
                         .max((left, right) -> {
@@ -1781,7 +1884,9 @@ class PasswordResetServiceTest {
                 when(token.isUsed()).thenReturn(false);
                 when(token.isExpired(any(Instant.class))).thenReturn(false);
                 return Optional.of(token);
-            }).when(tokenRepository).findTopByUserAndIdNotOrderByCreatedAtDescIdDesc(any(UserAccount.class), anyLong());
+            }).when(tokenRepository).findTopDeliveredByUserAndIdNotOrderByDeliveredAtDescCreatedAtDescIdDesc(
+                    any(UserAccount.class),
+                    anyLong());
         }
 
         int activeTokenCount() {

@@ -218,7 +218,8 @@ class TS_RuntimePasswordResetServiceExecutableCoverageTest {
                 passwordResetDigest("prior-reset-token"),
                 Instant.now().plusSeconds(600));
         ReflectionTestUtils.setField(priorToken, "id", 7L);
-        when(tokenRepository.findTopByUserAndIdNotOrderByCreatedAtDescIdDesc(eq(user), anyLong()))
+        ReflectionTestUtils.setField(priorToken, "deliveredAt", Instant.now().minusSeconds(30));
+        when(tokenRepository.findTopDeliveredByUserAndIdNotOrderByDeliveredAtDescCreatedAtDescIdDesc(eq(user), anyLong()))
                 .thenReturn(Optional.of(priorToken));
         when(tokenRepository.saveAndFlush(any(PasswordResetToken.class))).thenAnswer(invocation -> {
             PasswordResetToken token = invocation.getArgument(0);
@@ -263,7 +264,8 @@ class TS_RuntimePasswordResetServiceExecutableCoverageTest {
                 passwordResetDigest("prior-reset-token"),
                 Instant.now().plusSeconds(600));
         ReflectionTestUtils.setField(priorToken, "id", 7L);
-        when(tokenRepository.findTopByUserAndIdNotOrderByCreatedAtDescIdDesc(eq(user), anyLong()))
+        ReflectionTestUtils.setField(priorToken, "deliveredAt", Instant.now().minusSeconds(30));
+        when(tokenRepository.findTopDeliveredByUserAndIdNotOrderByDeliveredAtDescCreatedAtDescIdDesc(eq(user), anyLong()))
                 .thenReturn(Optional.of(priorToken));
         when(tokenRepository.saveAndFlush(any(PasswordResetToken.class))).thenAnswer(invocation -> {
             PasswordResetToken token = invocation.getArgument(0);
@@ -287,6 +289,7 @@ class TS_RuntimePasswordResetServiceExecutableCoverageTest {
             UserAccountRepository userRepository,
             PasswordResetTokenRepository tokenRepository,
             EmailService emailService) {
+        when(tokenRepository.markDeliveredAt(anyLong(), any(Instant.class))).thenReturn(1);
         return new PasswordResetService(
                 userRepository,
                 tokenRepository,
