@@ -271,7 +271,7 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void forgotCleanupFailure_afterDispatchFailure_preservesPriorTokenUsability() {
+    void forgotCleanupFailure_afterDispatchFailure_doesNotRestorePriorTokenWhenIssuedTokenCleanupStateIsUnknown() {
         String targetEmail = "cleanup.failure.reset.user@bbp.com";
         UserAccount user = dataSeeder.ensureUser(
                 targetEmail,
@@ -312,12 +312,12 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
                 user.getId(),
                 preExistingDigest);
         assertThat(tokenCount).isGreaterThanOrEqualTo(1);
-        assertThat(priorDigestCount).isEqualTo(1);
+        assertThat(priorDigestCount).isZero();
 
         ResponseEntity<Map> resetResponse = postReset(preExistingToken, "NewPass123!");
-        assertThat(resetResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(resetResponse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(resetResponse.getBody()).isNotNull();
-        assertThat(resetResponse.getBody().get("success")).isEqualTo(true);
+        assertThat(resetResponse.getBody().get("message")).isEqualTo("Invalid or expired token");
     }
 
     @Test

@@ -2,6 +2,7 @@ package com.bigbrightpaints.erp.modules.auth.service;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -439,7 +440,7 @@ class PasswordResetServiceTest {
     }
 
     @Test
-    void requestResetRestoresPriorTokenWhenDispatchCleanupFailsAfterCommit() {
+    void requestResetDoesNotRestorePriorTokenWhenDispatchCleanupFailureLeavesIssuedTokenStateUnknown() {
         UserAccount user = new UserAccount("user@example.com", "hash", "User");
         user.setEnabled(true);
         ReflectionTestUtils.setField(user, "id", 101L);
@@ -471,15 +472,15 @@ class PasswordResetServiceTest {
         assertDoesNotThrow(() -> passwordResetService.requestReset("user@example.com"));
 
         ArgumentCaptor<PasswordResetToken> tokenCaptor = ArgumentCaptor.forClass(PasswordResetToken.class);
-        verify(tokenRepository, atLeast(2)).saveAndFlush(tokenCaptor.capture());
-        assertTrue(
+        verify(tokenRepository).saveAndFlush(tokenCaptor.capture());
+        assertFalse(
                 tokenCaptor.getAllValues().stream()
                         .map(PasswordResetToken::getTokenDigest)
                         .anyMatch(priorTokenDigest::equals),
-                "Expected cleanup-failure fallback to restore the prior token digest");
+                "Fallback restore must not reinsert the prior token when issued-token cleanup did not complete");
         verify(userAccountRepository, atLeast(3)).lockById(101L);
         verify(userAccountRepository, never()).findById(101L);
-        verify(tokenRepository).deleteByTokenDigest(anyString());
+        verify(tokenRepository, times(2)).deleteByTokenDigest(anyString());
     }
 
     @Test
@@ -739,8 +740,9 @@ class PasswordResetServiceTest {
         TransactionTemplate failingCleanupTemplate = mock(TransactionTemplate.class);
         doThrow(new RuntimeException("cleanup unavailable"))
                 .when(failingCleanupTemplate)
-                .executeWithoutResult(any());
+                .execute(any());
         ReflectionTestUtils.setField(passwordResetService, "tokenCleanupTransactionTemplate", failingCleanupTemplate);
+        Object issuedResetToken = issuedResetToken(41L, "restorable-issued");
         Object validSnapshot = priorResetTokenSnapshot(101L, AuthTokenDigests.passwordResetTokenDigest("restorable-prior"), Instant.now().plusSeconds(600));
 
         assertEquals(
@@ -748,6 +750,7 @@ class PasswordResetServiceTest {
                 ReflectionTestUtils.invokeMethod(
                         passwordResetService,
                         "restorePriorResetTokenAfterCleanupFailure",
+                        issuedResetToken,
                         validSnapshot,
                         "corr-helper-123",
                         "u***@example.com",
@@ -755,6 +758,62 @@ class PasswordResetServiceTest {
 
         verify(tokenRepository, never()).saveAndFlush(argThat(token -> token != null
                 && AuthTokenDigests.passwordResetTokenDigest("restorable-prior").equals(token.getTokenDigest())));
+    }
+
+    @Test
+    void restorePriorResetTokenAfterCleanupFailureDeletesIssuedTokenBeforeRestore() {
+        UserAccount user = new UserAccount("user@example.com", "hash", "User");
+        user.setEnabled(true);
+        ReflectionTestUtils.setField(user, "id", 101L);
+        when(userAccountRepository.lockById(101L)).thenReturn(Optional.of(user));
+        when(tokenRepository.deleteByTokenDigest(AuthTokenDigests.passwordResetTokenDigest("issued-token"))).thenReturn(1);
+
+        assertEquals(
+                Boolean.TRUE,
+                ReflectionTestUtils.invokeMethod(
+                        passwordResetService,
+                        "restorePriorResetTokenAfterCleanupFailure",
+                        issuedResetToken(41L, "issued-token"),
+                        priorResetTokenSnapshot(
+                                101L,
+                                AuthTokenDigests.passwordResetTokenDigest("prior-reset-token"),
+                                Instant.now().plusSeconds(600)),
+                        "corr-fallback-restore-123",
+                        "u***@example.com",
+                        "forgot_password"));
+
+        InOrder inOrder = inOrder(userAccountRepository, tokenRepository);
+        inOrder.verify(userAccountRepository).lockById(101L);
+        inOrder.verify(tokenRepository).deleteByTokenDigest(AuthTokenDigests.passwordResetTokenDigest("issued-token"));
+        inOrder.verify(tokenRepository).saveAndFlush(argThat(token -> token != null
+                && AuthTokenDigests.passwordResetTokenDigest("prior-reset-token").equals(token.getTokenDigest())));
+    }
+
+    @Test
+    void restorePriorResetTokenAfterCleanupFailureSkipsRestoreWhenIssuedTokenDeleteFails() {
+        UserAccount user = new UserAccount("user@example.com", "hash", "User");
+        user.setEnabled(true);
+        ReflectionTestUtils.setField(user, "id", 101L);
+        when(userAccountRepository.lockById(101L)).thenReturn(Optional.of(user));
+        when(tokenRepository.deleteByTokenDigest(AuthTokenDigests.passwordResetTokenDigest("issued-token"))).thenReturn(0);
+
+        assertEquals(
+                Boolean.FALSE,
+                ReflectionTestUtils.invokeMethod(
+                        passwordResetService,
+                        "restorePriorResetTokenAfterCleanupFailure",
+                        issuedResetToken(41L, "issued-token"),
+                        priorResetTokenSnapshot(
+                                101L,
+                                AuthTokenDigests.passwordResetTokenDigest("prior-reset-token"),
+                                Instant.now().plusSeconds(600)),
+                        "corr-fallback-no-restore-123",
+                        "u***@example.com",
+                        "forgot_password"));
+
+        verify(tokenRepository).deleteByTokenDigest(AuthTokenDigests.passwordResetTokenDigest("issued-token"));
+        verify(tokenRepository, never()).saveAndFlush(argThat(token -> token != null
+                && AuthTokenDigests.passwordResetTokenDigest("prior-reset-token").equals(token.getTokenDigest())));
     }
 
     @Test

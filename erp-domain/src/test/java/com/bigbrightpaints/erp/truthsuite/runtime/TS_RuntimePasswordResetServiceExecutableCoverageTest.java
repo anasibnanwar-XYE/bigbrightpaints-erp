@@ -201,7 +201,7 @@ class TS_RuntimePasswordResetServiceExecutableCoverageTest {
     }
 
     @Test
-    void requestReset_restoresPriorTokenWhenDispatchCleanupFailsAfterCommit_runtimeCoverage() {
+    void requestReset_skipsPriorRestoreWhenDispatchCleanupLeavesIssuedTokenStateUnknown_runtimeCoverage() {
         UserAccountRepository userRepository = mock(UserAccountRepository.class);
         PasswordResetTokenRepository tokenRepository = mock(PasswordResetTokenRepository.class);
         EmailService emailService = mock(EmailService.class);
@@ -238,7 +238,8 @@ class TS_RuntimePasswordResetServiceExecutableCoverageTest {
 
         verify(userRepository, atLeast(3)).lockById(101L);
         verify(userRepository, never()).findById(101L);
-        verify(tokenRepository, atLeast(2)).saveAndFlush(any(PasswordResetToken.class));
+        verify(tokenRepository).saveAndFlush(any(PasswordResetToken.class));
+        verify(tokenRepository).deleteByTokenDigest(anyString());
     }
 
     @Test

@@ -84,12 +84,19 @@ public class PasswordResetService {
     }
 
     private static final class PublicResetCleanupFailureException extends RuntimeException {
+        private final IssuedResetToken issuedResetToken;
         private final PriorResetTokenSnapshot priorTokenSnapshot;
 
         private PublicResetCleanupFailureException(RuntimeException cleanupFailure,
+                                                   IssuedResetToken issuedResetToken,
                                                    PriorResetTokenSnapshot priorTokenSnapshot) {
             super(cleanupFailure);
+            this.issuedResetToken = issuedResetToken;
             this.priorTokenSnapshot = priorTokenSnapshot;
+        }
+
+        private IssuedResetToken issuedResetToken() {
+            return issuedResetToken;
         }
 
         private PriorResetTokenSnapshot priorTokenSnapshot() {
@@ -328,6 +335,7 @@ public class PasswordResetService {
             logMaskedPublicResetFailure(operation, correlationId, maskedEmail, ex, null, null);
             if (ex instanceof PublicResetCleanupFailureException cleanupFailureException) {
                 restorePriorResetTokenAfterCleanupFailure(
+                        cleanupFailureException.issuedResetToken(),
                         cleanupFailureException.priorTokenSnapshot(),
                         correlationId,
                         maskedEmail,
@@ -388,6 +396,7 @@ public class PasswordResetService {
                     if (cleanupFailure != null) {
                         throw new PublicResetCleanupFailureException(
                                 cleanupFailure,
+                                dispatchPlan.issuedResetToken(),
                                 dispatchPlan.priorTokenSnapshot());
                     }
                 }
@@ -558,19 +567,26 @@ public class PasswordResetService {
         }
     }
 
-    private boolean restorePriorResetTokenAfterCleanupFailure(PriorResetTokenSnapshot priorTokenSnapshot,
+    private boolean restorePriorResetTokenAfterCleanupFailure(IssuedResetToken issuedResetToken,
+                                                              PriorResetTokenSnapshot priorTokenSnapshot,
                                                               String correlationId,
                                                               String maskedEmail,
                                                               String operation) {
-        if (priorTokenSnapshot == null) {
+        if (issuedResetToken == null || !StringUtils.hasText(issuedResetToken.rawToken()) || priorTokenSnapshot == null) {
             return false;
         }
         try {
-            tokenCleanupTransactionTemplate.executeWithoutResult(status -> {
+            Boolean restored = tokenCleanupTransactionTemplate.execute(status -> {
                 assertTokenLifecycleTransactionActive("restore_prior_after_cleanup_failure", correlationId, maskedEmail);
-                restorePriorResetTokenWithinActiveTransaction(priorTokenSnapshot);
+                UserAccount lockedUser = lockUserForResetTokenCleanup(priorTokenSnapshot.userId());
+                int deletedIssuedTokenCount = deletePersistedResetToken(issuedResetToken.rawToken());
+                if (deletedIssuedTokenCount <= 0) {
+                    return Boolean.FALSE;
+                }
+                restorePriorResetTokenWithinActiveTransaction(lockedUser, priorTokenSnapshot);
+                return Boolean.TRUE;
             });
-            return true;
+            return Boolean.TRUE.equals(restored);
         } catch (RuntimeException restoreEx) {
             log.error(
                     "event=password_reset.{}.masked policy={} correlationId={} email={} outcome=prior_restore_failed reasonCode={} exceptionClass={}",
