@@ -1,34 +1,51 @@
 # R2 Checkpoint
 
 ## Scope
-- Feature: `lane01-tenant-runtime-canonicalization`
-- Branch: `packet/lane01-tenant-runtime-canonicalization-pr`
-- High-risk paths touched: `erp-domain/src/main/java/com/bigbrightpaints/erp/core/security/**`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/admin/**`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/**`, and `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/portal/**`
-- Why this is R2: this packet changes the live tenant runtime control plane by retiring the admin-side writer, narrowing privileged entrypoints, and changing auth/filter/portal enforcement behavior that gates tenant access at runtime.
+- Feature: `auth-merge-gate-hardening`
+- Branch: `packet/lane02-auth-merge-gate-hardening`
+- High-risk paths touched: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/domain/PasswordResetToken.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/domain/PasswordResetTokenRepository.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/service/PasswordResetService.java`, `erp-domain/src/main/resources/db/migration/V158__password_reset_token_delivery_tracking.sql`, `erp-domain/src/main/resources/db/migration_v2/V162__password_reset_token_delivery_tracking.sql`, `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/auth/service/PasswordResetServiceTest.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/auth/AuthPasswordResetPublicContractIT.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimePasswordResetServiceExecutableCoverageTest.java`, `docs/runbooks/migrations.md`, and this approval record.
+- Why this is R2: this packet changes a live auth recovery surface, adds delivery-state tracking to password-reset tokens, and hardens the after-commit rollback so only a previously delivered token can be restored after dispatch or delivery-marker failures.
 
 ## Risk Trigger
-- Triggered by canonicalization of tenant runtime policy ownership onto the company-scoped endpoint and removal of the stale `PUT /api/v1/admin/tenant-runtime/policy` contract.
-- Contract change: runtime metrics now read from canonical enforcement snapshots and counters, `CompanyContextFilter` owns canonical admission attributes, and portal fallback enforcement now consumes the same request-scoped runtime truth.
-- Failure mode if wrong: tenants could be blocked or admitted incorrectly, metrics could drift from enforcement truth, or callers could keep targeting a retired privileged writer path.
+- Triggered by auth-sensitive public forgot-password behavior changes, new token-delivery state in auth persistence, and the guard that only restores a prior reset token after the fallback path proves the newly issued token was deleted.
+- Contract surfaces affected: public forgot-password masked-success behavior, delivered-only prior-token restore ordering, after-commit delivery-marker durability, hard-cut reset-token invalidation during migration, and the auth regression coverage that proves undelivered prior tokens are never resurrected.
+- Failure mode if wrong: an undelivered newer prior token could be restored instead of the last delivered token, delivery-marker failures could leave the system with no valid reset token or a still-valid newly emailed token after rollback, or the migration could leave ambiguous legacy reset-token state in production.
 
 ## Approval Authority
 - Mode: orchestrator
-- Approver: Factory packet review orchestration
-- Basis: the change reduces privileged-path surface area, preserves a single canonical runtime-policy codepath, and ships with packet-level validation evidence for auth-tenant routing plus gate coverage.
+- Approver: ERP auth merge-gate hardening mission orchestration
+- Basis: the packet hardens existing auth behavior without widening tenant boundaries or expanding privileges; the migration only invalidates ephemeral reset tokens and keeps a single canonical delivery-state model.
 
 ## Escalation Decision
 - Human escalation required: no
-- Reason: this packet removes stale control-plane behavior rather than expanding permissions, introducing migrations, or altering destructive data flows; the main risk is runtime access correctness, which is already covered by packet tests and CI gates.
+- Reason: the change preserves current-state auth contracts, tightens rollback durability, and the schema cutover only deletes reset tokens whose delivery state is unknowable under the old model.
 
 ## Rollback Owner
-- Owner: Factory-droid integration worker
-- Rollback method: revert the packet commits on `packet/lane01-tenant-runtime-canonicalization-pr`, rerun `MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest=OpenApiSnapshotIT -Derp.openapi.snapshot.verify=true -Derp.openapi.snapshot.refresh=true test`, rerun `ENTERPRISE_DIFF_BASE=refs/remotes/origin/main bash ci/check-enterprise-policy.sh`, and revalidate the recorded `pr-auth-tenant`, `gate-fast`, and `gate-core` evidence before re-review.
+- Owner: ERP-8 PR 116 remediation worker
+- Rollback method: revert the remediation commit set on `packet/lane02-auth-merge-gate-hardening`, deploy the previous backend build, run `DELETE FROM public.password_reset_tokens; ALTER TABLE public.password_reset_tokens DROP COLUMN IF EXISTS delivered_at;`, then rerun `cd erp-domain && mvn -Dtest=PasswordResetServiceTest test`, `cd erp-domain && mvn test -Pgate-fast -Djacoco.skip=true`, `bash ci/check-architecture.sh`, `bash ci/check-enterprise-policy.sh`, and `bash ci/check-orchestrator-layer.sh`.
 
 ## Expiry
-- Valid until: 2026-03-29
-- Re-evaluate if: any additional auth/company/admin/portal runtime paths are added, the canonical company-scoped writer changes again, or the CI routing/gate evidence for this packet is superseded by a follow-up.
+- Valid until: 2026-03-24
+- Re-evaluate if: public forgot-password masking behavior changes again, delivery-marker semantics change again, the migration pair changes again, or the validation evidence below is superseded before merge.
 
 ## Verification Evidence
-- Commands run: `MIGRATION_SET=v2 mvn -Djacoco.skip=true -Dtest=OpenApiSnapshotIT -Derp.openapi.snapshot.verify=true -Derp.openapi.snapshot.refresh=true test` (`BUILD SUCCESS`, `2` tests, `0` failures/errors, using Colima-backed Docker for Testcontainers), `bash scripts/gate_fast.sh` (`exit 0` in `.factory/validation/lane01-tenant-runtime-canonicalization/scrutiny/synthesis.json`), `bash scripts/gate_core.sh` (`exit 0` in `.factory/validation/lane01-tenant-runtime-canonicalization/scrutiny/synthesis.json`), `bash scripts/run_test_manifest.sh --profile pr-fast --label auth-tenant --manifest ci/pr_manifests/pr_auth_tenant.txt` (`exit 0` in `.factory/validation/lane01-tenant-runtime-canonicalization/scrutiny/synthesis.json`), `ENTERPRISE_DIFF_BASE=refs/remotes/origin/main bash ci/check-enterprise-policy.sh` (`OK`).
-- Result summary: the packet hard-cuts tenant runtime policy writes to the canonical company-scoped path, removes the retired admin writer and DTO, aligns runtime enforcement consumers on shared request attributes plus canonical snapshots/counters, refreshes `openapi.json`, and routes the packet into `pr-auth-tenant` coverage.
-- Artifacts/links: `docs/approvals/R2-CHECKPOINT.md`, `.factory/validation/lane01-tenant-runtime-canonicalization/scrutiny/synthesis.json`, `.factory/validation/lane01-tenant-runtime-canonicalization/user-testing/synthesis.json`, `erp-domain/src/main/java/com/bigbrightpaints/erp/core/security/CompanyContextFilter.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/service/TenantRuntimeEnforcementService.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/portal/service/TenantRuntimeEnforcementInterceptor.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/OpenApiSnapshotIT.java`, and `openapi.json`.
+- Commands run:
+  - `cd erp-domain && mvn compile -q`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -B -ntp -Dtest=PasswordResetServiceTest test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -B -ntp -Dtest=AuthPasswordResetPublicContractIT,TS_RuntimePasswordResetServiceExecutableCoverageTest test`
+  - `cd erp-domain && MIGRATION_SET=v2 mvn -B -ntp test -Pgate-fast -Djacoco.skip=true`
+  - `bash ci/check-architecture.sh`
+  - `bash ci/check-enterprise-policy.sh`
+  - `bash ci/check-orchestrator-layer.sh`
+  - `bash ci/check-codex-review-guidelines.sh`
+- Result summary:
+  - `mvn compile -q`: pending rerun after the delivered-token migration/docs update.
+  - `MIGRATION_SET=v2 mvn -B -ntp -Dtest=PasswordResetServiceTest test`: previously passed on 2026-03-17 with `62` tests, `0` failures, `0` errors, `0` skipped`; rerunning after the docs update as part of the current packet validation.
+  - `MIGRATION_SET=v2 mvn -B -ntp -Dtest=AuthPasswordResetPublicContractIT,TS_RuntimePasswordResetServiceExecutableCoverageTest test`: previously passed on 2026-03-17 with `23` tests, `0` failures, `0` errors, `0` skipped`; rerunning after the docs update as part of the current packet validation. That pass proved the public forgot-password endpoint keeps the generic masked-success response while rollback only restores the last delivered token and invalidates a newly issued token when delivery-marker persistence fails.
+  - `MIGRATION_SET=v2 mvn -B -ntp test -Pgate-fast -Djacoco.skip=true`: pending rerun after the delivered-token migration/docs update.
+  - `bash ci/check-architecture.sh`: pending rerun after the docs update.
+  - `bash ci/check-enterprise-policy.sh`: previously failed because `docs/runbooks/migrations.md` was missing the migration entry; rerunning after that fix.
+  - `bash ci/check-orchestrator-layer.sh`: pending rerun after the docs update.
+  - `bash ci/check-codex-review-guidelines.sh`: pending rerun after the docs update.
+- Artifacts/links:
+  - Current validation is executed from the `erp-domain` module on `packet/lane02-auth-merge-gate-hardening` while fixing GitHub review threads `discussion_r2945806922` and `discussion_r2945959164`, which flagged stale-token resurrection and delivered-only restore ordering in the password-reset fallback flow.

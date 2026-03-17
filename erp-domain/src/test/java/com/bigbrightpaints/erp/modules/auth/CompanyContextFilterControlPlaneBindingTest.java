@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -43,6 +44,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
+@Tag("critical")
 class CompanyContextFilterControlPlaneBindingTest {
 
     private static final String CONTROL_PLANE_AUTH_DENIED_MESSAGE = "Access denied to company control request";
@@ -297,6 +299,74 @@ class CompanyContextFilterControlPlaneBindingTest {
         assertThat(response.getContentAsString()).contains(CONTROL_PLANE_AUTH_DENIED_MESSAGE);
         verify(companyService).resolveCompanyCodeById(404L);
         verify(companyService, never()).resolveLifecycleStateByCode(anyString());
+        verify(tenantRuntimeEnforcementService, never())
+                .beginRequest(anyString(), anyString(), anyString(), anyString(), anyBoolean());
+        verify(filterChain, never()).doFilter(request, response);
+    }
+
+    @Test
+    void companyScopedRequest_rejectsLegacyHeaderWithoutCanonicalCompanyCode()
+            throws ServletException, IOException {
+        MockHttpServletRequest request = request("GET", "/api/v1/private");
+        request.addHeader("X-Company-Id", "LEGACY-ONLY");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, filterChain);
+
+        assertThat(response.getStatus()).isEqualTo(403);
+        assertThat(response.getContentAsString()).contains("COMPANY_CONTEXT_LEGACY_HEADER_UNSUPPORTED");
+        assertThat(response.getContentAsString()).contains("Use X-Company-Code for company context binding");
+        verifyNoInteractions(companyService);
+        verify(tenantRuntimeEnforcementService, never())
+                .beginRequest(anyString(), anyString(), anyString(), anyString(), anyBoolean());
+        verify(filterChain, never()).doFilter(request, response);
+    }
+
+    @Test
+    void authenticatedRequest_rejectsLegacyCidWithoutCanonicalCompanyCodeClaim()
+            throws ServletException, IOException {
+        authenticate("tenant-admin@bbp.com", Set.of("ROLE_ADMIN"), Set.of("ACME"));
+
+        Claims claims = mock(Claims.class);
+        when(claims.get("companyCode", String.class)).thenReturn(null);
+        when(claims.get("cid", String.class)).thenReturn("ACME");
+
+        MockHttpServletRequest request = request("GET", "/api/v1/private");
+        request.addHeader("X-Company-Code", "ACME");
+        request.setAttribute("jwtClaims", claims);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, filterChain);
+
+        assertThat(response.getStatus()).isEqualTo(403);
+        assertThat(response.getContentAsString()).contains("COMPANY_CONTEXT_MISSING");
+        assertThat(response.getContentAsString()).contains("Authenticated token missing company context");
+        verifyNoInteractions(companyService);
+        verify(tenantRuntimeEnforcementService, never())
+                .beginRequest(anyString(), anyString(), anyString(), anyString(), anyBoolean());
+        verify(filterChain, never()).doFilter(request, response);
+    }
+
+    @Test
+    void authenticatedRequest_rejectsWhenCanonicalClaimDiffersFromHeader()
+            throws ServletException, IOException {
+        authenticate("tenant-admin@bbp.com", Set.of("ROLE_ADMIN"), Set.of("ACME"));
+
+        Claims claims = mock(Claims.class);
+        when(claims.get("companyCode", String.class)).thenReturn("ACME");
+        when(claims.get("cid", String.class)).thenReturn(null);
+
+        MockHttpServletRequest request = request("GET", "/api/v1/private");
+        request.addHeader("X-Company-Code", "OTHER");
+        request.setAttribute("jwtClaims", claims);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        filter.doFilter(request, response, filterChain);
+
+        assertThat(response.getStatus()).isEqualTo(403);
+        assertThat(response.getContentAsString()).contains("COMPANY_CONTEXT_MISMATCH");
+        assertThat(response.getContentAsString()).contains("Company header does not match authenticated company context");
+        verifyNoInteractions(companyService);
         verify(tenantRuntimeEnforcementService, never())
                 .beginRequest(anyString(), anyString(), anyString(), anyString(), anyBoolean());
         verify(filterChain, never()).doFilter(request, response);

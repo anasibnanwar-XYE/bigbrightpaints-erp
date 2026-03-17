@@ -135,7 +135,7 @@ public class SalesControllerIT extends AbstractIntegrationTest {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token);
         headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.set("X-Company-Id", COMPANY_CODE);
+        headers.set("X-Company-Code", COMPANY_CODE);
         return headers;
     }
 
@@ -253,7 +253,7 @@ public class SalesControllerIT extends AbstractIntegrationTest {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token);
         headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.set("X-Company-Id", COMPANY_CODE);
+        headers.set("X-Company-Code", COMPANY_CODE);
 
         Map<String, Object> dealerReq = new HashMap<>();
         dealerReq.put("name", "Prime Dealer");
@@ -332,7 +332,7 @@ public class SalesControllerIT extends AbstractIntegrationTest {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token);
         headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.set("X-Company-Id", COMPANY_CODE);
+        headers.set("X-Company-Code", COMPANY_CODE);
 
         Map<String, Object> line = Map.of(
                 "shipQty", new BigDecimal("1.00")
@@ -364,7 +364,7 @@ public class SalesControllerIT extends AbstractIntegrationTest {
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token);
         headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.set("X-Company-Id", COMPANY_CODE);
+        headers.set("X-Company-Code", COMPANY_CODE);
 
         Map<String, Object> line = Map.of(
                 "shipQty", new BigDecimal("1.00")
