@@ -2,7 +2,6 @@ package com.bigbrightpaints.erp.truthsuite.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -16,8 +15,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.bigbrightpaints.erp.core.config.EmailProperties;
-import com.bigbrightpaints.erp.core.exception.ApplicationException;
-import com.bigbrightpaints.erp.core.exception.ErrorCode;
 import com.bigbrightpaints.erp.core.idempotency.IdempotencyUtils;
 import com.bigbrightpaints.erp.core.notification.EmailService;
 import com.bigbrightpaints.erp.core.security.TokenBlacklistService;
@@ -237,10 +234,7 @@ class TS_RuntimePasswordResetServiceExecutableCoverageTest {
                 .when(tokenRepository)
                 .deleteByTokenDigest(anyString());
 
-        assertThatThrownBy(() -> service.requestReset("user@example.com"))
-                .isInstanceOf(ApplicationException.class)
-                .extracting(ex -> ((ApplicationException) ex).getErrorCode())
-                .isEqualTo(ErrorCode.SYSTEM_DATABASE_ERROR);
+        assertThatCode(() -> service.requestReset("user@example.com")).doesNotThrowAnyException();
 
         verify(userRepository, atLeast(3)).lockById(101L);
         verify(userRepository, never()).findById(101L);

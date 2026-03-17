@@ -332,17 +332,8 @@ public class PasswordResetService {
                         correlationId,
                         maskedEmail,
                         operation);
-                throw new ApplicationException(
-                        ErrorCode.SYSTEM_DATABASE_ERROR,
-                        "Password reset temporarily unavailable",
-                        cleanupFailureException);
             }
-            if (isPublicResetPersistenceFailure(ex)) {
-                throw new ApplicationException(
-                        ErrorCode.SYSTEM_DATABASE_ERROR,
-                        "Password reset temporarily unavailable",
-                        ex);
-            }
+            // Keep the public forgot-password response uniform even when token persistence/cleanup fails.
             return false;
         }
     }

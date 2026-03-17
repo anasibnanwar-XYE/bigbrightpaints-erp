@@ -144,7 +144,7 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void forgotEndpoint_returnsControlledNonSuccessForKnownUserWhenTokenPersistenceFails() {
+    void forgotEndpoint_keepsMaskedSuccessForKnownUserWhenTokenPersistenceFails() {
         doThrow(new DataAccessResourceFailureException("db unavailable"))
                 .when(passwordResetTokenRepository)
                 .saveAndFlush(any(PasswordResetToken.class));
@@ -152,18 +152,13 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
         ResponseEntity<Map> knownUserResponse = postForgot(SUPERADMIN_EMAIL, "ANY-TENANT");
         ResponseEntity<Map> unknownUserResponse = postForgot("unknown.superadmin@bbp.com", "ANY-TENANT");
 
-        assertThat(knownUserResponse.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+        assertThat(knownUserResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(unknownUserResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(knownUserResponse.getBody()).isNotNull();
         assertThat(unknownUserResponse.getBody()).isNotNull();
-        assertThat(knownUserResponse.getBody().get("success")).isEqualTo(false);
+        assertThat(knownUserResponse.getBody().get("success")).isEqualTo(true);
         assertThat(knownUserResponse.getBody().get("message"))
-                .isEqualTo("Password reset temporarily unavailable");
-        @SuppressWarnings("unchecked")
-        Map<String, Object> knownData = (Map<String, Object>) knownUserResponse.getBody().get("data");
-        assertThat(knownData).isNotNull();
-        assertThat(knownData.get("code")).isEqualTo("SYS_003");
-        assertThat(knownData).containsKey("traceId");
+                .isEqualTo("If the email exists, a reset link has been sent");
         assertThat(unknownUserResponse.getBody().get("success")).isEqualTo(true);
         assertThat(unknownUserResponse.getBody().get("message"))
                 .isEqualTo("If the email exists, a reset link has been sent");
@@ -171,7 +166,7 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void forgotEndpoint_returnsControlledNonSuccessAndSkipsEmailWhenCleanupBeforeCommitFails() {
+    void forgotEndpoint_keepsMaskedSuccessAndSkipsEmailWhenCleanupBeforeCommitFails() {
         String targetEmail = "cleanup.before.commit.user@bbp.com";
         UserAccount user = dataSeeder.ensureUser(
                 targetEmail,
@@ -192,13 +187,11 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
 
         ResponseEntity<Map> forgotResponse = postForgot(targetEmail, "ANY-TENANT");
 
-        assertThat(forgotResponse.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+        assertThat(forgotResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(forgotResponse.getBody()).isNotNull();
-        assertThat(forgotResponse.getBody().get("success")).isEqualTo(false);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> forgotData = (Map<String, Object>) forgotResponse.getBody().get("data");
-        assertThat(forgotData).isNotNull();
-        assertThat(forgotData.get("code")).isEqualTo("SYS_003");
+        assertThat(forgotResponse.getBody().get("success")).isEqualTo(true);
+        assertThat(forgotResponse.getBody().get("message"))
+                .isEqualTo("If the email exists, a reset link has been sent");
         verify(emailService, never()).sendPasswordResetEmailRequired(eq(targetEmail), eq("Cleanup Before Commit User"), anyString());
 
         ResponseEntity<Map> resetResponse = postReset(preExistingToken, "NewPass123!");
@@ -248,7 +241,11 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
 
         ResponseEntity<Map> forgotResponse = postForgot(targetEmail, "ANY-TENANT");
 
-        assertThat(forgotResponse.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+        assertThat(forgotResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(forgotResponse.getBody()).isNotNull();
+        assertThat(forgotResponse.getBody().get("success")).isEqualTo(true);
+        assertThat(forgotResponse.getBody().get("message"))
+                .isEqualTo("If the email exists, a reset link has been sent");
         verify(emailService, never()).sendPasswordResetEmailRequired(eq(targetEmail), eq("Preexisting Reset User"), anyString());
 
         ResponseEntity<Map> resetResponse = postReset(preExistingToken, "NewPass123!");
@@ -299,13 +296,11 @@ class AuthPasswordResetPublicContractIT extends AbstractIntegrationTest {
 
         ResponseEntity<Map> forgotResponse = postForgot(targetEmail, "ANY-TENANT");
 
-        assertThat(forgotResponse.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+        assertThat(forgotResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(forgotResponse.getBody()).isNotNull();
-        assertThat(forgotResponse.getBody().get("success")).isEqualTo(false);
-        @SuppressWarnings("unchecked")
-        Map<String, Object> forgotData = (Map<String, Object>) forgotResponse.getBody().get("data");
-        assertThat(forgotData).isNotNull();
-        assertThat(forgotData.get("code")).isEqualTo("SYS_003");
+        assertThat(forgotResponse.getBody().get("success")).isEqualTo(true);
+        assertThat(forgotResponse.getBody().get("message"))
+                .isEqualTo("If the email exists, a reset link has been sent");
 
         Integer tokenCount = jdbcTemplate.queryForObject(
                 "select count(*) from password_reset_tokens where user_id = ?",

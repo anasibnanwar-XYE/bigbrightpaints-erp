@@ -145,7 +145,7 @@ class PasswordResetServiceTest {
     }
 
     @Test
-    void requestResetReturnsControlledNonSuccessAndSkipsEmailWhenCleanupBeforeCommitFails() {
+    void requestResetMasksCleanupBeforeCommitFailuresAndSkipsEmail() {
         UserAccount user = new UserAccount("user@example.com", "hash", "User");
         user.setEnabled(true);
         when(userAccountRepository.findByEmailIgnoreCase("user@example.com"))
@@ -154,12 +154,7 @@ class PasswordResetServiceTest {
                 .when(tokenRepository)
                 .deleteByUserAndIdNot(any(UserAccount.class), anyLong());
 
-        ApplicationException exception = assertThrows(
-                ApplicationException.class,
-                () -> passwordResetService.requestReset("user@example.com"));
-
-        assertEquals(ErrorCode.SYSTEM_DATABASE_ERROR, exception.getErrorCode());
-        assertEquals("Password reset temporarily unavailable", exception.getUserMessage());
+        assertDoesNotThrow(() -> passwordResetService.requestReset("user@example.com"));
         verify(emailService, never()).sendPasswordResetEmailRequired(anyString(), anyString(), anyString());
     }
 
@@ -353,7 +348,7 @@ class PasswordResetServiceTest {
     }
 
     @Test
-    void requestResetReturnsControlledNonSuccessWhenTokenPersistenceFailsForKnownUser() {
+    void requestResetMasksTokenPersistenceFailuresForKnownUser() {
         UserAccount user = new UserAccount("user@example.com", "hash", "User");
         user.setEnabled(true);
         when(userAccountRepository.findByEmailIgnoreCase("user@example.com"))
@@ -362,12 +357,7 @@ class PasswordResetServiceTest {
                 .when(tokenRepository)
                 .saveAndFlush(any(PasswordResetToken.class));
 
-        ApplicationException exception = assertThrows(
-                ApplicationException.class,
-                () -> passwordResetService.requestReset("user@example.com"));
-
-        assertEquals(ErrorCode.SYSTEM_DATABASE_ERROR, exception.getErrorCode());
-        assertEquals("Password reset temporarily unavailable", exception.getUserMessage());
+        assertDoesNotThrow(() -> passwordResetService.requestReset("user@example.com"));
 
         verify(tokenRepository, never()).deleteByUser(any());
         verify(tokenRepository, never()).deleteByUserAndIdNot(any(), anyLong());
@@ -377,7 +367,7 @@ class PasswordResetServiceTest {
     }
 
     @Test
-    void requestResetReturnsControlledNonSuccessWhenLifecycleTransactionCannotStart() {
+    void requestResetMasksLifecycleTransactionStartupFailures() {
         UserAccount user = new UserAccount("user@example.com", "hash", "User");
         user.setEnabled(true);
         when(userAccountRepository.findByEmailIgnoreCase("user@example.com"))
@@ -388,12 +378,7 @@ class PasswordResetServiceTest {
                 .thenThrow(new CannotCreateTransactionException("db unavailable"));
         ReflectionTestUtils.setField(passwordResetService, "tokenLifecycleTransactionTemplate", lifecycleTemplate);
 
-        ApplicationException exception = assertThrows(
-                ApplicationException.class,
-                () -> passwordResetService.requestReset("user@example.com"));
-
-        assertEquals(ErrorCode.SYSTEM_DATABASE_ERROR, exception.getErrorCode());
-        assertEquals("Password reset temporarily unavailable", exception.getUserMessage());
+        assertDoesNotThrow(() -> passwordResetService.requestReset("user@example.com"));
 
         verify(lifecycleTemplate).execute(any());
         verify(tokenRepository, never()).saveAndFlush(any(PasswordResetToken.class));
@@ -401,7 +386,7 @@ class PasswordResetServiceTest {
     }
 
     @Test
-    void requestResetReturnsControlledNonSuccessWhenCleanupPersistenceFails() {
+    void requestResetMasksCleanupPersistenceFailures() {
         UserAccount user = new UserAccount("user@example.com", "hash", "User");
         user.setEnabled(true);
         when(userAccountRepository.findByEmailIgnoreCase("user@example.com"))
@@ -417,12 +402,7 @@ class PasswordResetServiceTest {
                 .when(tokenRepository)
                 .deleteByTokenDigest(anyString());
 
-        ApplicationException exception = assertThrows(
-                ApplicationException.class,
-                () -> passwordResetService.requestReset("user@example.com"));
-
-        assertEquals(ErrorCode.SYSTEM_DATABASE_ERROR, exception.getErrorCode());
-        assertEquals("Password reset temporarily unavailable", exception.getUserMessage());
+        assertDoesNotThrow(() -> passwordResetService.requestReset("user@example.com"));
 
         verify(tokenRepository).saveAndFlush(any(PasswordResetToken.class));
         verify(tokenRepository).deleteByTokenDigest(anyString());
@@ -488,12 +468,7 @@ class PasswordResetServiceTest {
                 .when(tokenRepository)
                 .deleteByTokenDigest(anyString());
 
-        ApplicationException exception = assertThrows(
-                ApplicationException.class,
-                () -> passwordResetService.requestReset("user@example.com"));
-
-        assertEquals(ErrorCode.SYSTEM_DATABASE_ERROR, exception.getErrorCode());
-        assertEquals("Password reset temporarily unavailable", exception.getUserMessage());
+        assertDoesNotThrow(() -> passwordResetService.requestReset("user@example.com"));
 
         ArgumentCaptor<PasswordResetToken> tokenCaptor = ArgumentCaptor.forClass(PasswordResetToken.class);
         verify(tokenRepository, atLeast(2)).saveAndFlush(tokenCaptor.capture());
