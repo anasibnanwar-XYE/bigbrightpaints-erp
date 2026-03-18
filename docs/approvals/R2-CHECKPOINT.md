@@ -1,51 +1,80 @@
 # R2 Checkpoint
 
 ## Scope
-- Feature: `auth-merge-gate-hardening`
-- Branch: `packet/lane02-auth-merge-gate-hardening`
-- High-risk paths touched: `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/domain/PasswordResetToken.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/domain/PasswordResetTokenRepository.java`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/service/PasswordResetService.java`, `erp-domain/src/main/resources/db/migration_v2/V162__password_reset_token_delivery_tracking.sql`, `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/auth/service/PasswordResetServiceTest.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/modules/auth/AuthPasswordResetPublicContractIT.java`, `erp-domain/src/test/java/com/bigbrightpaints/erp/truthsuite/runtime/TS_RuntimePasswordResetServiceExecutableCoverageTest.java`, `docs/runbooks/migrations.md`, and this approval record.
-- Why this is R2: this packet changes a live auth recovery surface, adds delivery-state tracking to password-reset tokens, and hardens the after-commit rollback so only a previously delivered token can be restored after dispatch or delivery-marker failures.
+- Feature: `pr119-canary-readiness`
+- Runtime candidate SHA: `2fba82e91748f60872727c8f530369e66d95c0a8`
+- Readiness packet SHA: `80aab18d04c65c4195868d2c0f42c96fc0d3eb7c`
+- Branch: `feature/pr119-canary-readiness-clean`
+- Why this is R2: this packet closes the post-merge deploy-readiness gap on live `main`, fixes accounting-portal handoff RBAC/readiness drift, and records the canary ownership/rollback decision on the exact proved runtime SHA.
 
 ## Risk Trigger
-- Triggered by auth-sensitive public forgot-password behavior changes, new token-delivery state in auth persistence, and the guard that only restores a prior reset token after the fallback path proves the newly issued token was deleted.
-- Contract surfaces affected: public forgot-password masked-success behavior, delivered-only prior-token restore ordering, after-commit delivery-marker durability, hard-cut reset-token invalidation during migration, and the auth regression coverage that proves undelivered prior tokens are never resurrected.
-- Failure mode if wrong: an undelivered newer prior token could be restored instead of the last delivered token, delivery-marker failures could leave the system with no valid reset token or a still-valid newly emailed token after rollback, or the migration could leave ambiguous legacy reset-token state in production.
+- Triggered by post-merge deploy-readiness closure on live `main`, where incorrect portal handoff scope could have exposed accountant or sales users to deterministic `403` failures on admin-only exports during canary.
+- Contract surfaces affected: accounting portal route ownership, portal/frontend handoff RBAC truth, audit-trail route guidance, release gate documentation, and canary operator ownership.
+- Failure mode if wrong: canary proceeds without a named owner/rollback decision, or frontend/operator handoff treats admin-only exports as accountant-required flows and hits deterministic authorization failures under live traffic.
 
 ## Approval Authority
-- Mode: orchestrator
-- Approver: ERP auth merge-gate hardening mission orchestration
-- Basis: the packet hardens existing auth behavior without widening tenant boundaries or expanding privileges; the migration only invalidates ephemeral reset tokens and keeps a single canonical delivery-state model.
+- Mode: human
+- Approver: `Anas ibn Anwar`
+- Approval status: `approved for merge handoff; canary entry remains pending canonical-lane merge plus post-merge gate re-proof`
+- Basis: runtime and staging proof are green on the exact merged runtime SHA, the docs/readiness packet is corrected through `80aab18d04c65c4195868d2c0f42c96fc0d3eb7c`, and canary may proceed only after the merged canonical-lane head re-proves the release gates listed below.
 
 ## Escalation Decision
-- Human escalation required: no
-- Reason: the change preserves current-state auth contracts, tightens rollback durability, and the schema cutover only deletes reset tokens whose delivery state is unknowable under the old model.
+- Human escalation required: no additional human approval after the packet is merged to the canonical lane and the post-merge gate sequence re-proves green on that merged head
+- Reason: explicit canary owner and rollback owner are recorded here, but this file does not authorize canary from a local-only readiness branch. Canary remains blocked until merge/publication and fresh gate proof on the merged head.
+
+## Canary Owner
+- Lane owner: `Anas ibn Anwar`
+- Lane-owner acknowledgement: `Anas ibn Anwar approved canary entry for runtime candidate 2fba82e91748f60872727c8f530369e66d95c0a8 only after this packet is merged to the canonical lane and scripts/gate_core.sh, scripts/gate_release.sh, and scripts/verify_local.sh are re-proved green on that merged head.`
 
 ## Rollback Owner
-- Owner: ERP-8 PR 116 remediation worker
-- Rollback method: revert the remediation commit set on `packet/lane02-auth-merge-gate-hardening`, deploy the previous backend build, run `DELETE FROM public.password_reset_tokens; ALTER TABLE public.password_reset_tokens DROP COLUMN IF EXISTS delivered_at;`, then rerun `cd erp-domain && mvn -Dtest=PasswordResetServiceTest test`, `cd erp-domain && mvn test -Pgate-fast -Djacoco.skip=true`, `bash ci/check-architecture.sh`, `bash ci/check-enterprise-policy.sh`, and `bash ci/check-orchestrator-layer.sh`.
+- Owner: `Anas ibn Anwar`
+- Rollback method: stop canary expansion, revert to the previous backend artifact, then rerun `scripts/gate_release.sh` and `scripts/verify_local.sh` on the rollback target before resuming traffic expansion.
+- Rollback trigger:
+  - actuator readiness goes `DOWN`
+  - auth or tenant-isolation probe fails
+  - minimum O2C probe fails
+  - minimum P2P/accounting probe fails
+  - sustained unexpected `5xx` or authorization anomaly on canary traffic
+
+## Telemetry Signals
+- Actuator readiness and liveness
+- Application `5xx` rate on canary slice
+- Auth/authorization anomalies, including unexpected `403` on intended canary flows
+- O2C dispatch-confirm, invoice visibility, and dealer receipt outcomes
+- P2P goods-receipt, raw-material purchase, and supplier-payment outcomes
+- Database migration/connection errors and rollback readiness posture
+
+## Minimum Canary Probes
+- O2C:
+  - `POST /api/v1/sales/dispatch/confirm`
+  - verify downstream invoice/journal truth
+  - `POST /api/v1/accounting/receipts/dealer`
+- P2P/accounting:
+  - `POST /api/v1/purchasing/goods-receipts`
+  - `POST /api/v1/purchasing/raw-material-purchases`
+  - `POST /api/v1/accounting/suppliers/payments`
 
 ## Expiry
-- Valid until: 2026-03-24
-- Re-evaluate if: public forgot-password masking behavior changes again, delivery-marker semantics change again, the migration pair changes again, or the validation evidence below is superseded before merge.
+- Valid until: `2026-03-25`
+- Re-evaluate if: runtime candidate SHA changes, release proof is superseded, rollback procedure changes, or canary scope expands beyond the narrow probes above.
 
 ## Verification Evidence
-- Commands run:
-  - `cd erp-domain && mvn compile -q`
-  - `cd erp-domain && MIGRATION_SET=v2 mvn -B -ntp -Dtest=PasswordResetServiceTest test`
-  - `cd erp-domain && MIGRATION_SET=v2 mvn -B -ntp -Dtest=AuthPasswordResetPublicContractIT,TS_RuntimePasswordResetServiceExecutableCoverageTest test`
-  - `cd erp-domain && MIGRATION_SET=v2 mvn -B -ntp test -Pgate-fast -Djacoco.skip=true`
-  - `bash ci/check-architecture.sh`
-  - `bash ci/check-enterprise-policy.sh`
-  - `bash ci/check-orchestrator-layer.sh`
-  - `bash ci/check-codex-review-guidelines.sh`
-- Result summary:
-  - `mvn compile -q`: pending rerun after the delivered-token migration/docs update.
-  - `MIGRATION_SET=v2 mvn -B -ntp -Dtest=PasswordResetServiceTest test`: previously passed on 2026-03-17 with `62` tests, `0` failures, `0` errors, `0` skipped`; rerunning after the docs update as part of the current packet validation.
-  - `MIGRATION_SET=v2 mvn -B -ntp -Dtest=AuthPasswordResetPublicContractIT,TS_RuntimePasswordResetServiceExecutableCoverageTest test`: previously passed on 2026-03-17 with `23` tests, `0` failures, `0` errors, `0` skipped`; rerunning after the docs update as part of the current packet validation. That pass proved the public forgot-password endpoint keeps the generic masked-success response while rollback only restores the last delivered token and invalidates a newly issued token when delivery-marker persistence fails.
-  - `MIGRATION_SET=v2 mvn -B -ntp test -Pgate-fast -Djacoco.skip=true`: pending rerun after the delivered-token migration/docs update.
-  - `bash ci/check-architecture.sh`: pending rerun after the docs update.
-  - `bash ci/check-enterprise-policy.sh`: previously failed because `docs/runbooks/migrations.md` was missing the migration entry; rerunning after that fix.
-  - `bash ci/check-orchestrator-layer.sh`: pending rerun after the docs update.
-  - `bash ci/check-codex-review-guidelines.sh`: pending rerun after the docs update.
-- Artifacts/links:
-  - Current validation is executed from the `erp-domain` module on `packet/lane02-auth-merge-gate-hardening` while fixing GitHub review threads `discussion_r2945806922` and `discussion_r2945959164`, which flagged stale-token resurrection and delivered-only restore ordering in the password-reset fallback flow.
+- Exact-main proof on live runtime SHA `2fba82e91748f60872727c8f530369e66d95c0a8`:
+  - `scripts/gate_core.sh` passed at `2026-03-18 17:45:54 +05:30`
+  - `scripts/gate_release.sh` passed at `2026-03-18 17:47:32 +05:30`
+  - `scripts/verify_local.sh` passed at `2026-03-18 17:49:01 +05:30`
+- Current readiness packet proof inherited by `80aab18d04c65c4195868d2c0f42c96fc0d3eb7c`:
+  - `scripts/gate_core.sh` passed on packet ancestor `ef2e56284aa38dc0799144765d8b91ba610c0ab5` at `2026-03-18T13:33:28Z`
+  - `scripts/gate_release.sh` passed on packet ancestor `ef2e56284aa38dc0799144765d8b91ba610c0ab5` at `2026-03-18T13:35:03Z`
+  - standalone `scripts/verify_local.sh` passed on packet ancestor `ef2e56284aa38dc0799144765d8b91ba610c0ab5` at `2026-03-18T19:06:19+05:30` with `439` tests, `0` failures, `0` errors
+- Docs/readiness closure:
+  - `docs/accounting-portal-frontend-engineer-handoff.md` corrected for RBAC and legacy audit-export scope
+  - `scripts/guard_accounting_portal_scope_contract.sh` hardened to fail on those contradictions
+- Reviewable replay contract:
+  - reviewers must validate this packet from a clean checkout with rerunnable commands, not repo-local `artifacts/`
+  - required replay commands: `scripts/gate_core.sh`, `scripts/gate_release.sh`, `scripts/verify_local.sh`, `scripts/guard_accounting_portal_scope_contract.sh`, `scripts/guard_audit_trail_ownership_contract.sh`
+  - canary remains blocked until those commands are re-proved on the merged canonical-lane head for the runtime candidate above
+
+## Reviewer Notes
+- Local run outputs under `artifacts/` are non-canonical and intentionally excluded from this readiness packet.
+- Merge/readiness review must rely on committed docs plus the rerunnable commands above.
