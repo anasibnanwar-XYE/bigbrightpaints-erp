@@ -65,11 +65,6 @@ Count lock for parity checks: **143**
 | `POST /api/v1/accounting/periods/{periodId}/close` | create-form; req: periodId (path); opt: force (body), note (body); states: loading, error, success | path=periodId; query=-; body=optional; ct=application/json | ok 200; err 400 |
 | `POST /api/v1/accounting/periods/{periodId}/lock` | create-form; req: periodId (path); opt: reason (body); states: loading, error, success | path=periodId; query=-; body=optional; ct=application/json | ok 200; err 400 |
 | `POST /api/v1/accounting/periods/{periodId}/reopen` | create-form; req: periodId (path); opt: reason (body); states: loading, error, success | path=periodId; query=-; body=optional; ct=application/json | ok 200; err 400 |
-
-Maker-checker period-close note:
-- `POST /api/v1/accounting/periods/{periodId}/request-close` is the supported maker action for frontend close submission.
-- `POST /api/v1/accounting/periods/{periodId}/approve-close` and `POST /api/v1/accounting/periods/{periodId}/reject-close` are the checker actions surfaced via `GET /api/v1/admin/approvals`.
-- `POST /api/v1/accounting/periods/{periodId}/close` still exists in OpenAPI, but `AccountingPeriodService.closePeriod(...)` rejects direct close for frontend flows.
 | `POST /api/v1/accounting/receipts/dealer` | create-form; req: allocations (body), allocations[].appliedAmount (body), amount (body), cashAccountId (body), dealerId (body); opt: Idempotency-Key (header), allocations[].discountAmount (body), allocations[].fxAdjustment (body), allocations[].invoiceId (body), allocations[].memo (body), allocations[].purchaseId (body), allocations[].writeOffAmount (body), idempotencyKey (body), memo (body), referenceNumber (body); states: loading, error, success | path=-; query=-; body=required; ct=application/json | ok 200; err 400 |
 | `POST /api/v1/accounting/receipts/dealer/hybrid` | create-form; req: dealerId (body), incomingLines (body), incomingLines[].accountId (body), incomingLines[].amount (body); opt: Idempotency-Key (header), idempotencyKey (body), memo (body), referenceNumber (body); states: loading, error, success | path=-; query=-; body=required; ct=application/json | ok 200; err 400 |
 | `GET /api/v1/accounting/reports/aging/dealer/{dealerId}` | detail-view; req: dealerId (path); opt: -; states: loading, error, success, empty | path=dealerId; query=-; body=none; ct=- | ok 200; err 400 |
@@ -88,6 +83,12 @@ Maker-checker period-close note:
 | `GET /api/v1/accounting/statements/suppliers/{supplierId}/pdf` | detail-view; req: supplierId (path); opt: from (query), to (query); states: loading, error, success, empty | path=supplierId; query=from, to; body=none; ct=- | ok 200; err 400 |
 | `POST /api/v1/accounting/suppliers/payments` | create-form; req: allocations (body), allocations[].appliedAmount (body), amount (body), cashAccountId (body), supplierId (body); opt: Idempotency-Key (header), allocations[].discountAmount (body), allocations[].fxAdjustment (body), allocations[].invoiceId (body), allocations[].memo (body), allocations[].purchaseId (body), allocations[].writeOffAmount (body), idempotencyKey (body), memo (body), referenceNumber (body); states: loading, error, success | path=-; query=-; body=required; ct=application/json | ok 200; err 400 |
 | `GET /api/v1/accounting/trial-balance/as-of` | list-view; req: date (query); opt: -; states: loading, error, success, empty | path=-; query=date; body=none; ct=- | ok 200; err 400 |
+
+Maker-checker period-close note:
+- `POST /api/v1/accounting/periods/{periodId}/request-close` is the supported maker action for frontend close submission.
+- `POST /api/v1/accounting/periods/{periodId}/approve-close` and `POST /api/v1/accounting/periods/{periodId}/reject-close` are surfaced through `GET /api/v1/admin/approvals`.
+- `GET /api/v1/admin/approvals` is visible to `ROLE_ADMIN|ROLE_ACCOUNTING` in portal flows, and the backend also allows `ROLE_SUPER_ADMIN`.
+- `POST /api/v1/accounting/periods/{periodId}/close` still exists in OpenAPI, but `AccountingPeriodService.closePeriod(...)` rejects direct close for frontend flows.
 
 ### accounting-catalog-controller (5)
 
