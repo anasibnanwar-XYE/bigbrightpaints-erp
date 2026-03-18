@@ -475,7 +475,7 @@ These rows are required for the period-close maker-checker UX, but they live out
 - Error state: inline widget errors + page-level retry + action-level toast; preserve user filters and unsaved inputs.
 - Suggested table columns: Period grid from `AccountingPeriodDto`: periodId, startDate, endDate, status(OPEN/CLOSED/LOCKED), closedAt, lockedAt. If product needs a pending-review badge or requester label, derive it by joining `PeriodCloseRequestDto` / `approvals` data instead of waiting for extra fields on `acctListPeriods`.
 - Suggested form fields: Checklist form items, maker note for `request-close`, checker approval/rejection note, reopen reason.
-- Role/permission gate: Mixed by endpoint. `acctListPeriods`, `acctChecklist`, `acctUpdateChecklist`, `acctLockPeriod`, `requestPeriodClose`, `approvePeriodClose`, `rejectPeriodClose`, and `acctReopenPeriod` allow `ROLE_ADMIN or ROLE_ACCOUNTING`; `approvals` visibility is `ROLE_ADMIN or ROLE_ACCOUNTING` (backend also allows `ROLE_SUPER_ADMIN`). Do not hardcode admin-only checker gating for this workflow.
+- Role/permission gate: Mixed by endpoint. `acctListPeriods`, `acctChecklist`, `acctUpdateChecklist`, `acctLockPeriod`, `requestPeriodClose`, `approvePeriodClose`, and `rejectPeriodClose` allow `ROLE_ADMIN or ROLE_ACCOUNTING`; `approvals` visibility is `ROLE_ADMIN or ROLE_ACCOUNTING` (backend also allows `ROLE_SUPER_ADMIN`); `acctReopenPeriod` is `ROLE_SUPER_ADMIN` only. Do not hardcode admin-only checker gating for this workflow, and do not surface reopen outside superadmin UX.
 
 ### `/accounting/ar/invoices`
 - Purpose: Invoice tracking, invoice PDF/email delivery, dealer invoice views.

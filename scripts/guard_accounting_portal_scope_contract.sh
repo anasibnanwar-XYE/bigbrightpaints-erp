@@ -224,6 +224,8 @@ require_section_literal "### \`/accounting/period-close\`" "derive it by joining
   "period-close route must treat pending review state as derived from request or queue payloads"
 require_section_literal "### \`/accounting/period-close\`" "Role/permission gate: Mixed by endpoint." "$HANDOFF_DOC" \
   "period-close route must document mixed RBAC truth for maker-checker close"
+require_section_literal "### \`/accounting/period-close\`" "\`acctReopenPeriod\` is \`ROLE_SUPER_ADMIN\` only" "$HANDOFF_DOC" \
+  "period-close route must keep reopen restricted to superadmin-only UX"
 require_literal "### Accounting Core Workflow Supplements (Code-Verified, Outside Parity Lock)" "$HANDOFF_DOC" \
   "handoff must keep explicit supplement rows for maker-checker period-close workflow"
 require_literal '| `approvals` | GET | `/api/v1/admin/approvals` |' "$HANDOFF_DOC" \
