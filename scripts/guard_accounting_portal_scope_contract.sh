@@ -210,4 +210,23 @@ require_section_literal "### \`/accounting/reports/financial\`" "Audit-trail rou
 require_section_literal "### \`/accounting/reports/financial\`" "Role/permission gate: Mixed by endpoint:" "$HANDOFF_DOC" \
   "financial reports route must document mixed RBAC truth"
 
+require_section_literal "### \`/accounting/period-close\`" "requestPeriodClose" "$HANDOFF_DOC" \
+  "period-close route must document maker request-close workflow"
+require_section_literal "### \`/accounting/period-close\`" "approvePeriodClose" "$HANDOFF_DOC" \
+  "period-close route must document admin approve-close workflow"
+require_section_literal "### \`/accounting/period-close\`" "rejectPeriodClose" "$HANDOFF_DOC" \
+  "period-close route must document admin reject-close workflow"
+require_section_literal "### \`/accounting/period-close\`" "do not wire \`acctClosePeriod\` as a frontend action" "$HANDOFF_DOC" \
+  "period-close route must warn that direct close is disabled for frontend flows"
+require_section_literal "### \`/accounting/period-close\`" "Role/permission gate: Mixed by endpoint." "$HANDOFF_DOC" \
+  "period-close route must document mixed RBAC truth for maker-checker close"
+require_literal "Maker-checker period-close note:" "$ENDPOINT_MAP_DOC" \
+  "endpoint map must include maker-checker period-close note"
+require_literal 'POST /api/v1/accounting/periods/{periodId}/request-close' "$ENDPOINT_MAP_DOC" \
+  "endpoint map must reference request-close for period close workflow"
+require_literal 'POST /api/v1/accounting/periods/{periodId}/approve-close' "$ENDPOINT_MAP_DOC" \
+  "endpoint map must reference approve-close for period close workflow"
+require_literal 'POST /api/v1/accounting/periods/{periodId}/reject-close' "$ENDPOINT_MAP_DOC" \
+  "endpoint map must reference reject-close for period close workflow"
+
 echo "[guard_accounting_portal_scope_contract] OK"

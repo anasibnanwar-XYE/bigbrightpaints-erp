@@ -450,14 +450,16 @@ These are cross-portal APIs reused in Accounting Portal for auth/session/profile
 - Role/permission gate: `ROLE_ADMIN or ROLE_ACCOUNTING` (exact backend)
 
 ### `/accounting/period-close`
-- Purpose: Period lifecycle controls (checklist, close, lock, reopen).
-- Required API calls: `acctListPeriods`, `acctChecklist`, `acctUpdateChecklist`, `acctClosePeriod`, `acctLockPeriod`, `acctReopenPeriod`
-- Loading state: timeline loader; lock/close actions blocked until checklist passes; explicit warning banners for reopen.
+- Purpose: Period lifecycle controls with maker-checker close approval (checklist, request-close, approve/reject, lock, reopen).
+- Required API calls: `acctListPeriods`, `acctChecklist`, `acctUpdateChecklist`, `acctLockPeriod`, `requestPeriodClose`, `approvePeriodClose`, `rejectPeriodClose`, `acctReopenPeriod`
+- Backend workflow note: do not wire `acctClosePeriod` as a frontend action. `AccountingPeriodService.closePeriod(...)` hard-fails direct close with `Direct close is disabled; submit /request-close and approve via maker-checker workflow`.
+- Admin approval queue dependency: `approvals` (`GET /api/v1/admin/approvals`) for pending close-request visibility and checker actions.
+- Loading state: timeline loader; lock/request-close actions blocked until checklist passes; explicit pending-approval state after maker submission; warning banners for reject/reopen flows.
 - Empty state: no rows / no open items / no period data for selected filters.
 - Error state: inline widget errors + page-level retry + action-level toast; preserve user filters and unsaved inputs.
-- Suggested table columns: Period grid: periodId, startDate, endDate, status(open/closed/locked), closedAt, lockedAt.
-- Suggested form fields: Checklist form items + override reason fields for close/reopen workflows.
-- Role/permission gate: `ROLE_ADMIN or ROLE_ACCOUNTING` (exact backend)
+- Suggested table columns: Period grid: periodId, startDate, endDate, status(open/pending_approval/closed/locked), requestedBy, closedAt, lockedAt.
+- Suggested form fields: Checklist form items, maker note for `request-close`, checker approval/rejection reason, reopen reason.
+- Role/permission gate: Mixed by endpoint. `acctListPeriods`, `acctChecklist`, `acctUpdateChecklist`, `acctLockPeriod`, `requestPeriodClose`, and `acctReopenPeriod` allow `ROLE_ADMIN or ROLE_ACCOUNTING`; `approvePeriodClose`, `rejectPeriodClose`, and `approvals` are `ROLE_ADMIN` checker actions.
 
 ### `/accounting/ar/invoices`
 - Purpose: Invoice tracking, invoice PDF/email delivery, dealer invoice views.
@@ -635,7 +637,7 @@ UX rule:
 
 ### Approval Flow Contract For Accounting Approvers
 
-Accounting role users (`ROLE_ACCOUNTING`) can operate approvals via:
+Accounting and admin users can view the approval queue via:
 - Queue: `GET /api/v1/admin/approvals`
 - Action endpoints from queue payload fields:
   - `approveEndpoint`
@@ -650,3 +652,4 @@ Action semantics:
 - Credit request approvals: `/api/v1/sales/credit-requests/{id}/approve|reject`
 - Dispatch override approvals: `/api/v1/credit/override-requests/{id}/approve|reject`
 - Payroll approvals: `/api/v1/payroll/runs/{id}/approve` (no reject endpoint in queue payload)
+- Period close approvals: `/api/v1/accounting/periods/{id}/approve-close|reject-close` and these checker actions are `ROLE_ADMIN` only even though accountants can submit `request-close`.
