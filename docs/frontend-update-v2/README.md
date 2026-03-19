@@ -4,7 +4,7 @@ This folder is the dedicated review surface for frontend follow-up from the `sec
 
 ## Overall contract summary
 
-- `GET /api/v1/admin/approvals` now returns typed approval items with `originType` and `ownerType`; the legacy `type` and `sourcePortal` fields are removed, and export approval rows keep machine-readable `reportType`, `parameters`, `requesterUserId`, and `requesterEmail`.
+- `GET /api/v1/admin/approvals` now returns typed approval items with `originType` and `ownerType`; the legacy `type` and `sourcePortal` fields are removed. Export approval rows keep machine-readable `reportType` for all inbox viewers, while `parameters`, `requesterUserId`, and `requesterEmail` are redacted for accounting-only viewers.
 - `GET /api/v1/admin/exports/pending` is retired. Tenant-scoped admin/accounting approval consumers should use `GET /api/v1/admin/approvals` as the single inbox; platform super-admins remain blocked from that tenant-admin prefix.
 - `POST /api/v1/superadmin/tenants/onboard` now makes seeded bootstrap explicit via `bootstrapMode`, `seededChartOfAccounts`, `defaultAccountingPeriodCreated`, and `tenantAdminProvisioned`.
 - `GET /api/v1/companies/superadmin/dashboard` is retired; `GET /api/v1/superadmin/dashboard` remains the public aggregate-count dashboard route and is not a drop-in replacement for the retired detailed tenant payload.

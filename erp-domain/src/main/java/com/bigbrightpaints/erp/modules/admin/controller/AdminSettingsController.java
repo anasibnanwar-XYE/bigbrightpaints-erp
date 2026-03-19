@@ -157,6 +157,7 @@ public class AdminSettingsController {
     @Transactional(readOnly = true)
     public ApiResponse<AdminApprovalsResponse> approvals() {
         Company company = companyContextService.requireCurrentCompany();
+        boolean includeSensitiveExportApprovalDetails = canViewSensitiveExportApprovalDetails();
         List<AdminApprovalItemDto> creditRequestApprovals = creditRequestRepository
                 .findPendingByCompanyOrderByCreatedAtDesc(company)
                 .stream()
@@ -190,7 +191,7 @@ public class AdminSettingsController {
 
         List<AdminApprovalItemDto> exportApprovals = exportApprovalService.listPending()
                 .stream()
-                .map(this::toExportApprovalItem)
+                .map(request -> toExportApprovalItem(request, includeSensitiveExportApprovalDetails))
                 .toList();
 
         AdminApprovalsResponse response = new AdminApprovalsResponse(
@@ -339,11 +340,16 @@ public class AdminSettingsController {
         );
     }
 
-    private AdminApprovalItemDto toExportApprovalItem(ExportRequestDto request) {
+    private AdminApprovalItemDto toExportApprovalItem(ExportRequestDto request, boolean includeSensitiveDetails) {
         String reference = "EXP-" + request.id();
         String summary = "Approve export request " + reference
-                + " for report " + request.reportType()
-                + " requested by " + (StringUtils.hasText(request.userEmail()) ? request.userEmail() : "unknown user");
+                + " for report " + request.reportType();
+        String requesterEmail = includeSensitiveDetails && StringUtils.hasText(request.userEmail())
+                ? request.userEmail()
+                : null;
+        if (requesterEmail != null) {
+            summary = summary + " requested by " + requesterEmail;
+        }
         return new AdminApprovalItemDto(
                 AdminApprovalItemDto.OriginType.EXPORT_REQUEST,
                 AdminApprovalItemDto.OwnerType.REPORTS,
@@ -353,15 +359,26 @@ public class AdminSettingsController {
                 normalizeStatus(request.status() != null ? request.status().name() : null),
                 summary,
                 request.reportType(),
-                request.parameters(),
-                request.userId(),
-                request.userEmail(),
+                includeSensitiveDetails ? request.parameters() : null,
+                includeSensitiveDetails ? request.userId() : null,
+                requesterEmail,
                 EXPORT_REQUEST_APPROVAL_ACTION,
                 "Approve data export",
                 EXPORT_REQUEST_APPROVE_ENDPOINT,
                 EXPORT_REQUEST_REJECT_ENDPOINT,
                 request.createdAt()
         );
+    }
+
+    private boolean canViewSensitiveExportApprovalDetails() {
+        org.springframework.security.core.Authentication authentication =
+                org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || authentication.getAuthorities() == null) {
+            return false;
+        }
+        return authentication.getAuthorities().stream()
+                .map(org.springframework.security.core.GrantedAuthority::getAuthority)
+                .anyMatch(authority -> "ROLE_ADMIN".equals(authority) || "ROLE_SUPER_ADMIN".equals(authority));
     }
 
     private String normalizeStatus(String status) {

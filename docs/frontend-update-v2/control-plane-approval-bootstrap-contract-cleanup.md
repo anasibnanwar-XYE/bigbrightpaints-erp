@@ -23,10 +23,9 @@ Changed payload fields for each approval item:
 - removed `sourcePortal`
 
 Export approval rows (`originType=EXPORT_REQUEST`) additionally expose:
-- `reportType`
-- `parameters`
-- `requesterUserId`
-- `requesterEmail`
+- `reportType` for all tenant-scoped inbox viewers
+- `parameters`, `requesterUserId`, and `requesterEmail` only for tenant admin or super-admin viewers
+- accounting viewers receive the export row with those sensitive fields redacted
 
 Current emitted `originType` values:
 - `CREDIT_REQUEST`
@@ -54,7 +53,8 @@ Unchanged approval item fields:
 
 Frontend action:
 - switch approval queue rendering, filtering, and badge logic to `originType` and `ownerType`
-- render export approval detail from `reportType`, `parameters`, `requesterUserId`, and `requesterEmail` instead of parsing `summary`
+- render export approval detail from `reportType`
+- only render `parameters`, `requesterUserId`, and `requesterEmail` when the caller is a tenant admin or super-admin
 - stop reading `type` and `sourcePortal`
 - keep `GET /api/v1/admin/approvals` limited to tenant-scoped admin/accounting callers; do not point platform super-admin tooling at that prefix
 

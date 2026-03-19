@@ -74,14 +74,14 @@
   - companies path count: `9`
   - `/api/v1/admin/exports/pending` absent
   - `/api/v1/admin/approvals` present as the single inbox
-  - `AdminApprovalItemDto` exposes `originType` and `ownerType`, no longer exposes `type` or `sourcePortal`, and export approval rows now expose machine-readable `reportType`, `parameters`, `requesterUserId`, and `requesterEmail`
+  - `AdminApprovalItemDto` exposes `originType` and `ownerType`, no longer exposes `type` or `sourcePortal`, and export approval rows expose `reportType` for all inbox viewers while `parameters`, `requesterUserId`, and `requesterEmail` stay limited to tenant admin or super-admin responses
   - `/api/v1/companies/superadmin/dashboard` absent
   - `/api/v1/superadmin/dashboard` present
   - `TenantOnboardingResponse` exposes `bootstrapMode`, `seededChartOfAccounts`, `defaultAccountingPeriodCreated`, and `tenantAdminProvisioned`
 
 ## Reviewer Notes
 - The tenant-admin provisioning fix in this packet is behaviorally small but important: the packet now explicitly runs `RoleService.ensureRoleExists("ROLE_ADMIN")` to synchronize default permissions, then loads the persisted shared role from `RoleRepository` before persisting bootstrap admins on both tenant bootstrap paths.
-- The approval inbox now retains export scope as structured fields so approvers do not have to parse `summary` to inspect report type, raw parameters, or requester identity.
+- The approval inbox now retains export scope as structured fields for real approvers without leaking raw export parameters or requester identity to accounting-only viewers.
 - Current head may include docs-only checkpoint/workflow-note commits above the review candidate; `ea5a81ddb2f77811082ca7299c878e1051ce3ede` is the last runtime-bearing SHA covered by the proof listed above.
 - Route-family hard-cut work was intentionally left out of this packet. Review should block any attempt to smuggle `/api/v1/superadmin/tenants/**` create/update migration or `CompanyContextFilter` rebinding into this PR.
 - Review should use committed sources plus the rerunnable commands above; older dirty ERP-19 worktrees are source material only and are not branch truth.

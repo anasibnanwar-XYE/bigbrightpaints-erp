@@ -25,6 +25,9 @@ import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.authentication.TestingAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -34,6 +37,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -346,16 +350,182 @@ class AdminSettingsControllerApprovalsContractTest {
         assertThat(exportApproval.reference()).isEqualTo("EXP-81");
         assertThat(exportApproval.status()).isEqualTo("PENDING");
         assertThat(exportApproval.summary()).contains("report SALES_SUMMARY");
-        assertThat(exportApproval.summary()).contains("ops.reports@bbp.com");
         assertThat(exportApproval.reportType()).isEqualTo("SALES_SUMMARY");
-        assertThat(exportApproval.parameters()).isEqualTo("{\"range\":\"MTD\"}");
-        assertThat(exportApproval.requesterUserId()).isEqualTo(7001L);
-        assertThat(exportApproval.requesterEmail()).isEqualTo("ops.reports@bbp.com");
         assertThat(exportApproval.actionType()).isEqualTo("APPROVE_EXPORT_REQUEST");
         assertThat(exportApproval.actionLabel()).isEqualTo("Approve data export");
         assertThat(exportApproval.approveEndpoint()).isEqualTo("/api/v1/admin/exports/{id}/approve");
         assertThat(exportApproval.rejectEndpoint()).isEqualTo("/api/v1/admin/exports/{id}/reject");
         assertThat(exportApproval.createdAt()).isEqualTo(Instant.parse("2026-02-12T14:30:00Z"));
+    }
+
+    @Test
+    void approvals_redactsSensitiveExportDetailsForAccountingView() {
+        SystemSettingsService systemSettingsService = mock(SystemSettingsService.class);
+        EmailService emailService = mock(EmailService.class);
+        CompanyContextService companyContextService = mock(CompanyContextService.class);
+        TenantRuntimePolicyService tenantRuntimePolicyService = mock(TenantRuntimePolicyService.class);
+        CreditRequestRepository creditRequestRepository = mock(CreditRequestRepository.class);
+        CreditLimitOverrideRequestRepository creditLimitOverrideRequestRepository =
+                mock(CreditLimitOverrideRequestRepository.class);
+        PeriodCloseRequestRepository periodCloseRequestRepository = mock(PeriodCloseRequestRepository.class);
+        PayrollRunRepository payrollRunRepository = mock(PayrollRunRepository.class);
+        ExportApprovalService exportApprovalService = mock(ExportApprovalService.class);
+        AdminSettingsController controller = new AdminSettingsController(
+                systemSettingsService,
+                emailService,
+                companyContextService,
+                tenantRuntimePolicyService,
+                exportApprovalService,
+                creditRequestRepository,
+                creditLimitOverrideRequestRepository,
+                periodCloseRequestRepository,
+                payrollRunRepository,
+                null
+        );
+
+        Company company = new Company();
+        ReflectionTestUtils.setField(company, "id", 504L);
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(creditRequestRepository.findPendingByCompanyOrderByCreatedAtDesc(company)).thenReturn(List.of());
+        when(creditLimitOverrideRequestRepository.findPendingByCompanyOrderByCreatedAtDesc(company)).thenReturn(List.of());
+        when(payrollRunRepository.findByCompanyAndStatusOrderByCreatedAtDesc(company, PayrollRun.PayrollStatus.CALCULATED))
+                .thenReturn(List.of());
+        when(periodCloseRequestRepository.findPendingByCompanyOrderByRequestedAtDesc(company)).thenReturn(List.of());
+        when(exportApprovalService.listPending()).thenReturn(List.of(
+                new ExportRequestDto(
+                        91L,
+                        8100L,
+                        "ops.reports@bbp.com",
+                        "AGED_DEBTORS",
+                        "{\"range\":\"MTD\"}",
+                        ExportApprovalStatus.PENDING,
+                        null,
+                        Instant.parse("2026-02-13T09:15:00Z"),
+                        null,
+                        null)
+        ));
+
+        authenticateAs("ROLE_ACCOUNTING");
+        ApiResponse<AdminApprovalsResponse> response;
+        try {
+            response = controller.approvals();
+        } finally {
+            SecurityContextHolder.clearContext();
+        }
+
+        assertThat(response.success()).isTrue();
+        assertThat(response.data()).isNotNull();
+        assertThat(response.data().exportRequests()).hasSize(1);
+
+        AdminApprovalItemDto exportApproval = response.data().exportRequests().get(0);
+        assertThat(exportApproval.originType()).isEqualTo(AdminApprovalItemDto.OriginType.EXPORT_REQUEST);
+        assertThat(exportApproval.ownerType()).isEqualTo(AdminApprovalItemDto.OwnerType.REPORTS);
+        assertThat(exportApproval.reference()).isEqualTo("EXP-91");
+        assertThat(exportApproval.summary()).contains("report AGED_DEBTORS");
+        assertThat(exportApproval.summary()).doesNotContain("ops.reports@bbp.com");
+        assertThat(exportApproval.reportType()).isEqualTo("AGED_DEBTORS");
+        assertThat(exportApproval.parameters()).isNull();
+        assertThat(exportApproval.requesterUserId()).isNull();
+        assertThat(exportApproval.requesterEmail()).isNull();
+    }
+
+    @Test
+    void approvals_fallsBackToUnknownStatusForExportRequests() {
+        SystemSettingsService systemSettingsService = mock(SystemSettingsService.class);
+        EmailService emailService = mock(EmailService.class);
+        CompanyContextService companyContextService = mock(CompanyContextService.class);
+        TenantRuntimePolicyService tenantRuntimePolicyService = mock(TenantRuntimePolicyService.class);
+        CreditRequestRepository creditRequestRepository = mock(CreditRequestRepository.class);
+        CreditLimitOverrideRequestRepository creditLimitOverrideRequestRepository =
+                mock(CreditLimitOverrideRequestRepository.class);
+        PeriodCloseRequestRepository periodCloseRequestRepository = mock(PeriodCloseRequestRepository.class);
+        PayrollRunRepository payrollRunRepository = mock(PayrollRunRepository.class);
+        ExportApprovalService exportApprovalService = mock(ExportApprovalService.class);
+        AdminSettingsController controller = new AdminSettingsController(
+                systemSettingsService,
+                emailService,
+                companyContextService,
+                tenantRuntimePolicyService,
+                exportApprovalService,
+                creditRequestRepository,
+                creditLimitOverrideRequestRepository,
+                periodCloseRequestRepository,
+                payrollRunRepository,
+                null
+        );
+
+        Company company = new Company();
+        ReflectionTestUtils.setField(company, "id", 505L);
+        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        when(creditRequestRepository.findPendingByCompanyOrderByCreatedAtDesc(company)).thenReturn(List.of());
+        when(creditLimitOverrideRequestRepository.findPendingByCompanyOrderByCreatedAtDesc(company)).thenReturn(List.of());
+        when(payrollRunRepository.findByCompanyAndStatusOrderByCreatedAtDesc(company, PayrollRun.PayrollStatus.CALCULATED))
+                .thenReturn(List.of());
+        when(periodCloseRequestRepository.findPendingByCompanyOrderByRequestedAtDesc(company)).thenReturn(List.of());
+        when(exportApprovalService.listPending()).thenReturn(List.of(
+                new ExportRequestDto(
+                        92L,
+                        9100L,
+                        "ops.reports@bbp.com",
+                        "INVENTORY_LEDGER",
+                        "periodId=11",
+                        null,
+                        null,
+                        Instant.parse("2026-02-13T10:15:00Z"),
+                        null,
+                        null)
+        ));
+
+        ApiResponse<AdminApprovalsResponse> response = controller.approvals();
+
+        assertThat(response.success()).isTrue();
+        assertThat(response.data()).isNotNull();
+        assertThat(response.data().exportRequests()).hasSize(1);
+        assertThat(response.data().exportRequests().get(0).status()).isEqualTo("UNKNOWN");
+    }
+
+    @Test
+    void exportApprovalItem_omitsRequesterIdentityWhenPrivilegedViewHasNoRequesterEmail() {
+        AdminSettingsController controller = new AdminSettingsController(
+                mock(SystemSettingsService.class),
+                mock(EmailService.class),
+                mock(CompanyContextService.class),
+                mock(TenantRuntimePolicyService.class),
+                mock(ExportApprovalService.class),
+                mock(CreditRequestRepository.class),
+                mock(CreditLimitOverrideRequestRepository.class),
+                mock(PeriodCloseRequestRepository.class),
+                mock(PayrollRunRepository.class),
+                null
+        );
+
+        ExportRequestDto request = new ExportRequestDto(
+                93L,
+                9300L,
+                null,
+                "INVENTORY_LEDGER",
+                "periodId=11",
+                ExportApprovalStatus.PENDING,
+                null,
+                Instant.parse("2026-02-13T10:30:00Z"),
+                null,
+                null
+        );
+
+        AdminApprovalItemDto exportApproval = ReflectionTestUtils.invokeMethod(
+                controller,
+                "toExportApprovalItem",
+                request,
+                true
+        );
+
+        assertThat(exportApproval).isNotNull();
+        assertThat(exportApproval.summary()).contains("report INVENTORY_LEDGER");
+        assertThat(exportApproval.summary()).doesNotContain("requested by");
+        assertThat(exportApproval.reportType()).isEqualTo("INVENTORY_LEDGER");
+        assertThat(exportApproval.parameters()).isEqualTo("periodId=11");
+        assertThat(exportApproval.requesterUserId()).isEqualTo(9300L);
+        assertThat(exportApproval.requesterEmail()).isNull();
     }
 
     @Test
@@ -473,6 +643,20 @@ class AdminSettingsControllerApprovalsContractTest {
         assertThat(payrollApproval.originType()).isEqualTo(AdminApprovalItemDto.OriginType.PAYROLL_RUN);
         assertThat(payrollApproval.ownerType()).isEqualTo(AdminApprovalItemDto.OwnerType.HR);
         assertThat(response.data().periodCloseRequests()).isEmpty();
+    }
+
+    private void authenticateAs(String... authorities) {
+        TestingAuthenticationToken authentication = new TestingAuthenticationToken(
+                "approvals-contract-test",
+                "n/a",
+                Stream.of(authorities)
+                        .map(SimpleGrantedAuthority::new)
+                        .toList()
+        );
+        authentication.setAuthenticated(true);
+        var context = SecurityContextHolder.createEmptyContext();
+        context.setAuthentication(authentication);
+        SecurityContextHolder.setContext(context);
     }
 
     @Test

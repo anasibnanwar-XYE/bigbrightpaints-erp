@@ -105,6 +105,30 @@ class ReportExportApprovalIT extends AbstractIntegrationTest {
                     assertThat(String.valueOf(row.get("reference"))).startsWith("EXP-");
                 });
 
+        ResponseEntity<Map> accountingInboxResponse = rest.exchange(
+                "/api/v1/admin/approvals",
+                HttpMethod.GET,
+                new HttpEntity<>(accountingHeaders),
+                Map.class
+        );
+        assertThat(accountingInboxResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(accountingInboxResponse.getBody()).isNotNull();
+        Map<?, ?> accountingInboxData = (Map<?, ?>) accountingInboxResponse.getBody().get("data");
+        assertThat(accountingInboxData).isNotNull();
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> accountingExportRequests =
+                (List<Map<String, Object>>) accountingInboxData.get("exportRequests");
+        assertThat(accountingExportRequests)
+                .anySatisfy(row -> {
+                    assertThat(row.get("originType")).isEqualTo("EXPORT_REQUEST");
+                    assertThat(row.get("reportType")).isEqualTo("TRIAL-BALANCE");
+                    assertThat(String.valueOf(row.get("summary"))).contains("report TRIAL-BALANCE");
+                    assertThat(String.valueOf(row.get("summary"))).doesNotContain(ACCOUNTING_EMAIL);
+                    assertThat(row.containsKey("parameters")).isFalse();
+                    assertThat(row.containsKey("requesterEmail")).isFalse();
+                    assertThat(row.containsKey("requesterUserId")).isFalse();
+                });
+
         ResponseEntity<Map> downloadBeforeApproval = rest.exchange(
                 "/api/v1/exports/" + requestId.longValue() + "/download",
                 HttpMethod.GET,

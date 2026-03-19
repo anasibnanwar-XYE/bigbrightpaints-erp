@@ -647,10 +647,9 @@ Queue payload fields to render directly:
 - `approveEndpoint`, `rejectEndpoint`, `createdAt`.
 
 Export approval rows additionally expose:
-- `reportType`
-- `parameters`
-- `requesterUserId`
-- `requesterEmail`
+- `reportType` for all accounting inbox viewers
+- redacted `parameters`, `requesterUserId`, and `requesterEmail` for accounting-only viewers
+- full `parameters`, `requesterUserId`, and `requesterEmail` only when the same queue is rendered for tenant admin or super-admin users
 
 Action semantics:
 - Credit request approvals: `/api/v1/sales/credit-requests/{id}/approve|reject`

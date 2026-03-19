@@ -91,6 +91,7 @@ class AdminApprovalRbacIT extends AbstractIntegrationTest {
     @Test
     void adminApprovalsPayloadUsesTypedOriginAndOwnerFields() {
         HttpHeaders adminHeaders = authHeaders(ADMIN_EMAIL, PASSWORD);
+        HttpHeaders accountingHeaders = authHeaders(ACCOUNTING_EMAIL, PASSWORD);
         HttpHeaders salesHeaders = authHeaders(SALES_EMAIL, PASSWORD);
 
         long dealerId = createDealer("APPROVAL-CONTRACT-" + System.nanoTime(), new BigDecimal("5000"));
@@ -140,6 +141,34 @@ class AdminApprovalRbacIT extends AbstractIntegrationTest {
         assertThat(exportApproval.get("parameters")).isEqualTo("periodId=7");
         assertThat(exportApproval.get("requesterEmail")).isEqualTo(ACCOUNTING_EMAIL);
         assertThat(exportApproval.get("requesterUserId")).isNotNull();
+
+        ResponseEntity<Map> accountingApprovalsResponse = rest.exchange(
+                "/api/v1/admin/approvals",
+                HttpMethod.GET,
+                new HttpEntity<>(accountingHeaders),
+                Map.class);
+        assertThat(accountingApprovalsResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        Map<?, ?> accountingApprovalsBody = accountingApprovalsResponse.getBody();
+        assertThat(accountingApprovalsBody).isNotNull();
+        Map<?, ?> accountingApprovalsData = (Map<?, ?>) accountingApprovalsBody.get("data");
+        assertThat(accountingApprovalsData).isNotNull();
+        List<?> accountingExportApprovals = (List<?>) accountingApprovalsData.get("exportRequests");
+        assertThat(accountingExportApprovals).isNotEmpty();
+
+        Map<?, ?> accountingExportApproval = accountingExportApprovals.stream()
+                .map(Map.class::cast)
+                .filter(item -> ("EXP-" + exportRequestId).equals(item.get("reference")))
+                .findFirst()
+                .orElseThrow();
+        assertThat(accountingExportApproval.get("originType")).isEqualTo("EXPORT_REQUEST");
+        assertThat(accountingExportApproval.get("ownerType")).isEqualTo("REPORTS");
+        assertThat(accountingExportApproval.get("reportType")).isEqualTo("SALES_SUMMARY");
+        assertThat(String.valueOf(accountingExportApproval.get("summary"))).contains("report SALES_SUMMARY");
+        assertThat(String.valueOf(accountingExportApproval.get("summary"))).doesNotContain(ACCOUNTING_EMAIL);
+        assertThat(accountingExportApproval.containsKey("parameters")).isFalse();
+        assertThat(accountingExportApproval.containsKey("requesterEmail")).isFalse();
+        assertThat(accountingExportApproval.containsKey("requesterUserId")).isFalse();
     }
 
     @Test
