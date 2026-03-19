@@ -339,6 +339,42 @@ class AdminUserServiceTest {
     }
 
     @Test
+    void createUser_rejectsNullRoleList() {
+        assertThatThrownBy(() -> service.createUser(new CreateUserRequest(
+                "tenant-user@example.com",
+                "Password@123",
+                "Tenant User",
+                List.of(1L),
+                null
+        ))).isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("User must have at least one platform role");
+    }
+
+    @Test
+    void createUser_rejectsEmptyRoleList() {
+        assertThatThrownBy(() -> service.createUser(new CreateUserRequest(
+                "tenant-user@example.com",
+                "Password@123",
+                "Tenant User",
+                List.of(1L),
+                List.of()
+        ))).isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("User must have at least one platform role");
+    }
+
+    @Test
+    void createUser_rejectsBlankRoleEntries() {
+        assertThatThrownBy(() -> service.createUser(new CreateUserRequest(
+                "tenant-user@example.com",
+                "Password@123",
+                "Tenant User",
+                List.of(1L),
+                List.of(" ", "\t")
+        ))).isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("User must have at least one platform role");
+    }
+
+    @Test
     void listUsers_includesLastLoginAtDerivedFromLatestLoginAuditEvent() {
         UserAccount user = new UserAccount("audited-user@example.com", "hash", "Audited User");
         ReflectionTestUtils.setField(user, "id", 301L);

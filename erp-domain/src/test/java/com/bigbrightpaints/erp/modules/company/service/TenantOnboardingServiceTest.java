@@ -13,7 +13,9 @@ import com.bigbrightpaints.erp.core.notification.EmailService;
 import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodService;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
+import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
+import com.bigbrightpaints.erp.modules.rbac.domain.Role;
 import com.bigbrightpaints.erp.modules.rbac.service.RoleService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -80,5 +82,41 @@ class TenantOnboardingServiceTest {
         verify(systemSettingsRepository, times(2)).save(argThat(setting -> setting != null));
         verify(systemSettingsRepository, never()).save(argThat(setting ->
                 setting != null && "cors.allowed-origins".equals(setting.getKey())));
+    }
+
+    @Test
+    void createTenantAdmin_usesFixedAdminRoleCatalogEntry() {
+        TenantOnboardingService service = new TenantOnboardingService(
+                companyRepository,
+                userAccountRepository,
+                roleService,
+                passwordEncoder,
+                accountRepository,
+                accountingPeriodService,
+                coATemplateService,
+                emailService,
+                systemSettingsRepository);
+        Company company = new Company();
+        company.setCode("TENANT-A");
+        company.setName("Tenant A");
+        Role adminRole = new Role();
+        adminRole.setName("ROLE_ADMIN");
+
+        when(roleService.requireFixedSystemRole("ROLE_ADMIN")).thenReturn(adminRole);
+        when(passwordEncoder.encode(anyString())).thenReturn("encoded");
+
+        ReflectionTestUtils.invokeMethod(service, "createTenantAdmin", company, "admin@bbp.com", "Admin");
+
+        verify(roleService).requireFixedSystemRole("ROLE_ADMIN");
+        verify(userAccountRepository).save(argThat(user ->
+                user != null
+                        && user.getRoles().contains(adminRole)
+                        && user.isMustChangePassword()
+                        && user.getCompanies().contains(company)));
+        verify(emailService).sendUserCredentialsEmail(
+                org.mockito.ArgumentMatchers.eq("admin@bbp.com"),
+                org.mockito.ArgumentMatchers.eq("Admin"),
+                anyString(),
+                org.mockito.ArgumentMatchers.eq("TENANT-A"));
     }
 }

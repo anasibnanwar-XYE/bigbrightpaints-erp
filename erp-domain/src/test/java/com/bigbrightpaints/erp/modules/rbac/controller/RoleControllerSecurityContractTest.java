@@ -1,12 +1,17 @@
 package com.bigbrightpaints.erp.modules.rbac.controller;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+import com.bigbrightpaints.erp.modules.rbac.dto.RoleDto;
+import com.bigbrightpaints.erp.modules.rbac.service.RoleService;
 import java.util.Arrays;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 class RoleControllerSecurityContractTest {
 
@@ -17,6 +22,20 @@ class RoleControllerSecurityContractTest {
                         || exposesPostRequestMapping(method.getAnnotation(RequestMapping.class)))
                 .toList())
                 .isEmpty();
+    }
+
+    @Test
+    void getRoleByKey_normalizesBareRoleNameAgainstReadOnlyCatalog() {
+        RoleService roleService = mock(RoleService.class);
+        when(roleService.listRolesForCurrentActor())
+                .thenReturn(List.of(new RoleDto(1L, "ROLE_ADMIN", "Admin", List.of())));
+
+        RoleController controller = new RoleController(roleService);
+
+        var response = controller.getRoleByKey("admin");
+
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().data().name()).isEqualTo("ROLE_ADMIN");
     }
 
     private boolean exposesPostRequestMapping(RequestMapping mapping) {

@@ -102,7 +102,8 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
     }
 
     private Role requireRole(String roleName) {
-        return roleRepository.findByName(roleName).orElseThrow();
+        return roleRepository.findByName(roleName)
+                .orElseThrow(() -> new AssertionError("Expected seeded role to exist: " + roleName));
     }
 
     private void resetTenantLifecycle(String companyCode) {
