@@ -24,6 +24,7 @@ import com.bigbrightpaints.erp.modules.sales.domain.CreditRequestRepository;
 import com.bigbrightpaints.erp.modules.sales.domain.Dealer;
 import com.bigbrightpaints.erp.modules.sales.domain.SalesOrder;
 import com.bigbrightpaints.erp.shared.dto.ApiResponse;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.authentication.TestingAuthenticationToken;
@@ -587,6 +588,39 @@ class AdminSettingsControllerApprovalsContractTest {
         } finally {
             SecurityContextHolder.clearContext();
         }
+    }
+
+    @Test
+    void adminApprovalItemSerialization_keepsStableNullQueueFields() throws Exception {
+        var mapper = JsonMapper.builder().findAndAddModules().build();
+        AdminApprovalItemDto payrollApproval = new AdminApprovalItemDto(
+                AdminApprovalItemDto.OriginType.PAYROLL_RUN,
+                AdminApprovalItemDto.OwnerType.HR,
+                41L,
+                UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
+                "PR-41",
+                "PENDING",
+                "Approve payroll run PR-41",
+                null,
+                null,
+                null,
+                null,
+                "APPROVE_PAYROLL_RUN",
+                "Approve payroll run",
+                "/api/v1/payroll/runs/{id}/approve",
+                null,
+                Instant.parse("2026-02-13T11:00:00Z")
+        );
+
+        var json = mapper.readTree(mapper.writeValueAsString(payrollApproval));
+
+        assertThat(json.has("approveEndpoint")).isTrue();
+        assertThat(json.has("rejectEndpoint")).isTrue();
+        assertThat(json.get("rejectEndpoint").isNull()).isTrue();
+        assertThat(json.has("reportType")).isFalse();
+        assertThat(json.has("parameters")).isFalse();
+        assertThat(json.has("requesterUserId")).isFalse();
+        assertThat(json.has("requesterEmail")).isFalse();
     }
 
     @Test

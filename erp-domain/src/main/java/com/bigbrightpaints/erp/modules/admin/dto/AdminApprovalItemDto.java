@@ -1,10 +1,8 @@
 package com.bigbrightpaints.erp.modules.admin.dto;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
 import java.time.Instant;
 import java.util.UUID;
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
 public record AdminApprovalItemDto(
         OriginType originType,
         OwnerType ownerType,
@@ -13,9 +11,13 @@ public record AdminApprovalItemDto(
         String reference,
         String status,
         String summary,
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
         String reportType,
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
         String parameters,
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
         Long requesterUserId,
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
         String requesterEmail,
         String actionType,
         String actionLabel,
