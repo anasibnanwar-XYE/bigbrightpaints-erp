@@ -212,7 +212,7 @@ public class RoleService {
     }
 
     private boolean requiresSuperAdmin(String roleName) {
-        return ADMIN_ROLE.equalsIgnoreCase(roleName) || SUPER_ADMIN_ROLE.equalsIgnoreCase(roleName);
+        return ADMIN_ROLE.equalsIgnoreCase(roleName);
     }
 
     private boolean hasAuthority(Authentication authentication, String authority) {

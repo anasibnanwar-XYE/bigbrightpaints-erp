@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
@@ -167,6 +168,19 @@ class RoleServiceTest {
                 .containsEntry("reason", "tenant-admin-role-management-requires-super-admin")
                 .containsEntry("tenantScope", "TENANT-A")
                 .containsEntry("targetRole", "ROLE_ADMIN");
+    }
+
+    @Test
+    void requireAdminSurfaceAssignmentRole_allowsAdminRoleForSuperAdmin() {
+        authenticate("platform-owner@bbp.com", "ROLE_SUPER_ADMIN");
+        CompanyContextHolder.setCompanyCode("AUTH-ROOT");
+        Role adminRole = role("ROLE_ADMIN", permission("portal:admin"));
+        when(roleRepository.findByName("ROLE_ADMIN")).thenReturn(Optional.of(adminRole));
+        RoleService service = new RoleService(roleRepository, permissionRepository, auditService);
+
+        assertThat(service.requireAdminSurfaceAssignmentRole("ROLE_ADMIN")).isSameAs(adminRole);
+
+        verify(auditService, never()).logFailure(eq(AuditEvent.ACCESS_DENIED), any(Map.class));
     }
 
     @Test
