@@ -94,11 +94,12 @@ class RoleServiceRbacTenantIsolationTest {
     void listRolesForCurrentActor_hidesSuperAdminRole_forTenantAdmin() {
         RoleService service = new RoleService(roleRepository, permissionRepository, auditService);
         setAuthentication("tenant-admin@bbp.com", "ROLE_ADMIN");
-        when(roleRepository.findByNameIn(anyCollection())).thenReturn(List.of());
+        when(roleRepository.findByNameIn(anyCollection())).thenReturn(allPersistedSystemRoles());
 
         List<RoleDto> roles = service.listRolesForCurrentActor();
 
         assertThat(roles).isNotEmpty();
+        assertThat(roles).extracting(RoleDto::name).contains("ROLE_ADMIN");
         assertThat(roles).extracting(RoleDto::name).doesNotContain("ROLE_SUPER_ADMIN");
     }
 
@@ -106,10 +107,11 @@ class RoleServiceRbacTenantIsolationTest {
     void listRolesForCurrentActor_hidesSuperAdminRole_forSuperAdminAdminSurface() {
         RoleService service = new RoleService(roleRepository, permissionRepository, auditService);
         setAuthentication("super-admin@bbp.com", "ROLE_SUPER_ADMIN");
-        when(roleRepository.findByNameIn(anyCollection())).thenReturn(List.of());
+        when(roleRepository.findByNameIn(anyCollection())).thenReturn(allPersistedSystemRoles());
 
         List<RoleDto> roles = service.listRolesForCurrentActor();
 
+        assertThat(roles).extracting(RoleDto::name).contains("ROLE_ADMIN");
         assertThat(roles).extracting(RoleDto::name).doesNotContain("ROLE_SUPER_ADMIN");
     }
 
@@ -120,5 +122,21 @@ class RoleServiceRbacTenantIsolationTest {
                         .toList();
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(username, "N/A", granted));
+    }
+
+    private List<Role> allPersistedSystemRoles() {
+        return List.of(
+                role("ROLE_SUPER_ADMIN"),
+                role("ROLE_ADMIN"),
+                role("ROLE_ACCOUNTING"),
+                role("ROLE_FACTORY"),
+                role("ROLE_SALES"),
+                role("ROLE_DEALER"));
+    }
+
+    private Role role(String name) {
+        Role role = new Role();
+        role.setName(name);
+        return role;
     }
 }

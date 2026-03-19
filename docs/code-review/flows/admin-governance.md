@@ -72,7 +72,7 @@ Update and recovery flows are similarly side-effect heavy:
 
 Control-boundary notes:
 
-- The controller now uses the shared `PortalRoleActionMatrix.ADMIN_ONLY` guard. `ROLE_SUPER_ADMIN` still reaches the surface through role hierarchy (`SecurityConfig.roleHierarchy()` sets `ROLE_SUPER_ADMIN > ROLE_ADMIN`), but the admin-facing role catalog itself stays read-only and never exposes `ROLE_SUPER_ADMIN` for assignment.
+- The controller now uses the shared `PortalRoleActionMatrix.ADMIN_ONLY` guard. `ROLE_SUPER_ADMIN` still reaches the surface through role hierarchy (`SecurityConfig.roleHierarchy()` sets `ROLE_SUPER_ADMIN > ROLE_ADMIN`), but the admin-facing role catalog itself stays read-only, never exposes `ROLE_SUPER_ADMIN` for assignment, and fails fast if the canonical persisted fixed-role set is incomplete.
 - `updateUser(...)`, `updateUserStatus(...)`, and `forceResetPassword(...)` support foreign-tenant targeting for super admins through `resolveScopedUserForAdminAction(...)`.
 - `suspend(...)`, `unsuspend(...)`, `deleteUser(...)`, and `disableMfa(...)` do **not** use that cross-tenant branch; they pessimistically lock by the actor's active `companyId`, so a super admin hitting a foreign-tenant user through these endpoints gets a silent no-op rather than a clear denial or cross-tenant action.
 
@@ -262,7 +262,7 @@ The method is explicitly `@Transactional(readOnly = true)` and converts each pen
 - `TenantRuntimePolicyService` is mostly fail-closed: malformed hold states normalize to `BLOCKED`, quota values must stay positive, and quota denials are audited with request metadata.
 - CORS origin validation rejects wildcards and rejects non-HTTPS origins in prod profile.
 - Support ticket visibility is role-sensitive and hides foreign-tenant tickets from tenant admins and ordinary users.
-- Admin-user role assignment is hard-cut to the fixed six-role model: admin surfaces resolve persisted system roles only, `ROLE_SUPER_ADMIN` is platform-owner only, and tenant admin workflows can assign only the client-facing fixed roles that already exist in the canonical catalog.
+- Admin-user role assignment is hard-cut to the fixed six-role model: admin surfaces resolve persisted system roles only, `ROLE_SUPER_ADMIN` is platform-owner only, and missing fixed-role rows are treated as invalid platform state rather than silently synthesized or hidden.
 
 ### Bad patterns and hotspots
 

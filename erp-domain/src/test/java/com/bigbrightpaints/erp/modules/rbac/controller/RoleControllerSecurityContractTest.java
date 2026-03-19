@@ -1,6 +1,7 @@
 package com.bigbrightpaints.erp.modules.rbac.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -36,6 +37,17 @@ class RoleControllerSecurityContractTest {
 
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().data().name()).isEqualTo("ROLE_ADMIN");
+    }
+
+    @Test
+    void getRoleByKey_rejects_role_missing_from_persisted_catalog() {
+        RoleService roleService = mock(RoleService.class);
+        when(roleService.listRolesForCurrentActor()).thenReturn(List.of());
+
+        RoleController controller = new RoleController(roleService);
+
+        assertThatThrownBy(() -> controller.getRoleByKey("admin"))
+                .hasMessageContaining("Role not found: ROLE_ADMIN");
     }
 
     private boolean exposesPostRequestMapping(RequestMapping mapping) {

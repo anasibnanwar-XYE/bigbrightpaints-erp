@@ -119,27 +119,63 @@ class RoleServiceTest {
     }
 
     @Test
+    void synchronizeSystemRolePermissions_ignores_unknown_role_rows() {
+        Role custom = role("ROLE_CUSTOM", permission("portal:custom"));
+        when(roleRepository.findByNameIn(List.of(
+                "ROLE_SUPER_ADMIN",
+                "ROLE_ADMIN",
+                "ROLE_ACCOUNTING",
+                "ROLE_FACTORY",
+                "ROLE_SALES",
+                "ROLE_DEALER"))).thenReturn(List.of(custom));
+
+        RoleService service = new RoleService(roleRepository, permissionRepository, auditService);
+
+        int updatedRoles = service.synchronizeSystemRolePermissions();
+
+        assertThat(updatedRoles).isZero();
+        verify(roleRepository, never()).save(any(Role.class));
+    }
+
+    @Test
     void listRolesForCurrentActor_hidesSuperAdminRoleFromNonSuperAdminActors() {
         authenticate("tenant-admin@bbp.com", "ROLE_ADMIN");
-        when(roleRepository.findByNameIn(SystemRole.roleNames())).thenReturn(List.of());
+        when(roleRepository.findByNameIn(SystemRole.roleNames())).thenReturn(allPersistedSystemRoles());
 
         RoleService service = new RoleService(roleRepository, permissionRepository, auditService);
 
         assertThat(service.listRolesForCurrentActor())
                 .extracting(role -> role.name())
+                .contains("ROLE_ADMIN")
                 .doesNotContain("ROLE_SUPER_ADMIN");
     }
 
     @Test
     void listRolesForCurrentActor_hidesSuperAdminRoleFromSuperAdminAdminSurface() {
         authenticate("root-superadmin@bbp.com", "ROLE_SUPER_ADMIN");
-        when(roleRepository.findByNameIn(SystemRole.roleNames())).thenReturn(List.of());
+        when(roleRepository.findByNameIn(SystemRole.roleNames())).thenReturn(allPersistedSystemRoles());
 
         RoleService service = new RoleService(roleRepository, permissionRepository, auditService);
 
         assertThat(service.listRolesForCurrentActor())
                 .extracting(role -> role.name())
+                .contains("ROLE_ADMIN")
                 .doesNotContain("ROLE_SUPER_ADMIN");
+    }
+
+    @Test
+    void listRoles_rejectsMissingPersistedSystemRole() {
+        when(roleRepository.findByNameIn(SystemRole.roleNames())).thenReturn(List.of(
+                role("ROLE_ADMIN", permission("portal:admin")),
+                role("ROLE_FACTORY", permission("portal:factory"))));
+
+        RoleService service = new RoleService(roleRepository, permissionRepository, auditService);
+
+        assertThatThrownBy(service::listRoles)
+                .isInstanceOf(ApplicationException.class)
+                .satisfies(ex -> assertThat(((ApplicationException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.VALIDATION_INVALID_STATE))
+                .hasMessageContaining("Required platform role is missing: ROLE_SUPER_ADMIN");
     }
 
     @Test
@@ -159,6 +195,17 @@ class RoleServiceTest {
         assertThatThrownBy(() -> service.requireFixedSystemRole("ROLE_CUSTOM"))
                 .isInstanceOf(com.bigbrightpaints.erp.core.exception.ApplicationException.class)
                 .hasMessageContaining("Unknown platform role: ROLE_CUSTOM");
+    }
+
+    @Test
+    void requireFixedSystemRole_rejects_blank_role_name() {
+        RoleService service = new RoleService(roleRepository, permissionRepository, auditService);
+
+        assertThatThrownBy(() -> service.requireFixedSystemRole("   "))
+                .isInstanceOf(ApplicationException.class)
+                .satisfies(ex -> assertThat(((ApplicationException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.VALIDATION_INVALID_INPUT))
+                .hasMessageContaining("Role name is required");
     }
 
     @Test
@@ -217,6 +264,16 @@ class RoleServiceTest {
         permission.setCode(code);
         permission.setDescription(code);
         return permission;
+    }
+
+    private List<Role> allPersistedSystemRoles() {
+        return List.of(
+                role("ROLE_SUPER_ADMIN", permission("portal:root")),
+                role("ROLE_ADMIN", permission("portal:admin")),
+                role("ROLE_ACCOUNTING", permission("portal:accounting")),
+                role("ROLE_FACTORY", permission("portal:factory")),
+                role("ROLE_SALES", permission("portal:sales")),
+                role("ROLE_DEALER", permission("portal:dealer")));
     }
 
     private void authenticate(String username, String authority) {

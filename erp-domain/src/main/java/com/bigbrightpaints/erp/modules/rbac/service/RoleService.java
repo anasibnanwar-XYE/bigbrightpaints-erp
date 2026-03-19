@@ -1,8 +1,6 @@
 package com.bigbrightpaints.erp.modules.rbac.service;
 
-import com.bigbrightpaints.erp.core.audit.AuditEvent;
 import com.bigbrightpaints.erp.core.audit.AuditService;
-import com.bigbrightpaints.erp.core.security.CompanyContextHolder;
 import com.bigbrightpaints.erp.modules.rbac.domain.Permission;
 import com.bigbrightpaints.erp.modules.rbac.domain.PermissionRepository;
 import com.bigbrightpaints.erp.modules.rbac.domain.Role;
@@ -21,9 +19,6 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.security.access.AccessDeniedException;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -31,7 +26,6 @@ import org.springframework.util.StringUtils;
 @Service
 public class RoleService {
 
-    private static final String ADMIN_ROLE = "ROLE_ADMIN";
     private static final String SUPER_ADMIN_ROLE = "ROLE_SUPER_ADMIN";
 
     private final RoleRepository roleRepository;
@@ -52,7 +46,7 @@ public class RoleService {
 
     public List<RoleDto> listRolesForCurrentActor() {
         return allSystemRoles().stream()
-                .filter(role -> role.name() == null || !SUPER_ADMIN_ROLE.equalsIgnoreCase(role.name()))
+                .filter(role -> !SUPER_ADMIN_ROLE.equalsIgnoreCase(role.name()))
                 .toList();
     }
 
@@ -78,10 +72,12 @@ public class RoleService {
                 .map(definition -> {
                     Role role = rolesByName.get(definition.getRoleName());
                     if (role == null) {
-                        return new RoleDto(null, definition.getRoleName(), definition.getDescription(), List.of());
+                        throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidState(
+                                "Required platform role is missing: " + definition.getRoleName());
                     }
-                    return toDto(role);
+                    return role;
                 })
+                .map(this::toDto)
                 .toList();
     }
 
@@ -194,61 +190,5 @@ public class RoleService {
                         .map(SystemRole::getDescription)
                         .orElse(role.getName());
         return new RoleDto(role.getId(), role.getName(), description, permissions);
-    }
-
-    private void enforceSuperAdminForPrivilegedRoles(String normalizedRoleName, String action) {
-        if (!requiresSuperAdmin(normalizedRoleName)) {
-            return;
-        }
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (!hasAuthority(authentication, "ROLE_SUPER_ADMIN")) {
-            auditAuthorityDecision(false, action, normalizedRoleName, authentication);
-            throw new AccessDeniedException("SUPER_ADMIN authority required for role: " + normalizedRoleName);
-        }
-        auditAuthorityDecision(true, action, normalizedRoleName, authentication);
-    }
-
-    private boolean requiresSuperAdmin(String roleName) {
-        return ADMIN_ROLE.equalsIgnoreCase(roleName);
-    }
-
-    private boolean hasAuthority(Authentication authentication, String authority) {
-        if (authentication == null || !authentication.isAuthenticated()) {
-            return false;
-        }
-        return authentication.getAuthorities().stream()
-                .map(GrantedAuthority::getAuthority)
-                .anyMatch(granted -> authority.equalsIgnoreCase(granted));
-    }
-
-    private void auditAuthorityDecision(boolean granted, String action, String targetRole, Authentication authentication) {
-        HashMap<String, String> metadata = new HashMap<>();
-        metadata.put("actor", resolveActor(authentication));
-        metadata.put("reason", granted
-                ? action + "-approved"
-                : action + "-requires-super-admin");
-        metadata.put("tenantScope", resolveTenantScope(authentication));
-        metadata.put("targetRole", targetRole);
-        if (granted) {
-            auditService.logSuccess(AuditEvent.ACCESS_GRANTED, metadata);
-        } else {
-            auditService.logFailure(AuditEvent.ACCESS_DENIED, metadata);
-        }
-    }
-
-    private String resolveActor(Authentication authentication) {
-        if (authentication == null) {
-            return "anonymous";
-        }
-        String name = authentication.getName();
-        return StringUtils.hasText(name) ? name.trim() : "anonymous";
-    }
-
-    private String resolveTenantScope(Authentication authentication) {
-        String scope = CompanyContextHolder.getCompanyCode();
-        if (StringUtils.hasText(scope)) {
-            return scope.trim();
-        }
-        return "none";
     }
 }
