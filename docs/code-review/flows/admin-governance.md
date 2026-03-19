@@ -23,9 +23,10 @@ Supporting runtime evidence was limited: `curl -i -s http://localhost:8081/actua
 | Surface | Entrypoints | Controller | Notes |
 | --- | --- | --- | --- |
 | Admin user governance | `GET/POST /api/v1/admin/users`, `PUT /api/v1/admin/users/{id}`, `POST /api/v1/admin/users/{userId}/force-reset-password`, `PUT /api/v1/admin/users/{userId}/status`, `PATCH /api/v1/admin/users/{id}/{suspend|unsuspend}`, `PATCH /api/v1/admin/users/{id}/mfa/disable`, `DELETE /api/v1/admin/users/{id}` | `AdminUserController` | Admin and super-admin surface for account lifecycle, role/company membership, reset, and MFA override. |
+| Admin role catalog | `GET /api/v1/admin/roles`, `GET /api/v1/admin/roles/{roleKey}` | `RoleController` | Read-only fixed-role catalog for the admin surface; `ROLE_SUPER_ADMIN` is hidden and role mutation is not exposed here anymore. |
 | Changelog publishing | `POST /api/v1/admin/changelog`, `PUT/DELETE /api/v1/admin/changelog/{id}`, public `GET /api/v1/changelog`, `GET /api/v1/changelog/latest-highlighted` | `ChangelogController` | Private writers, public readers. |
 | Support desk | `POST /api/v1/support/tickets`, `GET /api/v1/support/tickets`, `GET /api/v1/support/tickets/{ticketId}` | `SupportTicketController` | Authenticated users can create tickets; read visibility depends on role scope. |
-| System settings / runtime flags | `GET/PUT /api/v1/admin/settings`, `GET /api/v1/admin/tenant-runtime/metrics`, `PUT /api/v1/admin/tenant-runtime/policy` | `AdminSettingsController` | Combines global platform settings with tenant runtime quota controls. |
+| System settings / runtime flags | `GET/PUT /api/v1/admin/settings`, `GET /api/v1/admin/tenant-runtime/metrics`, `PUT /api/v1/companies/{id}/tenant-runtime/policy` | `AdminSettingsController`, `CompanyController` | Keeps global platform settings on admin settings while tenant runtime policy writes live on the company control-plane contract. |
 | Export approvals | `POST /api/v1/exports/request`, `GET /api/v1/exports/{requestId}/download`, `GET /api/v1/admin/exports/pending`, `PUT /api/v1/admin/exports/{requestId}/{approve|reject}` | `ReportController`, `AdminSettingsController` | Report export is requested in reports space and approved in admin space. |
 | Governance cockpit / operator comms | `GET /api/v1/admin/approvals`, `POST /api/v1/admin/notify` | `AdminSettingsController` | Aggregates pending approval work across modules and allows direct email dispatch. |
 
@@ -56,7 +57,7 @@ Supporting runtime evidence was limited: `curl -i -s http://localhost:8081/actua
 2. If the actor is not `ROLE_SUPER_ADMIN`, force every requested `companyId` to equal the active company. A super admin may instead create the user directly inside another tenant without switching sessions.
 3. Call `TenantRuntimePolicyService.assertCanAddEnabledUser(...)` for each target tenant before persisting, so admin user creation is quota-governed.
 4. Generate a temporary password when none is provided and set `mustChangePassword=true`.
-5. Attach companies and roles via `RoleService.ensureRoleExists(...)`. `ROLE_ADMIN` and `ROLE_SUPER_ADMIN` assignment is super-admin gated; non-system role names are created on demand.
+5. Attach companies and roles via the fixed system-role catalog. Admin-surface assignment resolves only persisted platform roles, rejects unknown role names, rejects `ROLE_SUPER_ADMIN` outright, and requires super-admin authority before assigning `ROLE_ADMIN`.
 6. Persist `UserAccount`.
 7. If one of the requested roles is `ROLE_DEALER`, auto-create or relink a `Dealer`, assign the portal user, and create or reactivate the dealer receivable account.
 8. Send credentials email (best-effort, not required) and write an audit event.
@@ -71,7 +72,7 @@ Update and recovery flows are similarly side-effect heavy:
 
 Control-boundary notes:
 
-- The controller allows both `ROLE_ADMIN` and `ROLE_SUPER_ADMIN`, and role hierarchy makes super admins inherit admin access (`SecurityConfig.roleHierarchy()` sets `ROLE_SUPER_ADMIN > ROLE_ADMIN`).
+- The controller now uses the shared `PortalRoleActionMatrix.ADMIN_ONLY` guard. `ROLE_SUPER_ADMIN` still reaches the surface through role hierarchy (`SecurityConfig.roleHierarchy()` sets `ROLE_SUPER_ADMIN > ROLE_ADMIN`), but the admin-facing role catalog itself stays read-only and never exposes `ROLE_SUPER_ADMIN` for assignment.
 - `updateUser(...)`, `updateUserStatus(...)`, and `forceResetPassword(...)` support foreign-tenant targeting for super admins through `resolveScopedUserForAdminAction(...)`.
 - `suspend(...)`, `unsuspend(...)`, `deleteUser(...)`, and `disableMfa(...)` do **not** use that cross-tenant branch; they pessimistically lock by the actor's active `companyId`, so a super admin hitting a foreign-tenant user through these endpoints gets a silent no-op rather than a clear denial or cross-tenant action.
 
@@ -261,7 +262,7 @@ The method is explicitly `@Transactional(readOnly = true)` and converts each pen
 - `TenantRuntimePolicyService` is mostly fail-closed: malformed hold states normalize to `BLOCKED`, quota values must stay positive, and quota denials are audited with request metadata.
 - CORS origin validation rejects wildcards and rejects non-HTTPS origins in prod profile.
 - Support ticket visibility is role-sensitive and hides foreign-tenant tickets from tenant admins and ordinary users.
-- Admin-user role assignment protects `ROLE_ADMIN` and `ROLE_SUPER_ADMIN` from tenant-admin self-escalation.
+- Admin-user role assignment is hard-cut to the fixed six-role model: admin surfaces resolve persisted system roles only, `ROLE_SUPER_ADMIN` is platform-owner only, and tenant admins cannot self-escalate into `ROLE_ADMIN`.
 
 ### Bad patterns and hotspots
 

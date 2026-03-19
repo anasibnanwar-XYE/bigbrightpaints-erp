@@ -52,6 +52,7 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
                 null, "204", null);
         assertOperationContract(root, "/api/v1/auth/me", "get",
                 null, "200", "#/components/schemas/ApiResponseMeResponse");
+        assertThat(root.at("/components/schemas/MeResponse/properties/companyId").isMissingNode()).isTrue();
         assertOperationContract(root, "/api/v1/auth/password/change", "post",
                 "#/components/schemas/ChangePasswordRequest", "200", "#/components/schemas/ApiResponseString");
         assertOperationContract(root, "/api/v1/auth/password/forgot", "post",
@@ -72,6 +73,11 @@ public class OpenApiSnapshotIT extends AbstractIntegrationTest {
                 null, "200", "#/components/schemas/ApiResponseString");
         assertOperationContract(root, "/api/v1/admin/users/{userId}/status", "put",
                 "#/components/schemas/UpdateUserStatusRequest", "200", "#/components/schemas/ApiResponseUserDto");
+        assertOperationContract(root, "/api/v1/admin/roles", "get",
+                null, "200", "#/components/schemas/ApiResponseListRoleDto");
+        assertOperationContract(root, "/api/v1/admin/roles/{roleKey}", "get",
+                null, "200", "#/components/schemas/ApiResponseRoleDto");
+        assertOperationMissing(root, "/api/v1/admin/roles", "post");
         assertOperationContract(root, "/api/v1/admin/users/{id}/suspend", "patch",
                 null, "204", null);
         assertOperationContract(root, "/api/v1/admin/users/{id}/unsuspend", "patch",

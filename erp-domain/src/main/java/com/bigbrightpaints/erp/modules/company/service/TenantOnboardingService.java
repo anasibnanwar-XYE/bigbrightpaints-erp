@@ -192,7 +192,7 @@ public class TenantOnboardingService {
     }
 
     private AdminProvisioningResult createTenantAdmin(Company company, String adminEmail, String adminDisplayName) {
-        Role adminRole = roleService.ensureRoleExists("ROLE_ADMIN");
+        Role adminRole = roleService.requireFixedSystemRole("ROLE_ADMIN");
         String temporaryPassword = PasswordUtils.generateTemporaryPassword(14);
         UserAccount admin = new UserAccount(
                 adminEmail,

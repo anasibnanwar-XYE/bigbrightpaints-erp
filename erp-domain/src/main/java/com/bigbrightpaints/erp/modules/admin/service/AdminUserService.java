@@ -38,6 +38,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -105,6 +106,7 @@ public class AdminUserService {
     public UserDto createUser(CreateUserRequest request) {
         Company company = companyContextService.requireCurrentCompany();
         List<Company> targetCompanies = resolveTargetCompaniesForCreate(company, request.companyIds());
+        List<Role> requestedRoles = resolveAdminSurfaceAssignmentRoles(request.roles());
         targetCompanies.forEach(targetCompany ->
                 tenantRuntimePolicyService.assertCanAddEnabledUser(targetCompany, "ADMIN_USER_CREATE"));
         boolean isTemporaryPassword = !StringUtils.hasText(request.password());
@@ -117,7 +119,7 @@ public class AdminUserService {
         }
         
         attachCompanies(user, targetCompanies);
-        attachRoles(user, request.roles());
+        attachResolvedRoles(user, requestedRoles);
         UserAccount saved = userRepository.save(user);
         
         // Auto-create Dealer entity if user has ROLE_DEALER
@@ -454,27 +456,25 @@ public class AdminUserService {
     }
 
     private void attachRoles(UserAccount user, List<String> roles) {
-        roles.forEach(roleName -> {
-            if (!StringUtils.hasText(roleName)) {
-                return;
-            }
-            String trimmed = roleName.trim();
-            String normalized = trimmed.toUpperCase(Locale.ROOT);
-            // If caller omitted prefix but matches a system role, add prefix
-            if (!normalized.startsWith("ROLE_")) {
-                String withPrefix = "ROLE_" + normalized;
-                if (roleService.isSystemRole(withPrefix)) {
-                    normalized = withPrefix;
-                }
-            }
-            if (SUPER_ADMIN_ROLE.equalsIgnoreCase(normalized) && !hasSuperAdminAuthority()) {
-                throw new org.springframework.security.access.AccessDeniedException(
-                        "SUPER_ADMIN authority required to assign role: " + normalized);
-            }
-            // Allow both system roles and custom roles
-            Role role = roleService.ensureRoleExists(normalized);
-            user.addRole(role);
-        });
+        attachResolvedRoles(user, resolveAdminSurfaceAssignmentRoles(roles));
+    }
+
+    private void attachResolvedRoles(UserAccount user, List<Role> roles) {
+        roles.forEach(user::addRole);
+    }
+
+    private List<Role> resolveAdminSurfaceAssignmentRoles(List<String> roles) {
+        if (roles == null || roles.isEmpty()) {
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("User must have at least one platform role");
+        }
+        List<Role> resolvedRoles = roles.stream()
+                .filter(StringUtils::hasText)
+                .map(roleService::requireAdminSurfaceAssignmentRole)
+                .toList();
+        if (resolvedRoles.isEmpty()) {
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("User must have at least one platform role");
+        }
+        return resolvedRoles;
     }
 
     private Map<String, Instant> resolveLastLoginByEmail(List<UserAccount> users) {
@@ -609,7 +609,12 @@ public class AdminUserService {
 
     private UserDto toDto(UserAccount user, Instant lastLoginAt) {
         List<String> companies = user.getCompanies().stream().map(Company::getCode).toList();
-        List<String> roles = user.getRoles().stream().map(Role::getName).toList();
+        List<String> roles = user.getRoles().stream()
+                .filter(Objects::nonNull)
+                .map(Role::getName)
+                .filter(StringUtils::hasText)
+                .filter(roleName -> !SUPER_ADMIN_ROLE.equalsIgnoreCase(roleName))
+                .toList();
         return new UserDto(user.getId(), user.getPublicId(), user.getEmail(), user.getDisplayName(),
                 user.isEnabled(), user.isMfaEnabled(), roles, companies, lastLoginAt);
     }

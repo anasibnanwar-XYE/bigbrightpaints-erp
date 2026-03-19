@@ -116,7 +116,14 @@ class AdminUserServiceTest {
             }
             return user;
         });
-        lenient().when(roleService.ensureRoleExists(anyString())).thenAnswer(invocation -> {
+        lenient().when(userRepository.saveAndFlush(any(UserAccount.class))).thenAnswer(invocation -> {
+            UserAccount user = invocation.getArgument(0);
+            if (user.getId() == null) {
+                ReflectionTestUtils.setField(user, "id", 200L);
+            }
+            return user;
+        });
+        lenient().when(roleService.requireAdminSurfaceAssignmentRole(anyString())).thenAnswer(invocation -> {
             Role role = new Role();
             role.setName(invocation.getArgument(0));
             return role;
@@ -195,6 +202,9 @@ class AdminUserServiceTest {
         assertThat(savedUser.getCompanies())
                 .extracting(Company::getCode)
                 .containsExactly("FOREIGN");
+        assertThat(savedUser.getRoles())
+                .extracting(Role::getName)
+                .containsExactly("ROLE_SALES");
         verify(tenantRuntimePolicyService).assertCanAddEnabledUser(foreignCompany, "ADMIN_USER_CREATE");
     }
 
@@ -253,6 +263,9 @@ class AdminUserServiceTest {
 
     @Test
     void createUser_nonSuperAdminCannotAssignSuperAdminRole() {
+        when(roleService.requireAdminSurfaceAssignmentRole("ROLE_SUPER_ADMIN"))
+                .thenThrow(new AccessDeniedException("ROLE_SUPER_ADMIN is reserved for platform-owner internal use"));
+
         assertThatThrownBy(() -> service.createUser(new CreateUserRequest(
                 "tenant-user@example.com",
                 "Password@123",
@@ -260,28 +273,46 @@ class AdminUserServiceTest {
                 List.of(1L),
                 List.of("ROLE_SUPER_ADMIN")
         ))).isInstanceOf(AccessDeniedException.class)
-                .hasMessageContaining("SUPER_ADMIN authority required");
+                .hasMessageContaining("ROLE_SUPER_ADMIN is reserved for platform-owner internal use");
     }
 
     @Test
-    void createUser_superAdminCanAssignSuperAdminRole() {
+    void createUser_superAdminAlsoCannotAssignSuperAdminRoleFromAdminSurface() {
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
                 "super-admin@bbp.com",
                 "n/a",
                 List.of(new SimpleGrantedAuthority("ROLE_SUPER_ADMIN"))));
         when(companyRepository.findAllById(any())).thenReturn(List.of(company));
+        when(roleService.requireAdminSurfaceAssignmentRole("ROLE_SUPER_ADMIN"))
+                .thenThrow(new AccessDeniedException("ROLE_SUPER_ADMIN is reserved for platform-owner internal use"));
         try {
-            service.createUser(new CreateUserRequest(
+            assertThatThrownBy(() -> service.createUser(new CreateUserRequest(
                     "platform-owner@example.com",
                     "Password@123",
                     "Platform Owner",
                     List.of(1L),
                     List.of("ROLE_SUPER_ADMIN")
-            ));
-            verify(userRepository).save(any(UserAccount.class));
+            ))).isInstanceOf(AccessDeniedException.class)
+                    .hasMessageContaining("ROLE_SUPER_ADMIN is reserved for platform-owner internal use");
         } finally {
             SecurityContextHolder.clearContext();
         }
+    }
+
+    @Test
+    void createUser_rejectsUnknownPlatformRole() {
+        when(roleService.requireAdminSurfaceAssignmentRole("ROLE_CUSTOM"))
+                .thenThrow(new ApplicationException(com.bigbrightpaints.erp.core.exception.ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Unknown platform role: ROLE_CUSTOM"));
+
+        assertThatThrownBy(() -> service.createUser(new CreateUserRequest(
+                "tenant-user@example.com",
+                "Password@123",
+                "Tenant User",
+                List.of(1L),
+                List.of("ROLE_CUSTOM")
+        ))).isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Unknown platform role: ROLE_CUSTOM");
     }
 
     @Test
@@ -319,6 +350,30 @@ class AdminUserServiceTest {
         assertThat(results).hasSize(1);
         assertThat(results.getFirst().lastLoginAt())
                 .isEqualTo(LocalDateTime.of(2026, 1, 5, 10, 15, 30).atZone(ZoneOffset.UTC).toInstant());
+    }
+
+    @Test
+    void listUsers_hidesSuperAdminRoleFromAdminFacingDtos() {
+        UserAccount user = new UserAccount("platform-owner@example.com", "hash", "Platform Owner");
+        ReflectionTestUtils.setField(user, "id", 320L);
+        user.addCompany(company);
+        Role superAdminRole = new Role();
+        superAdminRole.setName("ROLE_SUPER_ADMIN");
+        user.addRole(superAdminRole);
+        Role salesRole = new Role();
+        salesRole.setName("ROLE_SALES");
+        user.addRole(salesRole);
+
+        when(userRepository.findDistinctByCompanies_Id(company.getId())).thenReturn(List.of(user));
+        when(auditLogRepository.findLatestTimestampByEventTypeAndUsernameIn(
+                AuditEvent.LOGIN_SUCCESS,
+                java.util.Set.of("platform-owner@example.com")))
+                .thenReturn(List.of());
+
+        var results = service.listUsers();
+
+        assertThat(results).hasSize(1);
+        assertThat(results.getFirst().roles()).containsExactly("ROLE_SALES");
     }
 
     @Test

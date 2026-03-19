@@ -16,7 +16,6 @@ import com.bigbrightpaints.erp.modules.rbac.domain.PermissionRepository;
 import com.bigbrightpaints.erp.modules.rbac.domain.Role;
 import com.bigbrightpaints.erp.modules.rbac.domain.RoleRepository;
 import com.bigbrightpaints.erp.modules.rbac.domain.SystemRole;
-import com.bigbrightpaints.erp.modules.rbac.dto.CreateRoleRequest;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -76,53 +75,6 @@ class RoleServiceTest {
     }
 
     @Test
-    void ensureRoleExists_backfillsExistingAccountingRoleBeforeReturningIt() {
-        Role accounting = role("ROLE_ACCOUNTING", permission("portal:accounting"));
-        when(roleRepository.lockByName("ROLE_ACCOUNTING")).thenReturn(Optional.of(accounting));
-        when(permissionRepository.findByCode("dispatch.confirm")).thenReturn(Optional.of(permission("dispatch.confirm")));
-        when(permissionRepository.findByCode("payroll.run")).thenReturn(Optional.of(permission("payroll.run")));
-        when(roleRepository.save(any(Role.class))).thenAnswer(invocation -> invocation.getArgument(0));
-
-        RoleService service = new RoleService(roleRepository, permissionRepository, auditService);
-
-        Role ensured = service.ensureRoleExists("ROLE_ACCOUNTING");
-
-        assertThat(ensured.getPermissions())
-                .extracting(Permission::getCode)
-                .contains("dispatch.confirm", "payroll.run");
-        verify(roleRepository).save(accounting);
-    }
-
-    @Test
-    void ensureRoleExists_returnsExistingAlignedSystemRoleWithoutSaving() {
-        Role accounting = role("ROLE_ACCOUNTING", permission("portal:accounting"), permission("dispatch.confirm"), permission("payroll.run"));
-        when(roleRepository.lockByName("ROLE_ACCOUNTING")).thenReturn(Optional.of(accounting));
-
-        RoleService service = new RoleService(roleRepository, permissionRepository, auditService);
-
-        Role ensured = service.ensureRoleExists("ROLE_ACCOUNTING");
-
-        assertThat(ensured).isSameAs(accounting);
-        verify(roleRepository).lockByName("ROLE_ACCOUNTING");
-        verifyNoMoreInteractions(roleRepository);
-    }
-
-    @Test
-    void ensureRoleExists_backfillsMissingDescriptionForExistingSystemRole() {
-        Role accounting = role("ROLE_ACCOUNTING", permission("portal:accounting"), permission("dispatch.confirm"), permission("payroll.run"));
-        accounting.setDescription(" ");
-        when(roleRepository.lockByName("ROLE_ACCOUNTING")).thenReturn(Optional.of(accounting));
-        when(roleRepository.save(any(Role.class))).thenAnswer(invocation -> invocation.getArgument(0));
-
-        RoleService service = new RoleService(roleRepository, permissionRepository, auditService);
-
-        Role ensured = service.ensureRoleExists("ROLE_ACCOUNTING");
-
-        assertThat(ensured.getDescription()).isEqualTo(SystemRole.ACCOUNTING.getDescription());
-        verify(roleRepository).save(accounting);
-    }
-
-    @Test
     void synchronizeSystemRoles_returnsZeroWhenRolesAlreadyAligned() {
         RoleService service = new RoleService(roleRepository, permissionRepository, auditService);
         for (SystemRole definition : SystemRole.values()) {
@@ -152,7 +104,7 @@ class RoleServiceTest {
     }
 
     @Test
-    void listRolesForCurrentActor_includesSuperAdminRoleForSuperAdminActors() {
+    void listRolesForCurrentActor_hidesSuperAdminRoleFromSuperAdminAdminSurface() {
         authenticate("root-superadmin@bbp.com", "ROLE_SUPER_ADMIN");
         when(roleRepository.findByNameIn(SystemRole.roleNames())).thenReturn(List.of());
 
@@ -160,115 +112,73 @@ class RoleServiceTest {
 
         assertThat(service.listRolesForCurrentActor())
                 .extracting(role -> role.name())
-                .contains("ROLE_SUPER_ADMIN");
+                .doesNotContain("ROLE_SUPER_ADMIN");
     }
 
     @Test
-    void createRole_requiresSuperAdminForSharedRoleMutation() {
+    void requireFixedSystemRole_returnsPersistedSystemRole() {
+        Role accounting = role("ROLE_ACCOUNTING", permission("portal:accounting"));
+        when(roleRepository.findByName("ROLE_ACCOUNTING")).thenReturn(Optional.of(accounting));
+
+        RoleService service = new RoleService(roleRepository, permissionRepository, auditService);
+
+        assertThat(service.requireFixedSystemRole("ROLE_ACCOUNTING")).isSameAs(accounting);
+    }
+
+    @Test
+    void requireFixedSystemRole_rejectsUnknownPlatformRole() {
+        RoleService service = new RoleService(roleRepository, permissionRepository, auditService);
+
+        assertThatThrownBy(() -> service.requireFixedSystemRole("ROLE_CUSTOM"))
+                .isInstanceOf(com.bigbrightpaints.erp.core.exception.ApplicationException.class)
+                .hasMessageContaining("Unknown platform role: ROLE_CUSTOM");
+    }
+
+    @Test
+    void requireFixedSystemRole_rejectsMissingPersistedRole() {
+        when(roleRepository.findByName("ROLE_ACCOUNTING")).thenReturn(Optional.empty());
+        RoleService service = new RoleService(roleRepository, permissionRepository, auditService);
+
+        assertThatThrownBy(() -> service.requireFixedSystemRole("ROLE_ACCOUNTING"))
+                .isInstanceOf(com.bigbrightpaints.erp.core.exception.ApplicationException.class)
+                .hasMessageContaining("Required platform role is missing: ROLE_ACCOUNTING");
+    }
+
+    @Test
+    void requireAdminSurfaceAssignmentRole_requiresSuperAdminForAdminRole() {
         authenticate("tenant-admin@bbp.com", "ROLE_ADMIN");
         CompanyContextHolder.setCompanyCode("TENANT-A");
         RoleService service = new RoleService(roleRepository, permissionRepository, auditService);
 
-        assertThatThrownBy(() -> service.createRole(new CreateRoleRequest(
-                        "ROLE_ACCOUNTING",
-                        "Accounting role",
-                        List.of("dispatch.confirm"))))
+        assertThatThrownBy(() -> service.requireAdminSurfaceAssignmentRole("ROLE_ADMIN"))
                 .isInstanceOf(AccessDeniedException.class)
-                .hasMessageContaining("SUPER_ADMIN authority required for role mutation");
+                .hasMessageContaining("SUPER_ADMIN authority required for role: ROLE_ADMIN");
 
         ArgumentCaptor<Map<String, String>> metadataCaptor = ArgumentCaptor.forClass(Map.class);
         verify(auditService).logFailure(eq(AuditEvent.ACCESS_DENIED), metadataCaptor.capture());
         assertThat(metadataCaptor.getValue())
                 .containsEntry("actor", "tenant-admin@bbp.com")
-                .containsEntry("reason", "shared-role-permission-mutation-requires-super-admin")
+                .containsEntry("reason", "tenant-admin-role-management-requires-super-admin")
                 .containsEntry("tenantScope", "TENANT-A")
-                .containsEntry("targetRole", "ROLE_ACCOUNTING");
+                .containsEntry("targetRole", "ROLE_ADMIN");
     }
 
     @Test
-    void createRole_allowsSuperAdminToMutateSharedRole() {
-        authenticate("root-superadmin@bbp.com", "ROLE_SUPER_ADMIN");
-        CompanyContextHolder.setCompanyCode("TENANT-A");
-        when(roleRepository.lockByName("ROLE_ACCOUNTING")).thenReturn(Optional.empty());
-        when(permissionRepository.findByCodeIn(List.of("dispatch.confirm", "payroll.run")))
-                .thenReturn(List.of(permission("dispatch.confirm"), permission("payroll.run")));
-        when(roleRepository.save(any(Role.class))).thenAnswer(invocation -> invocation.getArgument(0));
-
+    void requireAdminSurfaceAssignmentRole_rejectsSuperAdminRoleOnAdminSurface() {
         RoleService service = new RoleService(roleRepository, permissionRepository, auditService);
 
-        assertThat(service.createRole(new CreateRoleRequest(
-                        "ROLE_ACCOUNTING",
-                        "Accounting role",
-                        List.of("dispatch.confirm", "payroll.run"))))
-                .extracting(role -> role.name(), role -> role.description())
-                .containsExactly("ROLE_ACCOUNTING", "Accounting role");
-
-        verify(auditService).logSuccess(eq(AuditEvent.ACCESS_GRANTED), any(Map.class));
-    }
-
-    @Test
-    void canManageSharedRoleMutation_requiresSuperAdminForSystemRoles() {
-        authenticate("tenant-admin@bbp.com", "ROLE_ADMIN");
-        CompanyContextHolder.setCompanyCode("TENANT-A");
-        RoleService service = new RoleService(roleRepository, permissionRepository, auditService);
-
-        assertThat(service.canManageSharedRoleMutation(
-                        SecurityContextHolder.getContext().getAuthentication(),
-                        "ROLE_ACCOUNTING"))
-                .isFalse();
-
-        verify(auditService).logFailure(eq(AuditEvent.ACCESS_DENIED), any(Map.class));
-    }
-
-    @Test
-    void canManageSharedRoleMutation_allowsSystemRolesForSuperAdmin() {
-        authenticate("root-superadmin@bbp.com", "ROLE_SUPER_ADMIN");
-        CompanyContextHolder.setCompanyCode("TENANT-A");
-        RoleService service = new RoleService(roleRepository, permissionRepository, auditService);
-
-        assertThat(service.canManageSharedRoleMutation(
-                        SecurityContextHolder.getContext().getAuthentication(),
-                        "ROLE_ACCOUNTING"))
-                .isTrue();
-
-        verify(auditService).logSuccess(eq(AuditEvent.ACCESS_GRANTED), any(Map.class));
-    }
-
-    @Test
-    void ensureRoleExists_allowsSuperAdminForPrivilegedRoles() {
-        authenticate("root-superadmin@bbp.com", "ROLE_SUPER_ADMIN");
-        when(roleRepository.lockByName("ROLE_ADMIN")).thenReturn(Optional.empty());
-        when(roleRepository.save(any(Role.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        RoleService service = new RoleService(roleRepository, permissionRepository, auditService);
-
-        Role ensured = service.ensureRoleExists("ROLE_ADMIN");
-
-        assertThat(ensured.getName()).isEqualTo("ROLE_ADMIN");
-        verify(auditService).logSuccess(eq(AuditEvent.ACCESS_GRANTED), any(Map.class));
-    }
-
-    @Test
-    void ensureRoleExists_requiresSuperAdminForPrivilegedRoles() {
-        authenticate("tenant-admin@bbp.com", "ROLE_ADMIN");
-        CompanyContextHolder.setCompanyCode("TENANT-A");
-        RoleService service = new RoleService(roleRepository, permissionRepository, auditService);
-
-        assertThatThrownBy(() -> service.ensureRoleExists("ROLE_ADMIN"))
+        assertThatThrownBy(() -> service.requireAdminSurfaceAssignmentRole("ROLE_SUPER_ADMIN"))
                 .isInstanceOf(AccessDeniedException.class)
-                .hasMessageContaining("SUPER_ADMIN authority required for role: ROLE_ADMIN");
-
-        verify(auditService).logFailure(eq(AuditEvent.ACCESS_DENIED), any(Map.class));
-        verifyNoMoreInteractions(roleRepository);
+                .hasMessageContaining("ROLE_SUPER_ADMIN is reserved for platform-owner internal use");
     }
 
     @Test
-    void canManageSharedRoleMutation_allowsCustomRolesWithoutAudit() {
+    void requireAdminSurfaceAssignmentRole_allowsFixedNonPrivilegedRole() {
+        Role accounting = role("ROLE_ACCOUNTING", permission("portal:accounting"));
+        when(roleRepository.findByName("ROLE_ACCOUNTING")).thenReturn(Optional.of(accounting));
         RoleService service = new RoleService(roleRepository, permissionRepository, auditService);
 
-        assertThat(service.canManageSharedRoleMutation(null, "custom-role")).isTrue();
-        assertThat(service.canManageSharedRoleMutation(null, null)).isTrue();
-
-        verifyNoMoreInteractions(auditService);
+        assertThat(service.requireAdminSurfaceAssignmentRole("ROLE_ACCOUNTING")).isSameAs(accounting);
     }
 
     private Role role(String name, Permission... permissions) {

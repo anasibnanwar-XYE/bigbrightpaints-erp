@@ -414,7 +414,7 @@ class TS_RuntimeTenantPolicyControlExecutableCoverageTest {
         Role adminRole = new Role();
         adminRole.setName("ROLE_ADMIN");
         when(userAccountRepository.findByEmailIgnoreCase("new-admin@ske.com")).thenReturn(Optional.empty());
-        when(roleService.ensureRoleExists("ROLE_ADMIN")).thenReturn(adminRole);
+        when(roleService.requireFixedSystemRole("ROLE_ADMIN")).thenReturn(adminRole);
         when(passwordEncoder.encode(any())).thenReturn("encoded");
         when(userAccountRepository.save(any(UserAccount.class))).thenAnswer(invocation -> invocation.getArgument(0));
 

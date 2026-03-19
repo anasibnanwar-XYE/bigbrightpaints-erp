@@ -135,7 +135,7 @@ public class DealerService {
             portalUser = new UserAccount(contactEmail, passwordEncoder.encode(rawPassword), dealer.getName());
             portalUser.setMustChangePassword(true);
         }
-        portalUser.getRoles().add(roleService.ensureRoleExists("ROLE_DEALER"));
+        portalUser.getRoles().add(roleService.requireFixedSystemRole("ROLE_DEALER"));
         portalUser.getCompanies().add(company);
         portalUser = userAccountRepository.save(portalUser);
 

@@ -61,7 +61,7 @@ class TenantAdminProvisioningServiceTest {
         Role adminRole = new Role();
         adminRole.setName("ROLE_ADMIN");
         when(userAccountRepository.findByEmailIgnoreCase("new-admin@ske.com")).thenReturn(Optional.empty());
-        when(roleService.ensureRoleExists("ROLE_ADMIN")).thenReturn(adminRole);
+        when(roleService.requireFixedSystemRole("ROLE_ADMIN")).thenReturn(adminRole);
         when(passwordEncoder.encode(any())).thenReturn("encoded");
         when(userAccountRepository.save(any(UserAccount.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -89,7 +89,7 @@ class TenantAdminProvisioningServiceTest {
         Role adminRole = new Role();
         adminRole.setName("ROLE_ADMIN");
         when(userAccountRepository.findByEmailIgnoreCase("new-admin@ske.com")).thenReturn(Optional.empty());
-        when(roleService.ensureRoleExists("ROLE_ADMIN")).thenReturn(adminRole);
+        when(roleService.requireFixedSystemRole("ROLE_ADMIN")).thenReturn(adminRole);
         when(passwordEncoder.encode(any())).thenReturn("encoded");
         when(userAccountRepository.save(any(UserAccount.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -248,7 +248,7 @@ class TenantAdminProvisioningServiceTest {
     }
 
     @Test
-    void resetTenantAdminPassword_ignoresBlankRoleNamesAndAcceptsSuperAdminRole() {
+    void resetTenantAdminPassword_rejectsSuperAdminOnlyUser() {
         TenantAdminProvisioningService service = new TenantAdminProvisioningService(
                 userAccountRepository,
                 roleService,
@@ -266,13 +266,10 @@ class TenantAdminProvisioningServiceTest {
         superAdminRole.setName("ROLE_SUPER_ADMIN");
         user.addRole(superAdminRole);
         when(userAccountRepository.findByEmailIgnoreCase("admin@ske.com")).thenReturn(Optional.of(user));
-        when(passwordEncoder.encode(any())).thenReturn("encoded");
-        when(userAccountRepository.save(any(UserAccount.class))).thenReturn(user);
 
-        String resetEmail = service.resetTenantAdminPassword(target, "admin@ske.com");
-
-        assertThat(resetEmail).isEqualTo("admin@ske.com");
-        verify(emailService).sendUserCredentialsEmailRequired(eq("admin@ske.com"), eq("Admin"), any(), eq("SKE"));
+        assertThatThrownBy(() -> service.resetTenantAdminPassword(target, "admin@ske.com"))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("not an admin");
     }
 
     @Test

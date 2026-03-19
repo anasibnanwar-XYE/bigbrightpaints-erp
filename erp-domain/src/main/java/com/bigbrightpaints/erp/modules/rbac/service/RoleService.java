@@ -8,7 +8,6 @@ import com.bigbrightpaints.erp.modules.rbac.domain.PermissionRepository;
 import com.bigbrightpaints.erp.modules.rbac.domain.Role;
 import com.bigbrightpaints.erp.modules.rbac.domain.RoleRepository;
 import com.bigbrightpaints.erp.modules.rbac.domain.SystemRole;
-import com.bigbrightpaints.erp.modules.rbac.dto.CreateRoleRequest;
 import com.bigbrightpaints.erp.modules.rbac.dto.PermissionDto;
 import com.bigbrightpaints.erp.modules.rbac.dto.RoleDto;
 import java.util.Arrays;
@@ -31,6 +30,9 @@ import org.springframework.util.StringUtils;
 @Service
 public class RoleService {
 
+    private static final String ADMIN_ROLE = "ROLE_ADMIN";
+    private static final String SUPER_ADMIN_ROLE = "ROLE_SUPER_ADMIN";
+
     private final RoleRepository roleRepository;
     private final PermissionRepository permissionRepository;
     private final AuditService auditService;
@@ -48,12 +50,8 @@ public class RoleService {
     }
 
     public List<RoleDto> listRolesForCurrentActor() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (hasAuthority(authentication, "ROLE_SUPER_ADMIN")) {
-            return allSystemRoles();
-        }
         return allSystemRoles().stream()
-                .filter(role -> role.name() == null || !"ROLE_SUPER_ADMIN".equalsIgnoreCase(role.name()))
+                .filter(role -> role.name() == null || !SUPER_ADMIN_ROLE.equalsIgnoreCase(role.name()))
                 .toList();
     }
 
@@ -85,43 +83,25 @@ public class RoleService {
                 .toList();
     }
 
-    @Transactional
-    public RoleDto createRole(CreateRoleRequest request) {
-        return persistRole(request);
+    public Role requireFixedSystemRole(String roleName) {
+        String normalizedName = normalizeRoleName(roleName);
+        SystemRole.fromName(normalizedName)
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+                        "Unknown platform role: " + normalizedName));
+        return roleRepository.findByName(normalizedName)
+                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(
+                        "Required platform role is missing: " + normalizedName));
     }
 
-    public boolean canManageSharedRoleMutation(Authentication authentication, String roleName) {
-        if (!StringUtils.hasText(roleName)) {
-            return true;
-        }
+    public Role requireAdminSurfaceAssignmentRole(String roleName) {
         String normalizedName = normalizeRoleName(roleName);
-        if (SystemRole.fromName(normalizedName).isEmpty()) {
-            return true;
+        if (SUPER_ADMIN_ROLE.equalsIgnoreCase(normalizedName)) {
+            throw new AccessDeniedException("ROLE_SUPER_ADMIN is reserved for platform-owner internal use");
         }
-        boolean granted = hasAuthority(authentication, "ROLE_SUPER_ADMIN");
-        auditAuthorityDecision(granted, "shared-role-permission-mutation", normalizedName, authentication);
-        return granted;
-    }
-
-    @Transactional
-    public Role ensureRoleExists(String roleName) {
-        String normalizedName = normalizeRoleName(roleName);
-        enforceSuperAdminForPrivilegedRoles(normalizedName, "tenant-admin-role-management");
-        SystemRole definition = SystemRole.fromName(normalizedName).orElse(null);
-        boolean[] created = {false};
-        // Use pessimistic lock to prevent race condition on concurrent role creation
-        Role role = roleRepository.lockByName(normalizedName).orElseGet(() -> {
-            created[0] = true;
-            Role newRole = new Role();
-            newRole.setName(normalizedName);
-            newRole.setDescription(definition != null ? definition.getDescription() : normalizedName);
-            return newRole;
-        });
-        boolean changed = definition != null && synchronizeSystemRolePermissions(role, definition);
-        if (created[0] || changed) {
-            return roleRepository.save(role);
+        if (ADMIN_ROLE.equalsIgnoreCase(normalizedName)) {
+            enforceSuperAdminForPrivilegedRoles(normalizedName, "tenant-admin-role-management");
         }
-        return role;
+        return requireFixedSystemRole(normalizedName);
     }
 
     public Permission ensurePermissionExists(String code) {
@@ -147,35 +127,6 @@ public class RoleService {
             }
         }
         return synchronizedRoles;
-    }
-
-    private RoleDto persistRole(CreateRoleRequest request) {
-        String normalizedName = normalizeRoleName(request.name());
-        SystemRole definition = SystemRole.fromName(normalizedName)
-                .orElseThrow(() -> com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Unknown platform role: " + normalizedName));
-        enforceSuperAdminForSharedRoleMutation(definition.getRoleName(), "shared-role-permission-mutation");
-
-        // Use pessimistic lock to prevent race condition
-        Role role = roleRepository.lockByName(normalizedName).orElseGet(Role::new);
-        role.setName(normalizedName);
-        String description = StringUtils.hasText(request.description())
-                ? request.description().trim()
-                : definition.getDescription();
-        role.setDescription(description);
-
-        List<String> permissionCodes = request.permissions().stream()
-                .map(String::trim)
-                .toList();
-        var permissions = permissionRepository.findByCodeIn(permissionCodes);
-        if (permissions.size() != permissionCodes.size()) {
-            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("One or more permission codes are invalid.");
-        }
-
-        role.getPermissions().clear();
-        role.getPermissions().addAll(new HashSet<>(permissions));
-
-        Role saved = roleRepository.save(role);
-        return toDto(saved);
     }
 
     private boolean synchronizeSystemRole(SystemRole definition, Map<String, Permission> permissionCache) {
@@ -256,17 +207,8 @@ public class RoleService {
         auditAuthorityDecision(true, action, normalizedRoleName, authentication);
     }
 
-    private void enforceSuperAdminForSharedRoleMutation(String normalizedRoleName, String action) {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (!hasAuthority(authentication, "ROLE_SUPER_ADMIN")) {
-            auditAuthorityDecision(false, action, normalizedRoleName, authentication);
-            throw new AccessDeniedException("SUPER_ADMIN authority required for role mutation: " + normalizedRoleName);
-        }
-        auditAuthorityDecision(true, action, normalizedRoleName, authentication);
-    }
-
     private boolean requiresSuperAdmin(String roleName) {
-        return "ROLE_ADMIN".equalsIgnoreCase(roleName) || "ROLE_SUPER_ADMIN".equalsIgnoreCase(roleName);
+        return ADMIN_ROLE.equalsIgnoreCase(roleName) || SUPER_ADMIN_ROLE.equalsIgnoreCase(roleName);
     }
 
     private boolean hasAuthority(Authentication authentication, String authority) {
