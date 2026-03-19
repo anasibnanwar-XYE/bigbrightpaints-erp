@@ -89,7 +89,7 @@ class AdminApprovalRbacIT extends AbstractIntegrationTest {
         HttpHeaders salesHeaders = authHeaders(SALES_EMAIL, PASSWORD);
 
         long dealerId = createDealer("APPROVAL-CONTRACT-" + System.nanoTime(), new BigDecimal("5000"));
-        createCreditRequest(salesHeaders, dealerId, "1500", "Typed approval payload");
+        long requestId = createCreditRequest(salesHeaders, dealerId, "1500", "Typed approval payload");
 
         ResponseEntity<Map> approvalsResponse = rest.exchange(
                 "/api/v1/admin/approvals",
@@ -105,7 +105,11 @@ class AdminApprovalRbacIT extends AbstractIntegrationTest {
         List<?> creditApprovals = (List<?>) approvalsData.get("creditRequests");
         assertThat(creditApprovals).isNotEmpty();
 
-        Map<?, ?> creditApproval = (Map<?, ?>) creditApprovals.get(0);
+        Map<?, ?> creditApproval = creditApprovals.stream()
+                .map(Map.class::cast)
+                .filter(item -> ("CR-" + requestId).equals(item.get("reference")))
+                .findFirst()
+                .orElseThrow();
         assertThat(creditApproval.get("originType")).isEqualTo("CREDIT_REQUEST");
         assertThat(creditApproval.get("ownerType")).isEqualTo("SALES");
         assertThat(creditApproval.containsKey("type")).isFalse();
