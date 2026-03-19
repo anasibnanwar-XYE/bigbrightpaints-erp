@@ -52,6 +52,11 @@
   - result: `BUILD SUCCESS`
   - tests: `2 run, 0 failures, 0 errors, 0 skipped`
   - completed: `2026-03-20 02:05:00 +05:30`
+- Non-mutating OpenAPI verification on the refreshed snapshot:
+  - `cd erp-domain && mvn -Djacoco.skip=true -Derp.openapi.snapshot.verify=true -Dtest=OpenApiSnapshotIT test`
+  - result: `BUILD SUCCESS`
+  - tests: `2 run, 0 failures, 0 errors, 0 skipped`
+  - completed: `2026-03-20 02:11:48 +05:30`
 - Hygiene proof:
   - `git diff --check`
   - `git diff --cached --check`
