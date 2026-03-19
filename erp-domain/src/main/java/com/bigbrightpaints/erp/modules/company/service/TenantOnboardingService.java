@@ -33,6 +33,7 @@ import org.springframework.util.StringUtils;
 @Service
 public class TenantOnboardingService {
 
+    private static final String BOOTSTRAP_MODE_SEEDED = "SEEDED";
     private static final String TEMPLATE_GENERIC = "GENERIC";
     private static final String TEMPLATE_INDIAN_STANDARD = "INDIAN_STANDARD";
     private static final String TEMPLATE_MANUFACTURING = "MANUFACTURING";
@@ -101,9 +102,13 @@ public class TenantOnboardingService {
                 savedCompany.getId(),
                 savedCompany.getCode(),
                 template.getCode(),
+                BOOTSTRAP_MODE_SEEDED,
+                true,
                 createdAccounts.size(),
                 defaultPeriod.getId(),
+                true,
                 normalizedAdminEmail,
+                true,
                 adminProvisioningResult.temporaryPassword(),
                 adminProvisioningResult.credentialsEmailSent(),
                 systemSettingsInitialized);
