@@ -29,9 +29,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
@@ -54,9 +54,10 @@ class RbacSynchronizationConfigTest {
     }
 
     @Test
-    void synchronizeSystemRoles_backfillsMissingDefaultPermissionsOnSeededRoles() {
+    void synchronizeSystemRoles_reconcilesSeededRolesToCanonicalDefinitions() {
         Map<String, Role> rolesByName = new LinkedHashMap<>();
-        Role seededAdmin = role("ROLE_ADMIN", "Platform administrator");
+        Role seededAdmin = role("ROLE_ADMIN", "Legacy admin");
+        seededAdmin.getPermissions().add(permission("portal:rogue"));
         rolesByName.put(seededAdmin.getName(), seededAdmin);
 
         Map<String, Permission> permissionsByCode = new HashMap<>();
@@ -82,6 +83,7 @@ class RbacSynchronizationConfigTest {
         int synchronizedRoles = roleService.synchronizeSystemRoles();
 
         assertThat(synchronizedRoles).isGreaterThan(0);
+        assertThat(seededAdmin.getDescription()).isEqualTo(SystemRole.ADMIN.getDescription());
         assertThat(seededAdmin.getPermissions())
                 .extracting(Permission::getCode)
                 .containsExactlyInAnyOrderElementsOf(SystemRole.ADMIN.getDefaultPermissions());
@@ -120,7 +122,14 @@ class RbacSynchronizationConfigTest {
         return role;
     }
 
-    @Configuration(proxyBeanMethods = false)
+    private static Permission permission(String code) {
+        Permission permission = new Permission();
+        permission.setCode(code);
+        permission.setDescription(code);
+        return permission;
+    }
+
+    @TestConfiguration(proxyBeanMethods = false)
     static class TestApp {
 
         @Bean

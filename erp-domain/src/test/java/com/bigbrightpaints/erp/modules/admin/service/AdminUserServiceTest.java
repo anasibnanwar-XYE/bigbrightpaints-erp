@@ -38,6 +38,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
@@ -48,6 +49,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -107,7 +109,7 @@ class AdminUserServiceTest {
         company = new Company();
         ReflectionTestUtils.setField(company, "id", 1L);
         company.setCode("TEST");
-        when(companyContextService.requireCurrentCompany()).thenReturn(company);
+        lenient().when(companyContextService.requireCurrentCompany()).thenReturn(company);
         lenient().when(passwordEncoder.encode(any())).thenReturn("encoded");
         lenient().when(userRepository.save(any(UserAccount.class))).thenAnswer(invocation -> {
             UserAccount user = invocation.getArgument(0);
@@ -116,9 +118,16 @@ class AdminUserServiceTest {
             }
             return user;
         });
-        lenient().when(roleService.ensureRoleExists(anyString())).thenAnswer(invocation -> {
+        lenient().when(userRepository.saveAndFlush(any(UserAccount.class))).thenAnswer(invocation -> {
+            UserAccount user = invocation.getArgument(0);
+            if (user.getId() == null) {
+                ReflectionTestUtils.setField(user, "id", 200L);
+            }
+            return user;
+        });
+        lenient().when(roleService.requireAdminSurfaceAssignmentRole(anyString())).thenAnswer(invocation -> {
             Role role = new Role();
-            role.setName(invocation.getArgument(0));
+            role.setName(invocation.getArgument(0, String.class).trim().toUpperCase(Locale.ROOT));
             return role;
         });
         lenient().when(dealerRepository.save(any(Dealer.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -166,6 +175,27 @@ class AdminUserServiceTest {
     }
 
     @Test
+    void createUser_usesResolvedDealerRoleForProvisioning() {
+        when(dealerRepository.findByCompanyAndPortalUserEmail(company, "dealer-trimmed@example.com"))
+                .thenReturn(Optional.empty());
+        when(dealerRepository.findByCompanyAndEmailIgnoreCase(company, "dealer-trimmed@example.com"))
+                .thenReturn(Optional.empty());
+
+        service.createUser(new CreateUserRequest(
+                "dealer-trimmed@example.com",
+                "Password@123",
+                "Dealer Trimmed",
+                List.of(1L),
+                List.of(" ROLE_DEALER ")
+        ));
+
+        ArgumentCaptor<Dealer> dealerCaptor = ArgumentCaptor.forClass(Dealer.class);
+        verify(dealerRepository, times(2)).save(dealerCaptor.capture());
+        assertThat(dealerCaptor.getAllValues())
+                .anySatisfy(savedDealer -> assertThat(savedDealer.getPortalUser()).isNotNull());
+    }
+
+    @Test
     void createUser_superAdminCanAssignUserToRequestedTenantCompany() {
         Company foreignCompany = new Company();
         ReflectionTestUtils.setField(foreignCompany, "id", 2L);
@@ -195,6 +225,9 @@ class AdminUserServiceTest {
         assertThat(savedUser.getCompanies())
                 .extracting(Company::getCode)
                 .containsExactly("FOREIGN");
+        assertThat(savedUser.getRoles())
+                .extracting(Role::getName)
+                .containsExactly("ROLE_SALES");
         verify(tenantRuntimePolicyService).assertCanAddEnabledUser(foreignCompany, "ADMIN_USER_CREATE");
     }
 
@@ -253,6 +286,9 @@ class AdminUserServiceTest {
 
     @Test
     void createUser_nonSuperAdminCannotAssignSuperAdminRole() {
+        when(roleService.requireAdminSurfaceAssignmentRole("ROLE_SUPER_ADMIN"))
+                .thenThrow(new AccessDeniedException("ROLE_SUPER_ADMIN is reserved for platform-owner internal use"));
+
         assertThatThrownBy(() -> service.createUser(new CreateUserRequest(
                 "tenant-user@example.com",
                 "Password@123",
@@ -260,28 +296,82 @@ class AdminUserServiceTest {
                 List.of(1L),
                 List.of("ROLE_SUPER_ADMIN")
         ))).isInstanceOf(AccessDeniedException.class)
-                .hasMessageContaining("SUPER_ADMIN authority required");
+                .hasMessageContaining("ROLE_SUPER_ADMIN is reserved for platform-owner internal use");
     }
 
     @Test
-    void createUser_superAdminCanAssignSuperAdminRole() {
+    void createUser_superAdminAlsoCannotAssignSuperAdminRoleFromAdminSurface() {
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
                 "super-admin@bbp.com",
                 "n/a",
                 List.of(new SimpleGrantedAuthority("ROLE_SUPER_ADMIN"))));
         when(companyRepository.findAllById(any())).thenReturn(List.of(company));
+        when(roleService.requireAdminSurfaceAssignmentRole("ROLE_SUPER_ADMIN"))
+                .thenThrow(new AccessDeniedException("ROLE_SUPER_ADMIN is reserved for platform-owner internal use"));
         try {
-            service.createUser(new CreateUserRequest(
+            assertThatThrownBy(() -> service.createUser(new CreateUserRequest(
                     "platform-owner@example.com",
                     "Password@123",
                     "Platform Owner",
                     List.of(1L),
                     List.of("ROLE_SUPER_ADMIN")
-            ));
-            verify(userRepository).save(any(UserAccount.class));
+            ))).isInstanceOf(AccessDeniedException.class)
+                    .hasMessageContaining("ROLE_SUPER_ADMIN is reserved for platform-owner internal use");
         } finally {
             SecurityContextHolder.clearContext();
         }
+    }
+
+    @Test
+    void createUser_rejectsUnknownPlatformRole() {
+        when(roleService.requireAdminSurfaceAssignmentRole("ROLE_CUSTOM"))
+                .thenThrow(new ApplicationException(com.bigbrightpaints.erp.core.exception.ErrorCode.VALIDATION_INVALID_INPUT,
+                        "Unknown platform role: ROLE_CUSTOM"));
+
+        assertThatThrownBy(() -> service.createUser(new CreateUserRequest(
+                "tenant-user@example.com",
+                "Password@123",
+                "Tenant User",
+                List.of(1L),
+                List.of("ROLE_CUSTOM")
+        ))).isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("Unknown platform role: ROLE_CUSTOM");
+    }
+
+    @Test
+    void createUser_rejectsNullRoleList() {
+        assertThatThrownBy(() -> service.createUser(new CreateUserRequest(
+                "tenant-user@example.com",
+                "Password@123",
+                "Tenant User",
+                List.of(1L),
+                null
+        ))).isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("User must have at least one platform role");
+    }
+
+    @Test
+    void createUser_rejectsEmptyRoleList() {
+        assertThatThrownBy(() -> service.createUser(new CreateUserRequest(
+                "tenant-user@example.com",
+                "Password@123",
+                "Tenant User",
+                List.of(1L),
+                List.of()
+        ))).isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("User must have at least one platform role");
+    }
+
+    @Test
+    void createUser_rejectsBlankRoleEntries() {
+        assertThatThrownBy(() -> service.createUser(new CreateUserRequest(
+                "tenant-user@example.com",
+                "Password@123",
+                "Tenant User",
+                List.of(1L),
+                List.of(" ", "\t")
+        ))).isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("User must have at least one platform role");
     }
 
     @Test
@@ -319,6 +409,81 @@ class AdminUserServiceTest {
         assertThat(results).hasSize(1);
         assertThat(results.getFirst().lastLoginAt())
                 .isEqualTo(LocalDateTime.of(2026, 1, 5, 10, 15, 30).atZone(ZoneOffset.UTC).toInstant());
+    }
+
+    @Test
+    void listUsers_excludesPlatformOwnerAccountsFromAdminFacingDtos() {
+        UserAccount user = new UserAccount("platform-owner@example.com", "hash", "Platform Owner");
+        ReflectionTestUtils.setField(user, "id", 320L);
+        user.addCompany(company);
+        Role superAdminRole = new Role();
+        superAdminRole.setName("ROLE_SUPER_ADMIN");
+        user.addRole(superAdminRole);
+        Role salesRole = new Role();
+        salesRole.setName("ROLE_SALES");
+        user.addRole(salesRole);
+
+        when(userRepository.findDistinctByCompanies_Id(company.getId())).thenReturn(List.of(user));
+        when(auditLogRepository.findLatestTimestampByEventTypeAndUsernameIn(
+                AuditEvent.LOGIN_SUCCESS,
+                java.util.Set.of("platform-owner@example.com")))
+                .thenReturn(List.of());
+
+        var results = service.listUsers();
+
+        assertThat(results).isEmpty();
+    }
+
+    @Test
+    void listUsers_exposesOnlyFixedSystemRolesOnAdminFacingDtos() {
+        UserAccount user = new UserAccount("mixed-role-user@example.com", "hash", "Mixed Role User");
+        ReflectionTestUtils.setField(user, "id", 321L);
+        user.addCompany(company);
+        Role adminRole = new Role();
+        adminRole.setName("ROLE_ADMIN");
+        user.addRole(adminRole);
+        Role legacyRole = new Role();
+        legacyRole.setName("ROLE_LEGACY_FINANCE");
+        user.addRole(legacyRole);
+
+        when(userRepository.findDistinctByCompanies_Id(company.getId())).thenReturn(List.of(user));
+        when(auditLogRepository.findLatestTimestampByEventTypeAndUsernameIn(
+                AuditEvent.LOGIN_SUCCESS,
+                java.util.Set.of("mixed-role-user@example.com")))
+                .thenReturn(List.of());
+        when(roleService.isSystemRole("ROLE_ADMIN")).thenReturn(true);
+        when(roleService.isSystemRole("ROLE_LEGACY_FINANCE")).thenReturn(false);
+
+        var results = service.listUsers();
+
+        assertThat(results).hasSize(1);
+        assertThat(results.getFirst().roles()).containsExactly("ROLE_ADMIN");
+    }
+
+    @Test
+    void hasRole_returnsFalseWhenUserOrRoleMetadataIsMissing() {
+        UserAccount userWithNullRoles = new UserAccount("null-roles@example.com", "hash", "Null Roles");
+        ReflectionTestUtils.setField(userWithNullRoles, "roles", null);
+        UserAccount userWithRole = new UserAccount("blank-role@example.com", "hash", "Blank Role");
+        Role adminRole = new Role();
+        adminRole.setName("ROLE_ADMIN");
+        userWithRole.addRole(adminRole);
+
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "hasRole", null, "ROLE_ADMIN")).isFalse();
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "hasRole", userWithNullRoles, "ROLE_ADMIN")).isFalse();
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "hasRole", userWithRole, "  ")).isFalse();
+    }
+
+    @Test
+    void attachRoles_resolvesAdminSurfaceAssignmentsBeforeBinding() {
+        UserAccount user = new UserAccount("attach-roles@example.com", "hash", "Attach Roles");
+        Role adminRole = new Role();
+        adminRole.setName("ROLE_ADMIN");
+        when(roleService.requireAdminSurfaceAssignmentRole("ROLE_ADMIN")).thenReturn(adminRole);
+
+        ReflectionTestUtils.invokeMethod(service, "attachRoles", user, List.of("ROLE_ADMIN"));
+
+        assertThat(user.getRoles()).extracting(Role::getName).containsExactly("ROLE_ADMIN");
     }
 
     @Test
@@ -430,6 +595,35 @@ class AdminUserServiceTest {
     }
 
     @Test
+    void forceResetPassword_platformOwnerTarget_masksAsMissingWithoutLocking() {
+        UserAccount platformOwner = new UserAccount("platform-owner@example.com", "hash", "Platform Owner");
+        ReflectionTestUtils.setField(platformOwner, "id", 313L);
+        platformOwner.addCompany(company);
+        Role superAdminRole = new Role();
+        superAdminRole.setName("ROLE_SUPER_ADMIN");
+        platformOwner.addRole(superAdminRole);
+        Role adminRole = new Role();
+        adminRole.setName("ROLE_ADMIN");
+        platformOwner.addRole(adminRole);
+
+        when(userRepository.findById(313L)).thenReturn(Optional.of(platformOwner));
+
+        assertThatThrownBy(() -> service.forceResetPassword(313L))
+                .isInstanceOf(ApplicationException.class)
+                .hasMessageContaining("User not found");
+
+        verify(userRepository).findById(313L);
+        verify(userRepository, never()).lockById(313L);
+        verify(userRepository, never()).lockByIdAndCompanyId(313L, 1L);
+        verify(passwordResetService, never()).requestResetByAdmin(any(UserAccount.class));
+        verify(auditService).logAuthFailure(
+                eq(AuditEvent.ACCESS_DENIED),
+                eq("UNKNOWN_AUTH_ACTOR"),
+                eq("TEST"),
+                any(Map.class));
+    }
+
+    @Test
     void updateUserStatus_crossTenantUser_forTenantAdmin_masksTargetAsMissingWithoutLocking() {
         Company foreignCompany = new Company();
         ReflectionTestUtils.setField(foreignCompany, "id", 21L);
@@ -491,6 +685,61 @@ class AdminUserServiceTest {
 
         verify(userRepository).findById(305L);
         verify(userRepository, never()).findByIdAndCompanies_Id(eq(305L), any());
+    }
+
+    @Test
+    void updateUser_emptyRoleList_clearsHiddenLegacyAuthorities() {
+        UserAccount user = new UserAccount("legacy-only@example.com", "hash", "Legacy Only");
+        ReflectionTestUtils.setField(user, "id", 314L);
+        user.addCompany(company);
+        Role legacyRole = new Role();
+        legacyRole.setName("dispatch.confirm");
+        user.addRole(legacyRole);
+
+        when(userRepository.findById(314L)).thenReturn(Optional.of(user));
+        when(auditLogRepository.findFirstByEventTypeAndUsernameIgnoreCaseOrderByTimestampDesc(
+                AuditEvent.LOGIN_SUCCESS,
+                "legacy-only@example.com"))
+                .thenReturn(Optional.empty());
+
+        var response = service.updateUser(
+                314L,
+                new UpdateUserRequest("Legacy Only", null, List.of(), null));
+
+        assertThat(response.roles()).isEmpty();
+        assertThat(user.getRoles()).isEmpty();
+        verify(tokenBlacklistService).revokeAllUserTokens("legacy-only@example.com");
+        verify(refreshTokenService).revokeAllForUser("legacy-only@example.com");
+        verify(userRepository, never()).save(any(UserAccount.class));
+    }
+
+    @Test
+    void updateUser_rejectsPlatformOwnerTargetOnAdminSurface() {
+        UserAccount platformOwner = new UserAccount("platform-owner@example.com", "hash", "Platform Owner");
+        ReflectionTestUtils.setField(platformOwner, "id", 321L);
+        platformOwner.addCompany(company);
+        Role superAdminRole = new Role();
+        superAdminRole.setName("ROLE_SUPER_ADMIN");
+        platformOwner.addRole(superAdminRole);
+        Role adminRole = new Role();
+        adminRole.setName("ROLE_ADMIN");
+        platformOwner.addRole(adminRole);
+
+        when(userRepository.findById(321L)).thenReturn(Optional.of(platformOwner));
+
+        assertThatThrownBy(() -> service.updateUser(
+                321L,
+                new UpdateUserRequest("Platform Owner Updated", List.of(1L), List.of("ROLE_ADMIN"), true)))
+                .isInstanceOf(AccessDeniedException.class)
+                .hasMessageContaining("Target user is out of scope");
+
+        verify(userRepository).findById(321L);
+        verify(userRepository, never()).save(any(UserAccount.class));
+        verify(auditService).logAuthFailure(
+                eq(AuditEvent.ACCESS_DENIED),
+                eq("UNKNOWN_AUTH_ACTOR"),
+                eq("TEST"),
+                any(Map.class));
     }
 
     @Test

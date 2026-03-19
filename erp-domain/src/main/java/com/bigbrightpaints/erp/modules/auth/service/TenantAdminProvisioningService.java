@@ -52,7 +52,6 @@ public class TenantAdminProvisioningService {
         if (userAccountRepository.findByEmailIgnoreCase(normalizedEmail).isPresent()) {
             throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("First admin email already exists: " + normalizedEmail);
         }
-        Role adminRole = roleService.ensureRoleExists("ROLE_ADMIN");
         String temporaryPassword = PasswordUtils.generateTemporaryPassword(14);
         UserAccount firstAdmin = new UserAccount(
                 normalizedEmail,
@@ -60,14 +59,14 @@ public class TenantAdminProvisioningService {
                 resolveFirstAdminDisplayName(firstAdminDisplayName, company));
         firstAdmin.setMustChangePassword(true);
         firstAdmin.addCompany(company);
-        firstAdmin.addRole(adminRole);
-        userAccountRepository.save(firstAdmin);
+        firstAdmin.addRole(roleService.requireFixedSystemRole("ROLE_ADMIN"));
+        UserAccount savedAdmin = userAccountRepository.save(firstAdmin);
         emailService.sendUserCredentialsEmailRequired(
-                firstAdmin.getEmail(),
-                firstAdmin.getDisplayName(),
+                savedAdmin.getEmail(),
+                savedAdmin.getDisplayName(),
                 temporaryPassword,
                 company.getCode());
-        return firstAdmin.getEmail();
+        return savedAdmin.getEmail();
     }
 
     @Transactional

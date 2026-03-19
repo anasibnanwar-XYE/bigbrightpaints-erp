@@ -116,7 +116,7 @@ class DealerServiceTest {
 
         Role dealerRole = new Role();
         dealerRole.setName("ROLE_DEALER");
-        lenient().when(roleService.ensureRoleExists("ROLE_DEALER")).thenReturn(dealerRole);
+        lenient().when(roleService.requireFixedSystemRole("ROLE_DEALER")).thenReturn(dealerRole);
 
         lenient().when(accountRepository.findByCompanyAndCodeIgnoreCase(eq(company), anyString())).thenReturn(Optional.empty());
         lenient().when(accountRepository.save(any(Account.class))).thenAnswer(invocation -> {

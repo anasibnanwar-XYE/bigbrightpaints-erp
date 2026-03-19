@@ -1,80 +1,64 @@
 # R2 Checkpoint
 
 ## Scope
-- Feature: `pr119-canary-readiness`
-- Runtime candidate SHA: `2fba82e91748f60872727c8f530369e66d95c0a8`
-- Readiness packet SHA: `80aab18d04c65c4195868d2c0f42c96fc0d3eb7c`
-- Branch: `feature/pr119-canary-readiness-clean`
-- Why this is R2: this packet closes the post-merge deploy-readiness gap on live `main`, fixes accounting-portal handoff RBAC/readiness drift, and records the canary ownership/rollback decision on the exact proved runtime SHA.
+- Feature: `ERP-18 Packet 1: Roles and authorization contract cleanup`
+- PR: `#122`
+- Runtime candidate SHA: `2a2852c376c12748b40bbab9fb9587dbc0806748`
+- Diff base SHA: `c74a2f6cf09b45dff9398d02699e2474777b2cf6`
+- Branch: `feature/erp-stabilization-program--control-plane`
+- Why this is R2: this packet changes high-risk `auth`, `rbac`, and `company` runtime paths, removes dynamic role creation from provisioning/admin flows, hard-cuts `ROLE_SUPER_ADMIN` from admin and client-facing assignment surfaces, changes the public `/api/v1/auth/me` contract to the stable frontend-safe `companyCode` shape only, and now fail-fast enforces the canonical persisted fixed-role catalog when seed drift is detected.
 
 ## Risk Trigger
-- Triggered by post-merge deploy-readiness closure on live `main`, where incorrect portal handoff scope could have exposed accountant or sales users to deterministic `403` failures on admin-only exports during canary.
-- Contract surfaces affected: accounting portal route ownership, portal/frontend handoff RBAC truth, audit-trail route guidance, release gate documentation, and canary operator ownership.
-- Failure mode if wrong: canary proceeds without a named owner/rollback decision, or frontend/operator handoff treats admin-only exports as accountant-required flows and hits deterministic authorization failures under live traffic.
+- Triggered by changes under `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/rbac/`, and `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/`, which are guarded as high-risk enterprise paths.
+- Contract surfaces affected: tenant admin provisioning, admin user assignment, admin role catalog visibility, authorization checks via the shared role-action matrix, `/api/v1/auth/me`, OpenAPI, and frontend handoff docs.
+- Failure mode if wrong: tenant admins could create or assign unsupported roles, admin/client surfaces could expose platform-owner `ROLE_SUPER_ADMIN`, or frontend/session consumers could receive stale/raw auth DTO fields and mis-handle session state.
 
 ## Approval Authority
 - Mode: human
 - Approver: `Anas ibn Anwar`
-- Approval status: `approved for merge handoff; canary entry remains pending canonical-lane merge plus post-merge gate re-proof`
-- Basis: runtime and staging proof are green on the exact merged runtime SHA, the docs/readiness packet is corrected through `80aab18d04c65c4195868d2c0f42c96fc0d3eb7c`, and canary may proceed only after the merged canonical-lane head re-proves the release gates listed below.
+- Approval status: `approved for PR validation and merge review on ERP-18 Packet 1 scope only`
+- Basis: the approver explicitly fixed the product decision for this packet to the six-role model only, with `ROLE_SUPER_ADMIN` reserved to the platform owner and never visible or assignable by admin/client surfaces; the packet also keeps the hard-cut rule of no compatibility bridges or raw DTO leakage.
 
 ## Escalation Decision
-- Human escalation required: no additional human approval after the packet is merged to the canonical lane and the post-merge gate sequence re-proves green on that merged head
-- Reason: explicit canary owner and rollback owner are recorded here, but this file does not authorize canary from a local-only readiness branch. Canary remains blocked until merge/publication and fresh gate proof on the merged head.
-
-## Canary Owner
-- Lane owner: `Anas ibn Anwar`
-- Lane-owner acknowledgement: `Anas ibn Anwar approved canary entry for runtime candidate 2fba82e91748f60872727c8f530369e66d95c0a8 only after this packet is merged to the canonical lane and scripts/gate_core.sh, scripts/gate_release.sh, and scripts/verify_local.sh are re-proved green on that merged head.`
+- Human escalation required: no
+- Reason: packet scope, superadmin visibility/assignment policy, and the stable auth/session contract direction were explicitly decided by the approver above. Re-escalate only if scope broadens beyond Packet 1, new role types are introduced, or `/api/v1/auth/me` becomes ambiguous again.
 
 ## Rollback Owner
 - Owner: `Anas ibn Anwar`
-- Rollback method: stop canary expansion, revert to the previous backend artifact, then rerun `scripts/gate_release.sh` and `scripts/verify_local.sh` on the rollback target before resuming traffic expansion.
+- Rollback method: revert the Packet 1 commits as a full rollback on the worker branch, rerun the focused auth/rbac proof set, and restore the previous integration-branch behavior only via that revert. Do not keep a mixed compatibility path.
 - Rollback trigger:
-  - actuator readiness goes `DOWN`
-  - auth or tenant-isolation probe fails
-  - minimum O2C probe fails
-  - minimum P2P/accounting probe fails
-  - sustained unexpected `5xx` or authorization anomaly on canary traffic
-
-## Telemetry Signals
-- Actuator readiness and liveness
-- Application `5xx` rate on canary slice
-- Auth/authorization anomalies, including unexpected `403` on intended canary flows
-- O2C dispatch-confirm, invoice visibility, and dealer receipt outcomes
-- P2P goods-receipt, raw-material purchase, and supplier-payment outcomes
-- Database migration/connection errors and rollback readiness posture
-
-## Minimum Canary Probes
-- O2C:
-  - `POST /api/v1/sales/dispatch/confirm`
-  - verify downstream invoice/journal truth
-  - `POST /api/v1/accounting/receipts/dealer`
-- P2P/accounting:
-  - `POST /api/v1/purchasing/goods-receipts`
-  - `POST /api/v1/purchasing/raw-material-purchases`
-  - `POST /api/v1/accounting/suppliers/payments`
+  - admin or provisioning flows fail to resolve required fixed roles
+  - any admin/client-facing surface exposes or assigns `ROLE_SUPER_ADMIN`
+  - `/api/v1/auth/me` or OpenAPI drifts away from the documented `companyCode`-only response contract
+  - auth/tenant-isolation integration coverage regresses on the rerun packet proof
 
 ## Expiry
-- Valid until: `2026-03-25`
-- Re-evaluate if: runtime candidate SHA changes, release proof is superseded, rollback procedure changes, or canary scope expands beyond the narrow probes above.
+- Valid until: `2026-03-26`
+- Re-evaluate if: the PR head SHA changes again, Packet 1 scope expands, the auth/session contract changes, or approval/rollback ownership changes.
 
 ## Verification Evidence
-- Exact-main proof on live runtime SHA `2fba82e91748f60872727c8f530369e66d95c0a8`:
-  - `scripts/gate_core.sh` passed at `2026-03-18 17:45:54 +05:30`
-  - `scripts/gate_release.sh` passed at `2026-03-18 17:47:32 +05:30`
-  - `scripts/verify_local.sh` passed at `2026-03-18 17:49:01 +05:30`
-- Current readiness packet proof inherited by `80aab18d04c65c4195868d2c0f42c96fc0d3eb7c`:
-  - `scripts/gate_core.sh` passed on packet ancestor `ef2e56284aa38dc0799144765d8b91ba610c0ab5` at `2026-03-18T13:33:28Z`
-  - `scripts/gate_release.sh` passed on packet ancestor `ef2e56284aa38dc0799144765d8b91ba610c0ab5` at `2026-03-18T13:35:03Z`
-  - standalone `scripts/verify_local.sh` passed on packet ancestor `ef2e56284aa38dc0799144765d8b91ba610c0ab5` at `2026-03-18T19:06:19+05:30` with `439` tests, `0` failures, `0` errors
-- Docs/readiness closure:
-  - `docs/accounting-portal-frontend-engineer-handoff.md` corrected for RBAC and legacy audit-export scope
-  - `scripts/guard_accounting_portal_scope_contract.sh` hardened to fail on those contradictions
-- Reviewable replay contract:
-  - reviewers must validate this packet from a clean checkout with rerunnable commands, not repo-local `artifacts/`
-  - required replay commands: `scripts/gate_core.sh`, `scripts/gate_release.sh`, `scripts/verify_local.sh`, `scripts/guard_accounting_portal_scope_contract.sh`, `scripts/guard_audit_trail_ownership_contract.sh`
-  - canary remains blocked until those commands are re-proved on the merged canonical-lane head for the runtime candidate above
+- Commands run:
+  - `mvn -B -ntp -Dtest=RoleServiceTest,RoleServiceRbacTenantIsolationTest,RoleControllerSecurityContractTest test jacoco:report`
+  - `mvn -B -ntp -Dtest=RoleServiceTest,RoleServiceRbacTenantIsolationTest,RbacSynchronizationConfigTest,AdminUserServiceTest,AuthControllerIT,AuthTenantAuthorityIT,RoleControllerSecurityContractTest,TenantOnboardingServiceTest,TenantAdminProvisioningServiceTest,TS_RuntimeTenantAdminProvisioningServiceExecutableCoverageTest,TS_RuntimeTenantPolicyControlExecutableCoverageTest,DealerServiceTest,OpenApiSnapshotIT test jacoco:report`
+  - `python3 scripts/changed_files_coverage.py --jacoco erp-domain/target/site/jacoco/jacoco.xml --diff-base c74a2f6cf09b45dff9398d02699e2474777b2cf6`
+  - `bash ci/check-codex-review-guidelines.sh`
+  - `git diff --check`
+- Result summary:
+  - targeted RBAC proof passed with `22` tests
+  - decisive Packet 1 proof passed with `138` tests
+  - changed-files coverage passed at `68/69` mapped lines and `27/28` mapped branches; `RoleService.java` retained one non-blocking unmapped structural line
+  - `check-codex-review-guidelines.sh` passed, including the enterprise-policy R2 enforcement lane
+  - `git diff --check` was clean before each push
+- Artifacts/links:
+  - `docs/approvals/R2-CHECKPOINT.md`
+  - `docs/code-review/flows/admin-governance.md`
+  - `docs/code-review/flows/auth-identity.md`
+  - `docs/code-review/flows/company-tenant-control-plane.md`
+  - `docs/frontend-update-v2/auth-compatibility-regression-handoff.md`
+  - `.factory/library/frontend-handoff.md`
+  - `openapi.json`
+  - `https://github.com/anasibnanwar-XYE/bigbrightpaints-erp/pull/122`
 
 ## Reviewer Notes
-- Local run outputs under `artifacts/` are non-canonical and intentionally excluded from this readiness packet.
-- Merge/readiness review must rely on committed docs plus the rerunnable commands above.
+- No `migration_v2` files changed in this packet.
+- High-risk runtime logic changes are covered by updated tests under `erp-domain/src/test/java`; no waiver is being used.

@@ -7,6 +7,8 @@ import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.company.domain.Company;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyLifecycleState;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
+import com.bigbrightpaints.erp.modules.rbac.domain.Role;
+import com.bigbrightpaints.erp.modules.rbac.domain.RoleRepository;
 import com.bigbrightpaints.erp.test.AbstractIntegrationTest;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
@@ -56,6 +58,9 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
     @Autowired
     private UserAccountRepository userAccountRepository;
 
+    @Autowired
+    private RoleRepository roleRepository;
+
     @BeforeEach
     void setUp() {
         dataSeeder.ensureUser(ADMIN_EMAIL, PASSWORD, "Tenant Admin", TENANT_A, List.of("ROLE_ADMIN"));
@@ -70,25 +75,35 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
                 List.of("ROLE_SUPER_ADMIN", "ROLE_ADMIN"));
         dataSeeder.ensureUser(SUPER_ADMIN_HIERARCHY_EMAIL, PASSWORD, "Hierarchy Super Admin", TENANT_A,
                 List.of("ROLE_SUPER_ADMIN"));
-        resetSeededUserState(ADMIN_EMAIL);
-        resetSeededUserState(ROLE_GUARD_ADMIN_EMAIL);
-        resetSeededUserState(NON_PRIVILEGED_ADMIN_EMAIL);
-        resetSeededUserState("other-admin@bbp.com");
-        resetSeededUserState(SUPER_ADMIN_EMAIL);
-        resetSeededUserState(SUPER_ADMIN_HIERARCHY_EMAIL);
+        resetSeededUserState(ADMIN_EMAIL, List.of("ROLE_ADMIN"));
+        resetSeededUserState(ROLE_GUARD_ADMIN_EMAIL, List.of("ROLE_ADMIN"));
+        resetSeededUserState(NON_PRIVILEGED_ADMIN_EMAIL, List.of("ROLE_ADMIN"));
+        resetSeededUserState("other-admin@bbp.com", List.of("ROLE_ADMIN"));
+        resetSeededUserState("factory-seed@bbp.com", List.of("ROLE_FACTORY"));
+        resetSeededUserState(SUPER_ADMIN_EMAIL, List.of("ROLE_SUPER_ADMIN", "ROLE_ADMIN"));
+        resetSeededUserState(SUPER_ADMIN_HIERARCHY_EMAIL, List.of("ROLE_SUPER_ADMIN"));
         resetTenantLifecycle(TENANT_A);
         resetTenantLifecycle(TENANT_B);
         resetTenantLifecycle(ROOT_TENANT);
     }
 
-    private void resetSeededUserState(String email) {
+    private void resetSeededUserState(String email, List<String> roleNames) {
         userAccountRepository.findByEmailIgnoreCase(email).ifPresent(user -> {
             user.setEnabled(true);
             user.setMustChangePassword(false);
             user.setFailedLoginAttempts(0);
             user.setLockedUntil(null);
+            user.getRoles().clear();
+            roleNames.stream()
+                    .map(this::requireRole)
+                    .forEach(user::addRole);
             userAccountRepository.save(user);
         });
+    }
+
+    private Role requireRole(String roleName) {
+        return roleRepository.findByName(roleName)
+                .orElseThrow(() -> new AssertionError("Expected seeded role to exist: " + roleName));
     }
 
     private void resetTenantLifecycle(String companyCode) {
@@ -214,6 +229,34 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
         assertThat(data).isNotNull();
         assertThat(data.get("companyCode")).isEqualTo(TENANT_A);
         assertThat(data.get("adminEmail")).isEqualTo(ADMIN_EMAIL);
+        assertThat(data).doesNotContainKeys("temporaryPassword", "adminTemporaryPassword");
+    }
+
+    @Test
+    void root_only_super_admin_can_reset_tenant_attached_super_admin_password_for_support() {
+        String rootOnlySuperAdminEmail = "root-only-hierarchy-support@" + System.nanoTime() + ".bbp.com";
+        dataSeeder.ensureUser(rootOnlySuperAdminEmail, PASSWORD, "Root Only Hierarchy Support", ROOT_TENANT,
+                List.of("ROLE_SUPER_ADMIN"));
+        String superToken = login(rootOnlySuperAdminEmail, ROOT_TENANT);
+        Long tenantAId = companyRepository.findByCodeIgnoreCase(TENANT_A).map(Company::getId).orElseThrow();
+
+        ResponseEntity<Map> response = rest.exchange(
+                "/api/v1/companies/" + tenantAId + "/support/admin-password-reset",
+                HttpMethod.POST,
+                new HttpEntity<>(Map.of("adminEmail", SUPER_ADMIN_HIERARCHY_EMAIL), jsonHeaders(superToken, ROOT_TENANT)),
+                Map.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        UserAccount admin = userAccountRepository.findByEmailIgnoreCase(SUPER_ADMIN_HIERARCHY_EMAIL).orElseThrow();
+        assertThat(admin.isMustChangePassword()).isTrue();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> responseBody = response.getBody();
+        assertThat(responseBody).isNotNull();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) responseBody.get("data");
+        assertThat(data).isNotNull();
+        assertThat(data.get("companyCode")).isEqualTo(TENANT_A);
+        assertThat(data.get("adminEmail")).isEqualTo(SUPER_ADMIN_HIERARCHY_EMAIL);
         assertThat(data).doesNotContainKeys("temporaryPassword", "adminTemporaryPassword");
     }
 
@@ -354,7 +397,7 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void admin_cannot_create_tenant_admin_user() throws InterruptedException {
+    void admin_can_create_tenant_admin_user() {
         String token = login(ADMIN_EMAIL, TENANT_A);
         Long tenantAId = companyRepository.findByCodeIgnoreCase(TENANT_A).map(Company::getId).orElseThrow();
         String candidateEmail = "candidate-" + System.nanoTime() + "@bbp.com";
@@ -371,14 +414,15 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
                 ), jsonHeaders(token, TENANT_A)),
                 Map.class);
 
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
-
-        AuditLog denied = awaitAuditEvent(AuditEvent.ACCESS_DENIED, log ->
-                ADMIN_EMAIL.equalsIgnoreCase(log.getUsername())
-                        && "tenant-admin-role-management-requires-super-admin".equals(log.getMetadata().get("reason"))
-                        && "ROLE_ADMIN".equalsIgnoreCase(log.getMetadata().get("targetRole")));
-        assertThat(denied.getMetadata()).containsEntry("actor", ADMIN_EMAIL);
-        assertThat(denied.getMetadata().get("tenantScope")).contains(TENANT_A);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        UserAccount createdUser = userAccountRepository.findByEmailIgnoreCase(candidateEmail).orElseThrow();
+        assertThat(createdUser.getCompanies())
+                .extracting(Company::getCode)
+                .contains(TENANT_A);
+        assertThat(createdUser.getRoles())
+                .extracting(Role::getName)
+                .contains("ROLE_ADMIN")
+                .doesNotContain("ROLE_SUPER_ADMIN");
     }
 
     @Test
@@ -665,12 +709,9 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
     }
 
     @Test
-    void tenant_admin_cannot_mutate_shared_role_permissions() throws InterruptedException {
+    void tenant_admin_cannot_mutate_shared_role_permissions() {
         String adminToken = login(ROLE_GUARD_ADMIN_EMAIL, TENANT_A);
-        String superAdminToken = login(SUPER_ADMIN_EMAIL, TENANT_A);
         assertTokenCanAccessMe(adminToken, TENANT_A);
-        Map<String, Object> before = fetchRoleData(superAdminToken, TENANT_A, "ROLE_FACTORY");
-        Set<String> beforePermissions = extractPermissionCodes(before);
 
         ResponseEntity<Map> denied = rest.exchange(
                 "/api/v1/admin/roles",
@@ -682,40 +723,24 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
                 ), jsonHeaders(adminToken, TENANT_A)),
                 Map.class);
 
-        assertForbiddenFromRoleMutationGuard(denied);
-        Map<String, Object> after = fetchRoleData(superAdminToken, TENANT_A, "ROLE_FACTORY");
-        assertThat(extractPermissionCodes(after)).isEqualTo(beforePermissions);
-
-        AuditLog deniedAudit = awaitAuditEvent(AuditEvent.ACCESS_DENIED, log ->
-                ROLE_GUARD_ADMIN_EMAIL.equalsIgnoreCase(log.getUsername())
-                        && "shared-role-permission-mutation-requires-super-admin".equals(log.getMetadata().get("reason"))
-                        && "ROLE_FACTORY".equalsIgnoreCase(log.getMetadata().get("targetRole")));
-        assertThat(deniedAudit.getMetadata().get("tenantScope")).contains(TENANT_A);
+        assertThat(denied.getStatusCode()).isEqualTo(HttpStatus.METHOD_NOT_ALLOWED);
     }
 
     @Test
-    void super_admin_can_mutate_shared_role_permissions_via_existing_endpoint() throws InterruptedException {
+    void super_admin_cannot_mutate_shared_role_permissions_via_admin_endpoint() {
         String superAdminToken = login(SUPER_ADMIN_EMAIL, TENANT_A);
-        Map<String, Object> baseline = fetchRoleData(superAdminToken, TENANT_A, "ROLE_FACTORY");
-        String description = String.valueOf(baseline.get("description"));
-        List<String> permissions = extractPermissionCodes(baseline).stream().toList();
 
         ResponseEntity<Map> response = rest.exchange(
                 "/api/v1/admin/roles",
                 HttpMethod.POST,
                 new HttpEntity<>(Map.of(
                         "name", "ROLE_FACTORY",
-                        "description", description,
-                        "permissions", permissions
+                        "description", "Platform sales role",
+                        "permissions", List.of("portal:factory")
                 ), jsonHeaders(superAdminToken, TENANT_A)),
                 Map.class);
 
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        AuditLog grantedAudit = awaitAuditEvent(AuditEvent.ACCESS_GRANTED, log ->
-                SUPER_ADMIN_EMAIL.equalsIgnoreCase(log.getUsername())
-                        && "shared-role-permission-mutation-approved".equals(log.getMetadata().get("reason"))
-                        && "ROLE_FACTORY".equalsIgnoreCase(log.getMetadata().get("targetRole")));
-        assertThat(grantedAudit.getMetadata().get("tenantScope")).contains(TENANT_A);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.METHOD_NOT_ALLOWED);
     }
 
     @Test

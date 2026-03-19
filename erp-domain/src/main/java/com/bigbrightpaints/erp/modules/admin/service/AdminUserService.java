@@ -38,6 +38,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -97,6 +98,7 @@ public class AdminUserService {
         List<UserAccount> users = userRepository.findDistinctByCompanies_Id(company.getId());
         Map<String, Instant> lastLoginByEmail = resolveLastLoginByEmail(users);
         return users.stream()
+                .filter(user -> !hasRole(user, SUPER_ADMIN_ROLE))
                 .map(user -> toDto(user, lastLoginByEmail.get(normalizeEmailKey(user.getEmail()))))
                 .toList();
     }
@@ -105,6 +107,7 @@ public class AdminUserService {
     public UserDto createUser(CreateUserRequest request) {
         Company company = companyContextService.requireCurrentCompany();
         List<Company> targetCompanies = resolveTargetCompaniesForCreate(company, request.companyIds());
+        List<Role> requestedRoles = resolveAdminSurfaceAssignmentRoles(request.roles());
         targetCompanies.forEach(targetCompany ->
                 tenantRuntimePolicyService.assertCanAddEnabledUser(targetCompany, "ADMIN_USER_CREATE"));
         boolean isTemporaryPassword = !StringUtils.hasText(request.password());
@@ -117,12 +120,12 @@ public class AdminUserService {
         }
         
         attachCompanies(user, targetCompanies);
-        attachRoles(user, request.roles());
+        attachResolvedRoles(user, requestedRoles);
         UserAccount saved = userRepository.save(user);
         
-        // Auto-create Dealer entity if user has ROLE_DEALER
-        boolean isDealerUser = request.roles().stream()
-                .anyMatch(r -> r.equalsIgnoreCase("ROLE_DEALER") || r.equalsIgnoreCase("DEALER"));
+        boolean isDealerUser = requestedRoles.stream()
+                .map(Role::getName)
+                .anyMatch("ROLE_DEALER"::equalsIgnoreCase);
         if (isDealerUser && !targetCompanies.isEmpty()) {
             createDealerForUser(saved, targetCompanies.getFirst());
         }
@@ -198,9 +201,8 @@ public class AdminUserService {
             attachCompanies(user, company, request.companyIds());
             requiresReauth = true; // Company access changed
         }
-        if (request.roles() != null && !request.roles().isEmpty()) {
-            user.getRoles().clear();
-            attachRoles(user, request.roles());
+        if (request.roles() != null) {
+            replaceAdminSurfaceRoles(user, request.roles());
             requiresReauth = true; // Roles changed
         }
         // Revoke tokens if permissions changed to force re-authentication
@@ -337,6 +339,9 @@ public class AdminUserService {
             }
             throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput(USER_NOT_FOUND_MESSAGE);
         }
+        if (hasRole(user, SUPER_ADMIN_ROLE)) {
+            return handleOutOfScopeAdminAction(user, activeCompany, denialReason, outOfScopeResponseMode);
+        }
         if (superAdmin) {
             return user;
         }
@@ -453,28 +458,45 @@ public class AdminUserService {
                 .anyMatch(authority -> SUPER_ADMIN_ROLE.equalsIgnoreCase(authority.getAuthority()));
     }
 
+    private boolean hasRole(UserAccount user, String roleName) {
+        if (user == null || user.getRoles() == null || !StringUtils.hasText(roleName)) {
+            return false;
+        }
+        return user.getRoles().stream()
+                .filter(Objects::nonNull)
+                .map(Role::getName)
+                .filter(StringUtils::hasText)
+                .anyMatch(role -> roleName.equalsIgnoreCase(role));
+    }
+
     private void attachRoles(UserAccount user, List<String> roles) {
-        roles.forEach(roleName -> {
-            if (!StringUtils.hasText(roleName)) {
-                return;
-            }
-            String trimmed = roleName.trim();
-            String normalized = trimmed.toUpperCase(Locale.ROOT);
-            // If caller omitted prefix but matches a system role, add prefix
-            if (!normalized.startsWith("ROLE_")) {
-                String withPrefix = "ROLE_" + normalized;
-                if (roleService.isSystemRole(withPrefix)) {
-                    normalized = withPrefix;
-                }
-            }
-            if (SUPER_ADMIN_ROLE.equalsIgnoreCase(normalized) && !hasSuperAdminAuthority()) {
-                throw new org.springframework.security.access.AccessDeniedException(
-                        "SUPER_ADMIN authority required to assign role: " + normalized);
-            }
-            // Allow both system roles and custom roles
-            Role role = roleService.ensureRoleExists(normalized);
-            user.addRole(role);
-        });
+        attachResolvedRoles(user, resolveAdminSurfaceAssignmentRoles(roles));
+    }
+
+    private void replaceAdminSurfaceRoles(UserAccount user, List<String> roles) {
+        user.getRoles().clear();
+        if (roles == null || roles.isEmpty()) {
+            return;
+        }
+        attachResolvedRoles(user, resolveAdminSurfaceAssignmentRoles(roles));
+    }
+
+    private void attachResolvedRoles(UserAccount user, List<Role> roles) {
+        roles.forEach(user::addRole);
+    }
+
+    private List<Role> resolveAdminSurfaceAssignmentRoles(List<String> roles) {
+        if (roles == null || roles.isEmpty()) {
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("User must have at least one platform role");
+        }
+        List<Role> resolvedRoles = roles.stream()
+                .filter(StringUtils::hasText)
+                .map(roleService::requireAdminSurfaceAssignmentRole)
+                .toList();
+        if (resolvedRoles.isEmpty()) {
+            throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("User must have at least one platform role");
+        }
+        return resolvedRoles;
     }
 
     private Map<String, Instant> resolveLastLoginByEmail(List<UserAccount> users) {
@@ -609,7 +631,13 @@ public class AdminUserService {
 
     private UserDto toDto(UserAccount user, Instant lastLoginAt) {
         List<String> companies = user.getCompanies().stream().map(Company::getCode).toList();
-        List<String> roles = user.getRoles().stream().map(Role::getName).toList();
+        List<String> roles = user.getRoles().stream()
+                .filter(Objects::nonNull)
+                .map(Role::getName)
+                .filter(StringUtils::hasText)
+                .filter(roleService::isSystemRole)
+                .filter(roleName -> !SUPER_ADMIN_ROLE.equalsIgnoreCase(roleName))
+                .toList();
         return new UserDto(user.getId(), user.getPublicId(), user.getEmail(), user.getDisplayName(),
                 user.isEnabled(), user.isMfaEnabled(), roles, companies, lastLoginAt);
     }

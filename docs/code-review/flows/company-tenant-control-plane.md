@@ -178,7 +178,7 @@ Result: the control plane exposes multiple tenant-usage dashboards that do not s
 
 This path:
 
-- validates that the target user belongs to the tenant and has `ROLE_ADMIN` or `ROLE_SUPER_ADMIN`
+- validates that the target user belongs to the tenant and has persisted `ROLE_ADMIN`
 - rewrites the password hash
 - sets `mustChangePassword=true`
 - clears lockout counters
