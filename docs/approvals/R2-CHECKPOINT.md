@@ -3,10 +3,10 @@
 ## Scope
 - Feature: `ERP-18 Packet 1: Roles and authorization contract cleanup`
 - PR: `#122`
-- Runtime candidate SHA: `61da90f91fdd2c098470058b20faf56199265b43`
+- Runtime candidate SHA: `2a2852c376c12748b40bbab9fb9587dbc0806748`
 - Diff base SHA: `c74a2f6cf09b45dff9398d02699e2474777b2cf6`
 - Branch: `feature/erp-stabilization-program--control-plane`
-- Why this is R2: this packet changes high-risk `auth`, `rbac`, and `company` runtime paths, removes dynamic role creation from provisioning/admin flows, hard-cuts `ROLE_SUPER_ADMIN` from admin and client-facing assignment surfaces, and changes the public `/api/v1/auth/me` contract to the stable frontend-safe `companyCode` shape only.
+- Why this is R2: this packet changes high-risk `auth`, `rbac`, and `company` runtime paths, removes dynamic role creation from provisioning/admin flows, hard-cuts `ROLE_SUPER_ADMIN` from admin and client-facing assignment surfaces, changes the public `/api/v1/auth/me` contract to the stable frontend-safe `companyCode` shape only, and now fail-fast enforces the canonical persisted fixed-role catalog when seed drift is detected.
 
 ## Risk Trigger
 - Triggered by changes under `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/auth/`, `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/rbac/`, and `erp-domain/src/main/java/com/bigbrightpaints/erp/modules/company/`, which are guarded as high-risk enterprise paths.
@@ -38,19 +38,19 @@
 
 ## Verification Evidence
 - Commands run:
-  - `mvn -B -ntp -Dtest=AdminUserServiceTest,TenantAdminProvisioningServiceTest,RoleServiceTest,RoleServiceRbacTenantIsolationTest,RbacSynchronizationConfigTest,RoleControllerSecurityContractTest,DealerServiceTest,AuthControllerIT,AuthTenantAuthorityIT test`
-  - `mvn -B -ntp -Dtest=OpenApiSnapshotIT -Derp.openapi.snapshot.verify=true -Derp.openapi.snapshot.refresh=true test`
-  - `mvn -B -ntp -Dtest=AdminUserServiceTest,TenantAdminProvisioningServiceTest,TenantOnboardingServiceTest,RoleServiceTest,RoleServiceRbacTenantIsolationTest,RbacSynchronizationConfigTest,RoleControllerSecurityContractTest,AuthControllerIT,AuthTenantAuthorityIT,OpenApiSnapshotIT,TS_RuntimeTenantPolicyControlExecutableCoverageTest test`
-  - `bash scripts/guard_openapi_contract_drift.sh`
-  - `bash scripts/guard_accounting_portal_scope_contract.sh`
+  - `mvn -B -ntp -Dtest=RoleServiceTest,RoleServiceRbacTenantIsolationTest,RoleControllerSecurityContractTest test jacoco:report`
+  - `mvn -B -ntp -Dtest=RoleServiceTest,RoleServiceRbacTenantIsolationTest,RbacSynchronizationConfigTest,AdminUserServiceTest,AuthControllerIT,AuthTenantAuthorityIT,RoleControllerSecurityContractTest,TenantOnboardingServiceTest,TenantAdminProvisioningServiceTest,TS_RuntimeTenantAdminProvisioningServiceExecutableCoverageTest,TS_RuntimeTenantPolicyControlExecutableCoverageTest,DealerServiceTest,OpenApiSnapshotIT test jacoco:report`
+  - `python3 scripts/changed_files_coverage.py --jacoco erp-domain/target/site/jacoco/jacoco.xml --diff-base c74a2f6cf09b45dff9398d02699e2474777b2cf6`
+  - `bash ci/check-codex-review-guidelines.sh`
   - `git diff --check`
 - Result summary:
-  - targeted role/auth proof passed with `103` tests
-  - OpenAPI snapshot proof passed with `2` tests
-  - final decisive Packet 1 proof passed with `97` tests
-  - contract guards passed and `git diff --check` was clean before PR creation
-  - `openapi.json` checksum after the contract cleanup: `b3d3352d68808f269b3cb424e2105a217962d66e5d559ef8743363979c153281`
+  - targeted RBAC proof passed with `22` tests
+  - decisive Packet 1 proof passed with `138` tests
+  - changed-files coverage passed at `68/69` mapped lines and `27/28` mapped branches; `RoleService.java` retained one non-blocking unmapped structural line
+  - `check-codex-review-guidelines.sh` passed, including the enterprise-policy R2 enforcement lane
+  - `git diff --check` was clean before each push
 - Artifacts/links:
+  - `docs/approvals/R2-CHECKPOINT.md`
   - `docs/code-review/flows/admin-governance.md`
   - `docs/code-review/flows/auth-identity.md`
   - `docs/code-review/flows/company-tenant-control-plane.md`
