@@ -248,7 +248,7 @@ class TenantAdminProvisioningServiceTest {
     }
 
     @Test
-    void resetTenantAdminPassword_rejectsSuperAdminOnlyUser() {
+    void resetTenantAdminPassword_allowsTenantAttachedSuperAdminOnlyUser() {
         TenantAdminProvisioningService service = new TenantAdminProvisioningService(
                 userAccountRepository,
                 roleService,
@@ -266,10 +266,16 @@ class TenantAdminProvisioningServiceTest {
         superAdminRole.setName("ROLE_SUPER_ADMIN");
         user.addRole(superAdminRole);
         when(userAccountRepository.findByEmailIgnoreCase("admin@ske.com")).thenReturn(Optional.of(user));
+        when(passwordEncoder.encode(any())).thenReturn("encoded");
+        when(userAccountRepository.save(any(UserAccount.class))).thenReturn(user);
 
-        assertThatThrownBy(() -> service.resetTenantAdminPassword(target, "admin@ske.com"))
-                .isInstanceOf(ApplicationException.class)
-                .hasMessageContaining("not an admin");
+        String resetEmail = service.resetTenantAdminPassword(target, "admin@ske.com");
+
+        assertThat(resetEmail).isEqualTo("admin@ske.com");
+        assertThat(user.isMustChangePassword()).isTrue();
+        verify(tokenBlacklistService).revokeAllUserTokens("admin@ske.com");
+        verify(refreshTokenService).revokeAllForUser("admin@ske.com");
+        verify(emailService).sendUserCredentialsEmailRequired(eq("admin@ske.com"), eq("Admin"), any(), eq("SKE"));
     }
 
     @Test

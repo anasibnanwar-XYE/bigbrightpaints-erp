@@ -233,6 +233,34 @@ class AuthTenantAuthorityIT extends AbstractIntegrationTest {
     }
 
     @Test
+    void root_only_super_admin_can_reset_tenant_attached_super_admin_password_for_support() {
+        String rootOnlySuperAdminEmail = "root-only-hierarchy-support@" + System.nanoTime() + ".bbp.com";
+        dataSeeder.ensureUser(rootOnlySuperAdminEmail, PASSWORD, "Root Only Hierarchy Support", ROOT_TENANT,
+                List.of("ROLE_SUPER_ADMIN"));
+        String superToken = login(rootOnlySuperAdminEmail, ROOT_TENANT);
+        Long tenantAId = companyRepository.findByCodeIgnoreCase(TENANT_A).map(Company::getId).orElseThrow();
+
+        ResponseEntity<Map> response = rest.exchange(
+                "/api/v1/companies/" + tenantAId + "/support/admin-password-reset",
+                HttpMethod.POST,
+                new HttpEntity<>(Map.of("adminEmail", SUPER_ADMIN_HIERARCHY_EMAIL), jsonHeaders(superToken, ROOT_TENANT)),
+                Map.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        UserAccount admin = userAccountRepository.findByEmailIgnoreCase(SUPER_ADMIN_HIERARCHY_EMAIL).orElseThrow();
+        assertThat(admin.isMustChangePassword()).isTrue();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> responseBody = response.getBody();
+        assertThat(responseBody).isNotNull();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) responseBody.get("data");
+        assertThat(data).isNotNull();
+        assertThat(data.get("companyCode")).isEqualTo(TENANT_A);
+        assertThat(data.get("adminEmail")).isEqualTo(SUPER_ADMIN_HIERARCHY_EMAIL);
+        assertThat(data).doesNotContainKeys("temporaryPassword", "adminTemporaryPassword");
+    }
+
+    @Test
     void control_plane_support_reset_denials_use_uniform_message_for_unknown_and_foreign_tenants() {
         String token = login(ADMIN_EMAIL, TENANT_A);
         Long tenantBId = companyRepository.findByCodeIgnoreCase(TENANT_B).map(Company::getId).orElseThrow();

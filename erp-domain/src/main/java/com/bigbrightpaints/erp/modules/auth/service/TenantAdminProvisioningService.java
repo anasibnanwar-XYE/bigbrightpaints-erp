@@ -82,7 +82,7 @@ public class TenantAdminProvisioningService {
         if (!assigned) {
             throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Admin user is not assigned to company: " + company.getCode());
         }
-        if (!hasAnyAuthority(user, "ROLE_ADMIN")) {
+        if (!hasAnyAuthority(user, "ROLE_ADMIN", "ROLE_SUPER_ADMIN")) {
             throw com.bigbrightpaints.erp.core.validation.ValidationUtils.invalidInput("Target user is not an admin for company: " + company.getCode());
         }
         String temporaryPassword = PasswordUtils.generateTemporaryPassword(14);
