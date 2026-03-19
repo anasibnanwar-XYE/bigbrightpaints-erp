@@ -25,6 +25,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -107,6 +108,33 @@ class TenantAdminProvisioningServiceTest {
                 eq("Company Admin"),
                 any(),
                 eq("SKE"));
+    }
+
+    @Test
+    void provisionInitialAdmin_reusesPersistedAdminRoleWhenAlreadySeeded() {
+        TenantAdminProvisioningService service = new TenantAdminProvisioningService(
+                userAccountRepository,
+                roleService,
+                roleRepository,
+                passwordEncoder,
+                emailService,
+                tokenBlacklistService,
+                refreshTokenService);
+        Company company = company(10L, "SKE", "SKE");
+        Role persistedRole = new Role();
+        ReflectionTestUtils.setField(persistedRole, "id", 42L);
+        persistedRole.setName("ROLE_ADMIN");
+        when(userAccountRepository.findByEmailIgnoreCase("new-admin@ske.com")).thenReturn(Optional.empty());
+        when(roleRepository.findByName("ROLE_ADMIN")).thenReturn(Optional.of(persistedRole));
+        when(roleRepository.findById(42L)).thenReturn(Optional.of(persistedRole));
+        when(passwordEncoder.encode(any())).thenReturn("encoded");
+        when(userAccountRepository.save(any(UserAccount.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        String email = service.provisionInitialAdmin(company, "new-admin@ske.com", "New Admin");
+
+        assertThat(email).isEqualTo("new-admin@ske.com");
+        verify(roleRepository).findById(42L);
+        verify(roleService, never()).ensureRoleExists("ROLE_ADMIN");
     }
 
     @Test

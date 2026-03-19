@@ -14,7 +14,10 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountRepository;
 import com.bigbrightpaints.erp.modules.accounting.service.AccountingPeriodService;
 import com.bigbrightpaints.erp.modules.auth.domain.UserAccountRepository;
 import com.bigbrightpaints.erp.modules.company.domain.CompanyRepository;
+import com.bigbrightpaints.erp.modules.rbac.domain.Role;
+import com.bigbrightpaints.erp.modules.rbac.domain.RoleRepository;
 import com.bigbrightpaints.erp.modules.rbac.service.RoleService;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -33,6 +36,9 @@ class TenantOnboardingServiceTest {
 
     @Mock
     private RoleService roleService;
+
+    @Mock
+    private RoleRepository roleRepository;
 
     @Mock
     private PasswordEncoder passwordEncoder;
@@ -58,6 +64,7 @@ class TenantOnboardingServiceTest {
                 companyRepository,
                 userAccountRepository,
                 roleService,
+                roleRepository,
                 passwordEncoder,
                 accountRepository,
                 accountingPeriodService,
@@ -80,5 +87,32 @@ class TenantOnboardingServiceTest {
         verify(systemSettingsRepository, times(2)).save(argThat(setting -> setting != null));
         verify(systemSettingsRepository, never()).save(argThat(setting ->
                 setting != null && "cors.allowed-origins".equals(setting.getKey())));
+    }
+
+    @Test
+    void requireAdminRole_ensuresRoleWhenRepositoryReturnsTransientRole() {
+        TenantOnboardingService service = new TenantOnboardingService(
+                companyRepository,
+                userAccountRepository,
+                roleService,
+                roleRepository,
+                passwordEncoder,
+                accountRepository,
+                accountingPeriodService,
+                coATemplateService,
+                emailService,
+                systemSettingsRepository);
+        Role transientRole = new Role();
+        transientRole.setName("ROLE_ADMIN");
+        Role persistedRole = new Role();
+        persistedRole.setName("ROLE_ADMIN");
+        ReflectionTestUtils.setField(persistedRole, "id", 91L);
+        when(roleRepository.findByName("ROLE_ADMIN")).thenReturn(Optional.of(transientRole));
+        when(roleService.ensureRoleExists("ROLE_ADMIN")).thenReturn(persistedRole);
+
+        Role resolved = ReflectionTestUtils.invokeMethod(service, "requireAdminRole");
+
+        assertThat(resolved).isSameAs(persistedRole);
+        verify(roleService).ensureRoleExists("ROLE_ADMIN");
     }
 }
