@@ -37,7 +37,7 @@
 - Re-evaluate if: any runtime-bearing change lands beyond review candidate `deec7bd8103c3984e922459c052affa443b400a6`, the focused control-plane/OpenAPI proof is re-run on a different candidate SHA, or the bounded packet grows beyond approval/bootstrap contract cleanup.
 
 ## Residual Follow-up
-- Explicit follow-up ticket: `ERP-30`
+- Explicit follow-up ticket: `ERP-31`
 - Follow-up scope: `CompanyContextFilter` target-tenant rebinding plus the hard-cut route-family migration onto `/api/v1/superadmin/tenants/**`
 - Why excluded here: that lifecycle/create-update route convergence remains outside the bounded ERP-19 packet and was intentionally not merged into this PR.
 
@@ -82,6 +82,6 @@
 ## Reviewer Notes
 - The tenant-admin provisioning fix in this packet is behaviorally small but important: the packet now explicitly runs `RoleService.ensureRoleExists("ROLE_ADMIN")` to synchronize default permissions, then loads the persisted shared role from `RoleRepository` before persisting bootstrap admins on both tenant bootstrap paths.
 - The approval inbox now retains export scope as structured fields for real approvers without leaking raw export parameters or requester identity to accounting-only viewers.
-- Current head may include docs-only checkpoint/workflow-note commits above the review candidate; `deec7bd8103c3984e922459c052affa443b400a6` is the last runtime-bearing SHA covered by the proof listed above.
+- Current head may include CI-harness, test-only, or docs-only commits above the review candidate; `deec7bd8103c3984e922459c052affa443b400a6` remains the last privileged runtime-bearing SHA covered by the proof listed above.
 - Route-family hard-cut work was intentionally left out of this packet. Review should block any attempt to smuggle `/api/v1/superadmin/tenants/**` create/update migration or `CompanyContextFilter` rebinding into this PR.
 - Review should use committed sources plus the rerunnable commands above; older dirty ERP-19 worktrees are source material only and are not branch truth.
