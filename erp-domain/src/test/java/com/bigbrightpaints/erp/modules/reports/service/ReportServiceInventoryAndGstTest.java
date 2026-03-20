@@ -263,6 +263,7 @@ class ReportServiceInventoryAndGstTest {
         purchaseLine.setTaxRate(new BigDecimal("18"));
         purchaseLine.setQuantity(new BigDecimal("10"));
         purchaseLine.setReturnedQuantity(new BigDecimal("2"));
+        purchaseLine.setCostPerUnit(new BigDecimal("10"));
         purchaseLine.setLineTotal(new BigDecimal("118"));
         purchaseLine.setTaxAmount(new BigDecimal("18"));
         purchaseLine.setCgstAmount(BigDecimal.ZERO);

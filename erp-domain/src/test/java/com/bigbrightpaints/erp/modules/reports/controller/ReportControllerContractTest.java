@@ -1,6 +1,8 @@
 package com.bigbrightpaints.erp.modules.reports.controller;
 
 import com.bigbrightpaints.erp.modules.admin.service.ExportApprovalService;
+import com.bigbrightpaints.erp.modules.accounting.service.AccountHierarchyService;
+import com.bigbrightpaints.erp.modules.accounting.service.AgingReportService;
 import com.bigbrightpaints.erp.modules.reports.dto.AccountStatementEntryDto;
 import com.bigbrightpaints.erp.modules.reports.dto.GstReturnReportDto;
 import com.bigbrightpaints.erp.modules.reports.dto.TrialBalanceDto;
@@ -28,7 +30,7 @@ class ReportControllerContractTest {
     void trialBalance_withDateRangeAndComparativeParametersDelegatesToQueryRequestBuilder() {
         ReportService reportService = mock(ReportService.class);
         ExportApprovalService exportApprovalService = mock(ExportApprovalService.class);
-        ReportController controller = new ReportController(reportService, exportApprovalService);
+        ReportController controller = controller(reportService, exportApprovalService);
         TrialBalanceDto expected = new TrialBalanceDto(List.of(), BigDecimal.ZERO, BigDecimal.ZERO, true, null, null);
         when(reportService.trialBalance(any(com.bigbrightpaints.erp.modules.reports.service.FinancialReportQueryRequest.class))).thenReturn(expected);
 
@@ -50,13 +52,13 @@ class ReportControllerContractTest {
     }
 
     @Test
-    void agedDebtorsV2_usesNewReportsPathAndDelegatesToReportServiceWithQueryRequest() {
+    void agedDebtors_usesCanonicalReportsPathAndDelegatesToReportServiceWithQueryRequest() {
         ReportService reportService = mock(ReportService.class);
         ExportApprovalService exportApprovalService = mock(ExportApprovalService.class);
-        ReportController controller = new ReportController(reportService, exportApprovalService);
+        ReportController controller = controller(reportService, exportApprovalService);
         when(reportService.agedDebtors(any())).thenReturn(List.of());
 
-        ResponseEntity<ApiResponse<List<com.bigbrightpaints.erp.modules.reports.dto.AgedDebtorDto>>> response = controller.agedDebtorsV2(
+        ResponseEntity<ApiResponse<List<com.bigbrightpaints.erp.modules.reports.dto.AgedDebtorDto>>> response = controller.agedDebtors(
                 77L,
                 LocalDate.of(2026, 1, 1),
                 LocalDate.of(2026, 1, 31),
@@ -72,7 +74,7 @@ class ReportControllerContractTest {
     void accountStatement_serializesJournalEntryIdInApiResponse() throws Exception {
         ReportService reportService = mock(ReportService.class);
         ExportApprovalService exportApprovalService = mock(ExportApprovalService.class);
-        ReportController controller = new ReportController(reportService, exportApprovalService);
+        ReportController controller = controller(reportService, exportApprovalService);
         when(reportService.accountStatement()).thenReturn(List.of(
                 new AccountStatementEntryDto(
                         "Dealer Trace",
@@ -101,7 +103,7 @@ class ReportControllerContractTest {
     void accountStatement_serializesNullJournalEntryIdInApiResponse() throws Exception {
         ReportService reportService = mock(ReportService.class);
         ExportApprovalService exportApprovalService = mock(ExportApprovalService.class);
-        ReportController controller = new ReportController(reportService, exportApprovalService);
+        ReportController controller = controller(reportService, exportApprovalService);
         when(reportService.accountStatement()).thenReturn(List.of(
                 new AccountStatementEntryDto(
                         "Dealer No Journal",
@@ -130,7 +132,7 @@ class ReportControllerContractTest {
     void gstReturn_delegatesToServiceWithPeriodId() {
         ReportService reportService = mock(ReportService.class);
         ExportApprovalService exportApprovalService = mock(ExportApprovalService.class);
-        ReportController controller = new ReportController(reportService, exportApprovalService);
+        ReportController controller = controller(reportService, exportApprovalService);
         GstReturnReportDto expected = new GstReturnReportDto(
                 10L,
                 "March 2026",
@@ -151,5 +153,69 @@ class ReportControllerContractTest {
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().data()).isEqualTo(expected);
         verify(reportService).gstReturn(10L);
+    }
+
+    @Test
+    void balanceSheetHierarchy_delegatesToCanonicalReportHost() {
+        ReportService reportService = mock(ReportService.class);
+        ExportApprovalService exportApprovalService = mock(ExportApprovalService.class);
+        AccountHierarchyService accountHierarchyService = mock(AccountHierarchyService.class);
+        ReportController controller = new ReportController(
+                reportService,
+                accountHierarchyService,
+                mock(AgingReportService.class),
+                exportApprovalService);
+        AccountHierarchyService.BalanceSheetHierarchy expected = new AccountHierarchyService.BalanceSheetHierarchy(
+                List.of(),
+                BigDecimal.ZERO,
+                List.of(),
+                BigDecimal.ZERO,
+                List.of(),
+                BigDecimal.ZERO
+        );
+        when(accountHierarchyService.getBalanceSheetHierarchy()).thenReturn(expected);
+
+        ResponseEntity<ApiResponse<AccountHierarchyService.BalanceSheetHierarchy>> response = controller.balanceSheetHierarchy();
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().data()).isEqualTo(expected);
+        verify(accountHierarchyService).getBalanceSheetHierarchy();
+    }
+
+    @Test
+    void agedReceivables_parsesAsOfDateForCanonicalReportHost() {
+        ReportService reportService = mock(ReportService.class);
+        ExportApprovalService exportApprovalService = mock(ExportApprovalService.class);
+        AgingReportService agingReportService = mock(AgingReportService.class);
+        ReportController controller = new ReportController(
+                reportService,
+                mock(AccountHierarchyService.class),
+                agingReportService,
+                exportApprovalService);
+        AgingReportService.AgedReceivablesReport expected = new AgingReportService.AgedReceivablesReport(
+                LocalDate.of(2026, 2, 28),
+                List.of(),
+                new AgingReportService.AgingBuckets(),
+                BigDecimal.ZERO
+        );
+        when(agingReportService.getAgedReceivablesReport(LocalDate.of(2026, 2, 28))).thenReturn(expected);
+
+        ResponseEntity<ApiResponse<AgingReportService.AgedReceivablesReport>> response =
+                controller.agedReceivables("2026-02-28");
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().data()).isEqualTo(expected);
+        verify(agingReportService).getAgedReceivablesReport(LocalDate.of(2026, 2, 28));
+    }
+
+    private ReportController controller(ReportService reportService,
+                                        ExportApprovalService exportApprovalService) {
+        return new ReportController(
+                reportService,
+                mock(AccountHierarchyService.class),
+                mock(AgingReportService.class),
+                exportApprovalService);
     }
 }

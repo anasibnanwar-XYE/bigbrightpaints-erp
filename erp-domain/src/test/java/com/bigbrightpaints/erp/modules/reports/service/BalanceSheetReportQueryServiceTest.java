@@ -109,6 +109,73 @@ class BalanceSheetReportQueryServiceTest {
                 .containsExactly("RETAINED-EARNINGS");
     }
 
+    @Test
+    void generate_rollsCurrentPeriodEarningsIntoLiveEquity() {
+        BalanceSheetReportQueryService service = new BalanceSheetReportQueryService(
+                reportQuerySupport,
+                snapshotLineRepository,
+                accountRepository,
+                journalLineRepository
+        );
+
+        ReportQuerySupport.FinancialQueryWindow primary = ReportFixtures.window(
+                LocalDate.of(2026, 3, 1),
+                LocalDate.of(2026, 3, 31),
+                LocalDate.of(2026, 3, 31)
+        );
+
+        FinancialReportQueryRequest request = new FinancialReportQueryRequest(
+                null,
+                primary.startDate(),
+                primary.endDate(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+
+        when(reportQuerySupport.resolveWindow(request)).thenReturn(primary);
+        when(reportQuerySupport.resolveComparison(request)).thenReturn(null);
+        when(reportQuerySupport.metadata(primary)).thenReturn(new ReportMetadata(
+                primary.asOfDate(),
+                primary.startDate(),
+                primary.endDate(),
+                primary.source(),
+                null,
+                null,
+                null,
+                true,
+                true,
+                null
+        ));
+
+        Account cash = account(1L, "CASH", "Cash", AccountType.ASSET);
+        Account payable = account(2L, "LOAN", "Loan", AccountType.LIABILITY);
+        when(accountRepository.findByCompanyOrderByCodeAsc(primary.company())).thenReturn(List.of(cash, payable));
+
+        when(journalLineRepository.summarizeByAccountWithin(primary.company(), primary.startDate(), primary.endDate()))
+                .thenReturn(List.of(
+                        row(1L, "90.00", "0.00"),
+                        row(2L, "0.00", "30.00")
+                ));
+        when(journalLineRepository.summarizeByAccountType(primary.company(), primary.startDate(), primary.endDate()))
+                .thenReturn(List.of(
+                        typeRow(AccountType.REVENUE, "0.00", "100.00"),
+                        typeRow(AccountType.EXPENSE, "40.00", "0.00")
+                ));
+
+        BalanceSheetDto dto = service.generate(request);
+
+        assertThat(dto.totalAssets()).isEqualByComparingTo("90.00");
+        assertThat(dto.totalLiabilities()).isEqualByComparingTo("30.00");
+        assertThat(dto.totalEquity()).isEqualByComparingTo("60.00");
+        assertThat(dto.balanced()).isTrue();
+        assertThat(dto.equityLines()).extracting(BalanceSheetDto.SectionLine::accountCode)
+                .containsExactly("CURRENT-EARNINGS");
+    }
+
     private Account account(Long id, String code, String name, AccountType type) {
         Account account = new Account();
         ReflectionTestUtils.setField(account, "id", id);
@@ -120,5 +187,9 @@ class BalanceSheetReportQueryServiceTest {
 
     private Object[] row(Long accountId, String debit, String credit) {
         return new Object[]{accountId, new BigDecimal(debit), new BigDecimal(credit)};
+    }
+
+    private Object[] typeRow(AccountType type, String debit, String credit) {
+        return new Object[]{type, new BigDecimal(debit), new BigDecimal(credit)};
     }
 }

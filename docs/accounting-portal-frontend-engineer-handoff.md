@@ -132,12 +132,12 @@ These are cross-portal APIs reused in Accounting Portal for auth/session/profile
 | `acctReopenPeriod` | POST | `/api/v1/accounting/periods/{periodId}/reopen` | periodId (path) | reason (body) | No | No | Conditional |
 | `acctRecordDealerReceipt` | POST | `/api/v1/accounting/receipts/dealer` | allocations (body), allocations[].appliedAmount (body), amount (body), cashAccountId (body), dealerId (body) | Idempotency-Key (header), allocations[].discountAmount (body), allocations[].fxAdjustment (body), allocations[].invoiceId (body), allocations[].memo (body), allocations[].purchaseId (body), allocations[].writeOffAmount (body), idempotencyKey (body), memo (body), referenceNumber (body) | No | No | No |
 | `acctRecordDealerHybridReceipt` | POST | `/api/v1/accounting/receipts/dealer/hybrid` | dealerId (body), incomingLines (body), incomingLines[].accountId (body), incomingLines[].amount (body) | Idempotency-Key (header), idempotencyKey (body), memo (body), referenceNumber (body) | No | No | No |
-| `acctGetDealerAging` | GET | `/api/v1/accounting/reports/aging/dealer/{dealerId}` | dealerId (path) | - | Yes | No | Yes |
-| `acctGetDealerAgingDetailed` | GET | `/api/v1/accounting/reports/aging/dealer/{dealerId}/detailed` | dealerId (path) | - | Yes | No | Yes |
-| `acctGetAgedReceivables` | GET | `/api/v1/accounting/reports/aging/receivables` | - | asOfDate (query) | Yes | No | Yes |
-| `acctGetBalanceSheetHierarchy` | GET | `/api/v1/accounting/reports/balance-sheet/hierarchy` | - | - | Yes | No | Yes |
-| `acctGetDealerDSO` | GET | `/api/v1/accounting/reports/dso/dealer/{dealerId}` | dealerId (path) | - | Yes | No | Yes |
-| `acctGetIncomeStatementHierarchy` | GET | `/api/v1/accounting/reports/income-statement/hierarchy` | - | - | Yes | No | Yes |
+| `acctGetDealerAging` | GET | `/api/v1/reports/aging/dealer/{dealerId}` | dealerId (path) | - | Yes | No | Yes |
+| `acctGetDealerAgingDetailed` | GET | `/api/v1/reports/aging/dealer/{dealerId}/detailed` | dealerId (path) | - | Yes | No | Yes |
+| `acctGetAgedReceivables` | GET | `/api/v1/reports/aging/receivables` | - | asOfDate (query) | Yes | No | Yes |
+| `acctGetBalanceSheetHierarchy` | GET | `/api/v1/reports/balance-sheet/hierarchy` | - | - | Yes | No | Yes |
+| `acctGetDealerDSO` | GET | `/api/v1/reports/dso/dealer/{dealerId}` | dealerId (path) | - | Yes | No | Yes |
+| `acctGetIncomeStatementHierarchy` | GET | `/api/v1/reports/income-statement/hierarchy` | - | - | Yes | No | Yes |
 | `acctListSalesReturns` | GET | `/api/v1/accounting/sales/returns` | - | - | Yes | No | Yes |
 | `acctRecordSalesReturn` | POST | `/api/v1/accounting/sales/returns` | invoiceId (body), lines (body), lines[].invoiceLineId (body), lines[].quantity (body), reason (body) | - | No | No | No |
 | `acctSettleDealer` | POST | `/api/v1/accounting/settlements/dealers` | allocations (body), allocations[].appliedAmount (body), dealerId (body), payments[].accountId (body), payments[].amount (body) | adminOverride (body), allocations[].discountAmount (body), allocations[].fxAdjustment (body), allocations[].invoiceId (body), allocations[].memo (body), allocations[].purchaseId (body), allocations[].writeOffAmount (body), cashAccountId (body), discountAccountId (body), fxGainAccountId (body), fxLossAccountId (body), idempotencyKey (body), memo (body), payments (body), payments[].method (body), referenceNumber (body), settlementDate (body), writeOffAccountId (body) | No | No | No |
@@ -258,7 +258,7 @@ These rows are required for the period-close maker-checker UX, but they live out
 
 | Function | Method | Path | Required params | Optional params | Cache | Debounce | Idempotent |
 |---|---|---|---|---|---|---|---|
-| `reportAgedDebtors` | GET | `/api/v1/accounting/reports/aged-debtors` | - | - | Yes | No | Yes |
+| `reportAgedDebtors` | GET | `/api/v1/reports/aged-debtors` | - | - | Yes | No | Yes |
 | `reportAccountStatement` | GET | `/api/v1/reports/account-statement` | - | - | Yes | No | Yes |
 | `reportBalanceSheet` | GET | `/api/v1/reports/balance-sheet` | - | date (query) | Yes | No | Yes |
 | `reportBalanceWarnings` | GET | `/api/v1/reports/balance-warnings` | - | - | Yes | No | Yes |
@@ -398,10 +398,10 @@ These rows are required for the period-close maker-checker UX, but they live out
 - `GET /api/v1/hr/attendance/date/{date}` documents no explicit error responses (only: 200).
 - `GET /api/v1/finished-goods/stock-summary` documents no explicit error responses (only: 200).
 - `GET /api/v1/finished-goods/low-stock` documents no explicit error responses (only: 200).
-- `GET /api/v1/accounting/reports/aged-debtors` documents no explicit error responses (only: 200).
+- `GET /api/v1/reports/aged-debtors` documents no explicit error responses (only: 200).
 - `GET /api/v1/accounting/configuration/health` documents no explicit error responses (only: 200).
 - `GET /api/v1/accounting/aging/dealers/{dealerId}` has generated operationId `dealerAging_1` (unstable client naming).
-- Reporting APIs are split between `/api/v1/accounting/reports/*` and `/api/v1/reports/*`; normalize client routing/boundaries to avoid duplication.
+- Reporting APIs are canonical under `/api/v1/reports/*`; remove any client routing that still targets `/api/v1/accounting/reports/*`.
 - HR payroll appears in both `/api/v1/hr/payroll-runs` and `/api/v1/payroll/runs`; treat `/api/v1/payroll/runs` as canonical run-processing surface unless backend clarifies otherwise.
 - `POST /api/v1/inventory/opening-stock` defines only `200`; import-row failures and idempotency conflicts are business/runtime errors not strongly typed in OpenAPI.
 - `POST /api/v1/inventory/opening-stock` accepts optional `Idempotency-Key`, but backend normalizes to file-hash fallback and enforces conflict on key reuse with different payload; frontend should always send a stable key.

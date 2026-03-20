@@ -160,7 +160,7 @@ It tracks state (`ACTIVE/HOLD/BLOCKED`), request rate, concurrent requests, and 
 - `GET /api/v1/admin/tenant-runtime/metrics`
 - `PUT /api/v1/admin/tenant-runtime/policy`
 - `AdminSettingsController` -> `TenantRuntimePolicyService`
-- `TenantRuntimeEnforcementInterceptor` applies a second layer of rate/concurrency enforcement for `/api/v1/reports/**`, `/api/v1/accounting/reports/**`, `/api/v1/portal/**`, and `/api/v1/demo/**`.
+- `TenantRuntimeEnforcementInterceptor` applies a second layer of rate/concurrency enforcement for `/api/v1/reports/**`, `/api/v1/portal/**`, and `/api/v1/demo/**`; the retired `/api/v1/accounting/reports/**` alias is no longer part of the supported runtime surface.
 
 #### Metrics split
 

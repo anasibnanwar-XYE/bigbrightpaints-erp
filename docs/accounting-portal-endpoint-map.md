@@ -67,12 +67,12 @@ Count lock for parity checks: **143**
 | `POST /api/v1/accounting/periods/{periodId}/reopen` | create-form; req: periodId (path); opt: reason (body); states: loading, error, success | path=periodId; query=-; body=optional; ct=application/json | ok 200; err 400 |
 | `POST /api/v1/accounting/receipts/dealer` | create-form; req: allocations (body), allocations[].appliedAmount (body), amount (body), cashAccountId (body), dealerId (body); opt: Idempotency-Key (header), allocations[].discountAmount (body), allocations[].fxAdjustment (body), allocations[].invoiceId (body), allocations[].memo (body), allocations[].purchaseId (body), allocations[].writeOffAmount (body), idempotencyKey (body), memo (body), referenceNumber (body); states: loading, error, success | path=-; query=-; body=required; ct=application/json | ok 200; err 400 |
 | `POST /api/v1/accounting/receipts/dealer/hybrid` | create-form; req: dealerId (body), incomingLines (body), incomingLines[].accountId (body), incomingLines[].amount (body); opt: Idempotency-Key (header), idempotencyKey (body), memo (body), referenceNumber (body); states: loading, error, success | path=-; query=-; body=required; ct=application/json | ok 200; err 400 |
-| `GET /api/v1/accounting/reports/aging/dealer/{dealerId}` | detail-view; req: dealerId (path); opt: -; states: loading, error, success, empty | path=dealerId; query=-; body=none; ct=- | ok 200; err 400 |
-| `GET /api/v1/accounting/reports/aging/dealer/{dealerId}/detailed` | detail-view; req: dealerId (path); opt: -; states: loading, error, success, empty | path=dealerId; query=-; body=none; ct=- | ok 200; err 400 |
-| `GET /api/v1/accounting/reports/aging/receivables` | list-view; req: -; opt: asOfDate (query); states: loading, error, success, empty | path=-; query=asOfDate; body=none; ct=- | ok 200; err 400 |
-| `GET /api/v1/accounting/reports/balance-sheet/hierarchy` | list-view; req: -; opt: -; states: loading, error, success, empty | path=-; query=-; body=none; ct=- | ok 200; err 400 |
-| `GET /api/v1/accounting/reports/dso/dealer/{dealerId}` | detail-view; req: dealerId (path); opt: -; states: loading, error, success, empty | path=dealerId; query=-; body=none; ct=- | ok 200; err 400 |
-| `GET /api/v1/accounting/reports/income-statement/hierarchy` | list-view; req: -; opt: -; states: loading, error, success, empty | path=-; query=-; body=none; ct=- | ok 200; err 400 |
+| `GET /api/v1/reports/aging/dealer/{dealerId}` | detail-view; req: dealerId (path); opt: -; states: loading, error, success, empty | path=dealerId; query=-; body=none; ct=- | ok 200; err 400 |
+| `GET /api/v1/reports/aging/dealer/{dealerId}/detailed` | detail-view; req: dealerId (path); opt: -; states: loading, error, success, empty | path=dealerId; query=-; body=none; ct=- | ok 200; err 400 |
+| `GET /api/v1/reports/aging/receivables` | list-view; req: -; opt: asOfDate (query); states: loading, error, success, empty | path=-; query=asOfDate; body=none; ct=- | ok 200; err 400 |
+| `GET /api/v1/reports/balance-sheet/hierarchy` | list-view; req: -; opt: -; states: loading, error, success, empty | path=-; query=-; body=none; ct=- | ok 200; err 400 |
+| `GET /api/v1/reports/dso/dealer/{dealerId}` | detail-view; req: dealerId (path); opt: -; states: loading, error, success, empty | path=dealerId; query=-; body=none; ct=- | ok 200; err 400 |
+| `GET /api/v1/reports/income-statement/hierarchy` | list-view; req: -; opt: -; states: loading, error, success, empty | path=-; query=-; body=none; ct=- | ok 200; err 400 |
 | `GET /api/v1/accounting/sales/returns` | list-view; req: -; opt: -; states: loading, error, success, empty | path=-; query=-; body=none; ct=- | ok 200; err 400 |
 | `POST /api/v1/accounting/sales/returns` | create-form; req: invoiceId (body), lines (body), lines[].invoiceLineId (body), lines[].quantity (body), reason (body); opt: -; states: loading, error, success | path=-; query=-; body=required; ct=application/json | ok 200; err 400 |
 | `POST /api/v1/accounting/settlements/dealers` | create-form; req: allocations (body), allocations[].appliedAmount (body), dealerId (body), payments[].accountId (body), payments[].amount (body); opt: adminOverride (body), allocations[].discountAmount (body), allocations[].fxAdjustment (body), allocations[].invoiceId (body), allocations[].memo (body), allocations[].purchaseId (body), allocations[].writeOffAmount (body), cashAccountId (body), discountAccountId (body), fxGainAccountId (body), fxLossAccountId (body), idempotencyKey (body), memo (body), payments (body), payments[].method (body), referenceNumber (body), settlementDate (body), writeOffAccountId (body); states: loading, error, success | path=-; query=-; body=required; ct=application/json | ok 200; err 400 |
@@ -247,7 +247,7 @@ Maker-checker period-close note:
 
 | Endpoint | Frontend should put | Backend expects | Returns |
 |---|---|---|---|
-| `GET /api/v1/accounting/reports/aged-debtors` | list-view; req: -; opt: -; states: loading, error, success, empty | path=-; query=-; body=none; ct=- | ok 200; err - |
+| `GET /api/v1/reports/aged-debtors` | list-view; req: -; opt: -; states: loading, error, success, empty | path=-; query=-; body=none; ct=- | ok 200; err - |
 | `GET /api/v1/reports/account-statement` | list-view; req: -; opt: -; states: loading, error, success, empty | path=-; query=-; body=none; ct=- | ok 200; err - |
 | `GET /api/v1/reports/balance-sheet` | list-view; req: -; opt: date (query); states: loading, error, success, empty | path=-; query=date; body=none; ct=- | ok 200; err - |
 | `GET /api/v1/reports/balance-warnings` | list-view; req: -; opt: -; states: loading, error, success, empty | path=-; query=-; body=none; ct=- | ok 200; err - |
@@ -268,4 +268,4 @@ Maker-checker period-close note:
 - Workflow actions that should be safely repeatable (`close/lock/reopen/approve/post`) are exposed as `POST`; idempotency guarantees are not explicit.
 - `POST /api/v1/inventory/opening-stock` defines only `200`; partial-row errors and idempotency-conflict behavior are runtime/business errors not strongly typed in OpenAPI.
 - `POST /api/v1/inventory/opening-stock` accepts optional `Idempotency-Key`; backend normalizes missing key to file hash, so frontend should still send a stable key per import job.
-- Accounting and reporting endpoints are split across `/api/v1/accounting/reports/*` and `/api/v1/reports/*` namespaces.
+- Reporting endpoints are canonical under `/api/v1/reports/*`; `/api/v1/accounting/reports/*` is retired.
