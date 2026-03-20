@@ -7,6 +7,7 @@ import com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodTrialBa
 import com.bigbrightpaints.erp.modules.accounting.domain.JournalLineRepository;
 import com.bigbrightpaints.erp.modules.reports.dto.BalanceSheetDto;
 import com.bigbrightpaints.erp.modules.reports.dto.ReportMetadata;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -18,8 +19,11 @@ import java.time.LocalDate;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+@Tag("critical")
 @ExtendWith(MockitoExtension.class)
 class BalanceSheetReportQueryServiceTest {
 
@@ -244,6 +248,98 @@ class BalanceSheetReportQueryServiceTest {
     }
 
     @Test
+    void generate_excludesPeriodCloseJournalForClosedPeriodSubrangeEndingOnCloseDate() {
+        BalanceSheetReportQueryService service = new BalanceSheetReportQueryService(
+                reportQuerySupport,
+                snapshotLineRepository,
+                accountRepository,
+                journalLineRepository
+        );
+
+        var snapshot = new com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodSnapshot();
+        var period = new com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriod();
+        period.setYear(2026);
+        period.setMonth(3);
+        period.setStartDate(LocalDate.of(2026, 3, 1));
+        period.setEndDate(LocalDate.of(2026, 3, 31));
+        period.setStatus(com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodStatus.CLOSED);
+
+        ReportQuerySupport.FinancialQueryWindow primary = new ReportQuerySupport.FinancialQueryWindow(
+                ReportFixtures.window(LocalDate.of(2026, 3, 15), LocalDate.of(2026, 3, 31), LocalDate.of(2026, 3, 31)).company(),
+                LocalDate.of(2026, 3, 15),
+                LocalDate.of(2026, 3, 31),
+                LocalDate.of(2026, 3, 31),
+                period,
+                snapshot,
+                com.bigbrightpaints.erp.modules.reports.dto.ReportSource.SNAPSHOT,
+                new ReportQuerySupport.ExportOptions(true, true, null)
+        );
+
+        FinancialReportQueryRequest request = new FinancialReportQueryRequest(
+                44L,
+                primary.startDate(),
+                primary.endDate(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+
+        when(reportQuerySupport.resolveWindow(request)).thenReturn(primary);
+        when(reportQuerySupport.resolveComparison(request)).thenReturn(null);
+        when(reportQuerySupport.metadata(primary)).thenReturn(new ReportMetadata(
+                primary.asOfDate(),
+                primary.startDate(),
+                primary.endDate(),
+                primary.source(),
+                44L,
+                period.getStatus().name(),
+                null,
+                true,
+                true,
+                null
+        ));
+
+        Account cash = account(1L, "CASH", "Cash", AccountType.ASSET);
+        Account payable = account(2L, "AP", "Accounts Payable", AccountType.LIABILITY);
+        when(accountRepository.findByCompanyOrderByCodeAsc(primary.company())).thenReturn(List.of(cash, payable));
+        when(journalLineRepository.summarizeByAccountWithinExcludingReference(
+                primary.company(),
+                primary.startDate(),
+                primary.endDate(),
+                "PERIOD-CLOSE-202603"))
+                .thenReturn(List.of(
+                        row(1L, "100.00", "0.00"),
+                        row(2L, "0.00", "40.00")
+                ));
+        when(journalLineRepository.summarizeByAccountType(primary.company(), primary.startDate(), primary.endDate()))
+                .thenReturn(List.of(
+                        typeRow(AccountType.REVENUE, "0.00", "100.00"),
+                        typeRow(AccountType.EXPENSE, "40.00", "0.00")
+                ));
+
+        BalanceSheetDto dto = service.generate(request);
+
+        assertThat(dto.totalAssets()).isEqualByComparingTo("100.00");
+        assertThat(dto.totalLiabilities()).isEqualByComparingTo("40.00");
+        assertThat(dto.totalEquity()).isEqualByComparingTo("60.00");
+        assertThat(dto.balanced()).isTrue();
+        assertThat(dto.equityLines()).extracting(BalanceSheetDto.SectionLine::accountCode)
+                .containsExactly("CURRENT-EARNINGS");
+        verify(journalLineRepository).summarizeByAccountWithinExcludingReference(
+                primary.company(),
+                primary.startDate(),
+                primary.endDate(),
+                "PERIOD-CLOSE-202603");
+        verify(journalLineRepository, never()).summarizeByAccountWithin(
+                primary.company(),
+                primary.startDate(),
+                primary.endDate());
+    }
+
+    @Test
     void generate_ignoresMalformedCurrentEarningsRowsAndSupportsIncomeAndExpenseFamilies() {
         BalanceSheetReportQueryService service = new BalanceSheetReportQueryService(
                 reportQuerySupport,
@@ -387,7 +483,7 @@ class BalanceSheetReportQueryServiceTest {
     }
 
     @Test
-    void helper_branches_cover_snapshot_shortCircuitsAndBalanceSheetTypeChecks() {
+    void helper_branches_cover_snapshot_and_period_close_shortCircuits() {
         BalanceSheetReportQueryService service = new BalanceSheetReportQueryService(
                 reportQuerySupport,
                 snapshotLineRepository,
@@ -402,8 +498,29 @@ class BalanceSheetReportQueryServiceTest {
         );
         var snapshot = new com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodSnapshot();
         var period = new com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriod();
+        period.setYear(2026);
+        period.setMonth(6);
         period.setStartDate(base.startDate());
         period.setEndDate(base.endDate());
+        period.setStatus(com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodStatus.CLOSED);
+
+        var openPeriod = new com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriod();
+        openPeriod.setYear(2026);
+        openPeriod.setMonth(6);
+        openPeriod.setStartDate(base.startDate());
+        openPeriod.setEndDate(base.endDate());
+        openPeriod.setStatus(com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodStatus.OPEN);
+
+        var fullSnapshotWindow = new ReportQuerySupport.FinancialQueryWindow(
+                base.company(),
+                base.startDate(),
+                base.endDate(),
+                base.asOfDate(),
+                period,
+                snapshot,
+                com.bigbrightpaints.erp.modules.reports.dto.ReportSource.SNAPSHOT,
+                base.exportOptions()
+        );
 
         assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "usesClosedSnapshot", base)).isFalse();
         assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "usesClosedSnapshot",
@@ -461,6 +578,45 @@ class BalanceSheetReportQueryServiceTest {
                         com.bigbrightpaints.erp.modules.reports.dto.ReportSource.SNAPSHOT,
                         base.exportOptions()
                 ))).isTrue();
+
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "excludesPeriodCloseJournal", base)).isFalse();
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "excludesPeriodCloseJournal",
+                new ReportQuerySupport.FinancialQueryWindow(
+                        base.company(),
+                        base.startDate(),
+                        base.endDate().minusDays(1),
+                        base.asOfDate().minusDays(1),
+                        period,
+                        snapshot,
+                        com.bigbrightpaints.erp.modules.reports.dto.ReportSource.SNAPSHOT,
+                        base.exportOptions()
+                ))).isFalse();
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "excludesPeriodCloseJournal",
+                new ReportQuerySupport.FinancialQueryWindow(
+                        base.company(),
+                        base.endDate().plusDays(1),
+                        base.endDate().plusDays(2),
+                        base.endDate().plusDays(2),
+                        period,
+                        snapshot,
+                        com.bigbrightpaints.erp.modules.reports.dto.ReportSource.SNAPSHOT,
+                        base.exportOptions()
+                ))).isFalse();
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "excludesPeriodCloseJournal",
+                new ReportQuerySupport.FinancialQueryWindow(
+                        base.company(),
+                        base.startDate(),
+                        base.endDate().minusDays(1),
+                        base.asOfDate().minusDays(1),
+                        openPeriod,
+                        snapshot,
+                        com.bigbrightpaints.erp.modules.reports.dto.ReportSource.SNAPSHOT,
+                        base.exportOptions()
+                ))).isFalse();
+        assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "excludesPeriodCloseJournal",
+                fullSnapshotWindow)).isFalse();
+        assertThat((String) ReflectionTestUtils.invokeMethod(service, "periodCloseReference", fullSnapshotWindow))
+                .isEqualTo("PERIOD-CLOSE-202606");
 
         assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "isBalanceSheetType", AccountType.ASSET)).isTrue();
         assertThat((Boolean) ReflectionTestUtils.invokeMethod(service, "isBalanceSheetType", AccountType.REVENUE)).isFalse();
