@@ -15,9 +15,9 @@ Portal scope guardrail:
 ## Canonical API contract gate
 
 - Canonical machine contract source: repo-root `openapi.json`.
-- OpenAPI snapshot: `openapi.json` (sha256 `6a5786c6a15585a3a1496bb3010b74526909f3952994d04a59101cc765c838d2`)
-- OpenAPI total paths: `309`
-- OpenAPI total operations: `370`
+- OpenAPI snapshot: `openapi.json` (sha256 `9d8d147b607cbb4a4210876ed49c36c80a4e841272de38180ebc345630b9113c`)
+- OpenAPI total paths: `308`
+- OpenAPI total operations: `369`
 - Guard remediation flow: if parity drifts, regenerate this inventory from canonical `openapi.json`, then rerun `bash scripts/guard_openapi_contract_drift.sh` and `bash scripts/guard_accounting_portal_scope_contract.sh`.
 
 ## Summary by module
@@ -52,7 +52,7 @@ Portal scope guardrail:
 | `purchasing` | 12 | /api/v1/purchasing/goods-receipts, /api/v1/purchasing/goods-receipts/{id}, /api/v1/purchasing/purchase-orders |
 | `raw-material-batches` | 1 | /api/v1/raw-material-batches/{rawMaterialId} |
 | `raw-materials` | 4 | /api/v1/raw-materials/intake, /api/v1/raw-materials/stock, /api/v1/raw-materials/stock/inventory |
-| `reports` | 14 | /api/v1/reports/account-statement, /api/v1/reports/aged-debtors, /api/v1/reports/balance-sheet |
+| `reports` | 20 | /api/v1/reports/account-statement, /api/v1/reports/aged-debtors, /api/v1/reports/balance-sheet |
 | `sales` | 20 | /api/v1/sales/credit-requests, /api/v1/sales/credit-requests/{id}, /api/v1/sales/credit-requests/{id}/approve |
 | `superadmin` | 10 | /api/v1/superadmin/dashboard, /api/v1/superadmin/tenants, /api/v1/superadmin/tenants/coa-templates |
 | `suppliers` | 5 | /api/v1/suppliers, /api/v1/suppliers/{id}, /api/v1/suppliers/{id}/activate |
@@ -124,13 +124,6 @@ Portal scope guardrail:
 - `POST` `/api/v1/accounting/reconciliation/discrepancies/{discrepancyId}/resolve`
 - `GET` `/api/v1/accounting/reconciliation/inter-company`
 - `GET` `/api/v1/accounting/reconciliation/subledger`
-- `GET` `/api/v1/accounting/reports/aged-debtors`
-- `GET` `/api/v1/accounting/reports/aging/dealer/{dealerId}`
-- `GET` `/api/v1/accounting/reports/aging/dealer/{dealerId}/detailed`
-- `GET` `/api/v1/accounting/reports/aging/receivables`
-- `GET` `/api/v1/accounting/reports/balance-sheet/hierarchy`
-- `GET` `/api/v1/accounting/reports/dso/dealer/{dealerId}`
-- `GET` `/api/v1/accounting/reports/income-statement/hierarchy`
 - `GET, POST` `/api/v1/accounting/sales/returns`
 - `POST` `/api/v1/accounting/sales/returns/preview`
 - `POST` `/api/v1/accounting/settlements/dealers`
@@ -404,10 +397,16 @@ Portal scope guardrail:
 
 - `GET` `/api/v1/reports/account-statement`
 - `GET` `/api/v1/reports/aged-debtors`
+- `GET` `/api/v1/reports/aging/dealer/{dealerId}`
+- `GET` `/api/v1/reports/aging/dealer/{dealerId}/detailed`
+- `GET` `/api/v1/reports/aging/receivables`
 - `GET` `/api/v1/reports/balance-sheet`
+- `GET` `/api/v1/reports/balance-sheet/hierarchy`
 - `GET` `/api/v1/reports/balance-warnings`
 - `GET` `/api/v1/reports/cash-flow`
+- `GET` `/api/v1/reports/dso/dealer/{dealerId}`
 - `GET` `/api/v1/reports/gst-return`
+- `GET` `/api/v1/reports/income-statement/hierarchy`
 - `GET` `/api/v1/reports/inventory-reconciliation`
 - `GET` `/api/v1/reports/inventory-valuation`
 - `GET` `/api/v1/reports/monthly-production-costs`
