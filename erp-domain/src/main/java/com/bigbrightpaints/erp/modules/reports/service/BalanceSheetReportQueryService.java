@@ -25,6 +25,7 @@ public class BalanceSheetReportQueryService {
     private static final BigDecimal BALANCE_TOLERANCE = new BigDecimal("0.01");
     private static final String CURRENT_EARNINGS_CODE = "CURRENT-EARNINGS";
     private static final String CURRENT_EARNINGS_NAME = "Current Earnings";
+    private static final String PERIOD_CLOSE_REFERENCE_PREFIX = "PERIOD-CLOSE-";
 
     private final ReportQuerySupport reportQuerySupport;
     private final AccountingPeriodTrialBalanceLineRepository snapshotLineRepository;
@@ -175,16 +176,11 @@ public class BalanceSheetReportQueryService {
         List<Account> accounts = accountRepository.findByCompanyOrderByCodeAsc(window.company());
         Map<Long, BigDecimal> debitByAccount = new HashMap<>();
         Map<Long, BigDecimal> creditByAccount = new HashMap<>();
-        List<Object[]> rows = excludesPeriodCloseJournal(window)
-                ? journalLineRepository.summarizeByAccountWithinExcludingReference(
-                        window.company(),
-                        window.startDate(),
-                        window.endDate(),
-                        periodCloseReference(window))
-                : journalLineRepository.summarizeByAccountWithin(
-                        window.company(),
-                        window.startDate(),
-                        window.endDate());
+        List<Object[]> rows = journalLineRepository.summarizeByAccountWithinExcludingReferencePrefix(
+                window.company(),
+                window.startDate(),
+                window.endDate(),
+                PERIOD_CLOSE_REFERENCE_PREFIX);
         for (Object[] row : rows) {
             if (row == null || row.length < 3 || row[0] == null) {
                 continue;
@@ -210,20 +206,6 @@ public class BalanceSheetReportQueryService {
             ));
         }
         return lines;
-    }
-
-    private boolean excludesPeriodCloseJournal(ReportQuerySupport.FinancialQueryWindow window) {
-        if (window.period() == null
-                || window.period().getStatus() != com.bigbrightpaints.erp.modules.accounting.domain.AccountingPeriodStatus.CLOSED
-                || usesClosedSnapshot(window)) {
-            return false;
-        }
-        return !window.period().getEndDate().isBefore(window.startDate())
-                && !window.period().getEndDate().isAfter(window.endDate());
-    }
-
-    private String periodCloseReference(ReportQuerySupport.FinancialQueryWindow window) {
-        return "PERIOD-CLOSE-" + window.period().getYear() + String.format(Locale.ROOT, "%02d", window.period().getMonth());
     }
 
     private BigDecimal currentPeriodEarnings(ReportQuerySupport.FinancialQueryWindow window) {
