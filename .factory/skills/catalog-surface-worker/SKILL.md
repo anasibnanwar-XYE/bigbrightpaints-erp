@@ -78,6 +78,7 @@ None.
 4. Run `git diff --check` before handoff.
 5. Perform API-level verification for the claimed assertions, including negative checks for retired routes and strict contract failures.
 6. For retired routes, prove unmapped/not-supported behavior with an authenticated caller; do not treat `401/403` as sufficient evidence of removal.
+7. If this feature is a rerun/fix specifically assigned to remove an in-scope stale test, stale diff, or contract mismatch that currently breaks the targeted baseline, it is acceptable for the first validation attempt to fail on that exact known issue; fix it first, then rerun the full targeted validation set before handoff.
 
 ### Step 6: Produce a high-signal handoff
 Your handoff must make shortcuts obvious. Include:
