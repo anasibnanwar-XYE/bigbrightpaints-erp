@@ -136,7 +136,27 @@ class CatalogControllerCanonicalProductIT extends AbstractIntegrationTest {
                 new HttpEntity<>(headers),
                 Map.class);
         assertThat(detailResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertCatalogReadFields(data(detailResponse), variantGroupId, "Premium Primer", "WHITE", "1L");
+        Map<String, Object> detailData = data(detailResponse);
+        assertCatalogReadFields(detailData, variantGroupId, "Premium Primer", "WHITE", "1L");
+
+        Map<String, Object> updatePayload = new LinkedHashMap<>();
+        updatePayload.put("brandId", activeBrand.getId());
+        updatePayload.put("name", "Premium Primer Updated");
+        updatePayload.put("colors", detailData.get("colors"));
+        updatePayload.put("sizes", detailData.get("sizes"));
+        updatePayload.put("cartonSizes", detailData.get("cartonSizes"));
+        updatePayload.put("unitOfMeasure", detailData.get("unitOfMeasure"));
+        updatePayload.put("hsnCode", detailData.get("hsnCode"));
+        updatePayload.put("gstRate", detailData.get("gstRate"));
+        updatePayload.put("active", true);
+
+        ResponseEntity<Map> updateResponse = rest.exchange(
+                "/api/v1/catalog/products/" + member.get("id"),
+                HttpMethod.PUT,
+                new HttpEntity<>(updatePayload, headers),
+                Map.class);
+        assertThat(updateResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(data(updateResponse).get("name")).isEqualTo("Premium Primer Updated");
     }
 
     @Test
@@ -439,12 +459,23 @@ class CatalogControllerCanonicalProductIT extends AbstractIntegrationTest {
         assertThat(decimalValue(product.get("minSellingPrice"))).isEqualByComparingTo("1140.00");
         assertThat(listOfStrings(product.get("colors"))).containsExactly(color);
         assertThat(listOfStrings(product.get("sizes"))).containsExactly(size);
+        assertThat(cartonMappings(product.get("cartonSizes"))).containsExactly(size + ":1");
         assertThat(metadata(product)).containsEntry("productType", "decorative");
     }
 
     @SuppressWarnings("unchecked")
     private List<String> listOfStrings(Object value) {
         return value == null ? List.of() : ((List<Object>) value).stream().map(String::valueOf).toList();
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<String> cartonMappings(Object value) {
+        if (value == null) {
+            return List.of();
+        }
+        return ((List<Map<String, Object>>) value).stream()
+                .map(mapping -> String.valueOf(mapping.get("size")) + ":" + String.valueOf(mapping.get("piecesPerCarton")))
+                .toList();
     }
 
     private BigDecimal decimalValue(Object value) {

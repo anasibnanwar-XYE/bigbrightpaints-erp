@@ -481,6 +481,7 @@ public class ProductionCatalogService {
         product.setSizeLabel(cleanValue(sizeLabel));
         product.setColors(singleVariantSet(product.getDefaultColour()));
         product.setSizes(singleVariantSet(product.getSizeLabel()));
+        product.setCartonSizes(defaultCartonSizes(product.getSizeLabel()));
         product.setUnitOfMeasure(cleanValue(request.unitOfMeasure()));
         product.setHsnCode(cleanValue(request.hsnCode()));
         product.setSkuCode(sku);
@@ -507,6 +508,13 @@ public class ProductionCatalogService {
         return StringUtils.hasText(cleaned)
                 ? new LinkedHashSet<>(List.of(cleaned))
                 : new LinkedHashSet<>();
+    }
+
+    private Map<String, Integer> defaultCartonSizes(String sizeLabel) {
+        String cleaned = cleanValue(sizeLabel);
+        return StringUtils.hasText(cleaned)
+                ? new LinkedHashMap<>(Map.of(cleaned, 1))
+                : new LinkedHashMap<>();
     }
 
     private CatalogProductEntryPlan prepareCatalogProductEntryPlan(Company company, CatalogProductEntryRequest request) {
