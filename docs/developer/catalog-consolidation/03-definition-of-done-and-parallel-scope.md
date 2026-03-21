@@ -41,16 +41,18 @@ or broader pricing/valuation redesign.
 ### Public surface
 
 - `/api/v1/catalog/**` is the only supported public catalog host
-- `/api/v1/accounting/catalog/**` is absent as a public catalog surface
-- `/api/v1/production/**` is absent as a competing public browse surface
-- `/api/v1/catalog/products/bulk` is absent as a public create surface
+- canonical public catalog operations are `GET/POST /api/v1/catalog/brands`,
+  `GET /api/v1/catalog/products`, and `POST /api/v1/catalog/products`
+- no alternate public catalog browse or create surface survives alongside the
+  canonical host
 
 ### Write path
 
 - one canonical create endpoint exists for single and matrix create
 - preview and commit use the same request shape
 - product create requires an active `brandId`
-- inline brand-create fallback is absent from the product contract
+- brand creation remains a separate `POST /api/v1/catalog/brands` step before
+  product preview/commit
 
 ### Data model
 

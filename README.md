@@ -193,7 +193,7 @@ Notes:
 - Enable dev profile to use interactive API docs locally.
 - Public catalog contract is `/api/v1/catalog/**` only.
 - Create brands explicitly on `POST /api/v1/catalog/brands`, then create or preview products on `POST /api/v1/catalog/products` using a resolved active `brandId`.
-- Retired catalog hosts `/api/v1/accounting/catalog/**`, `/api/v1/production/**`, and `/api/v1/catalog/products/bulk` are not supported.
+- Use only the canonical catalog endpoints above for brand selection/create and product preview/commit flows.
 
 ---
 

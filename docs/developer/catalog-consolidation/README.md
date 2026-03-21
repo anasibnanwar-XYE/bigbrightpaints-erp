@@ -10,8 +10,7 @@ Use this doc set to understand the post-consolidation truth:
 - brand creation is explicit on `POST /api/v1/catalog/brands`
 - product preview and commit live on `POST /api/v1/catalog/products`
 - product create consumes a pre-resolved active `brandId`
-- retired `/api/v1/accounting/catalog/**`, `/api/v1/production/**`, and
-  `/api/v1/catalog/products/bulk` surfaces are gone
+- browse/search, preview, and commit all stay on the same canonical host
 
 ## Doc Set
 
@@ -41,21 +40,13 @@ Use this doc set to understand the post-consolidation truth:
 ### Rules
 
 - product create requires an active `brandId`
-- inline brand fallback fields such as `brandName` and `brandCode` are not part
-  of the product-create contract
+- product preview and commit reuse the `brandId` returned from the separate
+  brand-create step
 - `sizes[]` and `colors[]` are canonical arrays; packed multi-value tokens are
   rejected
 - preview and commit share the same candidate plan and variant-group identity
 - downstream finished-good/raw-material readiness is produced in the same write
   path
-
-## Retired Public Surfaces
-
-These are no longer supported and should never be documented as live:
-
-- `/api/v1/accounting/catalog/**`
-- `/api/v1/production/**`
-- `/api/v1/catalog/products/bulk`
 
 ## End-to-End Flow Summary
 

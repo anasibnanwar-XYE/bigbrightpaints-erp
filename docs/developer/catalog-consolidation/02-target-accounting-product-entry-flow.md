@@ -26,12 +26,6 @@ Canonical endpoints:
 - `POST /api/v1/catalog/products?preview=true`
 - `POST /api/v1/catalog/products`
 
-Retired public endpoints:
-
-- `/api/v1/accounting/catalog/**`
-- `/api/v1/production/**`
-- `/api/v1/catalog/products/bulk`
-
 ## End-To-End UX
 
 ### Step 1: Brand
@@ -46,8 +40,8 @@ The user can either:
 Backend rule:
 
 - the product-entry payload must contain a resolved active `brandId`
-- the product-entry payload must not inline brand creation or brand fallback
-  fields
+- the separate brand-create step supplies that `brandId` before preview or
+  commit
 
 ### Step 2: Base Product
 
@@ -186,7 +180,6 @@ Matrix create:
 
 This flow does not reintroduce:
 
-- inline brand creation inside the product payload
 - alternate public catalog hosts
 - a public bulk-create route
 - pricing, valuation, or costing redesign beyond catalog readiness

@@ -643,9 +643,9 @@ All endpoints return `ApiResponse<T>` envelopes.
 
 ### Accounting
 
-Comprehensive frontend handoff for `VAL-DOC-003` (chart of accounts, journals, settlement, period controls, reconciliation, GST, audit, catalog bridge, and temporal/reporting endpoints).
+Comprehensive frontend handoff for `VAL-DOC-003` (chart of accounts, journals, settlement, period controls, reconciliation, GST, audit, and temporal/reporting endpoints).
 
-Catalog note (2026-03-21): public accounting catalog routes are retired. Accounting-facing product entry now uses the canonical catalog endpoints documented in the **Product Catalog & Inventory** section (`GET/POST /api/v1/catalog/brands`, `GET/POST /api/v1/catalog/products`).
+Catalog note (2026-03-21): accounting-facing product entry now uses the canonical catalog endpoints documented in the **Product Catalog & Inventory** section (`GET/POST /api/v1/catalog/brands`, `GET/POST /api/v1/catalog/products`).
 
 > Response envelope convention: almost all endpoints return `ApiResponse<T>` where payload is in `data`; PDF endpoints return raw `byte[]`; CSV endpoint returns `text/csv` string.
 
@@ -877,7 +877,6 @@ _Total documented accounting endpoints: **83**._
   - `memo`: `String` — validation `—`
   - `idempotencyKey`: `String` — validation `—`
   - `adminOverride`: `Boolean` — validation `—`
-- Public accounting-specific catalog DTOs are retired with `/api/v1/accounting/catalog/**`.
 - Use `CatalogBrandRequest`, `CatalogProductEntryRequest`, and `CatalogProductRequest` from the **Product Catalog & Inventory** section for current product-entry and maintenance contracts.
 - **`CreditNoteRequest`**
   - `invoiceId`: `Long` — validation `@NotNull`
@@ -1665,8 +1664,8 @@ Auth default: `hasAnyAuthority('ROLE_ADMIN','ROLE_ACCOUNTING','ROLE_SALES','ROLE
 Catalog contract rules:
 
 - create a new brand on `POST /api/v1/catalog/brands`, then pass the returned active `brandId` into product preview/commit
-- `CatalogProductEntryRequest` does not accept inline brand fallback fields such as `brandName` or `brandCode`
-- `/api/v1/accounting/catalog/**`, `/api/v1/production/**`, and `/api/v1/catalog/products/bulk` are retired and must not be used by frontend clients
+- product preview/commit use the canonical request fields listed below and always carry the resolved active `brandId` from that separate brand-create flow
+- frontend product entry and browse flows should call only the catalog endpoints listed in this section
 
 #### Endpoint Map — Inventory (stock, batches, movement history, adjustments, dispatch)
 
@@ -1983,7 +1982,7 @@ Operational statuses: `PENDING`, `PENDING_STOCK`, `PENDING_PRODUCTION`, `RESERVE
   - Backend currently validates/persists `hsnCode` but does not expose a dedicated HSN master endpoint.
   - Recommended UX: local searchable HSN dataset/autocomplete in UI + final backend validation on submit.
 - **Product search/filter**: always use server pagination (`page`, `pageSize`); backend caps `pageSize` at 100.
-- **Retired route guard**: do not surface or call `/api/v1/catalog/products/bulk`, `/api/v1/accounting/catalog/**`, or `/api/v1/production/**` from frontend clients.
+- **Catalog route guard**: surface only the canonical catalog endpoints listed in this section for brand selection/create, product preview/commit, and catalog browse.
 - **Dispatch confirm UI**: force explicit per-line shipped quantity entry (cannot exceed ordered quantity).
 - **Slip status controls**: only expose `PENDING`, `PENDING_STOCK`, `PENDING_PRODUCTION`, `RESERVED`; do not expose direct set to `DISPATCHED/BACKORDER/CANCELLED`.
 - **Idempotency-sensitive screens**: send stable idempotency keys for finished-good adjustments, raw-material adjustments, opening-stock import, raw-material intake/batch creation, and packing records.

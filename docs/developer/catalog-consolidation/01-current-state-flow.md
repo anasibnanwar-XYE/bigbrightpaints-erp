@@ -18,19 +18,7 @@ Supported public operations:
 - `POST /api/v1/catalog/products?preview=true`
 - `GET/PUT/DELETE /api/v1/catalog/products/{productId}`
 
-### Retired public hosts
-
-These controller classes no longer expose public routes:
-
-- `modules/accounting/controller/AccountingCatalogController`
-- `modules/production/controller/ProductionCatalogController`
-
-Retired public paths must remain absent from docs, OpenAPI, route inventories,
-and tests:
-
-- `/api/v1/accounting/catalog/**`
-- `/api/v1/production/**`
-- `/api/v1/catalog/products/bulk`
+No alternate public catalog browse or write host remains.
 
 ## System Graph
 
@@ -71,7 +59,6 @@ flowchart LR
 
 - owns canonical product preview and commit
 - requires a pre-resolved active `brandId`
-- rejects inline fallback fields captured as unknown request properties
 - rejects packed multi-value tokens inside `sizes[]` and `colors[]`
 - computes the canonical SKU candidate set for preview and commit
 - persists explicit `variantGroupId` linkage for grouped creates
@@ -109,7 +96,8 @@ flowchart LR
 
 1. UI creates the brand on `POST /api/v1/catalog/brands`
 2. UI uses the returned `brandId` in `POST /api/v1/catalog/products`
-3. Product preview/commit never auto-creates or remaps brands inline
+3. Product preview/commit uses that same resolved `brandId` for preview and
+   commit
 
 ### 3. Preview vs commit
 
